@@ -24,7 +24,7 @@ type NavItem = {
 const navItems: NavItem[] = [
 	{
 		label: "Status",
-		to: "/",
+		to: "/status",
 		icon: (
 			<NavIcon>
 				<path
