@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 const client = createRunnerClient();
 
-export function HomePage() {
+export function StatusPage() {
 	const healthQuery = useQuery({
 		queryKey: ["runner-health"],
 		queryFn: () => client.health(),

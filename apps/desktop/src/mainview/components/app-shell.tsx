@@ -37,6 +37,7 @@ const navItems: NavItem[] = [
 	},
 	{
 		label: "Test Cases",
+		to: "/test-cases",
 		icon: (
 			<NavIcon>
 				<path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01" strokeLinecap="round" />
@@ -101,8 +102,10 @@ export function AppShell({ children, activePath = "/" }: AppShellProps) {
 		<div className="flex min-h-full bg-background text-on-surface">
 			<aside className="fixed inset-y-0 left-0 z-50 flex w-sidebar flex-col border-r border-outline-variant bg-surface-container-low py-8">
 				<div className="mb-8 px-6">
-					<p className="text-headline-md tracking-tight text-primary">qa-agent</p>
-					<p className="text-helper text-on-surface-variant">Local QA host</p>
+					<Link className="block" to="/">
+						<p className="text-headline-md tracking-tight text-primary">qa-agent</p>
+						<p className="text-helper text-on-surface-variant">Local QA host</p>
+					</Link>
 				</div>
 
 				<nav className="flex flex-1 flex-col gap-1 px-4">
