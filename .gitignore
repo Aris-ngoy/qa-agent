@@ -30,3 +30,6 @@ build/
 # Coverage / caches
 coverage/
 .cache/
+
+# Stitch design exports
+.stitch/

@@ -7,14 +7,14 @@ type StatusBadgeProps = {
 };
 
 const toneClass: Record<NonNullable<StatusBadgeProps["tone"]>, string> = {
-	ok: "text-qa-accent",
-	warn: "text-amber-700",
-	neutral: "text-qa-ink/70",
+	ok: "text-secondary",
+	warn: "text-warning",
+	neutral: "text-on-surface-variant",
 };
 
 export function StatusBadge({ label, tone = "neutral", children }: StatusBadgeProps) {
 	return (
-		<span className={`inline-flex items-center gap-2 text-sm ${toneClass[tone]}`}>
+		<span className={`inline-flex items-center gap-2 text-body-sm ${toneClass[tone]}`}>
 			<span className="font-medium">{label}</span>
 			{children}
 		</span>

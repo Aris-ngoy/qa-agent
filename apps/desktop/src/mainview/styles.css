@@ -1,3 +1,7 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
 @import "@qa-agent/ui/styles.css";
 
 html,
@@ -8,8 +12,8 @@ body,
 
 body {
 	margin: 0;
-	font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-	background: radial-gradient(circle at top left, rgb(232 238 244 / 90%), transparent 45%),
-		linear-gradient(160deg, #f7fafc 0%, #e8eef4 55%, #d9e4ec 100%);
-	color: var(--color-qa-ink);
+	font-family: var(--font-sans);
+	background: var(--color-background);
+	color: var(--color-on-surface);
+	-webkit-font-smoothing: antialiased;
 }

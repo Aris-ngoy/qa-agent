@@ -1,7 +1,89 @@
 @import "tailwindcss";
 
 @theme {
-	--color-qa-ink: #0f1419;
-	--color-qa-mist: #e8eef4;
-	--color-qa-accent: #1f6b4a;
+	/* Colors — Noqa Systematic */
+	--color-background: #fcf9f5;
+	--color-on-background: #1c1c1a;
+	--color-surface: #fcf9f5;
+	--color-surface-dim: #dcdad6;
+	--color-surface-bright: #fcf9f5;
+	--color-surface-container-lowest: #ffffff;
+	--color-surface-container-low: #f6f3ef;
+	--color-surface-container: #f0edea;
+	--color-surface-container-high: #ebe8e4;
+	--color-surface-container-highest: #e5e2de;
+	--color-surface-variant: #e5e2de;
+	--color-on-surface: #1c1c1a;
+	--color-on-surface-variant: #444748;
+	--color-inverse-surface: #31302e;
+	--color-inverse-on-surface: #f3f0ec;
+	--color-outline: #747878;
+	--color-outline-variant: #c4c7c7;
+	--color-surface-tint: #5f5e5e;
+	--color-primary: #000000;
+	--color-on-primary: #ffffff;
+	--color-primary-container: #1c1b1b;
+	--color-on-primary-container: #858383;
+	--color-inverse-primary: #c8c6c5;
+	--color-secondary: #006d3a;
+	--color-on-secondary: #ffffff;
+	--color-secondary-container: #8ef9b0;
+	--color-on-secondary-container: #00743e;
+	--color-tertiary: #000000;
+	--color-on-tertiary: #ffffff;
+	--color-tertiary-container: #410005;
+	--color-on-tertiary-container: #e45052;
+	--color-error: #ba1a1a;
+	--color-on-error: #ffffff;
+	--color-error-container: #ffdad6;
+	--color-on-error-container: #93000a;
+	/* Sidebar active / hover accents from guidelines */
+	--color-sidebar-active: #e2e2de;
+	--color-hover-surface: #ededea;
+	/* Soft yellow for non-interruptive warnings (guidelines) */
+	--color-warning: #a16207;
+
+	/* Typography */
+	--font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+	--text-headline-lg: 1.375rem;
+	--text-headline-lg--line-height: 2rem;
+	--text-headline-lg--letter-spacing: -0.01em;
+	--text-headline-lg--font-weight: 600;
+	--text-headline-md: 1.25rem;
+	--text-headline-md--line-height: 1.75rem;
+	--text-headline-md--letter-spacing: -0.01em;
+	--text-headline-md--font-weight: 600;
+	--text-subheading: 0.9375rem;
+	--text-subheading--line-height: 1.25rem;
+	--text-subheading--font-weight: 600;
+	--text-body-md: 0.875rem;
+	--text-body-md--line-height: 1.25rem;
+	--text-body-md--font-weight: 400;
+	--text-body-sm: 0.8125rem;
+	--text-body-sm--line-height: 1.125rem;
+	--text-body-sm--font-weight: 400;
+	--text-label-caps: 0.75rem;
+	--text-label-caps--line-height: 1rem;
+	--text-label-caps--letter-spacing: 0.05em;
+	--text-label-caps--font-weight: 600;
+	--text-helper: 0.75rem;
+	--text-helper--line-height: 1rem;
+	--text-helper--font-weight: 400;
+
+	/* Radius — Soft-Square (8px default) */
+	--radius-sm: 0.25rem;
+	--radius-DEFAULT: 0.5rem;
+	--radius-md: 0.75rem;
+	--radius-lg: 1rem;
+	--radius-xl: 1.5rem;
+	--radius-full: 9999px;
+
+	/* Layout spacing */
+	--spacing-sidebar: 240px;
+	--spacing-gutter: 16px;
+	--spacing-container: 32px;
+	--spacing-stack-sm: 8px;
+	--spacing-stack-md: 16px;
+	--spacing-nav-y: 10px;
+	--spacing-nav-x: 12px;
 }
