@@ -110,7 +110,9 @@ export function AppShell({ children, activePath = "/" }: AppShellProps) {
 
 				<nav className="flex flex-1 flex-col gap-1 px-4">
 					{navItems.map((item) => {
-						const isActive = item.to !== undefined && item.to === activePath;
+						const isActive =
+							item.to !== undefined &&
+							(item.to === activePath || (item.to !== "/" && activePath.startsWith(`${item.to}/`)));
 						const className = [
 							"flex items-center gap-2 rounded px-nav-x py-nav-y text-body-md transition-colors duration-150",
 							isActive

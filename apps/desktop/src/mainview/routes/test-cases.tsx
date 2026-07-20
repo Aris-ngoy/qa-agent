@@ -1,60 +1,6 @@
+import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, type SVGProps, useMemo, useState } from "react";
-
-type CaseStatus = "passed" | "errored";
-
-type TestCaseRow = {
-	id: string;
-	name: string;
-	suite: string;
-	created: string;
-	lastRun: string;
-	status: CaseStatus;
-};
-
-const MOCK_CASES: TestCaseRow[] = [
-	{
-		id: "tc_login",
-		name: "Login Flow Validation",
-		suite: "core-auth",
-		created: "Oct 24, 2023",
-		lastRun: "2 mins ago",
-		status: "passed",
-	},
-	{
-		id: "tc_checkout",
-		name: "Checkout API Integration",
-		suite: "ecommerce",
-		created: "Nov 12, 2023",
-		lastRun: "14 mins ago",
-		status: "errored",
-	},
-	{
-		id: "tc_settings",
-		name: "User Settings Persistence",
-		suite: "account",
-		created: "Nov 15, 2023",
-		lastRun: "1 hour ago",
-		status: "passed",
-	},
-	{
-		id: "tc_search",
-		name: "Search Index Consistency",
-		suite: "data-sync",
-		created: "Dec 02, 2023",
-		lastRun: "3 hours ago",
-		status: "passed",
-	},
-	{
-		id: "tc_onboarding",
-		name: "Onboarding Carousel UI",
-		suite: "growth",
-		created: "Dec 05, 2023",
-		lastRun: "Yesterday",
-		status: "errored",
-	},
-];
-
-const TOTAL_CASES = 124;
+import { type CaseStatus, MOCK_CASES, TOTAL_CASES } from "../test-cases-data";
 
 type MetricAccent = "none" | "success" | "error";
 
@@ -131,6 +77,7 @@ function CaseStatusPill({ status }: { status: CaseStatus }) {
 }
 
 export function TestCasesPage() {
+	const navigate = useNavigate();
 	const [filter, setFilter] = useState("");
 
 	const rows = useMemo(() => {
@@ -143,6 +90,10 @@ export function TestCasesPage() {
 			return haystack.includes(query);
 		});
 	}, [filter]);
+
+	const openCase = (caseId: string) => {
+		void navigate({ to: "/test-cases/$caseId", params: { caseId } });
+	};
 
 	return (
 		<div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
@@ -319,7 +270,18 @@ export function TestCasesPage() {
 							</tr>
 						) : (
 							rows.map((row) => (
-								<tr className="transition-colors hover:bg-surface-container-low" key={row.id}>
+								<tr
+									className="cursor-pointer transition-colors hover:bg-surface-container-low"
+									key={row.id}
+									onClick={() => openCase(row.id)}
+									onKeyDown={(event) => {
+										if (event.key === "Enter" || event.key === " ") {
+											event.preventDefault();
+											openCase(row.id);
+										}
+									}}
+									tabIndex={0}
+								>
 									<td className="px-6 py-4">
 										<div className="flex items-center gap-3">
 											<svg
@@ -350,11 +312,7 @@ export function TestCasesPage() {
 										<CaseStatusPill status={row.status} />
 									</td>
 									<td className="px-6 py-4 text-right">
-										<button
-											aria-label={`More actions for ${row.name}`}
-											className="rounded p-1 text-on-surface-variant transition-colors hover:bg-surface-container-high"
-											type="button"
-										>
+										<span className="inline-flex rounded p-1 text-on-surface-variant">
 											<svg
 												aria-hidden="true"
 												className="size-5"
@@ -365,7 +323,7 @@ export function TestCasesPage() {
 												<circle cx="12" cy="12" r="1.5" />
 												<circle cx="12" cy="19" r="1.5" />
 											</svg>
-										</button>
+										</span>
 									</td>
 								</tr>
 							))
