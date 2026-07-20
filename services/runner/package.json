@@ -1,0 +1,26 @@
+{
+	"name": "@qa-agent/runner",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"bin": {
+		"qa-agent": "./src/interfaces/cli/main.ts"
+	},
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"dev": "bun run --watch src/index.ts",
+		"health": "bun run src/interfaces/cli/main.ts health",
+		"check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@qa-agent/runner-client": "workspace:*",
+		"commander": "^14.0.0",
+		"hono": "^4.8.3",
+		"zod": "^3.25.67"
+	},
+	"devDependencies": {
+		"@qa-agent/typescript-config": "workspace:*",
+		"@types/bun": "^1.2.18",
+		"typescript": "^5.9.3"
+	}
+}

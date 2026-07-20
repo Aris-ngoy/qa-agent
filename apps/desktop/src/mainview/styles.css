@@ -1,0 +1,15 @@
+@import "@qa-agent/ui/styles.css";
+
+html,
+body,
+#root {
+	height: 100%;
+}
+
+body {
+	margin: 0;
+	font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+	background: radial-gradient(circle at top left, rgb(232 238 244 / 90%), transparent 45%),
+		linear-gradient(160deg, #f7fafc 0%, #e8eef4 55%, #d9e4ec 100%);
+	color: var(--color-qa-ink);
+}

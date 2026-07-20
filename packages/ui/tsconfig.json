@@ -1,0 +1,4 @@
+{
+	"extends": "@qa-agent/typescript-config/react.json",
+	"include": ["src"]
+}

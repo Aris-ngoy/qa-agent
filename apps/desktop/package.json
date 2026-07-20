@@ -1,0 +1,34 @@
+{
+	"name": "@qa-agent/desktop",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite build && electrobun dev --watch",
+		"dev:hmr": "concurrently -k \"vite --port 5173\" \"bun run start\"",
+		"start": "vite build && electrobun dev",
+		"build": "vite build && electrobun build --env=canary",
+		"check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@qa-agent/runner-client": "workspace:*",
+		"@qa-agent/ui": "workspace:*",
+		"@tanstack/react-query": "^5.81.5",
+		"@tanstack/react-router": "^1.121.34",
+		"electrobun": "^1.16.0",
+		"react": "^19.2.3",
+		"react-dom": "^19.2.3"
+	},
+	"devDependencies": {
+		"@qa-agent/typescript-config": "workspace:*",
+		"@tailwindcss/vite": "^4.1.18",
+		"@types/bun": "^1.2.18",
+		"@types/react": "^19.2.7",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^4.7.0",
+		"concurrently": "^9.2.1",
+		"tailwindcss": "^4.1.18",
+		"typescript": "^5.9.3",
+		"vite": "^6.4.1"
+	}
+}

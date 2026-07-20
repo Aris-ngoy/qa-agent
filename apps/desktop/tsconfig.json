@@ -1,0 +1,10 @@
+{
+	"extends": "@qa-agent/typescript-config/react.json",
+	"compilerOptions": {
+		"paths": {
+			"@/*": ["./src/mainview/*"]
+		}
+	},
+	"include": ["src/mainview", "src/shared", "vite.config.ts"],
+	"exclude": ["src/bun", "dist", "node_modules"]
+}

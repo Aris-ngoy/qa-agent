@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@theme {
+	--color-qa-ink: #0f1419;
+	--color-qa-mist: #e8eef4;
+	--color-qa-accent: #1f6b4a;
+}

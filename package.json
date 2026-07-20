@@ -1,0 +1,25 @@
+{
+	"name": "qa-agent",
+	"private": true,
+	"workspaces": ["apps/*", "packages/*", "services/*"],
+	"scripts": {
+		"dev": "turbo run dev",
+		"build": "turbo run build",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"check": "turbo run check && biome check .",
+		"runner": "bun run --filter @qa-agent/runner start",
+		"health": "bun run --filter @qa-agent/runner health",
+		"desktop": "bun run --filter @qa-agent/desktop dev",
+		"prepare": "husky"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"husky": "^9.1.7",
+		"lint-staged": "^17.1.0",
+		"turbo": "^2.5.4",
+		"typescript": "^5.9.3"
+	},
+	"packageManager": "bun@1.2.23",
+	"trustedDependencies": ["@biomejs/biome"]
+}
