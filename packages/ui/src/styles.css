@@ -1,7 +1,51 @@
-@import "tailwindcss";
+@import "@heroui/styles";
+
+/* Map HeroUI semantic tokens → Noqa Systematic */
+:root,
+.light,
+.default,
+[data-theme="light"],
+[data-theme="default"] {
+	--background: #fcf9f5;
+	--foreground: #1c1c1a;
+	--surface: #ffffff;
+	--surface-foreground: #1c1c1a;
+	--surface-secondary: #f6f3ef;
+	--surface-secondary-foreground: #1c1c1a;
+	--surface-tertiary: #f0edea;
+	--surface-tertiary-foreground: #1c1c1a;
+	--overlay: #ffffff;
+	--overlay-foreground: #1c1c1a;
+	--muted: #444748;
+	--default: #e5e2de;
+	--default-foreground: #1c1c1a;
+	--accent: #000000;
+	--accent-foreground: #ffffff;
+	--success: #006d3a;
+	--success-foreground: #ffffff;
+	--warning: #a16207;
+	--warning-foreground: #1c1c1a;
+	--danger: #ba1a1a;
+	--danger-foreground: #ffffff;
+	--border: #c4c7c7;
+	--separator: #c4c7c7;
+	--focus: #000000;
+	--link: #1c1c1a;
+	--field-background: #ffffff;
+	--field-foreground: #1c1c1a;
+	--field-placeholder: #444748;
+	--field-border: #c4c7c7;
+	--field-border-width: 1px;
+	--backdrop: rgb(0 0 0 / 0.4);
+	--radius: 0.5rem;
+	--field-radius: 0.5rem;
+	--overlay-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+	--surface-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+	--field-shadow: none;
+}
 
 @theme {
-	/* Colors — Noqa Systematic */
+	/* Colors — Noqa Systematic (Tailwind utilities: bg-primary, text-on-surface, …) */
 	--color-background: #fcf9f5;
 	--color-on-background: #1c1c1a;
 	--color-surface: #fcf9f5;
@@ -37,10 +81,8 @@
 	--color-on-error: #ffffff;
 	--color-error-container: #ffdad6;
 	--color-on-error-container: #93000a;
-	/* Sidebar active / hover accents from guidelines */
 	--color-sidebar-active: #e2e2de;
 	--color-hover-surface: #ededea;
-	/* Soft yellow for non-interruptive warnings (guidelines) */
 	--color-warning: #a16207;
 
 	/* Typography */

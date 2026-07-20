@@ -7,7 +7,9 @@ export type Application = {
 
 type AppsContextValue = {
 	apps: Application[];
+	selectedApp: Application | null;
 	addApp: (name: string) => Application;
+	selectApp: (id: string) => void;
 	hasApps: boolean;
 };
 
@@ -19,6 +21,7 @@ function createId(): string {
 
 export function AppsProvider({ children }: { children: ReactNode }) {
 	const [apps, setApps] = useState<Application[]>([]);
+	const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
 
 	const addApp = useCallback((name: string) => {
 		const trimmed = name.trim();
@@ -27,16 +30,28 @@ export function AppsProvider({ children }: { children: ReactNode }) {
 		}
 		const app: Application = { id: createId(), name: trimmed };
 		setApps((current) => [...current, app]);
+		setSelectedAppId(app.id);
 		return app;
 	}, []);
+
+	const selectApp = useCallback((id: string) => {
+		setSelectedAppId(id);
+	}, []);
+
+	const selectedApp = useMemo(
+		() => apps.find((app) => app.id === selectedAppId) ?? null,
+		[apps, selectedAppId],
+	);
 
 	const value = useMemo(
 		() => ({
 			apps,
+			selectedApp,
 			addApp,
+			selectApp,
 			hasApps: apps.length > 0,
 		}),
-		[apps, addApp],
+		[apps, selectedApp, addApp, selectApp],
 	);
 
 	return <AppsContext.Provider value={value}>{children}</AppsContext.Provider>;

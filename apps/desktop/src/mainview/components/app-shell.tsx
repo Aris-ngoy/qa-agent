@@ -1,5 +1,7 @@
+import { Button } from "@heroui/react";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode, SVGProps } from "react";
+import { WorkspaceHeader } from "./workspace-header";
 
 function NavIcon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -99,63 +101,67 @@ type AppShellProps = {
 
 export function AppShell({ children, activePath = "/" }: AppShellProps) {
 	return (
-		<div className="flex min-h-full bg-background text-on-surface">
-			<aside className="fixed inset-y-0 left-0 z-50 flex w-sidebar flex-col border-r border-outline-variant bg-surface-container-low py-8">
-				<div className="mb-8 px-6">
-					<Link className="block" to="/">
-						<p className="text-headline-md tracking-tight text-primary">qa-agent</p>
-						<p className="text-helper text-on-surface-variant">Local QA host</p>
-					</Link>
-				</div>
+		<div className="flex min-h-full flex-col bg-background text-on-surface">
+			<WorkspaceHeader />
 
-				<nav className="flex flex-1 flex-col gap-1 px-4">
-					{navItems.map((item) => {
-						const isActive =
-							item.to !== undefined &&
-							(item.to === activePath || (item.to !== "/" && activePath.startsWith(`${item.to}/`)));
-						const className = [
-							"flex items-center gap-2 rounded px-nav-x py-nav-y text-body-md transition-colors duration-150",
-							isActive
-								? "bg-sidebar-active font-semibold text-primary"
-								: "text-on-surface-variant hover:bg-hover-surface",
-							item.to ? "" : "cursor-default opacity-60",
-						].join(" ");
+			<div className="flex min-h-0 flex-1">
+				<aside className="sticky top-14 flex h-[calc(100vh-3.5rem)] w-sidebar shrink-0 flex-col border-r border-outline-variant bg-surface-container-low py-6">
+					<div className="mb-6 px-6">
+						<Link className="block" to="/">
+							<p className="text-headline-md tracking-tight text-primary">qa-agent</p>
+							<p className="text-helper text-on-surface-variant">Local QA host</p>
+						</Link>
+					</div>
 
-						if (item.to) {
+					<nav className="flex flex-1 flex-col gap-1 px-4">
+						{navItems.map((item) => {
+							const isActive =
+								item.to !== undefined &&
+								(item.to === activePath ||
+									(item.to !== "/" && activePath.startsWith(`${item.to}/`)));
+							const className = [
+								"flex items-center gap-2 rounded px-nav-x py-nav-y text-body-md transition-colors duration-150",
+								isActive
+									? "bg-sidebar-active font-semibold text-primary"
+									: "text-on-surface-variant hover:bg-hover-surface",
+								item.to ? "" : "cursor-default opacity-60",
+							].join(" ");
+
+							if (item.to) {
+								return (
+									<Link key={item.label} className={className} to={item.to}>
+										{item.icon}
+										<span>{item.label}</span>
+									</Link>
+								);
+							}
+
 							return (
-								<Link key={item.label} className={className} to={item.to}>
+								<span key={item.label} className={className}>
 									{item.icon}
 									<span>{item.label}</span>
-								</Link>
+								</span>
 							);
-						}
+						})}
+					</nav>
 
-						return (
-							<span key={item.label} className={className}>
-								{item.icon}
-								<span>{item.label}</span>
-							</span>
-						);
-					})}
-				</nav>
+					<div className="mt-auto space-y-stack-sm border-t border-outline-variant px-4 pt-stack-md">
+						<Button className="w-full bg-secondary text-on-secondary" isDisabled>
+							<svg
+								aria-hidden="true"
+								className="size-[18px]"
+								fill="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path d="M8 5.5v13l11-6.5L8 5.5Z" />
+							</svg>
+							Run Tests
+						</Button>
+						<p className="px-3 py-2 text-helper text-on-surface-variant">Phase 1 · local only</p>
+					</div>
+				</aside>
 
-				<div className="mt-auto space-y-stack-sm border-t border-outline-variant px-4 pt-stack-md">
-					<button
-						className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded bg-secondary px-4 py-2 text-body-md font-semibold text-on-secondary opacity-70"
-						disabled
-						type="button"
-					>
-						<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 24 24">
-							<path d="M8 5.5v13l11-6.5L8 5.5Z" />
-						</svg>
-						Run Tests
-					</button>
-					<p className="px-3 py-2 text-helper text-on-surface-variant">Phase 1 · local only</p>
-				</div>
-			</aside>
-
-			<div className="ml-sidebar flex min-h-full flex-1 flex-col">
-				<main className="flex-1 bg-surface-container-lowest px-container py-gutter">
+				<main className="min-w-0 flex-1 bg-surface-container-lowest px-container py-gutter">
 					{children}
 				</main>
 			</div>
