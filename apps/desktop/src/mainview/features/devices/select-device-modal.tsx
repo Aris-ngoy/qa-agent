@@ -11,7 +11,7 @@ export type SelectedDevice = {
 	platform: DevicePlatform;
 };
 
-type DeviceTab = "local" | "simulators" | "cloud";
+type DeviceTab = "local" | "simulators";
 
 type DeviceRow = {
 	id: string;
@@ -53,14 +53,6 @@ const IOS_SIMULATORS: DeviceRow[] = [
 	{ id: "ios-sim-iphone-13", name: "iPhone 13", osVersion: "iOS 17.5" },
 ];
 
-const IOS_CLOUD_DEVICES: DeviceRow[] = [
-	{ id: "ios-cloud-iphone-17-pro", name: "iPhone 17 Pro", osVersion: "iOS 26.1" },
-	{ id: "ios-cloud-iphone-16-pro-max", name: "iPhone 16 Pro Max", osVersion: "iOS 18.5" },
-	{ id: "ios-cloud-iphone-16", name: "iPhone 16", osVersion: "iOS 18.5" },
-	{ id: "ios-cloud-iphone-15-pro", name: "iPhone 15 Pro", osVersion: "iOS 18.4" },
-	{ id: "ios-cloud-ipad-pro", name: "iPad Pro 13-inch", osVersion: "iOS 18.5" },
-];
-
 const ANDROID_LOCAL_DEVICES: DeviceRow[] = [
 	{
 		id: "android-local-pixel-9",
@@ -77,19 +69,12 @@ const ANDROID_SIMULATORS: DeviceRow[] = [
 	{ id: "android-emu-tablet", name: "Pixel Tablet", osVersion: "Android 14" },
 ];
 
-const ANDROID_CLOUD_DEVICES: DeviceRow[] = [
-	{ id: "android-cloud-pixel-9", name: "Pixel 9 Pro", osVersion: "Android 15" },
-	{ id: "android-cloud-pixel-8", name: "Pixel 8 Pro", osVersion: "Android 14" },
-	{ id: "android-cloud-s24", name: "Galaxy S24", osVersion: "Android 14" },
-];
-
 const PLATFORM_COPY: Record<
 	DevicePlatform,
 	{
 		title: string;
 		local: DeviceRow[];
 		simulators: DeviceRow[];
-		cloud: DeviceRow[];
 		simulatorLabel: string;
 		localChecklist: string[];
 	}
@@ -98,7 +83,6 @@ const PLATFORM_COPY: Record<
 		title: "Select Device — iOS",
 		local: IOS_LOCAL_DEVICES,
 		simulators: IOS_SIMULATORS,
-		cloud: IOS_CLOUD_DEVICES,
 		simulatorLabel: "Local Simulators",
 		localChecklist: [
 			"Device is connected via cable",
@@ -112,7 +96,6 @@ const PLATFORM_COPY: Record<
 		title: "Select Device — Android",
 		local: ANDROID_LOCAL_DEVICES,
 		simulators: ANDROID_SIMULATORS,
-		cloud: ANDROID_CLOUD_DEVICES,
 		simulatorLabel: "Local Emulators",
 		localChecklist: [
 			"Device is connected via cable",
@@ -154,25 +137,6 @@ function MonitorIcon(props: SVGProps<SVGSVGElement>) {
 		>
 			<rect height="12" rx="1.5" width="18" x="3" y="4" />
 			<path d="M8 20h8M12 16v4" strokeLinecap="round" />
-		</svg>
-	);
-}
-
-function CloudIcon(props: SVGProps<SVGSVGElement>) {
-	return (
-		<svg
-			aria-hidden="true"
-			className="size-4 shrink-0"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="1.75"
-			viewBox="0 0 24 24"
-			{...props}
-		>
-			<path
-				d="M7 18a4.5 4.5 0 01.4-9 5.5 5.5 0 0110.4 1.6A3.5 3.5 0 0118 18H7z"
-				strokeLinejoin="round"
-			/>
 		</svg>
 	);
 }
@@ -250,7 +214,6 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 			count: copy.simulators.length,
 			icon: MonitorIcon,
 		},
-		{ id: "cloud", label: "Cloud Devices", count: copy.cloud.length, icon: CloudIcon },
 	];
 
 	return (
@@ -314,10 +277,6 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 
 								<Tabs.Panel className="pt-5" id="simulators">
 									<DeviceList devices={copy.simulators} onSelect={handleSelect} />
-								</Tabs.Panel>
-
-								<Tabs.Panel className="pt-5" id="cloud">
-									<DeviceList devices={copy.cloud} onSelect={handleSelect} />
 								</Tabs.Panel>
 							</Tabs>
 						</Modal.Body>

@@ -1,6 +1,6 @@
+import { type AppiumCapability, useApps } from "@/features/apps/context";
 import { AlertDialog, Button, Description, Input, Label, TextArea, TextField } from "@heroui/react";
 import { type SVGProps, useEffect, useState } from "react";
-import { type AppiumCapability, useApps } from "../apps-context";
 
 type FormState = {
 	name: string;

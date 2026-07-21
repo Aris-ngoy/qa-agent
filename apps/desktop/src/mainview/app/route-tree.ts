@@ -1,10 +1,10 @@
+import { RootLayout } from "@/app/root-layout";
+import { ConfigurationPage } from "@/features/apps/configuration-page";
+import { WelcomePage } from "@/features/apps/welcome-page";
+import { StatusPage } from "@/features/status/status-page";
+import { TestCaseDetailPage } from "@/features/test-cases/detail-page";
+import { TestCasesPage } from "@/features/test-cases/list-page";
 import { createRootRoute, createRoute } from "@tanstack/react-router";
-import { ConfigurationPage } from "./routes/configuration";
-import { RootLayout } from "./routes/root";
-import { StatusPage } from "./routes/status";
-import { TestCaseDetailPage } from "./routes/test-case-detail";
-import { TestCasesPage } from "./routes/test-cases";
-import { WelcomePage } from "./routes/welcome";
 
 const rootRoute = createRootRoute({
 	component: RootLayout,

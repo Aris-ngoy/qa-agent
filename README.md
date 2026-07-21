@@ -58,4 +58,33 @@ packages/typescript-config
 packages/skill/qa-agent-testing
 ```
 
+### Desktop (`apps/desktop/src`)
+
+Process-first roots (Electrobun), features nested underneath:
+
+```
+src/
+  bun/                            # Electrobun main process
+    index.ts                      # window, menu, RPC handlers
+    features/
+      ios-toolchain/              # Xcode / signing discovery + prefs
+  shared/                         # isomorphic RPC contracts + DTOs
+    rpc.ts
+    ios-toolchain.ts
+  mainview/                       # React renderer (Vite)
+    main.tsx
+    app/                          # shell, router, RPC client
+    features/
+      apps/                       # workspace apps + welcome/config
+      devices/                    # runs panel + device setup
+      settings/                   # settings modal (toolchain RPC)
+      test-cases/
+      status/
+```
+
+- `bun/` must not import React or `mainview/`
+- `mainview/` must not import Node APIs or `bun/`
+- `shared/` is the only bridge (types + RPC shape)
+- Renderer imports use `@/` → `src/mainview`
+
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full product design.

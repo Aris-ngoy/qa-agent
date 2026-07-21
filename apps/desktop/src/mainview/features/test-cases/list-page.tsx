@@ -1,6 +1,6 @@
+import { type CaseStatus, MOCK_CASES, TOTAL_CASES } from "@/features/test-cases/data";
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { type CaseStatus, MOCK_CASES, TOTAL_CASES } from "../test-cases-data";
 
 function CaseStatusPill({ status }: { status: CaseStatus }) {
 	if (status === "passed") {

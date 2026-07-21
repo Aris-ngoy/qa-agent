@@ -1,3 +1,5 @@
+import type { IosToolchainPreferences, IosToolchainSnapshot } from "./ios-toolchain";
+
 export type DesktopRPC = {
 	bun: {
 		requests: {
@@ -8,6 +10,17 @@ export type DesktopRPC = {
 			getRunnerBaseUrl: {
 				params: undefined;
 				response: string;
+			};
+			getIosToolchain: {
+				params: undefined;
+				response: IosToolchainSnapshot;
+			};
+			setIosToolchainSelection: {
+				params: {
+					xcodeDeveloperDir?: string | null;
+					signingIdentityHash?: string | null;
+				};
+				response: IosToolchainPreferences;
 			};
 		};
 		messages: {

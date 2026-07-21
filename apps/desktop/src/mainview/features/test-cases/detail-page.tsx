@@ -1,7 +1,7 @@
+import { type TestCase, type TestFlow, getTestCase } from "@/features/test-cases/data";
 import { Button, Input, Label, ListBox, Select, TextArea, TextField } from "@heroui/react";
 import { Link, useParams } from "@tanstack/react-router";
 import { type SVGProps, useEffect, useRef, useState } from "react";
-import { type TestCase, type TestFlow, getTestCase } from "../test-cases-data";
 
 type DetailTab = "instructions" | "configuration";
 

@@ -1,5 +1,6 @@
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { DesktopRPC } from "../shared/rpc";
+import { getIosToolchainSnapshot, setIosToolchainSelection } from "./features/ios-toolchain";
 
 async function getMainViewUrl(): Promise<string> {
 	const viteUrl = "http://localhost:5173";
@@ -43,11 +44,13 @@ ApplicationMenu.setApplicationMenu([
 ]);
 
 const mainRPC = BrowserView.defineRPC<DesktopRPC>({
-	maxRequestTime: 5000,
+	maxRequestTime: 30_000,
 	handlers: {
 		requests: {
 			ping: () => "pong",
 			getRunnerBaseUrl: () => process.env.QA_AGENT_RUNNER_URL ?? "http://127.0.0.1:7420",
+			getIosToolchain: () => getIosToolchainSnapshot(),
+			setIosToolchainSelection: (params) => setIosToolchainSelection(params),
 		},
 		messages: {
 			log: ({ msg }) => {

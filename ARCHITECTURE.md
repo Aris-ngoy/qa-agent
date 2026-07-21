@@ -290,6 +290,8 @@ Local CLI can proxy these when online; device commands stay local-only.
 
 ## 5. Desktop UI information architecture
 
+Desktop source is **process-first, feature-nested**: `bun/` (main), `mainview/` (React), `shared/` (RPC/DTOs). UI domains live under `mainview/features/*`; shell/router/RPC client under `mainview/app/`. Main-process logic lives under `bun/features/*` and is exposed only via RPC.
+
 Minimal screens to ship MVP:
 
 1. **Sign in**
@@ -490,11 +492,25 @@ sequenceDiagram
 repo/
 ├── apps/
 │   └── desktop/                      # Electrobun + Vite + React + TanStack Router
-│       ├── src/bun/index.ts          # window, spawn runner, RPC
-│       ├── src/mainview/             # React UI
-│       │   ├── routes/               # TanStack Router
-│       │   └── lib/runner.ts         # @qa-agent/runner-client
+│       ├── src/
+│       │   ├── bun/                  # Electrobun main process
+│       │   │   ├── index.ts          # window, menu, RPC handlers
+│       │   │   └── features/
+│       │   │       └── ios-toolchain/  # Xcode / signing prefs (Node APIs)
+│       │   ├── shared/               # isomorphic RPC contracts + DTOs only
+│       │   │   ├── rpc.ts
+│       │   │   └── ios-toolchain.ts
+│       │   └── mainview/             # React renderer (Vite entry)
+│       │       ├── main.tsx
+│       │       ├── app/              # shell, side-menu, route-tree, desktop-rpc
+│       │       └── features/
+│       │           ├── apps/         # context, welcome, configuration
+│       │           ├── devices/      # runs panel, device select/setup
+│       │           ├── settings/     # settings modal → toolchain RPC
+│       │           ├── test-cases/
+│       │           └── status/       # runner health via @qa-agent/runner-client
 │       ├── electrobun.config.ts
+│       ├── vite.config.ts            # `@` → src/mainview
 │       └── package.json
 ├── services/
 │   └── runner/                       # @qa-agent/runner (Bun + Hono)
@@ -540,7 +556,7 @@ repo/
 | `devices/application.ts` | `xcrun simctl` / `adb devices` listing + connect |
 | `tree-cleaner.ts` | filter + relative bounds 0–1000 |
 | `cli/commands/*` | thin HTTP client to local runner |
-| Desktop status route | show active device + runner health |
+| Desktop status feature | `mainview/features/status` — active device + runner health |
 
 ---
 

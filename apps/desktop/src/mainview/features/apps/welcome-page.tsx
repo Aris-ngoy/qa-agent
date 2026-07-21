@@ -1,8 +1,8 @@
+import { AddApplicationModal } from "@/features/apps/add-application-modal";
+import { useApps } from "@/features/apps/context";
 import { Button } from "@heroui/react";
 import { Navigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useApps } from "../apps-context";
-import { AddApplicationModal } from "../components/add-application-modal";
 
 export function WelcomePage() {
 	const { hasApps, addApp, selectedApp } = useApps();

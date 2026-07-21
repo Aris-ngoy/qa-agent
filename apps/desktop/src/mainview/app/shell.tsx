@@ -1,6 +1,6 @@
+import { SideMenu } from "@/app/side-menu";
+import { RunsPanel } from "@/features/devices/runs-panel";
 import type { ReactNode } from "react";
-import { RunsPanel } from "./runs-panel";
-import { SideMenu } from "./side-menu";
 
 type AppShellProps = {
 	children: ReactNode;
