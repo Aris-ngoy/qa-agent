@@ -1,6 +1,12 @@
 {
 	"version": 1,
 	"skills": {
+		"appium-troubleshooting": {
+			"source": "appium/skills",
+			"sourceType": "github",
+			"skillPath": "skills/appium-troubleshooting/SKILL.md",
+			"computedHash": "e3ebb1d10ae448e36cd65be14b4e8c5345aee73783737dcfcf7276d95ee850e5"
+		},
 		"heroui-migration": {
 			"source": "heroui-inc/heroui",
 			"sourceType": "github",
@@ -18,6 +24,24 @@
 			"sourceType": "github",
 			"skillPath": "skills/heroui-react/SKILL.md",
 			"computedHash": "c9e1bb41fbc3cee782faae08bd465ae05cd685a6ed7cc3392464fdf29b3ab467"
+		},
+		"prepare-development-environment": {
+			"source": "appium/skills",
+			"sourceType": "github",
+			"skillPath": "skills/prepare-development-environment/SKILL.md",
+			"computedHash": "0d94d6a09aea6054233eb6174151df60a0518620f705a228a2e5864c5f7d88f1"
+		},
+		"setup": {
+			"source": "appium/skills",
+			"sourceType": "github",
+			"skillPath": "skills/setup/SKILL.md",
+			"computedHash": "5316b6bd2af5134dbcef059b4a6c51a5f9a7f43adc472c25dcdffa2a66a7df85"
+		},
+		"xcuitest-real-device-config": {
+			"source": "appium/skills",
+			"sourceType": "github",
+			"skillPath": "skills/xcuitest-real-device-config/SKILL.md",
+			"computedHash": "bc15dc97e3677644ad4aa1e3867ebaaec5af3d75fcfa19d0330d62e8475466b2"
 		}
 	}
 }
