@@ -1,6 +1,6 @@
-import { Button, Input, Label, TextArea, TextField } from "@heroui/react";
+import { Button, Input, Label, ListBox, Select, TextArea, TextField } from "@heroui/react";
 import { Link, useParams } from "@tanstack/react-router";
-import { type SVGProps, useEffect, useState } from "react";
+import { type SVGProps, useEffect, useRef, useState } from "react";
 import { type TestCase, type TestFlow, getTestCase } from "../test-cases-data";
 
 type DetailTab = "instructions" | "configuration";
@@ -11,11 +11,18 @@ type Capability = {
 	value: string;
 };
 
+type GalleryImage = {
+	id: string;
+	name: string;
+};
+
 type FormState = {
 	name: string;
 	tags: string[];
 	flows: TestFlow[];
 	capabilities: Capability[];
+	galleryImages: GalleryImage[];
+	locale: string | null;
 };
 
 const TABS: { id: DetailTab; label: string }[] = [
@@ -23,13 +30,30 @@ const TABS: { id: DetailTab; label: string }[] = [
 	{ id: "configuration", label: "Configuration" },
 ];
 
+const LOCALES = [
+	{ id: "en-US", label: "English (United States)" },
+	{ id: "en-GB", label: "English (United Kingdom)" },
+	{ id: "fr-FR", label: "French (France)" },
+	{ id: "de-DE", label: "German (Germany)" },
+	{ id: "es-ES", label: "Spanish (Spain)" },
+	{ id: "ja-JP", label: "Japanese (Japan)" },
+	{ id: "pt-BR", label: "Portuguese (Brazil)" },
+] as const;
+
 const fieldInputClass =
 	"w-full !rounded-xl border border-outline-variant bg-surface-container-lowest px-3.5 py-3 text-body-md text-on-surface shadow-none placeholder:text-on-surface-variant/65 focus:border-primary/35 focus:outline-none focus:ring-2 focus:ring-primary/10";
 
-const fieldAreaClass = `${fieldInputClass} min-h-28 resize-y`;
+const fieldAreaClass =
+	"w-full !rounded-xl border border-outline-variant bg-surface-container-lowest px-3.5 py-2 text-body-md text-on-surface shadow-none placeholder:text-on-surface-variant/65 focus:border-primary/35 focus:outline-none focus:ring-2 focus:ring-primary/10 min-h-[3.25rem] resize-y";
 
 const actionLinkClass =
 	"inline-flex items-center gap-1.5 text-body-md font-medium text-on-surface transition-colors hover:text-primary";
+
+const configCardClass =
+	"w-full rounded-2xl border border-outline-variant/80 bg-surface-container-lowest p-6 shadow-card";
+
+const softButtonClass =
+	"inline-flex items-center justify-center gap-2 rounded-xl bg-surface-container px-4 py-2.5 text-body-md font-medium text-on-surface transition-colors hover:bg-surface-container-high";
 
 function Icon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -96,6 +120,8 @@ function formFromCase(testCase: TestCase): FormState {
 		tags: [...testCase.tags],
 		flows: testCase.flows.map((flow) => ({ ...flow })),
 		capabilities: [],
+		galleryImages: [],
+		locale: null,
 	};
 }
 
@@ -142,8 +168,8 @@ function InstructionsPanel({
 	};
 
 	return (
-		<div className="grid h-full min-h-0 w-full grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_16rem]">
-			<div className="flex min-h-0 min-w-0 flex-col gap-6">
+		<div className="grid w-full grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_16rem]">
+			<div className="flex min-w-0 flex-col gap-6">
 				<div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
 					<TextField className="w-full" name="caseName" onChange={onNameChange} value={form.name}>
 						<Label className="mb-1.5 text-subheading text-on-surface">
@@ -204,150 +230,152 @@ function InstructionsPanel({
 					</div>
 				</div>
 
-				<ul className="flex min-h-0 flex-1 list-none flex-col gap-4 p-0">
-					{form.flows.map((flow, index) => {
-						const isEmpty = !flow.instructions.trim() && !flow.expectedResult.trim();
-						const isDragging = draggingIndex === index;
+				<div className="flex flex-col gap-4">
+					<ul className="m-0 flex list-none flex-col gap-4 p-0">
+						{form.flows.map((flow, index) => {
+							const isEmpty = !flow.instructions.trim() && !flow.expectedResult.trim();
+							const isDragging = draggingIndex === index;
 
-						return (
-							<li
-								className={[
-									"flex min-h-[11rem] flex-1 gap-3 rounded-2xl border border-outline-variant/70 bg-surface-container-lowest/80 p-3 shadow-card transition-all",
-									isDragging ? "scale-[0.99] border-primary/30 opacity-60 shadow-float" : "",
-									isEmpty && !isDragging ? "opacity-80" : "",
-								]
-									.filter(Boolean)
-									.join(" ")}
-								key={flow.id}
-								onDragOver={(event) => {
-									event.preventDefault();
-									event.dataTransfer.dropEffect = "move";
-									if (draggingIndex === null || draggingIndex === index) return;
-									onMoveFlow(draggingIndex, index);
-									setDraggingIndex(index);
-								}}
-								onDrop={(event) => {
-									event.preventDefault();
-									setDraggingIndex(null);
-								}}
-							>
-								<button
-									aria-label={`Drag to rearrange step ${index + 1}`}
+							return (
+								<li
 									className={[
-										"flex shrink-0 cursor-grab flex-col items-center justify-center gap-2 self-stretch rounded-xl border border-outline-variant bg-surface-container px-2.5 py-3 text-on-surface shadow-card transition-colors",
-										"hover:border-primary/30 hover:bg-surface-container-high hover:text-on-surface",
-										"active:cursor-grabbing active:bg-surface-container-highest",
-										isDragging ? "border-primary/40 bg-surface-container-high" : "",
-									].join(" ")}
-									draggable
-									onDragEnd={() => setDraggingIndex(null)}
-									onDragStart={(event) => {
-										event.dataTransfer.effectAllowed = "move";
-										event.dataTransfer.setData("text/plain", String(index));
-										if (event.currentTarget.parentElement) {
-											event.dataTransfer.setDragImage(event.currentTarget.parentElement, 24, 24);
-										}
+										"flex items-start gap-3 rounded-2xl border border-outline-variant/70 bg-surface-container-lowest/80 p-3 shadow-card transition-all",
+										isDragging ? "scale-[0.99] border-primary/30 opacity-60 shadow-float" : "",
+										isEmpty && !isDragging ? "opacity-80" : "",
+									]
+										.filter(Boolean)
+										.join(" ")}
+									key={flow.id}
+									onDragOver={(event) => {
+										event.preventDefault();
+										event.dataTransfer.dropEffect = "move";
+										if (draggingIndex === null || draggingIndex === index) return;
+										onMoveFlow(draggingIndex, index);
 										setDraggingIndex(index);
 									}}
-									title="Drag to rearrange"
-									type="button"
+									onDrop={(event) => {
+										event.preventDefault();
+										setDraggingIndex(null);
+									}}
 								>
-									<GripIcon />
-									<span
-										aria-hidden="true"
-										className="flex size-8 items-center justify-center rounded-full bg-primary text-body-sm font-bold text-on-primary"
-									>
-										{index + 1}
-									</span>
-								</button>
-
-								<div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-2">
-									<TextField
-										className="flex h-full min-h-0 w-full flex-col"
-										name={`instructions-${flow.id}`}
-										onChange={(value) => onFlowChange(flow.id, { instructions: value })}
-										value={flow.instructions}
-									>
-										<Label className="mb-1.5 text-subheading text-on-surface">Instructions</Label>
-										<TextArea
-											className={`${fieldAreaClass} min-h-[8rem] flex-1`}
-											placeholder="Describe what the agent should do…"
-											rows={5}
-										/>
-									</TextField>
-									<TextField
-										className="flex h-full min-h-0 w-full flex-col"
-										name={`expected-${flow.id}`}
-										onChange={(value) => onFlowChange(flow.id, { expectedResult: value })}
-										value={flow.expectedResult}
-									>
-										<Label className="mb-1.5 text-subheading text-on-surface">
-											Expected result
-										</Label>
-										<TextArea
-											className={`${fieldAreaClass} min-h-[8rem] flex-1`}
-											placeholder="What should be true when this step succeeds…"
-											rows={5}
-										/>
-									</TextField>
-								</div>
-
-								{canDeleteFlow ? (
 									<button
-										aria-label={`Delete step ${index + 1}`}
-										className="flex size-9 shrink-0 items-center justify-center self-start rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
-										onClick={() => onRemoveFlow(flow.id)}
-										title="Delete step"
+										aria-label={`Drag to rearrange step ${index + 1}`}
+										className={[
+											"flex shrink-0 cursor-grab flex-col items-center justify-center gap-1.5 self-stretch rounded-xl border border-outline-variant bg-surface-container px-2 py-2.5 text-on-surface shadow-card transition-colors",
+											"hover:border-primary/30 hover:bg-surface-container-high hover:text-on-surface",
+											"active:cursor-grabbing active:bg-surface-container-highest",
+											isDragging ? "border-primary/40 bg-surface-container-high" : "",
+										].join(" ")}
+										draggable
+										onDragEnd={() => setDraggingIndex(null)}
+										onDragStart={(event) => {
+											event.dataTransfer.effectAllowed = "move";
+											event.dataTransfer.setData("text/plain", String(index));
+											if (event.currentTarget.parentElement) {
+												event.dataTransfer.setDragImage(event.currentTarget.parentElement, 24, 24);
+											}
+											setDraggingIndex(index);
+										}}
+										title="Drag to rearrange"
 										type="button"
 									>
-										<TrashIcon />
+										<GripIcon className="size-4" />
+										<span
+											aria-hidden="true"
+											className="flex size-7 items-center justify-center rounded-full bg-primary text-helper font-bold text-on-primary"
+										>
+											{index + 1}
+										</span>
 									</button>
-								) : null}
-							</li>
-						);
-					})}
-				</ul>
 
-				<div className="flex flex-wrap items-center gap-5 pl-14">
-					<button className={actionLinkClass} onClick={onAddFlow} type="button">
-						<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 20 20">
-							<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
-						</svg>
-						Add flow
-					</button>
-					<button className={actionLinkClass} type="button">
-						<Icon>
-							<path
-								d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 6"
-								strokeLinecap="round"
-							/>
-							<path
-								d="M14 11a5 5 0 0 0-7.07 0L5.52 12.41a5 5 0 0 0 7.07 7.07L14 18"
-								strokeLinecap="round"
-							/>
-						</Icon>
-						Add reusable flow
-						<svg
-							aria-hidden="true"
-							className="size-3.5 text-on-surface-variant"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2"
-							viewBox="0 0 24 24"
-						>
-							<path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-						</svg>
-					</button>
-					<button className={actionLinkClass} type="button">
-						<Icon>
-							<path
-								d="M12 3v12M8 11l4 4 4-4M5 19h14"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							/>
-						</Icon>
-						Bulk import
-					</button>
+									<div className="grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
+										<TextField
+											className="w-full"
+											name={`instructions-${flow.id}`}
+											onChange={(value) => onFlowChange(flow.id, { instructions: value })}
+											value={flow.instructions}
+										>
+											<Label className="mb-1 text-subheading text-on-surface">Instructions</Label>
+											<TextArea
+												className={fieldAreaClass}
+												placeholder="Describe what the agent should do…"
+												rows={2}
+											/>
+										</TextField>
+										<TextField
+											className="w-full"
+											name={`expected-${flow.id}`}
+											onChange={(value) => onFlowChange(flow.id, { expectedResult: value })}
+											value={flow.expectedResult}
+										>
+											<Label className="mb-1 text-subheading text-on-surface">
+												Expected result
+											</Label>
+											<TextArea
+												className={fieldAreaClass}
+												placeholder="What should be true when this step succeeds…"
+												rows={2}
+											/>
+										</TextField>
+									</div>
+
+									{canDeleteFlow ? (
+										<button
+											aria-label={`Delete step ${index + 1}`}
+											className="flex size-8 shrink-0 items-center justify-center self-start rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
+											onClick={() => onRemoveFlow(flow.id)}
+											title="Delete step"
+											type="button"
+										>
+											<TrashIcon className="size-4" />
+										</button>
+									) : null}
+								</li>
+							);
+						})}
+					</ul>
+
+					<div className="flex shrink-0 flex-wrap items-center gap-5 pl-12">
+						<button className={actionLinkClass} onClick={onAddFlow} type="button">
+							<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 20 20">
+								<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
+							</svg>
+							Add flow
+						</button>
+						<button className={actionLinkClass} type="button">
+							<Icon>
+								<path
+									d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 6"
+									strokeLinecap="round"
+								/>
+								<path
+									d="M14 11a5 5 0 0 0-7.07 0L5.52 12.41a5 5 0 0 0 7.07 7.07L14 18"
+									strokeLinecap="round"
+								/>
+							</Icon>
+							Add reusable flow
+							<svg
+								aria-hidden="true"
+								className="size-3.5 text-on-surface-variant"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								viewBox="0 0 24 24"
+							>
+								<path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+							</svg>
+						</button>
+						<button className={actionLinkClass} type="button">
+							<Icon>
+								<path
+									d="M12 3v12M8 11l4 4 4-4M5 19h14"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+								/>
+							</Icon>
+							Bulk import
+						</button>
+					</div>
 				</div>
 			</div>
 
@@ -389,71 +417,184 @@ function InstructionsPanel({
 
 function ConfigurationPanel({
 	capabilities,
-	onAdd,
-	onChange,
-	onRemove,
+	galleryImages,
+	locale,
+	onAddCapability,
+	onChangeCapability,
+	onRemoveCapability,
+	onAddGalleryImages,
+	onRemoveGalleryImage,
+	onLocaleChange,
 }: {
 	capabilities: Capability[];
-	onAdd: () => void;
-	onChange: (id: string, patch: Partial<Pick<Capability, "key" | "value">>) => void;
-	onRemove: (id: string) => void;
+	galleryImages: GalleryImage[];
+	locale: string | null;
+	onAddCapability: () => void;
+	onChangeCapability: (id: string, patch: Partial<Pick<Capability, "key" | "value">>) => void;
+	onRemoveCapability: (id: string) => void;
+	onAddGalleryImages: (files: FileList) => void;
+	onRemoveGalleryImage: (id: string) => void;
+	onLocaleChange: (locale: string | null) => void;
 }) {
+	const fileInputRef = useRef<HTMLInputElement>(null);
+
 	return (
-		<section className="w-full rounded-2xl border border-outline-variant/80 bg-surface-container-lowest p-6 shadow-card">
-			<div className="mb-5">
-				<h2 className="mb-2 text-headline-md text-on-surface">Custom Appium Capabilities</h2>
-				<p className="text-body-md text-on-surface-variant">
-					Add custom Appium capabilities that will be passed to the driver when running this test.
-					These override app-level capabilities.
-				</p>
-			</div>
+		<div className="flex w-full max-w-2xl flex-col gap-5">
+			<section className={configCardClass}>
+				<div className="mb-5">
+					<h2 className="mb-1.5 text-headline-md text-on-surface">Appium Capabilities</h2>
+					<p className="text-body-md text-on-surface-variant">
+						Custom capabilities passed to the driver. Overrides app-level capabilities.
+					</p>
+				</div>
 
-			{capabilities.length > 0 ? (
-				<ul className="mb-4 flex flex-col gap-3">
-					{capabilities.map((cap) => (
-						<li className="flex items-start gap-2" key={cap.id}>
-							<TextField
-								aria-label="Capability key"
-								className="min-w-0 flex-1"
-								name={`cap-key-${cap.id}`}
-								onChange={(value) => onChange(cap.id, { key: value })}
-								value={cap.key}
-							>
-								<Input className={fieldInputClass} placeholder="appium:autoLaunch" />
-							</TextField>
-							<TextField
-								aria-label="Capability value"
-								className="min-w-0 flex-1"
-								name={`cap-value-${cap.id}`}
-								onChange={(value) => onChange(cap.id, { value })}
-								value={cap.value}
-							>
-								<Input className={fieldInputClass} placeholder="false" />
-							</TextField>
-							<Button
-								aria-label="Remove capability"
-								className="size-10 min-w-10 shrink-0 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
-								onPress={() => onRemove(cap.id)}
-								variant="ghost"
-							>
-								<TrashIcon />
-							</Button>
-						</li>
-					))}
-				</ul>
-			) : null}
+				{capabilities.length > 0 ? (
+					<ul className="mb-4 flex list-none flex-col gap-3 p-0">
+						{capabilities.map((cap) => (
+							<li className="flex items-start gap-2" key={cap.id}>
+								<TextField
+									aria-label="Capability key"
+									className="min-w-0 flex-1"
+									name={`cap-key-${cap.id}`}
+									onChange={(value) => onChangeCapability(cap.id, { key: value })}
+									value={cap.key}
+								>
+									<Input className={fieldInputClass} placeholder="appium:autoLaunch" />
+								</TextField>
+								<TextField
+									aria-label="Capability value"
+									className="min-w-0 flex-1"
+									name={`cap-value-${cap.id}`}
+									onChange={(value) => onChangeCapability(cap.id, { value })}
+									value={cap.value}
+								>
+									<Input className={fieldInputClass} placeholder="false" />
+								</TextField>
+								<Button
+									aria-label="Remove capability"
+									className="size-10 min-w-10 shrink-0 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
+									onPress={() => onRemoveCapability(cap.id)}
+									variant="ghost"
+								>
+									<TrashIcon />
+								</Button>
+							</li>
+						))}
+					</ul>
+				) : null}
 
-			<button
-				className="inline-flex items-center gap-2 rounded-lg bg-surface-container px-4 py-2 text-body-md font-medium text-on-surface transition-colors hover:bg-surface-container-high"
-				onClick={onAdd}
-				type="button"
-			>
-				<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 20 20">
-					<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
-				</svg>
-				Add capability
-			</button>
-		</section>
+				<button className={softButtonClass} onClick={onAddCapability} type="button">
+					<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 20 20">
+						<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
+					</svg>
+					Add capability
+				</button>
+			</section>
+
+			<section className={configCardClass}>
+				<h2 className="mb-6 text-headline-md text-on-surface">Cloud</h2>
+
+				<div className="mb-8">
+					<h3 className="mb-1 text-subheading font-semibold text-on-surface">Gallery images</h3>
+					<p className="mb-4 text-body-md text-on-surface-variant">
+						Images added here will be pre-loaded into the device gallery before the test runs.
+					</p>
+
+					{galleryImages.length > 0 ? (
+						<ul className="mb-3 flex list-none flex-wrap gap-2 p-0">
+							{galleryImages.map((image) => (
+								<li
+									className="inline-flex items-center gap-1.5 rounded-lg bg-surface-container px-2.5 py-1.5 text-body-sm text-on-surface"
+									key={image.id}
+								>
+									<span className="max-w-[12rem] truncate">{image.name}</span>
+									<button
+										aria-label={`Remove ${image.name}`}
+										className="rounded p-0.5 text-on-surface-variant transition-colors hover:text-error"
+										onClick={() => onRemoveGalleryImage(image.id)}
+										type="button"
+									>
+										<svg
+											aria-hidden="true"
+											className="size-3.5"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="2"
+											viewBox="0 0 24 24"
+										>
+											<path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+										</svg>
+									</button>
+								</li>
+							))}
+						</ul>
+					) : null}
+
+					<input
+						accept="image/*"
+						className="sr-only"
+						multiple
+						onChange={(event) => {
+							if (event.target.files && event.target.files.length > 0) {
+								onAddGalleryImages(event.target.files);
+								event.target.value = "";
+							}
+						}}
+						ref={fileInputRef}
+						type="file"
+					/>
+					<button
+						className={`${softButtonClass} w-full`}
+						onClick={() => fileInputRef.current?.click()}
+						type="button"
+					>
+						<svg
+							aria-hidden="true"
+							className="size-4"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.75"
+							viewBox="0 0 24 24"
+						>
+							<path
+								d="M12 16V4M8 8l4-4 4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							/>
+						</svg>
+						Upload image
+					</button>
+				</div>
+
+				<div>
+					<h3 className="mb-1 text-subheading font-semibold text-on-surface">Locale</h3>
+					<p className="mb-4 text-body-md text-on-surface-variant">
+						Override the device locale for this test case.
+					</p>
+					<Select
+						aria-label="Select locale"
+						placeholder="Select locale…"
+						selectedKey={locale}
+						onSelectionChange={(key) => onLocaleChange(key == null ? null : String(key))}
+					>
+						<Select.Trigger className="h-11 w-full items-center rounded-xl border border-on-surface/80 bg-surface-container-lowest px-3.5 shadow-none">
+							<Select.Value />
+							<Select.Indicator className="text-on-surface-variant" />
+						</Select.Trigger>
+						<Select.Popover>
+							<ListBox>
+								{LOCALES.map((item) => (
+									<ListBox.Item id={item.id} key={item.id} textValue={item.label}>
+										{item.label}
+										<ListBox.ItemIndicator />
+									</ListBox.Item>
+								))}
+							</ListBox>
+						</Select.Popover>
+					</Select>
+				</div>
+			</section>
+		</div>
 	);
 }
 
@@ -652,7 +793,9 @@ export function TestCaseDetailPage() {
 				) : (
 					<ConfigurationPanel
 						capabilities={form.capabilities}
-						onAdd={() =>
+						galleryImages={form.galleryImages}
+						locale={form.locale}
+						onAddCapability={() =>
 							setForm((current) =>
 								current
 									? {
@@ -665,7 +808,20 @@ export function TestCaseDetailPage() {
 									: current,
 							)
 						}
-						onChange={(id, patch) =>
+						onAddGalleryImages={(files) =>
+							setForm((current) => {
+								if (!current) return current;
+								const nextImages = Array.from(files).map((file) => ({
+									id: `img_${crypto.randomUUID()}`,
+									name: file.name,
+								}));
+								return {
+									...current,
+									galleryImages: [...current.galleryImages, ...nextImages],
+								};
+							})
+						}
+						onChangeCapability={(id, patch) =>
 							setForm((current) =>
 								current
 									? {
@@ -677,12 +833,25 @@ export function TestCaseDetailPage() {
 									: current,
 							)
 						}
-						onRemove={(id) =>
+						onLocaleChange={(nextLocale) =>
+							setForm((current) => (current ? { ...current, locale: nextLocale } : current))
+						}
+						onRemoveCapability={(id) =>
 							setForm((current) =>
 								current
 									? {
 											...current,
 											capabilities: current.capabilities.filter((cap) => cap.id !== id),
+										}
+									: current,
+							)
+						}
+						onRemoveGalleryImage={(id) =>
+							setForm((current) =>
+								current
+									? {
+											...current,
+											galleryImages: current.galleryImages.filter((image) => image.id !== id),
 										}
 									: current,
 							)

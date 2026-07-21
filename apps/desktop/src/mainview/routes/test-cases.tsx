@@ -1,50 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
-import { type ReactNode, type SVGProps, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { type CaseStatus, MOCK_CASES, TOTAL_CASES } from "../test-cases-data";
-
-type MetricAccent = "lavender" | "mint" | "rose" | "neutral";
-
-type MetricCardProps = {
-	label: string;
-	value: string;
-	accent?: MetricAccent;
-	icon: ReactNode;
-};
-
-function Icon(props: SVGProps<SVGSVGElement>) {
-	return (
-		<svg
-			aria-hidden="true"
-			className="size-5"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="1.75"
-			viewBox="0 0 24 24"
-			{...props}
-		/>
-	);
-}
-
-function MetricCard({ label, value, accent = "neutral", icon }: MetricCardProps) {
-	const bg =
-		accent === "lavender"
-			? "bg-card-lavender"
-			: accent === "mint"
-				? "bg-card-mint"
-				: accent === "rose"
-					? "bg-card-rose"
-					: "bg-surface-container-lowest";
-
-	return (
-		<div className={`flex h-32 flex-col justify-between rounded-2xl p-5 shadow-card ${bg}`}>
-			<div className="flex items-start justify-between">
-				<span className="text-label-caps uppercase tracking-widest text-primary/60">{label}</span>
-				<span className="text-primary/70">{icon}</span>
-			</div>
-			<p className="text-[2rem] font-bold leading-none tracking-tight text-primary">{value}</p>
-		</div>
-	);
-}
 
 function CaseStatusPill({ status }: { status: CaseStatus }) {
 	if (status === "passed") {
@@ -92,7 +48,7 @@ export function TestCasesPage() {
 						Automated regression suites for this app
 					</p>
 				</div>
-				<label className="relative mx-auto min-w-[16rem] max-w-xl flex-1">
+				<label className="relative min-w-[16rem] max-w-xl flex-1">
 					<span className="sr-only">Filter test cases</span>
 					<span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-5 text-on-surface-variant">
 						<svg
@@ -114,78 +70,7 @@ export function TestCasesPage() {
 						value={filter}
 					/>
 				</label>
-				<div className="flex items-center gap-2">
-					<button
-						className="inline-flex items-center gap-2 rounded-full bg-secondary px-5 py-3 text-subheading text-on-secondary shadow-card transition-opacity hover:opacity-90"
-						type="button"
-					>
-						<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
-							<path d="M8 5.5v13l11-6.5L8 5.5Z" />
-						</svg>
-						Run suite
-					</button>
-					<button
-						className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-subheading text-on-primary shadow-float transition-transform hover:scale-[1.02]"
-						type="button"
-					>
-						<svg aria-hidden="true" className="size-5" fill="currentColor" viewBox="0 0 20 20">
-							<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
-						</svg>
-						Add case
-					</button>
-				</div>
 			</div>
-
-			<section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-				<MetricCard
-					accent="lavender"
-					icon={
-						<Icon>
-							<path
-								d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
-								strokeLinejoin="round"
-							/>
-						</Icon>
-					}
-					label="Total Suites"
-					value="124"
-				/>
-				<MetricCard
-					accent="mint"
-					icon={
-						<Icon>
-							<path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
-							<circle cx="12" cy="12" r="8" />
-						</Icon>
-					}
-					label="Success Rate"
-					value="98.2%"
-				/>
-				<MetricCard
-					accent="neutral"
-					icon={
-						<Icon>
-							<circle cx="12" cy="12" r="8" />
-							<path d="M12 8v4l2.5 1.5" strokeLinecap="round" />
-						</Icon>
-					}
-					label="Avg. Run Time"
-					value="2m 14s"
-				/>
-				<MetricCard
-					accent="rose"
-					icon={
-						<Icon>
-							<path
-								d="M12 9v4M12 17h.01M10.3 4.9L2.8 18a2 2 0 001.7 3h15a2 2 0 001.7-3L13.7 4.9a2 2 0 00-3.4 0z"
-								strokeLinejoin="round"
-							/>
-						</Icon>
-					}
-					label="Failures (24h)"
-					value="3"
-				/>
-			</section>
 
 			<div className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-soft">
 				<table className="w-full border-collapse text-left">
