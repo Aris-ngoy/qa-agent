@@ -1,96 +1,103 @@
 @import "@heroui/styles";
 
-/* Map HeroUI semantic tokens → Noqa Systematic */
+/* Map HeroUI semantic tokens → Soft dashboard palette */
 :root,
 .light,
 .default,
 [data-theme="light"],
 [data-theme="default"] {
-	--background: #fcf9f5;
-	--foreground: #1c1c1a;
+	--background: #e8ecf6;
+	--foreground: #1a1a1e;
 	--surface: #ffffff;
-	--surface-foreground: #1c1c1a;
-	--surface-secondary: #f6f3ef;
-	--surface-secondary-foreground: #1c1c1a;
-	--surface-tertiary: #f0edea;
-	--surface-tertiary-foreground: #1c1c1a;
+	--surface-foreground: #1a1a1e;
+	--surface-secondary: #f4f5fb;
+	--surface-secondary-foreground: #1a1a1e;
+	--surface-tertiary: #eceef6;
+	--surface-tertiary-foreground: #1a1a1e;
 	--overlay: #ffffff;
-	--overlay-foreground: #1c1c1a;
-	--muted: #444748;
-	--default: #e5e2de;
-	--default-foreground: #1c1c1a;
-	--accent: #000000;
+	--overlay-foreground: #1a1a1e;
+	--muted: #6b6f7a;
+	--default: #e4e6ef;
+	--default-foreground: #1a1a1e;
+	--accent: #1a1a1e;
 	--accent-foreground: #ffffff;
-	--success: #006d3a;
+	--success: #3d9b7a;
 	--success-foreground: #ffffff;
-	--warning: #a16207;
-	--warning-foreground: #1c1c1a;
-	--danger: #ba1a1a;
+	--warning: #c4a035;
+	--warning-foreground: #1a1a1e;
+	--danger: #d45a5a;
 	--danger-foreground: #ffffff;
-	--border: #c4c7c7;
-	--separator: #c4c7c7;
-	--focus: #000000;
-	--link: #1c1c1a;
+	--border: #d8dbe6;
+	--separator: #d8dbe6;
+	--focus: #1a1a1e;
+	--link: #1a1a1e;
 	--field-background: #ffffff;
-	--field-foreground: #1c1c1a;
-	--field-placeholder: #444748;
-	--field-border: #c4c7c7;
+	--field-foreground: #1a1a1e;
+	--field-placeholder: #9a9eab;
+	--field-border: #d8dbe6;
 	--field-border-width: 1px;
-	--backdrop: rgb(0 0 0 / 0.4);
-	--radius: 0.5rem;
-	--field-radius: 0.5rem;
-	--overlay-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-	--surface-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-	--field-shadow: none;
+	--backdrop: rgb(0 0 0 / 0.35);
+	--radius: 0.75rem;
+	--field-radius: 9999px;
+	--overlay-shadow: 0 12px 40px rgba(40, 48, 80, 0.1);
+	--surface-shadow: 0 8px 32px rgba(40, 48, 80, 0.08);
+	--field-shadow: 0 2px 12px rgba(40, 48, 80, 0.06);
 }
 
 @theme {
-	/* Colors — Noqa Systematic (Tailwind utilities: bg-primary, text-on-surface, …) */
-	--color-background: #fcf9f5;
-	--color-on-background: #1c1c1a;
-	--color-surface: #fcf9f5;
-	--color-surface-dim: #dcdad6;
-	--color-surface-bright: #fcf9f5;
+	/* Colors — Soft pastel dashboard */
+	--color-background: #e8ecf6;
+	--color-on-background: #1a1a1e;
+	--color-surface: #f4f5fb;
+	--color-surface-dim: #d8dbe6;
+	--color-surface-bright: #ffffff;
 	--color-surface-container-lowest: #ffffff;
-	--color-surface-container-low: #f6f3ef;
-	--color-surface-container: #f0edea;
-	--color-surface-container-high: #ebe8e4;
-	--color-surface-container-highest: #e5e2de;
-	--color-surface-variant: #e5e2de;
-	--color-on-surface: #1c1c1a;
-	--color-on-surface-variant: #444748;
-	--color-inverse-surface: #31302e;
-	--color-inverse-on-surface: #f3f0ec;
-	--color-outline: #747878;
-	--color-outline-variant: #c4c7c7;
-	--color-surface-tint: #5f5e5e;
-	--color-primary: #000000;
+	--color-surface-container-low: #f4f5fb;
+	--color-surface-container: #eceef6;
+	--color-surface-container-high: #e4e6ef;
+	--color-surface-container-highest: #dcdfe9;
+	--color-surface-variant: #e4e6ef;
+	--color-on-surface: #1a1a1e;
+	--color-on-surface-variant: #6b6f7a;
+	--color-inverse-surface: #1a1a1e;
+	--color-inverse-on-surface: #f4f5fb;
+	--color-outline: #9a9eab;
+	--color-outline-variant: #d8dbe6;
+	--color-surface-tint: #8b7ec8;
+	--color-primary: #1a1a1e;
 	--color-on-primary: #ffffff;
-	--color-primary-container: #1c1b1b;
-	--color-on-primary-container: #858383;
+	--color-primary-container: #2a2a2e;
+	--color-on-primary-container: #c8c6c5;
 	--color-inverse-primary: #c8c6c5;
-	--color-secondary: #006d3a;
+	--color-secondary: #3d9b7a;
 	--color-on-secondary: #ffffff;
-	--color-secondary-container: #8ef9b0;
-	--color-on-secondary-container: #00743e;
-	--color-tertiary: #000000;
+	--color-secondary-container: #c5ebe0;
+	--color-on-secondary-container: #1f6b52;
+	--color-tertiary: #8b7ec8;
 	--color-on-tertiary: #ffffff;
-	--color-tertiary-container: #410005;
-	--color-on-tertiary-container: #e45052;
-	--color-error: #ba1a1a;
+	--color-tertiary-container: #ddd6f5;
+	--color-on-tertiary-container: #4a3f7a;
+	--color-error: #d45a5a;
 	--color-on-error: #ffffff;
-	--color-error-container: #ffdad6;
-	--color-on-error-container: #93000a;
-	--color-sidebar-active: #e2e2de;
-	--color-hover-surface: #ededea;
-	--color-warning: #a16207;
+	--color-error-container: #f9d4d4;
+	--color-on-error-container: #8a2a2a;
+	--color-sidebar: #1a1a1e;
+	--color-sidebar-fg: #ffffff;
+	--color-sidebar-muted: #8a8a90;
+	--color-sidebar-active: #ffffff;
+	--color-hover-surface: #eceef6;
+	--color-warning: #c4a035;
+	--color-card-lavender: #c9b8e8;
+	--color-card-mint: #a8d5c4;
+	--color-card-rose: #e8b4c4;
+	--color-blob: #b8a4e0;
 
 	/* Typography */
 	--font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-	--text-headline-lg: 1.375rem;
-	--text-headline-lg--line-height: 2rem;
-	--text-headline-lg--letter-spacing: -0.01em;
-	--text-headline-lg--font-weight: 600;
+	--text-headline-lg: 1.75rem;
+	--text-headline-lg--line-height: 2.25rem;
+	--text-headline-lg--letter-spacing: -0.02em;
+	--text-headline-lg--font-weight: 700;
 	--text-headline-md: 1.25rem;
 	--text-headline-md--line-height: 1.75rem;
 	--text-headline-md--letter-spacing: -0.01em;
@@ -106,26 +113,35 @@
 	--text-body-sm--font-weight: 400;
 	--text-label-caps: 0.75rem;
 	--text-label-caps--line-height: 1rem;
-	--text-label-caps--letter-spacing: 0.05em;
+	--text-label-caps--letter-spacing: 0.04em;
 	--text-label-caps--font-weight: 600;
 	--text-helper: 0.75rem;
 	--text-helper--line-height: 1rem;
 	--text-helper--font-weight: 400;
 
-	/* Radius — Soft-Square (8px default) */
-	--radius-sm: 0.25rem;
-	--radius-DEFAULT: 0.5rem;
-	--radius-md: 0.75rem;
-	--radius-lg: 1rem;
+	/* Radius — stepped scale; use --radius-platform for window chrome */
+	--radius-sm: 0.5rem;
+	--radius-DEFAULT: 0.75rem;
+	--radius-md: 1rem;
+	--radius-lg: 1.25rem;
 	--radius-xl: 1.5rem;
+	--radius-2xl: 1.75rem;
 	--radius-full: 9999px;
+	/* Native window corner (macOS Big Sur+ ≈ 10pt; Win11 ≈ 8px) */
+	--radius-platform: 14px;
 
 	/* Layout spacing */
-	--spacing-sidebar: 240px;
-	--spacing-gutter: 16px;
-	--spacing-container: 32px;
+	--spacing-sidebar: 260px;
+	--spacing-panel: 300px;
+	--spacing-gutter: 20px;
+	--spacing-container: 28px;
 	--spacing-stack-sm: 8px;
 	--spacing-stack-md: 16px;
-	--spacing-nav-y: 10px;
-	--spacing-nav-x: 12px;
+	--spacing-nav-y: 12px;
+	--spacing-nav-x: 16px;
+
+	/* Shadows */
+	--shadow-soft: 0 8px 32px rgba(40, 48, 80, 0.08);
+	--shadow-float: 0 16px 48px rgba(40, 48, 80, 0.12);
+	--shadow-card: 0 4px 20px rgba(40, 48, 80, 0.06);
 }

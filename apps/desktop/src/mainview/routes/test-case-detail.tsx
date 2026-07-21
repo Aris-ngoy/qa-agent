@@ -125,7 +125,7 @@ function TagPill({ label }: { label: string }) {
 function ConfigurationPanel() {
 	return (
 		<div className="grid grid-cols-12 gap-gutter">
-			<section className="col-span-12 rounded-lg border border-outline-variant bg-surface-container-lowest p-6 lg:col-span-7">
+			<section className="col-span-12 rounded-2xl border-0 shadow-card bg-surface-container-lowest p-6 lg:col-span-7">
 				<div className="mb-4 flex items-start justify-between gap-4">
 					<div>
 						<h2 className="mb-2 text-headline-md text-on-surface">Appium Capabilities</h2>
@@ -155,7 +155,7 @@ function ConfigurationPanel() {
 				</button>
 			</section>
 
-			<section className="col-span-12 flex flex-col justify-between rounded-lg border border-secondary/20 bg-secondary-container/10 p-6 lg:col-span-5">
+			<section className="col-span-12 flex flex-col justify-between rounded-2xl border-0 bg-secondary-container/20 p-6 shadow-card lg:col-span-5">
 				<div>
 					<h3 className="mb-4 text-label-caps uppercase text-secondary">Environment Check</h3>
 					<div className="space-y-4">
@@ -184,7 +184,7 @@ function ConfigurationPanel() {
 				</div>
 			</section>
 
-			<section className="col-span-12 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
+			<section className="col-span-12 overflow-hidden rounded-2xl border-0 shadow-card bg-surface-container-lowest">
 				<div className="flex items-center justify-between border-b border-outline-variant p-6">
 					<div>
 						<h2 className="text-headline-md text-on-surface">Cloud Configuration</h2>
@@ -199,7 +199,7 @@ function ConfigurationPanel() {
 						<p className="text-body-sm text-on-surface-variant">
 							Images added here will be pre-loaded into the device gallery before the test runs.
 						</p>
-						<div className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-outline-variant bg-surface-container-lowest p-8 transition-colors hover:bg-surface-container-low">
+						<div className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-outline-variant bg-surface-container-lowest p-8 transition-colors hover:bg-surface-container-low">
 							<div className="flex size-12 items-center justify-center rounded-full bg-surface-container-high">
 								<Icon>
 									<path
@@ -223,7 +223,7 @@ function ConfigurationPanel() {
 						<label className="block">
 							<span className="sr-only">Locale</span>
 							<select
-								className="h-11 w-full appearance-none rounded border border-outline-variant bg-surface-container-lowest px-4 text-body-md text-on-surface focus:border-primary focus:outline-none"
+								className="h-11 w-full appearance-none rounded-full border border-outline-variant bg-surface-container-lowest px-4 text-body-md text-on-surface focus:border-primary focus:outline-none"
 								defaultValue=""
 							>
 								<option disabled value="">
@@ -237,7 +237,7 @@ function ConfigurationPanel() {
 								<option value="ja-JP">Japanese (Japan)</option>
 							</select>
 						</label>
-						<div className="flex items-center gap-4 rounded border border-outline-variant/50 bg-surface-container-low p-4">
+						<div className="flex items-center gap-4 rounded-2xl border-0 bg-surface-container-low p-4">
 							<div>
 								<p className="text-body-sm font-semibold">System Default</p>
 								<p className="text-helper text-on-surface-variant">
@@ -255,7 +255,7 @@ function ConfigurationPanel() {
 function VariablesPanel() {
 	return (
 		<div className="grid grid-cols-12 gap-gutter">
-			<div className="col-span-12 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest lg:col-span-9">
+			<div className="col-span-12 overflow-hidden rounded-2xl border-0 shadow-card bg-surface-container-lowest lg:col-span-9">
 				<div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low px-6 py-4">
 					<h3 className="text-subheading">Active Variables</h3>
 					<span className="rounded bg-surface-container-highest px-2 py-0.5 text-helper font-bold uppercase tracking-wider text-on-surface-variant">
@@ -308,17 +308,17 @@ function VariablesPanel() {
 			</div>
 
 			<div className="col-span-12 space-y-gutter lg:col-span-3">
-				<div className="rounded-lg border border-outline-variant bg-surface-container-low p-6">
+				<div className="rounded-2xl border-0 shadow-card bg-surface-container-low p-6">
 					<h4 className="mb-4 text-subheading text-primary">Helpful Tip</h4>
 					<p className="text-body-sm leading-relaxed text-on-surface-variant">
 						Use{" "}
-						<code className="rounded border border-outline-variant bg-surface-container-lowest px-1">
+						<code className="rounded-full border border-outline-variant bg-surface-container-lowest px-1">
 							{"{{VARIABLE_NAME}}"}
 						</code>{" "}
 						syntax within your test steps to inject these values at runtime.
 					</p>
 				</div>
-				<div className="overflow-hidden rounded-lg border border-outline-variant bg-surface-container">
+				<div className="overflow-hidden rounded-2xl border-0 shadow-card bg-surface-container">
 					<div className="border-b border-outline-variant bg-surface-container-high/50 p-4">
 						<h4 className="text-label-caps uppercase text-on-surface">Scoped Variables</h4>
 					</div>
@@ -389,10 +389,7 @@ function RecentRunsPanel({ caseStatus }: { caseStatus: CaseStatus }) {
 		<div className="space-y-8">
 			<section className="grid grid-cols-1 gap-gutter sm:grid-cols-2 xl:grid-cols-4">
 				{metrics.map((metric) => (
-					<div
-						className="rounded-lg border border-outline-variant bg-surface p-5"
-						key={metric.label}
-					>
+					<div className="rounded-2xl border-0 shadow-card bg-surface p-5" key={metric.label}>
 						<p className="mb-2 text-label-caps uppercase tracking-widest text-on-surface-variant">
 							{metric.label}
 						</p>
@@ -416,7 +413,7 @@ function RecentRunsPanel({ caseStatus }: { caseStatus: CaseStatus }) {
 				))}
 			</section>
 
-			<div className="overflow-hidden rounded-lg border border-outline-variant bg-surface shadow-sm">
+			<div className="overflow-hidden rounded-2xl border-0 shadow-card bg-surface shadow-sm">
 				<div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low px-6 py-4">
 					<h3 className="text-subheading text-primary">Recent Run Activity</h3>
 					<span className="text-body-sm text-on-surface-variant">Showing 5 of 1,248 runs</span>
@@ -532,7 +529,7 @@ export function TestCaseDetailPage() {
 				</div>
 				<div className="flex items-center gap-3">
 					<button
-						className="inline-flex h-9 items-center gap-2 rounded border border-outline-variant px-4 text-body-md font-medium text-primary transition-colors hover:bg-surface-container"
+						className="inline-flex h-9 items-center gap-2 rounded-full border border-outline-variant px-4 text-body-md font-medium text-primary transition-colors hover:bg-surface-container"
 						type="button"
 					>
 						Edit

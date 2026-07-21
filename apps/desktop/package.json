@@ -4,8 +4,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "vite build && electrobun dev --watch",
-		"dev:hmr": "concurrently -k \"vite --port 5173\" \"bun run start\"",
+		"dev": "vite build && concurrently -k -n vite,app -c green,magenta \"vite --port 5173\" \"bun scripts/wait-for-vite.ts && electrobun dev --watch\"",
 		"start": "vite build && electrobun dev",
 		"build": "vite build && electrobun build --env=canary",
 		"check": "tsc --noEmit"

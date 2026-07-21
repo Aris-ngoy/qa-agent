@@ -2,14 +2,21 @@ import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { DesktopRPC } from "../shared/rpc";
 
 async function getMainViewUrl(): Promise<string> {
-	try {
-		const response = await fetch("http://localhost:5173");
-		if (response.ok) {
-			return "http://localhost:5173";
+	const viteUrl = "http://localhost:5173";
+	// Retry briefly so electrobun relaunches still pick up an already-running Vite
+	for (let attempt = 0; attempt < 10; attempt++) {
+		try {
+			const response = await fetch(viteUrl);
+			if (response.ok) {
+				console.log("[qa-agent desktop] loading UI from Vite HMR", viteUrl);
+				return viteUrl;
+			}
+		} catch {
+			// Vite HMR server not ready yet
 		}
-	} catch {
-		// Vite HMR server not running — use bundled views
+		await Bun.sleep(100);
 	}
+	console.log("[qa-agent desktop] Vite HMR unavailable — using bundled views");
 	return "views://mainview/index.html";
 }
 
@@ -53,6 +60,8 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 const mainWindow = new BrowserWindow({
 	title: "qa-agent",
 	url: await getMainViewUrl(),
+	// Transparent titlebar so the app canvas paints under the traffic lights
+	titleBarStyle: "hiddenInset",
 	frame: {
 		width: 1100,
 		height: 720,

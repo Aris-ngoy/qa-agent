@@ -140,36 +140,42 @@ export function WorkspaceHeader() {
 				</div>
 
 				<div className="flex min-w-0 flex-1 items-center justify-end gap-6 px-6">
-					<div className="mr-auto hidden min-w-0 sm:block">
-						<p className="text-label-caps uppercase tracking-widest text-on-surface-variant">
-							Test Cases
-						</p>
-						<p className="truncate text-body-md font-semibold text-on-surface">No tests selected</p>
-					</div>
+					{selectedApp ? (
+						<>
+							<div className="mr-auto hidden min-w-0 sm:block">
+								<p className="text-label-caps uppercase tracking-widest text-on-surface-variant">
+									Test Cases
+								</p>
+								<p className="truncate text-body-md font-semibold text-on-surface">
+									No tests selected
+								</p>
+							</div>
 
-					<Button
-						className="hidden h-9 min-w-[10.5rem] justify-between md:inline-flex"
-						variant="outline"
-					>
-						<PhoneIcon />
-						<span className="flex-1 text-left">Select device</span>
-						<ChevronDown />
-					</Button>
+							<Button
+								className="hidden h-9 min-w-[10.5rem] justify-between md:inline-flex"
+								variant="outline"
+							>
+								<PhoneIcon />
+								<span className="flex-1 text-left">Select device</span>
+								<ChevronDown />
+							</Button>
 
-					<Button
-						className="hidden h-9 min-w-[9.5rem] justify-between md:inline-flex"
-						variant="outline"
-					>
-						<span className="flex-1 text-left">Select build</span>
-						<ChevronDown />
-					</Button>
+							<Button
+								className="hidden h-9 min-w-[9.5rem] justify-between md:inline-flex"
+								variant="outline"
+							>
+								<span className="flex-1 text-left">Select build</span>
+								<ChevronDown />
+							</Button>
 
-					<Button className="bg-secondary text-on-secondary data-[hovered=true]:bg-secondary/90">
-						<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
-							<path d="M8 5.5v13l11-6.5L8 5.5Z" />
-						</svg>
-						Run
-					</Button>
+							<Button className="bg-secondary text-on-secondary data-[hovered=true]:bg-secondary/90">
+								<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
+									<path d="M8 5.5v13l11-6.5L8 5.5Z" />
+								</svg>
+								Run
+							</Button>
+						</>
+					) : null}
 				</div>
 			</header>
 

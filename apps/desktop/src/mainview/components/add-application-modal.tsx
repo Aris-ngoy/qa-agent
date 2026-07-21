@@ -48,7 +48,7 @@ export function AddApplicationModal({ open, onClose, onAdd }: AddApplicationModa
 							</Modal.Heading>
 						</Modal.Header>
 						<Modal.Body className="gap-0 p-0">
-							<div className="px-6 pb-4">
+							<div className="px-6 py-4">
 								<SearchField
 									aria-label="Search or enter app name"
 									fullWidth
