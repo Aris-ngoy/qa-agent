@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute } from "@tanstack/react-router";
+import { ConfigurationPage } from "./routes/configuration";
 import { RootLayout } from "./routes/root";
 import { StatusPage } from "./routes/status";
 import { TestCaseDetailPage } from "./routes/test-case-detail";
@@ -33,9 +34,16 @@ const testCaseDetailRoute = createRoute({
 	component: TestCaseDetailPage,
 });
 
+const configurationRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/configuration",
+	component: ConfigurationPage,
+});
+
 export const routeTree = rootRoute.addChildren([
 	indexRoute,
 	statusRoute,
 	testCasesRoute,
 	testCaseDetailRoute,
+	configurationRoute,
 ]);

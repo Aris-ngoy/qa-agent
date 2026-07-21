@@ -1,81 +1,41 @@
+import { Button, Input, Label, TextArea, TextField } from "@heroui/react";
 import { Link, useParams } from "@tanstack/react-router";
-import { type SVGProps, useState } from "react";
-import { type CaseStatus, getTestCase } from "../test-cases-data";
+import { type SVGProps, useEffect, useState } from "react";
+import { type TestCase, type TestFlow, getTestCase } from "../test-cases-data";
 
-type DetailTab = "configuration" | "variables" | "recent-runs";
+type DetailTab = "instructions" | "configuration";
 
-const TABS: { id: DetailTab; label: string }[] = [
-	{ id: "configuration", label: "Configuration" },
-	{ id: "recent-runs", label: "Recent Runs" },
-	{ id: "variables", label: "Variables" },
-];
-
-type VariableRow = {
+type Capability = {
+	id: string;
 	key: string;
 	value: string;
-	type: "text" | "secret";
 };
 
-const MOCK_VARIABLES: VariableRow[] = [
-	{ key: "BASE_URL", value: "https://api.staging.noqa.dev", type: "text" },
-	{ key: "AUTH_TOKEN", value: "••••••••••••••••", type: "secret" },
-	{ key: "RETRY_LIMIT", value: "3", type: "text" },
-	{ key: "DB_PASSWORD", value: "••••••••••••••••", type: "secret" },
-];
-
-type RunStatus = "running" | "passed" | "errored";
-
-type RunRow = {
-	id: string;
-	when: string;
-	environment: string;
-	duration: string;
-	status: RunStatus;
+type FormState = {
+	name: string;
+	tags: string[];
+	flows: TestFlow[];
+	capabilities: Capability[];
 };
 
-const MOCK_RUNS: RunRow[] = [
-	{
-		id: "#RUN-8921",
-		when: "Oct 24, 2023 · 14:22:01",
-		environment: "STAGING",
-		duration: "--",
-		status: "running",
-	},
-	{
-		id: "#RUN-8920",
-		when: "Oct 24, 2023 · 12:05:44",
-		environment: "PRODUCTION",
-		duration: "1.2s",
-		status: "passed",
-	},
-	{
-		id: "#RUN-8919",
-		when: "Oct 23, 2023 · 18:41:12",
-		environment: "STAGING",
-		duration: "4.8s",
-		status: "errored",
-	},
-	{
-		id: "#RUN-8918",
-		when: "Oct 23, 2023 · 11:15:30",
-		environment: "STAGING",
-		duration: "1.4s",
-		status: "passed",
-	},
-	{
-		id: "#RUN-8917",
-		when: "Oct 22, 2023 · 09:12:05",
-		environment: "PRODUCTION",
-		duration: "1.1s",
-		status: "passed",
-	},
+const TABS: { id: DetailTab; label: string }[] = [
+	{ id: "instructions", label: "Instructions" },
+	{ id: "configuration", label: "Configuration" },
 ];
+
+const fieldInputClass =
+	"w-full !rounded-xl border border-outline-variant bg-surface-container-lowest px-3.5 py-3 text-body-md text-on-surface shadow-none placeholder:text-on-surface-variant/65 focus:border-primary/35 focus:outline-none focus:ring-2 focus:ring-primary/10";
+
+const fieldAreaClass = `${fieldInputClass} min-h-28 resize-y`;
+
+const actionLinkClass =
+	"inline-flex items-center gap-1.5 text-body-md font-medium text-on-surface transition-colors hover:text-primary";
 
 function Icon(props: SVGProps<SVGSVGElement>) {
 	return (
 		<svg
 			aria-hidden="true"
-			className="size-[18px]"
+			className="size-4"
 			fill="none"
 			stroke="currentColor"
 			strokeWidth="1.75"
@@ -85,401 +45,441 @@ function Icon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
-function StatusMeta({ status, lastRun }: { status: CaseStatus; lastRun: string }) {
-	if (status === "passed") {
-		return (
-			<span className="inline-flex items-center gap-1.5 font-medium text-secondary">
-				<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 24 24">
-					<path d="M12 2a10 10 0 100 20 10 10 0 000-20zm-1.2 14.2l-3.5-3.5 1.4-1.4 2.1 2.1 4.5-4.5 1.4 1.4-5.9 5.9z" />
-				</svg>
-				<span className="text-body-sm">Last Run Passed ({lastRun})</span>
-			</span>
-		);
-	}
-
+function GripIcon(props: SVGProps<SVGSVGElement>) {
 	return (
-		<span className="inline-flex items-center gap-1.5 font-medium text-error">
-			<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 24 24">
-				<path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z" />
-			</svg>
-			<span className="text-body-sm">Last Run Errored ({lastRun})</span>
-		</span>
+		<svg aria-hidden="true" className="size-5" fill="currentColor" viewBox="0 0 20 20" {...props}>
+			<path d="M7 4a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm9-12a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+		</svg>
 	);
 }
 
-function TagPill({ label }: { label: string }) {
-	const isPriority = /^P\d+$/i.test(label);
+function TrashIcon(props: SVGProps<SVGSVGElement>) {
 	return (
-		<span
-			className={
-				isPriority
-					? "rounded-full bg-error-container px-2 py-0.5 text-helper font-bold uppercase tracking-wider text-on-error-container"
-					: "rounded-full bg-surface-container-highest px-2 py-0.5 text-helper font-bold uppercase tracking-wider text-on-surface-variant"
-			}
+		<svg
+			aria-hidden="true"
+			className="size-5"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.75"
+			viewBox="0 0 24 24"
+			{...props}
 		>
-			{label}
-		</span>
+			<path
+				d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			/>
+		</svg>
 	);
 }
 
-function ConfigurationPanel() {
+function DuplicateIcon(props: SVGProps<SVGSVGElement>) {
 	return (
-		<div className="grid grid-cols-12 gap-gutter">
-			<section className="col-span-12 rounded-2xl border-0 shadow-card bg-surface-container-lowest p-6 lg:col-span-7">
-				<div className="mb-4 flex items-start justify-between gap-4">
+		<svg
+			aria-hidden="true"
+			className="size-5"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.75"
+			viewBox="0 0 24 24"
+			{...props}
+		>
+			<rect height="12" rx="2" width="12" x="8" y="8" />
+			<path d="M6 16V6a2 2 0 0 1 2-2h10" strokeLinecap="round" />
+		</svg>
+	);
+}
+
+function formFromCase(testCase: TestCase): FormState {
+	return {
+		name: testCase.name,
+		tags: [...testCase.tags],
+		flows: testCase.flows.map((flow) => ({ ...flow })),
+		capabilities: [],
+	};
+}
+
+function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
+	if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return items;
+	const next = [...items];
+	const [moved] = next.splice(fromIndex, 1);
+	if (moved === undefined) return items;
+	next.splice(toIndex, 0, moved);
+	return next;
+}
+
+function InstructionsPanel({
+	form,
+	onNameChange,
+	onRemoveTag,
+	onAddTag,
+	onFlowChange,
+	onAddFlow,
+	onMoveFlow,
+	onRemoveFlow,
+}: {
+	form: FormState;
+	onNameChange: (name: string) => void;
+	onRemoveTag: (tag: string) => void;
+	onAddTag: (tag: string) => void;
+	onFlowChange: (
+		id: string,
+		patch: Partial<Pick<TestFlow, "instructions" | "expectedResult">>,
+	) => void;
+	onAddFlow: () => void;
+	onMoveFlow: (fromIndex: number, toIndex: number) => void;
+	onRemoveFlow: (id: string) => void;
+}) {
+	const [tagDraft, setTagDraft] = useState("");
+	const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+	const canDeleteFlow = form.flows.length > 1;
+
+	const commitTag = () => {
+		const next = tagDraft.trim();
+		if (!next) return;
+		onAddTag(next);
+		setTagDraft("");
+	};
+
+	return (
+		<div className="grid h-full min-h-0 w-full grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_16rem]">
+			<div className="flex min-h-0 min-w-0 flex-col gap-6">
+				<div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+					<TextField className="w-full" name="caseName" onChange={onNameChange} value={form.name}>
+						<Label className="mb-1.5 text-subheading text-on-surface">
+							Test case name <span className="text-error">*</span>
+						</Label>
+						<Input className={fieldInputClass} placeholder="Test case name" />
+					</TextField>
+
 					<div>
-						<h2 className="mb-2 text-headline-md text-on-surface">Appium Capabilities</h2>
-						<p className="max-w-md text-body-md text-on-surface-variant">
-							Custom capabilities passed to the driver. Overrides app-level capabilities for
-							specific testing environments.
-						</p>
+						<label className="mb-1.5 block text-subheading text-on-surface" htmlFor="case-tags">
+							Tags
+						</label>
+						<div className="flex min-h-[3rem] flex-wrap items-center gap-2 rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2">
+							{form.tags.map((tag) => (
+								<span
+									className="inline-flex items-center gap-1 rounded-md bg-error-container px-2 py-0.5 text-helper font-medium text-on-error-container"
+									key={tag}
+								>
+									{tag}
+									<button
+										aria-label={`Remove ${tag}`}
+										className="rounded p-0.5 text-on-error-container/80 transition-colors hover:text-on-error-container"
+										onClick={() => onRemoveTag(tag)}
+										type="button"
+									>
+										<svg
+											aria-hidden="true"
+											className="size-3"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="2"
+											viewBox="0 0 24 24"
+										>
+											<path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+										</svg>
+									</button>
+								</span>
+							))}
+							<input
+								className="min-w-[6rem] flex-1 border-none bg-transparent px-1 py-0.5 text-body-md text-on-surface outline-none placeholder:text-on-surface-variant/55"
+								id="case-tags"
+								onChange={(event) => setTagDraft(event.target.value)}
+								onKeyDown={(event) => {
+									if (event.key === "Enter" || event.key === ",") {
+										event.preventDefault();
+										commitTag();
+									}
+									if (event.key === "Backspace" && !tagDraft && form.tags.length > 0) {
+										const lastTag = form.tags[form.tags.length - 1];
+										if (lastTag) onRemoveTag(lastTag);
+									}
+								}}
+								placeholder={form.tags.length === 0 ? "Add a tag" : ""}
+								type="text"
+								value={tagDraft}
+							/>
+						</div>
 					</div>
-					<span className="text-on-surface-variant opacity-20">
+				</div>
+
+				<ul className="flex min-h-0 flex-1 list-none flex-col gap-4 p-0">
+					{form.flows.map((flow, index) => {
+						const isEmpty = !flow.instructions.trim() && !flow.expectedResult.trim();
+						const isDragging = draggingIndex === index;
+
+						return (
+							<li
+								className={[
+									"flex min-h-[11rem] flex-1 gap-3 rounded-2xl border border-outline-variant/70 bg-surface-container-lowest/80 p-3 shadow-card transition-all",
+									isDragging ? "scale-[0.99] border-primary/30 opacity-60 shadow-float" : "",
+									isEmpty && !isDragging ? "opacity-80" : "",
+								]
+									.filter(Boolean)
+									.join(" ")}
+								key={flow.id}
+								onDragOver={(event) => {
+									event.preventDefault();
+									event.dataTransfer.dropEffect = "move";
+									if (draggingIndex === null || draggingIndex === index) return;
+									onMoveFlow(draggingIndex, index);
+									setDraggingIndex(index);
+								}}
+								onDrop={(event) => {
+									event.preventDefault();
+									setDraggingIndex(null);
+								}}
+							>
+								<button
+									aria-label={`Drag to rearrange step ${index + 1}`}
+									className={[
+										"flex shrink-0 cursor-grab flex-col items-center justify-center gap-2 self-stretch rounded-xl border border-outline-variant bg-surface-container px-2.5 py-3 text-on-surface shadow-card transition-colors",
+										"hover:border-primary/30 hover:bg-surface-container-high hover:text-on-surface",
+										"active:cursor-grabbing active:bg-surface-container-highest",
+										isDragging ? "border-primary/40 bg-surface-container-high" : "",
+									].join(" ")}
+									draggable
+									onDragEnd={() => setDraggingIndex(null)}
+									onDragStart={(event) => {
+										event.dataTransfer.effectAllowed = "move";
+										event.dataTransfer.setData("text/plain", String(index));
+										if (event.currentTarget.parentElement) {
+											event.dataTransfer.setDragImage(event.currentTarget.parentElement, 24, 24);
+										}
+										setDraggingIndex(index);
+									}}
+									title="Drag to rearrange"
+									type="button"
+								>
+									<GripIcon />
+									<span
+										aria-hidden="true"
+										className="flex size-8 items-center justify-center rounded-full bg-primary text-body-sm font-bold text-on-primary"
+									>
+										{index + 1}
+									</span>
+								</button>
+
+								<div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-2">
+									<TextField
+										className="flex h-full min-h-0 w-full flex-col"
+										name={`instructions-${flow.id}`}
+										onChange={(value) => onFlowChange(flow.id, { instructions: value })}
+										value={flow.instructions}
+									>
+										<Label className="mb-1.5 text-subheading text-on-surface">Instructions</Label>
+										<TextArea
+											className={`${fieldAreaClass} min-h-[8rem] flex-1`}
+											placeholder="Describe what the agent should do…"
+											rows={5}
+										/>
+									</TextField>
+									<TextField
+										className="flex h-full min-h-0 w-full flex-col"
+										name={`expected-${flow.id}`}
+										onChange={(value) => onFlowChange(flow.id, { expectedResult: value })}
+										value={flow.expectedResult}
+									>
+										<Label className="mb-1.5 text-subheading text-on-surface">
+											Expected result
+										</Label>
+										<TextArea
+											className={`${fieldAreaClass} min-h-[8rem] flex-1`}
+											placeholder="What should be true when this step succeeds…"
+											rows={5}
+										/>
+									</TextField>
+								</div>
+
+								{canDeleteFlow ? (
+									<button
+										aria-label={`Delete step ${index + 1}`}
+										className="flex size-9 shrink-0 items-center justify-center self-start rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
+										onClick={() => onRemoveFlow(flow.id)}
+										title="Delete step"
+										type="button"
+									>
+										<TrashIcon />
+									</button>
+								) : null}
+							</li>
+						);
+					})}
+				</ul>
+
+				<div className="flex flex-wrap items-center gap-5 pl-14">
+					<button className={actionLinkClass} onClick={onAddFlow} type="button">
+						<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 20 20">
+							<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
+						</svg>
+						Add flow
+					</button>
+					<button className={actionLinkClass} type="button">
 						<Icon>
-							<circle cx="12" cy="12" r="3" />
 							<path
-								d="M12 3v2M12 19v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M3 12h2M19 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+								d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 6"
+								strokeLinecap="round"
+							/>
+							<path
+								d="M14 11a5 5 0 0 0-7.07 0L5.52 12.41a5 5 0 0 0 7.07 7.07L14 18"
 								strokeLinecap="round"
 							/>
 						</Icon>
-					</span>
+						Add reusable flow
+						<svg
+							aria-hidden="true"
+							className="size-3.5 text-on-surface-variant"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							viewBox="0 0 24 24"
+						>
+							<path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+					</button>
+					<button className={actionLinkClass} type="button">
+						<Icon>
+							<path
+								d="M12 3v12M8 11l4 4 4-4M5 19h14"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							/>
+						</Icon>
+						Bulk import
+					</button>
 				</div>
-				<button
-					className="inline-flex items-center gap-2 rounded bg-surface-container-low px-4 py-2 text-body-md font-medium text-on-surface transition-colors hover:bg-surface-container-high"
-					type="button"
-				>
-					<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 20 20">
-						<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
-					</svg>
-					Add capability
-				</button>
-			</section>
+			</div>
 
-			<section className="col-span-12 flex flex-col justify-between rounded-2xl border-0 bg-secondary-container/20 p-6 shadow-card lg:col-span-5">
-				<div>
-					<h3 className="mb-4 text-label-caps uppercase text-secondary">Environment Check</h3>
-					<div className="space-y-4">
-						<div className="flex items-center justify-between">
-							<span className="text-body-sm text-on-surface-variant">Default OS</span>
-							<span className="text-body-sm font-semibold">Android 14.0</span>
-						</div>
-						<div className="flex items-center justify-between">
-							<span className="text-body-sm text-on-surface-variant">Device Pool</span>
-							<span className="text-body-sm font-semibold">Global-S-Tier</span>
-						</div>
-					</div>
+			<aside className="h-fit rounded-2xl bg-[#f7f1d8] p-5 xl:sticky xl:top-2">
+				<div className="mb-3 flex size-8 items-center justify-center rounded-full bg-[#efd978]/80 text-[#8a6d12]">
+					<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
+						<path d="M9 21h6v-1.5H9V21zm3-19a6 6 0 00-3.5 10.9c.6.4 1 1 1.1 1.7V17h4.8v-2.4c.1-.7.5-1.3 1.1-1.7A6 6 0 0012 2z" />
+					</svg>
 				</div>
-				<div className="mt-8 flex items-center gap-3 rounded border border-white/20 bg-white/50 p-3">
+				<p className="mb-4 text-body-sm leading-relaxed text-on-surface">
+					Learn how to write effective test cases that produce reliable, reproducible results.
+				</p>
+				<a
+					className="inline-flex items-center gap-1.5 text-body-sm font-medium text-on-surface underline-offset-2 hover:underline"
+					href="https://docs.noqa.ai"
+					rel="noreferrer"
+					target="_blank"
+				>
+					Writing good test cases
 					<svg
 						aria-hidden="true"
-						className="size-5 shrink-0 text-secondary"
-						fill="currentColor"
+						className="size-3.5"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.75"
 						viewBox="0 0 24 24"
 					>
-						<path d="M11 21h-1l1-7H7.5c-.6 0-.9-.7-.5-1.1L16 3h1l-1 7h3.5c.6 0 .9.7.5 1.1L11 21z" />
+						<path
+							d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6v6M10 14L20 4"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
 					</svg>
-					<p className="text-helper text-on-surface-variant">
-						Optimized for high-concurrency execution with current settings.
-					</p>
-				</div>
-			</section>
-
-			<section className="col-span-12 overflow-hidden rounded-2xl border-0 shadow-card bg-surface-container-lowest">
-				<div className="flex items-center justify-between border-b border-outline-variant p-6">
-					<div>
-						<h2 className="text-headline-md text-on-surface">Cloud Configuration</h2>
-						<p className="text-body-md text-on-surface-variant">
-							Manage external assets and regional overrides.
-						</p>
-					</div>
-				</div>
-				<div className="grid grid-cols-1 gap-10 p-6 md:grid-cols-2">
-					<div className="space-y-4">
-						<h3 className="text-subheading text-on-surface">Gallery images</h3>
-						<p className="text-body-sm text-on-surface-variant">
-							Images added here will be pre-loaded into the device gallery before the test runs.
-						</p>
-						<div className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-outline-variant bg-surface-container-lowest p-8 transition-colors hover:bg-surface-container-low">
-							<div className="flex size-12 items-center justify-center rounded-full bg-surface-container-high">
-								<Icon>
-									<path
-										d="M12 16V8M8 12l4-4 4 4M4 20h16"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-									/>
-								</Icon>
-							</div>
-							<span className="text-body-md font-medium text-on-surface">Upload image</span>
-							<span className="text-center text-helper text-on-surface-variant">
-								JPG, PNG up to 5MB
-							</span>
-						</div>
-					</div>
-					<div className="space-y-4">
-						<h3 className="text-subheading text-on-surface">Locale</h3>
-						<p className="text-body-sm text-on-surface-variant">
-							Override the device system language and region for this specific test case.
-						</p>
-						<label className="block">
-							<span className="sr-only">Locale</span>
-							<select
-								className="h-11 w-full appearance-none rounded-full border border-outline-variant bg-surface-container-lowest px-4 text-body-md text-on-surface focus:border-primary focus:outline-none"
-								defaultValue=""
-							>
-								<option disabled value="">
-									Select locale...
-								</option>
-								<option value="en-US">English (United States)</option>
-								<option value="en-GB">English (United Kingdom)</option>
-								<option value="fr-FR">French (France)</option>
-								<option value="de-DE">German (Germany)</option>
-								<option value="es-ES">Spanish (Spain)</option>
-								<option value="ja-JP">Japanese (Japan)</option>
-							</select>
-						</label>
-						<div className="flex items-center gap-4 rounded-2xl border-0 bg-surface-container-low p-4">
-							<div>
-								<p className="text-body-sm font-semibold">System Default</p>
-								<p className="text-helper text-on-surface-variant">
-									Currently using project-wide settings (en-US)
-								</p>
-							</div>
-						</div>
-					</div>
-				</div>
-			</section>
+				</a>
+			</aside>
 		</div>
 	);
 }
 
-function VariablesPanel() {
+function ConfigurationPanel({
+	capabilities,
+	onAdd,
+	onChange,
+	onRemove,
+}: {
+	capabilities: Capability[];
+	onAdd: () => void;
+	onChange: (id: string, patch: Partial<Pick<Capability, "key" | "value">>) => void;
+	onRemove: (id: string) => void;
+}) {
 	return (
-		<div className="grid grid-cols-12 gap-gutter">
-			<div className="col-span-12 overflow-hidden rounded-2xl border-0 shadow-card bg-surface-container-lowest lg:col-span-9">
-				<div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low px-6 py-4">
-					<h3 className="text-subheading">Active Variables</h3>
-					<span className="rounded bg-surface-container-highest px-2 py-0.5 text-helper font-bold uppercase tracking-wider text-on-surface-variant">
-						{MOCK_VARIABLES.length} Total
-					</span>
-				</div>
-				<table className="w-full border-collapse text-left">
-					<thead>
-						<tr className="bg-surface-container-low/50">
-							<th className="border-b border-outline-variant px-6 py-3 text-label-caps uppercase tracking-widest text-on-surface-variant">
-								Key
-							</th>
-							<th className="border-b border-outline-variant px-6 py-3 text-label-caps uppercase tracking-widest text-on-surface-variant">
-								Value
-							</th>
-							<th className="border-b border-outline-variant px-6 py-3 text-label-caps uppercase tracking-widest text-on-surface-variant">
-								Type
-							</th>
-						</tr>
-					</thead>
-					<tbody className="divide-y divide-outline-variant">
-						{MOCK_VARIABLES.map((variable) => (
-							<tr
-								className="transition-colors hover:bg-surface-container-low/30"
-								key={variable.key}
+		<section className="w-full rounded-2xl border border-outline-variant/80 bg-surface-container-lowest p-6 shadow-card">
+			<div className="mb-5">
+				<h2 className="mb-2 text-headline-md text-on-surface">Custom Appium Capabilities</h2>
+				<p className="text-body-md text-on-surface-variant">
+					Add custom Appium capabilities that will be passed to the driver when running this test.
+					These override app-level capabilities.
+				</p>
+			</div>
+
+			{capabilities.length > 0 ? (
+				<ul className="mb-4 flex flex-col gap-3">
+					{capabilities.map((cap) => (
+						<li className="flex items-start gap-2" key={cap.id}>
+							<TextField
+								aria-label="Capability key"
+								className="min-w-0 flex-1"
+								name={`cap-key-${cap.id}`}
+								onChange={(value) => onChange(cap.id, { key: value })}
+								value={cap.key}
 							>
-								<td className="px-6 py-4">
-									<code className="rounded bg-surface-container px-2 py-1 font-mono text-body-sm font-semibold text-primary">
-										{variable.key}
-									</code>
-								</td>
-								<td className="px-6 py-4 font-mono text-body-sm text-on-surface-variant">
-									{variable.value}
-								</td>
-								<td className="px-6 py-4">
-									{variable.type === "secret" ? (
-										<span className="inline-flex items-center rounded-full bg-error-container/40 px-2.5 py-0.5 text-helper font-semibold text-on-error-container">
-											Secret
-										</span>
-									) : (
-										<span className="inline-flex items-center rounded-full bg-secondary-container/30 px-2.5 py-0.5 text-helper font-semibold text-on-secondary-container">
-											Text
-										</span>
-									)}
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
-			</div>
+								<Input className={fieldInputClass} placeholder="appium:autoLaunch" />
+							</TextField>
+							<TextField
+								aria-label="Capability value"
+								className="min-w-0 flex-1"
+								name={`cap-value-${cap.id}`}
+								onChange={(value) => onChange(cap.id, { value })}
+								value={cap.value}
+							>
+								<Input className={fieldInputClass} placeholder="false" />
+							</TextField>
+							<Button
+								aria-label="Remove capability"
+								className="size-10 min-w-10 shrink-0 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
+								onPress={() => onRemove(cap.id)}
+								variant="ghost"
+							>
+								<TrashIcon />
+							</Button>
+						</li>
+					))}
+				</ul>
+			) : null}
 
-			<div className="col-span-12 space-y-gutter lg:col-span-3">
-				<div className="rounded-2xl border-0 shadow-card bg-surface-container-low p-6">
-					<h4 className="mb-4 text-subheading text-primary">Helpful Tip</h4>
-					<p className="text-body-sm leading-relaxed text-on-surface-variant">
-						Use{" "}
-						<code className="rounded-full border border-outline-variant bg-surface-container-lowest px-1">
-							{"{{VARIABLE_NAME}}"}
-						</code>{" "}
-						syntax within your test steps to inject these values at runtime.
-					</p>
-				</div>
-				<div className="overflow-hidden rounded-2xl border-0 shadow-card bg-surface-container">
-					<div className="border-b border-outline-variant bg-surface-container-high/50 p-4">
-						<h4 className="text-label-caps uppercase text-on-surface">Scoped Variables</h4>
-					</div>
-					<div className="space-y-4 p-4">
-						<div className="flex items-center justify-between">
-							<span className="text-body-sm text-on-surface-variant">Global</span>
-							<span className="text-body-sm font-semibold">12</span>
-						</div>
-						<div className="flex items-center justify-between">
-							<span className="text-body-sm text-on-surface-variant">Project</span>
-							<span className="text-body-sm font-semibold">8</span>
-						</div>
-						<div className="flex items-center justify-between">
-							<span className="text-body-sm text-on-surface-variant">Case Local</span>
-							<span className="text-body-sm font-semibold text-primary">4</span>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
+			<button
+				className="inline-flex items-center gap-2 rounded-lg bg-surface-container px-4 py-2 text-body-md font-medium text-on-surface transition-colors hover:bg-surface-container-high"
+				onClick={onAdd}
+				type="button"
+			>
+				<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 20 20">
+					<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
+				</svg>
+				Add capability
+			</button>
+		</section>
 	);
-}
-
-function RunStatusCell({ status }: { status: RunStatus }) {
-	if (status === "running") {
-		return <span className="font-semibold italic text-primary">Running</span>;
-	}
-	if (status === "passed") {
-		return <span className="font-semibold text-secondary">Passed</span>;
-	}
-	return <span className="font-semibold text-error">Errored</span>;
-}
-
-function RecentRunsPanel({ caseStatus }: { caseStatus: CaseStatus }) {
-	const lastStatusLabel = caseStatus === "passed" ? "Passed" : "Errored";
-	const lastStatusClass =
-		caseStatus === "passed"
-			? "text-subheading font-semibold text-secondary"
-			: "text-subheading font-semibold text-error";
-
-	const runs =
-		caseStatus === "errored"
-			? MOCK_RUNS.map((run, index) =>
-					index === 1 ? { ...run, status: "errored" as const, duration: "3.6s" } : run,
-				)
-			: MOCK_RUNS;
-
-	const metrics: {
-		label: string;
-		value: string;
-		hint: string | null;
-		hintTone: "success" | "muted";
-		valueClass?: string;
-	}[] = [
-		{ label: "Success Rate", value: "98.4%", hint: "+2.1%", hintTone: "success" },
-		{ label: "Avg. Duration", value: "1.4s", hint: "-120ms", hintTone: "muted" },
-		{ label: "Total Runs", value: "1,248", hint: null, hintTone: "muted" },
-		{
-			label: "Last Status",
-			value: lastStatusLabel,
-			hint: null,
-			hintTone: "success",
-			valueClass: lastStatusClass,
-		},
-	];
-
-	return (
-		<div className="space-y-8">
-			<section className="grid grid-cols-1 gap-gutter sm:grid-cols-2 xl:grid-cols-4">
-				{metrics.map((metric) => (
-					<div className="rounded-2xl border-0 shadow-card bg-surface p-5" key={metric.label}>
-						<p className="mb-2 text-label-caps uppercase tracking-widest text-on-surface-variant">
-							{metric.label}
-						</p>
-						<div className="flex items-baseline gap-2">
-							<span className={metric.valueClass ?? "text-headline-lg text-on-surface"}>
-								{metric.value}
-							</span>
-							{metric.hint ? (
-								<span
-									className={
-										metric.hintTone === "success"
-											? "text-body-sm font-semibold text-secondary"
-											: "text-body-sm text-on-surface-variant"
-									}
-								>
-									{metric.hint}
-								</span>
-							) : null}
-						</div>
-					</div>
-				))}
-			</section>
-
-			<div className="overflow-hidden rounded-2xl border-0 shadow-card bg-surface shadow-sm">
-				<div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low px-6 py-4">
-					<h3 className="text-subheading text-primary">Recent Run Activity</h3>
-					<span className="text-body-sm text-on-surface-variant">Showing 5 of 1,248 runs</span>
-				</div>
-				<table className="w-full border-collapse text-left">
-					<thead>
-						<tr className="border-b border-outline-variant">
-							<th className="px-6 py-3 text-label-caps uppercase tracking-widest text-on-surface-variant">
-								Run ID
-							</th>
-							<th className="px-6 py-3 text-label-caps uppercase tracking-widest text-on-surface-variant">
-								Date/Time
-							</th>
-							<th className="px-6 py-3 text-label-caps uppercase tracking-widest text-on-surface-variant">
-								Environment
-							</th>
-							<th className="px-6 py-3 text-label-caps uppercase tracking-widest text-on-surface-variant">
-								Duration
-							</th>
-							<th className="px-6 py-3 text-label-caps uppercase tracking-widest text-on-surface-variant">
-								Status
-							</th>
-						</tr>
-					</thead>
-					<tbody className="divide-y divide-outline-variant">
-						{runs.map((run) => (
-							<tr className="transition-colors hover:bg-surface-container-low" key={run.id}>
-								<td className="px-6 py-4 font-mono text-body-sm text-primary">{run.id}</td>
-								<td className="px-6 py-4 text-on-surface-variant">{run.when}</td>
-								<td className="px-6 py-4">
-									<span className="rounded bg-surface-container-high px-2 py-0.5 text-helper font-bold">
-										{run.environment}
-									</span>
-								</td>
-								<td className="px-6 py-4 text-on-surface-variant">{run.duration}</td>
-								<td className="px-6 py-4">
-									<RunStatusCell status={run.status} />
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
-			</div>
-		</div>
-	);
-}
-
-function TabContent({ tab, caseStatus }: { tab: DetailTab; caseStatus: CaseStatus }) {
-	if (tab === "configuration") {
-		return <ConfigurationPanel />;
-	}
-	if (tab === "variables") {
-		return <VariablesPanel />;
-	}
-	return <RecentRunsPanel caseStatus={caseStatus} />;
 }
 
 export function TestCaseDetailPage() {
 	const { caseId } = useParams({ strict: false }) as { caseId?: string };
 	const testCase = caseId ? getTestCase(caseId) : undefined;
-	const [activeTab, setActiveTab] = useState<DetailTab>("configuration");
+	const [activeTab, setActiveTab] = useState<DetailTab>("instructions");
+	const [form, setForm] = useState<FormState | null>(null);
+	const [savedSnapshot, setSavedSnapshot] = useState<FormState | null>(null);
+
+	useEffect(() => {
+		if (!testCase) {
+			setForm(null);
+			setSavedSnapshot(null);
+			return;
+		}
+		const next = formFromCase(testCase);
+		setForm(next);
+		setSavedSnapshot(next);
+		setActiveTab("instructions");
+	}, [testCase]);
 
 	if (!testCase) {
 		return (
 			<div className="mx-auto flex w-full max-w-3xl flex-col gap-4 py-16">
-				<h1 className="text-headline-lg text-primary">Test case not found</h1>
+				<h1 className="text-headline-lg text-on-surface">Test case not found</h1>
 				<p className="text-body-md text-on-surface-variant">
 					No case matches{" "}
 					<code className="rounded bg-surface-container px-1.5 py-0.5 text-body-sm">
@@ -488,7 +488,7 @@ export function TestCaseDetailPage() {
 					.
 				</p>
 				<Link
-					className="w-fit text-body-md font-semibold text-primary underline-offset-2 hover:underline"
+					className="w-fit text-body-md font-semibold text-on-surface underline-offset-2 hover:underline"
 					to="/test-cases"
 				>
 					Back to Test Cases
@@ -497,56 +497,67 @@ export function TestCaseDetailPage() {
 		);
 	}
 
+	if (!form || !savedSnapshot) {
+		return null;
+	}
+
+	const dirty = JSON.stringify(form) !== JSON.stringify(savedSnapshot);
+	const canSave = dirty && form.name.trim().length > 0;
+	const breadcrumbTitle = `#${testCase.number} ${form.name.trim() || testCase.name}`;
+
+	const handleSave = () => {
+		if (!canSave) return;
+		const next: FormState = {
+			...form,
+			name: form.name.trim(),
+			capabilities: form.capabilities
+				.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
+				.filter((cap) => cap.key.length > 0),
+		};
+		setForm(next);
+		setSavedSnapshot(next);
+	};
+
 	return (
-		<div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
-			<nav className="flex items-center gap-2 text-body-sm text-on-surface-variant">
-				<Link className="transition-colors hover:text-primary" to="/test-cases">
-					Test Cases
-				</Link>
-				<span aria-hidden="true">/</span>
-				<span className="font-semibold text-primary">{testCase.name}</span>
-			</nav>
+		<div className="flex h-full min-h-0 w-full flex-col gap-6">
+			<header className="flex shrink-0 flex-wrap items-center justify-between gap-4">
+				<nav className="flex min-w-0 items-center gap-2 text-body-md text-on-surface-variant">
+					<Link className="shrink-0 transition-colors hover:text-on-surface" to="/test-cases">
+						Test Cases
+					</Link>
+					<span aria-hidden="true">&gt;</span>
+					<span className="truncate font-medium text-on-surface">{breadcrumbTitle}</span>
+				</nav>
 
-			<div className="flex flex-wrap items-start justify-between gap-4">
-				<div className="space-y-3">
-					<div className="flex flex-wrap items-center gap-3">
-						<h1 className="text-headline-lg text-primary">{testCase.name}</h1>
-						<div className="flex flex-wrap gap-2">
-							{testCase.tags.map((tag) => (
-								<TagPill key={tag} label={tag} />
-							))}
-						</div>
-					</div>
-					<div className="flex flex-wrap items-center gap-4 text-body-sm">
-						<StatusMeta lastRun={testCase.lastRun} status={testCase.status} />
-						<span className="hidden size-1 rounded-full bg-outline-variant sm:inline-block" />
-						<span className="text-on-surface-variant">suite: {testCase.suite}</span>
-						<span className="hidden size-1 rounded-full bg-outline-variant sm:inline-block" />
-						<span className="text-on-surface-variant">Creator: {testCase.creator}</span>
-						<span className="hidden size-1 rounded-full bg-outline-variant sm:inline-block" />
-						<span className="text-on-surface-variant">Last Edit: {testCase.lastEdit}</span>
-					</div>
-				</div>
-				<div className="flex items-center gap-3">
-					<button
-						className="inline-flex h-9 items-center gap-2 rounded-full border border-outline-variant px-4 text-body-md font-medium text-primary transition-colors hover:bg-surface-container"
-						type="button"
+				<div className="flex items-center gap-1">
+					<Button
+						aria-label="Delete test case"
+						className="size-10 min-w-10 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
+						variant="ghost"
 					>
-						Edit
-					</button>
-					<button
-						className="inline-flex h-9 items-center gap-2 rounded bg-secondary px-6 text-body-md font-medium text-on-secondary transition-opacity hover:opacity-90"
-						type="button"
+						<TrashIcon />
+					</Button>
+					<Button
+						aria-label="Duplicate test case"
+						className="size-10 min-w-10 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-surface-container"
+						variant="ghost"
 					>
-						<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 24 24">
-							<path d="M8 5.5v13l11-6.5L8 5.5Z" />
-						</svg>
-						Run
-					</button>
+						<DuplicateIcon />
+					</Button>
+					<Button
+						className="ml-1 rounded-lg bg-primary px-5 text-on-primary data-[hovered=true]:bg-primary/90 data-[disabled=true]:bg-surface-container-highest data-[disabled=true]:text-on-surface-variant"
+						isDisabled={!canSave}
+						onPress={handleSave}
+					>
+						Save
+					</Button>
 				</div>
-			</div>
+			</header>
 
-			<div className="flex items-center gap-8 border-b border-outline-variant" role="tablist">
+			<div
+				className="flex shrink-0 items-center gap-8 border-b border-outline-variant"
+				role="tablist"
+			>
 				{TABS.map((tab) => {
 					const isActive = tab.id === activeTab;
 					return (
@@ -554,8 +565,8 @@ export function TestCaseDetailPage() {
 							aria-selected={isActive}
 							className={
 								isActive
-									? "border-b-2 border-primary pb-3 text-body-md font-semibold text-primary"
-									: "pb-3 text-body-md text-on-surface-variant transition-colors hover:text-primary"
+									? "border-b-2 border-primary pb-3 text-body-md font-semibold text-on-surface"
+									: "pb-3 text-body-md text-on-surface-variant transition-colors hover:text-on-surface"
 							}
 							key={tab.id}
 							onClick={() => setActiveTab(tab.id)}
@@ -568,8 +579,116 @@ export function TestCaseDetailPage() {
 				})}
 			</div>
 
-			<div role="tabpanel">
-				<TabContent caseStatus={testCase.status} tab={activeTab} />
+			<div className="min-h-0 flex-1 overflow-y-auto pb-4" role="tabpanel">
+				{activeTab === "instructions" ? (
+					<InstructionsPanel
+						form={form}
+						onAddFlow={() =>
+							setForm((current) =>
+								current
+									? {
+											...current,
+											flows: [
+												...current.flows,
+												{
+													id: `flow_${crypto.randomUUID()}`,
+													instructions: "",
+													expectedResult: "",
+												},
+											],
+										}
+									: current,
+							)
+						}
+						onAddTag={(tag) =>
+							setForm((current) => {
+								if (!current) return current;
+								const normalized = tag.toLowerCase();
+								if (current.tags.some((existing) => existing.toLowerCase() === normalized)) {
+									return current;
+								}
+								return { ...current, tags: [...current.tags, tag] };
+							})
+						}
+						onFlowChange={(id, patch) =>
+							setForm((current) =>
+								current
+									? {
+											...current,
+											flows: current.flows.map((flow) =>
+												flow.id === id ? { ...flow, ...patch } : flow,
+											),
+										}
+									: current,
+							)
+						}
+						onMoveFlow={(fromIndex, toIndex) =>
+							setForm((current) =>
+								current
+									? { ...current, flows: moveItem(current.flows, fromIndex, toIndex) }
+									: current,
+							)
+						}
+						onNameChange={(name) =>
+							setForm((current) => (current ? { ...current, name } : current))
+						}
+						onRemoveFlow={(id) =>
+							setForm((current) => {
+								if (!current || current.flows.length <= 1) return current;
+								return {
+									...current,
+									flows: current.flows.filter((flow) => flow.id !== id),
+								};
+							})
+						}
+						onRemoveTag={(tag) =>
+							setForm((current) =>
+								current
+									? { ...current, tags: current.tags.filter((existing) => existing !== tag) }
+									: current,
+							)
+						}
+					/>
+				) : (
+					<ConfigurationPanel
+						capabilities={form.capabilities}
+						onAdd={() =>
+							setForm((current) =>
+								current
+									? {
+											...current,
+											capabilities: [
+												...current.capabilities,
+												{ id: `cap_${crypto.randomUUID()}`, key: "", value: "" },
+											],
+										}
+									: current,
+							)
+						}
+						onChange={(id, patch) =>
+							setForm((current) =>
+								current
+									? {
+											...current,
+											capabilities: current.capabilities.map((cap) =>
+												cap.id === id ? { ...cap, ...patch } : cap,
+											),
+										}
+									: current,
+							)
+						}
+						onRemove={(id) =>
+							setForm((current) =>
+								current
+									? {
+											...current,
+											capabilities: current.capabilities.filter((cap) => cap.id !== id),
+										}
+									: current,
+							)
+						}
+					/>
+				)}
 			</div>
 		</div>
 	);
