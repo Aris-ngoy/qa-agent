@@ -7,6 +7,7 @@
 		"dev": "vite build && concurrently -k -n vite,app -c green,magenta \"vite --port 5173\" \"bun scripts/wait-for-vite.ts && electrobun dev --watch\"",
 		"start": "vite build && electrobun dev",
 		"build": "vite build && electrobun build --env=canary",
+		"icons": "bun scripts/generate-app-icon.ts",
 		"check": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -22,12 +23,13 @@
 		"react-dom": "^19.2.3"
 	},
 	"devDependencies": {
-		"@yoqa/typescript-config": "workspace:*",
+		"@resvg/resvg-js": "^2.6.2",
 		"@tailwindcss/vite": "^4.1.18",
 		"@types/bun": "^1.2.18",
 		"@types/react": "^19.2.7",
 		"@types/react-dom": "^19.2.3",
 		"@vitejs/plugin-react": "^4.7.0",
+		"@yoqa/typescript-config": "workspace:*",
 		"concurrently": "^9.2.1",
 		"tailwindcss": "^4.1.18",
 		"typescript": "^5.9.3",

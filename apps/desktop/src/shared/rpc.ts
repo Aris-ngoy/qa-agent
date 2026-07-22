@@ -1,5 +1,10 @@
 import type { IosToolchainPreferences, IosToolchainSnapshot } from "./ios-toolchain";
 
+export type EnsureLocalServicesResult = {
+	baseUrl: string;
+	started: boolean;
+};
+
 export type DesktopRPC = {
 	bun: {
 		requests: {
@@ -10,6 +15,10 @@ export type DesktopRPC = {
 			getRunnerBaseUrl: {
 				params: undefined;
 				response: string;
+			};
+			ensureLocalServices: {
+				params: undefined;
+				response: EnsureLocalServicesResult;
 			};
 			getIosToolchain: {
 				params: undefined;

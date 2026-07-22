@@ -1,6 +1,7 @@
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { DesktopRPC } from "../shared/rpc";
 import { getIosToolchainSnapshot, setIosToolchainSelection } from "./features/ios-toolchain";
+import { ensureLocalServices, stopRunnerSidecar } from "./features/runner-sidecar";
 
 async function getMainViewUrl(): Promise<string> {
 	const viteUrl = "http://localhost:5173";
@@ -44,11 +45,12 @@ ApplicationMenu.setApplicationMenu([
 ]);
 
 const mainRPC = BrowserView.defineRPC<DesktopRPC>({
-	maxRequestTime: 30_000,
+	maxRequestTime: 60_000,
 	handlers: {
 		requests: {
 			ping: () => "pong",
 			getRunnerBaseUrl: () => process.env.YOQA_RUNNER_URL ?? "http://127.0.0.1:7420",
+			ensureLocalServices: () => ensureLocalServices(),
 			getIosToolchain: () => getIosToolchainSnapshot(),
 			setIosToolchainSelection: (params) => setIosToolchainSelection(params),
 		},
@@ -74,8 +76,16 @@ const mainWindow = new BrowserWindow({
 	rpc: mainRPC,
 });
 
-mainWindow.on("close", () => {
+function shutdown(): void {
+	stopRunnerSidecar();
 	process.exit(0);
+}
+
+mainWindow.on("close", () => {
+	shutdown();
 });
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 console.log("[yoqa desktop] started");
