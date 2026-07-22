@@ -181,9 +181,25 @@ async function readCertificateSubject(name: string): Promise<string | null> {
 	return stdout.trim();
 }
 
+/**
+ * Parse a DN attribute from an openssl `-subject` line.
+ * Supports LibreSSL slash form (`/OU=TEAM`) and OpenSSL 3 comma form (`OU=TEAM, O=Name`).
+ */
 function subjectField(subject: string, key: string): string | null {
-	const match = subject.match(new RegExp(`/${key}=([^/]+)`));
-	return match?.[1]?.trim() ?? null;
+	const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const slash = subject.match(new RegExp(`/${escaped}=([^/]+)`));
+	if (slash?.[1]) return slash[1].trim();
+
+	const comma = subject.match(new RegExp(`(?:^|,)\\s*${escaped}\\s*=\\s*([^,]+)`, "i"));
+	if (comma?.[1]) return comma[1].trim();
+
+	return null;
+}
+
+/** Team ID in parentheses at the end of an Apple identity name, e.g. `… (63L33U439U)`. */
+function teamIdFromIdentityName(name: string): string | null {
+	const match = name.match(/\(([A-Z0-9]{10})\)$/);
+	return match?.[1] ?? null;
 }
 
 function isCorporateOrganization(organization: string): boolean {
@@ -227,9 +243,10 @@ async function listSigningIdentities(): Promise<SigningIdentity[]> {
 
 	for (const item of parsed) {
 		const subject = await readCertificateSubject(item.name);
-		const teamId = subject ? subjectField(subject, "OU") : null;
-		const organization = subject ? subjectField(subject, "O") : null;
-		if (!teamId || !organization) continue;
+		const teamId =
+			(subject ? subjectField(subject, "OU") : null) ?? teamIdFromIdentityName(item.name);
+		const organization = (subject ? subjectField(subject, "O") : null) ?? "Personal Team";
+		if (!teamId) continue;
 
 		if (isDistributionIdentity(item.name)) {
 			distributionTeamIds.add(teamId);
