@@ -86,7 +86,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 	const { apps, selectedApp, selectApp, addApp } = useApps();
 	const [modalOpen, setModalOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
-	const appLabel = selectedApp?.name ?? "qa-agent";
+	const appLabel = selectedApp?.name ?? "YoQA";
 	const appInitial = appLabel.slice(0, 1).toUpperCase();
 
 	return (

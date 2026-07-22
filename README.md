@@ -1,6 +1,8 @@
-# qa-agent
+# YoQA
 
 Local-first agentic mobile QA. Bun + Turborepo monorepo with an Electrobun desktop shell and a TypeScript (Hono) local runner. Phase 1 is **local-only** — no login, no cloud.
+
+**Product name:** YoQA (`yoqa`) · **Code name:** `qa-agent`
 
 ## Stack
 
@@ -8,8 +10,8 @@ Local-first agentic mobile QA. Bun + Turborepo monorepo with an Electrobun deskt
 |-------|--------|
 | Monorepo | Bun workspaces + Turborepo |
 | Desktop | Electrobun + React 19 + TanStack Router/Query + Vite + Tailwind CSS v4 |
-| Runner | Bun + Hono + Zod (`@qa-agent/runner`) |
-| CLI | `qa-agent` (commander) → HTTP to the runner |
+| Runner | Bun + Hono + Zod (`@yoqa/runner`) |
+| CLI | `yoqa` (commander) → HTTP to the runner |
 | Lint/format | Biome |
 
 ## Prerequisites
@@ -37,7 +39,7 @@ Terminal B — call health via the CLI (no credentials):
 bun run health
 ```
 
-Expected JSON includes `"ok": true` and `"service": "qa-agent-runner"`.
+Expected JSON includes `"ok": true` and `"service": "yoqa-runner"`.
 
 ## Other commands
 
@@ -51,11 +53,11 @@ bun run desktop       # Electrobun desktop (dev)
 
 ```
 apps/desktop          Electrobun + React UI
-services/runner       Local Hono runner + qa-agent CLI
+services/runner       Local Hono runner + yoqa CLI
 packages/runner-client
 packages/ui
 packages/typescript-config
-packages/skill/qa-agent-testing
+packages/skill/yoqa-testing
 ```
 
 ### Desktop (`apps/desktop/src`)

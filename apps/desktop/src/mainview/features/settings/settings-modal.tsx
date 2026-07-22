@@ -23,13 +23,13 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
 ];
 
 const SKILL_TARGETS = [
-	{ id: "standard", label: "Standard", path: "~/.agents/skills/qa-agent-testing" },
-	{ id: "claude", label: "Claude", path: "~/.claude/skills/qa-agent-testing" },
-	{ id: "cursor", label: "Cursor", path: "~/.cursor/skills/qa-agent-testing" },
-	{ id: "codex", label: "Codex", path: "~/.codex/skills/qa-agent-testing" },
+	{ id: "standard", label: "Standard", path: "~/.agents/skills/yoqa-testing" },
+	{ id: "claude", label: "Claude", path: "~/.claude/skills/yoqa-testing" },
+	{ id: "cursor", label: "Cursor", path: "~/.cursor/skills/yoqa-testing" },
+	{ id: "codex", label: "Codex", path: "~/.codex/skills/yoqa-testing" },
 ] as const;
 
-const SKILL_FOLDER = "~/Library/Application Support/qa-agent/skills/qa-agent-testing";
+const SKILL_FOLDER = "~/Library/Application Support/yoqa/skills/yoqa-testing";
 
 const IOS_TOOLCHAIN_QUERY_KEY = ["ios-toolchain"] as const;
 
@@ -413,7 +413,7 @@ function CliSettings() {
 					<div className="min-w-0 flex-1">
 						<p className="text-subheading font-semibold text-on-surface">CLI Tool</p>
 						<p className="mt-0.5 text-body-md text-on-surface-variant">
-							Install the <code className="font-mono text-on-surface">qa-agent</code> command to run
+							Install the <code className="font-mono text-on-surface">yoqa</code> command to run
 							tests from your terminal.
 						</p>
 					</div>
@@ -432,7 +432,7 @@ function CliSettings() {
 						<p className="text-subheading font-semibold text-on-surface">Mobile Testing Skill</p>
 						<p className="mt-0.5 text-body-md text-on-surface-variant">
 							Teaches AI agents to run mobile tests through the{" "}
-							<code className="font-mono text-on-surface">qa-agent</code> command-line tool.
+							<code className="font-mono text-on-surface">yoqa</code> command-line tool.
 						</p>
 					</div>
 				</div>

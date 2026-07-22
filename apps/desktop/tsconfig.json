@@ -1,5 +1,5 @@
 {
-	"extends": "@qa-agent/typescript-config/react.json",
+	"extends": "@yoqa/typescript-config/react.json",
 	"compilerOptions": {
 		"paths": {
 			"@/*": ["./src/mainview/*"]

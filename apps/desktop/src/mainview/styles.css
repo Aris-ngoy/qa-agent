@@ -2,7 +2,7 @@
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
-@import "@qa-agent/ui/styles.css";
+@import "@yoqa/ui/styles.css";
 
 html,
 body,
@@ -23,8 +23,7 @@ body {
 }
 
 .dashboard-canvas {
-	background:
-		radial-gradient(ellipse 80% 60% at 20% 10%, rgb(201 184 232 / 0.35), transparent 55%),
+	background: radial-gradient(ellipse 80% 60% at 20% 10%, rgb(201 184 232 / 0.35), transparent 55%),
 		radial-gradient(ellipse 70% 50% at 85% 20%, rgb(168 213 196 / 0.28), transparent 50%),
 		radial-gradient(ellipse 60% 45% at 60% 90%, rgb(232 180 196 / 0.22), transparent 45%),
 		linear-gradient(160deg, #e4e8f4 0%, #eef0f8 45%, #e8ecf6 100%);

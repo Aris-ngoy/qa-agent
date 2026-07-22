@@ -14,5 +14,5 @@ for (let i = 0; i < attempts; i++) {
 	await Bun.sleep(delayMs);
 }
 
-console.error(`[qa-agent desktop] timed out waiting for Vite at ${url}`);
+console.error(`[yoqa desktop] timed out waiting for Vite at ${url}`);
 process.exit(1);

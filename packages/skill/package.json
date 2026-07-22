@@ -1,6 +1,6 @@
 {
-	"name": "@qa-agent/skill",
+	"name": "@yoqa/skill",
 	"version": "0.0.0",
 	"private": true,
-	"files": ["qa-agent-testing"]
+	"files": ["yoqa-testing"]
 }

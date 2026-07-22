@@ -14,9 +14,9 @@ export default defineConfig({
 		// Point at package sources so HMR watches them (not node_modules symlinks)
 		alias: {
 			"@": path.resolve(rootDir, "src/mainview"),
-			"@qa-agent/ui/styles.css": path.resolve(workspacePackages, "ui/src/styles.css"),
-			"@qa-agent/ui": path.resolve(workspacePackages, "ui/src"),
-			"@qa-agent/runner-client": path.resolve(workspacePackages, "runner-client/src"),
+			"@yoqa/ui/styles.css": path.resolve(workspacePackages, "ui/src/styles.css"),
+			"@yoqa/ui": path.resolve(workspacePackages, "ui/src"),
+			"@yoqa/runner-client": path.resolve(workspacePackages, "runner-client/src"),
 		},
 	},
 	build: {

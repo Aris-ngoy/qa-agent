@@ -2,8 +2,8 @@ import type { ElectrobunConfig } from "electrobun/bun";
 
 export default {
 	app: {
-		name: "qa-agent",
-		identifier: "dev.qa-agent.app",
+		name: "yoqa",
+		identifier: "ai.yoqa.app",
 		version: "0.1.0",
 	},
 	build: {

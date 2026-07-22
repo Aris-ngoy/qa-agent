@@ -17,10 +17,10 @@ export function WelcomePage() {
 			<div className="flex min-h-full items-center justify-center px-4 py-10">
 				<section className="w-full max-w-lg rounded-[var(--radius-platform)] bg-surface-container-lowest px-10 py-12 text-center shadow-soft">
 					<span className="mx-auto mb-6 flex size-16 items-center justify-center rounded-full bg-gradient-to-br from-card-lavender to-card-rose text-2xl font-bold text-primary shadow-card">
-						Q
+						Y
 					</span>
 					<h1 className="mb-3 text-headline-lg font-semibold tracking-tight text-on-surface">
-						qa-agent
+						YoQA
 					</h1>
 					<p className="mb-8 text-body-md leading-relaxed text-on-surface-variant">
 						{hasApps

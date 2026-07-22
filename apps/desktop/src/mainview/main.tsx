@@ -1,6 +1,7 @@
 import { initDesktopRpc } from "@/app/desktop-rpc";
 import { routeTree } from "@/app/route-tree";
 import { AppsProvider } from "@/features/apps/context";
+import { BootGate } from "@/features/splash/boot-gate";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { StrictMode } from "react";
@@ -27,7 +28,9 @@ createRoot(rootElement).render(
 	<StrictMode>
 		<QueryClientProvider client={queryClient}>
 			<AppsProvider>
-				<RouterProvider router={router} />
+				<BootGate>
+					<RouterProvider router={router} />
+				</BootGate>
 			</AppsProvider>
 		</QueryClientProvider>
 	</StrictMode>,

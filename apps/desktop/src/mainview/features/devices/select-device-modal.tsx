@@ -1,5 +1,8 @@
+import { getDesktopRpc } from "@/app/desktop-rpc";
 import { Modal, Tabs } from "@heroui/react";
-import { type SVGProps, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { type Device, createRunnerClient } from "@yoqa/runner-client";
+import { type SVGProps, useEffect, useMemo, useState } from "react";
 
 export type DevicePlatform = "ios" | "android";
 
@@ -18,6 +21,7 @@ type DeviceRow = {
 	name: string;
 	owner?: string;
 	osVersion: string;
+	state?: string;
 };
 
 type SelectDeviceModalProps = {
@@ -27,62 +31,16 @@ type SelectDeviceModalProps = {
 	onSelect: (device: SelectedDevice) => void;
 };
 
-const IOS_LOCAL_DEVICES: DeviceRow[] = [
-	{
-		id: "ios-local-iphone-17-pro",
-		name: "iPhone 17 Pro",
-		owner: "Aristote's iPhone",
-		osVersion: "iOS 26.5.1",
-	},
-];
-
-const IOS_SIMULATORS: DeviceRow[] = [
-	{ id: "ios-sim-iphone-17-pro", name: "iPhone 17 Pro", osVersion: "iOS 26.0" },
-	{ id: "ios-sim-iphone-17", name: "iPhone 17", osVersion: "iOS 26.0" },
-	{ id: "ios-sim-iphone-16-pro", name: "iPhone 16 Pro", osVersion: "iOS 18.5" },
-	{ id: "ios-sim-iphone-16", name: "iPhone 16", osVersion: "iOS 18.5" },
-	{ id: "ios-sim-iphone-15-pro", name: "iPhone 15 Pro", osVersion: "iOS 18.4" },
-	{ id: "ios-sim-iphone-15", name: "iPhone 15", osVersion: "iOS 18.4" },
-	{ id: "ios-sim-iphone-se", name: "iPhone SE (3rd generation)", osVersion: "iOS 18.4" },
-	{ id: "ios-sim-ipad-pro-13", name: "iPad Pro 13-inch (M4)", osVersion: "iOS 18.5" },
-	{ id: "ios-sim-ipad-pro-11", name: "iPad Pro 11-inch (M4)", osVersion: "iOS 18.5" },
-	{ id: "ios-sim-ipad-air", name: "iPad Air 13-inch (M2)", osVersion: "iOS 18.4" },
-	{ id: "ios-sim-ipad-mini", name: "iPad mini (A17 Pro)", osVersion: "iOS 18.4" },
-	{ id: "ios-sim-ipad-10", name: "iPad (10th generation)", osVersion: "iOS 18.4" },
-	{ id: "ios-sim-iphone-14-pro", name: "iPhone 14 Pro", osVersion: "iOS 17.5" },
-	{ id: "ios-sim-iphone-13", name: "iPhone 13", osVersion: "iOS 17.5" },
-];
-
-const ANDROID_LOCAL_DEVICES: DeviceRow[] = [
-	{
-		id: "android-local-pixel-9",
-		name: "Pixel 9 Pro",
-		owner: "Aristote's Pixel",
-		osVersion: "Android 15",
-	},
-];
-
-const ANDROID_SIMULATORS: DeviceRow[] = [
-	{ id: "android-emu-pixel-9", name: "Pixel 9", osVersion: "Android 15" },
-	{ id: "android-emu-pixel-8", name: "Pixel 8", osVersion: "Android 14" },
-	{ id: "android-emu-pixel-7", name: "Pixel 7", osVersion: "Android 14" },
-	{ id: "android-emu-tablet", name: "Pixel Tablet", osVersion: "Android 14" },
-];
-
 const PLATFORM_COPY: Record<
 	DevicePlatform,
 	{
 		title: string;
-		local: DeviceRow[];
-		simulators: DeviceRow[];
 		simulatorLabel: string;
 		localChecklist: string[];
 	}
 > = {
 	ios: {
 		title: "Select Device — iOS",
-		local: IOS_LOCAL_DEVICES,
-		simulators: IOS_SIMULATORS,
 		simulatorLabel: "Local Simulators",
 		localChecklist: [
 			"Device is connected via cable",
@@ -94,8 +52,6 @@ const PLATFORM_COPY: Record<
 	},
 	android: {
 		title: "Select Device — Android",
-		local: ANDROID_LOCAL_DEVICES,
-		simulators: ANDROID_SIMULATORS,
 		simulatorLabel: "Local Emulators",
 		localChecklist: [
 			"Device is connected via cable",
@@ -145,13 +101,39 @@ function deviceLabel(device: DeviceRow): string {
 	return device.owner ? `${device.name} (${device.owner})` : device.name;
 }
 
+function toDeviceRow(device: Device): DeviceRow {
+	return {
+		id: device.id,
+		name: device.name,
+		owner: device.owner,
+		osVersion: device.osVersion,
+		state: device.state,
+	};
+}
+
 function DeviceList({
 	devices,
+	loading,
+	error,
 	onSelect,
 }: {
 	devices: DeviceRow[];
+	loading: boolean;
+	error: string | null;
 	onSelect: (device: DeviceRow) => void;
 }) {
+	if (loading) {
+		return (
+			<p className="px-1 py-6 text-center text-body-md text-on-surface-variant">
+				Scanning for devices…
+			</p>
+		);
+	}
+
+	if (error) {
+		return <p className="px-1 py-6 text-center text-body-md text-danger">{error}</p>;
+	}
+
 	if (devices.length === 0) {
 		return (
 			<p className="px-1 py-6 text-center text-body-md text-on-surface-variant">
@@ -175,8 +157,13 @@ function DeviceList({
 								<span className="font-normal text-on-surface-variant"> ({device.owner})</span>
 							) : null}
 						</span>
-						<span className="shrink-0 text-body-sm text-on-surface-variant">
-							{device.osVersion}
+						<span className="shrink-0 text-right text-body-sm text-on-surface-variant">
+							<span className="block">{device.osVersion}</span>
+							{device.state ? (
+								<span className="block text-helper capitalize text-on-surface-variant/80">
+									{device.state}
+								</span>
+							) : null}
 						</span>
 					</button>
 				</li>
@@ -185,15 +172,41 @@ function DeviceList({
 	);
 }
 
+async function fetchPlatformDevices(platform: DevicePlatform): Promise<Device[]> {
+	const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
+	const client = createRunnerClient({ baseUrl });
+	const response = await client.listDevices(platform, { includeUnavailable: true });
+	return response.devices;
+}
+
 export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectDeviceModalProps) {
 	const [tab, setTab] = useState<DeviceTab>("local");
 	const copy = PLATFORM_COPY[platform];
+
+	const devicesQuery = useQuery({
+		queryKey: ["devices", platform],
+		queryFn: () => fetchPlatformDevices(platform),
+		enabled: open,
+		refetchOnWindowFocus: true,
+		refetchOnMount: "always",
+		staleTime: 5_000,
+	});
 
 	useEffect(() => {
 		if (open) {
 			setTab("local");
 		}
 	}, [open]);
+
+	const { local, virtual } = useMemo(() => {
+		const devices = devicesQuery.data ?? [];
+		return {
+			local: devices.filter((device) => device.kind === "physical").map(toDeviceRow),
+			virtual: devices
+				.filter((device) => device.kind === "simulator" || device.kind === "emulator")
+				.map(toDeviceRow),
+		};
+	}, [devicesQuery.data]);
 
 	const handleSelect = (device: DeviceRow) => {
 		onSelect({
@@ -206,12 +219,20 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 		onClose();
 	};
 
+	const loading = devicesQuery.isLoading || devicesQuery.isFetching;
+	const error =
+		devicesQuery.error instanceof Error
+			? `${devicesQuery.error.message}. Is the runner running?`
+			: devicesQuery.error
+				? "Failed to load devices. Is the runner running?"
+				: null;
+
 	const tabs: { id: DeviceTab; label: string; count: number; icon: typeof PhoneIcon }[] = [
-		{ id: "local", label: "Local Devices", count: copy.local.length, icon: PhoneIcon },
+		{ id: "local", label: "Local Devices", count: local.length, icon: PhoneIcon },
 		{
 			id: "simulators",
 			label: copy.simulatorLabel,
-			count: copy.simulators.length,
+			count: virtual.length,
 			icon: MonitorIcon,
 		},
 	];
@@ -272,11 +293,21 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 											First-time setup takes 1–2 minutes
 										</p>
 									</div>
-									<DeviceList devices={copy.local} onSelect={handleSelect} />
+									<DeviceList
+										devices={local}
+										error={error}
+										loading={loading}
+										onSelect={handleSelect}
+									/>
 								</Tabs.Panel>
 
 								<Tabs.Panel className="pt-5" id="simulators">
-									<DeviceList devices={copy.simulators} onSelect={handleSelect} />
+									<DeviceList
+										devices={virtual}
+										error={error}
+										loading={loading}
+										onSelect={handleSelect}
+									/>
 								</Tabs.Panel>
 							</Tabs>
 						</Modal.Body>

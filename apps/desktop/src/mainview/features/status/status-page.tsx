@@ -1,6 +1,6 @@
-import { createRunnerClient } from "@qa-agent/runner-client";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { createRunnerClient } from "@yoqa/runner-client";
 import { type SVGProps, useState } from "react";
 
 const client = createRunnerClient();

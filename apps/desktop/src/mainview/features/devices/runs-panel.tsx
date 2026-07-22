@@ -1,10 +1,15 @@
+import { getDesktopRpc } from "@/app/desktop-rpc";
 import { Button, Dropdown, Label, ListBox, Select } from "@heroui/react";
-import { type SVGProps, useEffect, useState } from "react";
-import { DeviceSetupPanel } from "./device-setup-panel";
+import { createRunnerClient } from "@yoqa/runner-client";
+import { type SVGProps, useEffect, useRef, useState } from "react";
+import { DeviceSetupPanel, type DeviceSetupStatus } from "./device-setup-panel";
 import { type DevicePlatform, SelectDeviceModal, type SelectedDevice } from "./select-device-modal";
 
-/** Simulated first-time iOS runner install (real install will replace this). */
-const IOS_RUNNER_SETUP_MS = 3_500;
+async function setupPlatformDrivers(platform: DevicePlatform, signal: AbortSignal) {
+	const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
+	const client = createRunnerClient({ baseUrl });
+	return client.setupPlatform(platform, { signal });
+}
 
 const BUILDS = [
 	{ id: "tf-128", label: "TestFlight #128" },
@@ -161,10 +166,14 @@ export function RunsPanel() {
 	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [deviceReady, setDeviceReady] = useState(false);
 	const [setupDevice, setSetupDevice] = useState<SelectedDevice | null>(null);
+	const [setupStatus, setSetupStatus] = useState<DeviceSetupStatus>("loading");
+	const [setupMessage, setSetupMessage] = useState<string | null>(null);
+	const [setupAttempt, setSetupAttempt] = useState(0);
 	const [buildId, setBuildId] = useState<string | null>(null);
 	const [deviceOpen, setDeviceOpen] = useState(false);
 	const [buildOpen, setBuildOpen] = useState(false);
 	const [modalPlatform, setModalPlatform] = useState<DevicePlatform | null>(null);
+	const setupAbortRef = useRef<AbortController | null>(null);
 
 	const openPlatformModal = (platform: DevicePlatform) => {
 		setDeviceOpen(false);
@@ -173,22 +182,29 @@ export function RunsPanel() {
 	};
 
 	const handleDeviceSelect = (selected: SelectedDevice) => {
-		if (selected.platform === "ios") {
-			// Install the iOS runner in the background; only surface the device once ready.
-			setDevice(null);
-			setDeviceReady(false);
-			setSetupDevice(selected);
-			return;
-		}
-
-		setSetupDevice(null);
-		setDevice(selected);
-		setDeviceReady(true);
+		setupAbortRef.current?.abort();
+		setDevice(null);
+		setDeviceReady(false);
+		setSetupStatus("loading");
+		setSetupMessage(null);
+		setSetupDevice(selected);
+		setSetupAttempt((n) => n + 1);
 	};
 
 	const cancelSetup = () => {
+		setupAbortRef.current?.abort();
+		setupAbortRef.current = null;
 		setSetupDevice(null);
+		setSetupStatus("loading");
+		setSetupMessage(null);
 		setDeviceReady(false);
+	};
+
+	const retrySetup = () => {
+		if (!setupDevice) return;
+		setSetupStatus("loading");
+		setSetupMessage(null);
+		setSetupAttempt((n) => n + 1);
 	};
 
 	useEffect(() => {
@@ -196,17 +212,44 @@ export function RunsPanel() {
 			return;
 		}
 
+		void setupAttempt;
 		const selected = setupDevice;
-		const timer = window.setTimeout(() => {
-			setDevice(selected);
-			setDeviceReady(true);
-			setSetupDevice(null);
-		}, IOS_RUNNER_SETUP_MS);
+		const controller = new AbortController();
+		setupAbortRef.current = controller;
+
+		setSetupStatus("loading");
+		setSetupMessage(
+			selected.platform === "ios"
+				? "Installing Appium XCUITest driver…"
+				: "Installing Appium UiAutomator2 driver…",
+		);
+
+		void (async () => {
+			try {
+				await setupPlatformDrivers(selected.platform, controller.signal);
+				if (controller.signal.aborted) return;
+				setDevice(selected);
+				setDeviceReady(true);
+				setSetupDevice(null);
+				setSetupStatus("loading");
+				setSetupMessage(null);
+			} catch (error) {
+				if (controller.signal.aborted) return;
+				const message =
+					error instanceof Error ? error.message : "Failed to install Appium drivers.";
+				setSetupStatus("error");
+				setSetupMessage(message);
+			} finally {
+				if (setupAbortRef.current === controller) {
+					setupAbortRef.current = null;
+				}
+			}
+		})();
 
 		return () => {
-			window.clearTimeout(timer);
+			controller.abort();
 		};
-	}, [setupDevice]);
+	}, [setupDevice, setupAttempt]);
 
 	const canRun = Boolean(device && deviceReady && buildId);
 	const runTitle =
@@ -355,7 +398,16 @@ export function RunsPanel() {
 				platform={modalPlatform ?? "ios"}
 			/>
 
-			{setupDevice ? <DeviceSetupPanel device={setupDevice} onCancel={cancelSetup} open /> : null}
+			{setupDevice ? (
+				<DeviceSetupPanel
+					device={setupDevice}
+					message={setupMessage}
+					onCancel={cancelSetup}
+					onRetry={retrySetup}
+					open
+					status={setupStatus}
+				/>
+			) : null}
 		</>
 	);
 }

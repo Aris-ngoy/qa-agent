@@ -11,4 +11,4 @@ const server = Bun.serve({
 	fetch: app.fetch,
 });
 
-console.log(`[qa-agent-runner] listening on http://${server.hostname}:${server.port}`);
+console.log(`[yoqa-runner] listening on http://${server.hostname}:${server.port}`);

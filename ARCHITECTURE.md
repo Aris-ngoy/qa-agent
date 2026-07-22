@@ -1,6 +1,8 @@
-# noqa-like Agentic QA — Feature Spec & Build Architecture
+# YoQA — Feature Spec & Build Architecture
 
-This document captures **what noqa does** (from [docs](https://docs.noqa.ai/llms.txt), [Appium capabilities](https://docs.noqa.ai/guide/best-practices-appium-capabilities), [CLI](https://docs.noqa.ai/docs/cli), [agent guide](https://docs.noqa.ai/guide/how-noqa-agent-works), [GitHub](https://github.com/noqa-ai/noqa)) and **how we would rebuild an equivalent system**, informed by the shipped Mac app (`noqa.app` v2.0.12).
+**Product:** YoQA (`yoqa.ai`) · **Code name:** `qa-agent`
+
+This document captures **what noqa does** (from [docs](https://docs.noqa.ai/llms.txt), [Appium capabilities](https://docs.noqa.ai/guide/best-practices-appium-capabilities), [CLI](https://docs.noqa.ai/docs/cli), [agent guide](https://docs.noqa.ai/guide/how-noqa-agent-works), [GitHub](https://github.com/noqa-ai/noqa)) and **how YoQA rebuilds an equivalent system**, informed by the shipped Mac app (`noqa.app` v2.0.12).
 
 Related: `HOW_IT_WAS_BUILT.md` (reverse-engineered stack facts).
 
@@ -158,7 +160,7 @@ Match the product shape (desktop + local runner + Appium + optional cloud), impl
 └─────────────────────────────┘        └──────────────────────────┘
 ```
 
-### 3.1 Recommended stack (qa-agent)
+### 3.1 Recommended stack (yoqa)
 
 | Layer | Choice | Why |
 |-------|--------|-----|
@@ -167,20 +169,20 @@ Match the product shape (desktop + local runner + Appium + optional cloud), impl
 | Desktop UI | **React 19 + Vite + TanStack Router + Query** | Type-safe routes; Start reserved for later web |
 | Styling / lint | **Tailwind CSS v4 + Biome** | Shared UI + fast lint/format |
 | Local runner | **Bun + Hono + Zod** | Same language as desktop/CLI |
-| CLI | **commander** in runner package → HTTP | `qa-agent` binary; thin client over localhost |
+| CLI | **commander** in runner package → HTTP | `yoqa` binary; thin client over localhost |
 | Device control | **Appium 2** + WebDriverIO | Documented under the hood |
 | Runtime bundle | Ship **Node 22 + Appium** per arch | Zero global install for users |
 | Cloud API | Later (TanStack Start web + API of choice) | Cases/runs/billing — out of Phase 1 |
 | Auth / user data | Later | Phase 1 is local-only, no login |
 | Agent / grounding | Vision LLM + optional embedding memory | Perception loop + `-d` grounding |
 | Packaging | Electrobun build + DMG | Desktop distribution |
-| Docs / skill | Mintlify + `skills/qa-agent-testing` | Agent workflows |
+| Docs / skill | Mintlify + `skills/yoqa-testing` | Agent workflows |
 
 ### 3.2 Process model (local)
 
-1. User launches desktop app → Electrobun starts **runner sidecar** (`@qa-agent/runner`).
+1. User launches desktop app → Electrobun starts **runner sidecar** (`@yoqa/runner`).
 2. Runner starts or reuses **Appium server** from `bundled-runtime`.
-3. CLI / UI call `http://127.0.0.1:<port>/…` via `@qa-agent/runner-client`.
+3. CLI / UI call `http://127.0.0.1:<port>/…` via `@yoqa/runner-client`.
 4. Cloud calls (auth, grounding, cases sync, agent run orchestration) go to `api.*` with user token (post–Phase 1).
 5. For `runs create`, runner streams screenshots to cloud agent (or runs agent locally with cloud model API).
 
@@ -204,7 +206,7 @@ services/runner/src/
     environment/          # CLI symlink, skill install
   interfaces/
     http/                 # REST for desktop + CLI
-    cli/                  # `qa-agent` entrypoint (commander)
+    cli/                  # `yoqa` entrypoint (commander)
   shared/
     adapters/
       appium.ts           # WebDriverIO session, caps merge
@@ -320,7 +322,7 @@ CLI is a first-class peer of the UI (same local API).
 - Appium session connect (sim + 1 real device each platform)
 - `screenshot`, raw `page_source`, cleaned `screen`
 - Coordinate-based `tap/swipe/drag/input` + app lifecycle + alerts
-- `qa-agent` CLI parity for device/inspect/action
+- `yoqa` CLI parity for device/inspect/action
 - Skill markdown for inspect→act→verify
 
 **Exit criteria:** coding agent can debug an app via CLI without dashboard.
@@ -410,7 +412,7 @@ We **do** copy the **product surface**: Appium execution, CLI contract, case/flo
 1. Scaffold monorepo (`desktop` + `runner` + `skill`) — Bun + Turborepo.
 2. Implement `DeviceSession` + Appium adapter with capability merge.
 3. Implement cleaned `screen` + coordinate actions.
-4. Wire `qa-agent` CLI → local Hono runner.
+4. Wire `yoqa` CLI → local Hono runner.
 5. Add Electrobun window that shows connection status and Install CLI.
 
 ---
@@ -508,13 +510,13 @@ repo/
 │       │           ├── devices/      # runs panel, device select/setup
 │       │           ├── settings/     # settings modal → toolchain RPC
 │       │           ├── test-cases/
-│       │           └── status/       # runner health via @qa-agent/runner-client
+│       │           └── status/       # runner health via @yoqa/runner-client
 │       ├── electrobun.config.ts
 │       ├── vite.config.ts            # `@` → src/mainview
 │       └── package.json
 ├── services/
-│   └── runner/                       # @qa-agent/runner (Bun + Hono)
-│       ├── package.json              # bin: qa-agent
+│   └── runner/                       # @yoqa/runner (Bun + Hono)
+│       ├── package.json              # bin: yoqa
 │       └── src/
 │           ├── index.ts              # HTTP server entry
 │           ├── settings.ts           # APPIUM_HOST, port, paths
@@ -532,7 +534,7 @@ repo/
 │           │   │   ├── inspect.ts
 │           │   │   └── actions.ts
 │           │   └── cli/
-│           │       ├── main.ts         # commander `qa-agent`
+│           │       ├── main.ts         # commander `yoqa`
 │           │       └── commands/
 │           │           └── health.ts
 │           └── shared/
@@ -543,7 +545,7 @@ repo/
     ├── ui/                           # shared Tailwind primitives
     ├── typescript-config/
     └── skill/
-        └── qa-agent-testing/
+        └── yoqa-testing/
             ├── SKILL.md
             └── workflows/debug-on-device.md
 ```

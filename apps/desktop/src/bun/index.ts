@@ -9,7 +9,7 @@ async function getMainViewUrl(): Promise<string> {
 		try {
 			const response = await fetch(viteUrl);
 			if (response.ok) {
-				console.log("[qa-agent desktop] loading UI from Vite HMR", viteUrl);
+				console.log("[yoqa desktop] loading UI from Vite HMR", viteUrl);
 				return viteUrl;
 			}
 		} catch {
@@ -17,14 +17,14 @@ async function getMainViewUrl(): Promise<string> {
 		}
 		await Bun.sleep(100);
 	}
-	console.log("[qa-agent desktop] Vite HMR unavailable — using bundled views");
+	console.log("[yoqa desktop] Vite HMR unavailable — using bundled views");
 	return "views://mainview/index.html";
 }
 
 ApplicationMenu.setApplicationMenu([
 	{
 		submenu: [
-			{ label: "About qa-agent", role: "about" },
+			{ label: "About YoQA", role: "about" },
 			{ type: "separator" },
 			{ label: "Quit", role: "quit", accelerator: "q" },
 		],
@@ -48,7 +48,7 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 	handlers: {
 		requests: {
 			ping: () => "pong",
-			getRunnerBaseUrl: () => process.env.QA_AGENT_RUNNER_URL ?? "http://127.0.0.1:7420",
+			getRunnerBaseUrl: () => process.env.YOQA_RUNNER_URL ?? "http://127.0.0.1:7420",
 			getIosToolchain: () => getIosToolchainSnapshot(),
 			setIosToolchainSelection: (params) => setIosToolchainSelection(params),
 		},
@@ -61,7 +61,7 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 });
 
 const mainWindow = new BrowserWindow({
-	title: "qa-agent",
+	title: "YoQA",
 	url: await getMainViewUrl(),
 	// Transparent titlebar so the app canvas paints under the traffic lights
 	titleBarStyle: "hiddenInset",
@@ -78,4 +78,4 @@ mainWindow.on("close", () => {
 	process.exit(0);
 });
 
-console.log("[qa-agent desktop] started");
+console.log("[yoqa desktop] started");

@@ -9,7 +9,7 @@ import type {
 	XcodeInstallation,
 } from "../../../shared/ios-toolchain";
 
-const PREFS_DIR = join(homedir(), "Library/Application Support/qa-agent");
+const PREFS_DIR = join(homedir(), "Library/Application Support/yoqa");
 const PREFS_PATH = join(PREFS_DIR, "settings.json");
 
 type StoredSettings = {

@@ -1,5 +1,5 @@
 {
-	"name": "qa-agent",
+	"name": "yoqa",
 	"private": true,
 	"workspaces": ["apps/*", "packages/*", "services/*"],
 	"scripts": {
@@ -8,9 +8,9 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"check": "turbo run check && biome check .",
-		"runner": "bun run --filter @qa-agent/runner start",
-		"health": "bun run --filter @qa-agent/runner health",
-		"desktop": "bun run --filter @qa-agent/desktop dev",
+		"runner": "bun run --filter @yoqa/runner start",
+		"health": "bun run --filter @yoqa/runner health",
+		"desktop": "bun run --filter @yoqa/desktop dev",
 		"prepare": "husky"
 	},
 	"devDependencies": {
