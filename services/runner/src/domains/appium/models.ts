@@ -24,6 +24,8 @@ export type PlatformSetupResult = {
 	driverVersion?: string;
 	alreadyInstalled: boolean;
 	message: string;
+	wdaInstalled?: boolean;
+	wdaBundleId?: string;
 };
 
 export type RuntimeCheckId =

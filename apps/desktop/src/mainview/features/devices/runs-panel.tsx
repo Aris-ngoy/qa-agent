@@ -1,14 +1,56 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
 import { Button, Dropdown, Label, ListBox, Select } from "@heroui/react";
-import { createRunnerClient } from "@yoqa/runner-client";
+import { type SetupPlatformRequest, createRunnerClient } from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useRef, useState } from "react";
 import { DeviceSetupPanel, type DeviceSetupStatus } from "./device-setup-panel";
 import { type DevicePlatform, SelectDeviceModal, type SelectedDevice } from "./select-device-modal";
 
-async function setupPlatformDrivers(platform: DevicePlatform, signal: AbortSignal) {
+async function resolveIosPhysicalSetup(): Promise<
+	Pick<SetupPlatformRequest, "xcodeDeveloperDir" | "developmentTeam" | "codeSignIdentity">
+> {
+	const toolchain = await getDesktopRpc().request.getIosToolchain();
+	const xcodeDeveloperDir = toolchain.preferences.xcodeDeveloperDir;
+	if (!xcodeDeveloperDir) {
+		throw new Error("No Xcode selected. Open Settings and choose an Xcode installation.");
+	}
+
+	const identity =
+		(toolchain.preferences.signingIdentityHash &&
+			toolchain.identities.find(
+				(item) => item.hash === toolchain.preferences.signingIdentityHash,
+			)) ||
+		toolchain.identities.find((item) => item.tier === "Paid") ||
+		toolchain.identities[0] ||
+		null;
+
+	if (!identity) {
+		throw new Error(
+			"No valid Apple Development certificate found. Open Settings, pick a certificate that is not revoked, and try again.",
+		);
+	}
+
+	return {
+		xcodeDeveloperDir,
+		developmentTeam: identity.teamId,
+		codeSignIdentity: identity.name,
+	};
+}
+
+async function setupSelectedDevice(device: SelectedDevice, signal: AbortSignal) {
 	const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
 	const client = createRunnerClient({ baseUrl });
-	return client.setupPlatform(platform, { signal });
+
+	const request: SetupPlatformRequest = {
+		platform: device.platform,
+		deviceId: device.id,
+		kind: device.kind,
+	};
+
+	if (device.platform === "ios" && device.kind === "physical") {
+		Object.assign(request, await resolveIosPhysicalSetup());
+	}
+
+	return client.setupPlatform(request, { signal });
 }
 
 const BUILDS = [
@@ -217,16 +259,19 @@ export function RunsPanel() {
 		const controller = new AbortController();
 		setupAbortRef.current = controller;
 
+		const isIosPhysical = selected.platform === "ios" && selected.kind === "physical";
 		setSetupStatus("loading");
 		setSetupMessage(
-			selected.platform === "ios"
-				? "Installing Appium XCUITest driver…"
-				: "Installing Appium UiAutomator2 driver…",
+			isIosPhysical
+				? "Building and installing WebDriverAgent on your device…"
+				: selected.platform === "ios"
+					? "Installing Appium XCUITest driver…"
+					: "Installing Appium UiAutomator2 driver…",
 		);
 
 		void (async () => {
 			try {
-				await setupPlatformDrivers(selected.platform, controller.signal);
+				await setupSelectedDevice(selected, controller.signal);
 				if (controller.signal.aborted) return;
 				setDevice(selected);
 				setDeviceReady(true);
@@ -236,7 +281,9 @@ export function RunsPanel() {
 			} catch (error) {
 				if (controller.signal.aborted) return;
 				const message =
-					error instanceof Error ? error.message : "Failed to install Appium drivers.";
+					error instanceof Error
+						? error.message
+						: "Failed to set up the test runner on this device.";
 				setSetupStatus("error");
 				setSetupMessage(message);
 			} finally {

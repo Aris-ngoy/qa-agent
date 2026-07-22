@@ -61,7 +61,7 @@ export function DeviceSetupPanel({
 									className={`text-body-sm ${isError ? "text-danger" : "text-on-surface-variant"}`}
 								>
 									{isError
-										? (message ?? "Something went wrong while installing Appium drivers.")
+										? (message ?? "Something went wrong while setting up the test runner.")
 										: (message ?? "This takes 1–2 minutes on the first run")}
 								</p>
 							</div>

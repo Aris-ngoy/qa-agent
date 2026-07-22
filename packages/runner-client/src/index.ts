@@ -115,10 +115,12 @@ export class RunnerClient {
 	}
 
 	async setupPlatform(
-		platform: DevicePlatform,
+		request: SetupPlatformRequest | DevicePlatform,
 		options: { signal?: AbortSignal } = {},
 	): Promise<SetupPlatformResponse> {
-		const body = setupPlatformRequestSchema.parse({ platform });
+		const body = setupPlatformRequestSchema.parse(
+			typeof request === "string" ? { platform: request } : request,
+		);
 		const response = await this.fetchImpl(`${this.baseUrl}/devices/setup`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },

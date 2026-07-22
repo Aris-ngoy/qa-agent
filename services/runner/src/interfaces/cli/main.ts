@@ -87,20 +87,38 @@ const setup = program
 	.command("setup")
 	.description("Install Appium and the platform driver (xcuitest / uiautomator2)");
 
-for (const platform of ["ios", "android"] as const) {
-	setup
-		.command(platform)
-		.description(
-			platform === "ios"
-				? "Ensure Appium + xcuitest driver are installed"
-				: "Ensure Appium + uiautomator2 driver are installed",
-		)
-		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-		.option("--json", "Print raw JSON")
-		.action(async (options: { baseUrl: string; json?: boolean }) => {
+setup
+	.command("ios")
+	.description("Ensure Appium + xcuitest; optionally build and install WDA on a physical device")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.option("--device <udid>", "Physical device UDID to install WebDriverAgent on")
+	.option("--kind <kind>", "Device kind: physical | simulator", "physical")
+	.option("--xcode <path>", "Xcode Contents/Developer path (DEVELOPER_DIR)")
+	.option("--team <teamId>", "Apple Development team ID")
+	.option("--identity <name>", 'Codesigning identity name, e.g. "Apple Development: …"')
+	.action(
+		async (options: {
+			baseUrl: string;
+			json?: boolean;
+			device?: string;
+			kind?: string;
+			xcode?: string;
+			team?: string;
+			identity?: string;
+		}) => {
 			const client = createRunnerClient({ baseUrl: options.baseUrl });
 			try {
-				const body = await client.setupPlatform(platform);
+				const kind =
+					options.kind === "simulator" || options.kind === "physical" ? options.kind : undefined;
+				const body = await client.setupPlatform({
+					platform: "ios",
+					deviceId: options.device,
+					kind,
+					xcodeDeveloperDir: options.xcode,
+					developmentTeam: options.team,
+					codeSignIdentity: options.identity,
+				});
 				if (options.json) {
 					console.log(JSON.stringify(body, null, 2));
 					return;
@@ -108,14 +126,41 @@ for (const platform of ["ios", "android"] as const) {
 				console.log(body.message);
 				console.log(`driver: ${body.driver}${body.driverVersion ? ` ${body.driverVersion}` : ""}`);
 				console.log(`appium: ${body.appiumVersion}`);
+				if (body.wdaInstalled) {
+					console.log(`wda: installed (${body.wdaBundleId ?? "unknown bundle"})`);
+				}
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				console.error(`yoqa setup ${platform} failed: ${message}`);
+				console.error(`yoqa setup ios failed: ${message}`);
 				console.error("Is the runner up? Try: bun run runner");
 				process.exitCode = 1;
 			}
-		});
-}
+		},
+	);
+
+setup
+	.command("android")
+	.description("Ensure Appium + uiautomator2 driver are installed")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(async (options: { baseUrl: string; json?: boolean }) => {
+		const client = createRunnerClient({ baseUrl: options.baseUrl });
+		try {
+			const body = await client.setupPlatform("android");
+			if (options.json) {
+				console.log(JSON.stringify(body, null, 2));
+				return;
+			}
+			console.log(body.message);
+			console.log(`driver: ${body.driver}${body.driverVersion ? ` ${body.driverVersion}` : ""}`);
+			console.log(`appium: ${body.appiumVersion}`);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(`yoqa setup android failed: ${message}`);
+			console.error("Is the runner up? Try: bun run runner");
+			process.exitCode = 1;
+		}
+	});
 
 const runtime = program
 	.command("runtime")

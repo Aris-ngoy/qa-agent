@@ -1,6 +1,7 @@
 import { AddApplicationModal } from "@/features/apps/add-application-modal";
 import { useApps } from "@/features/apps/context";
 import { SettingsModal } from "@/features/settings/settings-modal";
+import { YoqaMark } from "@/features/splash/yoqa-mark";
 import { Button, Dropdown, Label, Separator } from "@heroui/react";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, type SVGProps, useState } from "react";
@@ -86,8 +87,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 	const { apps, selectedApp, selectApp, addApp } = useApps();
 	const [modalOpen, setModalOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
-	const appLabel = selectedApp?.name ?? "YoQA";
-	const appInitial = appLabel.slice(0, 1).toUpperCase();
+	const appLabel = selectedApp?.name ?? "Yoqa";
 
 	return (
 		<>
@@ -98,9 +98,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 							className="h-auto gap-0 bg-transparent p-0 text-sidebar-fg data-[hovered=true]:bg-transparent"
 							variant="ghost"
 						>
-							<span className="flex size-14 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-card-lavender to-card-rose text-xl font-bold text-primary shadow-card">
-								{appInitial}
-							</span>
+							<YoqaMark className="size-10" />
 						</Button>
 						<Dropdown.Popover className="w-64">
 							<Dropdown.Menu

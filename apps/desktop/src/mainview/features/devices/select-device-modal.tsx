@@ -12,6 +12,7 @@ export type SelectedDevice = {
 	name: string;
 	osVersion: string;
 	platform: DevicePlatform;
+	kind: "physical" | "simulator" | "emulator";
 };
 
 type DeviceTab = "local" | "simulators";
@@ -22,6 +23,7 @@ type DeviceRow = {
 	owner?: string;
 	osVersion: string;
 	state?: string;
+	kind: "physical" | "simulator" | "emulator";
 };
 
 type SelectDeviceModalProps = {
@@ -108,6 +110,7 @@ function toDeviceRow(device: Device): DeviceRow {
 		owner: device.owner,
 		osVersion: device.osVersion,
 		state: device.state,
+		kind: device.kind,
 	};
 }
 
@@ -215,6 +218,7 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 			name: device.name,
 			osVersion: device.osVersion,
 			platform,
+			kind: device.kind,
 		});
 		onClose();
 	};

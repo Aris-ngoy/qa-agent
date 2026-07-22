@@ -43,18 +43,24 @@ export function createDevicesRoutes() {
 
 		const parsed = setupPlatformRequestSchema.safeParse(json);
 		if (!parsed.success) {
-			return c.json({ error: "Body must include platform: 'ios' or 'android'" }, 400);
+			return c.json(
+				{
+					error:
+						"Body must include platform: 'ios' or 'android'. Optional: deviceId, kind, xcodeDeveloperDir, developmentTeam, codeSignIdentity",
+				},
+				400,
+			);
 		}
 
 		try {
-			const result = await setupPlatform(parsed.data.platform);
+			const result = await setupPlatform(parsed.data);
 			const body = setupPlatformResponseSchema.parse(result);
 			return c.json(body);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json(
 				{
-					error: "Failed to set up Appium drivers for this platform",
+					error: "Failed to set up the test runner for this device",
 					detail: message,
 				},
 				500,

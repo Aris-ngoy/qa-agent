@@ -46,6 +46,14 @@ export type AppiumDriver = z.infer<typeof appiumDriverSchema>;
 
 export const setupPlatformRequestSchema = z.object({
 	platform: devicePlatformSchema,
+	deviceId: z.string().min(1).optional(),
+	kind: deviceKindSchema.optional(),
+	/** Absolute path to Xcode Contents/Developer (iOS physical) */
+	xcodeDeveloperDir: z.string().min(1).optional(),
+	/** Apple Development team ID (iOS physical) */
+	developmentTeam: z.string().min(1).optional(),
+	/** Full codesigning identity name, e.g. "Apple Development: …" (iOS physical) */
+	codeSignIdentity: z.string().min(1).optional(),
 });
 
 export type SetupPlatformRequest = z.infer<typeof setupPlatformRequestSchema>;
@@ -58,6 +66,10 @@ export const setupPlatformResponseSchema = z.object({
 	driverVersion: z.string().optional(),
 	alreadyInstalled: z.boolean(),
 	message: z.string().min(1),
+	/** True when WebDriverAgent was built and installed on a physical iOS device */
+	wdaInstalled: z.boolean().optional(),
+	/** Bundle ID of the installed WebDriverAgent runner */
+	wdaBundleId: z.string().min(1).optional(),
 });
 
 export type SetupPlatformResponse = z.infer<typeof setupPlatformResponseSchema>;

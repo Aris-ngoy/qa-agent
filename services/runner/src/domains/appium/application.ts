@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { DevicePlatform } from "@yoqa/runner-client";
+import type { DevicePlatform, SetupPlatformRequest } from "@yoqa/runner-client";
+import { installWdaOnDevice } from "../ios/application";
 import {
 	type AppiumDriverName,
 	MANAGED_APPIUM_VERSION,
@@ -244,8 +245,15 @@ async function installDriver(appium: ResolvedAppium, driver: AppiumDriverName): 
 /**
  * Ensure Appium is available and the platform driver is installed.
  * Idempotent — skips install when the pinned driver version is already present.
+ * For iOS physical devices, also builds and installs WebDriverAgent using the
+ * provided Xcode path and signing identity.
  */
-export async function setupPlatform(platform: DevicePlatform): Promise<PlatformSetupResult> {
+export async function setupPlatform(
+	request: SetupPlatformRequest | DevicePlatform,
+): Promise<PlatformSetupResult> {
+	const params: SetupPlatformRequest =
+		typeof request === "string" ? { platform: request } : request;
+	const { platform } = params;
 	const driver = driverForPlatform(platform);
 	const appium = await resolveAppium();
 	const expectedVersion = MANAGED_DRIVER_VERSIONS[driver];
@@ -271,9 +279,42 @@ export async function setupPlatform(platform: DevicePlatform): Promise<PlatformS
 		);
 	}
 
-	const message = alreadyInstalled
+	const driverMessage = alreadyInstalled
 		? `${driver} ${driverVersion} is already installed (Appium ${appium.version})`
 		: `Installed ${driver} ${driverVersion} (Appium ${appium.version})`;
+
+	const shouldInstallWda = platform === "ios" && params.kind === "physical";
+	if (!shouldInstallWda) {
+		return {
+			ok: true,
+			platform,
+			driver,
+			appiumVersion: appium.version,
+			driverVersion,
+			alreadyInstalled,
+			message: driverMessage,
+		};
+	}
+
+	if (!params.deviceId?.trim()) {
+		throw new Error("deviceId is required to install WebDriverAgent on a physical iOS device");
+	}
+	if (!params.xcodeDeveloperDir?.trim()) {
+		throw new Error("Xcode path is required for real-device setup. Choose an Xcode in Settings.");
+	}
+	if (!params.developmentTeam?.trim() || !params.codeSignIdentity?.trim()) {
+		throw new Error(
+			"Signing certificate is required for real-device setup. Choose a certificate in Settings.",
+		);
+	}
+
+	const wda = await installWdaOnDevice({
+		deviceId: params.deviceId,
+		xcodeDeveloperDir: params.xcodeDeveloperDir,
+		developmentTeam: params.developmentTeam,
+		codeSignIdentity: params.codeSignIdentity,
+		appiumHome: appium.env.APPIUM_HOME,
+	});
 
 	return {
 		ok: true,
@@ -282,7 +323,9 @@ export async function setupPlatform(platform: DevicePlatform): Promise<PlatformS
 		appiumVersion: appium.version,
 		driverVersion,
 		alreadyInstalled,
-		message,
+		wdaInstalled: true,
+		wdaBundleId: wda.bundleId,
+		message: `${driverMessage}. Installed WebDriverAgent (${wda.bundleId}) on device.`,
 	};
 }
 

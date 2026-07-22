@@ -61,5 +61,11 @@ try {
 	rmSync(tmpDir, { recursive: true, force: true });
 }
 
+// Keep the WebDriverAgent home-screen icon in sync with the desktop app mark.
+const wdaIconPath = join(root, "../../services/runner/assets/wda-icon-1024.png");
+mkdirSync(join(root, "../../services/runner/assets"), { recursive: true });
+writeFileSync(wdaIconPath, png);
+
 console.log(`Generated ${pngPath}`);
 console.log(`Generated ${iconsetPath} (${sizes.length} sizes)`);
+console.log(`Generated ${wdaIconPath}`);
