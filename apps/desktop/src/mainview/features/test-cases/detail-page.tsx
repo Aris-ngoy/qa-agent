@@ -8,10 +8,17 @@ import {
 	mapCatalogCase,
 } from "@/features/test-cases/data";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
-import { Button, Form } from "@heroui/react";
+import { AlertDialog, Button, Form } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import type { CaseScript, CaseScriptAction } from "@yoqa/runner-client";
+import {
+	type CaseScript,
+	type CaseScriptAction,
+	caseScriptSchema,
+	formatCaseScriptJson,
+	formatCaseScriptShell,
+	suggestedScriptBasename,
+} from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useRef, useState } from "react";
 import {
 	type Control,
@@ -643,13 +650,51 @@ function scriptActionSummary(action: CaseScriptAction): string {
 	return `Wait ${action.ms}ms`;
 }
 
+function downloadTextFile(filename: string, contents: string, mime: string) {
+	const blob = new Blob([contents], { type: mime });
+	const url = URL.createObjectURL(blob);
+	const anchor = document.createElement("a");
+	anchor.href = url;
+	anchor.download = filename;
+	anchor.click();
+	URL.revokeObjectURL(url);
+}
+
+type ScriptViewMode = "steps" | "json" | "shell";
+
 function ScriptPanel({
 	script,
 	scriptSavedAt,
+	caseNumber,
+	caseName,
+	busy,
+	onSaveScript,
+	onDeleteScript,
 }: {
 	script: CaseScript | null;
 	scriptSavedAt: number | null;
+	caseNumber: number;
+	caseName: string;
+	busy: boolean;
+	onSaveScript: (next: CaseScript) => Promise<void>;
+	onDeleteScript: () => Promise<void>;
 }) {
+	const [view, setView] = useState<ScriptViewMode>("steps");
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState("");
+	const [editError, setEditError] = useState<string | null>(null);
+	const [deleteOpen, setDeleteOpen] = useState(false);
+	const [actionError, setActionError] = useState<string | null>(null);
+
+	const exportMeta = { caseNumber, caseName };
+
+	useEffect(() => {
+		if (!editing && script) {
+			setDraft(formatCaseScriptJson(script).trimEnd());
+			setEditError(null);
+		}
+	}, [script, editing]);
+
 	if (!script) {
 		return (
 			<div className={`${configCardClass} max-w-2xl`}>
@@ -663,6 +708,62 @@ function ScriptPanel({
 	}
 
 	const savedLabel = formatScriptSavedAt(scriptSavedAt ?? script.savedAt);
+	const baseName = suggestedScriptBasename(exportMeta);
+
+	const startEdit = () => {
+		setDraft(formatCaseScriptJson(script).trimEnd());
+		setEditError(null);
+		setActionError(null);
+		setEditing(true);
+		setView("json");
+	};
+
+	const cancelEdit = () => {
+		setEditing(false);
+		setEditError(null);
+		setDraft(formatCaseScriptJson(script).trimEnd());
+	};
+
+	const saveEdit = async () => {
+		setEditError(null);
+		setActionError(null);
+		let parsedJson: unknown;
+		try {
+			parsedJson = JSON.parse(draft) as unknown;
+		} catch {
+			setEditError("Invalid JSON");
+			return;
+		}
+		const parsed = caseScriptSchema.safeParse(parsedJson);
+		if (!parsed.success) {
+			setEditError(parsed.error.issues[0]?.message ?? "Invalid CaseScript");
+			return;
+		}
+		try {
+			await onSaveScript(parsed.data);
+			setEditing(false);
+		} catch (error) {
+			setActionError(error instanceof Error ? error.message : "Failed to save script");
+		}
+	};
+
+	const exportJson = () => {
+		downloadTextFile(`${baseName}.yoqa.json`, formatCaseScriptJson(script), "application/json");
+	};
+
+	const exportShell = () => {
+		downloadTextFile(
+			`${baseName}.sh`,
+			formatCaseScriptShell(script, exportMeta),
+			"text/x-shellscript",
+		);
+	};
+
+	const viewTabs: { id: ScriptViewMode; label: string }[] = [
+		{ id: "steps", label: "Steps" },
+		{ id: "json", label: "JSON" },
+		{ id: "shell", label: "CLI shell" },
+	];
 
 	return (
 		<div className="flex w-full max-w-2xl flex-col gap-5">
@@ -692,35 +793,221 @@ function ScriptPanel({
 					) : null}
 				</dl>
 
-				<ol className="m-0 flex list-none flex-col gap-3 p-0">
-					{script.actions.map((action, index) => (
-						<li
-							className="flex items-start gap-3 rounded-xl border border-outline-variant/70 bg-surface-container-lowest px-3.5 py-3"
-							key={`${action.type}-${index}`}
-						>
-							<span
-								aria-hidden="true"
-								className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-helper font-bold text-on-primary"
+				<div className="mb-4 flex flex-wrap items-center gap-2">
+					{viewTabs.map((tab) => {
+						const isActive = view === tab.id;
+						return (
+							<button
+								className={
+									isActive
+										? "rounded-lg bg-primary px-3 py-1.5 text-body-sm font-semibold text-on-primary"
+										: "rounded-lg bg-surface-container px-3 py-1.5 text-body-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high"
+								}
+								disabled={editing && tab.id !== "json"}
+								key={tab.id}
+								onClick={() => setView(tab.id)}
+								type="button"
 							>
-								{index + 1}
-							</span>
-							<div className="min-w-0 flex-1">
-								<div className="flex flex-wrap items-center gap-2">
-									<span className="rounded-md bg-surface-container px-2 py-0.5 text-helper font-semibold uppercase tracking-wide text-on-surface">
-										{action.type}
-									</span>
-									<span className="text-body-md font-medium text-on-surface">
-										{scriptActionSummary(action)}
-									</span>
+								{tab.label}
+							</button>
+						);
+					})}
+				</div>
+
+				<div className="mb-5 flex flex-wrap items-center gap-2">
+					{editing ? (
+						<>
+							<Button
+								className="rounded-lg"
+								isDisabled={busy}
+								onPress={() => void saveEdit()}
+								variant="primary"
+							>
+								{busy ? "Saving…" : "Save script"}
+							</Button>
+							<Button
+								className="rounded-lg"
+								isDisabled={busy}
+								onPress={cancelEdit}
+								variant="secondary"
+							>
+								Cancel
+							</Button>
+						</>
+					) : (
+						<>
+							<Button
+								className="rounded-lg"
+								isDisabled={busy}
+								onPress={startEdit}
+								variant="secondary"
+							>
+								Edit
+							</Button>
+							<Button
+								className="rounded-lg"
+								isDisabled={busy}
+								onPress={exportJson}
+								variant="secondary"
+							>
+								Export JSON
+							</Button>
+							<Button
+								className="rounded-lg"
+								isDisabled={busy}
+								onPress={exportShell}
+								variant="secondary"
+							>
+								Export shell
+							</Button>
+							<Button
+								className="rounded-lg text-error data-[hovered=true]:bg-error-container/40"
+								isDisabled={busy}
+								onPress={() => setDeleteOpen(true)}
+								variant="ghost"
+							>
+								Delete
+							</Button>
+						</>
+					)}
+				</div>
+
+				{editError ? (
+					<p className="mb-3 text-body-sm text-error" role="alert">
+						{editError}
+					</p>
+				) : null}
+				{actionError ? (
+					<p className="mb-3 text-body-sm text-error" role="alert">
+						{actionError}
+					</p>
+				) : null}
+
+				{editing || view === "json" ? (
+					<div className="flex flex-col gap-2">
+						{editing ? (
+							<textarea
+								aria-label="CaseScript JSON"
+								className={`${fieldAreaClass} min-h-[22rem] font-mono text-body-sm leading-relaxed`}
+								onChange={(event) => setDraft(event.target.value)}
+								spellCheck={false}
+								value={draft}
+							/>
+						) : (
+							<pre className="max-h-[28rem] overflow-auto rounded-xl border border-outline-variant bg-surface-container px-4 py-3 font-mono text-body-sm leading-relaxed text-on-surface">
+								{formatCaseScriptJson(script).trimEnd()}
+							</pre>
+						)}
+						<p className="text-body-sm text-on-surface-variant">
+							Replay with{" "}
+							<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
+								yoqa script run {baseName}.yoqa.json
+							</code>{" "}
+							after connecting a device.
+						</p>
+					</div>
+				) : null}
+
+				{!editing && view === "shell" ? (
+					<div className="flex flex-col gap-2">
+						<pre className="max-h-[28rem] overflow-auto rounded-xl border border-outline-variant bg-surface-container px-4 py-3 font-mono text-body-sm leading-relaxed text-on-surface">
+							{formatCaseScriptShell(script, exportMeta).trimEnd()}
+						</pre>
+						<p className="text-body-sm text-on-surface-variant">
+							Shell export calls{" "}
+							<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
+								yoqa action
+							</code>{" "}
+							and{" "}
+							<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">sleep</code>.
+							Prefer JSON +{" "}
+							<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
+								yoqa script run
+							</code>{" "}
+							for structured replay.
+						</p>
+					</div>
+				) : null}
+
+				{!editing && view === "steps" ? (
+					<ol className="m-0 flex list-none flex-col gap-3 p-0">
+						{script.actions.map((action, index) => (
+							<li
+								className="flex items-start gap-3 rounded-xl border border-outline-variant/70 bg-surface-container-lowest px-3.5 py-3"
+								key={`${action.type}-${index}`}
+							>
+								<span
+									aria-hidden="true"
+									className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-helper font-bold text-on-primary"
+								>
+									{index + 1}
+								</span>
+								<div className="min-w-0 flex-1">
+									<div className="flex flex-wrap items-center gap-2">
+										<span className="rounded-md bg-surface-container px-2 py-0.5 text-helper font-semibold uppercase tracking-wide text-on-surface">
+											{action.type}
+										</span>
+										<span className="text-body-md font-medium text-on-surface">
+											{scriptActionSummary(action)}
+										</span>
+									</div>
+									{action.reason ? (
+										<p className="mt-1 text-body-sm text-on-surface-variant">{action.reason}</p>
+									) : null}
 								</div>
-								{action.reason ? (
-									<p className="mt-1 text-body-sm text-on-surface-variant">{action.reason}</p>
-								) : null}
-							</div>
-						</li>
-					))}
-				</ol>
+							</li>
+						))}
+					</ol>
+				) : null}
 			</section>
+
+			<AlertDialog>
+				<AlertDialog.Backdrop isOpen={deleteOpen} onOpenChange={setDeleteOpen}>
+					<AlertDialog.Container>
+						<AlertDialog.Dialog className="sm:max-w-[400px]">
+							<AlertDialog.CloseTrigger />
+							<AlertDialog.Header>
+								<AlertDialog.Icon status="danger" />
+								<AlertDialog.Heading>Delete saved script?</AlertDialog.Heading>
+							</AlertDialog.Header>
+							<AlertDialog.Body>
+								<p>
+									This removes the replayable script for{" "}
+									<strong>
+										#{caseNumber} {caseName}
+									</strong>
+									. Future runs will use the AI agent until a new script is saved.
+								</p>
+							</AlertDialog.Body>
+							<AlertDialog.Footer>
+								<Button slot="close" variant="tertiary">
+									Cancel
+								</Button>
+								<Button
+									isDisabled={busy}
+									onPress={() => {
+										void (async () => {
+											setActionError(null);
+											try {
+												await onDeleteScript();
+												setDeleteOpen(false);
+											} catch (error) {
+												setActionError(
+													error instanceof Error ? error.message : "Failed to delete script",
+												);
+												setDeleteOpen(false);
+											}
+										})();
+									}}
+									variant="danger"
+								>
+									Delete script
+								</Button>
+							</AlertDialog.Footer>
+						</AlertDialog.Dialog>
+					</AlertDialog.Container>
+				</AlertDialog.Backdrop>
+			</AlertDialog>
 		</div>
 	);
 }
@@ -837,6 +1124,18 @@ export function TestCaseDetailPage() {
 		onSuccess: (created) => {
 			void queryClient.invalidateQueries({ queryKey: casesQueryKey(created.appId) });
 			void navigate({ to: "/test-cases/$caseId", params: { caseId: created.id } });
+		},
+	});
+
+	const scriptMutation = useMutation({
+		mutationFn: async (script: CaseScript | null) => {
+			if (!caseId) throw new Error("Missing case id");
+			const client = await getRunnerClient();
+			return mapCatalogCase(await client.updateCase(caseId, { script }));
+		},
+		onSuccess: (updated) => {
+			queryClient.setQueryData(caseQueryKey(updated.id), updated);
+			void queryClient.invalidateQueries({ queryKey: casesQueryKey(updated.appId) });
 		},
 	});
 
@@ -975,7 +1274,19 @@ export function TestCaseDetailPage() {
 					) : null}
 				</Form>
 				{activeTab === "script" ? (
-					<ScriptPanel script={testCase.script} scriptSavedAt={testCase.scriptSavedAt} />
+					<ScriptPanel
+						busy={scriptMutation.isPending}
+						caseName={testCase.name}
+						caseNumber={testCase.number}
+						onDeleteScript={async () => {
+							await scriptMutation.mutateAsync(null);
+						}}
+						onSaveScript={async (next) => {
+							await scriptMutation.mutateAsync(next);
+						}}
+						script={testCase.script}
+						scriptSavedAt={testCase.scriptSavedAt}
+					/>
 				) : null}
 			</div>
 		</div>

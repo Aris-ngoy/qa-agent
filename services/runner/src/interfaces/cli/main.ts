@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { type DevicePlatform, createRunnerClient } from "@yoqa/runner-client";
+import { type DevicePlatform, caseScriptSchema, createRunnerClient } from "@yoqa/runner-client";
 import { Command } from "commander";
 import { runnerBaseUrl } from "../../settings";
 
@@ -1006,6 +1006,7 @@ runsCmd
 	.option("--platform <platform>", "ios | android (defaults to active session)")
 	.option("--build-id <id>", "Registered build id to install before run")
 	.option("--build-path <path>", "Absolute build path to register + install")
+	.option("--mode <mode>", "auto | script | agent (default: auto)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(
@@ -1018,6 +1019,7 @@ runsCmd
 				platform?: string;
 				buildId?: string;
 				buildPath?: string;
+				mode?: string;
 				json?: boolean;
 			},
 		) => {
@@ -1054,6 +1056,14 @@ runsCmd
 					throw new Error("--platform must be ios or android");
 				}
 
+				const executionMode =
+					options.mode === "script" || options.mode === "agent" || options.mode === "auto"
+						? options.mode
+						: undefined;
+				if (options.mode && !executionMode) {
+					throw new Error("--mode must be auto, script, or agent");
+				}
+
 				const run = await c.createRun({
 					appId: resolved.id,
 					caseIds,
@@ -1061,6 +1071,7 @@ runsCmd
 					platform,
 					buildId: options.buildId,
 					buildPath: options.buildPath,
+					executionMode,
 				});
 				if (options.json) {
 					console.log(JSON.stringify(run, null, 2));
@@ -1072,5 +1083,64 @@ runsCmd
 			}
 		},
 	);
+
+// --- script (exported CaseScript JSON) ---
+
+const scriptCmd = program.command("script").description("Replay exported CaseScript files");
+
+scriptCmd
+	.command("run")
+	.argument("<file>", "Path to a .yoqa.json / CaseScript JSON file")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON per step")
+	.action(async (file: string, options: { baseUrl: string; json?: boolean }) => {
+		try {
+			const raw = await Bun.file(file).text();
+			const parsed = caseScriptSchema.safeParse(JSON.parse(raw) as unknown);
+			if (!parsed.success) {
+				throw new Error(`Invalid CaseScript: ${parsed.error.message}`);
+			}
+
+			const c = client(options.baseUrl);
+			const active = await c.getActiveDevice();
+			if (!active) {
+				throw new Error("No active device session. Connect first: yoqa devices connect <id>");
+			}
+
+			const script = parsed.data;
+			let idx = 0;
+			for (const action of script.actions) {
+				idx += 1;
+				if (action.type === "wait") {
+					const ms = Math.min(3000, Math.max(500, action.ms));
+					if (options.json) {
+						console.log(JSON.stringify({ ok: true, kind: "wait", ms, step: idx }, null, 2));
+					} else {
+						console.log(`ok wait ${ms}ms (${idx}/${script.actions.length})`);
+					}
+					await Bun.sleep(ms);
+					continue;
+				}
+
+				const body =
+					action.type === "tap"
+						? await c.performAction({ kind: "tap", x: action.x, y: action.y })
+						: await c.performAction({ kind: "input", text: action.text });
+
+				if (options.json) {
+					console.log(JSON.stringify({ ...body, step: idx }, null, 2));
+				} else {
+					console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
+				}
+				await Bun.sleep(800);
+			}
+
+			if (!options.json) {
+				console.log(`done ${script.actions.length} steps`);
+			}
+		} catch (error) {
+			fail("script run", error);
+		}
+	});
 
 await program.parseAsync(process.argv);

@@ -282,6 +282,8 @@ export const updateCaseRequestSchema = z.object({
 		)
 		.optional(),
 	capabilities: z.array(capabilitySchema).optional(),
+	/** Set to replace the saved script; `null` clears it. */
+	script: caseScriptSchema.nullable().optional(),
 });
 
 export type UpdateCaseRequest = z.infer<typeof updateCaseRequestSchema>;

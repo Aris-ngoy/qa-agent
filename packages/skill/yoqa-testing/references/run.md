@@ -26,3 +26,15 @@ yoqa runs delete APP <run-id>                                   # delete a run a
 - `--build-id` and `--build-path` are mutually exclusive
 - The active device is picked up automatically — connect one first with `yoqa devices connect <id>`
 - Returns a `run_id`; inspect results (pass/fail, screenshots) with `yoqa runs get APP <run-id>`
+- Optional `--mode auto|script|agent` — prefer a saved script, force AI, or auto (default)
+
+## Exported scripts (no agent)
+
+After a successful agent run, the desktop app can export a CaseScript JSON file. Replay it without calling the model:
+
+```bash
+yoqa devices connect <device-id>
+yoqa script run ./login.yoqa.json
+```
+
+Shell exports (`.sh`) call `yoqa action tap|input` and `sleep` instead — useful for copy/paste debugging.

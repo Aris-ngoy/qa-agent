@@ -276,6 +276,13 @@ export {
 	type YoqaStatusResponse,
 };
 
+export {
+	formatCaseScriptJson,
+	formatCaseScriptShell,
+	suggestedScriptBasename,
+	type CaseScriptExportMeta,
+} from "./script-format";
+
 export type RunnerClientOptions = {
 	baseUrl?: string;
 	fetchImpl?: typeof fetch;

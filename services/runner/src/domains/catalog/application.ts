@@ -453,6 +453,17 @@ export async function updateCase(caseId: string, input: UpdateCaseRequest): Prom
 				input.capabilities !== undefined
 					? serializeCapabilities(input.capabilities)
 					: existing.appiumCaps,
+			...(input.script !== undefined
+				? input.script === null
+					? { scriptJson: null, scriptSavedAt: null }
+					: {
+							scriptJson: JSON.stringify({
+								...input.script,
+								savedAt: Date.now(),
+							}),
+							scriptSavedAt: Date.now(),
+						}
+				: {}),
 			updatedAt: Date.now(),
 		})
 		.where(eq(cases.id, caseId));
