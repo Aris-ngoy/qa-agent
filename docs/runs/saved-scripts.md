@@ -36,6 +36,7 @@ Rejected for this slice: structured per-step visual editor, invalidating scripts
 **Desktop**
 - Run button: no script → agent; any script → dialog (Use saved scripts / Use AI agent / Cancel)
 - Case detail **Script** tab: Steps / JSON / CLI shell, Edit, Delete, Export JSON / Export shell
+- Steps view: drag to reorder, delete individual steps (last step clears the script)
 
 ## How to verify
 
@@ -50,4 +51,4 @@ Rejected for this slice: structured per-step visual editor, invalidating scripts
 - Show a “Script” badge on the case list
 - Clear / re-record script when flows change
 - On script replay failure, optional one-click “retry with AI”
-- Structured step editor (not only JSON)
+- Structured step editor (not only JSON) — reorder + delete shipped; add/edit fields still JSON

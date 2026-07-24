@@ -685,6 +685,10 @@ function ScriptPanel({
 	const [editError, setEditError] = useState<string | null>(null);
 	const [deleteOpen, setDeleteOpen] = useState(false);
 	const [actionError, setActionError] = useState<string | null>(null);
+	const [steps, setSteps] = useState<CaseScriptAction[]>([]);
+	const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+	const stepsRef = useRef(steps);
+	stepsRef.current = steps;
 
 	const exportMeta = { caseNumber, caseName };
 
@@ -694,6 +698,11 @@ function ScriptPanel({
 			setEditError(null);
 		}
 	}, [script, editing]);
+
+	useEffect(() => {
+		if (!script || draggingIndex !== null) return;
+		setSteps(script.actions.map((action) => ({ ...action })));
+	}, [script, draggingIndex]);
 
 	if (!script) {
 		return (
@@ -709,6 +718,20 @@ function ScriptPanel({
 
 	const savedLabel = formatScriptSavedAt(scriptSavedAt ?? script.savedAt);
 	const baseName = suggestedScriptBasename(exportMeta);
+
+	const persistSteps = async (next: CaseScriptAction[]) => {
+		setActionError(null);
+		if (next.length === 0) {
+			await onDeleteScript();
+			return;
+		}
+		await onSaveScript({
+			version: 1,
+			sourceRunId: script.sourceRunId,
+			savedAt: Date.now(),
+			actions: next,
+		});
+	};
 
 	const startEdit = () => {
 		setDraft(formatCaseScriptJson(script).trimEnd());
@@ -759,6 +782,35 @@ function ScriptPanel({
 		);
 	};
 
+	const deleteStep = async (index: number) => {
+		const next = steps.filter((_, i) => i !== index);
+		setSteps(next);
+		try {
+			await persistSteps(next);
+		} catch (error) {
+			setSteps(script.actions.map((action) => ({ ...action })));
+			setActionError(error instanceof Error ? error.message : "Failed to delete step");
+		}
+	};
+
+	const finishReorder = async () => {
+		setDraggingIndex(null);
+		const next = stepsRef.current;
+		const same =
+			next.length === script.actions.length &&
+			next.every((action, index) => {
+				const original = script.actions[index];
+				return original != null && JSON.stringify(action) === JSON.stringify(original);
+			});
+		if (same) return;
+		try {
+			await persistSteps(next);
+		} catch (error) {
+			setSteps(script.actions.map((action) => ({ ...action })));
+			setActionError(error instanceof Error ? error.message : "Failed to reorder steps");
+		}
+	};
+
 	const viewTabs: { id: ScriptViewMode; label: string }[] = [
 		{ id: "steps", label: "Steps" },
 		{ id: "json", label: "JSON" },
@@ -776,7 +828,7 @@ function ScriptPanel({
 						</p>
 					</div>
 					<span className="rounded-full bg-secondary-container/70 px-3 py-1 text-helper font-semibold text-on-secondary-container">
-						{script.actions.length} step{script.actions.length === 1 ? "" : "s"}
+						{steps.length} step{steps.length === 1 ? "" : "s"}
 					</span>
 				</div>
 
@@ -842,7 +894,7 @@ function ScriptPanel({
 								onPress={startEdit}
 								variant="secondary"
 							>
-								Edit
+								Edit JSON
 							</Button>
 							<Button
 								className="rounded-lg"
@@ -866,7 +918,7 @@ function ScriptPanel({
 								onPress={() => setDeleteOpen(true)}
 								variant="ghost"
 							>
-								Delete
+								Delete all
 							</Button>
 						</>
 					)}
@@ -931,32 +983,99 @@ function ScriptPanel({
 
 				{!editing && view === "steps" ? (
 					<ol className="m-0 flex list-none flex-col gap-3 p-0">
-						{script.actions.map((action, index) => (
-							<li
-								className="flex items-start gap-3 rounded-xl border border-outline-variant/70 bg-surface-container-lowest px-3.5 py-3"
-								key={`${action.type}-${index}`}
-							>
-								<span
-									aria-hidden="true"
-									className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-helper font-bold text-on-primary"
+						{steps.map((action, index) => {
+							const isDragging = draggingIndex === index;
+							return (
+								<li
+									className={[
+										"flex items-start gap-3 rounded-xl border border-outline-variant/70 bg-surface-container-lowest px-3.5 py-3 transition-all",
+										isDragging ? "scale-[0.99] border-primary/30 opacity-60 shadow-float" : "",
+									]
+										.filter(Boolean)
+										.join(" ")}
+									key={`${action.type}-${index}-${action.reason ?? ""}`}
+									onDragOver={(event) => {
+										event.preventDefault();
+										event.dataTransfer.dropEffect = "move";
+										if (draggingIndex === null || draggingIndex === index) return;
+										setSteps((current) => {
+											const next = [...current];
+											const [moved] = next.splice(draggingIndex, 1);
+											if (!moved) return current;
+											next.splice(index, 0, moved);
+											return next;
+										});
+										setDraggingIndex(index);
+									}}
+									onDrop={(event) => {
+										event.preventDefault();
+										void finishReorder();
+									}}
 								>
-									{index + 1}
-								</span>
-								<div className="min-w-0 flex-1">
-									<div className="flex flex-wrap items-center gap-2">
-										<span className="rounded-md bg-surface-container px-2 py-0.5 text-helper font-semibold uppercase tracking-wide text-on-surface">
-											{action.type}
+									<button
+										aria-label={`Drag to rearrange step ${index + 1}`}
+										className={[
+											"flex shrink-0 cursor-grab flex-col items-center justify-center gap-1.5 self-stretch rounded-xl border border-outline-variant bg-surface-container px-2 py-2.5 text-on-surface shadow-card transition-colors",
+											"hover:border-primary/30 hover:bg-surface-container-high",
+											"active:cursor-grabbing active:bg-surface-container-highest",
+											isDragging ? "border-primary/40 bg-surface-container-high" : "",
+											busy ? "pointer-events-none opacity-50" : "",
+										].join(" ")}
+										draggable={!busy}
+										onDragEnd={() => {
+											void finishReorder();
+										}}
+										onDragStart={(event) => {
+											event.dataTransfer.effectAllowed = "move";
+											event.dataTransfer.setData("text/plain", String(index));
+											if (event.currentTarget.parentElement) {
+												event.dataTransfer.setDragImage(event.currentTarget.parentElement, 24, 24);
+											}
+											setDraggingIndex(index);
+										}}
+										title="Drag to rearrange"
+										type="button"
+									>
+										<GripIcon className="size-4" />
+										<span
+											aria-hidden="true"
+											className="flex size-7 items-center justify-center rounded-full bg-primary text-helper font-bold text-on-primary"
+										>
+											{index + 1}
 										</span>
-										<span className="text-body-md font-medium text-on-surface">
-											{scriptActionSummary(action)}
-										</span>
+									</button>
+
+									<div className="min-w-0 flex-1">
+										<div className="flex flex-wrap items-center gap-2">
+											<span className="rounded-md bg-surface-container px-2 py-0.5 text-helper font-semibold uppercase tracking-wide text-on-surface">
+												{action.type}
+											</span>
+											<span className="text-body-md font-medium text-on-surface">
+												{scriptActionSummary(action)}
+											</span>
+										</div>
+										{action.reason ? (
+											<p className="mt-1 text-body-sm text-on-surface-variant">{action.reason}</p>
+										) : null}
 									</div>
-									{action.reason ? (
-										<p className="mt-1 text-body-sm text-on-surface-variant">{action.reason}</p>
-									) : null}
-								</div>
-							</li>
-						))}
+
+									<button
+										aria-label={`Delete step ${index + 1}`}
+										className="flex size-8 shrink-0 items-center justify-center self-start rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error disabled:opacity-40"
+										disabled={busy}
+										onClick={() => void deleteStep(index)}
+										title={
+											steps.length === 1
+												? "Delete this step (removes the whole script)"
+												: "Delete step"
+										}
+										type="button"
+									>
+										<TrashIcon className="size-4" />
+									</button>
+								</li>
+							);
+						})}
 					</ol>
 				) : null}
 			</section>
