@@ -159,6 +159,8 @@ async function loadCaseDetail(caseId: string): Promise<CatalogCase | null> {
 		tags: tagRows.map((t) => t.name),
 		flows: steps,
 		capabilities: parseCapabilities(row.appiumCaps),
+		hasScript: Boolean(row.scriptJson && row.scriptJson !== "null"),
+		scriptSavedAt: row.scriptSavedAt ?? null,
 		lastRunAt: row.lastRunAt,
 		lastRunStatus: parseRunStatus(row.lastRunStatus),
 		createdAt: row.createdAt,
@@ -569,4 +571,32 @@ export async function deleteTag(tagId: string): Promise<void> {
 		throw new CatalogNotFoundError("Tag not found");
 	}
 	await db.delete(tags).where(eq(tags.id, tagId));
+}
+
+/** Persist a replayable script on a case (from a successful agent run). */
+export async function saveCaseScript(
+	caseId: string,
+	scriptJson: string,
+	savedAt: number,
+): Promise<void> {
+	const db = getCatalogDb();
+	const existing = await db.query.cases.findFirst({ where: eq(cases.id, caseId) });
+	if (!existing) {
+		throw new CatalogNotFoundError("Case not found");
+	}
+	await db
+		.update(cases)
+		.set({
+			scriptJson,
+			scriptSavedAt: savedAt,
+			updatedAt: savedAt,
+		})
+		.where(eq(cases.id, caseId));
+}
+
+/** Raw script JSON for replay (null when missing). */
+export async function getCaseScriptJson(caseId: string): Promise<string | null> {
+	const db = getCatalogDb();
+	const row = await db.query.cases.findFirst({ where: eq(cases.id, caseId) });
+	return row?.scriptJson ?? null;
 }

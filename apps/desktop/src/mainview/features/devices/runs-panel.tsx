@@ -3,13 +3,17 @@ import { getRunnerClient } from "@/app/runner-client";
 import { useApps } from "@/features/apps/context";
 import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
 import { runsListQueryKey } from "@/features/runs/list-page";
-import { casesQueryKey } from "@/features/test-cases/data";
+import { type TestCase, casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
-import { Button, Dropdown, Label, ListBox, Select } from "@heroui/react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { AlertDialog, Button, Dropdown, Label, ListBox, Select } from "@heroui/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { type SetupPlatformRequest, createRunnerClient } from "@yoqa/runner-client";
-import { type SVGProps, useEffect, useRef, useState } from "react";
+import {
+	type RunExecutionMode,
+	type SetupPlatformRequest,
+	createRunnerClient,
+} from "@yoqa/runner-client";
+import { type SVGProps, useEffect, useMemo, useRef, useState } from "react";
 import { DeviceSetupPanel, type DeviceSetupStatus } from "./device-setup-panel";
 import { type DevicePlatform, SelectDeviceModal, type SelectedDevice } from "./select-device-modal";
 
@@ -223,7 +227,7 @@ export function RunsPanel() {
 	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
 	const { selectedCaseIds } = useTestCaseSelection();
-	const { activeRunId, isRunLive, setActiveRun } = useActiveRun();
+	const { activeRunId, isRunLive, setActiveRun, run: activeRun } = useActiveRun();
 	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [deviceReady, setDeviceReady] = useState(false);
 	const [setupDevice, setSetupDevice] = useState<SelectedDevice | null>(null);
@@ -236,10 +240,28 @@ export function RunsPanel() {
 	const [wdaOpen, setWdaOpen] = useState(false);
 	const [modalPlatform, setModalPlatform] = useState<DevicePlatform | null>(null);
 	const [runError, setRunError] = useState<string | null>(null);
+	const [executionPromptOpen, setExecutionPromptOpen] = useState(false);
 	const setupAbortRef = useRef<AbortController | null>(null);
 
+	const casesQuery = useQuery({
+		queryKey: selectedApp ? casesQueryKey(selectedApp.id) : ["catalog", "cases", "none"],
+		enabled: Boolean(selectedApp),
+		queryFn: async () => {
+			if (!selectedApp) return [] as TestCase[];
+			const client = await getRunnerClient();
+			const cases = await client.listCases(selectedApp.id);
+			return cases.map((row) => mapCatalogCase(row));
+		},
+	});
+
+	const selectedCasesWithScript = useMemo(() => {
+		const cases = casesQuery.data ?? [];
+		const selected = new Set(selectedCaseIds);
+		return cases.filter((item) => selected.has(item.id) && item.hasScript);
+	}, [casesQuery.data, selectedCaseIds]);
+
 	const runMutation = useMutation({
-		mutationFn: async () => {
+		mutationFn: async (executionMode: RunExecutionMode) => {
 			if (!selectedApp) {
 				throw new Error("Select an app first");
 			}
@@ -261,10 +283,12 @@ export function RunsPanel() {
 				caseIds: selectedCaseIds,
 				deviceId: device.id,
 				platform: device.platform,
+				executionMode,
 			});
 		},
 		onMutate: () => {
 			setRunError(null);
+			setExecutionPromptOpen(false);
 		},
 		onSuccess: (run) => {
 			if (selectedApp) {
@@ -389,6 +413,15 @@ export function RunsPanel() {
 		};
 	}, [setupDevice, setupAttempt, setupForce]);
 
+	// After a run finishes, refresh cases so newly saved scripts show up.
+	useEffect(() => {
+		if (!activeRun || activeRun.status === "queued" || activeRun.status === "running") {
+			return;
+		}
+		void queryClient.invalidateQueries({ queryKey: casesQueryKey(activeRun.appId) });
+		void queryClient.invalidateQueries({ queryKey: runsListQueryKey(activeRun.appId) });
+	}, [activeRun, queryClient]);
+
 	const canRun = Boolean(
 		selectedApp &&
 			device &&
@@ -419,7 +452,12 @@ export function RunsPanel() {
 			cancelMutation.mutate();
 			return;
 		}
-		runMutation.mutate();
+		if (selectedCasesWithScript.length > 0) {
+			setExecutionPromptOpen(true);
+			return;
+		}
+		// No saved scripts → AI agent by default.
+		runMutation.mutate("agent");
 	};
 
 	return (
@@ -591,6 +629,50 @@ export function RunsPanel() {
 					status={setupStatus}
 				/>
 			) : null}
+
+			<AlertDialog>
+				<AlertDialog.Backdrop isOpen={executionPromptOpen} onOpenChange={setExecutionPromptOpen}>
+					<AlertDialog.Container>
+						<AlertDialog.Dialog className="sm:max-w-[420px]">
+							<AlertDialog.CloseTrigger />
+							<AlertDialog.Header>
+								<AlertDialog.Heading>How should we run?</AlertDialog.Heading>
+							</AlertDialog.Header>
+							<AlertDialog.Body>
+								<p>
+									{selectedCasesWithScript.length === 1
+										? "This test case has a saved script from a previous successful run."
+										: `${selectedCasesWithScript.length} selected test cases have saved scripts.`}{" "}
+									Use the script for a fast replay without AI, or run with the AI agent instead.
+								</p>
+							</AlertDialog.Body>
+							<AlertDialog.Footer className="flex flex-wrap gap-2">
+								<Button
+									onPress={() => setExecutionPromptOpen(false)}
+									slot="close"
+									variant="tertiary"
+								>
+									Cancel
+								</Button>
+								<Button
+									isDisabled={runMutation.isPending}
+									onPress={() => runMutation.mutate("agent")}
+									variant="secondary"
+								>
+									Use AI agent
+								</Button>
+								<Button
+									isDisabled={runMutation.isPending}
+									onPress={() => runMutation.mutate("script")}
+									variant="primary"
+								>
+									Use saved scripts
+								</Button>
+							</AlertDialog.Footer>
+						</AlertDialog.Dialog>
+					</AlertDialog.Container>
+				</AlertDialog.Backdrop>
+			</AlertDialog>
 		</>
 	);
 }

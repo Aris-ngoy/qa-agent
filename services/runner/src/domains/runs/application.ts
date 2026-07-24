@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import type {
 	CreateRunRequest,
 	Run,
+	RunExecutionMode,
 	RunStatus,
 	RunStep,
 	RunTest,
@@ -9,7 +10,7 @@ import type {
 } from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
-import { getApp, getCase } from "../catalog/application";
+import { getApp, getCase, getCaseScriptJson, saveCaseScript } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
 import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
@@ -21,6 +22,7 @@ import {
 	isAbsurdNoScreenshotFail,
 } from "./agent";
 import { runSteps, runTests, runs } from "./schema";
+import { buildScriptFromDecisions, parseCaseScript, serializeCaseScript } from "./script";
 import { type DeviceSession, createDeviceSession } from "./session";
 
 const MAX_STEPS_PER_CASE = 25;
@@ -81,6 +83,20 @@ function clearControl(runId: string): void {
 	runControls.delete(runId);
 }
 
+function parseRunExecutionMode(value: string | null | undefined): RunExecutionMode {
+	if (value === "script" || value === "agent" || value === "auto") return value;
+	return "auto";
+}
+
+function resolveCaseExecutionMode(
+	runMode: RunExecutionMode,
+	hasScript: boolean,
+): "script" | "agent" {
+	if (runMode === "agent") return "agent";
+	if (hasScript) return "script";
+	return "agent";
+}
+
 async function loadRun(runId: string): Promise<Run | null> {
 	const db = getCatalogDb();
 	const runRow = await db.query.runs.findFirst({ where: eq(runs.id, runId) });
@@ -105,11 +121,14 @@ async function loadRun(runId: string): Promise<Run | null> {
 			detail: step.detail,
 			createdAt: step.createdAt,
 		}));
+		const caseMode =
+			test.executionMode === "script" || test.executionMode === "agent" ? test.executionMode : null;
 		tests.push({
 			id: test.id,
 			runId: test.runId,
 			caseId: test.caseId,
 			status: test.status as RunTestStatus,
+			executionMode: caseMode,
 			error: test.error,
 			startedAt: test.startedAt,
 			finishedAt: test.finishedAt,
@@ -124,6 +143,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 		platform: runRow.platform as Run["platform"],
 		buildId: runRow.buildId,
 		status: runRow.status as RunStatus,
+		executionMode: parseRunExecutionMode(runRow.executionMode),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -198,34 +218,151 @@ async function persistCancelled(runId: string): Promise<void> {
 	}
 }
 
-async function executeCase(input: {
+async function executeScriptCase(input: {
+	runId: string;
+	runTestId: string;
+	caseId: string;
+	session: DeviceSession;
+}): Promise<"passed" | "errored" | "cancelled"> {
+	const script = parseCaseScript(await getCaseScriptJson(input.caseId));
+	if (!script) {
+		return "errored";
+	}
+
+	let stepIdx = 0;
+	let lastScreenshotUri: string | null = null;
+
+	try {
+		for (const action of script.actions) {
+			if (isAborted(input.runId)) {
+				return "cancelled";
+			}
+
+			const shotStarted = Date.now();
+			const shot = await input.session.screenshot();
+			lastScreenshotUri = shot.path;
+			const latencyMs = Date.now() - shotStarted;
+
+			if (isAborted(input.runId)) {
+				return "cancelled";
+			}
+
+			if (action.type === "tap") {
+				await input.session.tap(action.x, action.y);
+				await sleep(POST_ACTION_SETTLE_MS);
+				await appendStep({
+					runTestId: input.runTestId,
+					idx: stepIdx,
+					action: {
+						type: "tap",
+						x: action.x,
+						y: action.y,
+						reason: action.reason ?? "Replayed saved script tap",
+						thoughts: "Replaying the saved script without calling the AI agent.",
+					},
+					screenshotUri: shot.path,
+					ok: true,
+					latencyMs,
+					detail: action.reason ?? null,
+				});
+			} else if (action.type === "type") {
+				await input.session.type(action.text);
+				await sleep(POST_ACTION_SETTLE_MS);
+				await appendStep({
+					runTestId: input.runTestId,
+					idx: stepIdx,
+					action: {
+						type: "type",
+						text: action.text,
+						reason: action.reason ?? "Replayed saved script type",
+						thoughts: "Replaying the saved script without calling the AI agent.",
+					},
+					screenshotUri: shot.path,
+					ok: true,
+					latencyMs,
+					detail: action.reason ?? null,
+				});
+			} else {
+				const waitMs = Math.min(3000, Math.max(500, action.ms));
+				await sleep(waitMs);
+				await appendStep({
+					runTestId: input.runTestId,
+					idx: stepIdx,
+					action: {
+						type: "wait",
+						ms: waitMs,
+						reason: action.reason ?? `wait ${waitMs}ms`,
+						thoughts: "Replaying the saved script without calling the AI agent.",
+					},
+					screenshotUri: shot.path,
+					ok: true,
+					latencyMs,
+					detail: action.reason ?? `wait ${waitMs}ms`,
+				});
+			}
+
+			stepIdx += 1;
+		}
+
+		await appendStep({
+			runTestId: input.runTestId,
+			idx: stepIdx,
+			action: {
+				type: "done",
+				reason: "Saved script completed",
+				thoughts: "All replayed script actions finished successfully.",
+			},
+			screenshotUri: lastScreenshotUri,
+			ok: true,
+			latencyMs: 0,
+			detail: "Saved script completed",
+		});
+
+		return "passed";
+	} catch (error) {
+		if (isAborted(input.runId)) {
+			return "cancelled";
+		}
+		const message = error instanceof Error ? error.message : String(error);
+		await appendStep({
+			runTestId: input.runTestId,
+			idx: stepIdx,
+			action: {
+				type: "fail",
+				reason: message,
+				thoughts: `Script replay stopped because of an error: ${message}`,
+			},
+			screenshotUri: lastScreenshotUri,
+			ok: false,
+			latencyMs: 0,
+			detail: message,
+		});
+		return "errored";
+	}
+}
+
+async function executeAgentCase(input: {
 	runId: string;
 	runTestId: string;
 	caseId: string;
 	appContext: string;
 	session: DeviceSession;
 	auth: ActiveProviderAuth;
-}): Promise<"passed" | "errored" | "cancelled"> {
-	const db = getCatalogDb();
+}): Promise<{
+	status: "passed" | "errored" | "cancelled";
+	decisions: AgentDecision[];
+	error: string | null;
+}> {
 	const catalogCase = await getCase(input.caseId);
 	if (!catalogCase) {
 		throw new RunValidationError(`Case not found: ${input.caseId}`);
 	}
 
-	if (isAborted(input.runId)) {
-		return "cancelled";
-	}
-
-	const startedAt = Date.now();
-	await db
-		.update(runTests)
-		.set({ status: "running", startedAt, error: null })
-		.where(eq(runTests.id, input.runTestId));
-
 	let stepIdx = 0;
 	let caseStatus: "passed" | "errored" | "cancelled" = "passed";
 	let caseError: string | null = null;
 	let lastScreenshotUri: string | null = null;
+	const recordedDecisions: AgentDecision[] = [];
 
 	try {
 		const flows =
@@ -301,6 +438,7 @@ async function executeCase(input: {
 				}
 
 				recentActions.push(decision);
+				recordedDecisions.push(decision);
 
 				if (decision.type === "tap") {
 					const x = decision.x ?? 500;
@@ -399,6 +537,72 @@ async function executeCase(input: {
 	}
 
 	if (isAborted(input.runId) || caseStatus === "cancelled") {
+		return { status: "cancelled", decisions: recordedDecisions, error: null };
+	}
+
+	return { status: caseStatus, decisions: recordedDecisions, error: caseError };
+}
+
+async function executeCase(input: {
+	runId: string;
+	runTestId: string;
+	caseId: string;
+	appContext: string;
+	session: DeviceSession;
+	auth: ActiveProviderAuth | null;
+	caseMode: "script" | "agent";
+}): Promise<"passed" | "errored" | "cancelled"> {
+	const db = getCatalogDb();
+
+	if (isAborted(input.runId)) {
+		return "cancelled";
+	}
+
+	const startedAt = Date.now();
+	await db
+		.update(runTests)
+		.set({
+			status: "running",
+			startedAt,
+			error: null,
+			executionMode: input.caseMode,
+		})
+		.where(eq(runTests.id, input.runTestId));
+
+	let caseStatus: "passed" | "errored" | "cancelled";
+	let caseError: string | null = null;
+	let decisions: AgentDecision[] = [];
+
+	if (input.caseMode === "script") {
+		const scriptStatus = await executeScriptCase({
+			runId: input.runId,
+			runTestId: input.runTestId,
+			caseId: input.caseId,
+			session: input.session,
+		});
+		if (scriptStatus === "errored") {
+			const script = parseCaseScript(await getCaseScriptJson(input.caseId));
+			caseError = script ? "Saved script replay failed" : "Saved script is missing or invalid";
+		}
+		caseStatus = scriptStatus;
+	} else if (!input.auth) {
+		caseStatus = "errored";
+		caseError = "No vision-capable provider configured for AI agent runs";
+	} else {
+		const result = await executeAgentCase({
+			runId: input.runId,
+			runTestId: input.runTestId,
+			caseId: input.caseId,
+			appContext: input.appContext,
+			session: input.session,
+			auth: input.auth,
+		});
+		caseStatus = result.status;
+		decisions = result.decisions;
+		caseError = result.error;
+	}
+
+	if (isAborted(input.runId) || caseStatus === "cancelled") {
 		return "cancelled";
 	}
 
@@ -412,6 +616,15 @@ async function executeCase(input: {
 		})
 		.where(eq(runTests.id, input.runTestId));
 	await updateCaseLastRun(input.caseId, caseStatus, finishedAt);
+
+	// Persist a replayable script after a successful AI agent run.
+	if (caseStatus === "passed" && input.caseMode === "agent") {
+		const script = buildScriptFromDecisions(decisions, input.runId);
+		if (script) {
+			await saveCaseScript(input.caseId, serializeCaseScript(script), script.savedAt);
+		}
+	}
+
 	return caseStatus;
 }
 
@@ -440,10 +653,25 @@ export async function executeRun(runId: string): Promise<void> {
 			return;
 		}
 
-		const auth = await assertVisionCapableProvider(await resolveActiveProviderAuth());
 		const app = await getApp(run.appId);
 		if (!app) {
 			throw new RunValidationError("App not found");
+		}
+
+		const caseModes: Array<{ caseId: string; mode: "script" | "agent" }> = [];
+		for (const test of run.tests) {
+			const catalogCase = await getCase(test.caseId);
+			const hasScript = Boolean(catalogCase?.hasScript);
+			caseModes.push({
+				caseId: test.caseId,
+				mode: resolveCaseExecutionMode(run.executionMode, hasScript),
+			});
+		}
+		const needsAgent = caseModes.some((item) => item.mode === "agent");
+
+		let auth: ActiveProviderAuth | null = null;
+		if (needsAgent) {
+			auth = await assertVisionCapableProvider(await resolveActiveProviderAuth());
 		}
 
 		if (run.buildId) {
@@ -493,6 +721,10 @@ export async function executeRun(runId: string): Promise<void> {
 				continue;
 			}
 
+			const caseMode =
+				caseModes.find((item) => item.caseId === test.caseId)?.mode ??
+				resolveCaseExecutionMode(run.executionMode, catalogCase.hasScript);
+
 			const status = await executeCase({
 				runId,
 				runTestId: test.id,
@@ -500,6 +732,7 @@ export async function executeRun(runId: string): Promise<void> {
 				appContext: app.context,
 				session,
 				auth,
+				caseMode,
 			});
 			if (status === "cancelled" || isAborted(runId)) {
 				await persistCancelled(runId);
@@ -574,6 +807,8 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		throw new RunValidationError("App not found");
 	}
 
+	const executionMode: RunExecutionMode = input.executionMode ?? "auto";
+	const catalogCases = [];
 	for (const caseId of uniqueCaseIds) {
 		const catalogCase = await getCase(caseId);
 		if (!catalogCase) {
@@ -582,15 +817,22 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		if (catalogCase.appId !== input.appId) {
 			throw new RunValidationError(`Case ${caseId} does not belong to app ${input.appId}`);
 		}
+		catalogCases.push(catalogCase);
 	}
 
-	try {
-		await assertVisionCapableProvider(await resolveActiveProviderAuth());
-	} catch (error) {
-		if (error instanceof AgentProviderError) {
-			throw new RunValidationError(error.message);
+	const needsAgent = catalogCases.some(
+		(catalogCase) => resolveCaseExecutionMode(executionMode, catalogCase.hasScript) === "agent",
+	);
+
+	if (needsAgent) {
+		try {
+			await assertVisionCapableProvider(await resolveActiveProviderAuth());
+		} catch (error) {
+			if (error instanceof AgentProviderError) {
+				throw new RunValidationError(error.message);
+			}
+			throw error;
 		}
-		throw error;
 	}
 
 	const db = getCatalogDb();
@@ -613,6 +855,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		platform: input.platform,
 		buildId,
 		status: "queued",
+		executionMode,
 		error: null,
 		createdAt: now,
 		startedAt: null,
@@ -625,6 +868,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 			runId,
 			caseId,
 			status: "queued",
+			executionMode: null,
 			error: null,
 			startedAt: null,
 			finishedAt: null,
@@ -674,11 +918,14 @@ export async function listRuns(appId: string): Promise<Run[]> {
 	const testsByRunId = new Map<string, RunTest[]>();
 	for (const test of testRows) {
 		const list = testsByRunId.get(test.runId) ?? [];
+		const caseMode =
+			test.executionMode === "script" || test.executionMode === "agent" ? test.executionMode : null;
 		list.push({
 			id: test.id,
 			runId: test.runId,
 			caseId: test.caseId,
 			status: test.status as RunTestStatus,
+			executionMode: caseMode,
 			error: test.error,
 			startedAt: test.startedAt,
 			finishedAt: test.finishedAt,
@@ -693,6 +940,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		platform: runRow.platform as Run["platform"],
 		buildId: runRow.buildId,
 		status: runRow.status as RunStatus,
+		executionMode: parseRunExecutionMode(runRow.executionMode),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,

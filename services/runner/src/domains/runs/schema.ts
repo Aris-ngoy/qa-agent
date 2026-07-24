@@ -10,6 +10,8 @@ export const runs = sqliteTable("runs", {
 	platform: text("platform").notNull(),
 	buildId: text("build_id"),
 	status: text("status").notNull(),
+	/** auto | script | agent — how cases should be executed */
+	executionMode: text("execution_mode").notNull().default("auto"),
 	error: text("error"),
 	createdAt: integer("created_at").notNull(),
 	startedAt: integer("started_at"),
@@ -25,6 +27,8 @@ export const runTests = sqliteTable("run_tests", {
 		.notNull()
 		.references(() => cases.id, { onDelete: "cascade" }),
 	status: text("status").notNull(),
+	/** script | agent — resolved mode used for this case */
+	executionMode: text("execution_mode"),
 	error: text("error"),
 	startedAt: integer("started_at"),
 	finishedAt: integer("finished_at"),

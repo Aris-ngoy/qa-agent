@@ -57,6 +57,8 @@ function ensureSchema(sqlite: Database): void {
 			number INTEGER NOT NULL,
 			title TEXT NOT NULL,
 			appium_caps TEXT NOT NULL DEFAULT '[]',
+			script_json TEXT,
+			script_saved_at INTEGER,
 			last_run_at INTEGER,
 			last_run_status TEXT,
 			created_at INTEGER NOT NULL,
@@ -106,6 +108,7 @@ function ensureSchema(sqlite: Database): void {
 			platform TEXT NOT NULL,
 			build_id TEXT,
 			status TEXT NOT NULL,
+			execution_mode TEXT NOT NULL DEFAULT 'auto',
 			error TEXT,
 			created_at INTEGER NOT NULL,
 			started_at INTEGER,
@@ -117,6 +120,7 @@ function ensureSchema(sqlite: Database): void {
 			run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
 			case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
 			status TEXT NOT NULL,
+			execution_mode TEXT,
 			error TEXT,
 			started_at INTEGER,
 			finished_at INTEGER
@@ -148,6 +152,8 @@ function ensureSchema(sqlite: Database): void {
 
 	migrateProvidersTable(sqlite);
 	migrateAppsPrefix(sqlite);
+	migrateCaseScripts(sqlite);
+	migrateRunExecutionMode(sqlite);
 }
 
 function tableColumns(sqlite: Database, table: string): Set<string> {
@@ -165,6 +171,30 @@ function addColumnIfMissing(
 	if (existing.has(column)) return;
 	sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
 	existing.add(column);
+}
+
+function migrateCaseScripts(sqlite: Database): void {
+	const existing = tableColumns(sqlite, "cases");
+	if (existing.size === 0) return;
+	addColumnIfMissing(sqlite, "cases", "script_json", "script_json TEXT", existing);
+	addColumnIfMissing(sqlite, "cases", "script_saved_at", "script_saved_at INTEGER", existing);
+}
+
+function migrateRunExecutionMode(sqlite: Database): void {
+	const runCols = tableColumns(sqlite, "runs");
+	if (runCols.size > 0) {
+		addColumnIfMissing(
+			sqlite,
+			"runs",
+			"execution_mode",
+			"execution_mode TEXT NOT NULL DEFAULT 'auto'",
+			runCols,
+		);
+	}
+	const testCols = tableColumns(sqlite, "run_tests");
+	if (testCols.size > 0) {
+		addColumnIfMissing(sqlite, "run_tests", "execution_mode", "execution_mode TEXT", testCols);
+	}
 }
 
 function migrateProvidersTable(sqlite: Database): void {

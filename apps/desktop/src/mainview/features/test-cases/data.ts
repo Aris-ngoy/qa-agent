@@ -20,6 +20,8 @@ export type TestCase = {
 	tags: string[];
 	flows: TestFlow[];
 	capabilities: Array<{ id: string; key: string; value: string }>;
+	hasScript: boolean;
+	scriptSavedAt: number | null;
 	createdAt: number;
 	updatedAt: number;
 	lastRunAt: number | null;
@@ -64,6 +66,8 @@ export function mapCatalogCase(row: CatalogCase, now = Date.now()): TestCase {
 			flowId: flow.flowId ?? null,
 		})),
 		capabilities: row.capabilities.map((cap) => ({ ...cap })),
+		hasScript: row.hasScript,
+		scriptSavedAt: row.scriptSavedAt,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 		lastRunAt: row.lastRunAt,

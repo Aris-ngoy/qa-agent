@@ -196,6 +196,36 @@ export type CaseFlowStep = z.infer<typeof caseFlowStepSchema>;
 export const caseRunStatusSchema = z.union([z.literal("passed"), z.literal("errored")]);
 export type CaseRunStatus = z.infer<typeof caseRunStatusSchema>;
 
+export const caseScriptActionSchema = z.discriminatedUnion("type", [
+	z.object({
+		type: z.literal("tap"),
+		x: z.number().min(0).max(1000),
+		y: z.number().min(0).max(1000),
+		reason: z.string().optional(),
+	}),
+	z.object({
+		type: z.literal("type"),
+		text: z.string(),
+		reason: z.string().optional(),
+	}),
+	z.object({
+		type: z.literal("wait"),
+		ms: z.number().min(0).max(10_000),
+		reason: z.string().optional(),
+	}),
+]);
+
+export type CaseScriptAction = z.infer<typeof caseScriptActionSchema>;
+
+export const caseScriptSchema = z.object({
+	version: z.literal(1),
+	sourceRunId: z.string().min(1).optional(),
+	savedAt: z.number().int().nonnegative(),
+	actions: z.array(caseScriptActionSchema).min(1),
+});
+
+export type CaseScript = z.infer<typeof caseScriptSchema>;
+
 export const catalogCaseSchema = z.object({
 	id: z.string().min(1),
 	appId: z.string().min(1),
@@ -204,6 +234,8 @@ export const catalogCaseSchema = z.object({
 	tags: z.array(z.string()),
 	flows: z.array(caseFlowStepSchema),
 	capabilities: z.array(capabilitySchema),
+	hasScript: z.boolean(),
+	scriptSavedAt: z.number().int().nonnegative().nullable(),
 	lastRunAt: z.number().int().nonnegative().nullable(),
 	lastRunStatus: caseRunStatusSchema.nullable(),
 	createdAt: z.number().int().nonnegative(),
@@ -489,6 +521,13 @@ export const runTestStatusSchema = z.union([
 ]);
 export type RunTestStatus = z.infer<typeof runTestStatusSchema>;
 
+export const runExecutionModeSchema = z.union([
+	z.literal("auto"),
+	z.literal("script"),
+	z.literal("agent"),
+]);
+export type RunExecutionMode = z.infer<typeof runExecutionModeSchema>;
+
 export const createRunRequestSchema = z.object({
 	appId: z.string().min(1),
 	caseIds: z.array(z.string().min(1)).min(1),
@@ -496,6 +535,13 @@ export const createRunRequestSchema = z.object({
 	platform: devicePlatformSchema,
 	buildId: z.string().min(1).optional(),
 	buildPath: z.string().min(1).optional(),
+	/**
+	 * How to execute cases:
+	 * - `auto` (default): replay saved script when present, otherwise AI agent
+	 * - `script`: prefer saved scripts (falls back to agent when a case has none)
+	 * - `agent`: always use the AI agent
+	 */
+	executionMode: runExecutionModeSchema.optional(),
 });
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 
@@ -517,6 +563,10 @@ export const runTestSchema = z.object({
 	runId: z.string().min(1),
 	caseId: z.string().min(1),
 	status: runTestStatusSchema,
+	executionMode: z
+		.union([z.literal("script"), z.literal("agent")])
+		.nullable()
+		.optional(),
 	error: z.string().nullable(),
 	startedAt: z.number().int().nonnegative().nullable(),
 	finishedAt: z.number().int().nonnegative().nullable(),
@@ -531,6 +581,7 @@ export const runSchema = z.object({
 	platform: devicePlatformSchema,
 	buildId: z.string().nullable(),
 	status: runStatusSchema,
+	executionMode: runExecutionModeSchema,
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	startedAt: z.number().int().nonnegative().nullable(),
