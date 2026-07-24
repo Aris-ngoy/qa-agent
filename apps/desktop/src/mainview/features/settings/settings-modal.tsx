@@ -1,15 +1,17 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
 import { Button, ListBox, Modal, Select } from "@heroui/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, type SVGProps, useEffect, useMemo, useState } from "react";
+import type { CliEnvironmentSnapshot } from "../../../shared/cli-environment";
 import type {
 	IosToolchainSnapshot,
 	SigningIdentity,
 	SigningTier,
 	XcodeInstallation,
 } from "../../../shared/ios-toolchain";
+import { ProvidersSection } from "./providers/providers-section";
 
-type SettingsSection = "ios" | "cli";
+type SettingsSection = "ios" | "cli" | "provider";
 type IdentityFilter = "all" | SigningTier;
 
 type SettingsModalProps = {
@@ -20,18 +22,11 @@ type SettingsModalProps = {
 const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "ios", label: "iOS" },
 	{ id: "cli", label: "CLI & Agents" },
+	{ id: "provider", label: "Provider" },
 ];
 
-const SKILL_TARGETS = [
-	{ id: "standard", label: "Standard", path: "~/.agents/skills/yoqa-testing" },
-	{ id: "claude", label: "Claude", path: "~/.claude/skills/yoqa-testing" },
-	{ id: "cursor", label: "Cursor", path: "~/.cursor/skills/yoqa-testing" },
-	{ id: "codex", label: "Codex", path: "~/.codex/skills/yoqa-testing" },
-] as const;
-
-const SKILL_FOLDER = "~/Library/Application Support/yoqa/skills/yoqa-testing";
-
 const IOS_TOOLCHAIN_QUERY_KEY = ["ios-toolchain"] as const;
+const CLI_ENVIRONMENT_QUERY_KEY = ["cli-environment"] as const;
 
 function Icon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -395,7 +390,88 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	);
 }
 
-function CliSettings() {
+function CliSettings({ enabled }: { enabled: boolean }) {
+	const queryClient = useQueryClient();
+	const [cliError, setCliError] = useState<string | null>(null);
+	const [skillError, setSkillError] = useState<string | null>(null);
+	const [openError, setOpenError] = useState<string | null>(null);
+
+	const envQuery = useQuery({
+		queryKey: CLI_ENVIRONMENT_QUERY_KEY,
+		enabled,
+		queryFn: async () => getDesktopRpc().request.getCliEnvironment(),
+		staleTime: 10_000,
+	});
+
+	const snapshot = envQuery.data;
+
+	const installCliMutation = useMutation({
+		mutationFn: async () => getDesktopRpc().request.installCli(),
+		onSuccess: (result) => {
+			if (!result.ok) {
+				setCliError(result.error);
+				return;
+			}
+			setCliError(null);
+			void queryClient.invalidateQueries({ queryKey: CLI_ENVIRONMENT_QUERY_KEY });
+		},
+		onError: (error) => {
+			setCliError(error instanceof Error ? error.message : String(error));
+		},
+	});
+
+	const installSkillMutation = useMutation({
+		mutationFn: async () => getDesktopRpc().request.installSkill(),
+		onSuccess: (result) => {
+			if (!result.ok) {
+				setSkillError(result.error);
+				return;
+			}
+			setSkillError(null);
+			queryClient.setQueryData<CliEnvironmentSnapshot>(CLI_ENVIRONMENT_QUERY_KEY, (current) => {
+				if (!current) return current;
+				return {
+					...current,
+					skill: {
+						...current.skill,
+						installed: true,
+						installDir: result.installDir,
+						targets: result.targets,
+					},
+				};
+			});
+		},
+		onError: (error) => {
+			setSkillError(error instanceof Error ? error.message : String(error));
+		},
+	});
+
+	const openFolderMutation = useMutation({
+		mutationFn: async () => getDesktopRpc().request.openSkillFolder(),
+		onSuccess: (result) => {
+			if (!result.ok) {
+				setOpenError(result.error);
+				return;
+			}
+			setOpenError(null);
+		},
+		onError: (error) => {
+			setOpenError(error instanceof Error ? error.message : String(error));
+		},
+	});
+
+	const cliInstalled = snapshot?.cli.status === "installed";
+	const cliButtonLabel = installCliMutation.isPending
+		? "Installing…"
+		: cliInstalled
+			? "Reinstall"
+			: "Install";
+	const skillButtonLabel = installSkillMutation.isPending
+		? "Installing…"
+		: snapshot?.skill.targets.every((t) => t.status === "linked")
+			? "Reinstall"
+			: "Install";
+
 	return (
 		<div className="flex flex-col gap-6">
 			<header>
@@ -404,6 +480,12 @@ function CliSettings() {
 					Tools for terminal and AI agent integrations.
 				</p>
 			</header>
+
+			{envQuery.isLoading ? (
+				<p className="text-body-md text-on-surface-variant">Checking install status…</p>
+			) : envQuery.isError ? (
+				<p className="text-body-md text-error">Could not load CLI & Agents status.</p>
+			) : null}
 
 			<SectionCard>
 				<div className="flex items-start gap-3">
@@ -416,9 +498,28 @@ function CliSettings() {
 							Install the <code className="font-mono text-on-surface">yoqa</code> command to run
 							tests from your terminal.
 						</p>
+						{cliInstalled && snapshot.cli.status === "installed" ? (
+							<p className="mt-2 font-mono text-helper text-on-surface-variant">
+								Installed at {snapshot.cli.path}
+							</p>
+						) : snapshot?.cli.status === "foreign" ? (
+							<p className="mt-2 text-body-sm text-error">
+								A different yoqa exists at {snapshot.cli.path}. Remove it before installing.
+							</p>
+						) : null}
+						{snapshot?.cli.pathHint ? (
+							<p className="mt-2 text-body-sm text-on-surface-variant">{snapshot.cli.pathHint}</p>
+						) : null}
+						{cliError ? <p className="mt-2 text-body-sm text-error">{cliError}</p> : null}
 					</div>
-					<Button className="shrink-0" size="sm" variant="primary">
-						Install
+					<Button
+						className="shrink-0"
+						isDisabled={installCliMutation.isPending || snapshot?.cli.status === "foreign"}
+						onPress={() => installCliMutation.mutate()}
+						size="sm"
+						variant="primary"
+					>
+						{cliButtonLabel}
 					</Button>
 				</div>
 			</SectionCard>
@@ -446,24 +547,37 @@ function CliSettings() {
 								sync automatically when the app updates.
 							</p>
 							<ul className="mt-3 space-y-2">
-								{SKILL_TARGETS.map((target) => (
+								{(snapshot?.skill.targets ?? []).map((target) => (
 									<li
 										key={target.id}
 										className="flex items-start gap-2 text-body-sm text-on-surface-variant"
 									>
-										<span aria-hidden="true" className="mt-0.5 text-outline">
-											×
+										<span
+											aria-hidden="true"
+											className={[
+												"mt-0.5",
+												target.status === "linked" ? "text-primary" : "text-outline",
+											].join(" ")}
+										>
+											{target.status === "linked" ? "✓" : "×"}
 										</span>
 										<span>
 											<span className="font-medium text-on-surface">{target.label}</span>{" "}
-											<span className="font-mono text-helper">{target.path}</span>
+											<span className="font-mono text-helper">{target.displayPath}</span>
 										</span>
 									</li>
 								))}
 							</ul>
+							{skillError ? <p className="mt-2 text-body-sm text-error">{skillError}</p> : null}
 						</div>
-						<Button className="shrink-0" size="sm" variant="primary">
-							Install
+						<Button
+							className="shrink-0"
+							isDisabled={installSkillMutation.isPending}
+							onPress={() => installSkillMutation.mutate()}
+							size="sm"
+							variant="primary"
+						>
+							{skillButtonLabel}
 						</Button>
 					</div>
 				</div>
@@ -475,13 +589,21 @@ function CliSettings() {
 						yourself.
 					</p>
 					<div className="mt-3 flex flex-wrap items-center gap-3">
-						<Button className="gap-2" size="sm" variant="secondary">
+						<Button
+							className="gap-2"
+							isDisabled={openFolderMutation.isPending}
+							onPress={() => openFolderMutation.mutate()}
+							size="sm"
+							variant="secondary"
+						>
 							<FolderIcon />
-							Open folder
+							{openFolderMutation.isPending ? "Opening…" : "Open folder"}
 						</Button>
 					</div>
+					{openError ? <p className="mt-2 text-body-sm text-error">{openError}</p> : null}
 					<p className="mt-2 truncate font-mono text-helper text-on-surface-variant">
-						{SKILL_FOLDER}
+						{snapshot?.skill.displayInstallDir ??
+							"~/Library/Application Support/yoqa/skills/yoqa-testing"}
 					</p>
 				</div>
 			</SectionCard>
@@ -534,8 +656,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 							<div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-8 py-6">
 								{section === "ios" ? (
 									<IosSettings enabled={open && section === "ios"} />
+								) : section === "cli" ? (
+									<CliSettings enabled={open && section === "cli"} />
 								) : (
-									<CliSettings />
+									<ProvidersSection enabled={open && section === "provider"} />
 								)}
 							</div>
 						</Modal.Body>

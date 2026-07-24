@@ -1,0 +1,48 @@
+---
+description: After every plan-then-build session, write a docs entry for what was done
+alwaysApply: true
+---
+
+# Document plan-and-build work
+
+Whenever a feature or change is **planned first** (Plan mode, design discussion, or an agreed build plan) and then **implemented**, document the outcome before considering the work done.
+
+## When this applies
+
+- User asked to plan, then build / implement
+- Agent switched from Plan → Agent and shipped the plan
+- Multi-step builds that followed an explicit plan (even mid-conversation)
+
+## When this does not apply
+
+- Tiny one-off fixes with no plan step
+- Pure Q&A or exploration with no implementation
+- Documentation-only or rule-only changes (unless the plan itself was about docs)
+
+## What to write
+
+Create or update a markdown file under `docs/`:
+
+| Kind of work | Path |
+|--------------|------|
+| Feature / domain change | `docs/<area>/<short-slug>.md` (e.g. `docs/providers/provider-settings.md`) |
+| Cross-cutting / architecture | `docs/architecture/<short-slug>.md` |
+| One-off session notes | `docs/sessions/YYYY-MM-DD-<short-slug>.md` |
+
+Prefer a durable area doc when the topic will keep evolving; use a session note for ephemeral build logs.
+
+## Required sections
+
+Every new or updated doc must cover:
+
+1. **Goal** — what we set out to do (from the plan)
+2. **Plan summary** — key decisions and rejected alternatives (brief)
+3. **What shipped** — concrete changes (packages/files/APIs/UI), not a file dump
+4. **How to verify** — how someone can check it works
+5. **Follow-ups** — known gaps, TODOs, or next steps (or “none”)
+
+Keep it concise. Link to existing specs (`ARCHITECTURE.md`, etc.) instead of duplicating them.
+
+## Timing
+
+Write the doc **after implementation is complete** (or after a meaningful partial milestone), in the same turn or immediately after the build finishes—do not wait for the user to ask.

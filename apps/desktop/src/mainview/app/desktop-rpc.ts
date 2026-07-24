@@ -1,4 +1,10 @@
 import { Electroview } from "electrobun/view";
+import type {
+	CliEnvironmentSnapshot,
+	InstallResult,
+	InstallSkillResult,
+	OpenPathResult,
+} from "../../shared/cli-environment";
 import type { IosToolchainPreferences, IosToolchainSnapshot } from "../../shared/ios-toolchain";
 import type { DesktopRPC, EnsureLocalServicesResult } from "../../shared/rpc";
 
@@ -12,6 +18,10 @@ export type DesktopRpcClient = {
 			xcodeDeveloperDir?: string | null;
 			signingIdentityHash?: string | null;
 		}) => Promise<IosToolchainPreferences>;
+		getCliEnvironment: () => Promise<CliEnvironmentSnapshot>;
+		installCli: () => Promise<InstallResult>;
+		installSkill: () => Promise<InstallSkillResult>;
+		openSkillFolder: () => Promise<OpenPathResult>;
 	};
 };
 

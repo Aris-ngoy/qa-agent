@@ -1,5 +1,13 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
+import { getRunnerClient } from "@/app/runner-client";
+import { useApps } from "@/features/apps/context";
+import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
+import { runsListQueryKey } from "@/features/runs/list-page";
+import { casesQueryKey } from "@/features/test-cases/data";
+import { useTestCaseSelection } from "@/features/test-cases/selection-context";
 import { Button, Dropdown, Label, ListBox, Select } from "@heroui/react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { type SetupPlatformRequest, createRunnerClient } from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useRef, useState } from "react";
 import { DeviceSetupPanel, type DeviceSetupStatus } from "./device-setup-panel";
@@ -36,7 +44,11 @@ async function resolveIosPhysicalSetup(): Promise<
 	};
 }
 
-async function setupSelectedDevice(device: SelectedDevice, signal: AbortSignal) {
+async function setupSelectedDevice(
+	device: SelectedDevice,
+	signal: AbortSignal,
+	options?: { force?: boolean },
+) {
 	const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
 	const client = createRunnerClient({ baseUrl });
 
@@ -44,6 +56,7 @@ async function setupSelectedDevice(device: SelectedDevice, signal: AbortSignal) 
 		platform: device.platform,
 		deviceId: device.id,
 		kind: device.kind,
+		force: options?.force === true ? true : undefined,
 	};
 
 	if (device.platform === "ios" && device.kind === "physical") {
@@ -53,12 +66,13 @@ async function setupSelectedDevice(device: SelectedDevice, signal: AbortSignal) 
 	return client.setupPlatform(request, { signal });
 }
 
-const BUILDS = [
-	{ id: "tf-128", label: "TestFlight #128" },
-	{ id: "local-1.2.0", label: "1.2.0 (local)" },
-	{ id: "ci-8921", label: "CI build #8921" },
-	{ id: "store-1.1.4", label: "App Store 1.1.4" },
+/** WebDriverAgent policy for iOS physical runs (`force` maps to setup `--force`). */
+const WDA_MODES = [
+	{ id: "skip", label: "Skip" },
+	{ id: "rebuild", label: "Rebuild" },
 ] as const;
+
+type WdaMode = (typeof WDA_MODES)[number]["id"];
 
 const PLATFORMS = [
 	{ id: "ios", label: "iOS", available: true },
@@ -205,21 +219,93 @@ const PLATFORM_ICONS = {
 } as const;
 
 export function RunsPanel() {
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
+	const { selectedApp } = useApps();
+	const { selectedCaseIds } = useTestCaseSelection();
+	const { activeRunId, isRunLive, setActiveRun } = useActiveRun();
 	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [deviceReady, setDeviceReady] = useState(false);
 	const [setupDevice, setSetupDevice] = useState<SelectedDevice | null>(null);
 	const [setupStatus, setSetupStatus] = useState<DeviceSetupStatus>("loading");
 	const [setupMessage, setSetupMessage] = useState<string | null>(null);
 	const [setupAttempt, setSetupAttempt] = useState(0);
-	const [buildId, setBuildId] = useState<string | null>(null);
+	const [setupForce, setSetupForce] = useState(false);
+	const [wdaMode, setWdaMode] = useState<WdaMode>("skip");
 	const [deviceOpen, setDeviceOpen] = useState(false);
-	const [buildOpen, setBuildOpen] = useState(false);
+	const [wdaOpen, setWdaOpen] = useState(false);
 	const [modalPlatform, setModalPlatform] = useState<DevicePlatform | null>(null);
+	const [runError, setRunError] = useState<string | null>(null);
 	const setupAbortRef = useRef<AbortController | null>(null);
+
+	const runMutation = useMutation({
+		mutationFn: async () => {
+			if (!selectedApp) {
+				throw new Error("Select an app first");
+			}
+			if (!device || !deviceReady) {
+				throw new Error("Select a ready device");
+			}
+			if (selectedCaseIds.length === 0) {
+				throw new Error("Select at least one test case");
+			}
+
+			// Rebuild → force WebDriverAgent rebuild/install on physical iOS (setup `--force`).
+			if (wdaMode === "rebuild" && device.platform === "ios" && device.kind === "physical") {
+				await setupSelectedDevice(device, new AbortController().signal, { force: true });
+			}
+
+			const client = await getRunnerClient();
+			return client.createRun({
+				appId: selectedApp.id,
+				caseIds: selectedCaseIds,
+				deviceId: device.id,
+				platform: device.platform,
+			});
+		},
+		onMutate: () => {
+			setRunError(null);
+		},
+		onSuccess: (run) => {
+			if (selectedApp) {
+				void queryClient.invalidateQueries({ queryKey: casesQueryKey(selectedApp.id) });
+				void queryClient.invalidateQueries({ queryKey: runsListQueryKey(selectedApp.id) });
+			}
+			queryClient.setQueryData(runQueryKey(run.id), run);
+			setActiveRun(run.id);
+			setRunError(null);
+			void navigate({ to: "/runs/$runId", params: { runId: run.id } });
+		},
+		onError: (error) => {
+			setRunError(error instanceof Error ? error.message : "Failed to start run");
+		},
+	});
+
+	const cancelMutation = useMutation({
+		mutationFn: async () => {
+			if (!activeRunId) {
+				throw new Error("No active run");
+			}
+			const client = await getRunnerClient();
+			return client.cancelRun(activeRunId);
+		},
+		onMutate: () => {
+			setRunError(null);
+		},
+		onSuccess: (run) => {
+			queryClient.setQueryData(runQueryKey(run.id), run);
+			if (selectedApp) {
+				void queryClient.invalidateQueries({ queryKey: casesQueryKey(selectedApp.id) });
+			}
+		},
+		onError: (error) => {
+			setRunError(error instanceof Error ? error.message : "Failed to cancel run");
+		},
+	});
 
 	const openPlatformModal = (platform: DevicePlatform) => {
 		setDeviceOpen(false);
-		setBuildOpen(false);
+		setWdaOpen(false);
 		setModalPlatform(platform);
 	};
 
@@ -229,6 +315,7 @@ export function RunsPanel() {
 		setDeviceReady(false);
 		setSetupStatus("loading");
 		setSetupMessage(null);
+		setSetupForce(false);
 		setSetupDevice(selected);
 		setSetupAttempt((n) => n + 1);
 	};
@@ -237,6 +324,7 @@ export function RunsPanel() {
 		setupAbortRef.current?.abort();
 		setupAbortRef.current = null;
 		setSetupDevice(null);
+		setSetupForce(false);
 		setSetupStatus("loading");
 		setSetupMessage(null);
 		setDeviceReady(false);
@@ -246,6 +334,7 @@ export function RunsPanel() {
 		if (!setupDevice) return;
 		setSetupStatus("loading");
 		setSetupMessage(null);
+		setSetupForce(true);
 		setSetupAttempt((n) => n + 1);
 	};
 
@@ -256,6 +345,7 @@ export function RunsPanel() {
 
 		void setupAttempt;
 		const selected = setupDevice;
+		const forceRebuild = setupForce;
 		const controller = new AbortController();
 		setupAbortRef.current = controller;
 
@@ -263,7 +353,7 @@ export function RunsPanel() {
 		setSetupStatus("loading");
 		setSetupMessage(
 			isIosPhysical
-				? "Building and installing WebDriverAgent on your device…"
+				? "Preparing iOS device…"
 				: selected.platform === "ios"
 					? "Installing Appium XCUITest driver…"
 					: "Installing Appium UiAutomator2 driver…",
@@ -271,11 +361,12 @@ export function RunsPanel() {
 
 		void (async () => {
 			try {
-				await setupSelectedDevice(selected, controller.signal);
+				await setupSelectedDevice(selected, controller.signal, { force: forceRebuild });
 				if (controller.signal.aborted) return;
 				setDevice(selected);
 				setDeviceReady(true);
 				setSetupDevice(null);
+				setSetupForce(false);
 				setSetupStatus("loading");
 				setSetupMessage(null);
 			} catch (error) {
@@ -296,146 +387,191 @@ export function RunsPanel() {
 		return () => {
 			controller.abort();
 		};
-	}, [setupDevice, setupAttempt]);
+	}, [setupDevice, setupAttempt, setupForce]);
 
-	const canRun = Boolean(device && deviceReady && buildId);
-	const runTitle =
-		!device || !deviceReady
-			? setupDevice
-				? "Waiting for device setup to finish"
-				: "Select a device and build to run"
-			: !buildId
-				? "Select a build to run"
-				: "Run tests";
+	const canRun = Boolean(
+		selectedApp &&
+			device &&
+			deviceReady &&
+			wdaMode &&
+			selectedCaseIds.length > 0 &&
+			!runMutation.isPending &&
+			!isRunLive,
+	);
+	const runTitle = isRunLive
+		? "Cancel run"
+		: runMutation.isPending
+			? wdaMode === "rebuild" && device?.platform === "ios" && device.kind === "physical"
+				? "Rebuilding WebDriverAgent…"
+				: "Starting run…"
+			: !selectedApp
+				? "Select an app to run"
+				: selectedCaseIds.length === 0
+					? "Select test cases to run"
+					: !device || !deviceReady
+						? setupDevice
+							? "Waiting for device setup to finish"
+							: "Select a device to run"
+						: `Run ${selectedCaseIds.length} test${selectedCaseIds.length === 1 ? "" : "s"}`;
+
+	const onPrimaryClick = () => {
+		if (isRunLive) {
+			cancelMutation.mutate();
+			return;
+		}
+		runMutation.mutate();
+	};
 
 	return (
 		<>
-			<header className="flex w-full shrink-0 items-center justify-between gap-4 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-4 py-3 shadow-soft backdrop-blur-md">
-				<div className="blob-actions flex shrink-0 items-center gap-4 px-5 py-3.5 shadow-card">
-					<button
-						aria-expanded={deviceOpen}
-						aria-haspopup="menu"
-						aria-label="Select device"
-						className="text-white/90 transition-opacity hover:opacity-100"
-						onClick={() => {
-							setBuildOpen(false);
-							setDeviceOpen(true);
-						}}
-						title="Select device"
-						type="button"
-					>
-						<PhoneIcon className="size-6" />
-					</button>
-					<button
-						aria-expanded={buildOpen}
-						aria-haspopup="listbox"
-						aria-label="Select build"
-						className="text-white/90 transition-opacity hover:opacity-100"
-						onClick={() => {
-							setDeviceOpen(false);
-							setBuildOpen(true);
-						}}
-						title="Select build"
-						type="button"
-					>
-						<KeyIcon />
-					</button>
-					<button
-						aria-label="Export results"
-						className="text-white/90 transition-opacity hover:opacity-100"
-						title="Export results"
-						type="button"
-					>
-						<DownloadIcon />
-					</button>
-				</div>
-
-				<div className="flex min-w-0 shrink-0 items-center gap-3">
-					<Dropdown isOpen={deviceOpen} onOpenChange={setDeviceOpen}>
-						<Button
+			<header className="flex w-full shrink-0 flex-col gap-2 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-4 py-3 shadow-soft backdrop-blur-md">
+				<div className="flex w-full items-center justify-between gap-4">
+					<div className="blob-actions flex shrink-0 items-center gap-4 px-5 py-3.5 shadow-card">
+						<button
+							aria-expanded={deviceOpen}
+							aria-haspopup="menu"
 							aria-label="Select device"
-							className="h-10 w-[13.5rem] justify-start gap-2 rounded-full border border-outline-variant bg-surface-container-lowest px-3.5 text-body-md shadow-none data-[hovered=true]:bg-surface-container-low"
-							variant="outline"
+							className="text-white/90 transition-opacity hover:opacity-100"
+							onClick={() => {
+								setWdaOpen(false);
+								setDeviceOpen(true);
+							}}
+							title="Select device"
+							type="button"
 						>
-							<span className="inline-flex shrink-0 items-center text-on-surface-variant">
-								<PhoneIcon />
-							</span>
-							<span
-								className={`min-w-0 flex-1 truncate text-left ${device || setupDevice ? "text-on-surface" : "text-on-surface-variant"}`}
-							>
-								{setupDevice?.label ?? device?.label ?? "Select device"}
-							</span>
-							<span className="text-on-surface-variant">
-								<ChevronDownIcon />
-							</span>
-						</Button>
-						<Dropdown.Popover className="w-[13.5rem]">
-							<Dropdown.Menu
-								onAction={(key) => {
-									const id = String(key);
-									if (id === "ios" || id === "android") {
-										openPlatformModal(id);
-									}
-								}}
-							>
-								{PLATFORMS.map((platform) => {
-									const Icon = PLATFORM_ICONS[platform.id];
-									return (
-										<Dropdown.Item
-											id={platform.id}
-											isDisabled={!platform.available}
-											key={platform.id}
-											textValue={platform.label}
-										>
-											<Icon />
-											<Label className="flex-1">{platform.label}</Label>
-											{platform.available ? null : (
-												<span className="text-helper text-on-surface-variant">soon</span>
-											)}
-										</Dropdown.Item>
-									);
-								})}
-							</Dropdown.Menu>
-						</Dropdown.Popover>
-					</Dropdown>
+							<PhoneIcon className="size-6" />
+						</button>
+						<button
+							aria-expanded={wdaOpen}
+							aria-haspopup="listbox"
+							aria-label="WebDriverAgent mode"
+							className="text-white/90 transition-opacity hover:opacity-100"
+							onClick={() => {
+								setDeviceOpen(false);
+								setWdaOpen(true);
+							}}
+							title="WebDriverAgent: Skip or Rebuild"
+							type="button"
+						>
+							<KeyIcon />
+						</button>
+						<button
+							aria-label="Export results"
+							className="text-white/90 transition-opacity hover:opacity-100"
+							title="Export results"
+							type="button"
+						>
+							<DownloadIcon />
+						</button>
+					</div>
 
-					<Select
-						aria-label="Select build"
-						className="w-[11.5rem]"
-						isOpen={buildOpen}
-						placeholder="Select build"
-						selectedKey={buildId}
-						onOpenChange={setBuildOpen}
-						onSelectionChange={(key) => setBuildId(key == null ? null : String(key))}
-					>
-						<Select.Trigger className="h-10 items-center gap-2 rounded-full border border-outline-variant bg-surface-container-lowest px-3.5 shadow-none">
-							<Select.Value />
-							<Select.Indicator className="text-on-surface-variant" />
-						</Select.Trigger>
-						<Select.Popover>
-							<ListBox>
-								{BUILDS.map((build) => (
-									<ListBox.Item id={build.id} key={build.id} textValue={build.label}>
-										{build.label}
-										<ListBox.ItemIndicator />
-									</ListBox.Item>
-								))}
-							</ListBox>
-						</Select.Popover>
-					</Select>
+					<div className="flex min-w-0 shrink-0 items-center gap-3">
+						<Dropdown isOpen={deviceOpen} onOpenChange={setDeviceOpen}>
+							<Button
+								aria-label="Select device"
+								className="h-10 w-[13.5rem] justify-start gap-2 rounded-full border border-outline-variant bg-surface-container-lowest px-3.5 text-body-md shadow-none data-[hovered=true]:bg-surface-container-low"
+								variant="outline"
+							>
+								<span className="inline-flex shrink-0 items-center text-on-surface-variant">
+									<PhoneIcon />
+								</span>
+								<span
+									className={`min-w-0 flex-1 truncate text-left ${device || setupDevice ? "text-on-surface" : "text-on-surface-variant"}`}
+								>
+									{setupDevice?.label ?? device?.label ?? "Select device"}
+								</span>
+								<span className="text-on-surface-variant">
+									<ChevronDownIcon />
+								</span>
+							</Button>
+							<Dropdown.Popover className="w-[13.5rem]">
+								<Dropdown.Menu
+									onAction={(key) => {
+										const id = String(key);
+										if (id === "ios" || id === "android") {
+											openPlatformModal(id);
+										}
+									}}
+								>
+									{PLATFORMS.map((platform) => {
+										const Icon = PLATFORM_ICONS[platform.id];
+										return (
+											<Dropdown.Item
+												id={platform.id}
+												isDisabled={!platform.available}
+												key={platform.id}
+												textValue={platform.label}
+											>
+												<Icon />
+												<Label className="flex-1">{platform.label}</Label>
+												{platform.available ? null : (
+													<span className="text-helper text-on-surface-variant">soon</span>
+												)}
+											</Dropdown.Item>
+										);
+									})}
+								</Dropdown.Menu>
+							</Dropdown.Popover>
+						</Dropdown>
 
-					<button
-						aria-label="Run tests"
-						className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-float transition-transform enabled:hover:scale-105 disabled:opacity-40"
-						disabled={!canRun}
-						title={runTitle}
-						type="button"
-					>
-						<svg aria-hidden="true" className="size-6" fill="currentColor" viewBox="0 0 24 24">
-							<path d="M8 5.5v13l11-6.5L8 5.5Z" />
-						</svg>
-					</button>
+						<Select
+							aria-label="WebDriverAgent mode"
+							className="w-[11.5rem]"
+							isOpen={wdaOpen}
+							placeholder="WDA"
+							selectedKey={wdaMode}
+							onOpenChange={setWdaOpen}
+							onSelectionChange={(key) => {
+								if (key === "skip" || key === "rebuild") {
+									setWdaMode(key);
+								}
+							}}
+						>
+							<Select.Trigger className="h-10 items-center gap-2 rounded-full border border-outline-variant bg-surface-container-lowest px-3.5 shadow-none">
+								<Select.Value />
+								<Select.Indicator className="text-on-surface-variant" />
+							</Select.Trigger>
+							<Select.Popover>
+								<ListBox>
+									{WDA_MODES.map((mode) => (
+										<ListBox.Item id={mode.id} key={mode.id} textValue={mode.label}>
+											{mode.label}
+											<ListBox.ItemIndicator />
+										</ListBox.Item>
+									))}
+								</ListBox>
+							</Select.Popover>
+						</Select>
+
+						<button
+							aria-label={isRunLive ? "Cancel run" : "Run tests"}
+							className={[
+								"flex size-14 shrink-0 items-center justify-center rounded-full shadow-float transition-transform enabled:hover:scale-105 disabled:opacity-40",
+								isRunLive ? "bg-error text-on-error" : "bg-primary text-on-primary",
+							].join(" ")}
+							disabled={isRunLive ? cancelMutation.isPending : !canRun}
+							onClick={onPrimaryClick}
+							title={runTitle}
+							type="button"
+						>
+							{isRunLive ? (
+								<svg aria-hidden="true" className="size-6" fill="currentColor" viewBox="0 0 24 24">
+									<rect height="14" rx="1.5" width="4" x="6" y="5" />
+									<rect height="14" rx="1.5" width="4" x="14" y="5" />
+								</svg>
+							) : (
+								<svg aria-hidden="true" className="size-6" fill="currentColor" viewBox="0 0 24 24">
+									<path d="M8 5.5v13l11-6.5L8 5.5Z" />
+								</svg>
+							)}
+						</button>
+					</div>
 				</div>
+				{runError ? (
+					<p className="px-1 text-body-sm text-error" role="alert">
+						{runError}
+					</p>
+				) : null}
 			</header>
 
 			<SelectDeviceModal

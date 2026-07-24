@@ -15,7 +15,11 @@ export type IosWdaInstallParams = {
 	codeSignIdentity: string;
 	/** Override APPIUM_HOME when resolving the bundled WDA project */
 	appiumHome?: string;
+	/** When true, always rebuild and reinstall even if prep/cache is valid */
+	force?: boolean;
 };
+
+export type IosWdaAction = "reused" | "reinstalled" | "built";
 
 export type IosWdaInstallResult = {
 	ok: true;
@@ -23,6 +27,7 @@ export type IosWdaInstallResult = {
 	appPath: string;
 	derivedDataPath: string;
 	deviceId: string;
+	action: IosWdaAction;
 };
 
 export type DevicePrepRecord = {

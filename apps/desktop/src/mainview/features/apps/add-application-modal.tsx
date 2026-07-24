@@ -1,13 +1,5 @@
-import { Button, Modal, SearchField } from "@heroui/react";
+import { Button, Input, Label, Modal, TextField } from "@heroui/react";
 import { useEffect, useState } from "react";
-
-const SUGGESTIONS = [
-	"PlayZone: Get Paid Real Money",
-	"FIFA Official App",
-	"Bally's GameZone",
-	"PlayZone Arcade Hub",
-	"PlayZone Pro",
-] as const;
 
 type AddApplicationModalProps = {
 	open: boolean;
@@ -16,104 +8,72 @@ type AddApplicationModalProps = {
 };
 
 export function AddApplicationModal({ open, onClose, onAdd }: AddApplicationModalProps) {
-	const [query, setQuery] = useState("");
+	const [name, setName] = useState("");
 
 	useEffect(() => {
 		if (open) {
-			setQuery("");
+			setName("");
 		}
 	}, [open]);
 
-	const trimmed = query.trim();
-	const matches = trimmed
-		? SUGGESTIONS.filter((name) => name.toLowerCase().includes(trimmed.toLowerCase()))
-		: [...SUGGESTIONS];
-	const exactMatch = matches.some((name) => name.toLowerCase() === trimmed.toLowerCase());
-	const showCreate = Boolean(trimmed) && !exactMatch;
+	const trimmed = name.trim();
+	const canCreate = trimmed.length > 0;
 
-	const submit = (name: string) => {
-		onAdd(name);
+	const submit = () => {
+		if (!canCreate) return;
+		onAdd(trimmed);
 		onClose();
 	};
 
 	return (
 		<Modal>
 			<Modal.Backdrop isOpen={open} onOpenChange={(next) => !next && onClose()} variant="opaque">
-				<Modal.Container placement="center" scroll="inside" size="lg">
-					<Modal.Dialog className="max-h-[min(32rem,90vh)] sm:max-w-2xl">
+				<Modal.Container placement="center" size="md">
+					<Modal.Dialog className="sm:max-w-lg">
 						<Modal.CloseTrigger />
 						<Modal.Header>
 							<Modal.Heading className="text-headline-md text-on-surface">
-								Add Application
+								Create application
 							</Modal.Heading>
 						</Modal.Header>
-						<Modal.Body className="gap-0 p-0">
-							<div className="px-6 py-4">
-								<SearchField
-									aria-label="Search or enter app name"
-									fullWidth
-									name="app-name"
-									onChange={setQuery}
+						<Modal.Body className="gap-4">
+							<p className="text-body-md text-on-surface-variant">
+								Add the mobile app you want to test. You can configure bundle IDs and Appium
+								capabilities after it is created.
+							</p>
+							<TextField className="w-full" name="app-name" onChange={setName} value={name}>
+								<Label className="mb-1.5 text-subheading text-on-surface">
+									App name <span className="text-error">*</span>
+								</Label>
+								<Input
+									autoFocus
+									className="w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3.5 py-3 text-body-md text-on-surface shadow-none placeholder:text-on-surface-variant/65 focus:border-primary/35 focus:outline-none focus:ring-2 focus:ring-primary/10"
 									onKeyDown={(event) => {
-										if (event.key === "Enter" && trimmed) {
+										if (event.key === "Enter") {
 											event.preventDefault();
-											submit(trimmed);
+											submit();
 										}
 									}}
-									value={query}
-									variant="secondary"
-								>
-									<SearchField.Group>
-										<SearchField.SearchIcon />
-										<SearchField.Input autoFocus placeholder="Search or enter app name" />
-										<SearchField.ClearButton />
-									</SearchField.Group>
-								</SearchField>
-							</div>
-
-							<div className="min-h-0 flex-1 overflow-y-auto border-t border-outline-variant">
-								{showCreate ? (
-									<Button
-										className="h-auto w-full justify-start gap-3 rounded-none px-6 py-3"
-										onPress={() => submit(trimmed)}
-										variant="ghost"
-									>
-										<span className="flex size-8 items-center justify-center rounded bg-surface-container text-on-surface-variant">
-											<svg
-												aria-hidden="true"
-												className="size-5"
-												fill="none"
-												stroke="currentColor"
-												strokeWidth="1.75"
-												viewBox="0 0 24 24"
-											>
-												<path d="M12 4v16m8-8H4" strokeLinecap="round" />
-											</svg>
-										</span>
-										<span className="text-body-md font-medium text-on-surface">
-											Create an app &ldquo;{trimmed}&rdquo;
-										</span>
-									</Button>
-								) : null}
-
-								{matches.map((name) => (
-									<Button
-										key={name}
-										className="h-auto w-full justify-start gap-3 rounded-none border-t border-outline-variant/60 px-6 py-3"
-										onPress={() => submit(name)}
-										variant="ghost"
-									>
-										<span
-											aria-hidden="true"
-											className="flex size-8 shrink-0 items-center justify-center rounded bg-primary text-helper font-semibold text-on-primary"
-										>
-											{name.slice(0, 1)}
-										</span>
-										<span className="text-body-md font-medium text-on-surface">{name}</span>
-									</Button>
-								))}
-							</div>
+									placeholder="e.g. My Banking App"
+								/>
+							</TextField>
 						</Modal.Body>
+						<Modal.Footer className="gap-2">
+							<Button
+								className="rounded-xl bg-surface-container px-4 text-on-surface"
+								onPress={onClose}
+								variant="secondary"
+							>
+								Cancel
+							</Button>
+							<Button
+								className="rounded-xl bg-primary px-4 text-on-primary data-[hovered=true]:bg-primary/90 data-[disabled=true]:bg-surface-container-highest data-[disabled=true]:text-on-surface-variant"
+								isDisabled={!canCreate}
+								onPress={submit}
+							>
+								Create app
+							</Button>
+						</Modal.Footer>
 					</Modal.Dialog>
 				</Modal.Container>
 			</Modal.Backdrop>

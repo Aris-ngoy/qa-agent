@@ -1,10 +1,11 @@
 import { AddApplicationModal } from "@/features/apps/add-application-modal";
 import { useApps } from "@/features/apps/context";
+import { useActiveRun } from "@/features/runs/active-run-context";
 import { SettingsModal } from "@/features/settings/settings-modal";
 import { YoqaMark } from "@/features/splash/yoqa-mark";
 import { Button, Dropdown, Label, Separator } from "@heroui/react";
 import { Link } from "@tanstack/react-router";
-import { type ReactNode, type SVGProps, useState } from "react";
+import { type ReactNode, type SVGProps, useMemo, useState } from "react";
 
 function NavIcon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -27,56 +28,6 @@ type NavItem = {
 	badge?: number;
 };
 
-const navItems: NavItem[] = [
-	{
-		label: "Test Cases",
-		to: "/test-cases",
-		icon: (
-			<NavIcon>
-				<path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01" strokeLinecap="round" />
-			</NavIcon>
-		),
-	},
-	{
-		label: "Runs",
-		icon: (
-			<NavIcon>
-				<path d="M8 5.5v13l11-6.5L8 5.5Z" strokeLinejoin="round" />
-			</NavIcon>
-		),
-		badge: 3,
-	},
-	{
-		label: "Builds",
-		icon: (
-			<NavIcon>
-				<path
-					d="M14.7 6.3a4.5 4.5 0 0 0-6.4 6.4L4 17v3h3l4.3-4.3a4.5 4.5 0 0 0 6.4-6.4Z"
-					strokeLinejoin="round"
-				/>
-			</NavIcon>
-		),
-	},
-	{
-		label: "Configuration",
-		to: "/configuration",
-		icon: (
-			<NavIcon>
-				<path
-					d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				/>
-				<path
-					d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.2.6.7 1.1 1.5 1.1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				/>
-			</NavIcon>
-		),
-	},
-];
-
 const ADD_APP_KEY = "add-application";
 
 type SideMenuProps = {
@@ -85,9 +36,63 @@ type SideMenuProps = {
 
 export function SideMenu({ activePath = "/" }: SideMenuProps) {
 	const { apps, selectedApp, selectApp, addApp } = useApps();
+	const { isRunLive } = useActiveRun();
 	const [modalOpen, setModalOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const appLabel = selectedApp?.name ?? "Yoqa";
+
+	const navItems = useMemo((): NavItem[] => {
+		return [
+			{
+				label: "Test Cases",
+				to: "/test-cases",
+				icon: (
+					<NavIcon>
+						<path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01" strokeLinecap="round" />
+					</NavIcon>
+				),
+			},
+			{
+				label: "Runs",
+				to: "/runs",
+				icon: (
+					<NavIcon>
+						<path d="M8 5.5v13l11-6.5L8 5.5Z" strokeLinejoin="round" />
+					</NavIcon>
+				),
+				badge: isRunLive ? 1 : undefined,
+			},
+			{
+				label: "Builds",
+				icon: (
+					<NavIcon>
+						<path
+							d="M14.7 6.3a4.5 4.5 0 0 0-6.4 6.4L4 17v3h3l4.3-4.3a4.5 4.5 0 0 0 6.4-6.4Z"
+							strokeLinejoin="round"
+						/>
+					</NavIcon>
+				),
+			},
+			{
+				label: "Configuration",
+				to: "/configuration",
+				icon: (
+					<NavIcon>
+						<path
+							d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
+						<path
+							d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.2.6.7 1.1 1.5 1.1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
+					</NavIcon>
+				),
+			},
+		];
+	}, [isRunLive]);
 
 	return (
 		<>
@@ -158,7 +163,9 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 					{navItems.map((item) => {
 						const isActive =
 							item.to !== undefined &&
-							(item.to === activePath || (item.to !== "/" && activePath.startsWith(`${item.to}/`)));
+							(item.to === activePath ||
+								(item.to === "/runs" && activePath.startsWith("/runs")) ||
+								(item.to !== "/" && item.to !== "/runs" && activePath.startsWith(`${item.to}/`)));
 						const className = [
 							"group relative flex items-center gap-3 rounded-full px-4 py-3 text-body-md transition-colors duration-150",
 							isActive
@@ -245,7 +252,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 
 			<AddApplicationModal
 				onAdd={(name) => {
-					addApp(name);
+					void addApp(name);
 				}}
 				onClose={() => setModalOpen(false)}
 				open={modalOpen}

@@ -134,7 +134,7 @@ export function ConfigurationPage() {
 
 	const handleSave = () => {
 		if (!canSave) return;
-		updateApp(selectedApp.id, {
+		void updateApp(selectedApp.id, {
 			name: form.name.trim(),
 			context: form.context,
 			iosBundleId: form.iosBundleId.trim(),
@@ -151,7 +151,7 @@ export function ConfigurationPage() {
 	};
 
 	const handleDelete = () => {
-		deleteApp(selectedApp.id);
+		void deleteApp(selectedApp.id);
 		setDeleteOpen(false);
 	};
 	return (

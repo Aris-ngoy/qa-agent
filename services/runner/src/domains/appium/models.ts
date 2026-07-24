@@ -14,6 +14,11 @@ export type ResolvedAppium = {
 	cwd?: string;
 	/** When true, invoke via `node <bin>` (managed index.js entry) */
 	invokeViaNode: boolean;
+	/**
+	 * Node binary that satisfies Appium 3's engines
+	 * (`^20.19.0 || ^22.12.0 || >=24.0.0`). Node 23.x is rejected.
+	 */
+	nodeBin?: string;
 };
 
 export type PlatformSetupResult = {
@@ -26,6 +31,7 @@ export type PlatformSetupResult = {
 	message: string;
 	wdaInstalled?: boolean;
 	wdaBundleId?: string;
+	wdaAction?: "reused" | "reinstalled" | "built";
 };
 
 export type RuntimeCheckId =

@@ -1,0 +1,79 @@
+import type { DevicePlatform } from "@yoqa/runner-client";
+import { type DeviceSession, createDeviceSession } from "../runs/session";
+
+export type ActiveSessionInfo = {
+	deviceId: string;
+	platform: DevicePlatform;
+	connectedAt: number;
+};
+
+type ActiveSession = ActiveSessionInfo & {
+	session: DeviceSession;
+};
+
+let active: ActiveSession | null = null;
+
+export function getActiveSession(): ActiveSession | null {
+	return active;
+}
+
+export function getActiveSessionInfo(): ActiveSessionInfo | null {
+	if (!active) return null;
+	return {
+		deviceId: active.deviceId,
+		platform: active.platform,
+		connectedAt: active.connectedAt,
+	};
+}
+
+export function requireActiveSession(): ActiveSession {
+	if (!active) {
+		throw new Error("No active device session. Run: yoqa devices connect <device_id>");
+	}
+	return active;
+}
+
+export async function connectDevice(options: {
+	deviceId: string;
+	platform: DevicePlatform;
+	bundleId?: string;
+	appPackage?: string;
+}): Promise<ActiveSessionInfo> {
+	if (active) {
+		await disconnectDevice();
+	}
+
+	const session = await createDeviceSession({
+		platform: options.platform,
+		deviceId: options.deviceId,
+		appCaps: [],
+		caseCaps: [],
+		bundleId: options.bundleId,
+		appPackage: options.appPackage,
+	});
+
+	active = {
+		deviceId: options.deviceId,
+		platform: options.platform,
+		connectedAt: Date.now(),
+		session,
+	};
+
+	const info = getActiveSessionInfo();
+	if (!info) {
+		throw new Error("Failed to read active session after connect");
+	}
+	return info;
+}
+
+export async function disconnectDevice(): Promise<ActiveSessionInfo | null> {
+	if (!active) return null;
+	const info = getActiveSessionInfo();
+	try {
+		await active.session.quit();
+	} catch {
+		// ignore
+	}
+	active = null;
+	return info;
+}

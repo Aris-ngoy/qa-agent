@@ -50,11 +50,84 @@ async function which(bin: string): Promise<string | null> {
 	return path || null;
 }
 
+function parseNodeVersion(raw: string): { major: number; minor: number; patch: number } | null {
+	const match = raw
+		.trim()
+		.replace(/^v/, "")
+		.match(/^(\d+)\.(\d+)\.(\d+)/);
+	if (!match) return null;
+	return {
+		major: Number(match[1]),
+		minor: Number(match[2]),
+		patch: Number(match[3]),
+	};
+}
+
+/** Appium 3 engines: ^20.19.0 || ^22.12.0 || >=24.0.0 (Node 23.x is unsupported). */
+function isAppiumCompatibleNode(version: string): boolean {
+	const parsed = parseNodeVersion(version);
+	if (!parsed) return false;
+	const { major, minor } = parsed;
+	if (major === 20 && minor >= 19) return true;
+	if (major === 22 && minor >= 12) return true;
+	if (major >= 24) return true;
+	return false;
+}
+
+async function readNodeVersion(nodeBin: string): Promise<string | null> {
+	const { stdout, exitCode } = await runCommand([nodeBin, "-v"]);
+	if (exitCode !== 0) return null;
+	const version = stdout.trim().split("\n")[0]?.trim();
+	return version || null;
+}
+
+/**
+ * Prefer PATH node when compatible; otherwise search common version managers
+ * for a Node that Appium will accept (avoids silent attach to foreign Appium).
+ */
+export async function resolveAppiumNodeBin(): Promise<string> {
+	const home = homedir();
+	const candidates: string[] = [];
+
+	const pathNode = await which("node");
+	if (pathNode) candidates.push(pathNode);
+
+	const nvmDir = process.env.NVM_DIR ?? join(home, ".nvm");
+	const asdfDir = process.env.ASDF_DATA_DIR ?? join(home, ".asdf");
+	for (const root of [
+		join(nvmDir, "versions", "node"),
+		join(asdfDir, "installs", "nodejs"),
+		join(home, ".local", "share", "fnm", "node-versions"),
+	]) {
+		try {
+			const entries = await Array.fromAsync(
+				new Bun.Glob("*/bin/node").scan({ cwd: root, absolute: true }),
+			);
+			candidates.push(...entries);
+		} catch {
+			// directory may not exist
+		}
+	}
+
+	const seen = new Set<string>();
+	for (const candidate of candidates) {
+		if (!candidate || seen.has(candidate)) continue;
+		seen.add(candidate);
+		const version = await readNodeVersion(candidate);
+		if (version && isAppiumCompatibleNode(version)) return candidate;
+	}
+
+	throw new Error(
+		"No Appium-compatible Node found (^20.19 || ^22.12 || >=24). Install Node 22 LTS and ensure it is on PATH.",
+	);
+}
+
 async function readAppiumVersion(
 	bin: string,
 	env?: Record<string, string>,
+	nodeBin = "node",
 ): Promise<string | null> {
-	const { stdout, exitCode } = await runCommand(["node", bin, "-v"], { env });
+	const { stdout, exitCode } = await runCommand([nodeBin, bin, "-v"], { env });
 	if (exitCode !== 0) {
 		// System installs may be a shell script / bin shim — try invoking directly.
 		const direct = await runCommand([bin, "-v"], { env });
@@ -99,12 +172,13 @@ function managedAppiumEnv(): Record<string, string> {
 
 async function ensureManagedAppium(): Promise<ResolvedAppium> {
 	await ensureNpmAvailable();
+	const nodeBin = await resolveAppiumNodeBin();
 	await mkdir(MANAGED_RUNTIME_DIR, { recursive: true });
 	await mkdir(MANAGED_APPIUM_HOME, { recursive: true });
 	await writeManagedPackageJson();
 
 	const env = managedAppiumEnv();
-	const existingVersion = await readAppiumVersion(MANAGED_APPIUM_BIN, env);
+	const existingVersion = await readAppiumVersion(MANAGED_APPIUM_BIN, env, nodeBin);
 	if (!existingVersion) {
 		const { stderr, stdout, exitCode } = await runCommand(
 			["npm", "install", "--no-fund", "--no-audit", "--prefix", MANAGED_RUNTIME_DIR],
@@ -117,7 +191,7 @@ async function ensureManagedAppium(): Promise<ResolvedAppium> {
 		}
 	}
 
-	const version = await readAppiumVersion(MANAGED_APPIUM_BIN, env);
+	const version = await readAppiumVersion(MANAGED_APPIUM_BIN, env, nodeBin);
 	if (!version) {
 		throw new Error(`Managed Appium binary not found at ${MANAGED_APPIUM_BIN}`);
 	}
@@ -129,13 +203,15 @@ async function ensureManagedAppium(): Promise<ResolvedAppium> {
 		env,
 		cwd: MANAGED_RUNTIME_DIR,
 		invokeViaNode: true,
+		nodeBin,
 	};
 }
 
 export async function resolveAppium(): Promise<ResolvedAppium> {
+	const nodeBin = await resolveAppiumNodeBin();
 	const systemBin = await which("appium");
 	if (systemBin) {
-		const version = await readAppiumVersion(systemBin);
+		const version = await readAppiumVersion(systemBin, undefined, nodeBin);
 		// Pinned drivers target Appium 3.x — ignore older system installs and use managed.
 		if (version?.startsWith("3.")) {
 			return {
@@ -145,6 +221,7 @@ export async function resolveAppium(): Promise<ResolvedAppium> {
 				env: {},
 				cwd: undefined,
 				invokeViaNode: false,
+				nodeBin,
 			};
 		}
 	}
@@ -190,7 +267,7 @@ function isDriverInstalled(list: InstalledDriversJson, driver: AppiumDriverName)
 
 function appiumArgs(appium: ResolvedAppium, args: string[]): string[] {
 	if (appium.invokeViaNode) {
-		return ["node", appium.bin, ...args];
+		return [appium.nodeBin ?? "node", appium.bin, ...args];
 	}
 	return [appium.bin, ...args];
 }
@@ -245,8 +322,8 @@ async function installDriver(appium: ResolvedAppium, driver: AppiumDriverName): 
 /**
  * Ensure Appium is available and the platform driver is installed.
  * Idempotent — skips install when the pinned driver version is already present.
- * For iOS physical devices, also builds and installs WebDriverAgent using the
- * provided Xcode path and signing identity.
+ * For iOS physical devices, also ensures WebDriverAgent is on the device
+ * (reuse / reinstall from cache / rebuild) using the provided Xcode path and signing identity.
  */
 export async function setupPlatform(
 	request: SetupPlatformRequest | DevicePlatform,
@@ -314,7 +391,15 @@ export async function setupPlatform(
 		developmentTeam: params.developmentTeam,
 		codeSignIdentity: params.codeSignIdentity,
 		appiumHome: appium.env.APPIUM_HOME,
+		force: params.force === true,
 	});
+
+	const wdaMessage =
+		wda.action === "reused"
+			? `WebDriverAgent already prepared (${wda.bundleId})`
+			: wda.action === "reinstalled"
+				? `Reinstalled WebDriverAgent from cache (${wda.bundleId})`
+				: `Installed WebDriverAgent (${wda.bundleId}) on device`;
 
 	return {
 		ok: true,
@@ -325,15 +410,23 @@ export async function setupPlatform(
 		alreadyInstalled,
 		wdaInstalled: true,
 		wdaBundleId: wda.bundleId,
-		message: `${driverMessage}. Installed WebDriverAgent (${wda.bundleId}) on device.`,
+		wdaAction: wda.action,
+		message: `${driverMessage}. ${wdaMessage}.`,
 	};
 }
 
 /** Probe Appium without installing the managed runtime. */
 async function probeAppium(): Promise<ResolvedAppium | null> {
+	let nodeBin: string | undefined;
+	try {
+		nodeBin = await resolveAppiumNodeBin();
+	} catch {
+		nodeBin = undefined;
+	}
+
 	const systemBin = await which("appium");
 	if (systemBin) {
-		const version = await readAppiumVersion(systemBin);
+		const version = await readAppiumVersion(systemBin, undefined, nodeBin ?? "node");
 		if (version?.startsWith("3.")) {
 			return {
 				bin: systemBin,
@@ -342,12 +435,13 @@ async function probeAppium(): Promise<ResolvedAppium | null> {
 				env: {},
 				cwd: undefined,
 				invokeViaNode: false,
+				nodeBin,
 			};
 		}
 	}
 
 	const managedEnv = managedAppiumEnv();
-	const managedVersion = await readAppiumVersion(MANAGED_APPIUM_BIN, managedEnv);
+	const managedVersion = await readAppiumVersion(MANAGED_APPIUM_BIN, managedEnv, nodeBin ?? "node");
 	if (managedVersion) {
 		return {
 			bin: MANAGED_APPIUM_BIN,
@@ -356,6 +450,7 @@ async function probeAppium(): Promise<ResolvedAppium | null> {
 			env: managedEnv,
 			cwd: MANAGED_RUNTIME_DIR,
 			invokeViaNode: true,
+			nodeBin,
 		};
 	}
 

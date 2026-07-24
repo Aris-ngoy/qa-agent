@@ -1,5 +1,11 @@
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { DesktopRPC } from "../shared/rpc";
+import {
+	getCliEnvironmentSnapshot,
+	installCli,
+	installSkill,
+	openSkillFolder,
+} from "./features/cli-environment";
 import { getIosToolchainSnapshot, setIosToolchainSelection } from "./features/ios-toolchain";
 import { ensureLocalServices, stopRunnerSidecar } from "./features/runner-sidecar";
 
@@ -53,6 +59,10 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 			ensureLocalServices: () => ensureLocalServices(),
 			getIosToolchain: () => getIosToolchainSnapshot(),
 			setIosToolchainSelection: (params) => setIosToolchainSelection(params),
+			getCliEnvironment: () => getCliEnvironmentSnapshot(),
+			installCli: () => installCli(),
+			installSkill: () => installSkill(),
+			openSkillFolder: () => openSkillFolder(),
 		},
 		messages: {
 			log: ({ msg }) => {

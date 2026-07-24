@@ -1,6 +1,15 @@
-import { type TestCase, type TestFlow, getTestCase } from "@/features/test-cases/data";
+import { getRunnerClient } from "@/app/runner-client";
+import {
+	type TestCase,
+	type TestFlow,
+	caseQueryKey,
+	casesQueryKey,
+	mapCatalogCase,
+} from "@/features/test-cases/data";
+import { useTestCaseSelection } from "@/features/test-cases/selection-context";
 import { Button, Input, Label, ListBox, Select, TextArea, TextField } from "@heroui/react";
-import { Link, useParams } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { type SVGProps, useEffect, useRef, useState } from "react";
 
 type DetailTab = "instructions" | "configuration";
@@ -119,7 +128,7 @@ function formFromCase(testCase: TestCase): FormState {
 		name: testCase.name,
 		tags: [...testCase.tags],
 		flows: testCase.flows.map((flow) => ({ ...flow })),
-		capabilities: [],
+		capabilities: testCase.capabilities.map((cap) => ({ ...cap })),
 		galleryImages: [],
 		locale: null,
 	};
@@ -600,10 +609,97 @@ function ConfigurationPanel({
 
 export function TestCaseDetailPage() {
 	const { caseId } = useParams({ strict: false }) as { caseId?: string };
-	const testCase = caseId ? getTestCase(caseId) : undefined;
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
+	const { setSelected } = useTestCaseSelection();
 	const [activeTab, setActiveTab] = useState<DetailTab>("instructions");
 	const [form, setForm] = useState<FormState | null>(null);
 	const [savedSnapshot, setSavedSnapshot] = useState<FormState | null>(null);
+
+	useEffect(() => {
+		if (caseId) {
+			setSelected([caseId]);
+		}
+	}, [caseId, setSelected]);
+
+	const caseQuery = useQuery({
+		queryKey: caseId ? caseQueryKey(caseId) : ["catalog", "case", "none"],
+		enabled: Boolean(caseId),
+		queryFn: async () => {
+			if (!caseId) throw new Error("Missing case id");
+			const client = await getRunnerClient();
+			return mapCatalogCase(await client.getCase(caseId));
+		},
+		retry: false,
+	});
+
+	const testCase = caseQuery.data;
+
+	const saveMutation = useMutation({
+		mutationFn: async (next: FormState) => {
+			if (!caseId) throw new Error("Missing case id");
+			const client = await getRunnerClient();
+			return mapCatalogCase(
+				await client.updateCase(caseId, {
+					name: next.name.trim(),
+					tags: next.tags,
+					flows: next.flows.map((flow) => ({
+						id: flow.id.startsWith("cf_") ? flow.id : undefined,
+						instructions: flow.instructions,
+						expectedResult: flow.expectedResult,
+						flowId: flow.flowId ?? null,
+					})),
+					capabilities: next.capabilities
+						.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
+						.filter((cap) => cap.key.length > 0),
+				}),
+			);
+		},
+		onSuccess: (updated) => {
+			queryClient.setQueryData(caseQueryKey(updated.id), updated);
+			void queryClient.invalidateQueries({ queryKey: casesQueryKey(updated.appId) });
+			const next = formFromCase(updated);
+			setForm(next);
+			setSavedSnapshot(next);
+		},
+	});
+
+	const deleteMutation = useMutation({
+		mutationFn: async () => {
+			if (!caseId || !testCase) throw new Error("Missing case");
+			const client = await getRunnerClient();
+			await client.deleteCase(caseId);
+			return testCase.appId;
+		},
+		onSuccess: (appId) => {
+			void queryClient.invalidateQueries({ queryKey: casesQueryKey(appId) });
+			void navigate({ to: "/test-cases" });
+		},
+	});
+
+	const duplicateMutation = useMutation({
+		mutationFn: async () => {
+			if (!testCase || !form) throw new Error("Missing case");
+			const client = await getRunnerClient();
+			return mapCatalogCase(
+				await client.createCase(testCase.appId, {
+					name: `${form.name.trim() || testCase.name} (copy)`,
+					tags: form.tags,
+					flows: form.flows.map((flow) => ({
+						instructions: flow.instructions,
+						expectedResult: flow.expectedResult,
+					})),
+					capabilities: form.capabilities
+						.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
+						.filter((cap) => cap.key.length > 0),
+				}),
+			);
+		},
+		onSuccess: (created) => {
+			void queryClient.invalidateQueries({ queryKey: casesQueryKey(created.appId) });
+			void navigate({ to: "/test-cases/$caseId", params: { caseId: created.id } });
+		},
+	});
 
 	useEffect(() => {
 		if (!testCase) {
@@ -617,7 +713,15 @@ export function TestCaseDetailPage() {
 		setActiveTab("instructions");
 	}, [testCase]);
 
-	if (!testCase) {
+	if (caseQuery.isLoading) {
+		return (
+			<div className="mx-auto flex w-full max-w-3xl flex-col gap-4 py-16">
+				<p className="text-body-md text-on-surface-variant">Loading test case…</p>
+			</div>
+		);
+	}
+
+	if (!testCase || caseQuery.isError) {
 		return (
 			<div className="mx-auto flex w-full max-w-3xl flex-col gap-4 py-16">
 				<h1 className="text-headline-lg text-on-surface">Test case not found</h1>
@@ -643,7 +747,7 @@ export function TestCaseDetailPage() {
 	}
 
 	const dirty = JSON.stringify(form) !== JSON.stringify(savedSnapshot);
-	const canSave = dirty && form.name.trim().length > 0;
+	const canSave = dirty && form.name.trim().length > 0 && !saveMutation.isPending;
 	const breadcrumbTitle = `#${testCase.number} ${form.name.trim() || testCase.name}`;
 
 	const handleSave = () => {
@@ -655,8 +759,7 @@ export function TestCaseDetailPage() {
 				.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
 				.filter((cap) => cap.key.length > 0),
 		};
-		setForm(next);
-		setSavedSnapshot(next);
+		saveMutation.mutate(next);
 	};
 
 	return (
@@ -674,6 +777,8 @@ export function TestCaseDetailPage() {
 					<Button
 						aria-label="Delete test case"
 						className="size-10 min-w-10 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
+						isDisabled={deleteMutation.isPending}
+						onPress={() => deleteMutation.mutate()}
 						variant="ghost"
 					>
 						<TrashIcon />
@@ -681,6 +786,8 @@ export function TestCaseDetailPage() {
 					<Button
 						aria-label="Duplicate test case"
 						className="size-10 min-w-10 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-surface-container"
+						isDisabled={duplicateMutation.isPending}
+						onPress={() => duplicateMutation.mutate()}
 						variant="ghost"
 					>
 						<DuplicateIcon />
@@ -690,7 +797,7 @@ export function TestCaseDetailPage() {
 						isDisabled={!canSave}
 						onPress={handleSave}
 					>
-						Save
+						{saveMutation.isPending ? "Saving…" : "Save"}
 					</Button>
 				</div>
 			</header>
@@ -732,7 +839,7 @@ export function TestCaseDetailPage() {
 											flows: [
 												...current.flows,
 												{
-													id: `flow_${crypto.randomUUID()}`,
+													id: `cf_${crypto.randomUUID()}`,
 													instructions: "",
 													expectedResult: "",
 												},

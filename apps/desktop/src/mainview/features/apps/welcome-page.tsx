@@ -45,7 +45,7 @@ export function WelcomePage() {
 
 			<AddApplicationModal
 				onAdd={(name) => {
-					addApp(name);
+					void addApp(name);
 				}}
 				onClose={() => setModalOpen(false)}
 				open={modalOpen}

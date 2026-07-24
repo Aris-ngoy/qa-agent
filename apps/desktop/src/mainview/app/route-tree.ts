@@ -1,6 +1,8 @@
 import { RootLayout } from "@/app/root-layout";
 import { ConfigurationPage } from "@/features/apps/configuration-page";
 import { WelcomePage } from "@/features/apps/welcome-page";
+import { RunDetailPage } from "@/features/runs/detail-page";
+import { RunsListPage } from "@/features/runs/list-page";
 import { StatusPage } from "@/features/status/status-page";
 import { TestCaseDetailPage } from "@/features/test-cases/detail-page";
 import { TestCasesPage } from "@/features/test-cases/list-page";
@@ -34,6 +36,18 @@ const testCaseDetailRoute = createRoute({
 	component: TestCaseDetailPage,
 });
 
+const runsListRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/runs",
+	component: RunsListPage,
+});
+
+const runDetailRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/runs/$runId",
+	component: RunDetailPage,
+});
+
 const configurationRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/configuration",
@@ -45,5 +59,7 @@ export const routeTree = rootRoute.addChildren([
 	statusRoute,
 	testCasesRoute,
 	testCaseDetailRoute,
+	runsListRoute,
+	runDetailRoute,
 	configurationRoute,
 ]);

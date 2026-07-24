@@ -168,13 +168,14 @@ Match the product shape (desktop + local runner + Appium + optional cloud), impl
 | Desktop shell | **Electrobun** (Bun main + native WebView) | TS-native desktop, no Rust |
 | Desktop UI | **React 19 + Vite + TanStack Router + Query** | Type-safe routes; Start reserved for later web |
 | Styling / lint | **Tailwind CSS v4 + Biome** | Shared UI + fast lint/format |
-| Local runner | **Bun + Hono + Zod** | Same language as desktop/CLI |
+| Local runner | **Bun + Hono + Zod + Drizzle/SQLite** | Same language as desktop/CLI; local catalog in `~/.yoqa/yoqa.db` |
 | CLI | **commander** in runner package → HTTP | `yoqa` binary; thin client over localhost |
 | Device control | **Appium 2** + WebDriverIO | Documented under the hood |
 | Runtime bundle | Ship **Node 22 + Appium** per arch | Zero global install for users |
-| Cloud API | Later (TanStack Start web + API of choice) | Cases/runs/billing — out of Phase 1 |
+| Local catalog | **SQLite via Drizzle** in runner | Apps, cases, flows, tags, AI providers (Phase 3+); devices stay live-discovered |
+| Cloud API | Later (TanStack Start web + API of choice) | Cases/runs/billing sync — out of Phase 1 |
 | Auth / user data | Later | Phase 1 is local-only, no login |
-| Agent / grounding | Vision LLM + optional embedding memory | Perception loop + `-d` grounding |
+| Agent / grounding | Vision LLM + optional embedding memory | Perception loop + `-d` grounding; local BYO provider instances (API keys, tokens, CLI auth) via Settings → Provider (`/providers`, `resolveActiveProviderAuth()`) until cloud auth |
 | Packaging | Electrobun build + DMG | Desktop distribution |
 | Docs / skill | Mintlify + `skills/yoqa-testing` | Agent workflows |
 
@@ -184,7 +185,7 @@ Match the product shape (desktop + local runner + Appium + optional cloud), impl
 2. Runner starts or reuses **Appium server** from `bundled-runtime`.
 3. CLI / UI call `http://127.0.0.1:<port>/…` via `@yoqa/runner-client`.
 4. Cloud calls (auth, grounding, cases sync, agent run orchestration) go to `api.*` with user token (post–Phase 1).
-5. For `runs create`, runner streams screenshots to cloud agent (or runs agent locally with cloud model API).
+5. For `runs create`, runner resolves AI auth via `resolveActiveProviderAuth()` (local BYO provider instances from Settings → Provider: Anthropic/OpenAI API keys, Claude/Codex CLI, OpenCode, GitHub Copilot) or later streams screenshots to a cloud agent with a user token.
 
 ---
 
@@ -202,6 +203,7 @@ services/runner/src/
     builds/               # register ipa/apk, parse metadata
     apps/                 # local cache of app metadata
     ios/                  # WDA, signing, Xcode helpers
+    providers/            # Multi-instance AI drivers (API keys / CLI / tokens; encrypted at rest)
     auth/                 # token storage, refresh (post–Phase 1)
     environment/          # CLI symlink, skill install
   interfaces/
@@ -335,13 +337,16 @@ CLI is a first-class peer of the UI (same local API).
 
 ### Phase 3 — Test management
 
-- Apps / cases / flows / tags CRUD (local DB → cloud sync)
+- Apps / cases / flows / tags CRUD (**local SQLite via Drizzle in the runner** → cloud sync later)
+- Desktop UI talks to runner HTTP (`/apps`, `/cases`, `/flows`, `/tags`); DB file: `~/.yoqa/yoqa.db`
+- AI provider connections (`/providers`) for multi-instance drivers — Anthropic, OpenAI, Claude, Codex, OpenCode, GitHub Copilot — with API key / token / CLI probe auth (AES-GCM encrypted secrets; Settings → Provider list + Driver→Identity→Config wizard)
 - Appium caps at app + case level with merge rules
 - Builds register from absolute paths; parse bundle id/version
+- Devices remain live-discovered (not stored in SQLite)
 
 ### Phase 4 — Autonomous agent runs
 
-- `runs create` orchestration
+- `runs create` orchestration (uses `resolveActiveProviderAuth()` for local BYO keys; cloud token path later)
 - Perception loop + reports (steps, screenshots)
 - Credit metering
 - Screen memory for faster repeats

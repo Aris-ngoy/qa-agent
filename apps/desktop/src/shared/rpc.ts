@@ -1,3 +1,9 @@
+import type {
+	CliEnvironmentSnapshot,
+	InstallResult,
+	InstallSkillResult,
+	OpenPathResult,
+} from "./cli-environment";
 import type { IosToolchainPreferences, IosToolchainSnapshot } from "./ios-toolchain";
 
 export type EnsureLocalServicesResult = {
@@ -30,6 +36,22 @@ export type DesktopRPC = {
 					signingIdentityHash?: string | null;
 				};
 				response: IosToolchainPreferences;
+			};
+			getCliEnvironment: {
+				params: undefined;
+				response: CliEnvironmentSnapshot;
+			};
+			installCli: {
+				params: undefined;
+				response: InstallResult;
+			};
+			installSkill: {
+				params: undefined;
+				response: InstallSkillResult;
+			};
+			openSkillFolder: {
+				params: undefined;
+				response: OpenPathResult;
 			};
 		};
 		messages: {

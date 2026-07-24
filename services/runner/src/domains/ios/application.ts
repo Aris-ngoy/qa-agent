@@ -8,6 +8,16 @@ import {
 	wdaBundleIdForTeam,
 } from "./models";
 
+type DevicectlAppsJson = {
+	result?: {
+		apps?: Array<{
+			bundleIdentifier?: string;
+			url?: string;
+			name?: string;
+		}>;
+	};
+};
+
 const YOQA_ROOT = join(homedir(), ".yoqa");
 const DEFAULT_APPIUM_HOME = join(YOQA_ROOT, "appium");
 const WDA_DERIVED_ROOT = join(YOQA_ROOT, "wda");
@@ -349,9 +359,84 @@ async function persistDevicePrep(record: DevicePrepRecord): Promise<void> {
 	await writeFile(path, `${JSON.stringify(record, null, 2)}\n`, "utf8");
 }
 
+/** Load prep metadata written by {@link installWdaOnDevice}, if present. */
+export async function loadDevicePrep(deviceId: string): Promise<DevicePrepRecord | null> {
+	const path = join(DEVICE_PREP_DIR, `${deviceId}.json`);
+	try {
+		const text = await Bun.file(path).text();
+		const parsed = JSON.parse(text) as DevicePrepRecord;
+		if (!parsed?.deviceId || !parsed?.bundleId || !parsed?.derivedDataPath) return null;
+		return parsed;
+	} catch {
+		return null;
+	}
+}
+
+function prepMatchesParams(prep: DevicePrepRecord, params: IosWdaInstallParams): boolean {
+	const expectedBundleId = wdaBundleIdForTeam(params.developmentTeam);
+	return (
+		prep.deviceId === params.deviceId &&
+		prep.platform === "ios" &&
+		prep.bundleId === expectedBundleId &&
+		prep.developmentTeam.trim() === params.developmentTeam.trim() &&
+		prep.xcodeDeveloperDir.trim() === params.xcodeDeveloperDir.trim() &&
+		prep.codeSignIdentity.trim() === params.codeSignIdentity.trim()
+	);
+}
+
+async function prepIsReusable(
+	prep: DevicePrepRecord | null,
+	params: IosWdaInstallParams,
+): Promise<boolean> {
+	if (!prep) return false;
+	if (!prepMatchesParams(prep, params)) return false;
+	if (!(await pathExists(prep.appPath))) return false;
+	return true;
+}
+
+/**
+ * True when the YoQA WebDriverAgent bundle is installed on the physical device.
+ */
+export async function isWdaInstalledOnDevice(deviceId: string, bundleId: string): Promise<boolean> {
+	const tempDir = await mkdtemp(join(tmpdir(), "yoqa-wda-apps-"));
+	const jsonPath = join(tempDir, "devicectl-apps.json");
+	try {
+		const { exitCode } = await runCommand([
+			"xcrun",
+			"devicectl",
+			"device",
+			"info",
+			"apps",
+			"--device",
+			deviceId,
+			"--bundle-id",
+			bundleId,
+			"--json-output",
+			jsonPath,
+		]);
+		if (exitCode !== 0 || !(await pathExists(jsonPath))) return false;
+
+		let parsed: DevicectlAppsJson;
+		try {
+			parsed = JSON.parse(await Bun.file(jsonPath).text()) as DevicectlAppsJson;
+		} catch {
+			return false;
+		}
+
+		const apps = parsed.result?.apps ?? [];
+		return apps.some((app) => app.bundleIdentifier === bundleId);
+	} finally {
+		await rm(tempDir, { recursive: true, force: true });
+	}
+}
+
 /**
  * Build, post-process (iOS 17+), install WebDriverAgent on a physical device,
  * and persist prep metadata for later Appium sessions.
+ *
+ * Skips rebuild when prep + cached .app are still valid and WDA is on the device.
+ * Reinstalls from cache when the app is missing on device. Full rebuild on
+ * signing/Xcode mismatch, missing cache, or `force`.
  */
 export async function installWdaOnDevice(
 	params: IosWdaInstallParams,
@@ -362,9 +447,39 @@ export async function installWdaOnDevice(
 		);
 	}
 
-	const projectPath = await resolveWdaProjectPath(params.appiumHome);
 	const derivedDataPath = join(WDA_DERIVED_ROOT, params.deviceId);
 	const bundleId = wdaBundleIdForTeam(params.developmentTeam);
+	const existingPrep = params.force ? null : await loadDevicePrep(params.deviceId);
+
+	if (!params.force && existingPrep && (await prepIsReusable(existingPrep, params))) {
+		const onDevice = await isWdaInstalledOnDevice(params.deviceId, existingPrep.bundleId);
+		if (onDevice) {
+			return {
+				ok: true,
+				bundleId: existingPrep.bundleId,
+				appPath: existingPrep.appPath,
+				derivedDataPath: existingPrep.derivedDataPath,
+				deviceId: params.deviceId,
+				action: "reused",
+			};
+		}
+
+		await installWdaApp(params.deviceId, existingPrep.appPath);
+		await persistDevicePrep({
+			...existingPrep,
+			installedAt: new Date().toISOString(),
+		});
+		return {
+			ok: true,
+			bundleId: existingPrep.bundleId,
+			appPath: existingPrep.appPath,
+			derivedDataPath: existingPrep.derivedDataPath,
+			deviceId: params.deviceId,
+			action: "reinstalled",
+		};
+	}
+
+	const projectPath = await resolveWdaProjectPath(params.appiumHome);
 
 	// Fresh derived data avoids stale signing / provisioning mismatches.
 	await rm(derivedDataPath, { recursive: true, force: true });
@@ -402,5 +517,6 @@ export async function installWdaOnDevice(
 		appPath,
 		derivedDataPath,
 		deviceId: params.deviceId,
+		action: "built",
 	};
 }
