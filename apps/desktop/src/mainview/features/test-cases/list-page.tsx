@@ -1,3 +1,4 @@
+import { staggerStyle, useEnterOnce } from "@/app/motion/use-enter-once";
 import { getRunnerClient } from "@/app/runner-client";
 import { useApps } from "@/features/apps/context";
 import {
@@ -107,9 +108,11 @@ export function TestCasesPage() {
 		}
 	};
 
+	const stagger = useEnterOnce(casesQuery.isSuccess && (casesQuery.data?.length ?? 0) > 0);
+
 	if (!selectedApp) {
 		return (
-			<div className="flex w-full flex-col gap-4 py-16">
+			<div className="motion-fade-up flex w-full flex-col gap-4 py-16">
 				<h1 className="text-headline-lg text-on-surface">Test Cases</h1>
 				<p className="text-body-md text-on-surface-variant">
 					Select or create an app to manage its test cases.
@@ -120,7 +123,7 @@ export function TestCasesPage() {
 
 	return (
 		<div className="flex w-full flex-col gap-8 pb-4">
-			<div className="flex flex-wrap items-center gap-6">
+			<div className="motion-fade-up flex flex-wrap items-center gap-6">
 				<div className="min-w-[10rem]">
 					<h1 className="text-headline-lg text-on-surface">Test Cases</h1>
 					<p className="text-body-sm text-on-surface-variant">
@@ -143,7 +146,7 @@ export function TestCasesPage() {
 						</svg>
 					</span>
 					<input
-						className="w-full rounded-full border-none bg-surface-container-lowest py-3.5 pl-12 pr-5 text-body-md text-on-surface shadow-card placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/10"
+						className="h-10 w-full rounded-full border-none bg-surface-container-lowest pl-12 pr-5 text-body-md text-on-surface shadow-card placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/10"
 						onChange={(event) => setFilter(event.target.value)}
 						placeholder="Filter by name, tag, or status…"
 						type="search"
@@ -151,7 +154,7 @@ export function TestCasesPage() {
 					/>
 				</label>
 				<Button
-					className="rounded-full bg-primary px-5 text-on-primary data-[hovered=true]:bg-primary/90"
+					className="h-10 rounded-full bg-primary px-5 text-on-primary data-[hovered=true]:bg-primary/90"
 					isDisabled={createMutation.isPending}
 					onPress={() => createMutation.mutate()}
 				>
@@ -204,18 +207,25 @@ export function TestCasesPage() {
 							</tr>
 						) : rows.length === 0 ? (
 							<tr>
-								<td className="px-6 py-8 text-body-md text-on-surface-variant" colSpan={6}>
+								<td
+									className="motion-fade-up px-6 py-8 text-body-md text-on-surface-variant"
+									colSpan={6}
+								>
 									{filter.trim()
 										? `No test cases match “${filter.trim()}”.`
 										: "No test cases yet. Create one to get started."}
 								</td>
 							</tr>
 						) : (
-							rows.map((row) => (
+							rows.map((row, index) => (
 								<tr
-									className={`cursor-pointer transition-colors hover:bg-surface-container-low ${
-										isSelected(row.id) ? "bg-primary/5" : ""
-									}`}
+									className={[
+										"cursor-pointer transition-colors duration-[var(--motion-fast)] hover:bg-surface-container-low",
+										isSelected(row.id) ? "bg-primary/5" : "",
+										stagger ? "motion-fade-up" : "",
+									]
+										.filter(Boolean)
+										.join(" ")}
 									key={row.id}
 									onClick={() => openCase(row.id)}
 									onKeyDown={(event) => {
@@ -224,6 +234,7 @@ export function TestCasesPage() {
 											openCase(row.id);
 										}
 									}}
+									style={staggerStyle(index, stagger)}
 									tabIndex={0}
 								>
 									<td

@@ -1,5 +1,6 @@
+import { RhfTextField } from "@/app/forms";
 import { getRunnerClient } from "@/app/runner-client";
-import { Button, Input, Label, Modal, TextField } from "@heroui/react";
+import { Button, Modal } from "@heroui/react";
 import { useMutation } from "@tanstack/react-query";
 import type {
 	CreateProviderRequest,
@@ -8,6 +9,7 @@ import type {
 	ProviderKind,
 } from "@yoqa/runner-client";
 import { useEffect, useMemo, useState } from "react";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import {
 	ACTIVE_DRIVERS,
 	ALL_DRIVER_CARDS,
@@ -34,6 +36,16 @@ type AddProviderModalProps = {
 
 type EnvRow = { id: string; key: string; value: string };
 
+type ProviderFormValues = {
+	label: string;
+	apiKey: string;
+	binaryPath: string;
+	serverUrl: string;
+	baseUrl: string;
+	defaultModel: string;
+	envRows: EnvRow[];
+};
+
 function newEnvRow(key = "", value = ""): EnvRow {
 	return { id: crypto.randomUUID(), key, value };
 }
@@ -42,19 +54,37 @@ function stepIndex(step: WizardStep): number {
 	return WIZARD_STEPS.findIndex((item) => item.id === step);
 }
 
+const emptyForm: ProviderFormValues = {
+	label: "",
+	apiKey: "",
+	binaryPath: "",
+	serverUrl: "",
+	baseUrl: "",
+	defaultModel: "",
+	envRows: [],
+};
+
 export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalProps) {
 	const [step, setStep] = useState<WizardStep>("driver");
 	const [selectedKind, setSelectedKind] = useState<ProviderKind | null>(null);
 	const [authMode, setAuthMode] = useState<ProviderAuthMode>("api_key");
-	const [label, setLabel] = useState("");
-	const [apiKey, setApiKey] = useState("");
-	const [binaryPath, setBinaryPath] = useState("");
-	const [serverUrl, setServerUrl] = useState("");
-	const [baseUrl, setBaseUrl] = useState("");
-	const [defaultModel, setDefaultModel] = useState("");
-	const [envRows, setEnvRows] = useState<EnvRow[]>([]);
 	const [probe, setProbe] = useState<ProbeProviderResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
+
+	const { control, handleSubmit, reset, getValues, trigger } = useForm<ProviderFormValues>({
+		defaultValues: emptyForm,
+		mode: "onSubmit",
+	});
+
+	const { fields: envFields, append } = useFieldArray({
+		control,
+		name: "envRows",
+		keyName: "fieldId",
+	});
+
+	const binaryPath = useWatch({ control, name: "binaryPath" });
+	const apiKey = useWatch({ control, name: "apiKey" });
+	const envRows = useWatch({ control, name: "envRows" }) ?? [];
 
 	const meta = useMemo(() => (selectedKind ? getDriverMeta(selectedKind) : null), [selectedKind]);
 	const currentStep = stepIndex(step);
@@ -64,17 +94,11 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 			setStep("driver");
 			setSelectedKind(null);
 			setAuthMode("api_key");
-			setLabel("");
-			setApiKey("");
-			setBinaryPath("");
-			setServerUrl("");
-			setBaseUrl("");
-			setDefaultModel("");
-			setEnvRows([]);
+			reset(emptyForm);
 			setProbe(null);
 			setError(null);
 		}
-	}, [open]);
+	}, [open, reset]);
 
 	const probeMutation = useMutation({
 		mutationFn: async (input: { kind: ProviderKind; binaryPath?: string | null }) => {
@@ -111,13 +135,20 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 		const kind = driver.kind as ProviderKind;
 		setSelectedKind(kind);
 		setAuthMode(driver.authModes[0] ?? "api_key");
-		setLabel(driver.label);
-		setBinaryPath(driver.defaultBinary ?? "");
-		setBaseUrl("");
-		setDefaultModel(
-			kind === "opencode" ? "deepseek-v4-flash-free" : kind === "grok" ? "grok-2-vision-1212" : "",
-		);
-		setEnvRows(driver.envHints.slice(0, 1).map((key) => newEnvRow(key)));
+		reset({
+			label: driver.label,
+			apiKey: "",
+			binaryPath: driver.defaultBinary ?? "",
+			serverUrl: "",
+			baseUrl: "",
+			defaultModel:
+				kind === "opencode"
+					? "deepseek-v4-flash-free"
+					: kind === "grok"
+						? "grok-2-vision-1212"
+						: "",
+			envRows: driver.envHints.slice(0, 1).map((key) => newEnvRow(key)),
+		});
 		setProbe(null);
 		setError(null);
 	};
@@ -134,7 +165,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 		}
 	};
 
-	const goConfig = () => {
+	const goConfig = async () => {
 		if (!meta || !selectedKind) return;
 		// Custom OpenAI-compatible hosts often need no API key (local Ollama / LM Studio).
 		if (selectedKind !== "custom" && authMode !== "cli" && !apiKey.trim()) {
@@ -150,14 +181,14 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 		setStep("config");
 	};
 
-	const handleCreate = () => {
+	const onCreate = (values: ProviderFormValues) => {
 		if (!selectedKind || !meta) return;
-		if (selectedKind === "custom" && !baseUrl.trim()) {
+		if (selectedKind === "custom" && !values.baseUrl.trim()) {
 			setError("Base URL is required for a custom provider");
 			return;
 		}
 		const env: Record<string, string> = {};
-		for (const row of envRows) {
+		for (const row of values.envRows) {
 			if (row.key.trim() && row.value.trim()) {
 				env[row.key.trim()] = row.value.trim();
 			}
@@ -165,16 +196,20 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 		const request: CreateProviderRequest = {
 			kind: selectedKind,
 			authMode,
-			label: label.trim() || meta.label,
-			binaryPath: binaryPath.trim() || null,
-			serverUrl: serverUrl.trim() || null,
-			baseUrl: baseUrl.trim() || null,
-			defaultModel: defaultModel.trim() || null,
-			apiKey: apiKey.trim() || undefined,
+			label: values.label.trim() || meta.label,
+			binaryPath: values.binaryPath.trim() || null,
+			serverUrl: values.serverUrl.trim() || null,
+			baseUrl: values.baseUrl.trim() || null,
+			defaultModel: values.defaultModel.trim() || null,
+			apiKey: values.apiKey.trim() || undefined,
 			env: Object.keys(env).length > 0 ? env : undefined,
 			setAsDefault: true,
 		};
 		createMutation.mutate(request);
+	};
+
+	const handleCreate = () => {
+		void handleSubmit(onCreate)();
 	};
 
 	const handleStepChange = (next: number) => {
@@ -260,14 +295,12 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 
 							{step === "identity" && meta && selectedKind ? (
 								<div className="space-y-4">
-									<TextField className="gap-1.5" name="provider-label">
-										<Label>Display name</Label>
-										<Input
-											className={fieldInputClass}
-											value={label}
-											onChange={(e) => setLabel(e.target.value)}
-										/>
-									</TextField>
+									<RhfTextField
+										control={control}
+										inputClassName={fieldInputClass}
+										label="Display name"
+										name="label"
+									/>
 
 									<div>
 										<p className="mb-2 text-body-sm text-on-surface">Auth method</p>
@@ -314,7 +347,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 												onPress={() =>
 													void probeMutation.mutateAsync({
 														kind: selectedKind,
-														binaryPath: binaryPath.trim() || null,
+														binaryPath: getValues("binaryPath").trim() || null,
 													})
 												}
 											>
@@ -322,28 +355,27 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 											</Button>
 										</div>
 									) : (
-										<TextField className="gap-1.5" name="provider-secret">
-											<Label>
-												{authMode === "token"
-													? "Token"
-													: selectedKind === "custom"
-														? "API key (optional)"
-														: "API key"}
-											</Label>
-											<Input
-												autoComplete="off"
-												className={fieldInputClass}
+										<div>
+											<RhfTextField
+												control={control}
+												inputClassName={fieldInputClass}
+												label={
+													authMode === "token"
+														? "Token"
+														: selectedKind === "custom"
+															? "API key (optional)"
+															: "API key"
+												}
+												name="apiKey"
 												placeholder={meta.keyPlaceholder}
 												type="password"
-												value={apiKey}
-												onChange={(e) => setApiKey(e.target.value)}
 											/>
 											{selectedKind === "custom" ? (
-												<p className="text-helper text-on-surface-variant">
+												<p className="mt-1.5 text-helper text-on-surface-variant">
 													Leave blank for local hosts that do not require auth.
 												</p>
 											) : null}
-										</TextField>
+										</div>
 									)}
 								</div>
 							) : null}
@@ -351,42 +383,43 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 							{step === "config" && meta ? (
 								<div className="space-y-4">
 									{meta.defaultBinary ? (
-										<TextField className="gap-1.5" name="provider-binary">
-											<Label>Binary path</Label>
-											<Input
-												className={fieldInputClass}
-												placeholder={meta.defaultBinary}
-												value={binaryPath}
-												onChange={(e) => setBinaryPath(e.target.value)}
-											/>
-										</TextField>
+										<RhfTextField
+											control={control}
+											inputClassName={fieldInputClass}
+											label="Binary path"
+											name="binaryPath"
+											placeholder={meta.defaultBinary}
+										/>
 									) : null}
 
 									{selectedKind === "opencode" ? (
-										<TextField className="gap-1.5" name="provider-server">
-											<Label>Server URL</Label>
-											<Input
-												className={fieldInputClass}
-												placeholder="http://127.0.0.1:4096"
-												value={serverUrl}
-												onChange={(e) => setServerUrl(e.target.value)}
-											/>
-										</TextField>
+										<RhfTextField
+											control={control}
+											inputClassName={fieldInputClass}
+											label="Server URL"
+											name="serverUrl"
+											placeholder="http://127.0.0.1:4096"
+										/>
 									) : null}
 
 									{selectedKind === "custom" ? (
-										<TextField className="gap-1.5" name="provider-base">
-											<Label>Base URL</Label>
-											<Input
-												className={fieldInputClass}
+										<div>
+											<RhfTextField
+												control={control}
+												inputClassName={fieldInputClass}
+												label="Base URL"
+												name="baseUrl"
 												placeholder="http://127.0.0.1:11434/v1"
-												value={baseUrl}
-												onChange={(e) => setBaseUrl(e.target.value)}
+												rules={{
+													validate: (value) =>
+														(typeof value === "string" && value.trim().length > 0) ||
+														"Base URL is required for a custom provider",
+												}}
 											/>
-											<p className="text-helper text-on-surface-variant">
+											<p className="mt-1.5 text-helper text-on-surface-variant">
 												OpenAI-compatible root ending in /v1 (required).
 											</p>
-										</TextField>
+										</div>
 									) : null}
 
 									<div>
@@ -394,49 +427,44 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 											<p className="text-body-sm text-on-surface">Environment variables</p>
 											<Button
 												size="sm"
+												type="button"
 												variant="ghost"
-												onPress={() => setEnvRows((rows) => [...rows, newEnvRow()])}
+												onPress={() => append(newEnvRow())}
 											>
 												+ Add
 											</Button>
 										</div>
 										<div className="space-y-2">
-											{envRows.map((row) => (
-												<div key={row.id} className="flex gap-2">
-													<Input
+											{envFields.map((row, index) => (
+												<div key={row.fieldId} className="flex gap-2">
+													<RhfTextField
 														aria-label="Env key"
-														className={fieldInputClass}
+														className="min-w-0 flex-1"
+														control={control}
+														inputClassName={fieldInputClass}
+														name={`envRows.${index}.key`}
 														placeholder="KEY"
-														value={row.key}
-														onChange={(e) => {
-															const value = e.target.value;
-															setEnvRows((rows) =>
-																rows.map((r) => (r.id === row.id ? { ...r, key: value } : r)),
-															);
-														}}
 													/>
-													<Input
+													<RhfTextField
 														aria-label="Env value"
-														className={fieldInputClass}
+														className="min-w-0 flex-1"
+														control={control}
+														inputClassName={fieldInputClass}
+														name={`envRows.${index}.value`}
 														placeholder="value"
 														type="password"
-														value={row.value}
-														onChange={(e) => {
-															const value = e.target.value;
-															setEnvRows((rows) =>
-																rows.map((r) => (r.id === row.id ? { ...r, value } : r)),
-															);
-														}}
 													/>
 												</div>
 											))}
 										</div>
 									</div>
 
-									<TextField className="gap-1.5" name="provider-model">
-										<Label>Default model (optional)</Label>
-										<Input
-											className={fieldInputClass}
+									<div>
+										<RhfTextField
+											control={control}
+											inputClassName={fieldInputClass}
+											label="Default model (optional)"
+											name="defaultModel"
 											placeholder={
 												selectedKind === "opencode"
 													? "deepseek-v4-flash-free"
@@ -446,49 +474,67 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 															? "required for vision runs"
 															: "optional"
 											}
-											value={defaultModel}
-											onChange={(e) => setDefaultModel(e.target.value)}
 										/>
 										{selectedKind === "opencode" ? (
-											<p className="text-helper text-on-surface-variant">
+											<p className="mt-1.5 text-helper text-on-surface-variant">
 												Defaults to deepseek-v4-flash-free (free + screenshots). Change later in
 												provider details.
 											</p>
 										) : null}
-									</TextField>
+									</div>
 								</div>
 							) : null}
 
 							{error ? <p className="text-body-sm text-error">{error}</p> : null}
 						</Modal.Body>
 						<Modal.Footer>
-							<Button variant="secondary" onPress={onClose}>
+							<Button type="button" variant="secondary" onPress={onClose}>
 								Cancel
 							</Button>
 							{step === "driver" ? (
-								<Button isDisabled={!selectedKind} variant="primary" onPress={goIdentity}>
+								<Button
+									isDisabled={!selectedKind}
+									type="button"
+									variant="primary"
+									onPress={goIdentity}
+								>
 									Next
 								</Button>
 							) : null}
 							{step === "identity" ? (
 								<>
-									<Button variant="secondary" onPress={() => setStep("driver")}>
+									<Button type="button" variant="secondary" onPress={() => setStep("driver")}>
 										Back
 									</Button>
-									<Button variant="primary" onPress={goConfig}>
+									<Button
+										type="button"
+										variant="primary"
+										onPress={() => {
+											void goConfig();
+										}}
+									>
 										Next
 									</Button>
 								</>
 							) : null}
 							{step === "config" ? (
 								<>
-									<Button variant="secondary" onPress={() => setStep("identity")}>
+									<Button type="button" variant="secondary" onPress={() => setStep("identity")}>
 										Back
 									</Button>
 									<Button
 										isDisabled={createMutation.isPending}
+										type="button"
 										variant="primary"
-										onPress={handleCreate}
+										onPress={() => {
+											if (selectedKind === "custom") {
+												void trigger("baseUrl").then((ok) => {
+													if (ok) handleCreate();
+												});
+												return;
+											}
+											handleCreate();
+										}}
 									>
 										{createMutation.isPending ? "Saving…" : "Add provider"}
 									</Button>

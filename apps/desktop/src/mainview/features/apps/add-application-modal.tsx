@@ -1,5 +1,11 @@
-import { Button, Input, Label, Modal, TextField } from "@heroui/react";
-import { useEffect, useState } from "react";
+import { RhfTextField, requiredTrimmed } from "@/app/forms";
+import { Button, Form, Modal } from "@heroui/react";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+
+type AddApplicationForm = {
+	name: string;
+};
 
 type AddApplicationModalProps = {
 	open: boolean;
@@ -7,21 +13,28 @@ type AddApplicationModalProps = {
 	onAdd: (name: string) => void;
 };
 
+const inputClass =
+	"w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3.5 py-3 text-body-md text-on-surface shadow-none placeholder:text-on-surface-variant/65 focus:border-primary/35 focus:outline-none focus:ring-2 focus:ring-primary/10";
+
 export function AddApplicationModal({ open, onClose, onAdd }: AddApplicationModalProps) {
-	const [name, setName] = useState("");
+	const {
+		control,
+		handleSubmit,
+		reset,
+		formState: { isValid },
+	} = useForm<AddApplicationForm>({
+		defaultValues: { name: "" },
+		mode: "onChange",
+	});
 
 	useEffect(() => {
 		if (open) {
-			setName("");
+			reset({ name: "" });
 		}
-	}, [open]);
+	}, [open, reset]);
 
-	const trimmed = name.trim();
-	const canCreate = trimmed.length > 0;
-
-	const submit = () => {
-		if (!canCreate) return;
-		onAdd(trimmed);
+	const onSubmit = (values: AddApplicationForm) => {
+		onAdd(values.name.trim());
 		onClose();
 	};
 
@@ -36,44 +49,44 @@ export function AddApplicationModal({ open, onClose, onAdd }: AddApplicationModa
 								Create application
 							</Modal.Heading>
 						</Modal.Header>
-						<Modal.Body className="gap-4">
-							<p className="text-body-md text-on-surface-variant">
-								Add the mobile app you want to test. You can configure bundle IDs and Appium
-								capabilities after it is created.
-							</p>
-							<TextField className="w-full" name="app-name" onChange={setName} value={name}>
-								<Label className="mb-1.5 text-subheading text-on-surface">
-									App name <span className="text-error">*</span>
-								</Label>
-								<Input
+						<Form className="contents" onSubmit={handleSubmit(onSubmit)}>
+							<Modal.Body className="gap-4">
+								<p className="text-body-md text-on-surface-variant">
+									Add the mobile app you want to test. You can configure bundle IDs and Appium
+									capabilities after it is created.
+								</p>
+								<RhfTextField
 									autoFocus
-									className="w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3.5 py-3 text-body-md text-on-surface shadow-none placeholder:text-on-surface-variant/65 focus:border-primary/35 focus:outline-none focus:ring-2 focus:ring-primary/10"
-									onKeyDown={(event) => {
-										if (event.key === "Enter") {
-											event.preventDefault();
-											submit();
-										}
-									}}
+									control={control}
+									inputClassName={inputClass}
+									label={
+										<>
+											App name <span className="text-error">*</span>
+										</>
+									}
+									name="name"
 									placeholder="e.g. My Banking App"
+									rules={requiredTrimmed("App name is required")}
 								/>
-							</TextField>
-						</Modal.Body>
-						<Modal.Footer className="gap-2">
-							<Button
-								className="rounded-xl bg-surface-container px-4 text-on-surface"
-								onPress={onClose}
-								variant="secondary"
-							>
-								Cancel
-							</Button>
-							<Button
-								className="rounded-xl bg-primary px-4 text-on-primary data-[hovered=true]:bg-primary/90 data-[disabled=true]:bg-surface-container-highest data-[disabled=true]:text-on-surface-variant"
-								isDisabled={!canCreate}
-								onPress={submit}
-							>
-								Create app
-							</Button>
-						</Modal.Footer>
+							</Modal.Body>
+							<Modal.Footer className="gap-2">
+								<Button
+									className="rounded-xl bg-surface-container px-4 text-on-surface"
+									onPress={onClose}
+									type="button"
+									variant="secondary"
+								>
+									Cancel
+								</Button>
+								<Button
+									className="rounded-xl bg-primary px-4 text-on-primary data-[hovered=true]:bg-primary/90 data-[disabled=true]:bg-surface-container-highest data-[disabled=true]:text-on-surface-variant"
+									isDisabled={!isValid}
+									type="submit"
+								>
+									Create app
+								</Button>
+							</Modal.Footer>
+						</Form>
 					</Modal.Dialog>
 				</Modal.Container>
 			</Modal.Backdrop>

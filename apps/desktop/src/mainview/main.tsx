@@ -1,4 +1,5 @@
 import { initDesktopRpc } from "@/app/desktop-rpc";
+import { viewTransitionTypes } from "@/app/motion/route-rank";
 import { routeTree } from "@/app/route-tree";
 import { AppsProvider } from "@/features/apps/context";
 import { ActiveRunProvider } from "@/features/runs/active-run-context";
@@ -13,7 +14,16 @@ import "./styles.css";
 initDesktopRpc();
 
 const queryClient = new QueryClient();
-const router = createRouter({ routeTree });
+const router = createRouter({
+	routeTree,
+	defaultViewTransition: {
+		types: ({ fromLocation, toLocation }) =>
+			viewTransitionTypes({
+				fromPathname: fromLocation?.pathname,
+				toPathname: toLocation.pathname,
+			}),
+	},
+});
 
 declare module "@tanstack/react-router" {
 	interface Register {

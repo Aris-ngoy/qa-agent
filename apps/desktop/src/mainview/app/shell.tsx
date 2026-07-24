@@ -14,7 +14,9 @@ export function AppShell({ children, activePath = "/" }: AppShellProps) {
 
 			<div className="electrobun-webkit-app-region-no-drag flex min-h-0 min-w-0 flex-1 flex-col gap-5">
 				<RunsPanel />
-				<main className="min-h-0 min-w-0 flex-1 overflow-y-auto py-2 pr-1">{children}</main>
+				<main className="app-page min-h-0 min-w-0 flex-1 overflow-y-auto py-2 pr-1">
+					{children}
+				</main>
 			</div>
 		</div>
 	);

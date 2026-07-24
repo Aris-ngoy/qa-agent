@@ -35,7 +35,10 @@ const agentDecisionSchema = z.object({
 	text: z.string().optional(),
 	/** For wait: milliseconds to pause before the next screenshot (clamped server-side). */
 	ms: z.number().min(0).max(10_000).optional(),
-	reason: z.string().optional(),
+	/** One-sentence summary of the chosen action (shown collapsed in the run UI). */
+	reason: z.string().min(1),
+	/** 2–4 sentences: what is visible and why this action follows (expandable in the run UI). */
+	thoughts: z.string().min(1),
 });
 
 export type AgentDecision = z.infer<typeof agentDecisionSchema>;
@@ -44,13 +47,17 @@ const SYSTEM_PROMPT = `You are a mobile QA agent controlling an app via screensh
 A screenshot of the current device screen is ALWAYS attached to the user message as an image. You can see it. Never claim that no screenshot was provided, missing, blank, or unavailable.
 
 Your entire reply MUST be a single JSON object and nothing else — no markdown fences, no commentary before or after.
+Every action MUST include:
+- "reason": one short sentence summarizing the action choice
+- "thoughts": 2–4 sentences describing what you see on screen and how that led to this action
+
 Valid shapes:
-{"type":"tap","x":0-1000,"y":0-1000,"reason":"..."}
-{"type":"type","text":"...","reason":"..."}
-{"type":"wait","ms":500-3000,"reason":"..."}
-{"type":"verify","reason":"..."}
-{"type":"done","reason":"..."}
-{"type":"fail","reason":"..."}
+{"type":"tap","x":0-1000,"y":0-1000,"reason":"...","thoughts":"..."}
+{"type":"type","text":"...","reason":"...","thoughts":"..."}
+{"type":"wait","ms":500-3000,"reason":"...","thoughts":"..."}
+{"type":"verify","reason":"...","thoughts":"..."}
+{"type":"done","reason":"...","thoughts":"..."}
+{"type":"fail","reason":"...","thoughts":"..."}
 
 Coordinates use a 0–1000 normalized grid (0,0 top-left).
 
@@ -63,8 +70,7 @@ Rules:
 
 const JSON_REPAIR_PROMPT =
 	"Your previous reply was not valid JSON for this task. Reply again with ONLY one JSON object (no markdown, no prose) matching: " +
-	'{"type":"tap"|"type"|"wait"|"verify"|"done"|"fail", ...}';
-
+	'{"type":"tap"|"type"|"wait"|"verify"|"done"|"fail", "reason":"...", "thoughts":"...", ...}';
 type VisionImage = { base64: string; mediaType: "image/png" | "image/jpeg" };
 
 /**
@@ -172,16 +178,16 @@ function formatRecentActions(actions: AgentDecision[]): string {
 /** Models sometimes hallucinate "no screenshot" even when an image was sent. */
 export function isAbsurdNoScreenshotFail(decision: AgentDecision): boolean {
 	if (decision.type !== "fail") return false;
-	const reason = (decision.reason ?? "").toLowerCase();
+	const text = `${decision.reason} ${decision.thoughts}`.toLowerCase();
 	return (
-		reason.includes("no screenshot") ||
-		reason.includes("screenshot provided") ||
-		reason.includes("screenshot was not") ||
-		reason.includes("without a screenshot") ||
-		reason.includes("missing screenshot") ||
-		reason.includes("screenshot unavailable") ||
-		reason.includes("cannot see the screen") ||
-		reason.includes("no image")
+		text.includes("no screenshot") ||
+		text.includes("screenshot provided") ||
+		text.includes("screenshot was not") ||
+		text.includes("without a screenshot") ||
+		text.includes("missing screenshot") ||
+		text.includes("screenshot unavailable") ||
+		text.includes("cannot see the screen") ||
+		text.includes("no image")
 	);
 }
 
@@ -251,7 +257,7 @@ export async function decideNextAction(input: {
 		`Expected result: ${input.expectedResult || "(none)"}`,
 		`Recent actions:\n${formatRecentActions(input.recentActions ?? [])}`,
 		"Look at the attached screenshot image and decide the next action. A screenshot is attached.",
-		"Reply with ONLY the JSON action object.",
+		'Reply with ONLY the JSON action object, including non-empty "reason" and "thoughts".',
 	].join("\n");
 
 	try {

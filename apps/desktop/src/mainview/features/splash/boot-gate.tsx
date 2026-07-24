@@ -1,10 +1,13 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
+import { useReducedMotion } from "@/app/motion/use-reduced-motion";
 import { Button } from "@heroui/react";
 import { createRunnerClient } from "@yoqa/runner-client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { YoqaMark } from "./yoqa-mark";
 
 type BootPhase = "starting" | "checking" | "installing" | "ready" | "error";
+
+const CROSSFADE_MS = 400;
 
 function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,7 +45,7 @@ function SplashScreen({ phase, message, onRetry }: SplashScreenProps) {
 		<div className="electrobun-webkit-app-region-drag flex h-full min-h-0 flex-col bg-[#14131c] px-8 pt-12 pb-8 text-white">
 			<div className="flex flex-1 flex-col items-center justify-center">
 				<div className="flex w-full max-w-[280px] flex-col items-center">
-					<YoqaMark className="mb-5" />
+					<YoqaMark className={phase === "ready" ? "mb-5 motion-fade-in" : "mb-5"} />
 					<p className="text-center text-body-md text-[#8a8792]">Local QA host · Workspace</p>
 
 					<div className="mt-11 w-full max-w-[160px]">
@@ -92,15 +95,22 @@ type BootGateProps = {
 };
 
 export function BootGate({ children }: BootGateProps) {
+	const reducedMotion = useReducedMotion();
 	const [phase, setPhase] = useState<BootPhase>("starting");
 	const [message, setMessage] = useState<string | null>(null);
 	const [attempt, setAttempt] = useState(0);
 	const [ready, setReady] = useState(false);
+	const [splashMounted, setSplashMounted] = useState(true);
+	const [splashExiting, setSplashExiting] = useState(false);
+	const [appVisible, setAppVisible] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
 
 	const retry = () => {
 		abortRef.current?.abort();
 		setReady(false);
+		setSplashMounted(true);
+		setSplashExiting(false);
+		setAppVisible(false);
 		setPhase("starting");
 		setMessage(null);
 		setAttempt((n) => n + 1);
@@ -180,9 +190,49 @@ export function BootGate({ children }: BootGateProps) {
 		};
 	}, [attempt]);
 
+	useEffect(() => {
+		if (!ready) return;
+
+		if (reducedMotion) {
+			setAppVisible(true);
+			setSplashMounted(false);
+			setSplashExiting(false);
+			return;
+		}
+
+		setAppVisible(false);
+		setSplashExiting(false);
+		setSplashMounted(true);
+
+		const showApp = window.requestAnimationFrame(() => {
+			setAppVisible(true);
+			setSplashExiting(true);
+		});
+
+		const done = window.setTimeout(() => {
+			setSplashMounted(false);
+		}, CROSSFADE_MS);
+
+		return () => {
+			window.cancelAnimationFrame(showApp);
+			window.clearTimeout(done);
+		};
+	}, [ready, reducedMotion]);
+
 	if (!ready) {
 		return <SplashScreen message={message} onRetry={retry} phase={phase} />;
 	}
 
-	return children;
+	return (
+		<div className="boot-crossfade-root">
+			<div className={`boot-app-layer${appVisible || reducedMotion ? " is-visible" : ""}`}>
+				{children}
+			</div>
+			{splashMounted ? (
+				<div className={`boot-splash-layer${splashExiting ? " is-exiting" : ""}`}>
+					<SplashScreen message={message} onRetry={retry} phase={phase} />
+				</div>
+			) : null}
+		</div>
+	);
 }

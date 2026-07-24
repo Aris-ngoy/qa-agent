@@ -1,3 +1,4 @@
+import { RhfSelectField, RhfTextField, requiredTrimmed } from "@/app/forms";
 import { getRunnerClient } from "@/app/runner-client";
 import {
 	type TestCase,
@@ -7,10 +8,17 @@ import {
 	mapCatalogCase,
 } from "@/features/test-cases/data";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
-import { Button, Input, Label, ListBox, Select, TextArea, TextField } from "@heroui/react";
+import { Button, Form } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { type SVGProps, useEffect, useRef, useState } from "react";
+import {
+	type Control,
+	type UseFormSetValue,
+	useFieldArray,
+	useForm,
+	useWatch,
+} from "react-hook-form";
 
 type DetailTab = "instructions" | "configuration";
 
@@ -25,7 +33,7 @@ type GalleryImage = {
 	name: string;
 };
 
-type FormState = {
+type FormValues = {
 	name: string;
 	tags: string[];
 	flows: TestFlow[];
@@ -123,7 +131,7 @@ function DuplicateIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
-function formFromCase(testCase: TestCase): FormState {
+function formFromCase(testCase: TestCase): FormValues {
 	return {
 		name: testCase.name,
 		tags: [...testCase.tags],
@@ -134,45 +142,37 @@ function formFromCase(testCase: TestCase): FormState {
 	};
 }
 
-function moveItem<T>(items: T[], fromIndex: number, toIndex: number): T[] {
-	if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return items;
-	const next = [...items];
-	const [moved] = next.splice(fromIndex, 1);
-	if (moved === undefined) return items;
-	next.splice(toIndex, 0, moved);
-	return next;
-}
-
 function InstructionsPanel({
-	form,
-	onNameChange,
-	onRemoveTag,
-	onAddTag,
-	onFlowChange,
-	onAddFlow,
-	onMoveFlow,
-	onRemoveFlow,
+	control,
+	setValue,
 }: {
-	form: FormState;
-	onNameChange: (name: string) => void;
-	onRemoveTag: (tag: string) => void;
-	onAddTag: (tag: string) => void;
-	onFlowChange: (
-		id: string,
-		patch: Partial<Pick<TestFlow, "instructions" | "expectedResult">>,
-	) => void;
-	onAddFlow: () => void;
-	onMoveFlow: (fromIndex: number, toIndex: number) => void;
-	onRemoveFlow: (id: string) => void;
+	control: Control<FormValues>;
+	setValue: UseFormSetValue<FormValues>;
 }) {
 	const [tagDraft, setTagDraft] = useState("");
 	const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
-	const canDeleteFlow = form.flows.length > 1;
+	const tags = useWatch({ control, name: "tags" }) ?? [];
+	const {
+		fields: flowFields,
+		append,
+		remove,
+		move,
+	} = useFieldArray({
+		control,
+		name: "flows",
+		keyName: "fieldId",
+	});
+	const canDeleteFlow = flowFields.length > 1;
 
 	const commitTag = () => {
 		const next = tagDraft.trim();
 		if (!next) return;
-		onAddTag(next);
+		const normalized = next.toLowerCase();
+		if (tags.some((existing) => existing.toLowerCase() === normalized)) {
+			setTagDraft("");
+			return;
+		}
+		setValue("tags", [...tags, next], { shouldDirty: true });
 		setTagDraft("");
 	};
 
@@ -180,19 +180,25 @@ function InstructionsPanel({
 		<div className="grid w-full grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_16rem]">
 			<div className="flex min-w-0 flex-col gap-6">
 				<div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-					<TextField className="w-full" name="caseName" onChange={onNameChange} value={form.name}>
-						<Label className="mb-1.5 text-subheading text-on-surface">
-							Test case name <span className="text-error">*</span>
-						</Label>
-						<Input className={fieldInputClass} placeholder="Test case name" />
-					</TextField>
+					<RhfTextField
+						control={control}
+						inputClassName={fieldInputClass}
+						label={
+							<>
+								Test case name <span className="text-error">*</span>
+							</>
+						}
+						name="name"
+						placeholder="Test case name"
+						rules={requiredTrimmed("Test case name is required")}
+					/>
 
 					<div>
 						<label className="mb-1.5 block text-subheading text-on-surface" htmlFor="case-tags">
 							Tags
 						</label>
 						<div className="flex min-h-[3rem] flex-wrap items-center gap-2 rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2">
-							{form.tags.map((tag) => (
+							{tags.map((tag) => (
 								<span
 									className="inline-flex items-center gap-1 rounded-md bg-error-container px-2 py-0.5 text-helper font-medium text-on-error-container"
 									key={tag}
@@ -201,7 +207,13 @@ function InstructionsPanel({
 									<button
 										aria-label={`Remove ${tag}`}
 										className="rounded p-0.5 text-on-error-container/80 transition-colors hover:text-on-error-container"
-										onClick={() => onRemoveTag(tag)}
+										onClick={() =>
+											setValue(
+												"tags",
+												tags.filter((existing) => existing !== tag),
+												{ shouldDirty: true },
+											)
+										}
 										type="button"
 									>
 										<svg
@@ -226,12 +238,18 @@ function InstructionsPanel({
 										event.preventDefault();
 										commitTag();
 									}
-									if (event.key === "Backspace" && !tagDraft && form.tags.length > 0) {
-										const lastTag = form.tags[form.tags.length - 1];
-										if (lastTag) onRemoveTag(lastTag);
+									if (event.key === "Backspace" && !tagDraft && tags.length > 0) {
+										const lastTag = tags[tags.length - 1];
+										if (lastTag) {
+											setValue(
+												"tags",
+												tags.filter((existing) => existing !== lastTag),
+												{ shouldDirty: true },
+											);
+										}
 									}
 								}}
-								placeholder={form.tags.length === 0 ? "Add a tag" : ""}
+								placeholder={tags.length === 0 ? "Add a tag" : ""}
 								type="text"
 								value={tagDraft}
 							/>
@@ -241,8 +259,7 @@ function InstructionsPanel({
 
 				<div className="flex flex-col gap-4">
 					<ul className="m-0 flex list-none flex-col gap-4 p-0">
-						{form.flows.map((flow, index) => {
-							const isEmpty = !flow.instructions.trim() && !flow.expectedResult.trim();
+						{flowFields.map((flow, index) => {
 							const isDragging = draggingIndex === index;
 
 							return (
@@ -250,16 +267,15 @@ function InstructionsPanel({
 									className={[
 										"flex items-start gap-3 rounded-2xl border border-outline-variant/70 bg-surface-container-lowest/80 p-3 shadow-card transition-all",
 										isDragging ? "scale-[0.99] border-primary/30 opacity-60 shadow-float" : "",
-										isEmpty && !isDragging ? "opacity-80" : "",
 									]
 										.filter(Boolean)
 										.join(" ")}
-									key={flow.id}
+									key={flow.fieldId}
 									onDragOver={(event) => {
 										event.preventDefault();
 										event.dataTransfer.dropEffect = "move";
 										if (draggingIndex === null || draggingIndex === index) return;
-										onMoveFlow(draggingIndex, index);
+										move(draggingIndex, index);
 										setDraggingIndex(index);
 									}}
 									onDrop={(event) => {
@@ -298,41 +314,31 @@ function InstructionsPanel({
 									</button>
 
 									<div className="grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
-										<TextField
-											className="w-full"
-											name={`instructions-${flow.id}`}
-											onChange={(value) => onFlowChange(flow.id, { instructions: value })}
-											value={flow.instructions}
-										>
-											<Label className="mb-1 text-subheading text-on-surface">Instructions</Label>
-											<TextArea
-												className={fieldAreaClass}
-												placeholder="Describe what the agent should do…"
-												rows={2}
-											/>
-										</TextField>
-										<TextField
-											className="w-full"
-											name={`expected-${flow.id}`}
-											onChange={(value) => onFlowChange(flow.id, { expectedResult: value })}
-											value={flow.expectedResult}
-										>
-											<Label className="mb-1 text-subheading text-on-surface">
-												Expected result
-											</Label>
-											<TextArea
-												className={fieldAreaClass}
-												placeholder="What should be true when this step succeeds…"
-												rows={2}
-											/>
-										</TextField>
+										<RhfTextField
+											control={control}
+											inputClassName={fieldAreaClass}
+											label="Instructions"
+											multiline
+											name={`flows.${index}.instructions`}
+											placeholder="Describe what the agent should do…"
+											rows={2}
+										/>
+										<RhfTextField
+											control={control}
+											inputClassName={fieldAreaClass}
+											label="Expected result"
+											multiline
+											name={`flows.${index}.expectedResult`}
+											placeholder="What should be true when this step succeeds…"
+											rows={2}
+										/>
 									</div>
 
 									{canDeleteFlow ? (
 										<button
 											aria-label={`Delete step ${index + 1}`}
 											className="flex size-8 shrink-0 items-center justify-center self-start rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error"
-											onClick={() => onRemoveFlow(flow.id)}
+											onClick={() => remove(index)}
 											title="Delete step"
 											type="button"
 										>
@@ -345,7 +351,17 @@ function InstructionsPanel({
 					</ul>
 
 					<div className="flex shrink-0 flex-wrap items-center gap-5 pl-12">
-						<button className={actionLinkClass} onClick={onAddFlow} type="button">
+						<button
+							className={actionLinkClass}
+							onClick={() =>
+								append({
+									id: `cf_${crypto.randomUUID()}`,
+									instructions: "",
+									expectedResult: "",
+								})
+							}
+							type="button"
+						>
 							<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 20 20">
 								<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
 							</svg>
@@ -425,27 +441,23 @@ function InstructionsPanel({
 }
 
 function ConfigurationPanel({
-	capabilities,
-	galleryImages,
-	locale,
-	onAddCapability,
-	onChangeCapability,
-	onRemoveCapability,
-	onAddGalleryImages,
-	onRemoveGalleryImage,
-	onLocaleChange,
+	control,
+	setValue,
 }: {
-	capabilities: Capability[];
-	galleryImages: GalleryImage[];
-	locale: string | null;
-	onAddCapability: () => void;
-	onChangeCapability: (id: string, patch: Partial<Pick<Capability, "key" | "value">>) => void;
-	onRemoveCapability: (id: string) => void;
-	onAddGalleryImages: (files: FileList) => void;
-	onRemoveGalleryImage: (id: string) => void;
-	onLocaleChange: (locale: string | null) => void;
+	control: Control<FormValues>;
+	setValue: UseFormSetValue<FormValues>;
 }) {
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const galleryImages = useWatch({ control, name: "galleryImages" }) ?? [];
+	const {
+		fields: capabilityFields,
+		append,
+		remove,
+	} = useFieldArray({
+		control,
+		name: "capabilities",
+		keyName: "fieldId",
+	});
 
 	return (
 		<div className="flex w-full max-w-2xl flex-col gap-5">
@@ -457,32 +469,31 @@ function ConfigurationPanel({
 					</p>
 				</div>
 
-				{capabilities.length > 0 ? (
+				{capabilityFields.length > 0 ? (
 					<ul className="mb-4 flex list-none flex-col gap-3 p-0">
-						{capabilities.map((cap) => (
-							<li className="flex items-start gap-2" key={cap.id}>
-								<TextField
+						{capabilityFields.map((cap, index) => (
+							<li className="flex items-start gap-2" key={cap.fieldId}>
+								<RhfTextField
 									aria-label="Capability key"
 									className="min-w-0 flex-1"
-									name={`cap-key-${cap.id}`}
-									onChange={(value) => onChangeCapability(cap.id, { key: value })}
-									value={cap.key}
-								>
-									<Input className={fieldInputClass} placeholder="appium:autoLaunch" />
-								</TextField>
-								<TextField
+									control={control}
+									inputClassName={fieldInputClass}
+									name={`capabilities.${index}.key`}
+									placeholder="appium:autoLaunch"
+								/>
+								<RhfTextField
 									aria-label="Capability value"
 									className="min-w-0 flex-1"
-									name={`cap-value-${cap.id}`}
-									onChange={(value) => onChangeCapability(cap.id, { value })}
-									value={cap.value}
-								>
-									<Input className={fieldInputClass} placeholder="false" />
-								</TextField>
+									control={control}
+									inputClassName={fieldInputClass}
+									name={`capabilities.${index}.value`}
+									placeholder="false"
+								/>
 								<Button
 									aria-label="Remove capability"
 									className="size-10 min-w-10 shrink-0 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
-									onPress={() => onRemoveCapability(cap.id)}
+									onPress={() => remove(index)}
+									type="button"
 									variant="ghost"
 								>
 									<TrashIcon />
@@ -492,7 +503,11 @@ function ConfigurationPanel({
 					</ul>
 				) : null}
 
-				<button className={softButtonClass} onClick={onAddCapability} type="button">
+				<button
+					className={softButtonClass}
+					onClick={() => append({ id: `cap_${crypto.randomUUID()}`, key: "", value: "" })}
+					type="button"
+				>
 					<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 20 20">
 						<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
 					</svg>
@@ -520,7 +535,13 @@ function ConfigurationPanel({
 									<button
 										aria-label={`Remove ${image.name}`}
 										className="rounded p-0.5 text-on-surface-variant transition-colors hover:text-error"
-										onClick={() => onRemoveGalleryImage(image.id)}
+										onClick={() =>
+											setValue(
+												"galleryImages",
+												galleryImages.filter((item) => item.id !== image.id),
+												{ shouldDirty: true },
+											)
+										}
 										type="button"
 									>
 										<svg
@@ -545,7 +566,13 @@ function ConfigurationPanel({
 						multiple
 						onChange={(event) => {
 							if (event.target.files && event.target.files.length > 0) {
-								onAddGalleryImages(event.target.files);
+								const nextImages = Array.from(event.target.files).map((file) => ({
+									id: `img_${crypto.randomUUID()}`,
+									name: file.name,
+								}));
+								setValue("galleryImages", [...galleryImages, ...nextImages], {
+									shouldDirty: true,
+								});
 								event.target.value = "";
 							}
 						}}
@@ -580,32 +607,28 @@ function ConfigurationPanel({
 					<p className="mb-4 text-body-md text-on-surface-variant">
 						Override the device locale for this test case.
 					</p>
-					<Select
-						aria-label="Select locale"
+					<RhfSelectField
+						ariaLabel="Select locale"
+						control={control}
+						name="locale"
+						nullable
+						options={LOCALES}
 						placeholder="Select locale…"
-						selectedKey={locale}
-						onSelectionChange={(key) => onLocaleChange(key == null ? null : String(key))}
-					>
-						<Select.Trigger className="h-11 w-full items-center rounded-xl border border-on-surface/80 bg-surface-container-lowest px-3.5 shadow-none">
-							<Select.Value />
-							<Select.Indicator className="text-on-surface-variant" />
-						</Select.Trigger>
-						<Select.Popover>
-							<ListBox>
-								{LOCALES.map((item) => (
-									<ListBox.Item id={item.id} key={item.id} textValue={item.label}>
-										{item.label}
-										<ListBox.ItemIndicator />
-									</ListBox.Item>
-								))}
-							</ListBox>
-						</Select.Popover>
-					</Select>
+					/>
 				</div>
 			</section>
 		</div>
 	);
 }
+
+const emptyDefaults: FormValues = {
+	name: "",
+	tags: [],
+	flows: [],
+	capabilities: [],
+	galleryImages: [],
+	locale: null,
+};
 
 export function TestCaseDetailPage() {
 	const { caseId } = useParams({ strict: false }) as { caseId?: string };
@@ -613,8 +636,21 @@ export function TestCaseDetailPage() {
 	const queryClient = useQueryClient();
 	const { setSelected } = useTestCaseSelection();
 	const [activeTab, setActiveTab] = useState<DetailTab>("instructions");
-	const [form, setForm] = useState<FormState | null>(null);
-	const [savedSnapshot, setSavedSnapshot] = useState<FormState | null>(null);
+	const [ready, setReady] = useState(false);
+
+	const {
+		control,
+		handleSubmit,
+		reset,
+		getValues,
+		setValue,
+		formState: { isDirty },
+	} = useForm<FormValues>({
+		defaultValues: emptyDefaults,
+		mode: "onChange",
+	});
+
+	const nameValue = useWatch({ control, name: "name" });
 
 	useEffect(() => {
 		if (caseId) {
@@ -636,7 +672,7 @@ export function TestCaseDetailPage() {
 	const testCase = caseQuery.data;
 
 	const saveMutation = useMutation({
-		mutationFn: async (next: FormState) => {
+		mutationFn: async (next: FormValues) => {
 			if (!caseId) throw new Error("Missing case id");
 			const client = await getRunnerClient();
 			return mapCatalogCase(
@@ -658,9 +694,7 @@ export function TestCaseDetailPage() {
 		onSuccess: (updated) => {
 			queryClient.setQueryData(caseQueryKey(updated.id), updated);
 			void queryClient.invalidateQueries({ queryKey: casesQueryKey(updated.appId) });
-			const next = formFromCase(updated);
-			setForm(next);
-			setSavedSnapshot(next);
+			reset(formFromCase(updated));
 		},
 	});
 
@@ -679,7 +713,8 @@ export function TestCaseDetailPage() {
 
 	const duplicateMutation = useMutation({
 		mutationFn: async () => {
-			if (!testCase || !form) throw new Error("Missing case");
+			if (!testCase) throw new Error("Missing case");
+			const form = getValues();
 			const client = await getRunnerClient();
 			return mapCatalogCase(
 				await client.createCase(testCase.appId, {
@@ -703,15 +738,13 @@ export function TestCaseDetailPage() {
 
 	useEffect(() => {
 		if (!testCase) {
-			setForm(null);
-			setSavedSnapshot(null);
+			setReady(false);
 			return;
 		}
-		const next = formFromCase(testCase);
-		setForm(next);
-		setSavedSnapshot(next);
+		reset(formFromCase(testCase));
+		setReady(true);
 		setActiveTab("instructions");
-	}, [testCase]);
+	}, [testCase, reset]);
 
 	if (caseQuery.isLoading) {
 		return (
@@ -742,31 +775,31 @@ export function TestCaseDetailPage() {
 		);
 	}
 
-	if (!form || !savedSnapshot) {
+	if (!ready) {
 		return null;
 	}
 
-	const dirty = JSON.stringify(form) !== JSON.stringify(savedSnapshot);
-	const canSave = dirty && form.name.trim().length > 0 && !saveMutation.isPending;
-	const breadcrumbTitle = `#${testCase.number} ${form.name.trim() || testCase.name}`;
+	const canSave = isDirty && (nameValue?.trim().length ?? 0) > 0 && !saveMutation.isPending;
+	const breadcrumbTitle = `#${testCase.number} ${nameValue?.trim() || testCase.name}`;
 
-	const handleSave = () => {
-		if (!canSave) return;
-		const next: FormState = {
-			...form,
-			name: form.name.trim(),
-			capabilities: form.capabilities
+	const onSubmit = (values: FormValues) => {
+		saveMutation.mutate({
+			...values,
+			name: values.name.trim(),
+			capabilities: values.capabilities
 				.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
 				.filter((cap) => cap.key.length > 0),
-		};
-		saveMutation.mutate(next);
+		});
 	};
 
 	return (
 		<div className="flex h-full min-h-0 w-full flex-col gap-6">
-			<header className="flex shrink-0 flex-wrap items-center justify-between gap-4">
+			<header className="motion-fade-up flex shrink-0 flex-wrap items-center justify-between gap-4">
 				<nav className="flex min-w-0 items-center gap-2 text-body-md text-on-surface-variant">
-					<Link className="shrink-0 transition-colors hover:text-on-surface" to="/test-cases">
+					<Link
+						className="shrink-0 transition-colors duration-[var(--motion-fast)] hover:text-on-surface"
+						to="/test-cases"
+					>
 						Test Cases
 					</Link>
 					<span aria-hidden="true">&gt;</span>
@@ -794,8 +827,9 @@ export function TestCaseDetailPage() {
 					</Button>
 					<Button
 						className="ml-1 rounded-lg bg-primary px-5 text-on-primary data-[hovered=true]:bg-primary/90 data-[disabled=true]:bg-surface-container-highest data-[disabled=true]:text-on-surface-variant"
+						form="test-case-form"
 						isDisabled={!canSave}
-						onPress={handleSave}
+						type="submit"
 					>
 						{saveMutation.isPending ? "Saving…" : "Save"}
 					</Button>
@@ -828,143 +862,13 @@ export function TestCaseDetailPage() {
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-y-auto pb-4" role="tabpanel">
-				{activeTab === "instructions" ? (
-					<InstructionsPanel
-						form={form}
-						onAddFlow={() =>
-							setForm((current) =>
-								current
-									? {
-											...current,
-											flows: [
-												...current.flows,
-												{
-													id: `cf_${crypto.randomUUID()}`,
-													instructions: "",
-													expectedResult: "",
-												},
-											],
-										}
-									: current,
-							)
-						}
-						onAddTag={(tag) =>
-							setForm((current) => {
-								if (!current) return current;
-								const normalized = tag.toLowerCase();
-								if (current.tags.some((existing) => existing.toLowerCase() === normalized)) {
-									return current;
-								}
-								return { ...current, tags: [...current.tags, tag] };
-							})
-						}
-						onFlowChange={(id, patch) =>
-							setForm((current) =>
-								current
-									? {
-											...current,
-											flows: current.flows.map((flow) =>
-												flow.id === id ? { ...flow, ...patch } : flow,
-											),
-										}
-									: current,
-							)
-						}
-						onMoveFlow={(fromIndex, toIndex) =>
-							setForm((current) =>
-								current
-									? { ...current, flows: moveItem(current.flows, fromIndex, toIndex) }
-									: current,
-							)
-						}
-						onNameChange={(name) =>
-							setForm((current) => (current ? { ...current, name } : current))
-						}
-						onRemoveFlow={(id) =>
-							setForm((current) => {
-								if (!current || current.flows.length <= 1) return current;
-								return {
-									...current,
-									flows: current.flows.filter((flow) => flow.id !== id),
-								};
-							})
-						}
-						onRemoveTag={(tag) =>
-							setForm((current) =>
-								current
-									? { ...current, tags: current.tags.filter((existing) => existing !== tag) }
-									: current,
-							)
-						}
-					/>
-				) : (
-					<ConfigurationPanel
-						capabilities={form.capabilities}
-						galleryImages={form.galleryImages}
-						locale={form.locale}
-						onAddCapability={() =>
-							setForm((current) =>
-								current
-									? {
-											...current,
-											capabilities: [
-												...current.capabilities,
-												{ id: `cap_${crypto.randomUUID()}`, key: "", value: "" },
-											],
-										}
-									: current,
-							)
-						}
-						onAddGalleryImages={(files) =>
-							setForm((current) => {
-								if (!current) return current;
-								const nextImages = Array.from(files).map((file) => ({
-									id: `img_${crypto.randomUUID()}`,
-									name: file.name,
-								}));
-								return {
-									...current,
-									galleryImages: [...current.galleryImages, ...nextImages],
-								};
-							})
-						}
-						onChangeCapability={(id, patch) =>
-							setForm((current) =>
-								current
-									? {
-											...current,
-											capabilities: current.capabilities.map((cap) =>
-												cap.id === id ? { ...cap, ...patch } : cap,
-											),
-										}
-									: current,
-							)
-						}
-						onLocaleChange={(nextLocale) =>
-							setForm((current) => (current ? { ...current, locale: nextLocale } : current))
-						}
-						onRemoveCapability={(id) =>
-							setForm((current) =>
-								current
-									? {
-											...current,
-											capabilities: current.capabilities.filter((cap) => cap.id !== id),
-										}
-									: current,
-							)
-						}
-						onRemoveGalleryImage={(id) =>
-							setForm((current) =>
-								current
-									? {
-											...current,
-											galleryImages: current.galleryImages.filter((image) => image.id !== id),
-										}
-									: current,
-							)
-						}
-					/>
-				)}
+				<Form className="contents" id="test-case-form" onSubmit={handleSubmit(onSubmit)}>
+					{activeTab === "instructions" ? (
+						<InstructionsPanel control={control} setValue={setValue} />
+					) : (
+						<ConfigurationPanel control={control} setValue={setValue} />
+					)}
+				</Form>
 			</div>
 		</div>
 	);

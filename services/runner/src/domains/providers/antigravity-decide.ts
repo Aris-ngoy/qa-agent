@@ -20,7 +20,8 @@ const agentDecisionSchema = z.object({
 	y: z.number().min(0).max(1000).optional(),
 	text: z.string().optional(),
 	ms: z.number().min(0).max(10_000).optional(),
-	reason: z.string().optional(),
+	reason: z.string().min(1),
+	thoughts: z.string().min(1),
 });
 
 export type AntigravityDecision = z.infer<typeof agentDecisionSchema>;

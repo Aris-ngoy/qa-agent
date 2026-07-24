@@ -1,11 +1,11 @@
 ---
-description: After every plan-then-build session, write a docs entry for what was done
+description: After plan-then-build, document the outcome, then commit and push
 alwaysApply: true
 ---
 
 # Document plan-and-build work
 
-Whenever a feature or change is **planned first** (Plan mode, design discussion, or an agreed build plan) and then **implemented**, document the outcome before considering the work done.
+Whenever a feature or change is **planned first** (Plan mode, design discussion, or an agreed build plan) and then **implemented**, finish the session by documenting, committing, and pushing—do not wait for the user to ask.
 
 ## When this applies
 
@@ -18,6 +18,16 @@ Whenever a feature or change is **planned first** (Plan mode, design discussion,
 - Tiny one-off fixes with no plan step
 - Pure Q&A or exploration with no implementation
 - Documentation-only or rule-only changes (unless the plan itself was about docs)
+
+## Completion sequence
+
+After implementation is complete (or after a meaningful partial milestone), do these steps **in order** in the same turn:
+
+1. **Document** — write or update the docs entry (below)
+2. **Commit** — stage the feature changes **and** the docs, then commit (follow the repo’s git commit protocol; HEREDOC message focused on why)
+3. **Push** — push the branch to the remote (`git push` or `git push -u origin HEAD` if needed)
+
+This rule **authorizes** commit + push for plan-and-build work without an extra user request. Still never force-push, amend others’ commits, skip hooks, or update git config.
 
 ## What to write
 
@@ -42,7 +52,3 @@ Every new or updated doc must cover:
 5. **Follow-ups** — known gaps, TODOs, or next steps (or “none”)
 
 Keep it concise. Link to existing specs (`ARCHITECTURE.md`, etc.) instead of duplicating them.
-
-## Timing
-
-Write the doc **after implementation is complete** (or after a meaningful partial milestone), in the same turn or immediately after the build finishes—do not wait for the user to ask.

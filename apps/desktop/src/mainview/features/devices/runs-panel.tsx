@@ -546,7 +546,7 @@ export function RunsPanel() {
 						<button
 							aria-label={isRunLive ? "Cancel run" : "Run tests"}
 							className={[
-								"flex size-14 shrink-0 items-center justify-center rounded-full shadow-float transition-transform enabled:hover:scale-105 disabled:opacity-40",
+								"motion-press flex size-14 shrink-0 items-center justify-center rounded-full shadow-float disabled:opacity-40",
 								isRunLive ? "bg-error text-on-error" : "bg-primary text-on-primary",
 							].join(" ")}
 							disabled={isRunLive ? cancelMutation.isPending : !canRun}

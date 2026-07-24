@@ -286,6 +286,8 @@ async function executeCase(input: {
 							type: "fail",
 							reason:
 								"Model ignored the attached screenshot (claimed none was provided). Try a stronger vision model in Settings → Provider.",
+							thoughts:
+								"The vision model returned fail claiming no screenshot was available even though an image was attached to the request. After one retry it still denied the screenshot, so the step was marked failed.",
 						};
 					}
 				}
@@ -383,7 +385,11 @@ async function executeCase(input: {
 			await appendStep({
 				runTestId: input.runTestId,
 				idx: stepIdx,
-				action: { type: "fail", reason: caseError },
+				action: {
+					type: "fail",
+					reason: caseError,
+					thoughts: `The run stopped because of an error: ${caseError}`,
+				},
 				screenshotUri: lastScreenshotUri,
 				ok: false,
 				latencyMs: 0,

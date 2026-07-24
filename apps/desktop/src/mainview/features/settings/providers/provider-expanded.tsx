@@ -1,6 +1,8 @@
-import { Button, Input, Label, TextField } from "@heroui/react";
+import { RhfTextField } from "@/app/forms";
+import { Button, Form } from "@heroui/react";
 import type { AiProvider, ProviderAccentColor, ProviderModel } from "@yoqa/runner-client";
 import { useEffect, useMemo, useState } from "react";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { ACCENT_COLORS, fieldInputClass, getDriverMeta } from "./driver-meta";
 
 type EnvRow = { id: string; key: string; value: string };
@@ -27,6 +29,17 @@ type ProviderExpandedProps = {
 	}) => Promise<void>;
 	onDisconnect: () => Promise<void>;
 	onSetDefault: () => Promise<void>;
+};
+
+type FormValues = {
+	label: string;
+	accentColor: ProviderAccentColor;
+	binaryPath: string;
+	serverUrl: string;
+	baseUrl: string;
+	defaultModel: string;
+	apiKey: string;
+	envRows: EnvRow[];
 };
 
 /** Used when Zen catalog has not loaded yet so the user can still pick a free model. */
@@ -116,6 +129,22 @@ function ModelPickList({
 	);
 }
 
+function formFromProvider(
+	provider: AiProvider,
+	defaultBinary: string | null | undefined,
+): FormValues {
+	return {
+		label: provider.label,
+		accentColor: provider.accentColor,
+		binaryPath: provider.binaryPath ?? defaultBinary ?? "",
+		serverUrl: provider.serverUrl ?? "",
+		baseUrl: provider.baseUrl ?? "",
+		defaultModel: provider.defaultModel ?? "",
+		apiKey: "",
+		envRows: provider.envKeys.map((key) => newEnvRow(key)),
+	};
+}
+
 export function ProviderExpanded({
 	provider,
 	models,
@@ -127,19 +156,28 @@ export function ProviderExpanded({
 	onSetDefault,
 }: ProviderExpandedProps) {
 	const meta = getDriverMeta(provider.kind);
-	const [label, setLabel] = useState(provider.label);
-	const [accentColor, setAccentColor] = useState<ProviderAccentColor>(provider.accentColor);
-	const [binaryPath, setBinaryPath] = useState(provider.binaryPath ?? meta.defaultBinary ?? "");
-	const [serverUrl, setServerUrl] = useState(provider.serverUrl ?? "");
-	const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? "");
-	const [defaultModel, setDefaultModel] = useState(provider.defaultModel ?? "");
-	const [apiKey, setApiKey] = useState("");
-	const [envRows, setEnvRows] = useState<EnvRow[]>(() =>
-		provider.envKeys.map((key) => newEnvRow(key)),
-	);
 	const [error, setError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [selectingModel, setSelectingModel] = useState(false);
+
+	const { control, handleSubmit, reset, getValues, setValue } = useForm<FormValues>({
+		defaultValues: formFromProvider(provider, meta.defaultBinary),
+		mode: "onChange",
+	});
+
+	const {
+		fields: envFields,
+		append,
+		remove,
+	} = useFieldArray({
+		control,
+		name: "envRows",
+		keyName: "fieldId",
+	});
+
+	const label = useWatch({ control, name: "label" }) ?? "";
+	const accentColor = useWatch({ control, name: "accentColor" });
+	const defaultModel = useWatch({ control, name: "defaultModel" }) ?? "";
 
 	const isOpenCode = provider.kind === "opencode";
 	const envKeysKey = provider.envKeys.join("\0");
@@ -163,14 +201,7 @@ export function ProviderExpanded({
 	// never on every new object reference from React Query (that wiped local selection).
 	// biome-ignore lint/correctness/useExhaustiveDependencies: envKeysKey is the stable trigger for env key list
 	useEffect(() => {
-		setLabel(provider.label);
-		setAccentColor(provider.accentColor);
-		setBinaryPath(provider.binaryPath ?? meta.defaultBinary ?? "");
-		setServerUrl(provider.serverUrl ?? "");
-		setBaseUrl(provider.baseUrl ?? "");
-		setDefaultModel(provider.defaultModel ?? "");
-		setEnvRows(provider.envKeys.map((key) => newEnvRow(key)));
-		setApiKey("");
+		reset(formFromProvider(provider, meta.defaultBinary));
 		setError(null);
 	}, [
 		provider.label,
@@ -181,6 +212,8 @@ export function ProviderExpanded({
 		provider.defaultModel,
 		envKeysKey,
 		meta.defaultBinary,
+		provider,
+		reset,
 	]);
 
 	const persist = async (overrides?: {
@@ -188,8 +221,9 @@ export function ProviderExpanded({
 		apiKey?: string;
 		env?: Record<string, string>;
 	}) => {
+		const values = getValues();
 		const env: Record<string, string> = {};
-		for (const row of envRows) {
+		for (const row of values.envRows) {
 			const key = row.key.trim();
 			if (!key) continue;
 			if (row.value.trim()) {
@@ -200,28 +234,28 @@ export function ProviderExpanded({
 		const nextModel =
 			overrides && "defaultModel" in overrides
 				? (overrides.defaultModel ?? null)
-				: defaultModel.trim() || null;
-		if (provider.kind === "custom" && !baseUrl.trim()) {
+				: values.defaultModel.trim() || null;
+		if (provider.kind === "custom" && !values.baseUrl.trim()) {
 			throw new Error("Base URL is required for a custom provider");
 		}
 		await onSave({
-			label: label.trim() || meta.label,
-			accentColor,
-			binaryPath: binaryPath.trim() || null,
-			serverUrl: serverUrl.trim() || null,
-			baseUrl: baseUrl.trim() || null,
+			label: values.label.trim() || meta.label,
+			accentColor: values.accentColor,
+			binaryPath: values.binaryPath.trim() || null,
+			serverUrl: values.serverUrl.trim() || null,
+			baseUrl: values.baseUrl.trim() || null,
 			defaultModel: nextModel,
 			...(overrides?.env ? { env: overrides.env } : hasNewEnvValues ? { env } : {}),
-			apiKey: overrides?.apiKey ?? (apiKey.trim() || undefined),
+			apiKey: overrides?.apiKey ?? (values.apiKey.trim() || undefined),
 		});
 	};
 
-	const handleSave = async () => {
+	const onSubmit = async () => {
 		setSaving(true);
 		setError(null);
 		try {
 			await persist();
-			setApiKey("");
+			setValue("apiKey", "");
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to save");
 		} finally {
@@ -230,12 +264,12 @@ export function ProviderExpanded({
 	};
 
 	const handlePickModel = async (modelId: string) => {
-		setDefaultModel(modelId);
+		setValue("defaultModel", modelId, { shouldDirty: true });
 		setSelectingModel(true);
 		setError(null);
 		try {
 			await persist({ defaultModel: modelId });
-			setApiKey("");
+			setValue("apiKey", "");
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to save model");
 		} finally {
@@ -304,250 +338,254 @@ export function ProviderExpanded({
 			onClick={(event) => event.stopPropagation()}
 			onKeyDown={(event) => event.stopPropagation()}
 		>
-			{/* OpenCode: model picker first so it is visible without scrolling past env fields */}
-			{isOpenCode ? openCodeModelSection : null}
+			<Form
+				className="contents"
+				onSubmit={handleSubmit(() => {
+					void onSubmit();
+				})}
+			>
+				{/* OpenCode: model picker first so it is visible without scrolling past env fields */}
+				{isOpenCode ? openCodeModelSection : null}
 
-			<TextField className="gap-1.5" name={`${provider.id}-label`}>
-				<Label className="text-body-sm text-on-surface">Display name</Label>
-				<Input
-					className={fieldInputClass}
-					value={label}
-					onChange={(e) => setLabel(e.target.value)}
-				/>
-				<p className="text-helper text-on-surface-variant">
-					Optional label shown in the provider list.
-				</p>
-			</TextField>
-
-			<div>
-				<p className="text-body-sm text-on-surface">Accent color</p>
-				<div className="mt-2 flex flex-wrap gap-2">
-					{ACCENT_COLORS.map((color) => {
-						const selected = accentColor === color.id;
-						return (
-							<button
-								key={color.id}
-								aria-label={color.id}
-								className={[
-									"flex size-7 items-center justify-center rounded-full transition",
-									color.className,
-									selected ? "ring-2 ring-primary ring-offset-2 ring-offset-surface" : "",
-								].join(" ")}
-								type="button"
-								onClick={() => setAccentColor(color.id)}
-							>
-								{selected ? <span className="text-[10px] font-bold text-white">✓</span> : null}
-							</button>
-						);
-					})}
-				</div>
-				<p className="mt-1.5 text-helper text-on-surface-variant">
-					Used to distinguish this instance in picker rails and model lists.
-				</p>
-			</div>
-
-			<div>
-				<div className="flex items-center justify-between gap-2">
-					<p className="text-body-sm text-on-surface">Environment variables</p>
-					<Button
-						size="sm"
-						variant="ghost"
-						onPress={() => setEnvRows((rows) => [...rows, newEnvRow()])}
-					>
-						+ Add
-					</Button>
-				</div>
-				<p className="mt-1 text-helper text-on-surface-variant">
-					Add variables to pass API keys, base URLs, or other per-instance CLI settings. Sensitive
-					values are stored separately and are not returned to the app after saving.
-					{provider.envKeys.length > 0 ? ` Stored keys: ${provider.envKeys.join(", ")}.` : ""}
-				</p>
-				<div className="mt-2 space-y-2">
-					{envRows.map((row) => (
-						<div key={row.id} className="flex gap-2">
-							<Input
-								aria-label="Env key"
-								className={fieldInputClass}
-								placeholder="KEY"
-								value={row.key}
-								onChange={(e) => {
-									const value = e.target.value;
-									setEnvRows((rows) =>
-										rows.map((r) => (r.id === row.id ? { ...r, key: value } : r)),
-									);
-								}}
-							/>
-							<Input
-								aria-label="Env value"
-								className={fieldInputClass}
-								placeholder={provider.envKeys.includes(row.key) ? "•••• (unchanged)" : "value"}
-								type="password"
-								value={row.value}
-								onChange={(e) => {
-									const value = e.target.value;
-									setEnvRows((rows) => rows.map((r) => (r.id === row.id ? { ...r, value } : r)));
-								}}
-							/>
-							<Button
-								size="sm"
-								variant="ghost"
-								onPress={() => setEnvRows((rows) => rows.filter((r) => r.id !== row.id))}
-							>
-								Remove
-							</Button>
-						</div>
-					))}
-				</div>
-			</div>
-
-			{meta.defaultBinary || provider.binaryPath ? (
-				<TextField className="gap-1.5" name={`${provider.id}-binary`}>
-					<Label className="text-body-sm text-on-surface">Binary path</Label>
-					<Input
-						className={fieldInputClass}
-						placeholder={meta.defaultBinary ?? "path"}
-						value={binaryPath}
-						onChange={(e) => setBinaryPath(e.target.value)}
+				<div>
+					<RhfTextField
+						control={control}
+						inputClassName={fieldInputClass}
+						label="Display name"
+						name="label"
+						rules={{
+							validate: (value) =>
+								(typeof value === "string" && value.trim().length > 0) ||
+								"Display name is required",
+						}}
 					/>
-					<p className="text-helper text-on-surface-variant">Path to the {meta.label} binary.</p>
-				</TextField>
-			) : null}
-
-			{provider.kind === "opencode" ? (
-				<TextField className="gap-1.5" name={`${provider.id}-server`}>
-					<Label className="text-body-sm text-on-surface">Server URL</Label>
-					<Input
-						className={fieldInputClass}
-						placeholder="http://127.0.0.1:4096"
-						value={serverUrl}
-						onChange={(e) => setServerUrl(e.target.value)}
-					/>
-					<p className="text-helper text-on-surface-variant">
-						Leave blank to let YoQA use the CLI / hosted OpenCode catalogs when needed.
+					<p className="mt-1.5 text-helper text-on-surface-variant">
+						Optional label shown in the provider list.
 					</p>
-				</TextField>
-			) : null}
+				</div>
 
-			{provider.kind === "custom" ? (
-				<TextField className="gap-1.5" name={`${provider.id}-base`}>
-					<Label className="text-body-sm text-on-surface">Base URL</Label>
-					<Input
-						className={fieldInputClass}
-						placeholder="http://127.0.0.1:11434/v1"
-						value={baseUrl}
-						onChange={(e) => setBaseUrl(e.target.value)}
-					/>
-					<p className="text-helper text-on-surface-variant">
-						OpenAI-compatible root ending in /v1 (required for validate + vision).
+				<div>
+					<p className="text-body-sm text-on-surface">Accent color</p>
+					<div className="mt-2 flex flex-wrap gap-2">
+						{ACCENT_COLORS.map((color) => {
+							const selected = accentColor === color.id;
+							return (
+								<button
+									key={color.id}
+									aria-label={color.id}
+									className={[
+										"flex size-7 items-center justify-center rounded-full transition",
+										color.className,
+										selected ? "ring-2 ring-primary ring-offset-2 ring-offset-surface" : "",
+									].join(" ")}
+									type="button"
+									onClick={() => setValue("accentColor", color.id, { shouldDirty: true })}
+								>
+									{selected ? <span className="text-[10px] font-bold text-white">✓</span> : null}
+								</button>
+							);
+						})}
+					</div>
+					<p className="mt-1.5 text-helper text-on-surface-variant">
+						Used to distinguish this instance in picker rails and model lists.
 					</p>
-				</TextField>
-			) : null}
+				</div>
 
-			{(provider.authMode === "api_key" || provider.authMode === "token") && (
-				<TextField className="gap-1.5" name={`${provider.id}-key`}>
-					<Label className="text-body-sm text-on-surface">
-						{provider.authMode === "token" ? "Token" : "API key"}
-						{provider.apiKeyLast4 ? ` (••••${provider.apiKeyLast4})` : ""}
-					</Label>
-					<Input
-						autoComplete="off"
-						className={fieldInputClass}
+				<div>
+					<div className="flex items-center justify-between gap-2">
+						<p className="text-body-sm text-on-surface">Environment variables</p>
+						<Button size="sm" type="button" variant="ghost" onPress={() => append(newEnvRow())}>
+							+ Add
+						</Button>
+					</div>
+					<p className="mt-1 text-helper text-on-surface-variant">
+						Add variables to pass API keys, base URLs, or other per-instance CLI settings. Sensitive
+						values are stored separately and are not returned to the app after saving.
+						{provider.envKeys.length > 0 ? ` Stored keys: ${provider.envKeys.join(", ")}.` : ""}
+					</p>
+					<div className="mt-2 space-y-2">
+						{envFields.map((row, index) => (
+							<div key={row.fieldId} className="flex gap-2">
+								<RhfTextField
+									aria-label="Env key"
+									className="min-w-0 flex-1"
+									control={control}
+									inputClassName={fieldInputClass}
+									name={`envRows.${index}.key`}
+									placeholder="KEY"
+								/>
+								<RhfTextField
+									aria-label="Env value"
+									className="min-w-0 flex-1"
+									control={control}
+									inputClassName={fieldInputClass}
+									name={`envRows.${index}.value`}
+									placeholder={provider.envKeys.includes(row.key) ? "•••• (unchanged)" : "value"}
+									type="password"
+								/>
+								<Button size="sm" type="button" variant="ghost" onPress={() => remove(index)}>
+									Remove
+								</Button>
+							</div>
+						))}
+					</div>
+				</div>
+
+				{meta.defaultBinary || provider.binaryPath ? (
+					<div>
+						<RhfTextField
+							control={control}
+							inputClassName={fieldInputClass}
+							label="Binary path"
+							name="binaryPath"
+							placeholder={meta.defaultBinary ?? "path"}
+						/>
+						<p className="mt-1.5 text-helper text-on-surface-variant">
+							Path to the {meta.label} binary.
+						</p>
+					</div>
+				) : null}
+
+				{provider.kind === "opencode" ? (
+					<div>
+						<RhfTextField
+							control={control}
+							inputClassName={fieldInputClass}
+							label="Server URL"
+							name="serverUrl"
+							placeholder="http://127.0.0.1:4096"
+						/>
+						<p className="mt-1.5 text-helper text-on-surface-variant">
+							Leave blank to let YoQA use the CLI / hosted OpenCode catalogs when needed.
+						</p>
+					</div>
+				) : null}
+
+				{provider.kind === "custom" ? (
+					<div>
+						<RhfTextField
+							control={control}
+							inputClassName={fieldInputClass}
+							label="Base URL"
+							name="baseUrl"
+							placeholder="http://127.0.0.1:11434/v1"
+							rules={{
+								validate: (value) =>
+									(typeof value === "string" && value.trim().length > 0) ||
+									"Base URL is required for a custom provider",
+							}}
+						/>
+						<p className="mt-1.5 text-helper text-on-surface-variant">
+							OpenAI-compatible root ending in /v1 (required for validate + vision).
+						</p>
+					</div>
+				) : null}
+
+				{(provider.authMode === "api_key" || provider.authMode === "token") && (
+					<RhfTextField
+						control={control}
+						inputClassName={fieldInputClass}
+						label={
+							<>
+								{provider.authMode === "token" ? "Token" : "API key"}
+								{provider.apiKeyLast4 ? ` (••••${provider.apiKeyLast4})` : ""}
+							</>
+						}
+						name="apiKey"
 						placeholder={
 							provider.apiKeyLast4 ? "Leave blank to keep existing" : meta.keyPlaceholder
 						}
 						type="password"
-						value={apiKey}
-						onChange={(e) => setApiKey(e.target.value)}
 					/>
-				</TextField>
-			)}
+				)}
 
-			{!isOpenCode ? (
-				<>
-					<TextField className="gap-1.5" name={`${provider.id}-model`}>
-						<Label className="text-body-sm text-on-surface">Default model</Label>
-						<Input
-							className={fieldInputClass}
+				{!isOpenCode ? (
+					<>
+						<RhfTextField
+							control={control}
+							inputClassName={fieldInputClass}
+							label="Default model"
+							name="defaultModel"
 							placeholder="optional"
-							value={defaultModel}
-							onChange={(e) => setDefaultModel(e.target.value)}
 						/>
-					</TextField>
 
-					<div>
-						<div className="flex items-baseline justify-between gap-2">
-							<p className="text-body-sm font-semibold text-on-surface">Models</p>
-							<p className="text-helper text-on-surface-variant">
-								{modelsLoading ? "Loading…" : modelsMessage}
-							</p>
-						</div>
-						<div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-outline-variant">
-							{models.length === 0 ? (
-								<p className="px-3 py-4 text-body-sm text-on-surface-variant">
-									{modelsLoading ? "Fetching models…" : "No models listed yet."}
+						<div>
+							<div className="flex items-baseline justify-between gap-2">
+								<p className="text-body-sm font-semibold text-on-surface">Models</p>
+								<p className="text-helper text-on-surface-variant">
+									{modelsLoading ? "Loading…" : modelsMessage}
 								</p>
-							) : (
-								<ul className="divide-y divide-outline-variant">
-									{models.slice(0, 40).map((model) => (
-										<li key={model.id}>
-											<button
-												className={[
-													"flex w-full items-center justify-between px-3 py-2 text-left text-body-sm transition-colors hover:bg-surface-container/60",
-													defaultModel === model.id ? "bg-surface-container font-semibold" : "",
-												].join(" ")}
-												type="button"
-												onClick={() => setDefaultModel(model.id)}
-											>
-												<span className="truncate text-on-surface">{model.name}</span>
-												{defaultModel === model.id ? (
-													<span className="text-helper text-primary">Default</span>
-												) : null}
-											</button>
-										</li>
-									))}
-								</ul>
-							)}
+							</div>
+							<div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-outline-variant">
+								{models.length === 0 ? (
+									<p className="px-3 py-4 text-body-sm text-on-surface-variant">
+										{modelsLoading ? "Fetching models…" : "No models listed yet."}
+									</p>
+								) : (
+									<ul className="divide-y divide-outline-variant">
+										{models.slice(0, 40).map((model) => (
+											<li key={model.id}>
+												<button
+													className={[
+														"flex w-full items-center justify-between px-3 py-2 text-left text-body-sm transition-colors hover:bg-surface-container/60",
+														defaultModel === model.id ? "bg-surface-container font-semibold" : "",
+													].join(" ")}
+													type="button"
+													onClick={() => setValue("defaultModel", model.id, { shouldDirty: true })}
+												>
+													<span className="truncate text-on-surface">{model.name}</span>
+													{defaultModel === model.id ? (
+														<span className="text-helper text-primary">Default</span>
+													) : null}
+												</button>
+											</li>
+										))}
+									</ul>
+								)}
+							</div>
 						</div>
-					</div>
-				</>
-			) : null}
+					</>
+				) : null}
 
-			{error ? <p className="text-body-sm text-error">{error}</p> : null}
+				{error ? <p className="text-body-sm text-error">{error}</p> : null}
 
-			<div className="flex flex-wrap items-center justify-between gap-2">
-				<div className="flex flex-wrap gap-2">
-					{!provider.isDefault ? (
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<div className="flex flex-wrap gap-2">
+						{!provider.isDefault ? (
+							<Button
+								isDisabled={busy || saving || selectingModel}
+								size="sm"
+								type="button"
+								variant="secondary"
+								onPress={() => void onSetDefault()}
+							>
+								Set as default
+							</Button>
+						) : (
+							<span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-primary">
+								Default
+							</span>
+						)}
 						<Button
 							isDisabled={busy || saving || selectingModel}
 							size="sm"
-							variant="secondary"
-							onPress={() => void onSetDefault()}
+							type="button"
+							variant="danger"
+							onPress={() => void onDisconnect()}
 						>
-							Set as default
+							Disconnect
 						</Button>
-					) : (
-						<span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-primary">
-							Default
-						</span>
-					)}
+					</div>
 					<Button
-						isDisabled={busy || saving || selectingModel}
+						isDisabled={busy || saving || selectingModel || !label.trim()}
 						size="sm"
-						variant="danger"
-						onPress={() => void onDisconnect()}
+						type="submit"
+						variant="primary"
 					>
-						Disconnect
+						{saving ? "Saving…" : "Save"}
 					</Button>
 				</div>
-				<Button
-					isDisabled={busy || saving || selectingModel || !label.trim()}
-					size="sm"
-					variant="primary"
-					onPress={() => void handleSave()}
-				>
-					{saving ? "Saving…" : "Save"}
-				</Button>
-			</div>
+			</Form>
 		</div>
 	);
 }

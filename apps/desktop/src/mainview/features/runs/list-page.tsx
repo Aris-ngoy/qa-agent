@@ -1,10 +1,19 @@
+import { staggerStyle, useEnterOnce } from "@/app/motion/use-enter-once";
 import { getRunnerClient } from "@/app/runner-client";
 import { useApps } from "@/features/apps/context";
 import { useActiveRun } from "@/features/runs/active-run-context";
+import {
+	type CaseLabelMeta,
+	devicesQueryKey,
+	formatDeviceLabel,
+	formatRunCaseSummary,
+} from "@/features/runs/labels";
+import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { Button } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import type { Run } from "@yoqa/runner-client";
+import type { Device, Run } from "@yoqa/runner-client";
+import { useMemo } from "react";
 
 const BUILD_LABELS: Record<string, string> = {
 	rebuild: "Rebuild",
@@ -27,11 +36,6 @@ function formatWhen(ms: number): string {
 function buildLabel(buildId: string | null): string {
 	if (!buildId) return "App on device";
 	return BUILD_LABELS[buildId] ?? buildId;
-}
-
-function deviceLabel(run: Run): string {
-	const os = run.platform === "ios" ? "iOS" : run.platform === "android" ? "Android" : run.platform;
-	return `${run.deviceId} (${os})`;
 }
 
 function testCounts(run: Run): { total: number; passed: number; failed: number } {
@@ -58,29 +62,34 @@ function PlatformGlyph({ platform }: { platform: Run["platform"] }) {
 	);
 }
 
-function TestsCell({ run }: { run: Run }) {
+function TestsCell({
+	run,
+	caseNameById,
+}: {
+	run: Run;
+	caseNameById: Map<string, CaseLabelMeta>;
+}) {
 	const { total, passed, failed } = testCounts(run);
+	const summary = formatRunCaseSummary(run, caseNameById);
 	if (total === 0) {
 		return <span className="text-body-sm text-on-surface-variant">—</span>;
 	}
-	if (failed > 0) {
-		return (
-			<span className="text-body-sm tabular-nums text-on-surface">
-				{total}{" "}
-				<span className="text-on-surface-variant">
-					(<span className="text-secondary">{passed}</span>
-					{" / "}
-					<span className="text-error">{failed}</span>)
-				</span>
+	const counts =
+		failed > 0 ? (
+			<span className="text-on-surface-variant">
+				(<span className="text-secondary">{passed}</span>
+				{" / "}
+				<span className="text-error">{failed}</span>)
 			</span>
-		);
-	}
-	return (
-		<span className="text-body-sm tabular-nums text-on-surface">
-			{total}{" "}
+		) : (
 			<span className="text-on-surface-variant">
 				(<span className="text-secondary">{passed || total}</span>)
 			</span>
+		);
+	return (
+		<span className="flex min-w-0 flex-col gap-0.5 text-body-sm text-on-surface">
+			<span className="truncate font-medium">{summary}</span>
+			<span className="tabular-nums text-helper text-on-surface-variant">{counts}</span>
 		</span>
 	);
 }
@@ -108,6 +117,46 @@ export function RunsListPage() {
 		},
 	});
 
+	const casesQuery = useQuery({
+		queryKey: selectedApp ? casesQueryKey(selectedApp.id) : ["catalog", "cases", "none"],
+		enabled: Boolean(selectedApp),
+		queryFn: async () => {
+			if (!selectedApp) return [];
+			const client = await getRunnerClient();
+			const cases = await client.listCases(selectedApp.id);
+			return cases.map((row) => mapCatalogCase(row));
+		},
+	});
+
+	const devicesQuery = useQuery({
+		queryKey: devicesQueryKey("all"),
+		queryFn: async () => {
+			const client = await getRunnerClient();
+			const [ios, android] = await Promise.all([
+				client.listDevices("ios", { includeUnavailable: true }),
+				client.listDevices("android", { includeUnavailable: true }),
+			]);
+			return [...ios.devices, ...android.devices] as Device[];
+		},
+		staleTime: 30_000,
+	});
+
+	const caseNameById = useMemo(() => {
+		const map = new Map<string, CaseLabelMeta>();
+		for (const item of casesQuery.data ?? []) {
+			map.set(item.id, { number: item.number, name: item.name });
+		}
+		return map;
+	}, [casesQuery.data]);
+
+	const deviceById = useMemo(() => {
+		const map = new Map<string, Device>();
+		for (const device of devicesQuery.data ?? []) {
+			map.set(device.id, device);
+		}
+		return map;
+	}, [devicesQuery.data]);
+
 	const deleteMutation = useMutation({
 		mutationFn: async (runId: string) => {
 			const client = await getRunnerClient();
@@ -127,19 +176,20 @@ export function RunsListPage() {
 		},
 	});
 
+	const runs = runsQuery.data ?? [];
+	const stagger = useEnterOnce(runsQuery.isSuccess && runs.length > 0);
+
 	if (!selectedApp) {
 		return (
-			<div className="flex h-full items-center justify-center text-body-md text-on-surface-variant">
+			<div className="motion-fade-up flex h-full items-center justify-center text-body-md text-on-surface-variant">
 				Select an app to view runs.
 			</div>
 		);
 	}
 
-	const runs = runsQuery.data ?? [];
-
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-5">
-			<h1 className="text-headline-md font-semibold text-on-surface">Runs</h1>
+			<h1 className="motion-fade-up text-headline-md font-semibold text-on-surface">Runs</h1>
 
 			{runsQuery.isLoading ? (
 				<p className="text-body-md text-on-surface-variant">Loading runs…</p>
@@ -148,14 +198,14 @@ export function RunsListPage() {
 					{runsQuery.error instanceof Error ? runsQuery.error.message : "Failed to load runs"}
 				</p>
 			) : runs.length === 0 ? (
-				<div className="rounded-[var(--radius-platform)] border border-outline-variant/60 bg-surface-container-lowest/80 px-6 py-12 text-center shadow-soft">
+				<div className="motion-fade-up rounded-[var(--radius-platform)] border border-outline-variant/60 bg-surface-container-lowest/80 px-6 py-12 text-center shadow-soft">
 					<p className="text-body-md text-on-surface-variant">
 						No runs yet. Select test cases and press Play to start one.
 					</p>
 				</div>
 			) : (
 				<div className="overflow-hidden rounded-[var(--radius-platform)] border border-outline-variant/60 bg-surface-container-lowest shadow-soft">
-					<div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(5rem,0.7fr)_minmax(6rem,0.8fr)_2.5rem] gap-3 border-b border-outline-variant/60 px-4 py-3 text-helper font-medium text-on-surface-variant">
+					<div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(6rem,0.7fr)_2.5rem] gap-3 border-b border-outline-variant/60 px-4 py-3 text-helper font-medium text-on-surface-variant">
 						<span>Build</span>
 						<span>Device</span>
 						<span>Tests</span>
@@ -163,10 +213,16 @@ export function RunsListPage() {
 						<span className="sr-only">Actions</span>
 					</div>
 					<ul>
-						{runs.map((run) => (
+						{runs.map((run, index) => (
 							<li
-								className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(5rem,0.7fr)_minmax(6rem,0.8fr)_2.5rem] items-center gap-3 border-b border-outline-variant/50 px-4 py-3.5 last:border-b-0 hover:bg-surface-container/40"
+								className={[
+									"grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(6rem,0.7fr)_2.5rem] items-center gap-3 border-b border-outline-variant/50 px-4 py-3.5 last:border-b-0 transition-colors duration-[var(--motion-fast)] hover:bg-surface-container/40",
+									stagger ? "motion-fade-up" : "",
+								]
+									.filter(Boolean)
+									.join(" ")}
 								key={run.id}
+								style={staggerStyle(index, stagger)}
 							>
 								<Link
 									className="flex min-w-0 items-center gap-2.5 text-body-sm font-medium text-on-surface"
@@ -194,14 +250,19 @@ export function RunsListPage() {
 										<rect height="14" rx="2" width="16" x="4" y="5" />
 										<path d="M8 19h8" strokeLinecap="round" />
 									</svg>
-									<span className="truncate">{deviceLabel(run)}</span>
+									<span className="truncate">
+										{formatDeviceLabel(deviceById.get(run.deviceId), {
+											deviceId: run.deviceId,
+											platform: run.platform,
+										})}
+									</span>
 								</button>
 								<button
-									className="text-left"
+									className="min-w-0 text-left"
 									onClick={() => void navigate({ to: "/runs/$runId", params: { runId: run.id } })}
 									type="button"
 								>
-									<TestsCell run={run} />
+									<TestsCell caseNameById={caseNameById} run={run} />
 								</button>
 								<button
 									className="text-left text-body-sm text-on-surface-variant"

@@ -5,7 +5,15 @@ import { SettingsModal } from "@/features/settings/settings-modal";
 import { YoqaMark } from "@/features/splash/yoqa-mark";
 import { Button, Dropdown, Label, Separator } from "@heroui/react";
 import { Link } from "@tanstack/react-router";
-import { type ReactNode, type SVGProps, useMemo, useState } from "react";
+import {
+	type ReactNode,
+	type SVGProps,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 
 function NavIcon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -34,12 +42,24 @@ type SideMenuProps = {
 	activePath?: string;
 };
 
+function isNavActive(itemTo: string | undefined, activePath: string): boolean {
+	if (itemTo === undefined) return false;
+	return (
+		itemTo === activePath ||
+		(itemTo === "/runs" && activePath.startsWith("/runs")) ||
+		(itemTo !== "/" && itemTo !== "/runs" && activePath.startsWith(`${itemTo}/`))
+	);
+}
+
 export function SideMenu({ activePath = "/" }: SideMenuProps) {
 	const { apps, selectedApp, selectApp, addApp } = useApps();
 	const { isRunLive } = useActiveRun();
 	const [modalOpen, setModalOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const appLabel = selectedApp?.name ?? "Yoqa";
+	const navRef = useRef<HTMLElement | null>(null);
+	const itemRefs = useRef<Map<string, HTMLElement>>(new Map());
+	const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
 
 	const navItems = useMemo((): NavItem[] => {
 		return [
@@ -93,6 +113,47 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 			},
 		];
 	}, [isRunLive]);
+
+	const activeLabel = useMemo(() => {
+		const active = navItems.find((item) => isNavActive(item.to, activePath));
+		return active?.label ?? null;
+	}, [navItems, activePath]);
+
+	useLayoutEffect(() => {
+		const nav = navRef.current;
+		if (!nav || !activeLabel) {
+			setPill(null);
+			return;
+		}
+		const el = itemRefs.current.get(activeLabel);
+		if (!el) {
+			setPill(null);
+			return;
+		}
+		const navBox = nav.getBoundingClientRect();
+		const itemBox = el.getBoundingClientRect();
+		setPill({
+			top: itemBox.top - navBox.top,
+			height: itemBox.height,
+		});
+	}, [activeLabel]);
+
+	useEffect(() => {
+		const onResize = () => {
+			const nav = navRef.current;
+			if (!nav || !activeLabel) return;
+			const el = itemRefs.current.get(activeLabel);
+			if (!el) return;
+			const navBox = nav.getBoundingClientRect();
+			const itemBox = el.getBoundingClientRect();
+			setPill({
+				top: itemBox.top - navBox.top,
+				height: itemBox.height,
+			});
+		};
+		window.addEventListener("resize", onResize);
+		return () => window.removeEventListener("resize", onResize);
+	}, [activeLabel]);
 
 	return (
 		<>
@@ -159,27 +220,41 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 					</div>
 				</div>
 
-				<nav className="flex flex-1 flex-col gap-1">
+				<nav className="relative flex flex-1 flex-col gap-1" ref={navRef}>
+					{pill ? (
+						<span
+							aria-hidden="true"
+							className="nav-active-pill"
+							style={{
+								height: pill.height,
+								transform: `translateY(${pill.top}px)`,
+							}}
+						/>
+					) : null}
 					{navItems.map((item) => {
-						const isActive =
-							item.to !== undefined &&
-							(item.to === activePath ||
-								(item.to === "/runs" && activePath.startsWith("/runs")) ||
-								(item.to !== "/" && item.to !== "/runs" && activePath.startsWith(`${item.to}/`)));
+						const isActive = isNavActive(item.to, activePath);
 						const className = [
-							"group relative flex items-center gap-3 rounded-full px-4 py-3 text-body-md transition-colors duration-150",
+							"group relative z-[1] flex items-center gap-3 rounded-full px-4 py-3 text-body-md transition-colors duration-[var(--motion-fast)]",
 							isActive
 								? "font-semibold text-sidebar-active"
 								: "text-sidebar-muted hover:text-sidebar-fg",
 							item.to ? "" : "cursor-default opacity-70",
 						].join(" ");
 
+						const setItemRef = (node: HTMLElement | null) => {
+							if (node) {
+								itemRefs.current.set(item.label, node);
+							} else {
+								itemRefs.current.delete(item.label);
+							}
+						};
+
 						const content = (
 							<>
 								<span className={isActive ? "text-sidebar-active" : ""}>{item.icon}</span>
 								<span className="flex-1">{item.label}</span>
 								{item.badge !== undefined ? (
-									<span className="flex size-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-primary">
+									<span className="motion-scale-in flex size-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-primary">
 										{item.badge}
 									</span>
 								) : null}
@@ -188,14 +263,16 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 
 						if (item.to) {
 							return (
-								<Link key={item.label} className={className} to={item.to}>
-									{content}
-								</Link>
+								<div key={item.label} className="relative" ref={setItemRef}>
+									<Link className={className} to={item.to}>
+										{content}
+									</Link>
+								</div>
 							);
 						}
 
 						return (
-							<span key={item.label} className={className}>
+							<span key={item.label} className={className} ref={setItemRef}>
 								{content}
 							</span>
 						);
@@ -205,11 +282,11 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				<div className="mt-6 flex flex-col gap-6">
 					<button
 						aria-label="Add application"
-						className="flex size-16 items-center justify-center self-center rounded-2xl border border-dashed border-white/25 transition-colors hover:border-white/50"
+						className="flex size-16 items-center justify-center self-center rounded-2xl border border-dashed border-white/25 transition-colors duration-[var(--motion-fast)] hover:scale-105 hover:border-white/50"
 						onClick={() => setModalOpen(true)}
 						type="button"
 					>
-						<span className="flex size-10 items-center justify-center rounded-full bg-white text-primary shadow-card">
+						<span className="flex size-10 items-center justify-center rounded-full bg-white text-primary shadow-card transition-transform duration-[var(--motion-fast)]">
 							<svg
 								aria-hidden="true"
 								className="size-5"
@@ -225,7 +302,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 
 					<div className="flex flex-col gap-1">
 						<button
-							className="group relative flex items-center gap-3 rounded-full px-4 py-3 text-body-md text-sidebar-muted transition-colors duration-150 hover:text-sidebar-fg"
+							className="group relative flex items-center gap-3 rounded-full px-4 py-3 text-body-md text-sidebar-muted transition-colors duration-[var(--motion-fast)] hover:text-sidebar-fg"
 							onClick={() => setSettingsOpen(true)}
 							type="button"
 						>

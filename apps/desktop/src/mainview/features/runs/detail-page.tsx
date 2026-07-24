@@ -1,11 +1,18 @@
 import { getRunnerClient } from "@/app/runner-client";
 import { useApps } from "@/features/apps/context";
 import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
+import {
+	type CaseLabelMeta,
+	devicesQueryKey,
+	formatCaseLabel,
+	formatDeviceLabel,
+	formatDeviceShortLabel,
+} from "@/features/runs/labels";
 import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { Button } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { Run, RunStatus, RunStep } from "@yoqa/runner-client";
+import type { Device, Run, RunStatus, RunStep } from "@yoqa/runner-client";
 import { useEffect, useMemo, useState } from "react";
 
 const BUILD_LABELS: Record<string, string> = {
@@ -77,7 +84,7 @@ function RunStatusPill({ status }: { status: RunStatus }) {
 	}
 	return (
 		<span className="inline-flex items-center gap-1.5 rounded-full bg-primary-container/80 px-3 py-1.5 text-body-sm font-semibold text-on-primary-container">
-			<span className="size-1.5 animate-pulse rounded-full bg-primary" />
+			<span className="motion-live-dot size-1.5 rounded-full bg-primary" />
 			{statusLabel(status)}
 		</span>
 	);
@@ -94,6 +101,63 @@ function actionSummary(action: unknown): string {
 	if (type === "done") return "Done";
 	if (type === "fail") return "Failed";
 	return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function stepReasoning(step: RunStep): { reason: string | null; thoughts: string | null } {
+	const action =
+		step.action && typeof step.action === "object"
+			? (step.action as Record<string, unknown>)
+			: null;
+	const reasonFromAction =
+		typeof action?.reason === "string" && action.reason.trim() ? action.reason.trim() : null;
+	const thoughtsFromAction =
+		typeof action?.thoughts === "string" && action.thoughts.trim() ? action.thoughts.trim() : null;
+	const reason = reasonFromAction ?? (step.detail?.trim() ? step.detail.trim() : null);
+	const thoughts = thoughtsFromAction && thoughtsFromAction !== reason ? thoughtsFromAction : null;
+	return { reason, thoughts };
+}
+
+function StepAiThoughts({ reason, thoughts }: { reason: string | null; thoughts: string | null }) {
+	const [open, setOpen] = useState(false);
+	if (!reason && !thoughts) return null;
+
+	const canExpand = Boolean(thoughts);
+
+	return (
+		<div className="mt-1.5">
+			{reason ? <p className="text-body-sm text-on-surface-variant">{reason}</p> : null}
+			{canExpand ? (
+				<>
+					<button
+						aria-expanded={open}
+						className="mt-1 inline-flex items-center gap-1 text-helper font-medium text-on-surface-variant transition-colors hover:text-on-surface"
+						onClick={() => setOpen((value) => !value)}
+						type="button"
+					>
+						<svg
+							aria-hidden="true"
+							className={[
+								"size-3.5 transition-transform duration-[var(--motion-fast)]",
+								open ? "rotate-90" : "",
+							].join(" ")}
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="2"
+							viewBox="0 0 24 24"
+						>
+							<path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+						</svg>
+						{open ? "Hide AI thoughts" : "AI thoughts"}
+					</button>
+					{open ? (
+						<p className="mt-1.5 rounded-lg bg-surface-container/70 px-3 py-2 text-body-sm leading-relaxed text-on-surface-variant">
+							{thoughts}
+						</p>
+					) : null}
+				</>
+			) : null}
+		</div>
+	);
 }
 
 function flattenSteps(run: Run): RunStep[] {
@@ -223,6 +287,19 @@ export function RunDetailPage() {
 		},
 	});
 
+	const runPlatform = runQuery.data?.platform;
+	const devicesQuery = useQuery({
+		queryKey: runPlatform ? devicesQueryKey(runPlatform) : (["devices", "pending"] as const),
+		enabled: Boolean(runPlatform),
+		queryFn: async () => {
+			if (!runPlatform) return [] as Device[];
+			const client = await getRunnerClient();
+			const response = await client.listDevices(runPlatform, { includeUnavailable: true });
+			return response.devices;
+		},
+		staleTime: 30_000,
+	});
+
 	const cancelMutation = useMutation({
 		mutationFn: async () => {
 			const client = await getRunnerClient();
@@ -241,25 +318,33 @@ export function RunDetailPage() {
 	const reviewMode = Boolean(run && !isLive);
 
 	const caseNameById = useMemo(() => {
-		const map = new Map<string, { number: number; name: string }>();
+		const map = new Map<string, CaseLabelMeta>();
 		for (const item of casesQuery.data ?? []) {
 			map.set(item.id, { number: item.number, name: item.name });
 		}
 		return map;
 	}, [casesQuery.data]);
 
+	const device = useMemo(() => {
+		if (!run) return undefined;
+		return (devicesQuery.data ?? []).find((row) => row.id === run.deviceId);
+	}, [devicesQuery.data, run]);
+
 	const primaryTest = run?.tests.find((t) => t.status === "running") ?? run?.tests[0] ?? null;
 	const primaryCase = primaryTest ? caseNameById.get(primaryTest.caseId) : null;
 	const title = primaryCase
-		? `#${primaryCase.number} ${primaryCase.name}`
+		? formatCaseLabel(primaryCase, primaryTest?.caseId ?? "Run")
 		: primaryTest
 			? primaryTest.caseId
 			: "Run";
 
 	const buildLabel = run?.buildId ? (BUILD_LABELS[run.buildId] ?? run.buildId) : "App on device";
 	const deviceLabel = run
-		? `${run.deviceId} (${run.platform === "ios" ? "iOS" : run.platform === "android" ? "Android" : run.platform})`
+		? formatDeviceShortLabel(device, { deviceId: run.deviceId, platform: run.platform })
 		: "—";
+	const deviceDetailLabel = run
+		? formatDeviceLabel(device, { deviceId: run.deviceId, platform: run.platform })
+		: null;
 
 	const steps = useMemo(() => {
 		if (!run) return [] as RunStep[];
@@ -310,9 +395,12 @@ export function RunDetailPage() {
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-5">
-			<div className="flex flex-wrap items-center justify-between gap-3">
+			<div className="motion-fade-up flex flex-wrap items-center justify-between gap-3">
 				<p className="text-body-sm text-on-surface-variant">
-					<Link className="hover:text-on-surface" to="/runs">
+					<Link
+						className="transition-colors duration-[var(--motion-fast)] hover:text-on-surface"
+						to="/runs"
+					>
 						Runs
 					</Link>{" "}
 					<span className="text-on-surface-variant/70">›</span> {buildLabel} · {deviceLabel}
@@ -341,6 +429,13 @@ export function RunDetailPage() {
 				) : null}
 			</div>
 
+			{deviceDetailLabel ? (
+				<p className="text-body-sm text-on-surface-variant" title={run.deviceId}>
+					{deviceDetailLabel}
+					{device ? <span className="text-on-surface-variant/70"> · {run.deviceId}</span> : null}
+				</p>
+			) : null}
+
 			{run.error ? (
 				<p className="rounded-xl bg-error-container/50 px-4 py-3 text-body-sm text-on-error-container">
 					{run.error}
@@ -350,8 +445,7 @@ export function RunDetailPage() {
 			<div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
 				<section className="min-h-0 overflow-y-auto rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-5 shadow-soft">
 					{run.tests.map((test, testIndex) => {
-						const meta = caseNameById.get(test.caseId);
-						const caseLabel = meta ? `#${meta.number} ${meta.name}` : test.caseId;
+						const caseLabel = formatCaseLabel(caseNameById.get(test.caseId), test.caseId);
 						const testSteps = test.steps ?? [];
 						return (
 							<div className="mb-8 last:mb-0" key={test.id}>
@@ -392,59 +486,83 @@ export function RunDetailPage() {
 									) : (
 										testSteps.map((step) => {
 											const isSelected = reviewMode && selectedStepId === step.id;
-											const content = (
-												<>
-													<StepIndicator
-														index={step.idx + 1}
-														ok={step.ok}
-														reviewMode={reviewMode}
-													/>
-													<div className="min-w-0 flex-1">
+											const { reason, thoughts } = stepReasoning(step);
+											const body = (
+												<div className="min-w-0 flex-1">
+													<p
+														className={[
+															"text-body-md font-medium text-on-surface",
+															isSelected ? "rounded-lg bg-surface-container px-2 py-1 -mx-2" : "",
+														].join(" ")}
+													>
+														{actionSummary(step.action)}
+													</p>
+													{reviewMode ? (
 														<p
 															className={[
-																"text-body-md font-medium text-on-surface",
-																isSelected ? "rounded-lg bg-surface-container px-2 py-1 -mx-2" : "",
+																"mt-1 text-helper font-medium",
+																step.ok ? "text-secondary" : "text-error",
 															].join(" ")}
 														>
-															{actionSummary(step.action)}
+															{step.ok ? "Passed" : "Failed"}
 														</p>
-														{reviewMode ? (
-															<p
-																className={[
-																	"mt-1 text-helper font-medium",
-																	step.ok ? "text-secondary" : "text-error",
-																].join(" ")}
-															>
-																{step.ok ? "Passed" : "Failed"}
-															</p>
-														) : null}
-														{step.detail ? (
-															<p className="mt-1 text-body-sm text-on-surface-variant">
-																{step.detail}
-															</p>
-														) : null}
-													</div>
-												</>
+													) : null}
+													<StepAiThoughts reason={reason} thoughts={thoughts} />
+												</div>
 											);
 
 											if (reviewMode) {
 												return (
 													<li className="relative" key={step.id}>
-														<button
-															aria-current={isSelected ? "step" : undefined}
-															className="flex w-full items-start gap-3 rounded-lg text-left outline-none transition-colors hover:bg-surface-container/40 focus-visible:ring-2 focus-visible:ring-primary/40"
-															onClick={() => setSelectedStepId(step.id)}
-															type="button"
-														>
-															{content}
-														</button>
+														<div className="flex items-start gap-3">
+															<button
+																aria-current={isSelected ? "step" : undefined}
+																className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left outline-none transition-colors hover:bg-surface-container/40 focus-visible:ring-2 focus-visible:ring-primary/40"
+																onClick={() => setSelectedStepId(step.id)}
+																type="button"
+															>
+																<StepIndicator
+																	index={step.idx + 1}
+																	ok={step.ok}
+																	reviewMode={reviewMode}
+																/>
+																<div className="min-w-0 flex-1">
+																	<p
+																		className={[
+																			"text-body-md font-medium text-on-surface",
+																			isSelected
+																				? "rounded-lg bg-surface-container px-2 py-1 -mx-2"
+																				: "",
+																		].join(" ")}
+																	>
+																		{actionSummary(step.action)}
+																	</p>
+																	<p
+																		className={[
+																			"mt-1 text-helper font-medium",
+																			step.ok ? "text-secondary" : "text-error",
+																		].join(" ")}
+																	>
+																		{step.ok ? "Passed" : "Failed"}
+																	</p>
+																</div>
+															</button>
+														</div>
+														<div className="ml-9">
+															<StepAiThoughts reason={reason} thoughts={thoughts} />
+														</div>
 													</li>
 												);
 											}
 
 											return (
 												<li className="relative flex items-start gap-3" key={step.id}>
-													{content}
+													<StepIndicator
+														index={step.idx + 1}
+														ok={step.ok}
+														reviewMode={reviewMode}
+													/>
+													{body}
 												</li>
 											);
 										})

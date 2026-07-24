@@ -4,6 +4,14 @@
 @import "@fontsource/inter/700.css";
 @import "@yoqa/ui/styles.css";
 
+:root {
+	--motion-fast: 150ms;
+	--motion-base: 220ms;
+	--motion-slow: 400ms;
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+}
+
 html,
 body,
 #root {
@@ -32,4 +40,270 @@ body {
 .blob-actions {
 	background: linear-gradient(135deg, #c4b0ea 0%, #a894d8 55%, #9b84d0 100%);
 	border-radius: 40% 60% 55% 45% / 55% 40% 60% 45%;
+}
+
+/* --- Page content View Transition target --- */
+.app-page {
+	view-transition-name: app-page;
+}
+
+::view-transition-old(app-page),
+::view-transition-new(app-page) {
+	animation-duration: var(--motion-base);
+	animation-timing-function: var(--ease-out);
+	animation-fill-mode: both;
+}
+
+/* Fade */
+html:active-view-transition-type(fade)::view-transition-old(app-page) {
+	animation-name: vt-fade-out;
+}
+
+html:active-view-transition-type(fade)::view-transition-new(app-page) {
+	animation-name: vt-fade-in;
+}
+
+/* Slide left (forward in nav order) */
+html:active-view-transition-type(slide-left)::view-transition-old(app-page) {
+	animation-name: vt-slide-out-left;
+}
+
+html:active-view-transition-type(slide-left)::view-transition-new(app-page) {
+	animation-name: vt-slide-in-right;
+}
+
+/* Slide right (backward in nav order) */
+html:active-view-transition-type(slide-right)::view-transition-old(app-page) {
+	animation-name: vt-slide-out-right;
+}
+
+html:active-view-transition-type(slide-right)::view-transition-new(app-page) {
+	animation-name: vt-slide-in-left;
+}
+
+/* Push (list → detail) */
+html:active-view-transition-type(push)::view-transition-old(app-page) {
+	animation-name: vt-push-out;
+}
+
+html:active-view-transition-type(push)::view-transition-new(app-page) {
+	animation-name: vt-push-in;
+}
+
+/* Pop (detail → list) */
+html:active-view-transition-type(pop)::view-transition-old(app-page) {
+	animation-name: vt-pop-out;
+}
+
+html:active-view-transition-type(pop)::view-transition-new(app-page) {
+	animation-name: vt-pop-in;
+}
+
+@keyframes vt-fade-out {
+	to {
+		opacity: 0;
+	}
+}
+
+@keyframes vt-fade-in {
+	from {
+		opacity: 0;
+	}
+}
+
+@keyframes vt-slide-out-left {
+	to {
+		opacity: 0;
+		transform: translateX(-12px);
+	}
+}
+
+@keyframes vt-slide-in-right {
+	from {
+		opacity: 0;
+		transform: translateX(12px);
+	}
+}
+
+@keyframes vt-slide-out-right {
+	to {
+		opacity: 0;
+		transform: translateX(12px);
+	}
+}
+
+@keyframes vt-slide-in-left {
+	from {
+		opacity: 0;
+		transform: translateX(-12px);
+	}
+}
+
+@keyframes vt-push-out {
+	to {
+		opacity: 0;
+		transform: scale(0.98) translateX(-8px);
+	}
+}
+
+@keyframes vt-push-in {
+	from {
+		opacity: 0;
+		transform: scale(0.98) translateX(12px);
+	}
+}
+
+@keyframes vt-pop-out {
+	to {
+		opacity: 0;
+		transform: scale(0.98) translateX(12px);
+	}
+}
+
+@keyframes vt-pop-in {
+	from {
+		opacity: 0;
+		transform: scale(0.98) translateX(-8px);
+	}
+}
+
+/* --- Utility animations --- */
+@keyframes motion-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes motion-fade-up {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes motion-scale-in {
+	from {
+		opacity: 0;
+		transform: scale(0.75);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes pulse {
+	50% {
+		opacity: 0.5;
+	}
+}
+
+.motion-fade-in {
+	animation: motion-fade-in var(--motion-slow) var(--ease-out) both;
+}
+
+.motion-fade-up {
+	animation: motion-fade-up var(--motion-base) var(--ease-out) both;
+	animation-delay: calc(var(--stagger, 0) * 40ms);
+}
+
+.motion-scale-in {
+	animation: motion-scale-in var(--motion-fast) var(--ease-out) both;
+}
+
+.motion-press {
+	transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.motion-press:hover:enabled {
+	transform: scale(1.05);
+}
+
+.motion-press:active:enabled {
+	transform: scale(0.95);
+}
+
+.motion-live-dot {
+	animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.boot-crossfade-root {
+	position: relative;
+	height: 100%;
+	min-height: 0;
+}
+
+.boot-splash-layer {
+	position: absolute;
+	inset: 0;
+	z-index: 20;
+	transition: opacity var(--motion-slow) var(--ease-out);
+}
+
+.boot-splash-layer.is-exiting {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.boot-app-layer {
+	height: 100%;
+	min-height: 0;
+	opacity: 0;
+	transition: opacity var(--motion-slow) var(--ease-out);
+}
+
+.boot-app-layer.is-visible {
+	opacity: 1;
+}
+
+.nav-active-pill {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	border-radius: 9999px;
+	background: rgb(255 255 255 / 0.12);
+	transition:
+		transform var(--motion-base) var(--ease-out),
+		height var(--motion-base) var(--ease-out);
+	pointer-events: none;
+	z-index: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--motion-fast: 0ms;
+		--motion-base: 0ms;
+		--motion-slow: 0ms;
+	}
+
+	.motion-fade-in,
+	.motion-fade-up,
+	.motion-scale-in,
+	.motion-live-dot {
+		animation: none !important;
+	}
+
+	.motion-press:hover:enabled,
+	.motion-press:active:enabled {
+		transform: none;
+	}
+
+	::view-transition-old(app-page),
+	::view-transition-new(app-page) {
+		animation: none !important;
+	}
+
+	.boot-splash-layer,
+	.boot-app-layer,
+	.nav-active-pill {
+		transition: none !important;
+	}
 }

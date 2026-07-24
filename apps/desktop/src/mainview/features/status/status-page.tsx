@@ -116,7 +116,7 @@ function StatusPill({ status }: { status: RunStatus }) {
 	if (status === "running") {
 		return (
 			<span className="inline-flex items-center gap-1.5 rounded-full bg-tertiary-container/70 px-3 py-1 text-helper font-medium text-on-tertiary-container">
-				<span className="size-1.5 animate-pulse rounded-full bg-tertiary" />
+				<span className="motion-live-dot size-1.5 rounded-full bg-tertiary" />
 				Running
 			</span>
 		);
@@ -160,7 +160,7 @@ export function StatusPage() {
 
 	return (
 		<div className="flex w-full flex-col gap-8 pb-4">
-			<div className="flex flex-wrap items-center gap-6">
+			<div className="motion-fade-up flex flex-wrap items-center gap-6">
 				<div className="min-w-[10rem]">
 					<h1 className="text-headline-lg text-on-surface">Status</h1>
 					<p className="text-body-sm text-on-surface-variant">{runnerLabel}</p>
