@@ -5,6 +5,7 @@ import { APICallError, NoObjectGeneratedError, generateObject } from "ai";
 import { z } from "zod";
 import { decideWithAntigravityCli } from "../providers/antigravity-decide";
 import type { ActiveProviderAuth } from "../providers/application";
+import { decideWithCursorCli } from "../providers/cursor-decide";
 import {
 	AgentProviderError,
 	OPENCODE_DEFAULT_VISION_MODEL,
@@ -202,6 +203,16 @@ async function decideWithModel(
 
 	if (auth.kind === "antigravity" && !resolveGoogleKey(auth)) {
 		return decideWithAntigravityCli({
+			auth,
+			prompt: fullPrompt,
+			imageBase64: vision.base64,
+			mediaType: vision.mediaType,
+			repairHint,
+		});
+	}
+
+	if (auth.kind === "cursor") {
+		return decideWithCursorCli({
 			auth,
 			prompt: fullPrompt,
 			imageBase64: vision.base64,

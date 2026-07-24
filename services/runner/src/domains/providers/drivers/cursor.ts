@@ -1,6 +1,9 @@
 import { probeCli, runCommand } from "./probe";
 import type { DriverDefinition, ModelEntry } from "./types";
 
+/** Default Cursor Agent model for vision decide / grounding. */
+export const CURSOR_DEFAULT_VISION_MODEL = "auto";
+
 function parseModelLines(text: string): ModelEntry[] {
 	const models: ModelEntry[] = [];
 	for (const raw of text.split("\n")) {

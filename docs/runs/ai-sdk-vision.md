@@ -34,4 +34,5 @@ Rejected for this pass: redesigning provider drivers around AI SDK; CLI-only vis
 
 - Prefer `generateText` + `Output.object` when dropping deprecated `generateObject`
 - Stream model tokens into the live run UI
-- Vision for CLI-only providers (Claude / Codex adapters if AI SDK community providers fit)
+- Vision for remaining CLI-only adapters if needed (Codex CLI OAuth still blocked on Zod 4)
+- Cursor vision uses Agent CLI (`cursor-decide.ts`), not AI SDK — see [cursor-grok-custom-settings.md](../providers/cursor-grok-custom-settings.md)

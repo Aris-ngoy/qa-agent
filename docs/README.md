@@ -16,6 +16,7 @@ See `.cursor/rules/document-plan-builds.mdc` for when and how agents should add 
 |-----|--------|
 | [runs/selection-and-runs-mvp.md](./runs/selection-and-runs-mvp.md) | Test case selection + local `POST /runs` MVP |
 | [runs/ai-sdk-vision.md](./runs/ai-sdk-vision.md) | Vision decide + grounding via Vercel AI SDK |
+| [runs/cursor-vision-cli.md](./runs/cursor-vision-cli.md) | Cursor Agent CLI vision decide + grounding |
 | [runs/run-ui-and-cancel.md](./runs/run-ui-and-cancel.md) | Run list + detail, play→cancel, cancel/delete APIs |
 | [runs/run-detail-thoughts.md](./runs/run-detail-thoughts.md) | Case/device labels + per-step expandable AI thoughts |
 | [providers/opencode-model-selection.md](./providers/opencode-model-selection.md) | OpenCode Free/Paid model picker + free default |

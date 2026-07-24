@@ -143,7 +143,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		kind: "cursor",
 		label: "Cursor",
 		description:
-			"Reuse Cursor Agent CLI login (`cursor-agent`) or paste a CURSOR_API_KEY. Settings auth only — not used for vision runs yet.",
+			"Reuse Cursor Agent CLI login (`cursor-agent`) or paste a CURSOR_API_KEY. Vision runs use `cursor-agent --print` in ask mode.",
 		authModes: ["cli", "api_key"],
 		defaultBinary: "cursor-agent",
 		envHints: ["CURSOR_API_KEY"],

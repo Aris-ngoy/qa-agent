@@ -10,6 +10,7 @@ import { createXai } from "@ai-sdk/xai";
 import type { LanguageModel } from "ai";
 import type { ActiveProviderAuth } from "./application";
 import { ANTIGRAVITY_DEFAULT_VISION_MODEL } from "./drivers/antigravity";
+import { CURSOR_DEFAULT_VISION_MODEL } from "./drivers/cursor";
 import { GROK_DEFAULT_VISION_MODEL } from "./drivers/grok";
 import { OPENCODE_DEFAULT_VISION_MODEL } from "./drivers/opencode";
 
@@ -17,6 +18,7 @@ export {
 	OPENCODE_DEFAULT_VISION_MODEL,
 	ANTIGRAVITY_DEFAULT_VISION_MODEL,
 	GROK_DEFAULT_VISION_MODEL,
+	CURSOR_DEFAULT_VISION_MODEL,
 };
 
 const VISION_KINDS = new Set([
@@ -30,6 +32,7 @@ const VISION_KINDS = new Set([
 	"antigravity",
 	"grok",
 	"custom",
+	"cursor",
 ]);
 
 export type VisionProviderKind =
@@ -42,8 +45,8 @@ export type VisionProviderKind =
 	| "google-vertex"
 	| "antigravity"
 	| "grok"
-	| "custom";
-
+	| "custom"
+	| "cursor";
 export type VisionModelBundle = {
 	model: LanguageModel;
 	label: string;
@@ -68,6 +71,7 @@ export function defaultVisionModelId(auth: ActiveProviderAuth): string {
 	if (auth.kind === "opencode") return OPENCODE_DEFAULT_VISION_MODEL;
 	if (auth.kind === "groq") return GROQ_DEFAULT_VISION;
 	if (auth.kind === "grok") return GROK_DEFAULT_VISION_MODEL;
+	if (auth.kind === "cursor") return CURSOR_DEFAULT_VISION_MODEL;
 	if (auth.kind === "custom") return "";
 	if (auth.kind === "google" || auth.kind === "google-vertex" || auth.kind === "antigravity") {
 		return auth.kind === "antigravity" ? ANTIGRAVITY_DEFAULT_VISION_MODEL : GOOGLE_DEFAULT_VISION;
@@ -260,6 +264,13 @@ async function hasVisionAuth(auth: ActiveProviderAuth): Promise<boolean> {
 		case "codex":
 			// CLI OAuth package (ai-sdk-provider-codex-cli) needs Zod 4; we stay on Zod 3.
 			return Boolean(await resolveOpenAiCompatibleKey(auth));
+		case "cursor":
+			return (
+				Boolean(auth.apiKey?.trim()) ||
+				Boolean(auth.env.CURSOR_API_KEY?.trim()) ||
+				Boolean(process.env.CURSOR_API_KEY?.trim()) ||
+				auth.authMode === "cli"
+			);
 		default:
 			return false;
 	}
@@ -270,12 +281,12 @@ export async function assertVisionCapableProvider(
 ): Promise<ActiveProviderAuth> {
 	if (!auth) {
 		throw new AgentProviderError(
-			"No enabled AI provider configured. Add a vision-capable provider in Settings (Anthropic, OpenAI, OpenCode, Codex, Groq, Grok, Google, Vertex, Antigravity, or Custom).",
+			"No enabled AI provider configured. Add a vision-capable provider in Settings (Anthropic, OpenAI, OpenCode, Codex, Groq, Grok, Google, Vertex, Antigravity, Cursor, or Custom).",
 		);
 	}
 	if (!VISION_KINDS.has(auth.kind)) {
 		throw new AgentProviderError(
-			`Provider kind "${auth.kind}" does not support vision runs yet. Configure Anthropic, OpenAI, OpenCode, Codex, Groq, Grok, Google, Vertex, Antigravity, or Custom.`,
+			`Provider kind "${auth.kind}" does not support vision runs yet. Configure Anthropic, OpenAI, OpenCode, Codex, Groq, Grok, Google, Vertex, Antigravity, Cursor, or Custom.`,
 		);
 	}
 	if (!(await hasVisionAuth(auth))) {
@@ -290,9 +301,11 @@ export async function assertVisionCapableProvider(
 							? " Set a Vertex API key or GOOGLE_VERTEX_PROJECT."
 							: auth.kind === "grok"
 								? " Paste an xAI API key (XAI_API_KEY)."
-								: auth.kind === "custom"
-									? " Set Base URL and a default model in Settings."
-									: "";
+								: auth.kind === "cursor"
+									? " Run `cursor-agent login` or paste a CURSOR_API_KEY in Settings."
+									: auth.kind === "custom"
+										? " Set Base URL and a default model in Settings."
+										: "";
 		throw new AgentProviderError(
 			`Provider "${auth.kind}" is not authenticated for vision runs.${hint}`,
 		);
@@ -479,6 +492,12 @@ export async function createVisionModel(auth: ActiveProviderAuth): Promise<Visio
 			kind: "custom",
 			modelId,
 		};
+	}
+
+	if (auth.kind === "cursor") {
+		throw new AgentProviderError(
+			"Cursor vision uses the Agent CLI path — call decideWithCursorCli / groundWithCursorCli instead of createVisionModel.",
+		);
 	}
 
 	throw new AgentProviderError(`Provider kind "${auth.kind}" does not support vision runs yet.`);

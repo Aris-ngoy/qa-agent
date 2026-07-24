@@ -1,6 +1,7 @@
 import { APICallError, generateObject } from "ai";
 import { z } from "zod";
 import { resolveActiveProviderAuth } from "../providers/application";
+import { groundWithCursorCli } from "../providers/cursor-decide";
 import {
 	AgentProviderError,
 	assertVisionCapableProvider,
@@ -47,8 +48,24 @@ Respond with ONLY JSON: {"x":0-1000,"y":0-1000} for the center of the best match
 Coordinates use a 0–1000 normalized grid (0,0 top-left).`;
 
 	const userText = `Find: ${description}\n\nVisible elements:\n${treeSummary || "(none)"}`;
-	const { model, label } = await createVisionModel(auth);
 	const vision = await prepareVisionImage(shot.base64);
+
+	if (auth.kind === "cursor") {
+		try {
+			return await groundWithCursorCli({
+				auth,
+				prompt: `${system}\n\n${userText}`,
+				imageBase64: vision.base64,
+				mediaType: vision.mediaType,
+			});
+		} catch (error) {
+			if (error instanceof AgentProviderError) throw new Error(error.message);
+			if (error instanceof Error) throw error;
+			throw new Error(String(error));
+		}
+	}
+
+	const { model, label } = await createVisionModel(auth);
 
 	try {
 		const { object } = await generateObject({
