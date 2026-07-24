@@ -11,6 +11,7 @@ import { useTestCaseSelection } from "@/features/test-cases/selection-context";
 import { Button, Form } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import type { CaseScript, CaseScriptAction } from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useRef, useState } from "react";
 import {
 	type Control,
@@ -20,7 +21,7 @@ import {
 	useWatch,
 } from "react-hook-form";
 
-type DetailTab = "instructions" | "configuration";
+type DetailTab = "instructions" | "configuration" | "script";
 
 type Capability = {
 	id: string;
@@ -45,6 +46,7 @@ type FormValues = {
 const TABS: { id: DetailTab; label: string }[] = [
 	{ id: "instructions", label: "Instructions" },
 	{ id: "configuration", label: "Configuration" },
+	{ id: "script", label: "Script" },
 ];
 
 const LOCALES = [
@@ -621,6 +623,108 @@ function ConfigurationPanel({
 	);
 }
 
+function formatScriptSavedAt(ms: number): string {
+	return new Intl.DateTimeFormat(undefined, {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+	}).format(new Date(ms));
+}
+
+function scriptActionSummary(action: CaseScriptAction): string {
+	if (action.type === "tap") {
+		return `Tap at (${Math.round(action.x)}, ${Math.round(action.y)})`;
+	}
+	if (action.type === "type") {
+		return `Type “${action.text}”`;
+	}
+	return `Wait ${action.ms}ms`;
+}
+
+function ScriptPanel({
+	script,
+	scriptSavedAt,
+}: {
+	script: CaseScript | null;
+	scriptSavedAt: number | null;
+}) {
+	if (!script) {
+		return (
+			<div className={`${configCardClass} max-w-2xl`}>
+				<h2 className="mb-1.5 text-headline-md text-on-surface">Saved script</h2>
+				<p className="text-body-md text-on-surface-variant">
+					No script yet. After a successful AI agent run, YoQA saves the tap, type, and wait actions
+					here so you can replay the case without calling the model.
+				</p>
+			</div>
+		);
+	}
+
+	const savedLabel = formatScriptSavedAt(scriptSavedAt ?? script.savedAt);
+
+	return (
+		<div className="flex w-full max-w-2xl flex-col gap-5">
+			<section className={configCardClass}>
+				<div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+					<div>
+						<h2 className="mb-1.5 text-headline-md text-on-surface">Saved script</h2>
+						<p className="text-body-md text-on-surface-variant">
+							Replayable actions from a successful agent run. Used by default when you press Run.
+						</p>
+					</div>
+					<span className="rounded-full bg-secondary-container/70 px-3 py-1 text-helper font-semibold text-on-secondary-container">
+						{script.actions.length} step{script.actions.length === 1 ? "" : "s"}
+					</span>
+				</div>
+
+				<dl className="mb-5 grid gap-2 text-body-sm text-on-surface-variant sm:grid-cols-2">
+					<div>
+						<dt className="font-medium text-on-surface">Saved</dt>
+						<dd>{savedLabel}</dd>
+					</div>
+					{script.sourceRunId ? (
+						<div>
+							<dt className="font-medium text-on-surface">Source run</dt>
+							<dd className="truncate font-mono text-helper">{script.sourceRunId}</dd>
+						</div>
+					) : null}
+				</dl>
+
+				<ol className="m-0 flex list-none flex-col gap-3 p-0">
+					{script.actions.map((action, index) => (
+						<li
+							className="flex items-start gap-3 rounded-xl border border-outline-variant/70 bg-surface-container-lowest px-3.5 py-3"
+							key={`${action.type}-${index}`}
+						>
+							<span
+								aria-hidden="true"
+								className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-helper font-bold text-on-primary"
+							>
+								{index + 1}
+							</span>
+							<div className="min-w-0 flex-1">
+								<div className="flex flex-wrap items-center gap-2">
+									<span className="rounded-md bg-surface-container px-2 py-0.5 text-helper font-semibold uppercase tracking-wide text-on-surface">
+										{action.type}
+									</span>
+									<span className="text-body-md font-medium text-on-surface">
+										{scriptActionSummary(action)}
+									</span>
+								</div>
+								{action.reason ? (
+									<p className="mt-1 text-body-sm text-on-surface-variant">{action.reason}</p>
+								) : null}
+							</div>
+						</li>
+					))}
+				</ol>
+			</section>
+		</div>
+	);
+}
+
 const emptyDefaults: FormValues = {
 	name: "",
 	tags: [],
@@ -865,10 +969,14 @@ export function TestCaseDetailPage() {
 				<Form className="contents" id="test-case-form" onSubmit={handleSubmit(onSubmit)}>
 					{activeTab === "instructions" ? (
 						<InstructionsPanel control={control} setValue={setValue} />
-					) : (
+					) : null}
+					{activeTab === "configuration" ? (
 						<ConfigurationPanel control={control} setValue={setValue} />
-					)}
+					) : null}
 				</Form>
+				{activeTab === "script" ? (
+					<ScriptPanel script={testCase.script} scriptSavedAt={testCase.scriptSavedAt} />
+				) : null}
 			</div>
 		</div>
 	);

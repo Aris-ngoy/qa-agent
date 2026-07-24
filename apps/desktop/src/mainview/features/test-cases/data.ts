@@ -1,4 +1,4 @@
-import type { CaseFlowStep, CaseRunStatus, CatalogCase } from "@yoqa/runner-client";
+import type { CaseFlowStep, CaseRunStatus, CaseScript, CatalogCase } from "@yoqa/runner-client";
 
 export type CaseStatus = CaseRunStatus;
 
@@ -22,6 +22,7 @@ export type TestCase = {
 	capabilities: Array<{ id: string; key: string; value: string }>;
 	hasScript: boolean;
 	scriptSavedAt: number | null;
+	script: CaseScript | null;
 	createdAt: number;
 	updatedAt: number;
 	lastRunAt: number | null;
@@ -68,6 +69,9 @@ export function mapCatalogCase(row: CatalogCase, now = Date.now()): TestCase {
 		capabilities: row.capabilities.map((cap) => ({ ...cap })),
 		hasScript: row.hasScript,
 		scriptSavedAt: row.scriptSavedAt,
+		script: row.script
+			? { ...row.script, actions: row.script.actions.map((a) => ({ ...a })) }
+			: null,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 		lastRunAt: row.lastRunAt,

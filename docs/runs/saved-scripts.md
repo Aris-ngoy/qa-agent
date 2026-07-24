@@ -30,6 +30,7 @@ Rejected for this slice: manual “Save script” UI, editing scripts, invalidat
 
 **Desktop**
 - Run button: no script → agent; any script → dialog (Use saved scripts / Use AI agent / Cancel)
+- Case detail **Script** tab lists saved actions (or empty state when none)
 
 ## How to verify
 
@@ -45,3 +46,4 @@ Rejected for this slice: manual “Save script” UI, editing scripts, invalidat
 - Clear / re-record script when flows change
 - On script replay failure, optional one-click “retry with AI”
 - CLI flag for `--mode script|agent`
+- ~~View saved script on case detail~~ — Script tab on detail page

@@ -2,6 +2,7 @@ import {
 	type Capability,
 	type CaseFlowStep,
 	type CaseRunStatus,
+	type CaseScript,
 	type CatalogApp,
 	type CatalogCase,
 	type CatalogFlow,
@@ -14,6 +15,7 @@ import {
 	type UpdateCaseRequest,
 	type UpdateFlowRequest,
 	caseRunStatusSchema,
+	caseScriptSchema,
 } from "@yoqa/runner-client";
 import { and, asc, desc, eq, max } from "drizzle-orm";
 import { getCatalogDb } from "./db";
@@ -21,6 +23,17 @@ import { type CapabilityRow, apps, caseFlows, caseTags, cases, flows, tags } fro
 
 function newId(prefix: string): string {
 	return `${prefix}_${crypto.randomUUID()}`;
+}
+
+function parseCaseScript(raw: string | null | undefined): CaseScript | null {
+	if (!raw) return null;
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		const result = caseScriptSchema.safeParse(parsed);
+		return result.success ? result.data : null;
+	} catch {
+		return null;
+	}
 }
 
 function parseCapabilities(raw: string): Capability[] {
@@ -151,6 +164,8 @@ async function loadCaseDetail(caseId: string): Promise<CatalogCase | null> {
 		}
 	}
 
+	const script = parseCaseScript(row.scriptJson);
+
 	return {
 		id: row.id,
 		appId: row.appId,
@@ -159,8 +174,9 @@ async function loadCaseDetail(caseId: string): Promise<CatalogCase | null> {
 		tags: tagRows.map((t) => t.name),
 		flows: steps,
 		capabilities: parseCapabilities(row.appiumCaps),
-		hasScript: Boolean(row.scriptJson && row.scriptJson !== "null"),
+		hasScript: script !== null,
 		scriptSavedAt: row.scriptSavedAt ?? null,
+		script,
 		lastRunAt: row.lastRunAt,
 		lastRunStatus: parseRunStatus(row.lastRunStatus),
 		createdAt: row.createdAt,

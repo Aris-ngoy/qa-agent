@@ -236,6 +236,7 @@ export const catalogCaseSchema = z.object({
 	capabilities: z.array(capabilitySchema),
 	hasScript: z.boolean(),
 	scriptSavedAt: z.number().int().nonnegative().nullable(),
+	script: caseScriptSchema.nullable(),
 	lastRunAt: z.number().int().nonnegative().nullable(),
 	lastRunStatus: caseRunStatusSchema.nullable(),
 	createdAt: z.number().int().nonnegative(),
