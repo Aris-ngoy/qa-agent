@@ -1,4 +1,5 @@
 import { RhfSelectField, RhfTextField, requiredTrimmed } from "@/app/forms";
+import { useReducedMotion } from "@/app/motion/use-reduced-motion";
 import { getRunnerClient } from "@/app/runner-client";
 import {
 	type TestCase,
@@ -817,9 +818,11 @@ function ScriptPanel({
 		{ id: "shell", label: "CLI shell" },
 	];
 
+	const reduceMotion = useReducedMotion();
+
 	return (
 		<div className="flex w-full max-w-2xl flex-col gap-5">
-			<section className={configCardClass}>
+			<section className={`${configCardClass} motion-fade-up`}>
 				<div className="mb-5 flex flex-wrap items-start justify-between gap-3">
 					<div>
 						<h2 className="mb-1.5 text-headline-md text-on-surface">Saved script</h2>
@@ -827,7 +830,7 @@ function ScriptPanel({
 							Replayable actions from a successful agent run. Used by default when you press Run.
 						</p>
 					</div>
-					<span className="rounded-full bg-secondary-container/70 px-3 py-1 text-helper font-semibold text-on-secondary-container">
+					<span className="motion-scale-in rounded-full bg-secondary-container/70 px-3 py-1 text-helper font-semibold text-on-secondary-container">
 						{steps.length} step{steps.length === 1 ? "" : "s"}
 					</span>
 				</div>
@@ -857,17 +860,17 @@ function ScriptPanel({
 					<Tabs.ListContainer className="mb-4">
 						<Tabs.List
 							aria-label="Script view"
-							className="w-fit max-w-full gap-1 rounded-xl bg-surface-container p-1"
+							className="relative w-fit max-w-full gap-1 rounded-xl bg-surface-container p-1"
 						>
 							{viewTabs.map((tab) => (
 								<Tabs.Tab
-									className="h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium text-on-surface-variant data-[selected=true]:bg-surface-container-lowest data-[selected=true]:font-semibold data-[selected=true]:text-on-surface data-[selected=true]:shadow-card"
+									className="relative z-[1] h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium text-on-surface-variant transition-[color,opacity] duration-[var(--motion-fast)] data-[selected=true]:font-semibold data-[selected=true]:text-on-surface"
 									id={tab.id}
 									isDisabled={editing && tab.id !== "json"}
 									key={tab.id}
 								>
 									{tab.label}
-									<Tabs.Indicator className="hidden" />
+									<Tabs.Indicator className="z-0 rounded-lg bg-surface-container-lowest shadow-card" />
 								</Tabs.Tab>
 							))}
 						</Tabs.List>
@@ -942,154 +945,176 @@ function ScriptPanel({
 						</p>
 					) : null}
 
-					<Tabs.Panel className="pt-0" id="steps">
-						<ol className="m-0 flex list-none flex-col gap-3 p-0">
-							{steps.map((action, index) => {
-								const isDragging = draggingIndex === index;
-								return (
-									<li
-										className={[
-											"flex items-start gap-3 rounded-xl border border-outline-variant/70 bg-surface-container-lowest px-3.5 py-3 transition-all",
-											isDragging ? "scale-[0.99] border-primary/30 opacity-60 shadow-float" : "",
-										]
-											.filter(Boolean)
-											.join(" ")}
-										key={`${action.type}-${index}-${action.reason ?? ""}`}
-										onDragOver={(event) => {
-											event.preventDefault();
-											event.dataTransfer.dropEffect = "move";
-											if (draggingIndex === null || draggingIndex === index) return;
-											setSteps((current) => {
-												const next = [...current];
-												const [moved] = next.splice(draggingIndex, 1);
-												if (!moved) return current;
-												next.splice(index, 0, moved);
-												return next;
-											});
-											setDraggingIndex(index);
-										}}
-										onDrop={(event) => {
-											event.preventDefault();
-											void finishReorder();
-										}}
-									>
-										<button
-											aria-label={`Drag to rearrange step ${index + 1}`}
-											className={[
-												"flex shrink-0 cursor-grab flex-col items-center justify-center gap-1.5 self-stretch rounded-xl border border-outline-variant bg-surface-container px-2 py-2.5 text-on-surface shadow-card transition-colors",
-												"hover:border-primary/30 hover:bg-surface-container-high",
-												"active:cursor-grabbing active:bg-surface-container-highest",
-												isDragging ? "border-primary/40 bg-surface-container-high" : "",
-												busy ? "pointer-events-none opacity-50" : "",
-											].join(" ")}
-											draggable={!busy}
-											onDragEnd={() => {
-												void finishReorder();
-											}}
-											onDragStart={(event) => {
-												event.dataTransfer.effectAllowed = "move";
-												event.dataTransfer.setData("text/plain", String(index));
-												if (event.currentTarget.parentElement) {
-													event.dataTransfer.setDragImage(
-														event.currentTarget.parentElement,
-														24,
-														24,
-													);
-												}
-												setDraggingIndex(index);
-											}}
-											title="Drag to rearrange"
-											type="button"
-										>
-											<GripIcon className="size-4" />
-											<span
-												aria-hidden="true"
-												className="flex size-7 items-center justify-center rounded-full bg-primary text-helper font-bold text-on-primary"
+					<Tabs.Panel className="pt-0 outline-none" id="steps">
+						{view === "steps" ? (
+							<div className={reduceMotion ? undefined : "motion-fade-up"} key="steps-panel">
+								<ol className="m-0 flex list-none flex-col gap-3 p-0">
+									{steps.map((action, index) => {
+										const isDragging = draggingIndex === index;
+										return (
+											<li
+												className={[
+													"flex items-start gap-3 rounded-xl border border-outline-variant/70 bg-surface-container-lowest px-3.5 py-3 transition-[transform,opacity,box-shadow,border-color] duration-[var(--motion-fast)]",
+													isDragging
+														? "scale-[0.99] border-primary/30 opacity-60 shadow-float"
+														: "",
+												]
+													.filter(Boolean)
+													.join(" ")}
+												key={`${action.type}-${index}-${action.reason ?? ""}`}
+												onDragOver={(event) => {
+													event.preventDefault();
+													event.dataTransfer.dropEffect = "move";
+													if (draggingIndex === null || draggingIndex === index) return;
+													setSteps((current) => {
+														const next = [...current];
+														const [moved] = next.splice(draggingIndex, 1);
+														if (!moved) return current;
+														next.splice(index, 0, moved);
+														return next;
+													});
+													setDraggingIndex(index);
+												}}
+												onDrop={(event) => {
+													event.preventDefault();
+													void finishReorder();
+												}}
 											>
-												{index + 1}
-											</span>
-										</button>
+												<button
+													aria-label={`Drag to rearrange step ${index + 1}`}
+													className={[
+														"flex shrink-0 cursor-grab flex-col items-center justify-center gap-1.5 self-stretch rounded-xl border border-outline-variant bg-surface-container px-2 py-2.5 text-on-surface shadow-card transition-colors duration-[var(--motion-fast)]",
+														"hover:border-primary/30 hover:bg-surface-container-high",
+														"active:cursor-grabbing active:bg-surface-container-highest",
+														isDragging ? "border-primary/40 bg-surface-container-high" : "",
+														busy ? "pointer-events-none opacity-50" : "",
+													].join(" ")}
+													draggable={!busy}
+													onDragEnd={() => {
+														void finishReorder();
+													}}
+													onDragStart={(event) => {
+														event.dataTransfer.effectAllowed = "move";
+														event.dataTransfer.setData("text/plain", String(index));
+														if (event.currentTarget.parentElement) {
+															event.dataTransfer.setDragImage(
+																event.currentTarget.parentElement,
+																24,
+																24,
+															);
+														}
+														setDraggingIndex(index);
+													}}
+													title="Drag to rearrange"
+													type="button"
+												>
+													<GripIcon className="size-4" />
+													<span
+														aria-hidden="true"
+														className="flex size-7 items-center justify-center rounded-full bg-primary text-helper font-bold text-on-primary transition-transform duration-[var(--motion-fast)]"
+													>
+														{index + 1}
+													</span>
+												</button>
 
-										<div className="min-w-0 flex-1">
-											<div className="flex flex-wrap items-center gap-2">
-												<span className="rounded-md bg-surface-container px-2 py-0.5 text-helper font-semibold uppercase tracking-wide text-on-surface">
-													{action.type}
-												</span>
-												<span className="text-body-md font-medium text-on-surface">
-													{scriptActionSummary(action)}
-												</span>
-											</div>
-											{action.reason ? (
-												<p className="mt-1 text-body-sm text-on-surface-variant">{action.reason}</p>
-											) : null}
-										</div>
+												<div className="min-w-0 flex-1">
+													<div className="flex flex-wrap items-center gap-2">
+														<span className="rounded-md bg-surface-container px-2 py-0.5 text-helper font-semibold uppercase tracking-wide text-on-surface">
+															{action.type}
+														</span>
+														<span className="text-body-md font-medium text-on-surface">
+															{scriptActionSummary(action)}
+														</span>
+													</div>
+													{action.reason ? (
+														<p className="mt-1 text-body-sm text-on-surface-variant">
+															{action.reason}
+														</p>
+													) : null}
+												</div>
 
-										<button
-											aria-label={`Delete step ${index + 1}`}
-											className="flex size-8 shrink-0 items-center justify-center self-start rounded-lg text-on-surface-variant transition-colors hover:bg-error-container/50 hover:text-error disabled:opacity-40"
-											disabled={busy}
-											onClick={() => void deleteStep(index)}
-											title={
-												steps.length === 1
-													? "Delete this step (removes the whole script)"
-													: "Delete step"
-											}
-											type="button"
-										>
-											<TrashIcon className="size-4" />
-										</button>
-									</li>
-								);
-							})}
-						</ol>
+												<button
+													aria-label={`Delete step ${index + 1}`}
+													className="flex size-8 shrink-0 items-center justify-center self-start rounded-lg text-on-surface-variant transition-colors duration-[var(--motion-fast)] hover:bg-error-container/50 hover:text-error disabled:opacity-40"
+													disabled={busy}
+													onClick={() => void deleteStep(index)}
+													title={
+														steps.length === 1
+															? "Delete this step (removes the whole script)"
+															: "Delete step"
+													}
+													type="button"
+												>
+													<TrashIcon className="size-4" />
+												</button>
+											</li>
+										);
+									})}
+								</ol>
+							</div>
+						) : null}
 					</Tabs.Panel>
 
-					<Tabs.Panel className="pt-0" id="json">
-						<div className="flex flex-col gap-2">
-							{editing ? (
-								<textarea
-									aria-label="CaseScript JSON"
-									className={`${fieldAreaClass} min-h-[22rem] font-mono text-body-sm leading-relaxed`}
-									onChange={(event) => setDraft(event.target.value)}
-									spellCheck={false}
-									value={draft}
-								/>
-							) : (
+					<Tabs.Panel className="pt-0 outline-none" id="json">
+						{view === "json" ? (
+							<div
+								className={
+									reduceMotion ? "flex flex-col gap-2" : "motion-fade-up flex flex-col gap-2"
+								}
+								key={`json-${editing ? "edit" : "view"}`}
+							>
+								{editing ? (
+									<textarea
+										aria-label="CaseScript JSON"
+										className={`${fieldAreaClass} min-h-[22rem] font-mono text-body-sm leading-relaxed`}
+										onChange={(event) => setDraft(event.target.value)}
+										spellCheck={false}
+										value={draft}
+									/>
+								) : (
+									<pre className="max-h-[28rem] overflow-auto rounded-xl border border-outline-variant bg-surface-container px-4 py-3 font-mono text-body-sm leading-relaxed text-on-surface">
+										{formatCaseScriptJson(script).trimEnd()}
+									</pre>
+								)}
+								<p className="text-body-sm text-on-surface-variant">
+									Replay with{" "}
+									<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
+										yoqa script run {baseName}.yoqa.json
+									</code>{" "}
+									after connecting a device.
+								</p>
+							</div>
+						) : null}
+					</Tabs.Panel>
+
+					<Tabs.Panel className="pt-0 outline-none" id="shell">
+						{view === "shell" ? (
+							<div
+								className={
+									reduceMotion ? "flex flex-col gap-2" : "motion-fade-up flex flex-col gap-2"
+								}
+								key="shell-panel"
+							>
 								<pre className="max-h-[28rem] overflow-auto rounded-xl border border-outline-variant bg-surface-container px-4 py-3 font-mono text-body-sm leading-relaxed text-on-surface">
-									{formatCaseScriptJson(script).trimEnd()}
+									{formatCaseScriptShell(script, exportMeta).trimEnd()}
 								</pre>
-							)}
-							<p className="text-body-sm text-on-surface-variant">
-								Replay with{" "}
-								<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
-									yoqa script run {baseName}.yoqa.json
-								</code>{" "}
-								after connecting a device.
-							</p>
-						</div>
-					</Tabs.Panel>
-
-					<Tabs.Panel className="pt-0" id="shell">
-						<div className="flex flex-col gap-2">
-							<pre className="max-h-[28rem] overflow-auto rounded-xl border border-outline-variant bg-surface-container px-4 py-3 font-mono text-body-sm leading-relaxed text-on-surface">
-								{formatCaseScriptShell(script, exportMeta).trimEnd()}
-							</pre>
-							<p className="text-body-sm text-on-surface-variant">
-								Shell export calls{" "}
-								<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
-									yoqa action
-								</code>{" "}
-								and{" "}
-								<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
-									sleep
-								</code>
-								. Prefer JSON +{" "}
-								<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
-									yoqa script run
-								</code>{" "}
-								for structured replay.
-							</p>
-						</div>
+								<p className="text-body-sm text-on-surface-variant">
+									Shell export calls{" "}
+									<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
+										yoqa action
+									</code>{" "}
+									and{" "}
+									<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
+										sleep
+									</code>
+									. Prefer JSON +{" "}
+									<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
+										yoqa script run
+									</code>{" "}
+									for structured replay.
+								</p>
+							</div>
+						) : null}
 					</Tabs.Panel>
 				</Tabs>
 			</section>
