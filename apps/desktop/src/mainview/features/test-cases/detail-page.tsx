@@ -1265,8 +1265,14 @@ export function TestCaseDetailPage() {
 		}
 		reset(formFromCase(testCase));
 		setReady(true);
-		setActiveTab("instructions");
 	}, [testCase, reset]);
+
+	// Only reset the tab when navigating to a different case — not when the
+	// same case refreshes after script reorder / save.
+	useEffect(() => {
+		if (!caseId) return;
+		setActiveTab("instructions");
+	}, [caseId]);
 
 	if (caseQuery.isLoading) {
 		return (
