@@ -864,7 +864,7 @@ function ScriptPanel({
 						>
 							{viewTabs.map((tab) => (
 								<Tabs.Tab
-									className="relative z-[1] h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium text-on-surface-variant transition-[color,opacity] duration-[var(--motion-fast)] data-[selected=true]:font-semibold data-[selected=true]:text-on-surface"
+									className="relative z-[1] h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium text-on-surface-variant transition-[color,opacity] duration-[var(--motion-fast)] data-[selected=true]:font-semibold data-[selected=true]:!text-on-surface"
 									id={tab.id}
 									isDisabled={editing && tab.id !== "json"}
 									key={tab.id}
