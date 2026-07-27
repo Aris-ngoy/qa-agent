@@ -6,6 +6,8 @@
 export type ScreenElement = {
 	type: string;
 	label: string;
+	/** Android resource-id / iOS accessibility name when available. */
+	id?: string;
 	x: number;
 	y: number;
 	width: number;
@@ -78,6 +80,16 @@ function labelFromAttrs(attrs: Record<string, string>): string {
 	);
 }
 
+function idFromAttrs(attrs: Record<string, string>): string {
+	return (
+		attrs["resource-id"] ||
+		attrs.resourceId ||
+		attrs.accessibilityIdentifier ||
+		attrs.name ||
+		""
+	).trim();
+}
+
 function isLayoutOnly(name: string, label: string): boolean {
 	if (label.trim().length > 0) return false;
 	const lower = name.toLowerCase();
@@ -128,9 +140,12 @@ export function cleanPageSource(
 		const enabled =
 			attrs.enabled === undefined ? undefined : attrs.enabled === "true" || attrs.enabled === "1";
 
+		const id = idFromAttrs(attrs);
+
 		elements.push({
 			type: name,
 			label: label || name,
+			...(id ? { id } : {}),
 			x: Math.round((rect.x / window.width) * 1000),
 			y: Math.round((rect.y / window.height) * 1000),
 			width: Math.round((rect.width / window.width) * 1000),

@@ -122,7 +122,7 @@ export type DeviceSession = {
 	screenshot: () => Promise<{ path: string; base64: string }>;
 	pageSource: () => Promise<string>;
 	getWindowSize: () => Promise<{ width: number; height: number }>;
-	tap: (xNorm: number, yNorm: number) => Promise<void>;
+	tap: (xNorm: number, yNorm: number, options?: { durationMs?: number }) => Promise<void>;
 	swipe: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	type: (text: string) => Promise<void>;
@@ -225,10 +225,11 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 
 	const pageSource = async () => browser.getPageSource();
 
-	const tap = async (xNorm: number, yNorm: number) => {
+	const tap = async (xNorm: number, yNorm: number, options?: { durationMs?: number }) => {
 		const size = await getWindowSize();
 		const x = toPx(xNorm, size.width);
 		const y = toPx(yNorm, size.height);
+		const holdMs = Math.max(50, options?.durationMs ?? 50);
 		await browser.performActions([
 			{
 				type: "pointer",
@@ -237,7 +238,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 				actions: [
 					{ type: "pointerMove", duration: 0, x, y },
 					{ type: "pointerDown", button: 0 },
-					{ type: "pause", duration: 50 },
+					{ type: "pause", duration: holdMs },
 					{ type: "pointerUp", button: 0 },
 				],
 			},

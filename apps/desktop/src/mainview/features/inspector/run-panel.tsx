@@ -18,7 +18,7 @@ type RunPanelProps = {
 
 export function RunPanel({ running, canRun, log, onRun, onStop, onCopy, onExport }: RunPanelProps) {
 	return (
-		<div className="flex min-h-0 flex-col gap-2 border-t border-outline-variant/30 pt-3">
+		<div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-3 pb-2">
 			<div className="flex flex-wrap items-center gap-1.5">
 				{running ? (
 					<Button
@@ -66,7 +66,7 @@ export function RunPanel({ running, canRun, log, onRun, onStop, onCopy, onExport
 
 			<div
 				aria-live="polite"
-				className="max-h-40 min-h-24 overflow-auto rounded-lg bg-surface-container px-3 py-2 font-mono text-helper leading-relaxed"
+				className="min-h-28 overflow-auto rounded-lg bg-surface-container px-3 py-2 font-mono text-helper leading-relaxed"
 			>
 				{log.length === 0 ? (
 					<p className="text-on-surface-variant">Run log will appear here.</p>

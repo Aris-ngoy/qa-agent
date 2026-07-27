@@ -5,6 +5,9 @@ import {
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	connectDeviceRequestSchema,
+	elementCenterNorm,
+	findElementById,
+	findElementByLabel,
 	screenResponseSchema,
 	screenshotRequestSchema,
 	screenshotResponseSchema,
@@ -149,7 +152,30 @@ export function createSessionRoutes() {
 			let x = body.x;
 			let y = body.y;
 
-			if (body.description && (body.kind === "tap" || body.kind === "input")) {
+			if (
+				(body.id || body.label) &&
+				(body.kind === "tap" || body.kind === "input") &&
+				(x == null || y == null)
+			) {
+				const raw = await session.pageSource();
+				const window = await session.getWindowSize();
+				const cleaned = cleanPageSource(raw, window);
+				const match = body.id
+					? findElementById(cleaned.elements, body.id)
+					: findElementByLabel(cleaned.elements, body.label ?? "");
+				if (!match) {
+					return c.json(
+						{
+							error: body.id ? "No element matching id" : "No element matching label",
+							detail: body.id ?? body.label,
+						},
+						404,
+					);
+				}
+				const center = elementCenterNorm(match);
+				x = center.x;
+				y = center.y;
+			} else if (body.description && (body.kind === "tap" || body.kind === "input")) {
 				const grounded = await groundDescription(session, body.description);
 				x = grounded.x;
 				y = grounded.y;
@@ -158,9 +184,12 @@ export function createSessionRoutes() {
 			switch (body.kind) {
 				case "tap": {
 					if (x == null || y == null) {
-						return c.json({ error: "tap requires x,y or description" }, 400);
+						return c.json({ error: "tap requires x,y or --id or --label or description" }, 400);
 					}
-					await session.tap(x, y);
+					await session.tap(x, y, { durationMs: body.durationMs });
+					if (body.double) {
+						await session.tap(x, y);
+					}
 					break;
 				}
 				case "swipe":
@@ -176,7 +205,8 @@ export function createSessionRoutes() {
 					break;
 				}
 				case "input": {
-					if (body.description && x != null && y != null) {
+					// Focus the target whenever coordinates are known (id/label/description/x,y).
+					if (x != null && y != null) {
 						await session.tap(x, y);
 					}
 					if (!body.text) {

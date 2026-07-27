@@ -1,5 +1,11 @@
 #!/usr/bin/env bun
-import { type DevicePlatform, caseScriptSchema, createRunnerClient } from "@yoqa/runner-client";
+import {
+	type DevicePlatform,
+	caseScriptSchema,
+	createRunnerClient,
+	formatAssertShellLine,
+	runYoqaShellScript,
+} from "@yoqa/runner-client";
 import { Command } from "commander";
 import { runnerBaseUrl } from "../../settings";
 
@@ -277,11 +283,14 @@ function addActionOptions(cmd: Command) {
 		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 		.option("--json", "Print raw JSON")
 		.option("-d, --description <text>", "Ground target by natural language")
+		.option("--label <text>", "Tap/focus by accessibility label (cleaned screen tree)")
+		.option("--id <text>", "Tap/focus by resource-id / accessibility id")
 		.option("--x <n>", "X in 0–1000", (v) => Number(v))
 		.option("--y <n>", "Y in 0–1000", (v) => Number(v))
 		.option("--x2 <n>", "End X in 0–1000", (v) => Number(v))
 		.option("--y2 <n>", "End Y in 0–1000", (v) => Number(v))
-		.option("--duration <ms>", "Gesture duration ms", (v) => Number(v))
+		.option("--duration <ms>", "Gesture duration ms (long-press for tap)", (v) => Number(v))
+		.option("--double", "Double-tap (tap only)")
 		.option("--text <text>", "Text to type")
 		.option("--app-id <id>", "Bundle id / application id")
 		.option("--url <url>", "URL to open")
@@ -309,7 +318,10 @@ for (const kind of [
 					x2: options.x2 as number | undefined,
 					y2: options.y2 as number | undefined,
 					durationMs: options.duration as number | undefined,
+					double: options.double === true ? true : undefined,
 					text: options.text as string | undefined,
+					label: options.label as string | undefined,
+					id: options.id as string | undefined,
 					description: options.description as string | undefined,
 					appId: options.appId as string | undefined,
 					url: options.url as string | undefined,
@@ -478,6 +490,53 @@ runtime
 	});
 
 // --- apps / cases / flows / tags ---
+
+const assertCmd = program
+	.command("assert")
+	.description("Assert text visibility on the active device");
+
+for (const kind of ["visible", "not-visible"] as const) {
+	assertCmd
+		.command(kind)
+		.description(
+			kind === "visible"
+				? "Fail unless matching text appears in the cleaned screen tree"
+				: "Fail if matching text is still present in the cleaned screen tree",
+		)
+		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+		.option("--json", "Print raw JSON")
+		.requiredOption("-t, --text <text>", "Text / label substring to match")
+		.option("--timeout <seconds>", "Seconds to wait before failing", (v) => Number(v), 5)
+		.action(
+			async (options: {
+				baseUrl: string;
+				json?: boolean;
+				text: string;
+				timeout: number;
+			}) => {
+				try {
+					const line = formatAssertShellLine({
+						assertion: kind,
+						text: options.text,
+						timeoutSeconds: options.timeout,
+					});
+					const result = await runYoqaShellScript(client(options.baseUrl), line);
+					if (options.json) {
+						console.log(JSON.stringify(result, null, 2));
+						if (!result.ok) process.exitCode = 1;
+						return;
+					}
+					if (!result.ok) {
+						fail(`assert ${kind}`, new Error(result.error ?? "assertion failed"));
+						return;
+					}
+					console.log(`ok assert ${kind}`);
+				} catch (error) {
+					fail(`assert ${kind}`, error);
+				}
+			},
+		);
+}
 
 const appsCmd = program.command("apps").description("Manage local apps");
 

@@ -1,111 +1,35 @@
 import { Button, Input, Label, TextField } from "@heroui/react";
 import { useState } from "react";
-import type { InspectorSelection } from "./selection";
 
 type CommandBarProps = {
-	selection: InspectorSelection | null;
 	disabled: boolean;
-	onAddTap: () => void;
-	onAddInput: (text: string) => void;
 	onAddSwipe: (direction: "up" | "down" | "left" | "right") => void;
 	onAddWait: (seconds: number) => void;
-	onClearSelection: () => void;
 };
 
-export function CommandBar({
-	selection,
-	disabled,
-	onAddTap,
-	onAddInput,
-	onAddSwipe,
-	onAddWait,
-	onClearSelection,
-}: CommandBarProps) {
-	const [inputText, setInputText] = useState("");
+/** Global (non-element) script helpers — swipe + wait. Element actions live on the screenshot menu. */
+export function CommandBar({ disabled, onAddSwipe, onAddWait }: CommandBarProps) {
 	const [waitSeconds, setWaitSeconds] = useState("1");
-	const hasSelection = selection != null;
 
 	return (
-		<div className="flex flex-col gap-2 border-b border-outline-variant/30 pb-3">
-			<div className="flex flex-wrap items-center gap-1.5">
-				<Button
-					size="sm"
-					variant="primary"
-					isDisabled={disabled || !hasSelection}
-					onPress={() => {
-						onAddTap();
-					}}
-				>
-					Add tap
-				</Button>
-				<Button
-					size="sm"
-					variant="secondary"
-					isDisabled={disabled}
-					onPress={() => {
-						onAddSwipe("up");
-					}}
-				>
-					Swipe up
-				</Button>
-				<Button
-					size="sm"
-					variant="secondary"
-					isDisabled={disabled}
-					onPress={() => {
-						onAddSwipe("down");
-					}}
-				>
-					Swipe down
-				</Button>
-				<Button
-					size="sm"
-					variant="secondary"
-					isDisabled={disabled}
-					onPress={() => {
-						onAddSwipe("left");
-					}}
-				>
-					Swipe left
-				</Button>
-				<Button
-					size="sm"
-					variant="secondary"
-					isDisabled={disabled}
-					onPress={() => {
-						onAddSwipe("right");
-					}}
-				>
-					Swipe right
-				</Button>
-				<Button
-					size="sm"
-					variant="tertiary"
-					isDisabled={disabled || !hasSelection}
-					onPress={() => {
-						onClearSelection();
-					}}
-				>
-					Clear selection
-				</Button>
-			</div>
-
+		<div className="flex flex-col gap-2 rounded-xl border border-outline-variant/30 bg-surface-container/40 px-3 py-2.5">
+			<p className="text-helper text-on-surface-variant">
+				Screen gestures — select an element on the device for tap, assert, and input.
+			</p>
 			<div className="flex flex-wrap items-end gap-2">
-				<TextField className="min-w-40 flex-1" value={inputText} onChange={setInputText}>
-					<Label className="mb-1 text-helper text-on-surface-variant">Input text</Label>
-					<Input placeholder="Type into focused field…" />
-				</TextField>
-				<Button
-					size="sm"
-					variant="secondary"
-					isDisabled={disabled || inputText.trim().length === 0}
-					onPress={() => {
-						onAddInput(inputText);
-						setInputText("");
-					}}
-				>
-					Add input
-				</Button>
+				{(["up", "down", "left", "right"] as const).map((direction) => (
+					<Button
+						key={direction}
+						size="sm"
+						variant="secondary"
+						isDisabled={disabled}
+						onPress={() => {
+							onAddSwipe(direction);
+						}}
+					>
+						Swipe {direction}
+					</Button>
+				))}
 
 				<TextField className="w-24" value={waitSeconds} onChange={setWaitSeconds}>
 					<Label className="mb-1 text-helper text-on-surface-variant">Wait (s)</Label>

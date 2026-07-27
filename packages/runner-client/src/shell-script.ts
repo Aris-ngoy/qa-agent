@@ -1,4 +1,10 @@
-import type { ActionKind, ActionRequest, ActionResponse } from "./schemas";
+import type {
+	ActionKind,
+	ActionRequest,
+	ActionResponse,
+	ScreenElement,
+	ScreenResponse,
+} from "./schemas";
 import { actionKindSchema } from "./schemas";
 
 export type ShellScriptSleepStep = {
@@ -15,7 +21,18 @@ export type ShellScriptActionStep = {
 	raw: string;
 };
 
-export type ShellScriptStep = ShellScriptSleepStep | ShellScriptActionStep;
+export type AssertVisibility = "visible" | "not-visible";
+
+export type ShellScriptAssertStep = {
+	kind: "assert";
+	assertion: AssertVisibility;
+	text: string;
+	timeoutSeconds: number;
+	lineNumber: number;
+	raw: string;
+};
+
+export type ShellScriptStep = ShellScriptSleepStep | ShellScriptActionStep | ShellScriptAssertStep;
 
 export type ParseYoqaShellScriptResult = {
 	steps: ShellScriptStep[];
@@ -36,8 +53,9 @@ export type RunYoqaShellScriptOptions = {
 	pauseAfterActionMs?: number;
 };
 
-type ActionClient = {
+type ScriptClient = {
 	performAction: (request: ActionRequest) => Promise<ActionResponse>;
+	getScreen: (options?: { full?: boolean }) => Promise<ScreenResponse>;
 };
 
 function shellSingleQuote(value: string): string {
@@ -158,6 +176,12 @@ function parseActionFromTokens(
 	const description = flagString(flags, "-d", "--description");
 	if (description != null) action.description = description;
 
+	const label = flagString(flags, "--label");
+	if (label != null) action.label = label;
+
+	const id = flagString(flags, "--id");
+	if (id != null) action.id = id;
+
 	const x = flagNumber(flags, "--x");
 	const y = flagNumber(flags, "--y");
 	const x2 = flagNumber(flags, "--x2");
@@ -177,6 +201,7 @@ function parseActionFromTokens(
 	if (appId != null) action.appId = appId;
 	if (url != null) action.url = url;
 	if (seconds != null) action.seconds = seconds;
+	if (flags.has("--double")) action.double = true;
 
 	if (flags.has("--dismiss")) {
 		action.alertAction = "dismiss";
@@ -187,6 +212,38 @@ function parseActionFromTokens(
 	}
 
 	return { kind: "action", action, lineNumber, raw };
+}
+
+function parseAssertFromTokens(
+	tokens: string[],
+	lineNumber: number,
+	raw: string,
+): ShellScriptAssertStep {
+	// Expected: yoqa assert visible|not-visible --text '…' [--timeout N]
+	if (tokens[0] !== "yoqa" || tokens[1] !== "assert") {
+		throw new Error("Expected `yoqa assert <visible|not-visible> …`");
+	}
+	const assertionRaw = tokens[2];
+	if (assertionRaw !== "visible" && assertionRaw !== "not-visible") {
+		throw new Error("Assert kind must be `visible` or `not-visible`");
+	}
+	const flags = parseFlagMap(tokens.slice(3));
+	const text = flagString(flags, "--text", "-t");
+	if (!text || text.trim().length === 0) {
+		throw new Error("assert requires --text");
+	}
+	const timeout = flagNumber(flags, "--timeout") ?? 5;
+	if (timeout < 0) {
+		throw new Error("--timeout must be non-negative");
+	}
+	return {
+		kind: "assert",
+		assertion: assertionRaw,
+		text: text.trim(),
+		timeoutSeconds: timeout,
+		lineNumber,
+		raw,
+	};
 }
 
 function isIgnorableLine(trimmed: string): boolean {
@@ -220,6 +277,11 @@ export function parseYoqaShellScript(text: string): ParseYoqaShellScriptResult {
 				continue;
 			}
 
+			if (tokens[0] === "yoqa" && tokens[1] === "assert") {
+				steps.push(parseAssertFromTokens(tokens, lineNumber, trimmed));
+				continue;
+			}
+
 			if (tokens[0] === "yoqa") {
 				steps.push(parseActionFromTokens(tokens, lineNumber, trimmed));
 				continue;
@@ -241,6 +303,12 @@ export function parseYoqaShellScript(text: string): ParseYoqaShellScriptResult {
 export function formatActionShellLine(action: ActionRequest): string {
 	const parts = ["yoqa", "action", action.kind];
 
+	if (action.id) {
+		parts.push("--id", shellSingleQuote(action.id));
+	}
+	if (action.label) {
+		parts.push("--label", shellSingleQuote(action.label));
+	}
 	if (action.description) {
 		parts.push("-d", shellSingleQuote(action.description));
 	}
@@ -249,6 +317,7 @@ export function formatActionShellLine(action: ActionRequest): string {
 	if (action.x2 != null) parts.push("--x2", String(Math.round(action.x2)));
 	if (action.y2 != null) parts.push("--y2", String(Math.round(action.y2)));
 	if (action.durationMs != null) parts.push("--duration", String(Math.round(action.durationMs)));
+	if (action.double) parts.push("--double");
 	if (action.text != null) parts.push("--text", shellSingleQuote(action.text));
 	if (action.appId != null) parts.push("--app-id", shellSingleQuote(action.appId));
 	if (action.url != null) parts.push("--url", shellSingleQuote(action.url));
@@ -264,6 +333,19 @@ export function formatSleepShellLine(seconds: number): string {
 	const safe = Math.max(0, seconds);
 	const rounded = Number.isInteger(safe) ? String(safe) : String(Number(safe.toFixed(3)));
 	return `sleep ${rounded}`;
+}
+
+export function formatAssertShellLine(input: {
+	assertion: AssertVisibility;
+	text: string;
+	timeoutSeconds?: number;
+}): string {
+	const parts = ["yoqa", "assert", input.assertion, "--text", shellSingleQuote(input.text.trim())];
+	const timeout = input.timeoutSeconds ?? 5;
+	if (timeout !== 5) {
+		parts.push("--timeout", String(timeout));
+	}
+	return parts.join(" ");
 }
 
 export const DEFAULT_SHELL_SCRIPT_HEADER = [
@@ -293,8 +375,91 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
+export function screenHasText(elements: ScreenElement[] | undefined, text: string): boolean {
+	const needle = text.trim().toLowerCase();
+	if (!needle) return false;
+	return (elements ?? []).some((el) => {
+		const label = el.label?.toLowerCase() ?? "";
+		const type = el.type?.toLowerCase() ?? "";
+		return label.includes(needle) || type.includes(needle);
+	});
+}
+
+/** Prefer exact label match, then substring; pick the smallest matching box. */
+export function findElementByLabel(
+	elements: ScreenElement[] | undefined,
+	label: string,
+): ScreenElement | null {
+	const needle = label.trim().toLowerCase();
+	if (!needle) return null;
+	const list = elements ?? [];
+	const exact = list.filter((el) => (el.label?.trim().toLowerCase() ?? "") === needle);
+	const pool =
+		exact.length > 0
+			? exact
+			: list.filter((el) => (el.label?.toLowerCase() ?? "").includes(needle));
+	if (pool.length === 0) return null;
+	pool.sort((a, b) => a.width * a.height - b.width * b.height);
+	return pool[0] ?? null;
+}
+
+/** Prefer exact id match, then suffix/substring; pick the smallest matching box. */
+export function findElementById(
+	elements: ScreenElement[] | undefined,
+	id: string,
+): ScreenElement | null {
+	const needle = id.trim().toLowerCase();
+	if (!needle) return null;
+	const list = elements ?? [];
+	const exact = list.filter((el) => (el.id?.trim().toLowerCase() ?? "") === needle);
+	if (exact.length > 0) {
+		exact.sort((a, b) => a.width * a.height - b.width * b.height);
+		return exact[0] ?? null;
+	}
+	// Allow short id: "get_bonus" matching "com.app:id/get_bonus"
+	const partial = list.filter((el) => {
+		const value = el.id?.toLowerCase() ?? "";
+		return value === needle || value.endsWith(`/${needle}`) || value.endsWith(`:id/${needle}`);
+	});
+	if (partial.length === 0) return null;
+	partial.sort((a, b) => a.width * a.height - b.width * b.height);
+	return partial[0] ?? null;
+}
+
+export function elementCenterNorm(element: ScreenElement): { x: number; y: number } {
+	return {
+		x: Math.round(element.x + element.width / 2),
+		y: Math.round(element.y + element.height / 2),
+	};
+}
+
+async function runAssertStep(
+	client: ScriptClient,
+	step: ShellScriptAssertStep,
+	signal?: AbortSignal,
+): Promise<void> {
+	const deadline = Date.now() + step.timeoutSeconds * 1000;
+	for (;;) {
+		if (signal?.aborted) {
+			throw Object.assign(new Error("Aborted"), { name: "AbortError" });
+		}
+		const screen = await client.getScreen();
+		const found = screenHasText(screen.elements, step.text);
+		if (step.assertion === "visible" && found) return;
+		if (step.assertion === "not-visible" && !found) return;
+		if (Date.now() >= deadline) {
+			throw new Error(
+				step.assertion === "visible"
+					? `Expected visible text not found within ${step.timeoutSeconds}s: ${step.text}`
+					: `Unexpected text still visible after ${step.timeoutSeconds}s: ${step.text}`,
+			);
+		}
+		await sleepMs(400, signal);
+	}
+}
+
 export async function runYoqaShellScript(
-	client: ActionClient,
+	client: ScriptClient,
 	text: string,
 	options: RunYoqaShellScriptOptions = {},
 ): Promise<{ ok: boolean; completed: number; total: number; error?: string }> {
@@ -328,6 +493,8 @@ export async function runYoqaShellScript(
 		try {
 			if (step.kind === "sleep") {
 				await sleepMs(step.seconds * 1000, options.signal);
+			} else if (step.kind === "assert") {
+				await runAssertStep(client, step, options.signal);
 			} else {
 				await client.performAction(step.action);
 				if (options.pauseAfterActionMs) {

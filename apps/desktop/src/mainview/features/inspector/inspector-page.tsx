@@ -4,6 +4,7 @@ import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
 import type { DevicePlatform, SelectedDevice } from "@/features/devices/select-device-modal";
 import { CommandBar } from "@/features/inspector/command-bar";
+import { tapLinesForSelection } from "@/features/inspector/command-snippets";
 import { type RunLogEntry, RunPanel } from "@/features/inspector/run-panel";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
 import { ScriptEditor } from "@/features/inspector/script-editor";
@@ -22,9 +23,15 @@ import {
 } from "@yoqa/runner-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/** How often to pull a fresh screenshot while connected. */
+const LIVE_SCREENSHOT_MS = 150;
+/** Refresh the accessibility tree every N screenshot polls (tree is slower). */
+const TREE_EVERY_N_POLLS = 15;
+
 function notify(message: string) {
 	toast.success(message);
 }
+
 function swipeAction(direction: "up" | "down" | "left" | "right"): ActionRequest {
 	const mid = 500;
 	const near = 200;
@@ -48,6 +55,15 @@ function scriptHasBody(script: string): boolean {
 	});
 }
 
+function bytesToPngBlob(bytes: Uint8Array): Blob {
+	const copy = Uint8Array.from(bytes);
+	return new Blob([copy.buffer], { type: "image/png" });
+}
+
+function miniScriptFromLines(lines: string[]): string {
+	return `${DEFAULT_SHELL_SCRIPT_HEADER}\n${lines.join("\n")}\n`;
+}
+
 export function InspectorPage() {
 	const entered = useEnterOnce(true);
 	const { selectedApp } = useApps();
@@ -57,7 +73,7 @@ export function InspectorPage() {
 	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [active, setActive] = useState<ActiveDeviceResponse | null>(null);
 	const [connecting, setConnecting] = useState(false);
-	const [refreshing, setRefreshing] = useState(false);
+	const [bootLoading, setBootLoading] = useState(false);
 	const [imageUrl, setImageUrl] = useState<string | null>(null);
 	const [elements, setElements] = useState<ScreenElement[]>([]);
 	const [selection, setSelection] = useState<InspectorSelection | null>(null);
@@ -65,9 +81,20 @@ export function InspectorPage() {
 	const [running, setRunning] = useState(false);
 	const [activeLineNumber, setActiveLineNumber] = useState<number | null>(null);
 	const [log, setLog] = useState<RunLogEntry[]>([]);
+	const [pageVisible, setPageVisible] = useState(
+		typeof document === "undefined" ? true : document.visibilityState === "visible",
+	);
 
 	const abortRef = useRef<AbortController | null>(null);
 	const logIdRef = useRef(0);
+	const imageUrlRef = useRef<string | null>(null);
+	const inFlightRef = useRef(false);
+	const pollCountRef = useRef(0);
+	const activeRef = useRef<ActiveDeviceResponse | null>(null);
+
+	useEffect(() => {
+		activeRef.current = active;
+	}, [active]);
 
 	const pushLog = useCallback((text: string, tone: RunLogEntry["tone"] = "info") => {
 		logIdRef.current += 1;
@@ -75,19 +102,57 @@ export function InspectorPage() {
 		setLog((prev) => [...prev, { id, text, tone }]);
 	}, []);
 
-	const refreshScreen = useCallback(async () => {
-		setRefreshing(true);
-		try {
-			const client = await getRunnerClient();
-			const screen = await client.getScreen();
-			const nextUrl = client.getScreenshotImageUrl(Date.now());
-			setImageUrl(nextUrl);
-			setElements(screen.elements ?? []);
-		} catch (error) {
-			showErrorToast(error, "Failed to refresh screen");
-		} finally {
-			setRefreshing(false);
+	const revokeImage = useCallback(() => {
+		if (imageUrlRef.current) {
+			URL.revokeObjectURL(imageUrlRef.current);
+			imageUrlRef.current = null;
 		}
+		setImageUrl(null);
+	}, []);
+
+	const refreshFrame = useCallback(
+		async (options: { includeTree?: boolean; silent?: boolean } = {}) => {
+			const includeTree = options.includeTree ?? true;
+			const silent = options.silent ?? false;
+			if (inFlightRef.current) return;
+			if (!activeRef.current) return;
+			inFlightRef.current = true;
+			if (!silent && !imageUrlRef.current) setBootLoading(true);
+			try {
+				const client = await getRunnerClient();
+				const bytesPromise = client.fetchScreenshotBytes();
+				const treePromise = includeTree ? client.getScreen() : Promise.resolve(null);
+				const [bytes, screen] = await Promise.all([bytesPromise, treePromise]);
+				if (!activeRef.current) return;
+
+				const blob = bytesToPngBlob(bytes);
+				const nextUrl = URL.createObjectURL(blob);
+				const prev = imageUrlRef.current;
+				imageUrlRef.current = nextUrl;
+				setImageUrl(nextUrl);
+				if (prev) URL.revokeObjectURL(prev);
+
+				if (screen) {
+					setElements(screen.elements ?? []);
+				}
+			} catch (error) {
+				if (!silent) {
+					showErrorToast(error, "Failed to refresh screen");
+				}
+			} finally {
+				inFlightRef.current = false;
+				setBootLoading(false);
+			}
+		},
+		[],
+	);
+
+	useEffect(() => {
+		const onVisibility = () => {
+			setPageVisible(document.visibilityState === "visible");
+		};
+		document.addEventListener("visibilitychange", onVisibility);
+		return () => document.removeEventListener("visibilitychange", onVisibility);
 	}, []);
 
 	useEffect(() => {
@@ -100,7 +165,7 @@ export function InspectorPage() {
 				setActive(current);
 				if (current) {
 					setPlatform(current.platform);
-					await refreshScreen();
+					await refreshFrame({ includeTree: true, silent: false });
 				}
 			} catch {
 				/* runner may still be starting */
@@ -109,8 +174,34 @@ export function InspectorPage() {
 		return () => {
 			cancelled = true;
 			abortRef.current?.abort();
+			revokeImage();
 		};
-	}, [refreshScreen]);
+	}, [refreshFrame, revokeImage]);
+
+	// Live screenshot loop while connected and the page is visible.
+	useEffect(() => {
+		if (!active || !pageVisible) return;
+
+		let cancelled = false;
+		pollCountRef.current = 0;
+
+		const tick = async () => {
+			if (cancelled || !activeRef.current) return;
+			pollCountRef.current += 1;
+			const includeTree = pollCountRef.current % TREE_EVERY_N_POLLS === 0;
+			await refreshFrame({ includeTree, silent: true });
+		};
+
+		void tick();
+		const timer = window.setInterval(() => {
+			void tick();
+		}, LIVE_SCREENSHOT_MS);
+
+		return () => {
+			cancelled = true;
+			window.clearInterval(timer);
+		};
+	}, [active, pageVisible, refreshFrame]);
 
 	const handleConnect = useCallback(async () => {
 		if (!device) return;
@@ -131,14 +222,14 @@ export function InspectorPage() {
 			});
 			setActive(info);
 			setSelection(null);
-			await refreshScreen();
-			notify("Connected to device");
+			await refreshFrame({ includeTree: true, silent: false });
+			notify("Connected — live feed on");
 		} catch (error) {
 			showErrorToast(error, "Failed to connect device");
 		} finally {
 			setConnecting(false);
 		}
-	}, [device, refreshScreen, selectedApp]);
+	}, [device, refreshFrame, selectedApp]);
 
 	const handleDisconnect = useCallback(async () => {
 		if (scriptHasBody(script) && !window.confirm("Disconnect and keep the current script?")) {
@@ -151,38 +242,23 @@ export function InspectorPage() {
 			setActive(null);
 			setSelection(null);
 			setElements([]);
-			setImageUrl(null);
+			revokeImage();
 			notify("Disconnected");
 		} catch (error) {
 			showErrorToast(error, "Failed to disconnect");
 		} finally {
 			setConnecting(false);
 		}
-	}, [script]);
+	}, [revokeImage, script]);
 
 	const appendLines = useCallback((lines: string[]) => {
 		setScript((prev) => appendScriptLines(prev, lines));
 	}, []);
 
-	const handleAddTap = useCallback(() => {
-		if (!selection) return;
-		const comment =
-			selection.element?.label || selection.element?.type
-				? `# ${selection.element.label || selection.element.type}`
-				: null;
-		const line = formatActionShellLine({
-			kind: "tap",
-			x: selection.x,
-			y: selection.y,
-		});
-		appendLines(comment ? [comment, line] : [line]);
-	}, [appendLines, selection]);
-
-	const handleAddInput = useCallback(
-		(text: string) => {
-			const trimmed = text.trim();
-			if (!trimmed) return;
-			appendLines([formatActionShellLine({ kind: "input", text: trimmed })]);
+	const handleDoubleTap = useCallback(
+		(next: InspectorSelection) => {
+			setSelection(next);
+			appendLines(tapLinesForSelection(next));
 		},
 		[appendLines],
 	);
@@ -199,6 +275,84 @@ export function InspectorPage() {
 			appendLines([formatSleepShellLine(seconds)]);
 		},
 		[appendLines],
+	);
+
+	const handleInsertLines = useCallback(
+		(lines: string[]) => {
+			if (lines.length === 0) return;
+			appendLines(lines);
+			notify("Inserted");
+		},
+		[appendLines],
+	);
+
+	const handleCopyLines = useCallback(async (lines: string[]) => {
+		if (lines.length === 0) return;
+		try {
+			await navigator.clipboard.writeText(lines.join("\n"));
+			notify("Copied command");
+		} catch (error) {
+			showErrorToast(error, "Failed to copy");
+		}
+	}, []);
+
+	const runLines = useCallback(
+		async (lines: string[], options: { resetLog: boolean; label: string }) => {
+			if (!active || running || lines.length === 0) return;
+			const controller = new AbortController();
+			abortRef.current = controller;
+			setRunning(true);
+			if (options.resetLog) {
+				setLog([]);
+			}
+			setActiveLineNumber(null);
+			pushLog(options.label);
+			try {
+				const client = await getRunnerClient();
+				const result = await runYoqaShellScript(client, miniScriptFromLines(lines), {
+					signal: controller.signal,
+					pauseAfterActionMs: 200,
+					onStep: async ({ step, status, error }) => {
+						setActiveLineNumber(step.lineNumber);
+						if (status === "running") {
+							pushLog(`→ ${step.raw}`);
+						} else if (status === "ok") {
+							pushLog(`✓ ${step.raw}`, "ok");
+						} else if (status === "error") {
+							pushLog(`✗ ${step.raw}: ${error ?? "failed"}`, "error");
+						}
+					},
+				});
+				if (result.ok) {
+					pushLog(`Done · ${result.completed}/${result.total} steps`, "ok");
+					notify("Command finished");
+				} else {
+					pushLog(result.error ?? "Command failed", "error");
+					if (result.error !== "Aborted") {
+						showErrorToast(result.error ?? "Command failed", "Command failed");
+					}
+				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				pushLog(message, "error");
+				showErrorToast(error, "Command failed");
+			} finally {
+				setRunning(false);
+				setActiveLineNumber(null);
+				abortRef.current = null;
+				void refreshFrame({ includeTree: true, silent: true });
+			}
+		},
+		[active, pushLog, refreshFrame, running],
+	);
+
+	const handleInsertAndRunLines = useCallback(
+		(lines: string[]) => {
+			if (lines.length === 0) return;
+			appendLines(lines);
+			void runLines(lines, { resetLog: false, label: "Insert & Run…" });
+		},
+		[appendLines, runLines],
 	);
 
 	const handleRun = useCallback(async () => {
@@ -220,11 +374,6 @@ export function InspectorPage() {
 						pushLog(`→ L${step.lineNumber} ${step.raw}`);
 					} else if (status === "ok") {
 						pushLog(`✓ L${step.lineNumber}`, "ok");
-						try {
-							await refreshScreen();
-						} catch {
-							/* keep running */
-						}
 					} else if (status === "error") {
 						pushLog(`✗ L${step.lineNumber}: ${error ?? "failed"}`, "error");
 					}
@@ -247,8 +396,9 @@ export function InspectorPage() {
 			setRunning(false);
 			setActiveLineNumber(null);
 			abortRef.current = null;
+			void refreshFrame({ includeTree: true, silent: true });
 		}
-	}, [active, pushLog, refreshScreen, running, script]);
+	}, [active, pushLog, refreshFrame, running, script]);
 
 	const handleStop = useCallback(() => {
 		abortRef.current?.abort();
@@ -274,20 +424,18 @@ export function InspectorPage() {
 	}, [script]);
 
 	const connected = active != null;
+	const live = connected && pageVisible;
 
 	return (
-		<div
-			className={[
-				"flex h-full min-h-0 flex-col",
-				entered ? "motion-enter-done" : "motion-enter",
-			].join(" ")}
-		>
-			<header className="px-4 pt-4 pb-1">
-				<h1 className="text-title-lg font-semibold text-on-surface">Inspector</h1>
-				<p className="text-body-sm text-on-surface-variant">
-					Select elements, build a <code className="font-mono text-helper">yoqa action</code>{" "}
-					script, and run it on the connected device.
-				</p>
+		<div className={["flex flex-col", entered ? "motion-enter-done" : "motion-enter"].join(" ")}>
+			<header className="flex items-end justify-between gap-4 px-4 pt-2 pb-1">
+				<div>
+					<h1 className="text-title-lg font-semibold text-on-surface">Inspector</h1>
+					<p className="text-body-sm text-on-surface-variant">
+						Select an element for actions, or build a{" "}
+						<code className="font-mono text-helper">yoqa</code> script by hand.
+					</p>
+				</div>
 			</header>
 
 			<SessionToolbar
@@ -300,39 +448,36 @@ export function InspectorPage() {
 				onDeviceSelect={setDevice}
 				active={active}
 				connecting={connecting}
-				refreshing={refreshing}
+				live={live}
 				onConnect={() => {
 					void handleConnect();
 				}}
 				onDisconnect={() => {
 					void handleDisconnect();
 				}}
-				onRefresh={() => {
-					void refreshScreen();
-				}}
 				runLiveWarning={isRunLive}
 			/>
 
-			<div className="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+			<div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(280px,2fr)_minmax(0,3fr)]">
 				<ScreenshotPanel
 					imageUrl={imageUrl}
 					elements={elements}
 					selection={selection}
-					loading={refreshing && !imageUrl}
+					loading={bootLoading && !imageUrl}
+					live={live}
 					disabled={!connected || running}
 					onSelect={setSelection}
+					onDoubleTap={handleDoubleTap}
+					onInsertLines={handleInsertLines}
+					onInsertAndRunLines={handleInsertAndRunLines}
+					onCopyLines={(lines) => {
+						void handleCopyLines(lines);
+					}}
+					onClearSelection={() => setSelection(null)}
 				/>
 
-				<div className="flex min-h-0 flex-col gap-3">
-					<CommandBar
-						selection={selection}
-						disabled={running}
-						onAddTap={handleAddTap}
-						onAddInput={handleAddInput}
-						onAddSwipe={handleAddSwipe}
-						onAddWait={handleAddWait}
-						onClearSelection={() => setSelection(null)}
-					/>
+				<div className="flex flex-col gap-3">
+					<CommandBar disabled={running} onAddSwipe={handleAddSwipe} onAddWait={handleAddWait} />
 					<ScriptEditor
 						value={script}
 						onChange={setScript}

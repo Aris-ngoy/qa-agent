@@ -624,6 +624,7 @@ export type ActiveDeviceResponse = z.infer<typeof activeDeviceResponseSchema>;
 export const screenElementSchema = z.object({
 	type: z.string(),
 	label: z.string(),
+	id: z.string().optional(),
 	x: z.number(),
 	y: z.number(),
 	width: z.number(),
@@ -672,7 +673,13 @@ export const actionRequestSchema = z.object({
 	x2: z.number().optional(),
 	y2: z.number().optional(),
 	durationMs: z.number().optional(),
+	/** Double-tap when kind is tap. */
+	double: z.boolean().optional(),
 	text: z.string().optional(),
+	/** Match a cleaned-tree element label and tap its center (screen-size independent). */
+	label: z.string().min(1).optional(),
+	/** Match Android resource-id / iOS accessibility name and tap its center. */
+	id: z.string().min(1).optional(),
 	description: z.string().optional(),
 	appId: z.string().optional(),
 	url: z.string().optional(),

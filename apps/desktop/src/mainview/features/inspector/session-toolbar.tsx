@@ -36,10 +36,9 @@ type SessionToolbarProps = {
 	onDeviceSelect: (device: SelectedDevice) => void;
 	active: ActiveDeviceResponse | null;
 	connecting: boolean;
-	refreshing: boolean;
+	live: boolean;
 	onConnect: () => void;
 	onDisconnect: () => void;
-	onRefresh: () => void;
 	runLiveWarning: boolean;
 };
 
@@ -50,10 +49,9 @@ export function SessionToolbar({
 	onDeviceSelect,
 	active,
 	connecting,
-	refreshing,
+	live,
 	onConnect,
 	onDisconnect,
-	onRefresh,
 	runLiveWarning,
 }: SessionToolbarProps) {
 	const [pickerOpen, setPickerOpen] = useState(false);
@@ -64,13 +62,14 @@ export function SessionToolbar({
 			<div className="flex flex-wrap items-center gap-2">
 				<Select
 					aria-label="Platform"
-					className="w-32"
+					className="w-28"
+					isDisabled={connected || connecting}
 					selectedKey={platform}
 					onSelectionChange={(key) => {
 						if (key === "ios" || key === "android") onPlatformChange(key);
 					}}
 				>
-					<Select.Trigger>
+					<Select.Trigger className="h-9">
 						<Select.Value />
 						<Select.Indicator />
 					</Select.Trigger>
@@ -87,8 +86,9 @@ export function SessionToolbar({
 				</Select>
 
 				<Button
-					className="min-w-40 justify-start"
-					isDisabled={connecting}
+					className="min-w-44 justify-start"
+					isDisabled={connecting || connected}
+					size="sm"
 					variant="secondary"
 					onPress={() => setPickerOpen(true)}
 				>
@@ -97,18 +97,37 @@ export function SessionToolbar({
 				</Button>
 
 				{connected ? (
-					<Button
-						isDisabled={connecting}
-						variant="danger"
-						onPress={() => {
-							onDisconnect();
-						}}
-					>
-						Disconnect
-					</Button>
+					<>
+						<span className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-2.5 py-1 text-helper font-semibold text-on-secondary-container">
+							<span className="relative flex size-1.5">
+								<span
+									className={[
+										"absolute inline-flex size-full rounded-full bg-secondary opacity-60",
+										live ? "animate-ping" : "",
+									].join(" ")}
+								/>
+								<span className="relative inline-flex size-1.5 rounded-full bg-secondary" />
+							</span>
+							{live ? "Live" : "Connected"}
+						</span>
+						<span className="text-helper text-on-surface-variant">
+							{active.platform} · {active.deviceId.slice(0, 8)}…
+						</span>
+						<Button
+							isDisabled={connecting}
+							size="sm"
+							variant="danger"
+							onPress={() => {
+								onDisconnect();
+							}}
+						>
+							Disconnect
+						</Button>
+					</>
 				) : (
 					<Button
 						isDisabled={!device || connecting}
+						size="sm"
 						variant="primary"
 						onPress={() => {
 							onConnect();
@@ -117,22 +136,6 @@ export function SessionToolbar({
 						{connecting ? "Connecting…" : "Connect"}
 					</Button>
 				)}
-
-				<Button
-					isDisabled={!connected || refreshing || connecting}
-					variant="secondary"
-					onPress={() => {
-						onRefresh();
-					}}
-				>
-					{refreshing ? "Refreshing…" : "Refresh"}
-				</Button>
-
-				{connected ? (
-					<span className="text-helper text-on-surface-variant">
-						Connected · {active.platform} · {active.deviceId.slice(0, 8)}…
-					</span>
-				) : null}
 			</div>
 
 			{runLiveWarning ? (
