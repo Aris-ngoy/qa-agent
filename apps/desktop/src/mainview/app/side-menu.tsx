@@ -28,6 +28,22 @@ function NavIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
+function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-4 shrink-0"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.75"
+			viewBox="0 0 24 24"
+			{...props}
+		>
+			<path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+		</svg>
+	);
+}
+
 type NavItem = {
 	label: string;
 	to?: string;
@@ -54,6 +70,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 	const { apps, selectedApp, selectApp, addApp } = useApps();
 	const { isRunLive } = useActiveRun();
 	const [modalOpen, setModalOpen] = useState(false);
+	const [workspaceOpen, setWorkspaceOpen] = useState(false);
 	const appLabel = selectedApp?.name ?? "Yoqa";
 	const navRef = useRef<HTMLElement | null>(null);
 	const itemRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -171,12 +188,25 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 		<>
 			<aside className="electrobun-webkit-app-region-no-drag flex h-full w-sidebar shrink-0 flex-col rounded-[var(--radius-platform)] bg-sidebar px-5 py-7 text-sidebar-fg shadow-float">
 				<div className="mb-10 flex flex-col items-start gap-3 px-1">
-					<Dropdown>
+					<YoqaMark className="size-10" />
+					<Dropdown isOpen={workspaceOpen} onOpenChange={setWorkspaceOpen}>
 						<Button
-							className="h-auto gap-0 bg-transparent p-0 text-sidebar-fg data-[hovered=true]:bg-transparent"
+							aria-expanded={workspaceOpen}
+							aria-label={`Workspace: ${appLabel}. Switch application`}
+							className="h-auto w-full flex-col items-stretch gap-0.5 rounded-xl bg-transparent px-2.5 py-2 text-left text-sidebar-fg transition-colors duration-[var(--motion-fast)] data-[hovered=true]:bg-white/10"
 							variant="ghost"
 						>
-							<YoqaMark className="size-10" />
+							<p className="text-body-sm text-sidebar-muted">Workspace</p>
+							<span className="flex min-w-0 items-center gap-1.5">
+								<span className="min-w-0 truncate text-subheading font-semibold tracking-tight text-sidebar-fg">
+									{appLabel}
+								</span>
+								<span
+									className={`text-sidebar-muted transition-transform duration-[var(--motion-fast)] ${workspaceOpen ? "rotate-180" : ""}`}
+								>
+									<ChevronDownIcon />
+								</span>
+							</span>
 						</Button>
 						<Dropdown.Popover className="w-64">
 							<Dropdown.Menu
@@ -224,12 +254,6 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 							</Dropdown.Menu>
 						</Dropdown.Popover>
 					</Dropdown>
-					<div>
-						<p className="text-body-sm text-sidebar-muted">Workspace</p>
-						<p className="text-subheading font-semibold tracking-tight text-sidebar-fg">
-							{appLabel}
-						</p>
-					</div>
 				</div>
 
 				<nav className="relative flex flex-1 flex-col gap-1" ref={navRef}>
