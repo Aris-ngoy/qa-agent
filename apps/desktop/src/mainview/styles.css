@@ -54,51 +54,6 @@ body {
 	animation-fill-mode: both;
 }
 
-/* Fade */
-html:active-view-transition-type(fade)::view-transition-old(app-page) {
-	animation-name: vt-fade-out;
-}
-
-html:active-view-transition-type(fade)::view-transition-new(app-page) {
-	animation-name: vt-fade-in;
-}
-
-/* Slide left (forward in nav order) */
-html:active-view-transition-type(slide-left)::view-transition-old(app-page) {
-	animation-name: vt-slide-out-left;
-}
-
-html:active-view-transition-type(slide-left)::view-transition-new(app-page) {
-	animation-name: vt-slide-in-right;
-}
-
-/* Slide right (backward in nav order) */
-html:active-view-transition-type(slide-right)::view-transition-old(app-page) {
-	animation-name: vt-slide-out-right;
-}
-
-html:active-view-transition-type(slide-right)::view-transition-new(app-page) {
-	animation-name: vt-slide-in-left;
-}
-
-/* Push (list → detail) */
-html:active-view-transition-type(push)::view-transition-old(app-page) {
-	animation-name: vt-push-out;
-}
-
-html:active-view-transition-type(push)::view-transition-new(app-page) {
-	animation-name: vt-push-in;
-}
-
-/* Pop (detail → list) */
-html:active-view-transition-type(pop)::view-transition-old(app-page) {
-	animation-name: vt-pop-out;
-}
-
-html:active-view-transition-type(pop)::view-transition-new(app-page) {
-	animation-name: vt-pop-in;
-}
-
 @keyframes vt-fade-out {
 	to {
 		opacity: 0;
@@ -270,9 +225,8 @@ html:active-view-transition-type(pop)::view-transition-new(app-page) {
 	top: 0;
 	border-radius: 9999px;
 	background: rgb(255 255 255 / 0.12);
-	transition:
-		transform var(--motion-base) var(--ease-out),
-		height var(--motion-base) var(--ease-out);
+	transition: transform var(--motion-base) var(--ease-out), height var(--motion-base)
+		var(--ease-out);
 	pointer-events: none;
 	z-index: 0;
 }

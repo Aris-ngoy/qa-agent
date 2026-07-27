@@ -1,3 +1,4 @@
+import { Switch } from "@heroui/react";
 import type { AiProvider, ProviderModel } from "@yoqa/runner-client";
 import { DriverGlyph, getDriverMeta, statusDotClass } from "./driver-meta";
 import { ProviderExpanded } from "./provider-expanded";
@@ -15,39 +16,6 @@ type ProviderRowProps = {
 	onDisconnect: () => Promise<void>;
 	onSetDefault: () => Promise<void>;
 };
-
-function EnableSwitch({
-	checked,
-	disabled,
-	onChange,
-}: {
-	checked: boolean;
-	disabled?: boolean;
-	onChange: (next: boolean) => void;
-}) {
-	return (
-		<button
-			aria-checked={checked}
-			aria-label={checked ? "Disable provider" : "Enable provider"}
-			className={[
-				"relative h-6 w-11 shrink-0 rounded-full transition-colors",
-				checked ? "bg-primary" : "bg-surface-container-highest",
-				disabled ? "opacity-50" : "",
-			].join(" ")}
-			disabled={disabled}
-			role="switch"
-			type="button"
-			onClick={() => onChange(!checked)}
-		>
-			<span
-				className={[
-					"absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform",
-					checked ? "translate-x-5" : "translate-x-0",
-				].join(" ")}
-			/>
-		</button>
-	);
-}
 
 export function ProviderRow({
 	provider,
@@ -120,10 +88,12 @@ export function ProviderRow({
 						▾
 					</span>
 				</button>
-				<EnableSwitch
-					checked={provider.enabled}
-					disabled={busy}
+				<Switch
+					isSelected={provider.enabled}
+					isDisabled={busy}
 					onChange={(next) => void onToggleEnabled(next)}
+					size="sm"
+					aria-label={provider.enabled ? "Disable provider" : "Enable provider"}
 				/>
 			</div>
 

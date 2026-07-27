@@ -579,7 +579,7 @@ export function RunDetailPage() {
 
 				<aside className="flex min-h-[20rem] flex-col gap-3 rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-4 shadow-soft">
 					<p className="text-helper font-medium text-on-surface-variant">Step screenshot</p>
-					<div className="flex min-h-0 flex-1 items-center justify-center">
+					<div className="flex min-h-0 flex-1 items-start justify-center">
 						{screenshotUrl ? (
 							<img
 								alt={
@@ -587,7 +587,8 @@ export function RunDetailPage() {
 										? "Device screenshot for the selected step"
 										: "Latest device screenshot from the run"
 								}
-								className="max-h-[min(70vh,40rem)] w-auto max-w-full rounded-2xl object-contain shadow-card"
+								className="motion-fade-in max-h-[min(70vh,40rem)] w-auto max-w-full rounded-2xl object-contain shadow-card"
+								key={screenshotUrl}
 								src={screenshotUrl}
 							/>
 						) : (

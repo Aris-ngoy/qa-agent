@@ -1,7 +1,6 @@
 import { AddApplicationModal } from "@/features/apps/add-application-modal";
 import { useApps } from "@/features/apps/context";
 import { useActiveRun } from "@/features/runs/active-run-context";
-import { SettingsModal } from "@/features/settings/settings-modal";
 import { YoqaMark } from "@/features/splash/yoqa-mark";
 import { Button, Dropdown, Label, Separator } from "@heroui/react";
 import { Link } from "@tanstack/react-router";
@@ -55,7 +54,6 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 	const { apps, selectedApp, selectApp, addApp } = useApps();
 	const { isRunLive } = useActiveRun();
 	const [modalOpen, setModalOpen] = useState(false);
-	const [settingsOpen, setSettingsOpen] = useState(false);
 	const appLabel = selectedApp?.name ?? "Yoqa";
 	const navRef = useRef<HTMLElement | null>(null);
 	const itemRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -96,6 +94,24 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 			{
 				label: "Configuration",
 				to: "/configuration",
+				icon: (
+					<NavIcon>
+						<path
+							d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
+						<path
+							d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.2.6.7 1.1 1.5 1.1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						/>
+					</NavIcon>
+				),
+			},
+			{
+				label: "Settings",
+				to: "/settings",
 				icon: (
 					<NavIcon>
 						<path
@@ -300,30 +316,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 						</span>
 					</button>
 
-					<div className="flex flex-col gap-1">
-						<button
-							className="group relative flex items-center gap-3 rounded-full px-4 py-3 text-body-md text-sidebar-muted transition-colors duration-[var(--motion-fast)] hover:text-sidebar-fg"
-							onClick={() => setSettingsOpen(true)}
-							type="button"
-						>
-							<span>
-								<NavIcon>
-									<path
-										d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-									/>
-									<path
-										d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.2.6.7 1.1 1.5 1.1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-									/>
-								</NavIcon>
-							</span>
-							<span className="flex-1 text-left">Settings</span>
-						</button>
-						<p className="px-4 pt-2 text-helper text-sidebar-muted">Phase 1 · local only</p>
-					</div>
+					<p className="px-4 pt-2 text-helper text-sidebar-muted">Phase 1 · local only</p>
 				</div>
 			</aside>
 
@@ -334,7 +327,6 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				onClose={() => setModalOpen(false)}
 				open={modalOpen}
 			/>
-			<SettingsModal onClose={() => setSettingsOpen(false)} open={settingsOpen} />
 		</>
 	);
 }

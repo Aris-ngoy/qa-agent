@@ -862,28 +862,18 @@ function ScriptPanel({
 							aria-label="Script view"
 							className="relative w-fit max-w-full gap-1 rounded-xl bg-surface-container p-1"
 						>
-							{viewTabs.map((tab) => {
-								const isSelected = view === tab.id;
-								return (
-									<Tabs.Tab
-										className="relative z-[1] h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium transition-[color,opacity] duration-[var(--motion-fast)]"
-										id={tab.id}
-										isDisabled={editing && tab.id !== "json"}
-										key={tab.id}
-									>
-										<span
-											className={
-												isSelected
-													? "relative z-[1] font-semibold text-[color:var(--color-on-surface)]"
-													: "relative z-[1] text-[color:var(--color-on-surface-variant)]"
-											}
-										>
-											{tab.label}
-										</span>
-										<Tabs.Indicator className="z-0 rounded-lg bg-surface-container-lowest shadow-card" />
-									</Tabs.Tab>
-								);
-							})}
+							{viewTabs.map((tab) => (
+								<Tabs.Tab
+									className="relative z-[1] h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium text-on-surface-variant transition-[color,opacity] duration-[var(--motion-fast)] data-[selected=true]:font-semibold data-[selected=true]:!text-on-surface"
+									id={tab.id}
+									isDisabled={editing && tab.id !== "json"}
+									key={tab.id}
+								>
+									{tab.label}
+									{/* Keep indicator behind label; HeroUI defaults to white segment text */}
+									<Tabs.Indicator className="-z-10 rounded-lg bg-surface-container-lowest shadow-card" />
+								</Tabs.Tab>
+							))}
 						</Tabs.List>
 					</Tabs.ListContainer>
 

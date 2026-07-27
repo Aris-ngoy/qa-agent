@@ -135,114 +135,113 @@ export function ProvidersSection({ enabled }: ProvidersSectionProps) {
 
 	return (
 		<div className="flex flex-col gap-6">
-			<header>
-				<h2 className="text-headline-lg text-on-surface">Provider</h2>
-				<p className="mt-1 text-body-md text-on-surface-variant">
-					Connect AI providers via API keys, tokens, or local CLI auth so YoQA can run agent tests.
-				</p>
-			</header>
+			<p className="text-body-md text-on-surface-variant">
+				Connect AI providers via API keys, tokens, or local CLI auth so YoQA can run agent tests.
+			</p>
 
-			<div className="flex items-center justify-between gap-3">
-				<div>
-					<p className="text-label-caps uppercase tracking-wide text-on-surface-variant">
-						Providers
+			<div className="rounded-2xl border border-outline-variant/80 bg-surface-container-lowest p-6 shadow-card">
+				<div className="mb-5 flex items-center justify-between gap-3">
+					<div>
+						<p className="text-label-caps uppercase tracking-wide text-on-surface-variant">
+							Providers
+						</p>
+						{checkedAt ? (
+							<p className="mt-0.5 text-helper text-on-surface-variant">Checked {checkedAt}</p>
+						) : null}
+					</div>
+					<div className="flex items-center gap-1">
+						<Button
+							aria-label="Add provider"
+							isIconOnly
+							size="sm"
+							variant="ghost"
+							onPress={() => setAddOpen(true)}
+						>
+							+
+						</Button>
+						<Button
+							aria-label="Refresh providers"
+							isDisabled={busy}
+							isIconOnly
+							size="sm"
+							variant="ghost"
+							onPress={() => void refreshMutation.mutateAsync()}
+						>
+							↻
+						</Button>
+					</div>
+				</div>
+
+				{providersQuery.isLoading ? (
+					<p className="text-body-md text-on-surface-variant">Loading providers…</p>
+				) : providersQuery.isError ? (
+					<p className="text-body-md text-error">
+						Could not load providers. Make sure the local runner is running.
 					</p>
-					{checkedAt ? (
-						<p className="mt-0.5 text-helper text-on-surface-variant">Checked {checkedAt}</p>
-					) : null}
-				</div>
-				<div className="flex items-center gap-1">
-					<Button
-						aria-label="Add provider"
-						isIconOnly
-						size="sm"
-						variant="ghost"
-						onPress={() => setAddOpen(true)}
-					>
-						+
-					</Button>
-					<Button
-						aria-label="Refresh providers"
-						isDisabled={busy}
-						isIconOnly
-						size="sm"
-						variant="ghost"
-						onPress={() => void refreshMutation.mutateAsync()}
-					>
-						↻
-					</Button>
-				</div>
+				) : providers.length === 0 ? (
+					<div className="rounded-xl border border-dashed border-outline-variant px-4 py-8 text-center">
+						<p className="text-body-md text-on-surface-variant">
+							No provider instances yet. Add Anthropic, OpenAI, Claude, Codex, OpenCode, Cursor,
+							Grok, Custom, or others.
+						</p>
+						<Button className="mt-4" size="sm" variant="primary" onPress={() => setAddOpen(true)}>
+							Add provider
+						</Button>
+					</div>
+				) : (
+					<div className="flex flex-col gap-2">
+						{providers.map((provider) => {
+							const modelsState = modelsById[provider.id];
+							return (
+								<ProviderRow
+									key={provider.id}
+									busy={busy}
+									expanded={expandedId === provider.id}
+									models={modelsState?.models ?? []}
+									modelsLoading={modelsLoadingId === provider.id}
+									modelsMessage={modelsState?.message ?? ""}
+									provider={provider}
+									onDisconnect={async () => {
+										await deleteMutation.mutateAsync(provider.id);
+									}}
+									onSave={async (input) => {
+										await updateMutation.mutateAsync({
+											id: provider.id,
+											request: {
+												label: input.label,
+												accentColor: input.accentColor,
+												binaryPath: input.binaryPath,
+												serverUrl: input.serverUrl,
+												baseUrl: input.baseUrl,
+												defaultModel: input.defaultModel,
+												env: input.env,
+												apiKey: input.apiKey,
+											},
+										});
+										await loadModels(provider.id);
+									}}
+									onSetDefault={async () => {
+										await defaultMutation.mutateAsync(provider.id);
+									}}
+									onToggleEnabled={async (next) => {
+										await updateMutation.mutateAsync({
+											id: provider.id,
+											request: { enabled: next, validate: next },
+										});
+									}}
+									onToggleExpand={() => {
+										const next = expandedId === provider.id ? null : provider.id;
+										setExpandedId(next);
+										if (next) void loadModels(next);
+									}}
+								/>
+							);
+						})}
+					</div>
+				)}
+
+				{actionError ? <p className="mt-4 text-body-sm text-error">{actionError}</p> : null}
 			</div>
-
-			{providersQuery.isLoading ? (
-				<p className="text-body-md text-on-surface-variant">Loading providers…</p>
-			) : providersQuery.isError ? (
-				<p className="text-body-md text-error">
-					Could not load providers. Make sure the local runner is running.
-				</p>
-			) : providers.length === 0 ? (
-				<div className="rounded-xl border border-dashed border-outline-variant px-4 py-8 text-center">
-					<p className="text-body-md text-on-surface-variant">
-						No provider instances yet. Add Anthropic, OpenAI, Claude, Codex, OpenCode, Cursor, Grok,
-						Custom, or others.
-					</p>
-					<Button className="mt-4" size="sm" variant="primary" onPress={() => setAddOpen(true)}>
-						Add provider
-					</Button>
-				</div>
-			) : (
-				<div className="flex flex-col gap-2">
-					{providers.map((provider) => {
-						const modelsState = modelsById[provider.id];
-						return (
-							<ProviderRow
-								key={provider.id}
-								busy={busy}
-								expanded={expandedId === provider.id}
-								models={modelsState?.models ?? []}
-								modelsLoading={modelsLoadingId === provider.id}
-								modelsMessage={modelsState?.message ?? ""}
-								provider={provider}
-								onDisconnect={async () => {
-									await deleteMutation.mutateAsync(provider.id);
-								}}
-								onSave={async (input) => {
-									await updateMutation.mutateAsync({
-										id: provider.id,
-										request: {
-											label: input.label,
-											accentColor: input.accentColor,
-											binaryPath: input.binaryPath,
-											serverUrl: input.serverUrl,
-											baseUrl: input.baseUrl,
-											defaultModel: input.defaultModel,
-											env: input.env,
-											apiKey: input.apiKey,
-										},
-									});
-									await loadModels(provider.id);
-								}}
-								onSetDefault={async () => {
-									await defaultMutation.mutateAsync(provider.id);
-								}}
-								onToggleEnabled={async (next) => {
-									await updateMutation.mutateAsync({
-										id: provider.id,
-										request: { enabled: next, validate: next },
-									});
-								}}
-								onToggleExpand={() => {
-									const next = expandedId === provider.id ? null : provider.id;
-									setExpandedId(next);
-									if (next) void loadModels(next);
-								}}
-							/>
-						);
-					})}
-				</div>
-			)}
-
-			{actionError ? <p className="text-body-sm text-error">{actionError}</p> : null}
 
 			<AddProviderModal
 				open={addOpen}

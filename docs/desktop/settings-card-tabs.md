@@ -18,6 +18,7 @@ Make the desktop Settings page match other feature pages (Configuration-style ca
   - Removed aside nav; added Settings header + controlled HeroUI `Tabs` (iOS / CLI & Agents / Provider).
   - Upgraded `SectionCard` to Configuration card tokens.
   - Wrapped iOS Xcode and Code Signing blocks in `SectionCard`; dropped redundant per-panel `h2` titles on iOS/CLI.
+- Provider list wrapped in the same card tokens in [`providers-section.tsx`](../../apps/desktop/src/mainview/features/settings/providers/providers-section.tsx); redundant Provider `h2` removed.
 
 ## How to verify
 
@@ -29,4 +30,3 @@ Make the desktop Settings page match other feature pages (Configuration-style ca
 ## Follow-ups
 
 - Align or remove unused `settings-modal.tsx` if it is revived.
-- Optionally soften the redundant Provider `h2` inside `ProvidersSection` (left unchanged by design).

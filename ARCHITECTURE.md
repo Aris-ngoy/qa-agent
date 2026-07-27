@@ -563,7 +563,6 @@ repo/
 | `devices/application.ts` | `xcrun simctl` / `adb devices` listing + connect |
 | `tree-cleaner.ts` | filter + relative bounds 0–1000 |
 | `cli/commands/*` | thin HTTP client to local runner |
-| Desktop status feature | `mainview/features/status` — active device + runner health |
 
 ---
 

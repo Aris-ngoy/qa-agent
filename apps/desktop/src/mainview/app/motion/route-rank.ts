@@ -9,23 +9,20 @@ function routeRank(pathname: string): RouteRank {
 	if (pathname === "/" || pathname === "") {
 		return { section: 0, depth: 0 };
 	}
-	if (pathname === "/status" || pathname.startsWith("/status/")) {
+	if (pathname === "/test-cases") {
 		return { section: 1, depth: 0 };
 	}
-	if (pathname === "/test-cases") {
-		return { section: 2, depth: 0 };
-	}
 	if (pathname.startsWith("/test-cases/")) {
-		return { section: 2, depth: 1 };
+		return { section: 1, depth: 1 };
 	}
 	if (pathname === "/runs") {
-		return { section: 3, depth: 0 };
+		return { section: 2, depth: 0 };
 	}
 	if (pathname.startsWith("/runs/")) {
-		return { section: 3, depth: 1 };
+		return { section: 2, depth: 1 };
 	}
 	if (pathname === "/configuration" || pathname.startsWith("/configuration/")) {
-		return { section: 4, depth: 0 };
+		return { section: 3, depth: 0 };
 	}
 	return { section: 1, depth: 0 };
 }

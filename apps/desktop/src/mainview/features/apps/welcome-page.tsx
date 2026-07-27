@@ -9,7 +9,7 @@ export function WelcomePage() {
 	const [modalOpen, setModalOpen] = useState(false);
 
 	if (selectedApp) {
-		return <Navigate to="/status" />;
+		return <Navigate to="/test-cases" />;
 	}
 
 	return (
@@ -24,7 +24,7 @@ export function WelcomePage() {
 					</h1>
 					<p className="mb-8 text-body-md leading-relaxed text-on-surface-variant">
 						{hasApps
-							? "Select an app from the sidebar to open its runner status, test cases, and recent runs."
+							? "Select an app from the sidebar to open its test cases and recent runs."
 							: "Add a mobile app to start running local automated tests against simulators and emulators."}
 					</p>
 					<Button

@@ -3,7 +3,7 @@ import { ConfigurationPage } from "@/features/apps/configuration-page";
 import { WelcomePage } from "@/features/apps/welcome-page";
 import { RunDetailPage } from "@/features/runs/detail-page";
 import { RunsListPage } from "@/features/runs/list-page";
-import { StatusPage } from "@/features/status/status-page";
+import { SettingsPage } from "@/features/settings/settings-page";
 import { TestCaseDetailPage } from "@/features/test-cases/detail-page";
 import { TestCasesPage } from "@/features/test-cases/list-page";
 import { createRootRoute, createRoute } from "@tanstack/react-router";
@@ -16,12 +16,6 @@ const indexRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/",
 	component: WelcomePage,
-});
-
-const statusRoute = createRoute({
-	getParentRoute: () => rootRoute,
-	path: "/status",
-	component: StatusPage,
 });
 
 const testCasesRoute = createRoute({
@@ -54,12 +48,18 @@ const configurationRoute = createRoute({
 	component: ConfigurationPage,
 });
 
+const settingsRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/settings",
+	component: SettingsPage,
+});
+
 export const routeTree = rootRoute.addChildren([
 	indexRoute,
-	statusRoute,
 	testCasesRoute,
 	testCaseDetailRoute,
 	runsListRoute,
 	runDetailRoute,
 	configurationRoute,
+	settingsRoute,
 ]);

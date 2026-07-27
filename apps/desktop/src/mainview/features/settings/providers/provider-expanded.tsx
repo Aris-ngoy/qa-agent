@@ -1,9 +1,31 @@
 import { RhfTextField } from "@/app/forms";
-import { Button, Form } from "@heroui/react";
+import { Accordion, Button, Form, Modal, Spinner } from "@heroui/react";
 import type { AiProvider, ProviderAccentColor, ProviderModel } from "@yoqa/runner-client";
-import { useEffect, useMemo, useState } from "react";
+import { type SVGProps, useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { ACCENT_COLORS, fieldInputClass, getDriverMeta } from "./driver-meta";
+
+function CheckIcon(props: SVGProps<SVGSVGElement>) {
+	return (
+		<svg
+			aria-hidden="true"
+			fill="none"
+			height="12"
+			viewBox="0 0 12 12"
+			width="12"
+			xmlns="http://www.w3.org/2000/svg"
+			{...props}
+		>
+			<path
+				d="M2.5 6.2 4.8 8.5 9.5 3.5"
+				stroke="currentColor"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				strokeWidth="1.75"
+			/>
+		</svg>
+	);
+}
 
 type EnvRow = { id: string; key: string; value: string };
 
@@ -69,62 +91,111 @@ function isPaidModelSelected(models: ProviderModel[], defaultModel: string): boo
 function ModelPickList({
 	freeModels,
 	paidModels,
+	flatModels,
 	selectedId,
 	disabled,
+	loading,
+	emptyMessage,
 	onPick,
 }: {
-	freeModels: ProviderModel[];
-	paidModels: ProviderModel[];
+	freeModels?: ProviderModel[];
+	paidModels?: ProviderModel[];
+	flatModels?: ProviderModel[];
 	selectedId: string;
 	disabled: boolean;
+	loading?: boolean;
+	emptyMessage: string;
 	onPick: (modelId: string) => void;
 }) {
-	const renderGroup = (title: string, items: ProviderModel[]) => {
-		if (items.length === 0) return null;
+	const renderModelRow = (model: ProviderModel) => {
+		const selected = selectedId.trim() === model.id;
 		return (
-			<div>
-				<p className="border-b border-outline-variant bg-surface-container-low px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">
-					{title}
-				</p>
-				<ul className="divide-y divide-outline-variant">
-					{items.map((model) => {
-						const selected = selectedId === model.id;
-						return (
-							<li key={model.id}>
-								<button
-									className={[
-										"flex w-full items-center justify-between px-3 py-2.5 text-left text-body-sm transition-colors",
-										selected ? "bg-primary/15 font-semibold text-on-surface" : "text-on-surface",
-										disabled ? "cursor-not-allowed opacity-60" : "hover:bg-surface-container/60",
-									].join(" ")}
-									disabled={disabled}
-									type="button"
-									onClick={(event) => {
-										event.stopPropagation();
-										if (disabled) return;
-										onPick(model.id);
-									}}
-								>
-									<span className="min-w-0 truncate">{model.name}</span>
-									<span className="ml-2 shrink-0 font-mono text-helper text-on-surface-variant">
-										{model.id}
-									</span>
-									{selected ? (
-										<span className="ml-2 shrink-0 text-helper text-primary">Selected</span>
-									) : null}
-								</button>
-							</li>
-						);
-					})}
-				</ul>
-			</div>
+			<button
+				aria-pressed={selected}
+				className={[
+					"flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
+					"disabled:cursor-not-allowed disabled:opacity-50",
+					selected
+						? "bg-primary/10 text-on-surface"
+						: "text-on-surface hover:bg-surface-container-low",
+				].join(" ")}
+				disabled={disabled}
+				key={model.id}
+				type="button"
+				onClick={() => {
+					if (disabled) return;
+					onPick(model.id);
+				}}
+			>
+				<span
+					aria-hidden="true"
+					className={[
+						"flex size-5 shrink-0 items-center justify-center rounded-full border",
+						selected
+							? "border-primary bg-primary text-on-primary"
+							: "border-outline-variant bg-transparent text-transparent",
+					].join(" ")}
+				>
+					<CheckIcon />
+				</span>
+				<span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+					<span
+						className={[
+							"min-w-0 flex-1 truncate text-body-sm",
+							selected ? "font-semibold" : "font-normal",
+						].join(" ")}
+					>
+						{model.name}
+					</span>
+					{model.name !== model.id ? (
+						<span className="shrink-0 font-mono text-helper text-on-surface-variant">
+							{model.id}
+						</span>
+					) : null}
+				</span>
+			</button>
 		);
 	};
 
+	const hasGrouped = (freeModels?.length ?? 0) > 0 || (paidModels?.length ?? 0) > 0;
+	const hasFlat = (flatModels?.length ?? 0) > 0;
+	const hasAny = hasGrouped || hasFlat;
+
 	return (
-		<div className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-outline-variant">
-			{renderGroup("Free", freeModels)}
-			{renderGroup("Paid", paidModels)}
+		<div className="max-h-[min(28rem,50vh)] min-h-40 overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-lowest">
+			{loading ? (
+				<div className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 py-8">
+					<Spinner aria-label="Loading models" color="accent" size="md" />
+					<p className="text-body-sm text-on-surface-variant">Fetching models…</p>
+				</div>
+			) : !hasAny ? (
+				<p className="px-3 py-8 text-center text-body-sm text-on-surface-variant">{emptyMessage}</p>
+			) : hasGrouped ? (
+				<Accordion defaultExpandedKeys={new Set(["free", "paid"])}>
+					<Accordion.Item id="free">
+						<Accordion.Heading>
+							<Accordion.Trigger>Free</Accordion.Trigger>
+						</Accordion.Heading>
+						<Accordion.Panel className="p-0">
+							<div className="divide-y divide-outline-variant">
+								{freeModels?.map(renderModelRow)}
+							</div>
+						</Accordion.Panel>
+					</Accordion.Item>
+					<Accordion.Item id="paid">
+						<Accordion.Heading>
+							<Accordion.Trigger>Paid</Accordion.Trigger>
+						</Accordion.Heading>
+						<Accordion.Panel className="p-0">
+							<div className="divide-y divide-outline-variant">
+								{paidModels?.map(renderModelRow)}
+							</div>
+						</Accordion.Panel>
+					</Accordion.Item>
+				</Accordion>
+			) : (
+				<div className="divide-y divide-outline-variant">{flatModels?.map(renderModelRow)}</div>
+			)}
 		</div>
 	);
 }
@@ -159,6 +230,7 @@ export function ProviderExpanded({
 	const [error, setError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [selectingModel, setSelectingModel] = useState(false);
+	const [modelDialogOpen, setModelDialogOpen] = useState(false);
 
 	const { control, handleSubmit, reset, getValues, setValue } = useForm<FormValues>({
 		defaultValues: formFromProvider(provider, meta.defaultBinary),
@@ -265,11 +337,14 @@ export function ProviderExpanded({
 
 	const handlePickModel = async (modelId: string) => {
 		setValue("defaultModel", modelId, { shouldDirty: true });
+		if (!isOpenCode) return;
+
 		setSelectingModel(true);
 		setError(null);
 		try {
 			await persist({ defaultModel: modelId });
 			setValue("apiKey", "");
+			setModelDialogOpen(false);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to save model");
 		} finally {
@@ -279,57 +354,118 @@ export function ProviderExpanded({
 
 	const modelListBusy = busy || saving || selectingModel;
 
-	const openCodeModelSection = (
-		<div
-			onClick={(event) => event.stopPropagation()}
-			onKeyDown={(event) => event.stopPropagation()}
-		>
+	const modelStatusHint = modelsLoading
+		? isOpenCode
+			? "Loading catalog…"
+			: "Loading…"
+		: isOpenCode
+			? models.length > 0
+				? modelsMessage
+				: "Showing free defaults (catalog unavailable)"
+			: modelsMessage || "Pick from the list or type an id";
+
+	const modelPickerSummary = (
+		<div>
 			<div className="flex items-baseline justify-between gap-2">
 				<p className="text-body-sm font-semibold text-on-surface">Default model</p>
-				<p className="text-helper text-on-surface-variant">
-					{modelsLoading
-						? "Loading catalog…"
-						: models.length > 0
-							? modelsMessage
-							: "Showing free defaults (catalog unavailable)"}
-				</p>
+				<p className="text-helper text-on-surface-variant">{modelStatusHint}</p>
 			</div>
-			<p className="mt-1 truncate text-body-sm text-on-surface">
-				{defaultModel ? (
-					<>
-						Current: <span className="font-semibold">{defaultModel}</span>
-						{selectingModel ? " · Saving…" : ""}
-					</>
+			<div className="mt-2 flex items-center gap-3">
+				<p className="min-w-0 flex-1 truncate text-body-sm text-on-surface">
+					{defaultModel ? (
+						<>
+							Current: <span className="font-semibold">{defaultModel}</span>
+							{selectingModel ? " · Saving…" : ""}
+						</>
+					) : (
+						<span className="text-on-surface-variant">No model selected</span>
+					)}
+				</p>
+				<Button
+					isDisabled={modelListBusy}
+					size="sm"
+					type="button"
+					variant="secondary"
+					onPress={() => setModelDialogOpen(true)}
+				>
+					Choose model
+				</Button>
+			</div>
+			{isOpenCode ? (
+				selectedIsPaid ? (
+					<p className="mt-1.5 text-helper text-on-surface-variant">
+						Paid models need Zen billing at opencode.ai. Prefer a Free model if you have no payment
+						method. {OPENCODE_NON_VISION_FREE_HINT}
+					</p>
 				) : (
-					<span className="text-on-surface-variant">No model selected</span>
-				)}
-			</p>
-			{catalogModels.length === 0 ? (
-				<p className="mt-2 text-body-sm text-on-surface-variant">
-					{modelsLoading
-						? "Fetching models…"
-						: "No models listed yet. Add an API key or server URL, then expand again."}
-				</p>
-			) : (
-				<ModelPickList
-					disabled={modelListBusy}
-					freeModels={freeModels}
-					paidModels={paidModels}
-					selectedId={defaultModel}
-					onPick={(modelId) => void handlePickModel(modelId)}
-				/>
-			)}
-			{selectedIsPaid ? (
-				<p className="mt-1.5 text-helper text-on-surface-variant">
-					Paid models need Zen billing at opencode.ai. Prefer a Free model if you have no payment
-					method. {OPENCODE_NON_VISION_FREE_HINT}
-				</p>
-			) : (
-				<p className="mt-1.5 text-helper text-on-surface-variant">
-					{OPENCODE_NON_VISION_FREE_HINT}
-				</p>
-			)}
+					<p className="mt-1.5 text-helper text-on-surface-variant">
+						{OPENCODE_NON_VISION_FREE_HINT}
+					</p>
+				)
+			) : null}
 		</div>
+	);
+
+	const modelPickerDialog = (
+		<Modal>
+			<Modal.Backdrop isOpen={modelDialogOpen} onOpenChange={setModelDialogOpen} variant="opaque">
+				<Modal.Container placement="center" scroll="inside" size="lg">
+					<Modal.Dialog className="max-h-[min(36rem,90vh)] overflow-hidden sm:max-w-xl">
+						<Modal.CloseTrigger />
+						<Modal.Header className="flex flex-col gap-1">
+							<Modal.Heading>Choose default model</Modal.Heading>
+							<p className="text-body-sm text-on-surface-variant">
+								{isOpenCode
+									? "Selection saves immediately for OpenCode."
+									: "Pick a catalog model or enter a custom id, then save the provider."}
+							</p>
+						</Modal.Header>
+						<Modal.Body className="gap-4">
+							{isOpenCode ? (
+								<ModelPickList
+									disabled={modelListBusy}
+									emptyMessage="No models listed yet. Add an API key or server URL, then try again."
+									freeModels={freeModels}
+									loading={modelsLoading && catalogModels.length === 0}
+									paidModels={paidModels}
+									selectedId={defaultModel}
+									onPick={(modelId) => void handlePickModel(modelId)}
+								/>
+							) : (
+								<>
+									<ModelPickList
+										disabled={modelListBusy}
+										emptyMessage="No models listed yet. Save credentials, then try again."
+										flatModels={models}
+										loading={modelsLoading && models.length === 0}
+										selectedId={defaultModel}
+										onPick={(modelId) => setValue("defaultModel", modelId, { shouldDirty: true })}
+									/>
+									<RhfTextField
+										control={control}
+										inputClassName={fieldInputClass}
+										label="Custom model id"
+										name="defaultModel"
+										placeholder="optional — override with any model id"
+									/>
+								</>
+							)}
+							{error && modelDialogOpen ? <p className="text-body-sm text-error">{error}</p> : null}
+						</Modal.Body>
+						<Modal.Footer>
+							<Button
+								size="sm"
+								type="button"
+								variant="secondary"
+								onPress={() => setModelDialogOpen(false)}
+							>
+								{isOpenCode ? "Close" : "Done"}
+							</Button>
+						</Modal.Footer>
+					</Modal.Dialog>
+				</Modal.Container>
+			</Modal.Backdrop>
+		</Modal>
 	);
 
 	return (
@@ -345,7 +481,7 @@ export function ProviderExpanded({
 				})}
 			>
 				{/* OpenCode: model picker first so it is visible without scrolling past env fields */}
-				{isOpenCode ? openCodeModelSection : null}
+				{isOpenCode ? modelPickerSummary : null}
 
 				<div>
 					<RhfTextField
@@ -499,58 +635,23 @@ export function ProviderExpanded({
 					/>
 				)}
 
-				{!isOpenCode ? (
-					<>
-						<RhfTextField
-							control={control}
-							inputClassName={fieldInputClass}
-							label="Default model"
-							name="defaultModel"
-							placeholder="optional"
-						/>
+				{!isOpenCode ? modelPickerSummary : null}
 
-						<div>
-							<div className="flex items-baseline justify-between gap-2">
-								<p className="text-body-sm font-semibold text-on-surface">Models</p>
-								<p className="text-helper text-on-surface-variant">
-									{modelsLoading ? "Loading…" : modelsMessage}
-								</p>
-							</div>
-							<div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-outline-variant">
-								{models.length === 0 ? (
-									<p className="px-3 py-4 text-body-sm text-on-surface-variant">
-										{modelsLoading ? "Fetching models…" : "No models listed yet."}
-									</p>
-								) : (
-									<ul className="divide-y divide-outline-variant">
-										{models.slice(0, 40).map((model) => (
-											<li key={model.id}>
-												<button
-													className={[
-														"flex w-full items-center justify-between px-3 py-2 text-left text-body-sm transition-colors hover:bg-surface-container/60",
-														defaultModel === model.id ? "bg-surface-container font-semibold" : "",
-													].join(" ")}
-													type="button"
-													onClick={() => setValue("defaultModel", model.id, { shouldDirty: true })}
-												>
-													<span className="truncate text-on-surface">{model.name}</span>
-													{defaultModel === model.id ? (
-														<span className="text-helper text-primary">Default</span>
-													) : null}
-												</button>
-											</li>
-										))}
-									</ul>
-								)}
-							</div>
-						</div>
-					</>
-				) : null}
+				{error && !modelDialogOpen ? <p className="text-body-sm text-error">{error}</p> : null}
 
-				{error ? <p className="text-body-sm text-error">{error}</p> : null}
-
-				<div className="flex flex-wrap items-center justify-between gap-2">
-					<div className="flex flex-wrap gap-2">
+				<div className="mt-2 grid grid-cols-3 items-center gap-3 border-t border-outline-variant pt-5">
+					<div className="justify-self-start">
+						<Button
+							isDisabled={busy || saving || selectingModel}
+							size="sm"
+							type="button"
+							variant="danger"
+							onPress={() => void onDisconnect()}
+						>
+							Disconnect
+						</Button>
+					</div>
+					<div className="justify-self-center">
 						{!provider.isDefault ? (
 							<Button
 								isDisabled={busy || saving || selectingModel}
@@ -562,30 +663,32 @@ export function ProviderExpanded({
 								Set as default
 							</Button>
 						) : (
-							<span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-primary">
+							<span className="inline-flex h-8 items-center rounded-full bg-primary px-3 text-label-caps font-semibold tracking-wide text-on-primary">
 								Default
 							</span>
 						)}
+					</div>
+					<div className="justify-self-end">
 						<Button
-							isDisabled={busy || saving || selectingModel}
+							isDisabled={busy || saving || selectingModel || !label.trim()}
 							size="sm"
-							type="button"
-							variant="danger"
-							onPress={() => void onDisconnect()}
+							type="submit"
+							variant="primary"
 						>
-							Disconnect
+							{saving ? (
+								<>
+									<Spinner aria-label="Saving" color="current" size="sm" />
+									Saving…
+								</>
+							) : (
+								"Save"
+							)}
 						</Button>
 					</div>
-					<Button
-						isDisabled={busy || saving || selectingModel || !label.trim()}
-						size="sm"
-						type="submit"
-						variant="primary"
-					>
-						{saving ? "Saving…" : "Save"}
-					</Button>
 				</div>
 			</Form>
+
+			{modelPickerDialog}
 		</div>
 	);
 }
