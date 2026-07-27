@@ -8,6 +8,7 @@ import {
 
 export type SnippetCommandId =
 	| "tap"
+	| "tapPoint"
 	| "doubleTap"
 	| "longPress"
 	| "assertVisible"
@@ -73,11 +74,33 @@ export function tapActionForSelection(
 	};
 }
 
+/** Always tap by normalized x/y (even when id/label exist). */
+export function tapPointActionForSelection(
+	selection: InspectorSelection,
+	extras: Partial<Pick<ActionRequest, "double" | "durationMs">> = {},
+): ActionRequest {
+	return {
+		kind: "tap",
+		x: selection.x,
+		y: selection.y,
+		...extras,
+	};
+}
+
 export function tapLinesForSelection(
 	selection: InspectorSelection,
 	extras: Partial<Pick<ActionRequest, "double" | "durationMs">> = {},
 ): string[] {
 	return withComment(selection, formatActionShellLine(tapActionForSelection(selection, extras)));
+}
+
+export function tapPointLinesForSelection(
+	selection: InspectorSelection,
+	extras: Partial<Pick<ActionRequest, "double" | "durationMs">> = {},
+): string[] {
+	const comment = selectionComment(selection);
+	const line = formatActionShellLine(tapPointActionForSelection(selection, extras));
+	return comment ? [comment, line] : [line];
 }
 
 export function assertLinesForSelection(
@@ -118,6 +141,17 @@ function previewTap(
 	return [formatActionShellLine(tapActionForSelection(selection, extras))];
 }
 
+function previewTapPoint(
+	selection: InspectorSelection,
+	extras?: Partial<Pick<ActionRequest, "double" | "durationMs">>,
+): string[] {
+	return [formatActionShellLine(tapPointActionForSelection(selection, extras))];
+}
+
+function hasStableSelector(selection: InspectorSelection): boolean {
+	return Boolean(selection.element?.id?.trim() || selection.element?.label?.trim());
+}
+
 function previewAssert(
 	selection: InspectorSelection,
 	assertion: "visible" | "not-visible",
@@ -146,11 +180,18 @@ function previewInput(selection: InspectorSelection): string[] {
 export function suggestedCommands(selection: InspectorSelection): CommandSnippet[] {
 	const editable = isEditableElementType(selection.element?.type);
 	const hasLabel = Boolean(selection.element?.label?.trim());
+	const stable = hasStableSelector(selection);
 
 	const tap: CommandSnippet = {
 		id: "tap",
 		label: "tap",
 		previewLines: previewTap(selection),
+		needsPrompt: null,
+	};
+	const tapPoint: CommandSnippet = {
+		id: "tapPoint",
+		label: "tap (x,y)",
+		previewLines: previewTapPoint(selection),
 		needsPrompt: null,
 	};
 	const assertVisible: CommandSnippet = {
@@ -166,15 +207,19 @@ export function suggestedCommands(selection: InspectorSelection): CommandSnippet
 		needsPrompt: "text",
 	};
 
+	// Prefer id/label tap first when available, but always surface the x,y tap too.
+	const taps = stable ? [tap, tapPoint] : [tapPoint];
+
 	if (editable) {
-		return [inputText, tap, assertVisible];
+		return [inputText, ...taps, assertVisible];
 	}
-	return [tap, assertVisible, inputText];
+	return [...taps, assertVisible, inputText];
 }
 
 /** Full selector-commands list for the submenu. */
 export function selectorCommands(selection: InspectorSelection): CommandSnippet[] {
 	const hasLabel = Boolean(selection.element?.label?.trim());
+	const stable = hasStableSelector(selection);
 	return [
 		{
 			id: "assertVisible",
@@ -188,10 +233,20 @@ export function selectorCommands(selection: InspectorSelection): CommandSnippet[
 			previewLines: previewAssert(selection, "not-visible"),
 			needsPrompt: hasLabel ? null : "text",
 		},
+		...(stable
+			? [
+					{
+						id: "tap" as const,
+						label: "tap",
+						previewLines: previewTap(selection),
+						needsPrompt: null,
+					},
+				]
+			: []),
 		{
-			id: "tap",
-			label: "tap",
-			previewLines: previewTap(selection),
+			id: "tapPoint",
+			label: "tap (x,y)",
+			previewLines: previewTapPoint(selection),
 			needsPrompt: null,
 		},
 		{
@@ -230,6 +285,8 @@ export function buildCommandLines(
 	switch (commandId) {
 		case "tap":
 			return tapLinesForSelection(selection);
+		case "tapPoint":
+			return tapPointLinesForSelection(selection);
 		case "doubleTap":
 			return tapLinesForSelection(selection, { double: true });
 		case "longPress":

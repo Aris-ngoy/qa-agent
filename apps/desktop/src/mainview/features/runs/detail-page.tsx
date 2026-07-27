@@ -1,4 +1,5 @@
 import { getRunnerClient } from "@/app/runner-client";
+import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
 import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
 import {
@@ -9,10 +10,18 @@ import {
 	formatDeviceShortLabel,
 } from "@/features/runs/labels";
 import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
-import { Button } from "@heroui/react";
+import { Button, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { Device, Run, RunStatus, RunStep } from "@yoqa/runner-client";
+import {
+	buildRunReportFromCatalogRun,
+	formatRunReportHtml,
+	formatRunReportMarkdown,
+	actionSummary as reportActionSummary,
+	stepReasoning as reportStepReasoning,
+	suggestedRunReportBasename,
+} from "@yoqa/runner-client";
 import { useEffect, useMemo, useState } from "react";
 
 const BUILD_LABELS: Record<string, string> = {
@@ -91,31 +100,33 @@ function RunStatusPill({ status }: { status: RunStatus }) {
 }
 
 function actionSummary(action: unknown): string {
-	if (!action || typeof action !== "object") return "Step";
-	const record = action as Record<string, unknown>;
-	const type = typeof record.type === "string" ? record.type : "step";
-	if (type === "tap") return "Tap";
-	if (type === "type") return `Type${typeof record.text === "string" ? `: ${record.text}` : ""}`;
-	if (type === "wait") return "Wait";
-	if (type === "verify") return "Verify";
-	if (type === "done") return "Done";
-	if (type === "fail") return "Failed";
-	return type.charAt(0).toUpperCase() + type.slice(1);
+	return reportActionSummary(action);
 }
 
 function stepReasoning(step: RunStep): { reason: string | null; thoughts: string | null } {
-	const action =
-		step.action && typeof step.action === "object"
-			? (step.action as Record<string, unknown>)
-			: null;
-	const reasonFromAction =
-		typeof action?.reason === "string" && action.reason.trim() ? action.reason.trim() : null;
-	const thoughtsFromAction =
-		typeof action?.thoughts === "string" && action.thoughts.trim() ? action.thoughts.trim() : null;
-	const reason = reasonFromAction ?? (step.detail?.trim() ? step.detail.trim() : null);
-	const thoughts = thoughtsFromAction && thoughtsFromAction !== reason ? thoughtsFromAction : null;
-	return { reason, thoughts };
+	return reportStepReasoning(step);
 }
+
+function downloadTextFile(filename: string, contents: string, mime: string) {
+	const blob = new Blob([contents], { type: mime });
+	const url = URL.createObjectURL(blob);
+	const anchor = document.createElement("a");
+	anchor.href = url;
+	anchor.download = filename;
+	anchor.click();
+	URL.revokeObjectURL(url);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+	let binary = "";
+	const chunk = 0x8000;
+	for (let i = 0; i < bytes.length; i += chunk) {
+		binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+	}
+	return btoa(binary);
+}
+
+const TERMINAL_STATUSES = new Set<RunStatus>(["passed", "errored", "cancelled"]);
 
 function StepAiThoughts({ reason, thoughts }: { reason: string | null; thoughts: string | null }) {
 	const [open, setOpen] = useState(false);
@@ -289,6 +300,7 @@ export function RunDetailPage() {
 	const { setActiveRun, isRunLive, activeRunId } = useActiveRun();
 	const [screenshotBaseUrl, setScreenshotBaseUrl] = useState<string | null>(null);
 	const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+	const [exportingFormat, setExportingFormat] = useState<"html" | "md" | null>(null);
 
 	useEffect(() => {
 		setActiveRun(runId);
@@ -356,6 +368,61 @@ export function RunDetailPage() {
 		},
 	});
 
+	const exportReport = async (format: "html" | "md") => {
+		const current = runQuery.data;
+		if (!current || !TERMINAL_STATUSES.has(current.status)) return;
+		setExportingFormat(format);
+		try {
+			const client = await getRunnerClient();
+			const screenshotsByStepId: Record<string, string> = {};
+			const allSteps = flattenSteps(current);
+			await Promise.all(
+				allSteps.map(async (step) => {
+					if (!step.screenshotUri) return;
+					const url = client.getRunStepScreenshotUrl(current.id, step.id);
+					const response = await fetch(url);
+					if (!response.ok) return;
+					const bytes = new Uint8Array(await response.arrayBuffer());
+					screenshotsByStepId[step.id] = bytesToBase64(bytes);
+				}),
+			);
+
+			const caseTitles: Record<string, string> = {};
+			for (const test of current.tests) {
+				caseTitles[test.caseId] = formatCaseLabel(caseNameById.get(test.caseId), test.caseId);
+			}
+
+			const deviceRow = (devicesQuery.data ?? []).find((row) => row.id === current.deviceId);
+			const doc = buildRunReportFromCatalogRun(
+				current,
+				{
+					appLabel: selectedApp?.name ?? null,
+					deviceLabel: formatDeviceLabel(deviceRow, {
+						deviceId: current.deviceId,
+						platform: current.platform,
+					}),
+					caseTitles,
+				},
+				screenshotsByStepId,
+			);
+
+			const baseName = suggestedRunReportBasename(doc);
+			if (format === "html") {
+				downloadTextFile(`${baseName}.html`, formatRunReportHtml(doc), "text/html;charset=utf-8");
+			} else {
+				downloadTextFile(
+					`${baseName}.md`,
+					formatRunReportMarkdown(doc),
+					"text/markdown;charset=utf-8",
+				);
+			}
+			toast.success(format === "html" ? "HTML report exported" : "Markdown report exported");
+		} catch (error) {
+			showErrorToast(error, "Failed to export report");
+		} finally {
+			setExportingFormat(null);
+		}
+	};
 	const run = runQuery.data;
 	const isLive = run ? LIVE_STATUSES.has(run.status) : false;
 	const reviewMode = Boolean(run && !isLive);
@@ -458,18 +525,44 @@ export function RunDetailPage() {
 					<RunStatusPill status={run.status} />
 					<h1 className="truncate text-headline-md font-semibold text-on-surface">{title}</h1>
 				</div>
-				{showStop ? (
-					<Button
-						className="h-10 gap-2 rounded-full bg-error px-5 text-on-error shadow-none data-[hovered=true]:opacity-90"
-						isDisabled={cancelMutation.isPending}
-						onPress={() => cancelMutation.mutate()}
-					>
-						<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
-							<rect height="12" rx="1" width="12" x="6" y="6" />
-						</svg>
-						Stop
-					</Button>
-				) : null}
+				<div className="flex flex-wrap items-center gap-2">
+					{reviewMode ? (
+						<>
+							<Button
+								className="h-10 rounded-full px-4 shadow-none"
+								isDisabled={exportingFormat !== null}
+								onPress={() => {
+									void exportReport("html");
+								}}
+								variant="secondary"
+							>
+								{exportingFormat === "html" ? "Exporting…" : "Export HTML"}
+							</Button>
+							<Button
+								className="h-10 rounded-full px-4 shadow-none"
+								isDisabled={exportingFormat !== null}
+								onPress={() => {
+									void exportReport("md");
+								}}
+								variant="secondary"
+							>
+								{exportingFormat === "md" ? "Exporting…" : "Export Markdown"}
+							</Button>
+						</>
+					) : null}
+					{showStop ? (
+						<Button
+							className="h-10 gap-2 rounded-full bg-error px-5 text-on-error shadow-none data-[hovered=true]:opacity-90"
+							isDisabled={cancelMutation.isPending}
+							onPress={() => cancelMutation.mutate()}
+						>
+							<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
+								<rect height="12" rx="1" width="12" x="6" y="6" />
+							</svg>
+							Stop
+						</Button>
+					) : null}
+				</div>
 			</div>
 
 			{deviceDetailLabel ? (

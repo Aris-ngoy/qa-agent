@@ -286,6 +286,22 @@ export {
 } from "./script-format";
 
 export {
+	actionSummary,
+	buildRunReportFromCatalogRun,
+	buildRunReportFromInspectorSession,
+	formatRunReportHtml,
+	formatRunReportMarkdown,
+	stepReasoning,
+	suggestedRunReportBasename,
+	type CatalogRunReportMeta,
+	type InspectorRunReportInput,
+	type RunReportDocument,
+	type RunReportStatus,
+	type RunReportStep,
+	type RunReportTest,
+} from "./run-report";
+
+export {
 	DEFAULT_SHELL_SCRIPT_HEADER,
 	formatActionShellLine,
 	formatAssertShellLine,
@@ -296,6 +312,7 @@ export {
 	parseYoqaShellScript,
 	runYoqaShellScript,
 	screenHasText,
+	shellToCaseScript,
 	tokenizeShellLine,
 	type AssertVisibility,
 	type ParseYoqaShellScriptResult,
@@ -304,6 +321,8 @@ export {
 	type ShellScriptAssertStep,
 	type ShellScriptSleepStep,
 	type ShellScriptStep,
+	type ShellToCaseScriptOptions,
+	type ShellToCaseScriptResult,
 } from "./shell-script";
 
 export type RunnerClientOptions = {

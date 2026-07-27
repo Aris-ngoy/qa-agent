@@ -6,30 +6,68 @@ import type { DevicePlatform, SelectedDevice } from "@/features/devices/select-d
 import { CommandBar } from "@/features/inspector/command-bar";
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
 import { type RunLogEntry, RunPanel } from "@/features/inspector/run-panel";
+import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
 import { ScriptEditor } from "@/features/inspector/script-editor";
 import { type InspectorSelection, appendScriptLines } from "@/features/inspector/selection";
 import { SessionToolbar } from "@/features/inspector/session-toolbar";
 import { useActiveRun } from "@/features/runs/active-run-context";
+import { type TestCase, casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { toast } from "@heroui/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
 	type ActionRequest,
 	type ActiveDeviceResponse,
 	DEFAULT_SHELL_SCRIPT_HEADER,
+	type RunReportDocument,
 	type ScreenElement,
+	buildRunReportFromInspectorSession,
 	formatActionShellLine,
+	formatRunReportHtml,
+	formatRunReportMarkdown,
 	formatSleepShellLine,
 	runYoqaShellScript,
+	shellToCaseScript,
+	suggestedRunReportBasename,
 } from "@yoqa/runner-client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** How often to pull a fresh screenshot while connected. */
 const LIVE_SCREENSHOT_MS = 150;
 /** Refresh the accessibility tree every N screenshot polls (tree is slower). */
 const TREE_EVERY_N_POLLS = 15;
 
+type InspectorReportStep = {
+	index: number;
+	summary: string;
+	ok: boolean;
+	latencyMs: number | null;
+	detail: string | null;
+	screenshotBase64: string | null;
+};
+
 function notify(message: string) {
 	toast.success(message);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+	let binary = "";
+	const chunk = 0x8000;
+	for (let i = 0; i < bytes.length; i += chunk) {
+		binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+	}
+	return btoa(binary);
+}
+
+function downloadTextFile(filename: string, contents: string, mime: string) {
+	const blob = new Blob([contents], { type: mime });
+	const url = URL.createObjectURL(blob);
+	const anchor = document.createElement("a");
+	anchor.href = url;
+	anchor.download = filename;
+	anchor.click();
+	URL.revokeObjectURL(url);
 }
 
 function swipeAction(direction: "up" | "down" | "left" | "right"): ActionRequest {
@@ -55,6 +93,23 @@ function scriptHasBody(script: string): boolean {
 	});
 }
 
+function defaultCaseNameFromScript(script: string): string {
+	for (const line of script.split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (trimmed.startsWith("#") && !trimmed.startsWith("#!") && !trimmed.includes("YoQA")) {
+			const label = trimmed.replace(/^#\s*/, "").trim();
+			if (label.length > 0 && label.length <= 80) return label;
+		}
+	}
+	const stamp = new Intl.DateTimeFormat(undefined, {
+		month: "short",
+		day: "numeric",
+		hour: "numeric",
+		minute: "2-digit",
+	}).format(new Date());
+	return `Inspector script · ${stamp}`;
+}
+
 function bytesToPngBlob(bytes: Uint8Array): Blob {
 	const copy = Uint8Array.from(bytes);
 	return new Blob([copy.buffer], { type: "image/png" });
@@ -66,6 +121,8 @@ function miniScriptFromLines(lines: string[]): string {
 
 export function InspectorPage() {
 	const entered = useEnterOnce(true);
+	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
 	const { isRunLive } = useActiveRun();
 
@@ -84,6 +141,11 @@ export function InspectorPage() {
 	const [pageVisible, setPageVisible] = useState(
 		typeof document === "undefined" ? true : document.visibilityState === "visible",
 	);
+	const [saveOpen, setSaveOpen] = useState(false);
+	const [savingCase, setSavingCase] = useState(false);
+	const [saveError, setSaveError] = useState<string | null>(null);
+	const [sessionReport, setSessionReport] = useState<RunReportDocument | null>(null);
+	const [exportingReport, setExportingReport] = useState(false);
 
 	const abortRef = useRef<AbortController | null>(null);
 	const logIdRef = useRef(0);
@@ -361,24 +423,63 @@ export function InspectorPage() {
 		abortRef.current = controller;
 		setRunning(true);
 		setLog([]);
+		setSessionReport(null);
 		setActiveLineNumber(null);
 		pushLog("Starting script…");
+		const startedAt = Date.now();
+		const reportSteps: InspectorReportStep[] = [];
+		let stepStartedAt = startedAt;
 		try {
 			const client = await getRunnerClient();
 			const result = await runYoqaShellScript(client, script, {
 				signal: controller.signal,
 				pauseAfterActionMs: 200,
-				onStep: async ({ step, status, error }) => {
+				onStep: async ({ index, step, status, error }) => {
 					setActiveLineNumber(step.lineNumber);
 					if (status === "running") {
+						stepStartedAt = Date.now();
 						pushLog(`→ L${step.lineNumber} ${step.raw}`);
-					} else if (status === "ok") {
+						return;
+					}
+					let screenshotBase64: string | null = null;
+					try {
+						const bytes = await client.fetchScreenshotBytes();
+						screenshotBase64 = bytesToBase64(bytes);
+					} catch {
+						/* screenshot optional for report */
+					}
+					const ok = status === "ok";
+					reportSteps.push({
+						index: index + 1,
+						summary: step.raw,
+						ok,
+						latencyMs: Math.max(0, Date.now() - stepStartedAt),
+						detail: ok ? null : (error ?? "failed"),
+						screenshotBase64,
+					});
+					if (ok) {
 						pushLog(`✓ L${step.lineNumber}`, "ok");
-					} else if (status === "error") {
+					} else {
 						pushLog(`✗ L${step.lineNumber}: ${error ?? "failed"}`, "error");
 					}
 				},
 			});
+			const finishedAt = Date.now();
+			const cancelled = result.error === "Aborted";
+			setSessionReport(
+				buildRunReportFromInspectorSession({
+					title: defaultCaseNameFromScript(script),
+					appLabel: selectedApp?.name ?? null,
+					deviceLabel: device?.name ?? active.deviceId,
+					platform: active.platform,
+					ok: result.ok,
+					cancelled,
+					error: result.ok ? null : (result.error ?? "Script failed"),
+					startedAt,
+					finishedAt,
+					steps: reportSteps,
+				}),
+			);
 			if (result.ok) {
 				pushLog(`Done · ${result.completed}/${result.total} steps`, "ok");
 				notify("Script finished");
@@ -392,13 +493,26 @@ export function InspectorPage() {
 			const message = error instanceof Error ? error.message : String(error);
 			pushLog(message, "error");
 			showErrorToast(error, "Script failed");
+			setSessionReport(
+				buildRunReportFromInspectorSession({
+					title: defaultCaseNameFromScript(script),
+					appLabel: selectedApp?.name ?? null,
+					deviceLabel: device?.name ?? active.deviceId,
+					platform: active.platform,
+					ok: false,
+					error: message,
+					startedAt,
+					finishedAt: Date.now(),
+					steps: reportSteps,
+				}),
+			);
 		} finally {
 			setRunning(false);
 			setActiveLineNumber(null);
 			abortRef.current = null;
 			void refreshFrame({ includeTree: true, silent: true });
 		}
-	}, [active, pushLog, refreshFrame, running, script]);
+	}, [active, device?.name, pushLog, refreshFrame, running, script, selectedApp?.name]);
 
 	const handleStop = useCallback(() => {
 		abortRef.current?.abort();
@@ -423,8 +537,101 @@ export function InspectorPage() {
 		URL.revokeObjectURL(url);
 	}, [script]);
 
+	const handleExportReport = useCallback(
+		(format: "html" | "md") => {
+			if (!sessionReport) return;
+			setExportingReport(true);
+			try {
+				const baseName = suggestedRunReportBasename(sessionReport);
+				if (format === "html") {
+					downloadTextFile(
+						`${baseName}.html`,
+						formatRunReportHtml(sessionReport),
+						"text/html;charset=utf-8",
+					);
+					notify("HTML report exported");
+				} else {
+					downloadTextFile(
+						`${baseName}.md`,
+						formatRunReportMarkdown(sessionReport),
+						"text/markdown;charset=utf-8",
+					);
+					notify("Markdown report exported");
+				}
+			} catch (error) {
+				showErrorToast(error, "Failed to export report");
+			} finally {
+				setExportingReport(false);
+			}
+		},
+		[sessionReport],
+	);
+	const casePreview = useMemo(() => shellToCaseScript(script, { elements }), [elements, script]);
+
+	const openSaveAsCase = useCallback(() => {
+		setSaveError(null);
+		if (!selectedApp) {
+			showErrorToast(new Error("Select an app first"), "Select an app");
+			return;
+		}
+		if (!casePreview.script) {
+			showErrorToast(new Error("No convertible actions in the script"), "Nothing to save");
+			return;
+		}
+		setSaveOpen(true);
+	}, [casePreview.script, selectedApp]);
+
+	const handleSaveAsCase = useCallback(
+		async (name: string) => {
+			if (!selectedApp) {
+				setSaveError("Select an app first");
+				return;
+			}
+			const converted = shellToCaseScript(script, {
+				elements,
+				savedAt: Date.now(),
+			});
+			if (!converted.script) {
+				setSaveError("No convertible actions in the script");
+				return;
+			}
+			setSavingCase(true);
+			setSaveError(null);
+			try {
+				const client = await getRunnerClient();
+				const created = await client.createCase(selectedApp.id, {
+					name,
+					flows: [
+						{
+							instructions: "Recorded in Manual Inspector",
+							expectedResult: "",
+						},
+					],
+				});
+				const updated = await client.updateCase(created.id, {
+					script: converted.script,
+				});
+				const mapped = mapCatalogCase(updated);
+				queryClient.setQueryData<TestCase[]>(casesQueryKey(selectedApp.id), (current) =>
+					current ? [mapped, ...current.filter((row) => row.id !== mapped.id)] : [mapped],
+				);
+				setSaveOpen(false);
+				notify(`Saved as #${mapped.number} ${mapped.name}`);
+				void navigate({ to: "/test-cases/$caseId", params: { caseId: mapped.id } });
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				setSaveError(message);
+				showErrorToast(error, "Failed to create test case");
+			} finally {
+				setSavingCase(false);
+			}
+		},
+		[elements, navigate, queryClient, script, selectedApp],
+	);
+
 	const connected = active != null;
 	const live = connected && pageVisible;
+	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(script) && casePreview.script != null;
 
 	return (
 		<div className={["flex flex-col", entered ? "motion-enter-done" : "motion-enter"].join(" ")}>
@@ -487,6 +694,9 @@ export function InspectorPage() {
 					<RunPanel
 						running={running}
 						canRun={connected && !running && scriptHasBody(script)}
+						canSaveAsCase={canSaveAsCase}
+						canExportReport={sessionReport != null}
+						exportingReport={exportingReport}
 						log={log}
 						onRun={() => {
 							void handleRun();
@@ -496,9 +706,36 @@ export function InspectorPage() {
 							void handleCopy();
 						}}
 						onExport={handleExport}
+						onExportReportHtml={() => {
+							handleExportReport("html");
+						}}
+						onExportReportMarkdown={() => {
+							handleExportReport("md");
+						}}
+						onSaveAsCase={openSaveAsCase}
 					/>
 				</div>
 			</div>
+
+			<SaveAsTestCaseDialog
+				isOpen={saveOpen}
+				onOpenChange={(open) => {
+					setSaveOpen(open);
+					if (!open) setSaveError(null);
+				}}
+				defaultName={defaultCaseNameFromScript(script)}
+				appName={selectedApp?.name ?? null}
+				actionCount={casePreview.script?.actions.length ?? 0}
+				warnings={[
+					...casePreview.warnings,
+					...casePreview.errors.map((err) => `L${err.lineNumber}: parse error — ${err.message}`),
+				]}
+				saving={savingCase}
+				error={saveError}
+				onConfirm={(name) => {
+					void handleSaveAsCase(name);
+				}}
+			/>
 		</div>
 	);
 }

@@ -111,30 +111,21 @@ function CodeIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
+/** Always anchor the menu to the right of the selection; flip vertically near the bottom. */
 function menuPosition(anchor: ElementActionMenuProps["anchor"]): {
 	left: string;
 	top: string;
 	transform: string;
 } {
-	const centerX = anchor.left + anchor.width / 2;
-	const preferRight = centerX < 55;
 	const preferBelow = anchor.top + anchor.height < 70;
-	const left = preferRight
-		? Math.min(92, anchor.left + anchor.width + 2)
-		: Math.max(2, anchor.left - 2);
+	const left = Math.min(92, anchor.left + anchor.width + 2);
 	const top = preferBelow
-		? Math.min(88, anchor.top + anchor.height + 1.5)
+		? Math.min(88, anchor.top + Math.min(anchor.height, 8))
 		: Math.max(2, anchor.top - 1.5);
 	return {
 		left: `${left}%`,
 		top: `${top}%`,
-		transform: preferRight
-			? preferBelow
-				? "translate(0, 0)"
-				: "translate(0, -100%)"
-			: preferBelow
-				? "translate(-100%, 0)"
-				: "translate(-100%, -100%)",
+		transform: preferBelow ? "translate(0, 0)" : "translate(0, -100%)",
 	};
 }
 
@@ -202,6 +193,7 @@ export function ElementActionMenu({
 		else if (mode === "insert") onInsert(activeLines);
 		else onInsertAndRun(activeLines);
 		setFlyoutId(null);
+		onClearSelection();
 	};
 
 	return (

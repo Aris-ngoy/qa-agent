@@ -2,6 +2,8 @@ import type {
 	ActionKind,
 	ActionRequest,
 	ActionResponse,
+	CaseScript,
+	CaseScriptAction,
 	ScreenElement,
 	ScreenResponse,
 } from "./schemas";
@@ -515,4 +517,134 @@ export async function runYoqaShellScript(
 	}
 
 	return { ok: true, completed: total, total };
+}
+
+export type ShellToCaseScriptOptions = {
+	/** Live accessibility tree — resolves `--id` / `--label` taps to coordinates. */
+	elements?: ScreenElement[];
+	savedAt?: number;
+};
+
+export type ShellToCaseScriptResult = {
+	script: CaseScript | null;
+	/** Steps that could not be represented in CaseScript (assert, swipe, unresolved id, …). */
+	warnings: string[];
+	/** Parse errors from the shell script. */
+	errors: Array<{ lineNumber: number; raw: string; message: string }>;
+};
+
+function clampNorm(n: number): number {
+	return Math.min(1000, Math.max(0, Math.round(n)));
+}
+
+function clampWaitMs(seconds: number): number {
+	return Math.min(10_000, Math.max(0, Math.round(seconds * 1000)));
+}
+
+function resolveTapPoint(
+	action: ActionRequest,
+	elements: ScreenElement[] | undefined,
+): { x: number; y: number } | null {
+	if (action.x != null && action.y != null) {
+		return { x: clampNorm(action.x), y: clampNorm(action.y) };
+	}
+	if (action.id) {
+		const match = findElementById(elements, action.id);
+		if (match) return elementCenterNorm(match);
+	}
+	if (action.label) {
+		const match = findElementByLabel(elements, action.label);
+		if (match) return elementCenterNorm(match);
+	}
+	return null;
+}
+
+/**
+ * Convert an inspector / yoqa shell script into a CaseScript for catalog replay.
+ * Supports tap (x/y or resolvable id/label), input→type (+ focus tap when coords known), sleep→wait.
+ * Skips assert, swipe, drag, double/long-press nuances, and unresolved selectors (reported as warnings).
+ */
+export function shellToCaseScript(
+	text: string,
+	options: ShellToCaseScriptOptions = {},
+): ShellToCaseScriptResult {
+	const parsed = parseYoqaShellScript(text);
+	const warnings: string[] = [];
+	const actions: CaseScriptAction[] = [];
+	const elements = options.elements;
+
+	for (const step of parsed.steps) {
+		if (step.kind === "sleep") {
+			const ms = clampWaitMs(step.seconds);
+			if (ms <= 0) {
+				warnings.push(`L${step.lineNumber}: skipped zero-length wait`);
+				continue;
+			}
+			if (step.seconds * 1000 > 10_000) {
+				warnings.push(`L${step.lineNumber}: wait clamped to 10s (CaseScript max)`);
+			}
+			actions.push({ type: "wait", ms });
+			continue;
+		}
+
+		if (step.kind === "assert") {
+			warnings.push(`L${step.lineNumber}: assert not supported in CaseScript — skipped`);
+			continue;
+		}
+
+		const { action } = step;
+		if (action.kind === "tap") {
+			if (action.double) {
+				warnings.push(`L${step.lineNumber}: double-tap saved as a single tap`);
+			}
+			if (action.durationMs != null && action.durationMs > 50) {
+				warnings.push(`L${step.lineNumber}: long-press saved as a normal tap`);
+			}
+			const point = resolveTapPoint(action, elements);
+			if (!point) {
+				warnings.push(
+					`L${step.lineNumber}: tap needs --x/--y or a resolvable --id/--label — skipped`,
+				);
+				continue;
+			}
+			actions.push({ type: "tap", x: point.x, y: point.y });
+			continue;
+		}
+
+		if (action.kind === "input") {
+			const textValue = action.text?.trim() ?? "";
+			if (!textValue) {
+				warnings.push(`L${step.lineNumber}: input missing --text — skipped`);
+				continue;
+			}
+			const point = resolveTapPoint(action, elements);
+			if (point) {
+				actions.push({ type: "tap", x: point.x, y: point.y });
+			} else if (action.id || action.label) {
+				warnings.push(`L${step.lineNumber}: input focus id/label unresolved — typing without tap`);
+			}
+			actions.push({ type: "type", text: textValue });
+			continue;
+		}
+
+		warnings.push(`L${step.lineNumber}: \`${action.kind}\` not supported in CaseScript — skipped`);
+	}
+
+	if (actions.length === 0) {
+		return {
+			script: null,
+			warnings,
+			errors: parsed.errors,
+		};
+	}
+
+	return {
+		script: {
+			version: 1,
+			savedAt: options.savedAt ?? Date.now(),
+			actions,
+		},
+		warnings,
+		errors: parsed.errors,
+	};
 }

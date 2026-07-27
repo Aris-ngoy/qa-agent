@@ -9,14 +9,34 @@ export type RunLogEntry = {
 type RunPanelProps = {
 	running: boolean;
 	canRun: boolean;
+	canSaveAsCase: boolean;
+	canExportReport: boolean;
+	exportingReport: boolean;
 	log: RunLogEntry[];
 	onRun: () => void;
 	onStop: () => void;
 	onCopy: () => void;
 	onExport: () => void;
+	onExportReportHtml: () => void;
+	onExportReportMarkdown: () => void;
+	onSaveAsCase: () => void;
 };
 
-export function RunPanel({ running, canRun, log, onRun, onStop, onCopy, onExport }: RunPanelProps) {
+export function RunPanel({
+	running,
+	canRun,
+	canSaveAsCase,
+	canExportReport,
+	exportingReport,
+	log,
+	onRun,
+	onStop,
+	onCopy,
+	onExport,
+	onExportReportHtml,
+	onExportReportMarkdown,
+	onSaveAsCase,
+}: RunPanelProps) {
 	return (
 		<div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-3 pb-2">
 			<div className="flex flex-wrap items-center gap-1.5">
@@ -61,6 +81,36 @@ export function RunPanel({ running, canRun, log, onRun, onStop, onCopy, onExport
 					}}
 				>
 					Export .sh
+				</Button>
+				<Button
+					size="sm"
+					variant="secondary"
+					isDisabled={running || !canExportReport || exportingReport}
+					onPress={() => {
+						onExportReportHtml();
+					}}
+				>
+					{exportingReport ? "Exporting…" : "Export HTML"}
+				</Button>
+				<Button
+					size="sm"
+					variant="secondary"
+					isDisabled={running || !canExportReport || exportingReport}
+					onPress={() => {
+						onExportReportMarkdown();
+					}}
+				>
+					Export Markdown
+				</Button>
+				<Button
+					size="sm"
+					variant="secondary"
+					isDisabled={running || !canSaveAsCase}
+					onPress={() => {
+						onSaveAsCase();
+					}}
+				>
+					Save as test case
 				</Button>
 			</div>
 

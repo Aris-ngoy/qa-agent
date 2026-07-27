@@ -3,6 +3,17 @@ import { type InspectorSelection, hitTestElements } from "@/features/inspector/s
 import type { ScreenElement } from "@yoqa/runner-client";
 import { type MouseEvent, useCallback, useRef } from "react";
 
+function isSameSelection(a: InspectorSelection, b: InspectorSelection): boolean {
+	const aId = a.element?.id?.trim() ?? "";
+	const bId = b.element?.id?.trim() ?? "";
+	const aLabel = a.element?.label?.trim() ?? "";
+	const bLabel = b.element?.label?.trim() ?? "";
+	if (aId || bId || aLabel || bLabel) {
+		return aId === bId && aLabel === bLabel && a.x === b.x && a.y === b.y;
+	}
+	return a.x === b.x && a.y === b.y;
+}
+
 type ScreenshotPanelProps = {
 	imageUrl: string | null;
 	elements: ScreenElement[];
@@ -61,9 +72,15 @@ export function ScreenshotPanel({
 	const handleClick = useCallback(
 		(event: MouseEvent<HTMLElement>) => {
 			const next = selectAtEvent(event);
-			if (next) onSelect(next);
+			if (!next) return;
+			// Clicking the current selection again dismisses the action menu.
+			if (selection && isSameSelection(selection, next)) {
+				onClearSelection();
+				return;
+			}
+			onSelect(next);
 		},
-		[onSelect, selectAtEvent],
+		[onClearSelection, onSelect, selectAtEvent, selection],
 	);
 
 	const handleDoubleClick = useCallback(
@@ -112,7 +129,7 @@ export function ScreenshotPanel({
 				)}
 			</div>
 
-			<div className="relative flex min-h-56 items-center justify-center rounded-xl bg-surface-container p-3">
+			<div className="relative flex min-h-56 items-center justify-center overflow-visible rounded-xl bg-surface-container p-3">
 				{!imageUrl && !loading ? (
 					<div className="flex min-h-56 flex-col items-center justify-center gap-2 px-6 text-center">
 						<p className="text-body-sm font-medium text-on-surface">No live feed</p>
@@ -123,7 +140,7 @@ export function ScreenshotPanel({
 				) : null}
 
 				{imageUrl ? (
-					<div className="relative w-fit max-w-full">
+					<div className="relative w-fit max-w-full overflow-visible">
 						{/* biome-ignore lint/a11y/useKeyWithClickEvents: screenshot hit-testing is pointer-driven */}
 						<div
 							role="img"
