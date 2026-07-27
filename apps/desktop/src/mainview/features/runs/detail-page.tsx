@@ -239,6 +239,49 @@ function StepIndicator({
 	);
 }
 
+type StepStatusKind = "completed" | "failed" | "passed" | "in_progress";
+
+function StepStatusLabel({
+	status,
+	className,
+}: {
+	status: StepStatusKind;
+	className?: string;
+}) {
+	const label =
+		status === "completed"
+			? "Completed"
+			: status === "failed"
+				? "Failed"
+				: status === "passed"
+					? "Passed"
+					: "In progress…";
+	const colorClass =
+		status === "completed" || status === "passed"
+			? "text-secondary"
+			: status === "failed"
+				? "text-error"
+				: "text-on-surface-variant";
+	return (
+		<p className={[className ?? "mt-1", "text-helper font-medium", colorClass].join(" ")}>
+			{label}
+		</p>
+	);
+}
+
+function InProgressStepRow() {
+	return (
+		<li className="relative flex items-start gap-3">
+			<span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-container text-helper font-semibold text-on-surface-variant">
+				…
+			</span>
+			<div className="min-w-0 flex-1">
+				<StepStatusLabel className="mt-0.5" status="in_progress" />
+			</div>
+		</li>
+	);
+}
+
 export function RunDetailPage() {
 	const { runId } = useParams({ from: "/runs/$runId" });
 	const queryClient = useQueryClient();
@@ -472,101 +515,72 @@ export function RunDetailPage() {
 								</div>
 
 								<ul className="relative ml-3 space-y-5 before:absolute before:bottom-3 before:left-[0.6875rem] before:top-3 before:w-px before:bg-outline-variant/70">
-									{testSteps.length === 0 ? (
+									{testSteps.map((step) => {
+										const isSelected = reviewMode && selectedStepId === step.id;
+										const { reason, thoughts } = stepReasoning(step);
+
+										if (reviewMode) {
+											return (
+												<li className="relative" key={step.id}>
+													<div className="flex items-start gap-3">
+														<button
+															aria-current={isSelected ? "step" : undefined}
+															className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left outline-none transition-colors hover:bg-surface-container/40 focus-visible:ring-2 focus-visible:ring-primary/40"
+															onClick={() => setSelectedStepId(step.id)}
+															type="button"
+														>
+															<StepIndicator
+																index={step.idx + 1}
+																ok={step.ok}
+																reviewMode={reviewMode}
+															/>
+															<div className="min-w-0 flex-1">
+																<p
+																	className={[
+																		"text-body-md font-medium text-on-surface",
+																		isSelected
+																			? "rounded-lg bg-surface-container px-2 py-1 -mx-2"
+																			: "",
+																	].join(" ")}
+																>
+																	{actionSummary(step.action)}
+																</p>
+																<StepStatusLabel status={step.ok ? "passed" : "failed"} />
+															</div>
+														</button>
+													</div>
+													<div className="ml-9">
+														<StepAiThoughts reason={reason} thoughts={thoughts} />
+													</div>
+												</li>
+											);
+										}
+
+										return (
+											<li className="relative flex items-start gap-3" key={step.id}>
+												<StepIndicator index={step.idx + 1} ok={step.ok} reviewMode={reviewMode} />
+												<div className="min-w-0 flex-1">
+													<p className="text-body-md font-medium text-on-surface">
+														{actionSummary(step.action)}
+													</p>
+													<StepStatusLabel status={step.ok ? "completed" : "failed"} />
+													<StepAiThoughts reason={reason} thoughts={thoughts} />
+												</div>
+											</li>
+										);
+									})}
+									{test.status === "queued" || test.status === "running" ? (
+										<InProgressStepRow />
+									) : testSteps.length === 0 ? (
 										<li className="relative flex items-start gap-3">
 											<span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-container text-helper font-semibold text-on-surface-variant">
 												…
 											</span>
 											<p className="pt-0.5 text-body-sm text-on-surface-variant">
-												{test.status === "queued" || test.status === "running"
-													? "Waiting…"
-													: "No steps recorded"}
+												No steps recorded
 											</p>
 										</li>
-									) : (
-										testSteps.map((step) => {
-											const isSelected = reviewMode && selectedStepId === step.id;
-											const { reason, thoughts } = stepReasoning(step);
-											const body = (
-												<div className="min-w-0 flex-1">
-													<p
-														className={[
-															"text-body-md font-medium text-on-surface",
-															isSelected ? "rounded-lg bg-surface-container px-2 py-1 -mx-2" : "",
-														].join(" ")}
-													>
-														{actionSummary(step.action)}
-													</p>
-													{reviewMode ? (
-														<p
-															className={[
-																"mt-1 text-helper font-medium",
-																step.ok ? "text-secondary" : "text-error",
-															].join(" ")}
-														>
-															{step.ok ? "Passed" : "Failed"}
-														</p>
-													) : null}
-													<StepAiThoughts reason={reason} thoughts={thoughts} />
-												</div>
-											);
-
-											if (reviewMode) {
-												return (
-													<li className="relative" key={step.id}>
-														<div className="flex items-start gap-3">
-															<button
-																aria-current={isSelected ? "step" : undefined}
-																className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left outline-none transition-colors hover:bg-surface-container/40 focus-visible:ring-2 focus-visible:ring-primary/40"
-																onClick={() => setSelectedStepId(step.id)}
-																type="button"
-															>
-																<StepIndicator
-																	index={step.idx + 1}
-																	ok={step.ok}
-																	reviewMode={reviewMode}
-																/>
-																<div className="min-w-0 flex-1">
-																	<p
-																		className={[
-																			"text-body-md font-medium text-on-surface",
-																			isSelected
-																				? "rounded-lg bg-surface-container px-2 py-1 -mx-2"
-																				: "",
-																		].join(" ")}
-																	>
-																		{actionSummary(step.action)}
-																	</p>
-																	<p
-																		className={[
-																			"mt-1 text-helper font-medium",
-																			step.ok ? "text-secondary" : "text-error",
-																		].join(" ")}
-																	>
-																		{step.ok ? "Passed" : "Failed"}
-																	</p>
-																</div>
-															</button>
-														</div>
-														<div className="ml-9">
-															<StepAiThoughts reason={reason} thoughts={thoughts} />
-														</div>
-													</li>
-												);
-											}
-
-											return (
-												<li className="relative flex items-start gap-3" key={step.id}>
-													<StepIndicator
-														index={step.idx + 1}
-														ok={step.ok}
-														reviewMode={reviewMode}
-													/>
-													{body}
-												</li>
-											);
-										})
-									)}
+									) : null}
 								</ul>
 							</div>
 						);
