@@ -379,7 +379,10 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 					</ul>
 					<p className="mt-3 font-semibold">Personal Apple Developer account</p>
 					<ul className="mt-1 list-disc space-y-0.5 pl-5 text-on-surface-variant">
-						<li>Works on any device without registration</li>
+						<li>
+							No manual portal registration — keep the device connected so Xcode can register it
+							during the first WebDriverAgent build
+						</li>
 						<li>
 							On first use, trust the certificate in Settings → General → VPN & Device Management
 						</li>

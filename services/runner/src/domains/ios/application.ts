@@ -277,6 +277,8 @@ async function buildWda(params: {
 	developmentTeam: string;
 	codeSignIdentity: string;
 	bundleId: string;
+	/** Physical device UDID — required so personal teams can auto-register during signing. */
+	deviceId: string;
 }): Promise<string> {
 	await mkdir(params.derivedDataPath, { recursive: true });
 
@@ -287,6 +289,11 @@ async function buildWda(params: {
 	// Use the generic "Apple Development" identity with automatic signing.
 	// Passing the full identity string (e.g. "Apple Development: Name (ID)") conflicts
 	// with CODE_SIGN_STYLE=Automatic and fails the WDA project build.
+	//
+	// Destination must be the concrete device (not generic/platform=iOS). Personal
+	// teams start with zero registered devices; without a UDID, Apple returns
+	// "Your team has no devices from which to generate a provisioning profile"
+	// even with -allowProvisioningDeviceRegistration.
 	const { stderr, stdout, exitCode } = await runCommand(
 		[
 			"xcodebuild",
@@ -297,7 +304,7 @@ async function buildWda(params: {
 			"-scheme",
 			"WebDriverAgentRunner",
 			"-destination",
-			"generic/platform=iOS",
+			`id=${params.deviceId}`,
 			"-derivedDataPath",
 			params.derivedDataPath,
 			"-allowProvisioningUpdates",
@@ -493,6 +500,7 @@ export async function installWdaOnDevice(
 		developmentTeam: params.developmentTeam,
 		codeSignIdentity: params.codeSignIdentity,
 		bundleId,
+		deviceId: params.deviceId,
 	});
 
 	await stripIos17TestFrameworks(appPath);

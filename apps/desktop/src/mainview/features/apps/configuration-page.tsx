@@ -124,7 +124,7 @@ export function ConfigurationPage() {
 	return (
 		<div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-8">
 			<header className="flex items-center justify-between gap-4">
-				<h1 className="text-headline-lg text-on-surface">Settings</h1>
+				<h1 className="text-headline-lg text-on-surface">Configuration</h1>
 				<div className="flex items-center gap-2">
 					<AlertDialog>
 						<Button
