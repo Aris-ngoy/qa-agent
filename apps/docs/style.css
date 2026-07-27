@@ -1,0 +1,57 @@
+/**
+ * Align Mintlify chrome with the YoQA desktop soft-pastel palette
+ * (packages/ui/src/styles.css).
+ */
+
+:root {
+	--yoqa-background: #e8ecf6;
+	--yoqa-on-surface: #1a1a1e;
+	--yoqa-on-surface-variant: #6b6f7a;
+	--yoqa-surface: #ffffff;
+	--yoqa-surface-secondary: #f4f5fb;
+	--yoqa-surface-tertiary: #eceef6;
+	--yoqa-border: #d8dbe6;
+	--yoqa-primary: #1a1a1e;
+	--yoqa-lavender: #8b7ec8;
+	--yoqa-lavender-soft: #c9b8e8;
+	--yoqa-lavender-deep: #4a3f7a;
+	--yoqa-mint: #3d9b7a;
+	--yoqa-sidebar: #1a1a1e;
+	--yoqa-sidebar-muted: #8a8a90;
+}
+
+/* Soft dashboard canvas (light mode) */
+html.light #background-color,
+html:not(.dark) #background-color {
+	background: linear-gradient(160deg, #e4e8f4 0%, #eef0f8 45%, #e8ecf6 100%) !important;
+}
+
+html.light #navbar,
+html:not(.dark) #navbar {
+	background: rgb(244 245 251 / 0.85);
+	border-bottom: 1px solid var(--yoqa-border);
+	backdrop-filter: blur(12px);
+}
+
+/* Cards / steps — soft surfaces */
+html.light card,
+html:not(.dark) card {
+	background: var(--yoqa-surface);
+	border-color: var(--yoqa-border);
+	border-radius: 0.75rem;
+}
+
+html.light step,
+html:not(.dark) step {
+	border-color: var(--yoqa-border);
+}
+
+/* Dark mode: match desktop inverse / icon plate */
+html.dark #background-color {
+	background: #14131c !important;
+}
+
+html.dark #navbar {
+	background: rgb(26 26 30 / 0.9);
+	border-bottom: 1px solid #2a2a2e;
+}

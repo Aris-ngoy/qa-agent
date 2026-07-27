@@ -2,7 +2,7 @@
 
 ## Goal
 
-Ship a public product docs site matching the look/IA of [docs.noqa.ai](https://docs.noqa.ai/docs/overview), branded for YoQA, covering Phase 1 local features.
+Ship a public product docs site (Mintlify IA: Docs + Guide tabs) branded for YoQA, covering Phase 1 local features.
 
 ## Plan summary
 
