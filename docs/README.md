@@ -2,6 +2,8 @@
 
 Build notes and feature write-ups produced after **plan → build** work.
 
+**Public product docs (Mintlify):** [`apps/docs`](../apps/docs) — run `bun run docs` (preview at http://localhost:3000). Hosted target: `https://docs.yoqa.ai`.
+
 | Folder | Use for |
 |--------|---------|
 | `architecture/` | Cross-cutting design and system decisions |
@@ -33,3 +35,4 @@ See `.cursor/rules/document-plan-builds.mdc` for when and how agents should add 
 | [runs/report-export.md](./runs/report-export.md) | HTML/Markdown E2E report export (runs + inspector) |
 | [ios/wda-reuse-on-select.md](./ios/wda-reuse-on-select.md) | Skip/rebuild WebDriverAgent on physical iOS select |
 | [sessions/2026-07-24-yoqa-testing-skill.md](./sessions/2026-07-24-yoqa-testing-skill.md) | Copied/rebranded `yoqa-testing` agent skill |
+| [sessions/2026-07-27-mintlify-docs-site.md](./sessions/2026-07-27-mintlify-docs-site.md) | Public Mintlify docs site at `apps/docs` |

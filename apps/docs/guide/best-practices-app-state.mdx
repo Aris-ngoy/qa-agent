@@ -1,0 +1,20 @@
+---
+title: App State Management
+description: Managing app state before and during tests.
+---
+
+Flaky suites usually come from **dirty state**, not bad instructions.
+
+## Prefer clean starts when it matters
+
+- Install a fresh [build](/docs/local-builds) for install/onboarding cases.
+- Use `terminate-app` / `restart-app` (CLI or agent actions) between flows that leave side effects.
+- Put "sign out if already signed in" in app context or a reusable login flow.
+
+## Don't over-reset
+
+Shared smoke cases can assume a known logged-in account documented in app context — faster than full reinstall every time.
+
+## Permissions and first-run
+
+First launch prompts (ATT, notifications, tracking) should be covered either in **app context** ("always allow permission dialogs") or in an explicit setup case so product cases stay focused.

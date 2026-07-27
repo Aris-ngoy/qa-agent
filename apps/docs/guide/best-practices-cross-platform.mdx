@@ -1,0 +1,23 @@
+---
+title: Cross-Platform Apps
+description: Best practices for testing apps on both iOS and Android with YoQA.
+---
+
+## Shared cases, platform identifiers
+
+Keep one logical suite where instructions are platform-agnostic ("Open Settings", "Tap Save"). Put platform-specific bundle/package IDs on the [app](/docs/apps) record, and run the same cases once per platform device.
+
+## When copy must differ
+
+If labels diverge ("Log in" vs "Sign in"), either:
+
+- Split into platform-tagged cases (`ios`, `android`), or
+- Put alternate names in **app context** so the agent recognizes both.
+
+## Capabilities
+
+Use case- or app-level [Appium capabilities](/guide/best-practices-appium-capabilities) only when a platform needs special launch behavior (Android activities, `autoLaunch`, etc.).
+
+## Avoid coordinate-only cases
+
+Relative coordinates differ by screen size. Prefer natural-language instructions and `-d` grounding so the same case survives phone vs tablet.

@@ -1,0 +1,44 @@
+---
+title: Manual Inspector
+description: Explore the device UI, build shell scripts, and save actions without writing locator code.
+---
+
+The Manual Inspector is a desktop surface for **exploring** a connected device the way a QA engineer would, then turning what you did into a reusable script.
+
+## Flow
+
+<Steps>
+  <Step title="Connect a device">
+    Select an iOS or Android device/simulator so an Appium session is active.
+  </Step>
+
+  <Step title="Inspect">
+    View the live screen. Select elements to target actions (tap, swipe, input, lifecycle).
+  </Step>
+
+  <Step title="Build a shell script">
+    Actions append to a script (CLI-shaped commands) instead of requiring you to invent locators by hand.
+  </Step>
+
+  <Step title="Run or save">
+    Execute the script against the session, export a report, or keep it for later regression.
+  </Step>
+</Steps>
+
+## When to use it
+
+- Learn screen structure before writing natural-language cases.
+- Reproduce a bug with an exact sequence of gestures.
+- Produce a **saved script** after you understand the happy path (complementary to AI agent runs).
+
+For autonomous NL cases, use [Test Cases](/docs/test-cases) + Runs. For agent-driven debugging from the terminal, use [CLI for agents](/guide/cli-for-agents).
+
+<CardGroup cols={2}>
+  <Card title="Desktop app" icon="desktop" href="/docs/desktop-app">
+    Where to open Inspector
+  </Card>
+
+  <Card title="CLI" icon="terminal" href="/docs/cli">
+    Equivalent screen / action commands
+  </Card>
+</CardGroup>

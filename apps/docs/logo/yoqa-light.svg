@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 32" fill="none">
+  <rect width="28" height="28" y="2" rx="7" fill="#0D9488"/>
+  <path d="M8 10.5h4.2l2.1 7.2 2.1-7.2H20.6l-3.6 11H12.6L8 10.5z" fill="#FFFFFF"/>
+  <text x="36" y="23" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18" font-weight="700" fill="#0F172A" letter-spacing="-0.02em">yoqa</text>
+</svg>

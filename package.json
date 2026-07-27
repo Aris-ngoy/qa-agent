@@ -1,7 +1,7 @@
 {
 	"name": "yoqa",
 	"private": true,
-	"workspaces": ["apps/*", "packages/*", "services/*"],
+	"workspaces": ["apps/desktop", "packages/*", "services/*"],
 	"scripts": {
 		"dev": "turbo run dev",
 		"build": "turbo run build",
@@ -11,6 +11,7 @@
 		"runner": "bun run --filter @yoqa/runner start",
 		"health": "bun run --filter @yoqa/runner health",
 		"desktop": "bun run --filter @yoqa/desktop dev",
+		"docs": "bun run --cwd apps/docs dev",
 		"prepare": "husky"
 	},
 	"devDependencies": {

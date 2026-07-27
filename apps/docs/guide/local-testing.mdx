@@ -1,0 +1,45 @@
+---
+title: Local testing
+description: Run YoQA entirely on your Mac with local devices and BYO models.
+---
+
+Phase 1 is **local-only**. Everything — Appium, vision calls, catalog, reports — runs on your machine.
+
+## What works locally
+
+| Capability | Local |
+| ---------- | ----- |
+| iOS Simulator / Android Emulator | Yes |
+| Physical iOS / Android devices | Yes (with toolchain setup) |
+| Local `.ipa` / `.app` / `.apk` builds | Yes |
+| CLI device connector | Yes |
+| Autonomous agent runs | Yes (BYO provider) |
+| Manual Inspector | Yes |
+| Cloud device farm | Not yet |
+| Hosted CI runners | Not yet |
+| Public API | Not yet |
+
+## When local is the right choice
+
+- Fast feedback while developing a feature.
+- Hardware or OS versions you already own.
+- Privacy — builds and screenshots stay on disk.
+- Debugging WDA / Appium issues with full control.
+
+## Requirements
+
+- macOS with the YoQA [desktop app](/docs/desktop-app) / runner
+- [Device preparation](/docs/device-preparation) for the platforms you use
+- An [AI provider](/docs/providers) for grounding and agent runs
+
+Cloud and CI documentation will land when those surfaces ship. Until then, wire local `yoqa` commands into your own scripts if you need automation around the runner.
+
+<CardGroup cols={2}>
+  <Card title="Desktop application" icon="desktop" href="/docs/desktop-app">
+    Local host UI
+  </Card>
+
+  <Card title="Device preparation" icon="mobile" href="/docs/device-preparation">
+    Xcode / adb / WDA
+  </Card>
+</CardGroup>

@@ -1,0 +1,55 @@
+---
+title: Desktop application
+description: Set up and run YoQA in local mode on macOS.
+---
+
+## macOS application
+
+The YoQA desktop app is the local host for Appium sessions, device browsing, apps/cases/runs, Manual Inspector, and Settings.
+
+In development from this monorepo:
+
+```bash
+bun run runner
+bun run desktop
+```
+
+Keep the **runner** process up while you use the UI or CLI — the CLI talks to it locally.
+
+## Why local
+
+- **Your own devices** — specific hardware and OS versions you care about.
+- **Simulator support** — iOS Simulator and Android Emulator without a device farm.
+- **Fast iteration** — watch agent steps, thoughts, and screenshots in real time.
+- **BYO models** — your provider keys stay on your machine.
+
+## Main surfaces
+
+| Area | What it does |
+| ---- | ------------ |
+| **Apps / Cases** | Catalog of apps, natural-language cases, flows, tags |
+| **Runs** | Live and historical runs, cancel, thoughts, report export |
+| **Manual Inspector** | Script-first explore: select elements, build a shell script, run / save |
+| **Settings → iOS toolchain** | Xcode / WebDriverAgent readiness |
+| **Settings → CLI & Agents** | Install `yoqa` CLI + `yoqa-testing` skill |
+| **Settings → Providers** | AI providers for vision decide + grounding |
+
+## CLI & skill install
+
+Open **Settings → CLI & Agents**:
+
+1. **Install CLI** — links `yoqa` into `~/.local/bin` (restart the terminal afterward).
+2. **Install skill** — copies `yoqa-testing` for Cursor / Claude / Codex / Standard skill dirs.
+3. Verify with `yoqa health` and `yoqa status`.
+
+See [CLI](/docs/cli) and [CLI for agents](/guide/cli-for-agents).
+
+<CardGroup cols={2}>
+  <Card title="Device preparation" icon="mobile" href="/docs/device-preparation">
+    Xcode, adb, and WDA readiness
+  </Card>
+
+  <Card title="AI Providers" icon="key" href="/docs/providers">
+    Configure vision models
+  </Card>
+</CardGroup>

@@ -1,0 +1,26 @@
+---
+title: Games
+description: Best practices for testing games with YoQA.
+---
+
+Games often lack a useful accessibility tree. YoQA's agent is a strong fit because autonomous runs are **vision-first**.
+
+## Put rules in app context
+
+Describe once in [app context](/docs/apps):
+
+- Win / lose / pause conditions
+- What important HUD controls look like
+- Gestures that are easy to misread (hold vs tap)
+
+Keep case instructions at goal level: "Complete level 1" rather than pixel-perfect move lists — refine only when the agent drifts.
+
+## Prefer screenshots over trees
+
+For coding-agent debug loops, `yoqa screen` may be sparse. Fall back to `yoqa screenshot` and description grounding more often than in native form-based apps.
+
+## Timing
+
+Games animate quickly. Expect occasional misses on short-lived UI; add explicit waits in instructions ("wait until the reward chest appears") or break flows into smaller goals.
+
+See also [Non-native UI](/guide/best-practices-non-native-ui).

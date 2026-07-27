@@ -1,0 +1,17 @@
+---
+title: In-App Purchases
+description: Testing in-app purchases with YoQA.
+---
+
+IAP flows leave your app for system sheets (StoreKit / Play Billing). Visual agents can follow those sheets because they act on screenshots of the **whole device**.
+
+## Tips
+
+- Use **sandbox / test accounts** — never real payment credentials in app context.
+- Mention in instructions that the agent should complete or dismiss the system purchase sheet as appropriate for the scenario.
+- Prefer expected results like "subscription is active on the account screen" over "the Apple sheet animated correctly".
+- For local iOS, ensure StoreKit testing / sandbox is configured on the device before asserting purchase success.
+
+## Alerts and sheets
+
+System UI can be dismissed with `yoqa action alert` during CLI debug, or left to the agent during autonomous runs. If a sheet blocks every case, document the rule in **app context**.

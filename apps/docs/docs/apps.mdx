@@ -1,0 +1,47 @@
+---
+title: Apps
+description: Manage iOS and Android applications for local agentic testing.
+---
+
+An **app** is the top-level container for identifiers, shared context, capabilities, cases, flows, tags, and builds.
+
+## Identifiers
+
+When you add an app (desktop UI or `yoqa apps`), provide:
+
+| Field | Platform | Purpose |
+| ----- | -------- | ------- |
+| **name** | both | Display name (e.g. `MyApp`) |
+| **prefix** | both | Short unique ID used by CLI catalog commands (`yoqa cases list APP`) |
+| **bundle_id** | iOS | Bundle identifier (e.g. `com.example.myapp`) |
+| **package_name** | Android | Package name (e.g. `com.example.myapp`) |
+| **app_store_id** / **play_store_id** | optional | Store IDs for future store/TestFlight flows |
+
+At least one platform identifier (bundle or package) is needed to launch and target the app on device.
+
+## App context
+
+**App context** is shared guidance injected into every run — credentials, screen names, global rules, and quirks. Write it once so each test case stays short.
+
+Configure it in the app settings in the desktop UI, or via:
+
+```bash
+yoqa apps get APP
+yoqa apps update APP '{"app_context": "..."}'
+```
+
+See [Writing good test cases](/guide/writing-test-cases) for what belongs in context vs instructions.
+
+## Appium capabilities
+
+Optional defaults for how Appium starts sessions (e.g. `appium:autoLaunch`). Case-level caps override app-level. Details: [Appium capabilities](/guide/best-practices-appium-capabilities).
+
+<CardGroup cols={2}>
+  <Card title="Test cases" icon="list-check" href="/docs/test-cases">
+    Cases, flows, and tags under an app
+  </Card>
+
+  <Card title="Local builds" icon="box" href="/docs/local-builds">
+    Register `.ipa` / `.app` / `.apk` files
+  </Card>
+</CardGroup>

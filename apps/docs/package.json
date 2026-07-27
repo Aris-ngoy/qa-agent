@@ -1,0 +1,12 @@
+{
+	"name": "@yoqa/docs",
+	"private": true,
+	"version": "0.0.0",
+	"scripts": {
+		"dev": "mintlify dev",
+		"check": "mintlify broken-links"
+	},
+	"devDependencies": {
+		"mintlify": "4.2.742"
+	}
+}

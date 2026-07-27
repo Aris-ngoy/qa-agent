@@ -1,0 +1,40 @@
+---
+title: Appium Capabilities
+description: Pass custom Appium capabilities to control how the app starts.
+---
+
+Under the hood, YoQA drives your app through Appium. Defaults work for most tests. When you need finer control, set custom **capabilities**.
+
+## Where to set them
+
+- **Per app** — defaults for every case.
+- **Per test case** — overrides app-level keys for that case only.
+
+Each capability is a key/value pair (e.g. `appium:autoLaunch` = `false`).
+
+<Tip>
+  Only add capabilities when you need them.
+</Tip>
+
+## Start without launching the app
+
+Set `appium:autoLaunch` to `false` when the journey should begin on the home screen or in a browser:
+
+| Capability | Value |
+| ---------- | ----- |
+| `appium:autoLaunch` | `false` |
+
+Then describe the real start in instructions ("Open example.com and sign in…").
+
+## Android: multiple entry points
+
+Name the launch activity with `appium:appActivity`. If a splash hands off, also set `appium:appWaitActivity` (wildcards like `*.MainActivity` are allowed):
+
+| Capability | Value |
+| ---------- | ----- |
+| `appium:appActivity` | `.debug.DebugEntryActivity` |
+| `appium:appWaitActivity` | `.main.MainActivity` |
+
+## Local note
+
+Capabilities apply to local Appium sessions started by the YoQA runner. Cloud-specific caps will be documented when cloud runs ship.

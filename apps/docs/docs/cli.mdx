@@ -1,0 +1,128 @@
+---
+title: CLI
+description: Drive YoQA from your terminal — devices, screen, actions, catalog, and runs.
+---
+
+The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app that starts it) running.
+
+<Note>
+  Install the CLI from the desktop app: **Settings → CLI & Agents → Install CLI**. Restart your terminal afterward. For coding agents, also install the skill — see [CLI for agents](/guide/cli-for-agents).
+</Note>
+
+## Setup
+
+<Steps>
+  <Step title="Start the runner">
+    ```bash
+    bun run runner
+    # or open the YoQA desktop app
+    ```
+  </Step>
+
+  <Step title="Install the CLI">
+    Settings → **CLI & Agents** → **Install CLI**. Links `yoqa` into `~/.local/bin`.
+  </Step>
+
+  <Step title="Verify">
+    ```bash
+    yoqa health
+    yoqa status
+    yoqa devices ios
+    ```
+  </Step>
+</Steps>
+
+## Devices
+
+```bash
+yoqa devices ios                             # list devices & simulators (--all for every simulator)
+yoqa devices android                         # list devices & emulators (--all for every emulator)
+yoqa devices connect <device-id>             # open a session (full id from the list)
+yoqa devices active                          # show the connected device
+yoqa devices disconnect
+```
+
+## Inspect the screen
+
+```bash
+yoqa screen                                  # cleaned element tree + relative coords (0–1000)
+yoqa screen --full                           # raw Appium accessibility tree
+yoqa screenshot ./shot.png                   # save a PNG
+```
+
+Prefer `yoqa screen` in agent loops — fewer tokens than a screenshot or `--full`. Details: [CLI for agents](/guide/cli-for-agents).
+
+## Actions
+
+Prefer **description grounding** (`-d` / `--description`) when an [AI provider](/docs/providers) is configured. Fall back to relative coordinates (`0–1000`) from `yoqa screen`.
+
+```bash
+# By description (recommended)
+yoqa action tap -d "Login button"
+yoqa action tap -d "Login button" --double
+yoqa action tap -d "Login button" --duration 2
+yoqa action swipe -d "photo carousel, swipe left"
+yoqa action drag -d "card onto the drop zone"
+yoqa action input -d "email field" --text "hi@yoqa.ai"
+
+# By coordinates (fallback)
+yoqa action tap --x 500 --y 320
+yoqa action swipe --x1 500 --y1 800 --x2 500 --y2 200
+yoqa action drag --x1 300 --y1 500 --x2 700 --y2 500
+yoqa action input --x 500 --y 640 --text "hi@yoqa.ai"
+
+# App & system
+yoqa action open-url --url "myapp://profile"
+yoqa action alert --action accept
+yoqa action alert --action dismiss
+yoqa action activate-app --bundle-id com.example.app
+yoqa action terminate-app --bundle-id com.example.app
+yoqa action restart-app --bundle-id com.example.app
+yoqa action background-app
+```
+
+## Test management
+
+Catalog commands take the app **prefix** as `APP` (`yoqa apps list`).
+
+```bash
+yoqa apps list
+yoqa apps get APP
+yoqa apps update APP '{"name": "...", "app_context": "..."}'
+
+yoqa cases list APP
+yoqa cases list APP --tag smoke
+yoqa cases get APP 42
+yoqa cases create APP '{"title": "Login", "tags": ["smoke"], "flows": [{"instructions": "...", "result": "..."}]}'
+yoqa cases update APP 42 '{"title": "New title"}'
+yoqa cases delete APP 42
+
+yoqa flows list APP
+yoqa flows create APP '{"name": "Onboarding", "instructions": "...", "result": "..."}'
+yoqa tags APP
+```
+
+## Builds & runs
+
+```bash
+yoqa builds list APP
+yoqa builds create APP --path ./MyApp.app
+
+yoqa runs list
+yoqa runs get <run-id>
+yoqa runs create ...          # start cases on the active device
+yoqa runs report <run-id>     # export HTML / Markdown
+yoqa runs delete <run-id>
+```
+
+Agent runs require a configured provider. Cloud credits are not required for local Phase 1.
+
+<CardGroup cols={2}>
+  <Card title="CLI for agents" icon="robot" href="/guide/cli-for-agents">
+    Skill + inspect → act → verify
+  </Card>
+
+  <Card title="How the agent works" icon="brain" href="/guide/how-yoqa-agent-works">
+    Perception loop for autonomous runs
+  </Card>
+</CardGroup>

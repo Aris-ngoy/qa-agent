@@ -1,0 +1,69 @@
+---
+title: Writing Good Test Cases
+description: How to write test cases that the agent can execute reliably.
+---
+
+## Structure
+
+A test case consists of:
+
+- **Title** — short human-readable name.
+- **Flows** — one or more steps. Each flow has **instructions** (what to do) and an optional **expected result** (what to verify).
+
+## App context
+
+App context is shared description injected into every case. Configure it once on the [app](/docs/apps):
+
+- **General rules** — only non-obvious guidance (e.g. "Always grant permission prompts").
+- **Credentials** — test account email / password.
+- **Screen and feature names** — define vocabulary once.
+- **Core functionality** — what the app does.
+- **Game rules** — win/lose conditions and key HUD elements for games.
+
+<CardGroup cols={2}>
+  <Card title="App context">
+    Login: test@example.com / Test1234.
+
+    Home — first screen after login; search at top, recent items below.
+
+    Profile — bottom tab; name, avatar, settings.
+  </Card>
+
+  <Card title="Case instructions">
+    Sign in and open Profile.
+
+    On Home, search for "shoes".
+  </Card>
+</CardGroup>
+
+## Instructions
+
+### Don't describe every action
+
+The agent understands goals.
+
+<CardGroup cols={2}>
+  <Card title="Avoid">
+    Tap Next on "Welcome". Tap Next on "Discover features". Tap Get Started on "Ready?".
+  </Card>
+
+  <Card title="Prefer">
+    Complete onboarding until you reach the paywall.
+  </Card>
+</CardGroup>
+
+### Be specific when the agent goes off track
+
+If a run wanders, name the element, screen, or break the flow into smaller steps.
+
+### Write step by step
+
+One goal per numbered step — easier to debug and reuse as flows.
+
+## Expected results
+
+State what should be **true** after the flow (visible screen, value, message). Vague "it works" expectations make failures harder to diagnose.
+
+## Reusable flows
+
+Pull shared paths (login, onboarding) into reusable flows so many cases stay DRY. See [Test Cases](/docs/test-cases).

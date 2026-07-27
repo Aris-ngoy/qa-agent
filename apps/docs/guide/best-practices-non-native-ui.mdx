@@ -1,0 +1,21 @@
+---
+title: Non-Native UI
+description: Testing apps with WebViews, canvas, and custom-drawn UI.
+---
+
+WebViews, Flutter/React Native canvases, and custom-drawn controls often expose weak or empty accessibility trees.
+
+## Prefer vision
+
+- Autonomous YoQA runs already use screenshots — ideal for these UIs.
+- For CLI agents, lean on `yoqa screenshot` + `-d` grounding when `yoqa screen` is empty or misleading.
+
+## Describe visually
+
+Name what a human would see: color, icon shape, relative position ("blue circular FAB bottom-right"), not internal view IDs.
+
+## Hybrid screens
+
+If only part of the screen is native, still write goal-level instructions; add detail only for the custom region that the agent mis-taps.
+
+Related: [Games](/guide/best-practices-games).

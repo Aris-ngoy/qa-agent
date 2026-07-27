@@ -47,12 +47,14 @@ Expected JSON includes `"ok": true` and `"service": "yoqa-runner"`.
 bun run lint          # Biome
 bun run check         # package typechecks + Biome
 bun run desktop       # Electrobun desktop (dev)
+bun run docs          # Mintlify product docs (apps/docs)
 ```
 
 ## Workspace layout
 
 ```
 apps/desktop          Electrobun + React UI
+apps/docs             Public Mintlify docs (not a Bun workspace package)
 services/runner       Local Hono runner + yoqa CLI
 packages/runner-client
 packages/ui
