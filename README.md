@@ -46,7 +46,9 @@ Expected JSON includes `"ok": true` and `"service": "yoqa-runner"`.
 ## Other commands
 
 ```bash
-bun run lint          # Biome
+bun run lint          # Biome lint + format check
+bun run lint:fix     # Biome auto-fix
+bun run test          # Bun unit tests
 bun run check         # package typechecks + Biome
 bun run desktop       # Electrobun desktop (dev)
 bun run docs          # Mintlify product docs (apps/docs)
