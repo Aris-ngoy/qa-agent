@@ -96,11 +96,11 @@ function isLayoutOnly(name: string, label: string): boolean {
 	return (
 		lower.includes("layout") ||
 		lower.includes("viewgroup") ||
-		lower === "XCUIElementTypeOther" ||
-		lower === "XCUIElementTypeApplication" ||
+		lower === "xcuielementtypeother" ||
+		lower === "xcuielementtypeapplication" ||
 		lower === "hierarchy" ||
-		lower === "android.widget.FrameLayout" ||
-		lower === "android.view.View"
+		lower === "android.widget.framelayout" ||
+		lower === "android.view.view"
 	);
 }
 

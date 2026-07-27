@@ -9,7 +9,7 @@
 		"lint:fix": "biome check --write .",
 		"lint:ci": "biome ci .",
 		"format": "biome format --write .",
-		"test": "bun test --pass-with-no-tests",
+		"test": "bun test packages/runner-client/src services/runner/src",
 		"check": "turbo run check && biome check .",
 		"runner": "bun run --filter @yoqa/runner start",
 		"health": "bun run --filter @yoqa/runner health",
