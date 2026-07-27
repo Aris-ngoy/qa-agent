@@ -1,0 +1,351 @@
+import type { ActionKind, ActionRequest, ActionResponse } from "./schemas";
+import { actionKindSchema } from "./schemas";
+
+export type ShellScriptSleepStep = {
+	kind: "sleep";
+	seconds: number;
+	lineNumber: number;
+	raw: string;
+};
+
+export type ShellScriptActionStep = {
+	kind: "action";
+	action: ActionRequest;
+	lineNumber: number;
+	raw: string;
+};
+
+export type ShellScriptStep = ShellScriptSleepStep | ShellScriptActionStep;
+
+export type ParseYoqaShellScriptResult = {
+	steps: ShellScriptStep[];
+	/** Lines that could not be parsed (1-based). */
+	errors: Array<{ lineNumber: number; raw: string; message: string }>;
+};
+
+export type RunYoqaShellScriptOptions = {
+	signal?: AbortSignal;
+	onStep?: (event: {
+		index: number;
+		total: number;
+		step: ShellScriptStep;
+		status: "running" | "ok" | "error" | "skipped";
+		error?: string;
+	}) => void | Promise<void>;
+	/** Delay after each successful action before continuing (ms). Default 0. */
+	pauseAfterActionMs?: number;
+};
+
+type ActionClient = {
+	performAction: (request: ActionRequest) => Promise<ActionResponse>;
+};
+
+function shellSingleQuote(value: string): string {
+	return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Tokenize a shell-ish command line (supports single/double quotes). */
+export function tokenizeShellLine(line: string): string[] {
+	const tokens: string[] = [];
+	let current = "";
+	let quote: "'" | '"' | null = null;
+	for (let i = 0; i < line.length; i++) {
+		const ch = line[i];
+		if (ch == null) continue;
+		if (quote === "'") {
+			if (ch === "'") {
+				quote = null;
+			} else {
+				current += ch;
+			}
+			continue;
+		}
+		if (quote === '"') {
+			if (ch === "\\") {
+				const next = line[i + 1];
+				if (next != null) {
+					current += next;
+					i++;
+				}
+				continue;
+			}
+			if (ch === '"') {
+				quote = null;
+			} else {
+				current += ch;
+			}
+			continue;
+		}
+		if (ch === "'" || ch === '"') {
+			quote = ch;
+			continue;
+		}
+		if (/\s/.test(ch)) {
+			if (current.length > 0) {
+				tokens.push(current);
+				current = "";
+			}
+			continue;
+		}
+		current += ch;
+	}
+	if (quote != null) {
+		throw new Error("Unclosed quote");
+	}
+	if (current.length > 0) {
+		tokens.push(current);
+	}
+	return tokens;
+}
+
+function parseFlagMap(tokens: string[]): Map<string, string | true> {
+	const flags = new Map<string, string | true>();
+	for (let i = 0; i < tokens.length; i++) {
+		const token = tokens[i];
+		if (token == null || !token.startsWith("-")) continue;
+		const eq = token.indexOf("=");
+		if (eq > 0) {
+			flags.set(token.slice(0, eq), token.slice(eq + 1));
+			continue;
+		}
+		const next = tokens[i + 1];
+		if (next != null && !next.startsWith("-")) {
+			flags.set(token, next);
+			i++;
+		} else {
+			flags.set(token, true);
+		}
+	}
+	return flags;
+}
+
+function flagString(flags: Map<string, string | true>, ...names: string[]): string | undefined {
+	for (const name of names) {
+		const value = flags.get(name);
+		if (typeof value === "string") return value;
+	}
+	return undefined;
+}
+
+function flagNumber(flags: Map<string, string | true>, ...names: string[]): number | undefined {
+	const raw = flagString(flags, ...names);
+	if (raw == null) return undefined;
+	const n = Number(raw);
+	return Number.isFinite(n) ? n : undefined;
+}
+
+function parseActionFromTokens(
+	tokens: string[],
+	lineNumber: number,
+	raw: string,
+): ShellScriptActionStep {
+	// Expected: yoqa action <kind> [flags...]
+	if (tokens[0] !== "yoqa" || tokens[1] !== "action") {
+		throw new Error("Expected `yoqa action <kind> …`");
+	}
+	const kindRaw = tokens[2];
+	if (!kindRaw) {
+		throw new Error("Missing action kind");
+	}
+	const kindParsed = actionKindSchema.safeParse(kindRaw);
+	if (!kindParsed.success) {
+		throw new Error(`Unknown action kind: ${kindRaw}`);
+	}
+	const kind: ActionKind = kindParsed.data;
+	const flags = parseFlagMap(tokens.slice(3));
+	const action: ActionRequest = { kind };
+
+	const description = flagString(flags, "-d", "--description");
+	if (description != null) action.description = description;
+
+	const x = flagNumber(flags, "--x");
+	const y = flagNumber(flags, "--y");
+	const x2 = flagNumber(flags, "--x2");
+	const y2 = flagNumber(flags, "--y2");
+	const durationMs = flagNumber(flags, "--duration");
+	const text = flagString(flags, "--text");
+	const appId = flagString(flags, "--app-id", "--bundle-id");
+	const url = flagString(flags, "--url");
+	const seconds = flagNumber(flags, "--seconds");
+
+	if (x != null) action.x = x;
+	if (y != null) action.y = y;
+	if (x2 != null) action.x2 = x2;
+	if (y2 != null) action.y2 = y2;
+	if (durationMs != null) action.durationMs = durationMs;
+	if (text != null) action.text = text;
+	if (appId != null) action.appId = appId;
+	if (url != null) action.url = url;
+	if (seconds != null) action.seconds = seconds;
+
+	if (flags.has("--dismiss")) {
+		action.alertAction = "dismiss";
+	} else if (flags.has("--accept") || kind === "alert") {
+		const alertAction = flagString(flags, "--action");
+		if (alertAction === "dismiss") action.alertAction = "dismiss";
+		else if (alertAction === "accept" || kind === "alert") action.alertAction = "accept";
+	}
+
+	return { kind: "action", action, lineNumber, raw };
+}
+
+function isIgnorableLine(trimmed: string): boolean {
+	if (trimmed.length === 0) return true;
+	if (trimmed.startsWith("#")) return true;
+	if (trimmed === "set -euo pipefail" || trimmed === "set -e" || trimmed === "set -eu") return true;
+	return false;
+}
+
+export function parseYoqaShellScript(text: string): ParseYoqaShellScriptResult {
+	const lines = text.split(/\r?\n/);
+	const steps: ShellScriptStep[] = [];
+	const errors: ParseYoqaShellScriptResult["errors"] = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		const lineNumber = i + 1;
+		const raw = lines[i] ?? "";
+		const trimmed = raw.trim();
+		if (isIgnorableLine(trimmed)) continue;
+
+		try {
+			const tokens = tokenizeShellLine(trimmed);
+			if (tokens.length === 0) continue;
+
+			if (tokens[0] === "sleep") {
+				const seconds = Number(tokens[1]);
+				if (!Number.isFinite(seconds) || seconds < 0) {
+					throw new Error("`sleep` requires a non-negative number of seconds");
+				}
+				steps.push({ kind: "sleep", seconds, lineNumber, raw: trimmed });
+				continue;
+			}
+
+			if (tokens[0] === "yoqa") {
+				steps.push(parseActionFromTokens(tokens, lineNumber, trimmed));
+				continue;
+			}
+
+			throw new Error(`Unsupported command: ${tokens[0]}`);
+		} catch (error) {
+			errors.push({
+				lineNumber,
+				raw: trimmed,
+				message: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+
+	return { steps, errors };
+}
+
+export function formatActionShellLine(action: ActionRequest): string {
+	const parts = ["yoqa", "action", action.kind];
+
+	if (action.description) {
+		parts.push("-d", shellSingleQuote(action.description));
+	}
+	if (action.x != null) parts.push("--x", String(Math.round(action.x)));
+	if (action.y != null) parts.push("--y", String(Math.round(action.y)));
+	if (action.x2 != null) parts.push("--x2", String(Math.round(action.x2)));
+	if (action.y2 != null) parts.push("--y2", String(Math.round(action.y2)));
+	if (action.durationMs != null) parts.push("--duration", String(Math.round(action.durationMs)));
+	if (action.text != null) parts.push("--text", shellSingleQuote(action.text));
+	if (action.appId != null) parts.push("--app-id", shellSingleQuote(action.appId));
+	if (action.url != null) parts.push("--url", shellSingleQuote(action.url));
+	if (action.seconds != null) parts.push("--seconds", String(action.seconds));
+	if (action.kind === "alert") {
+		if (action.alertAction === "dismiss") parts.push("--dismiss");
+	}
+
+	return parts.join(" ");
+}
+
+export function formatSleepShellLine(seconds: number): string {
+	const safe = Math.max(0, seconds);
+	const rounded = Number.isInteger(safe) ? String(safe) : String(Number(safe.toFixed(3)));
+	return `sleep ${rounded}`;
+}
+
+export const DEFAULT_SHELL_SCRIPT_HEADER = [
+	"#!/usr/bin/env bash",
+	"# YoQA inspector script",
+	"# Requires an active device session: yoqa devices connect <id>",
+	"set -euo pipefail",
+	"",
+].join("\n");
+
+function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+	if (ms <= 0) return Promise.resolve();
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+			return;
+		}
+		const timer = setTimeout(() => {
+			signal?.removeEventListener("abort", onAbort);
+			resolve();
+		}, ms);
+		const onAbort = () => {
+			clearTimeout(timer);
+			reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+		};
+		signal?.addEventListener("abort", onAbort, { once: true });
+	});
+}
+
+export async function runYoqaShellScript(
+	client: ActionClient,
+	text: string,
+	options: RunYoqaShellScriptOptions = {},
+): Promise<{ ok: boolean; completed: number; total: number; error?: string }> {
+	const parsed = parseYoqaShellScript(text);
+	if (parsed.errors.length > 0) {
+		const first = parsed.errors[0];
+		if (!first) {
+			return { ok: false, completed: 0, total: parsed.steps.length, error: "Parse error" };
+		}
+		return {
+			ok: false,
+			completed: 0,
+			total: parsed.steps.length,
+			error: `Line ${first.lineNumber}: ${first.message}`,
+		};
+	}
+
+	const { steps } = parsed;
+	const total = steps.length;
+	if (total === 0) {
+		return { ok: true, completed: 0, total: 0 };
+	}
+
+	for (let index = 0; index < steps.length; index++) {
+		if (options.signal?.aborted) {
+			return { ok: false, completed: index, total, error: "Aborted" };
+		}
+		const step = steps[index];
+		if (!step) continue;
+		await options.onStep?.({ index, total, step, status: "running" });
+		try {
+			if (step.kind === "sleep") {
+				await sleepMs(step.seconds * 1000, options.signal);
+			} else {
+				await client.performAction(step.action);
+				if (options.pauseAfterActionMs) {
+					await sleepMs(options.pauseAfterActionMs, options.signal);
+				}
+			}
+			await options.onStep?.({ index, total, step, status: "ok" });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			await options.onStep?.({ index, total, step, status: "error", error: message });
+			return {
+				ok: false,
+				completed: index,
+				total,
+				error: `Line ${step.lineNumber}: ${message}`,
+			};
+		}
+	}
+
+	return { ok: true, completed: total, total };
+}

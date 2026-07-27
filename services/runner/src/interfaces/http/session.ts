@@ -114,6 +114,24 @@ export function createSessionRoutes() {
 		}
 	});
 
+	app.get("/screenshot/image", async (c) => {
+		try {
+			const { session } = requireActiveSession();
+			const shot = await session.screenshot();
+			const bytes = Buffer.from(shot.base64, "base64");
+			return new Response(bytes, {
+				status: 200,
+				headers: {
+					"Content-Type": "image/png",
+					"Cache-Control": "no-store",
+				},
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return c.json({ error: "Failed to take screenshot", detail: message }, 500);
+		}
+	});
+
 	app.post("/action", async (c) => {
 		let json: unknown;
 		try {

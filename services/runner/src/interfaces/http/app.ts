@@ -48,7 +48,7 @@ export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 	app.get("/", (c) =>
 		c.json({
 			name: "yoqa-runner",
-			docs: "GET /health · GET /status · GET /devices · POST /devices/connect · GET /screen · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds",
+			docs: "GET /health · GET /status · GET /devices · POST /devices/connect · GET /screen · GET /screenshot/image · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds",
 		}),
 	);
 

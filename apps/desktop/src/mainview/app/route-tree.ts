@@ -1,6 +1,7 @@
 import { RootLayout } from "@/app/root-layout";
 import { ConfigurationPage } from "@/features/apps/configuration-page";
 import { WelcomePage } from "@/features/apps/welcome-page";
+import { InspectorPage } from "@/features/inspector/inspector-page";
 import { RunDetailPage } from "@/features/runs/detail-page";
 import { RunsListPage } from "@/features/runs/list-page";
 import { SettingsPage } from "@/features/settings/settings-page";
@@ -42,6 +43,12 @@ const runDetailRoute = createRoute({
 	component: RunDetailPage,
 });
 
+const inspectorRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/inspector",
+	component: InspectorPage,
+});
+
 const configurationRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/configuration",
@@ -60,6 +67,7 @@ export const routeTree = rootRoute.addChildren([
 	testCaseDetailRoute,
 	runsListRoute,
 	runDetailRoute,
+	inspectorRoute,
 	configurationRoute,
 	settingsRoute,
 ]);

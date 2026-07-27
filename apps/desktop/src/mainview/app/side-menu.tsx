@@ -81,13 +81,16 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				badge: isRunLive ? 1 : undefined,
 			},
 			{
-				label: "Builds",
+				label: "Inspector",
+				to: "/inspector",
 				icon: (
 					<NavIcon>
 						<path
-							d="M14.7 6.3a4.5 4.5 0 0 0-6.4 6.4L4 17v3h3l4.3-4.3a4.5 4.5 0 0 0 6.4-6.4Z"
+							d="M10.5 19.5 3 12l7.5-7.5M13.5 4.5 21 12l-7.5 7.5"
+							strokeLinecap="round"
 							strokeLinejoin="round"
 						/>
+						<circle cx="12" cy="12" r="2.25" />
 					</NavIcon>
 				),
 			},

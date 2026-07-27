@@ -55,6 +55,7 @@ import {
 	type RunTestStatus,
 	type RuntimeCheck,
 	type RuntimeStatus,
+	type ScreenElement,
 	type ScreenResponse,
 	type ScreenshotRequest,
 	type ScreenshotResponse,
@@ -262,6 +263,7 @@ export {
 	type RunTestStatus,
 	type RuntimeCheck,
 	type RuntimeStatus,
+	type ScreenElement,
 	type ScreenResponse,
 	type ScreenshotRequest,
 	type ScreenshotResponse,
@@ -282,6 +284,20 @@ export {
 	suggestedScriptBasename,
 	type CaseScriptExportMeta,
 } from "./script-format";
+
+export {
+	DEFAULT_SHELL_SCRIPT_HEADER,
+	formatActionShellLine,
+	formatSleepShellLine,
+	parseYoqaShellScript,
+	runYoqaShellScript,
+	tokenizeShellLine,
+	type ParseYoqaShellScriptResult,
+	type RunYoqaShellScriptOptions,
+	type ShellScriptActionStep,
+	type ShellScriptSleepStep,
+	type ShellScriptStep,
+} from "./shell-script";
 
 export type RunnerClientOptions = {
 	baseUrl?: string;
@@ -808,6 +824,21 @@ export class RunnerClient {
 			"Screenshot failed",
 		);
 		return screenshotResponseSchema.parse(json);
+	}
+
+	/** Live PNG from the active device session (for `<img src>` / blob fetch). */
+	getScreenshotImageUrl(cacheBust?: number): string {
+		const url = `${this.baseUrl}/screenshot/image`;
+		return cacheBust != null ? `${url}?t=${cacheBust}` : url;
+	}
+
+	async fetchScreenshotBytes(): Promise<Uint8Array> {
+		const response = await this.fetchImpl(`${this.baseUrl}/screenshot/image`);
+		if (!response.ok) {
+			const json: unknown = await response.json().catch(() => null);
+			throw new Error(errorMessageFromBody(json, `Screenshot failed: HTTP ${response.status}`));
+		}
+		return new Uint8Array(await response.arrayBuffer());
 	}
 
 	async performAction(request: ActionRequest): Promise<ActionResponse> {
