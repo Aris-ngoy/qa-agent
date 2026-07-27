@@ -1,7 +1,7 @@
 /** Base reverse-DNS prefix; prefer {@link wdaBundleIdForTeam} for installs. */
 export const WDA_BUNDLE_ID = "io.yoqa.WebDriverAgentRunner";
 
-/** Team-scoped bundle id (matches noqa): keeps provisioning/signing isolated per team. */
+/** Team-scoped bundle id: keeps provisioning/signing isolated per team. */
 export function wdaBundleIdForTeam(developmentTeam: string): string {
 	const team = developmentTeam.trim();
 	if (!team) return WDA_BUNDLE_ID;

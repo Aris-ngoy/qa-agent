@@ -56,14 +56,14 @@ function isPortFree(port: number): Promise<boolean> {
 
 async function pickAppiumPort(): Promise<number> {
 	if (await isPortFree(DEFAULT_APPIUM_PORT)) return DEFAULT_APPIUM_PORT;
-	// Prefer a free port over silently attaching to a foreign Appium (e.g. noqa.app)
+	// Prefer a free port over silently attaching to a foreign Appium
 	// that rebuilds WDA without YoQA signing / preinstalled caps.
 	for (let offset = 1; offset <= 20; offset++) {
 		const candidate = DEFAULT_APPIUM_PORT + offset;
 		if (await isPortFree(candidate)) return candidate;
 	}
 	throw new Error(
-		`No free Appium port near ${DEFAULT_APPIUM_PORT}. Quit other Appium processes (e.g. noqa) or set YOQA_APPIUM_PORT.`,
+		`No free Appium port near ${DEFAULT_APPIUM_PORT}. Quit other Appium processes or set YOQA_APPIUM_PORT.`,
 	);
 }
 

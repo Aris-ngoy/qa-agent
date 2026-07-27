@@ -2,22 +2,22 @@
 
 **Product:** YoQA (`yoqa.ai`) · **Code name:** `qa-agent`
 
-This document captures **what noqa does** (from [docs](https://docs.noqa.ai/llms.txt), [Appium capabilities](https://docs.noqa.ai/guide/best-practices-appium-capabilities), [CLI](https://docs.noqa.ai/docs/cli), [agent guide](https://docs.noqa.ai/guide/how-noqa-agent-works), [GitHub](https://github.com/noqa-ai/noqa)) and **how YoQA rebuilds an equivalent system**, informed by the shipped Mac app (`noqa.app` v2.0.12).
+This document is the product design and build architecture for YoQA: desktop + local runner + Appium + agent skill, with optional cloud later.
 
-Related: `HOW_IT_WAS_BUILT.md` (reverse-engineered stack facts).
+Related: public docs in [`apps/docs/`](apps/docs/) (Mintlify) and engineering notes under [`docs/`](docs/).
 
 ---
 
 ## 1. Product thesis
 
-**Visual, natural-language mobile QA.** An agent tests iOS/Android apps and games from screenshots (and optional cleaned accessibility trees for coding agents), without locator scripts. Device control is **Appium under the hood** ([docs](https://docs.noqa.ai/guide/best-practices-appium-capabilities)): XCUITest (iOS) / UiAutomator2 (Android).
+**Visual, natural-language mobile QA.** An agent tests iOS/Android apps and games from screenshots (and optional cleaned accessibility trees for coding agents), without locator scripts. Device control is **Appium under the hood** ([Appium capabilities](https://docs.yoqa.ai/guide/best-practices-appium-capabilities)): XCUITest (iOS) / UiAutomator2 (Android).
 
 Two complementary modes:
 
 | Mode | Who decides each step | Who pays / when |
 |------|------------------------|-----------------|
-| **Device connector (CLI)** | External coding agent (`noqa screen` → `noqa action` loop) | Free when signed in |
-| **noqa agent (runs)** | noqa’s autonomous perception→decision→action loop | Paid credits |
+| **Device connector (CLI)** | External coding agent (`yoqa screen` → `yoqa action` loop) | Free when signed in |
+| **YoQA agent (runs)** | Autonomous perception→decision→action loop | Paid credits |
 
 ---
 
@@ -27,10 +27,10 @@ Two complementary modes:
 
 - Local host for Appium + device sessions
 - Account sign-in (cloud features, grounding, test management)
-- Settings → Tools: **Install CLI**, **Install skill** (`noqa-testing`)
+- Settings → Tools: **Install CLI**, **Install skill** (`yoqa-testing`)
 - Local device / simulator browsing and connection
 - Dashboard-like UX for apps, cases, runs, builds (also mirrored in web)
-- Auto-update (Tauri updater via CDN)
+- Auto-update (Electrobun updater via CDN)
 
 ### 2.2 Device layer (Appium)
 
@@ -61,7 +61,7 @@ Two complementary modes:
 
 ### 2.5 Autonomous agent (paid)
 
-Perception → Decision → Action loop from **screenshots** ([how it works](https://docs.noqa.ai/guide/how-noqa-agent-works)):
+Perception → Decision → Action loop from **screenshots** ([how it works](https://docs.yoqa.ai/guide/how-yoqa-agent-works)):
 
 - Actions: tap, swipe, drag, input, open link, terminate/background/activate app
 - Works across app + system UI (alerts, IAP, home, other apps)
@@ -115,15 +115,15 @@ runs create|list|get|delete
 - Public API (API key): apps, builds (+ presigned upload), cases, devices, runs
 - CI/CD via API
 - Integrations (team): Slack, Jira, webhooks, MCP
-- Local vs cloud matrix: TestFlight/simulators local-only; parallel/CI/cloud config cloud-only ([local vs cloud](https://docs.noqa.ai/guide/local-vs-cloud))
+- Local vs cloud matrix: TestFlight/simulators local-only; parallel/CI/cloud config cloud-only
 
 ### 2.9 Agent skill
 
-Ship `skills/noqa-testing` (markdown workflows) so Cursor/Claude/Codex know the inspect→act→verify loop ([GitHub skill](https://github.com/noqa-ai/noqa)).
+Ship `skills/yoqa-testing` (markdown workflows) so Cursor/Claude/Codex know the inspect→act→verify loop.
 
 ### 2.10 Best-practice domains (product capabilities)
 
-From docs guides — product must support:
+Product must support:
 
 - Games / canvas / non-native UI (screenshot-first)
 - Cross-app flows
@@ -135,7 +135,7 @@ From docs guides — product must support:
 
 ## 3. Reference architecture (how we build it)
 
-Match the product shape (desktop + local runner + Appium + optional cloud), implemented in **TypeScript throughout** — Electrobun desktop, Bun runner, not noqa’s Tauri/Python distribution.
+Desktop + local runner + Appium + optional cloud, implemented in **TypeScript throughout** — Electrobun desktop, Bun runner.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -191,7 +191,7 @@ Match the product shape (desktop + local runner + Appium + optional cloud), impl
 
 ## 4. Core domain modules (implement these)
 
-Mirror the modular layout (TypeScript; inspired by `noqa_runner` domains):
+Modular layout under the runner:
 
 ```
 services/runner/src/
@@ -239,7 +239,7 @@ screen(cleaned=True):
   else: return raw
 ```
 
-**Capability merge** (from [Appium capabilities](https://docs.noqa.ai/guide/best-practices-appium-capabilities)):
+**Capability merge** (see [Appium capabilities](https://docs.yoqa.ai/guide/best-practices-appium-capabilities)):
 
 ```
 effective = defaults ∪ app.caps ∪ case.caps   # later keys win
@@ -280,7 +280,7 @@ Memory: embeddings of prior screens → skip full reasoning when similar.
 
 ### 4.5 Test case / run model (API)
 
-Entities and public routes to implement early ([OpenAPI](https://docs.noqa.ai/openapi.json)):
+Entities and public routes to implement early:
 
 - `GET /v1/apps/`
 - `GET|POST /v1/builds/`, `POST /v1/builds/presigned-url`
@@ -361,8 +361,7 @@ CLI is a first-class peer of the UI (same local API).
 ### Phase 6 — Packaging polish
 
 - Vendored Node+Appium dual-arch
-- PyInstaller (+ optional mypyc)
-- DMG + Electrobun updater CDN
+- Electrobun build + DMG + updater CDN
 - iOS WDA/signing helpers, Android SDK checks
 
 ---
@@ -402,13 +401,15 @@ run_steps(id, run_test_id, idx, action jsonb, screenshot_uri, ok, latency_ms)
 
 ---
 
-## 9. What we will *not* copy blindly
+## 9. Design ownership
 
-- noqa’s private model weights / prompts (re-implement with our LLM provider)
-- Exact proprietary tree-cleaner heuristics (rebuild from measurements)
-- Bundle id / branding (`com.codeandbicycles.noqa`)
+YoQA owns its stack end-to-end:
 
-We **do** copy the **product surface**: Appium execution, CLI contract, case/flow model, dual agent modes, and packaging architecture — as specified in public docs and observed in the distribution.
+- Vision / agent prompts and provider wiring (`resolveActiveProviderAuth()`, Settings → Provider)
+- Cleaned accessibility-tree heuristics measured against real Appium trees
+- Branding and bundle ids (`ai.yoqa.app`, `io.yoqa.WebDriverAgentRunner`, `@yoqa/*`)
+
+Product surface we ship: Appium execution, `yoqa` CLI contract, case/flow model, dual agent modes, Electrobun packaging, and Mintlify docs + `yoqa-testing` skill.
 
 ---
 
@@ -566,30 +567,30 @@ repo/
 
 ---
 
-## 13. Feature checklist (synced to [llms.txt](https://docs.noqa.ai/llms.txt))
+## 13. Feature checklist (synced to [llms.txt](https://docs.yoqa.ai/llms.txt))
 
-Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done in our rebuild
+Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done
 
 ### Product docs surface
 
 | Doc area | Features to cover | Status |
 |----------|-------------------|--------|
-| [Overview](https://docs.noqa.ai/docs/overview.md) / [Quickstart](https://docs.noqa.ai/docs/quickstart.md) | NL tests → device → build → run → report | [ ] |
-| [Desktop app](https://docs.noqa.ai/docs/desktop-app.md) | Local Mac host, Tools install | [~] |
-| [Device preparation](https://docs.noqa.ai/docs/device-preparation.md) | Xcode/adb readiness checks | [ ] |
-| [Local builds](https://docs.noqa.ai/docs/local-builds.md) | `.ipa/.app/.apk` register & install | [ ] |
-| [Apps](https://docs.noqa.ai/docs/apps.md) | name, bundle/package, store ids, context | [ ] |
-| [Test cases](https://docs.noqa.ai/docs/test-cases.md) | flows, tags, case Appium caps | [ ] |
-| [CLI](https://docs.noqa.ai/docs/cli.md) | devices/screen/action/apps/cases/flows/builds/runs | [~] |
-| [CLI for agents](https://docs.noqa.ai/guide/cli-for-agents.md) | skill + inspect→act→verify | [~] |
-| [How agent works](https://docs.noqa.ai/guide/how-noqa-agent-works.md) | perception loop, memory, limits | [ ] |
-| [Writing test cases](https://docs.noqa.ai/guide/writing-test-cases.md) | app_context, reusable flows | [ ] |
-| [Local vs cloud](https://docs.noqa.ai/guide/local-vs-cloud.md) | capability matrix | [ ] |
-| [Cloud](https://docs.noqa.ai/docs/cloud.md) / [Cloud builds](https://docs.noqa.ai/docs/cloud-builds.md) / [CI/CD](https://docs.noqa.ai/docs/cloud-cicd.md) | farm, upload, pipeline | [ ] |
-| [Appium capabilities](https://docs.noqa.ai/guide/best-practices-appium-capabilities.md) | merge + autoLaunch/activity | [~] |
-| Best practices: [state](https://docs.noqa.ai/guide/best-practices-app-state.md), [cross-app](https://docs.noqa.ai/guide/best-practices-cross-app.md), [cross-platform](https://docs.noqa.ai/guide/best-practices-cross-platform.md), [games](https://docs.noqa.ai/guide/best-practices-games.md), [IAP](https://docs.noqa.ai/guide/best-practices-iap.md), [non-native](https://docs.noqa.ai/guide/best-practices-non-native-ui.md) | product behaviors / guides | [ ] |
+| [Overview](https://docs.yoqa.ai/docs/overview) / [Quickstart](https://docs.yoqa.ai/docs/quickstart) | NL tests → device → build → run → report | [ ] |
+| [Desktop app](https://docs.yoqa.ai/docs/desktop-app) | Local Mac host, Tools install | [~] |
+| [Device preparation](https://docs.yoqa.ai/docs/device-preparation) | Xcode/adb readiness checks | [ ] |
+| [Local builds](https://docs.yoqa.ai/docs/local-builds) | `.ipa/.app/.apk` register & install | [ ] |
+| [Apps](https://docs.yoqa.ai/docs/apps) | name, bundle/package, store ids, context | [ ] |
+| [Test cases](https://docs.yoqa.ai/docs/test-cases) | flows, tags, case Appium caps | [ ] |
+| [CLI](https://docs.yoqa.ai/docs/cli) | devices/screen/action/apps/cases/flows/builds/runs | [~] |
+| [CLI for agents](https://docs.yoqa.ai/guide/cli-for-agents) | skill + inspect→act→verify | [~] |
+| [How agent works](https://docs.yoqa.ai/guide/how-yoqa-agent-works) | perception loop, memory, limits | [ ] |
+| [Writing test cases](https://docs.yoqa.ai/guide/writing-test-cases) | app_context, reusable flows | [ ] |
+| Local vs cloud | capability matrix | [ ] |
+| Cloud / Cloud builds / CI/CD | farm, upload, pipeline | [ ] |
+| [Appium capabilities](https://docs.yoqa.ai/guide/best-practices-appium-capabilities) | merge + autoLaunch/activity | [~] |
+| Best practices: [state](https://docs.yoqa.ai/guide/best-practices-app-state), [cross-app](https://docs.yoqa.ai/guide/best-practices-cross-app), [cross-platform](https://docs.yoqa.ai/guide/best-practices-cross-platform), [games](https://docs.yoqa.ai/guide/best-practices-games), [IAP](https://docs.yoqa.ai/guide/best-practices-iap), [non-native](https://docs.yoqa.ai/guide/best-practices-non-native-ui) | product behaviors / guides | [ ] |
 
-### Public API ([openapi](https://docs.noqa.ai/openapi.json))
+### Public API (planned)
 
 | Endpoint | Status |
 |----------|--------|
@@ -603,13 +604,11 @@ Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done in our rebuild
 
 ## References
 
-- [Appium Capabilities](https://docs.noqa.ai/guide/best-practices-appium-capabilities)
-- [How noqa agent works](https://docs.noqa.ai/guide/how-noqa-agent-works)
-- [CLI](https://docs.noqa.ai/docs/cli)
-- [CLI for agents](https://docs.noqa.ai/guide/cli-for-agents)
-- [Writing good test cases](https://docs.noqa.ai/guide/writing-test-cases)
-- [Local vs cloud](https://docs.noqa.ai/guide/local-vs-cloud)
-- [Docs index](https://docs.noqa.ai/llms.txt)
-- [Public GitHub (skill + README)](https://github.com/noqa-ai/noqa)
-- [Product site](https://noqa.ai/)
-- Local: `HOW_IT_WAS_BUILT.md`, `noqa.app`
+- [Appium Capabilities](https://docs.yoqa.ai/guide/best-practices-appium-capabilities)
+- [How YoQA agent works](https://docs.yoqa.ai/guide/how-yoqa-agent-works)
+- [CLI](https://docs.yoqa.ai/docs/cli)
+- [CLI for agents](https://docs.yoqa.ai/guide/cli-for-agents)
+- [Writing good test cases](https://docs.yoqa.ai/guide/writing-test-cases)
+- [Docs index](https://docs.yoqa.ai/llms.txt)
+- [Product site](https://yoqa.ai/)
+- Local: [`apps/docs/`](apps/docs/), [`docs/`](docs/)
