@@ -336,7 +336,17 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 						</span>
 					</button>
 
-					<p className="px-4 pt-2 text-helper text-sidebar-muted">Phase 1 · local only</p>
+					<div className="flex flex-col gap-2 px-4 pt-2">
+						<a
+							className="text-helper font-medium text-sidebar-muted underline-offset-2 hover:text-sidebar-fg hover:underline"
+							href="https://yoqa.mintlify.site/docs/quickstart"
+							rel="noreferrer"
+							target="_blank"
+						>
+							Docs
+						</a>
+						<p className="text-helper text-sidebar-muted">Phase 1 · local only</p>
+					</div>
 				</div>
 			</aside>
 

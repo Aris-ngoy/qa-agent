@@ -4,6 +4,8 @@ Local-first agentic mobile QA. Bun + Turborepo monorepo with an Electrobun deskt
 
 **Product name:** YoQA (`yoqa`) · **Code name:** `qa-agent`
 
+**Docs:** [Quickstart](https://yoqa.mintlify.site/docs/quickstart)
+
 ## Stack
 
 | Layer | Choice |

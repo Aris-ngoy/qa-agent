@@ -1,4 +1,4 @@
-import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
+import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { DesktopRPC } from "../shared/rpc";
 import {
 	getCliEnvironmentSnapshot,
@@ -8,6 +8,8 @@ import {
 } from "./features/cli-environment";
 import { getIosToolchainSnapshot, setIosToolchainSelection } from "./features/ios-toolchain";
 import { ensureLocalServices, stopRunnerSidecar } from "./features/runner-sidecar";
+
+const DOCS_QUICKSTART_URL = "https://yoqa.mintlify.site/docs/quickstart";
 
 async function getMainViewUrl(): Promise<string> {
 	const viteUrl = "http://localhost:5173";
@@ -48,7 +50,18 @@ ApplicationMenu.setApplicationMenu([
 			{ role: "selectAll" },
 		],
 	},
+	{
+		label: "Help",
+		submenu: [{ label: "Documentation", action: "open-docs" }],
+	},
 ]);
+
+ApplicationMenu.on("application-menu-clicked", (event) => {
+	const clicked = event as { data?: { action?: string } };
+	if (clicked.data?.action === "open-docs") {
+		Utils.openExternal(DOCS_QUICKSTART_URL);
+	}
+});
 
 const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 	maxRequestTime: 60_000,
