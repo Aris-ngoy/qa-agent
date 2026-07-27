@@ -1,5 +1,6 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
 import { getRunnerClient } from "@/app/runner-client";
+import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
 import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
 import { runsListQueryKey } from "@/features/runs/list-page";
@@ -239,7 +240,6 @@ export function RunsPanel() {
 	const [deviceOpen, setDeviceOpen] = useState(false);
 	const [wdaOpen, setWdaOpen] = useState(false);
 	const [modalPlatform, setModalPlatform] = useState<DevicePlatform | null>(null);
-	const [runError, setRunError] = useState<string | null>(null);
 	const [executionPromptOpen, setExecutionPromptOpen] = useState(false);
 	const setupAbortRef = useRef<AbortController | null>(null);
 
@@ -287,7 +287,6 @@ export function RunsPanel() {
 			});
 		},
 		onMutate: () => {
-			setRunError(null);
 			setExecutionPromptOpen(false);
 		},
 		onSuccess: (run) => {
@@ -297,11 +296,10 @@ export function RunsPanel() {
 			}
 			queryClient.setQueryData(runQueryKey(run.id), run);
 			setActiveRun(run.id);
-			setRunError(null);
 			void navigate({ to: "/runs/$runId", params: { runId: run.id } });
 		},
 		onError: (error) => {
-			setRunError(error instanceof Error ? error.message : "Failed to start run");
+			showErrorToast(error, "Failed to start run");
 		},
 	});
 
@@ -313,9 +311,6 @@ export function RunsPanel() {
 			const client = await getRunnerClient();
 			return client.cancelRun(activeRunId);
 		},
-		onMutate: () => {
-			setRunError(null);
-		},
 		onSuccess: (run) => {
 			queryClient.setQueryData(runQueryKey(run.id), run);
 			if (selectedApp) {
@@ -323,7 +318,7 @@ export function RunsPanel() {
 			}
 		},
 		onError: (error) => {
-			setRunError(error instanceof Error ? error.message : "Failed to cancel run");
+			showErrorToast(error, "Failed to cancel run");
 		},
 	});
 
@@ -605,11 +600,6 @@ export function RunsPanel() {
 						</button>
 					</div>
 				</div>
-				{runError ? (
-					<p className="px-1 text-body-sm text-error" role="alert">
-						{runError}
-					</p>
-				) : null}
 			</header>
 
 			<SelectDeviceModal

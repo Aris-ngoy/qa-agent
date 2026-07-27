@@ -5,6 +5,7 @@ import { AppsProvider } from "@/features/apps/context";
 import { ActiveRunProvider } from "@/features/runs/active-run-context";
 import { BootGate } from "@/features/splash/boot-gate";
 import { TestCaseSelectionProvider } from "@/features/test-cases/selection-context";
+import { Toast } from "@heroui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { StrictMode } from "react";
@@ -40,6 +41,7 @@ if (!rootElement) {
 createRoot(rootElement).render(
 	<StrictMode>
 		<QueryClientProvider client={queryClient}>
+			<Toast.Provider />
 			<AppsProvider>
 				<TestCaseSelectionProvider>
 					<ActiveRunProvider>

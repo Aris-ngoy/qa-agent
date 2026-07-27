@@ -25,6 +25,7 @@ See `.cursor/rules/document-plan-builds.mdc` for when and how agents should add 
 | [desktop/cli-and-agents.md](./desktop/cli-and-agents.md) | Settings CLI/skill install + full `yoqa` agent CLI |
 | [desktop/motion-system.md](./desktop/motion-system.md) | CSS View Transitions + shell/list motion polish |
 | [desktop/react-hook-form.md](./desktop/react-hook-form.md) | RHF + HeroUI form helpers for all data-entry forms |
+| [desktop/error-toast.md](./desktop/error-toast.md) | HeroUI danger toasts with summarized run errors |
 | [runs/wda-rebuild-skip.md](./runs/wda-rebuild-skip.md) | Runs panel Skip/Rebuild → iOS WDA `--force` |
 | [runs/vision-no-screenshot-fail.md](./runs/vision-no-screenshot-fail.md) | Harden agent against “no screenshot” hallucinations |
 | [runs/saved-scripts.md](./runs/saved-scripts.md) | Save script after pass; script vs AI run prompt |
