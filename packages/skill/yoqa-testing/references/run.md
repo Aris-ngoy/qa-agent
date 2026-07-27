@@ -13,6 +13,8 @@ yoqa runs create APP '[{"name": "Login", "flows": [{"instructions": "tap login",
 yoqa runs list APP                                              # list recent runs (ID, STATUS, TESTS, SOURCE, CREATED)
 yoqa runs get APP <run-id>                                      # show all tests in a run with pass/fail and check counts
 yoqa runs get APP <run-id> <test-id>                            # show test details: flows, expected results, steps
+yoqa runs report <run-id>                                       # export HTML report with screenshots (default)
+yoqa runs report <run-id> --format md -o ./report.md             # export Markdown report to a path
 yoqa runs delete APP <run-id>                                   # delete a run and its results (irreversible)
 ```
 
@@ -27,6 +29,7 @@ yoqa runs delete APP <run-id>                                   # delete a run a
 - The active device is picked up automatically — connect one first with `yoqa devices connect <id>`
 - Returns a `run_id`; inspect results (pass/fail, screenshots) with `yoqa runs get APP <run-id>`
 - Optional `--mode auto|script|agent` — prefer a saved script, force AI, or auto (default)
+- **`runs report`** exports a self-contained HTML or Markdown file with step details and embedded screenshots. Run must be finished (`passed` / `errored` / `cancelled`). Default output: `yoqa-run-<id>-<status>.html`.
 
 ## Exported scripts (no agent)
 

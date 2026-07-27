@@ -1,10 +1,14 @@
 #!/usr/bin/env bun
 import {
 	type DevicePlatform,
+	buildRunReportFromCatalogRun,
 	caseScriptSchema,
 	createRunnerClient,
 	formatAssertShellLine,
+	formatRunReportHtml,
+	formatRunReportMarkdown,
 	runYoqaShellScript,
+	suggestedRunReportBasename,
 } from "@yoqa/runner-client";
 import { Command } from "commander";
 import { runnerBaseUrl } from "../../settings";
@@ -1041,6 +1045,81 @@ runsCmd
 			}
 		} catch (error) {
 			fail("runs get", error);
+		}
+	});
+
+runsCmd
+	.command("report")
+	.description("Export a detailed HTML or Markdown report with step screenshots")
+	.argument("<runId>", "Run id")
+	.option("--format <format>", "html | md (default: html)", "html")
+	.option("-o, --output <path>", "Output file path (default: yoqa-run-<id>-<status>.html|md)")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.action(async (runId: string, options: { baseUrl: string; format: string; output?: string }) => {
+		try {
+			const format =
+				options.format === "md" || options.format === "markdown" ? "md" : options.format;
+			if (format !== "html" && format !== "md") {
+				throw new Error("--format must be html or md");
+			}
+
+			const c = client(options.baseUrl);
+			const run = await c.getRun(runId);
+			if (run.status === "queued" || run.status === "running") {
+				throw new Error(
+					`Run is still ${run.status}. Wait until it finishes (passed / errored / cancelled).`,
+				);
+			}
+
+			const screenshotsByStepId: Record<string, string> = {};
+			const steps = run.tests.flatMap((test) => test.steps ?? []);
+			await Promise.all(
+				steps.map(async (step) => {
+					if (!step.screenshotUri) return;
+					const response = await fetch(c.getRunStepScreenshotUrl(run.id, step.id));
+					if (!response.ok) return;
+					const bytes = new Uint8Array(await response.arrayBuffer());
+					screenshotsByStepId[step.id] = Buffer.from(bytes).toString("base64");
+				}),
+			);
+
+			const apps = await c.listApps();
+			const app = apps.find((row) => row.id === run.appId);
+			const cases = await c.listCases(run.appId);
+			const caseTitles: Record<string, string> = {};
+			for (const item of cases) {
+				caseTitles[item.id] = `#${item.number} ${item.name}`;
+			}
+
+			let deviceLabel: string | null = run.deviceId;
+			try {
+				const devices = await c.listDevices(run.platform, { includeUnavailable: true });
+				const device = devices.devices.find((row) => row.id === run.deviceId);
+				if (device) {
+					deviceLabel = `${device.name} · ${run.platform} ${device.osVersion}`;
+				}
+			} catch {
+				/* device lookup optional */
+			}
+
+			const doc = buildRunReportFromCatalogRun(
+				run,
+				{
+					appLabel: app ? `${app.prefix} — ${app.name}` : run.appId,
+					deviceLabel,
+					caseTitles,
+				},
+				screenshotsByStepId,
+			);
+
+			const contents = format === "html" ? formatRunReportHtml(doc) : formatRunReportMarkdown(doc);
+			const extension = format === "html" ? "html" : "md";
+			const outputPath =
+				options.output?.trim() || `${suggestedRunReportBasename(doc)}.${extension}`;
+			await Bun.write(outputPath, contents);
+			console.log(`wrote ${outputPath} (${doc.status}, ${steps.length} steps)`);
+		} catch (error) {
+			fail("runs report", error);
 		}
 	});
 

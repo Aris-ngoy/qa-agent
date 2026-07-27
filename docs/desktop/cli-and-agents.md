@@ -29,7 +29,7 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
 - Apps gain unique `prefix`; CLI resolves `APP` by prefix
 - Catalog CLI: `apps`, `cases`, `flows`, `tags`
 - Builds: `domains/builds/`, `/builds`, CLI `builds list|create|delete`; runs honor `buildId` / `buildPath`
-- Runs CLI: `runs list|get|delete|create` (case numbers + active device default)
+- Runs CLI: `runs list|get|report|delete|create` (case numbers + active device default; `report` exports HTML/Markdown with screenshots)
 - Skill docs updated for local provider-based grounding (no cloud sign-in gate)
 
 ## How to verify

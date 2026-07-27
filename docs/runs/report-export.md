@@ -10,7 +10,8 @@ Export a detailed end-to-end report for finished catalog runs and Manual Inspect
 - Catalog runs: client builds the report from `getRun` + step screenshot HTTP fetches.
 - Inspector: capture per-step screenshots during full script runs into an ephemeral session report.
 - Formats: self-contained HTML (primary) and Markdown with data-URI images.
-- Rejected for v1: PDF, ZIP of raw PNGs, persisting inspector runs to SQLite, CLI `yoqa runs report`.
+- CLI: `yoqa runs report <runId>` writes the same report to disk.
+- Deferred: PDF, ZIP of raw PNGs, persisting inspector runs to SQLite.
 
 ## What shipped
 
@@ -28,15 +29,18 @@ Export a detailed end-to-end report for finished catalog runs and Manual Inspect
 - **Export HTML** / **Export Markdown** on the run panel (enabled after a finished script run)
 - Existing **Export .sh** unchanged
 
+**CLI**
+- `yoqa runs report <runId> [--format html|md] [-o path]` — embeds screenshots; defaults to `yoqa-run-<id>-<status>.html`
+
 ## How to verify
 
 1. Run a catalog case → open `/runs/$id` after it finishes → Export HTML / Markdown → open the file; confirm status styling, steps, screenshots, and fail details when errored.
 2. Inspector: connect a device, run a short script → Export HTML / Markdown → confirm commands, pass/fail, and screenshots match the log.
 3. Cancel a catalog run mid-flight → export still works with cancelled styling.
+4. CLI: `yoqa runs report <runId> --format html` and `--format md -o ./report.md`; open the files and confirm screenshots + status.
 
 ## Follow-ups
 
-- CLI: `yoqa runs report <id> --format html|md -o file`
 - ZIP of raw PNG artifacts alongside the report
 - Persist inspector sessions as catalog runs (optional)
 - Export from the runs list row actions
