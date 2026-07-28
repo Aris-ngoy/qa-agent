@@ -4,8 +4,10 @@ node_modules/
 # Build outputs
 dist/
 build/
+artifacts/
 *.dmg
 .electrobun/
+apps/desktop/resources/runner/
 
 # Turbo
 .turbo/

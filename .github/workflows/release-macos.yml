@@ -1,0 +1,69 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build & publish macOS DMG
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.23
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build stable desktop release
+        run: bun run --filter @yoqa/desktop build:release
+
+      - name: List artifacts
+        run: |
+          ls -la apps/desktop/artifacts || true
+          ls -la apps/desktop/build/stable-macos-arm64 || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: YoQA ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
+          files: |
+            apps/desktop/artifacts/stable-macos-arm64-yoqa.dmg
+            apps/desktop/artifacts/stable-macos-arm64-yoqa.app.tar.zst
+            apps/desktop/artifacts/stable-macos-arm64-update.json
+          body: |
+            ## YoQA Desktop ${{ github.ref_name }} (macOS Apple Silicon)
+
+            Local-first agentic mobile QA for Mac.
+
+            ### Install
+            1. Download `stable-macos-arm64-yoqa.dmg`
+            2. Open the DMG and drag **yoqa** to Applications
+            3. First launch: right-click → **Open** (unsigned build; Gatekeeper may block double-click)
+
+            ### Notes
+            - **Apple Silicon only** (`arm64`) for this release
+            - Bundled local runner starts with the app (no monorepo checkout required)
+            - Appium / Xcode / adb stay on the host; first device setup may install Appium under `~/.yoqa`
+            - Settings → CLI & Agents install still expects a monorepo checkout for now
+
+            ### Verify
+            After launch, the runner should answer `http://127.0.0.1:7420/health`.

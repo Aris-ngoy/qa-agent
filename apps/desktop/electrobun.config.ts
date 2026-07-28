@@ -16,8 +16,10 @@ export default {
 		copy: {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets/": "views/mainview/assets/",
+			"resources/runner/yoqa-runner": "runner/yoqa-runner",
 		},
-		watchIgnore: ["dist/**"],
+		asarUnpack: ["runner/yoqa-runner", "*.node", "*.dll", "*.dylib", "*.so"],
+		watchIgnore: ["dist/**", "resources/runner/**", "artifacts/**"],
 		mac: {
 			codesign: false,
 			notarize: false,
@@ -34,7 +36,11 @@ export default {
 			icon: "assets/icon.png",
 		},
 	},
+	scripts: {
+		preBuild: "scripts/build-runner-sidecar.ts",
+	},
 	release: {
 		baseUrl: "",
+		generatePatch: false,
 	},
 } satisfies ElectrobunConfig;

@@ -1,6 +1,7 @@
 import { copyFile, mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import wdaAppIconFile from "../../../assets/wda-icon-1024.png" with { type: "file" };
 import {
 	type DevicePrepRecord,
 	type IosWdaInstallParams,
@@ -23,7 +24,7 @@ const DEFAULT_APPIUM_HOME = join(YOQA_ROOT, "appium");
 const WDA_DERIVED_ROOT = join(YOQA_ROOT, "wda");
 const DEVICE_PREP_DIR = join(YOQA_ROOT, "devices");
 /** 1024×1024 PNG used as WebDriverAgent's home-screen icon (replaces Appium's). */
-const WDA_APP_ICON_PATH = join(import.meta.dir, "../../../assets/wda-icon-1024.png");
+const WDA_APP_ICON_PATH = wdaAppIconFile;
 
 async function runCommand(
 	command: string[],

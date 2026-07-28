@@ -9,11 +9,12 @@
 		"lint:fix": "biome check --write .",
 		"lint:ci": "biome ci .",
 		"format": "biome format --write .",
-		"test": "bun test packages/runner-client/src services/runner/src",
+		"test": "bun test packages/runner-client/src services/runner/src apps/desktop/src",
 		"check": "turbo run check && biome check .",
 		"runner": "bun run --filter @yoqa/runner start",
 		"health": "bun run --filter @yoqa/runner health",
 		"desktop": "bun run --filter @yoqa/desktop dev",
+		"desktop:release": "bun run --filter @yoqa/desktop build:release",
 		"docs": "bun run --cwd apps/docs dev",
 		"prepare": "husky"
 	},

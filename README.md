@@ -51,6 +51,7 @@ bun run lint:fix     # Biome auto-fix
 bun run test          # Bun unit tests
 bun run check         # package typechecks + Biome
 bun run desktop       # Electrobun desktop (dev)
+bun run desktop:release  # Stable macOS .app + DMG (see docs/desktop/macos-release.md)
 bun run docs          # Mintlify product docs (apps/docs)
 ```
 

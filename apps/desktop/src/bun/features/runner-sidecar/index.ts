@@ -15,6 +15,12 @@ type RunnerChild = {
 	baseUrl: string;
 };
 
+type RunnerLaunch = {
+	command: string[];
+	cwd?: string;
+	source: "packaged" | "monorepo";
+};
+
 let child: RunnerChild | null = null;
 let ensureInFlight: Promise<EnsureLocalServicesResult> | null = null;
 
@@ -42,6 +48,38 @@ async function pathExists(path: string): Promise<boolean> {
 	}
 }
 
+function execRoots(): string[] {
+	const roots: string[] = [];
+	for (const candidate of [process.execPath, process.argv0]) {
+		if (!candidate) continue;
+		const dir = dirname(candidate);
+		if (!roots.includes(dir)) roots.push(dir);
+	}
+	return roots;
+}
+
+/** Candidate locations for the compiled runner inside a packaged Electrobun .app. */
+export function packagedRunnerCandidates(roots: string[] = execRoots()): string[] {
+	const paths: string[] = [];
+	for (const root of roots) {
+		paths.push(
+			join(root, "yoqa-runner"),
+			join(root, "../Resources/app.asar.unpacked/runner/yoqa-runner"),
+			join(root, "../Resources/runner/yoqa-runner"),
+			join(root, "Resources/app.asar.unpacked/runner/yoqa-runner"),
+			join(root, "Resources/runner/yoqa-runner"),
+		);
+	}
+	return paths;
+}
+
+async function findPackagedRunner(): Promise<string | null> {
+	for (const candidate of packagedRunnerCandidates()) {
+		if (await pathExists(candidate)) return candidate;
+	}
+	return null;
+}
+
 async function findRepoRoot(): Promise<string | null> {
 	const starts = [process.cwd()];
 	if (typeof import.meta.dir === "string") {
@@ -65,13 +103,45 @@ async function findRepoRoot(): Promise<string | null> {
 }
 
 async function resolveBunExecutable(): Promise<string> {
+	for (const root of execRoots()) {
+		const beside = join(root, "bun");
+		if (await pathExists(beside)) return beside;
+	}
+
 	const fromPath = Bun.which("bun");
 	if (fromPath) return fromPath;
 
-	const bundled = join(process.cwd(), "bun");
-	if (await pathExists(bundled)) return bundled;
+	const cwdBun = join(process.cwd(), "bun");
+	if (await pathExists(cwdBun)) return cwdBun;
 
 	throw new Error("Could not find a bun executable to start the local runner.");
+}
+
+/** Resolve how to launch the runner: packaged binary first, monorepo source for dev. */
+export async function resolveRunnerLaunch(): Promise<RunnerLaunch> {
+	const packaged = await findPackagedRunner();
+	if (packaged) {
+		return { command: [packaged], source: "packaged" };
+	}
+
+	const repoRoot = await findRepoRoot();
+	if (!repoRoot) {
+		throw new Error(
+			"Could not locate the YoQA runner. Install the desktop app release, open the monorepo, or start it with `bun run runner`.",
+		);
+	}
+
+	const entry = join(repoRoot, "services", "runner", "src", "index.ts");
+	if (!(await pathExists(entry))) {
+		throw new Error(`Runner entry not found at ${entry}`);
+	}
+
+	const bunBin = await resolveBunExecutable();
+	return {
+		command: [bunBin, "run", entry],
+		cwd: join(repoRoot, "services", "runner"),
+		source: "monorepo",
+	};
 }
 
 async function isHealthy(baseUrl: string): Promise<boolean> {
@@ -106,26 +176,16 @@ function isChildAlive(): boolean {
 async function spawnRunner(baseUrl: string): Promise<void> {
 	if (isChildAlive()) return;
 
-	const repoRoot = await findRepoRoot();
-	if (!repoRoot) {
-		throw new Error(
-			"Could not locate the YoQA runner in this checkout. Open the monorepo, or start it with `bun run runner`.",
-		);
-	}
-
-	const entry = join(repoRoot, "services", "runner", "src", "index.ts");
-	const runnerCwd = join(repoRoot, "services", "runner");
-	const bunBin = await resolveBunExecutable();
-
-	if (!(await pathExists(entry))) {
-		throw new Error(`Runner entry not found at ${entry}`);
-	}
-
+	const launch = await resolveRunnerLaunch();
 	console.log(`[yoqa desktop] starting runner sidecar → ${baseUrl}`);
-	console.log(`[yoqa desktop] bun=${bunBin} entry=${entry}`);
+	console.log(
+		`[yoqa desktop] source=${launch.source} command=${launch.command.join(" ")}${
+			launch.cwd ? ` cwd=${launch.cwd}` : ""
+		}`,
+	);
 
-	const proc = Bun.spawn([bunBin, "run", entry], {
-		cwd: runnerCwd,
+	const proc = Bun.spawn(launch.command, {
+		cwd: launch.cwd,
 		env: {
 			...process.env,
 			YOQA_RUNNER_HOST: getHost(),
