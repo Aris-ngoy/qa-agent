@@ -1,6 +1,7 @@
 import {
 	type CommandSnippet,
 	type SnippetCommandId,
+	type SnippetContext,
 	buildCommandLines,
 	selectorCommands,
 	suggestedCommands,
@@ -14,6 +15,7 @@ type ElementActionMenuProps = {
 	/** Anchor box in % of the screenshot image (0–100). */
 	anchor: { left: number; top: number; width: number; height: number };
 	disabled: boolean;
+	snippetContext: SnippetContext;
 	onInsert: (lines: string[]) => void;
 	onInsertAndRun: (lines: string[]) => void;
 	onCopyLines: (lines: string[]) => void;
@@ -26,6 +28,8 @@ type PromptState = {
 	commandId: SnippetCommandId;
 	kind: "text" | "seconds";
 	label: string;
+	promptKind?: CommandSnippet["promptKind"];
+	returnView: "main" | "selector";
 };
 
 function ChevronIcon(props: SVGProps<SVGSVGElement>) {
@@ -129,10 +133,25 @@ function menuPosition(anchor: ElementActionMenuProps["anchor"]): {
 	};
 }
 
+function promptHeading(prompt: PromptState): string {
+	if (prompt.kind === "seconds") return `Wait seconds for ${prompt.label}`;
+	if (prompt.promptKind === "appId") return `App ID for ${prompt.label}`;
+	if (prompt.promptKind === "url") return `URL for ${prompt.label}`;
+	return `Text for ${prompt.label}`;
+}
+
+function promptPlaceholder(prompt: PromptState): string {
+	if (prompt.kind === "seconds") return "1";
+	if (prompt.promptKind === "appId") return "com.example.app";
+	if (prompt.promptKind === "url") return "myapp://path or https://…";
+	return "Enter text…";
+}
+
 export function ElementActionMenu({
 	selection,
 	anchor,
 	disabled,
+	snippetContext,
 	onInsert,
 	onInsertAndRun,
 	onCopyLines,
@@ -146,7 +165,10 @@ export function ElementActionMenu({
 	const [committedValue, setCommittedValue] = useState<string | null>(null);
 
 	const suggested = useMemo(() => suggestedCommands(selection), [selection]);
-	const selector = useMemo(() => selectorCommands(selection), [selection]);
+	const selector = useMemo(
+		() => selectorCommands(selection, snippetContext),
+		[selection, snippetContext],
+	);
 
 	const position = menuPosition(anchor);
 
@@ -158,8 +180,16 @@ export function ElementActionMenu({
 				commandId: snippet.id,
 				kind: snippet.needsPrompt,
 				label: snippet.label,
+				promptKind: snippet.promptKind,
+				returnView: from,
 			});
-			setPromptValue(snippet.needsPrompt === "seconds" ? "1" : "");
+			const initial =
+				snippet.needsPrompt === "seconds"
+					? "1"
+					: snippet.promptKind === "appId"
+						? snippetContext.defaultAppId
+						: "";
+			setPromptValue(initial);
 			setView("prompt");
 			setFlyoutId(null);
 			return;
@@ -178,14 +208,14 @@ export function ElementActionMenu({
 		}
 		setCommittedValue(trimmed);
 		setFlyoutId(prompt.commandId);
-		setView("main");
+		setView(prompt.returnView);
 		setPrompt(null);
 	};
 
 	const activeLines = useMemo(() => {
 		if (!flyoutId || prompt) return [];
-		return buildCommandLines(selection, flyoutId, committedValue ?? undefined);
-	}, [committedValue, flyoutId, prompt, selection]);
+		return buildCommandLines(selection, flyoutId, committedValue ?? undefined, snippetContext);
+	}, [committedValue, flyoutId, prompt, selection, snippetContext]);
 
 	const runAction = (mode: "insert" | "insertRun" | "copy") => {
 		if (!flyoutId || activeLines.length === 0 || disabled) return;
@@ -316,16 +346,20 @@ export function ElementActionMenu({
 
 				{view === "prompt" && prompt ? (
 					<div className="flex flex-col gap-2 p-3">
-						<p className="text-[12px] text-white/70">
-							{prompt.kind === "seconds"
-								? `Wait seconds for ${prompt.label}`
-								: `Text for ${prompt.label}`}
-						</p>
+						<p className="text-[12px] text-white/70">{promptHeading(prompt)}</p>
 						<TextField className="w-full" value={promptValue} onChange={setPromptValue}>
-							<Label className="sr-only">{prompt.kind === "seconds" ? "Seconds" : "Text"}</Label>
+							<Label className="sr-only">
+								{prompt.promptKind === "appId"
+									? "App ID"
+									: prompt.promptKind === "url"
+										? "URL"
+										: prompt.kind === "seconds"
+											? "Seconds"
+											: "Text"}
+							</Label>
 							<Input
 								className="rounded-lg border border-white/15 bg-black/40 text-white"
-								placeholder={prompt.kind === "seconds" ? "1" : "Enter text…"}
+								placeholder={promptPlaceholder(prompt)}
 								inputMode={prompt.kind === "seconds" ? "decimal" : "text"}
 								autoFocus
 								onKeyDown={(event) => {
@@ -342,8 +376,9 @@ export function ElementActionMenu({
 								variant="tertiary"
 								className="text-white/80"
 								onPress={() => {
+									const back = prompt.returnView;
 									setPrompt(null);
-									setView("main");
+									setView(back);
 								}}
 							>
 								Cancel

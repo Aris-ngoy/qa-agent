@@ -1,3 +1,4 @@
+import type { SnippetContext } from "@/features/inspector/command-snippets";
 import { ElementActionMenu } from "@/features/inspector/element-action-menu";
 import { type InspectorSelection, hitTestElements } from "@/features/inspector/selection";
 import type { ScreenElement } from "@yoqa/runner-client";
@@ -22,6 +23,7 @@ type ScreenshotPanelProps = {
 	loading: boolean;
 	live: boolean;
 	disabled: boolean;
+	snippetContext: SnippetContext;
 	onSelect: (selection: InspectorSelection) => void;
 	/** Double-click records a tap for the hit element/point. */
 	onDoubleTap: (selection: InspectorSelection) => void;
@@ -38,6 +40,7 @@ export function ScreenshotPanel({
 	loading,
 	live,
 	disabled,
+	snippetContext,
 	onSelect,
 	onDoubleTap,
 	onInsertLines,
@@ -178,6 +181,7 @@ export function ScreenshotPanel({
 								selection={selection}
 								anchor={selectionAnchor}
 								disabled={disabled}
+								snippetContext={snippetContext}
 								onInsert={onInsertLines}
 								onInsertAndRun={onInsertAndRunLines}
 								onCopyLines={onCopyLines}
