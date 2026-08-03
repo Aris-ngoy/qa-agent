@@ -27,39 +27,39 @@ The Manual Inspector is a desktop surface for **exploring** a connected device t
 
 ## Command bar
 
-The command bar sits above the script and adds steps that don't need an element selection. Use it to script gestures, app lifecycle, and deeplink flows.
-
-### Screen gestures
+The command bar sits above the script and adds steps that don't need an element selection. It has two controls:
 
 - **Swipe up / down / left / right** — appends a directional swipe on the current screen.
 - **Wait** — enter seconds and click **Add wait** to pause the script (useful between an app launch and an assertion).
 
-### App control
+Everything else — tap, assert, input, and app control — lives on the **Selector Commands** menu that opens when you select an element on the screenshot.
 
-Use this section when a test needs to leave the app under test, hop into another app, or return via a deeplink. All actions append the equivalent CLI command to the script.
+## Selector Commands
 
-- **App ID** — prefilled with the selected app's iOS bundle ID or Android package. Override it to target a different app.
-- **Activate** — bring the app to the foreground (launches it if needed).
-- **Terminate** — kill the app.
-- **Restart** — terminate then activate the same app.
-- **Open Notes** (iOS only) — shortcut that activates `com.apple.mobilenotes`. Handy for pasting a deeplink URL into Notes and tapping it to test universal links.
-- **Open URL** — enter a URL and click **Open URL** to open it via the OS. Works for custom schemes (`myapp://path`) and `https://` universal links.
-- **Accept alert** / **Dismiss alert** — respond to the next system alert (permissions, App Store prompts, etc.).
+Select an element on the live screenshot to open its action menu. Alongside the usual `tap`, `assertVisible`, and `inputText` actions, the menu exposes app control and deeplink helpers you can drop into the script:
+
+- **activateApp** — bring an app to the foreground (launches it if needed). Prefilled with the selected app's iOS bundle ID or Android package; override to target a different app (for example, `com.apple.mobilenotes` to jump into Notes).
+- **terminateApp** — kill the app with the given App ID.
+- **restartApp** — terminate then activate the same App ID.
+- **openUrl** — open a URL through the OS. Works for custom schemes (`myapp://path`) and `https://` universal links.
+- **acceptAlert** / **dismissAlert** — respond to the next system alert (permissions, App Store prompts, "Open in MyApp?" deeplink confirmations, etc.).
+
+Prompts for App ID and URL prefill from the current selection or last-used value, so scripting a cross-app hop is a few clicks per step.
 
 ### Example: test a deeplink from Notes (iOS)
 
 <Steps>
   <Step title="Open Notes">
-    Click **Open Notes** to jump to Apple Notes.
+    Add **activateApp** with `com.apple.mobilenotes` to jump into Apple Notes.
   </Step>
-  <Step title="Paste and tap the deeplink">
-    Add an **Open URL** step with `myapp://path` — or select the pasted link in Notes and tap it.
+  <Step title="Trigger the deeplink">
+    Add **openUrl** with `myapp://path` — or select the pasted link in Notes and tap it.
   </Step>
   <Step title="Handle any system alert">
-    Add **Accept alert** so the "Open in MyApp?" prompt resolves automatically on replay.
+    Add **acceptAlert** so the "Open in MyApp?" prompt resolves automatically on replay.
   </Step>
   <Step title="Return to the app">
-    Add **Activate** with your App ID so the script ends in a known state.
+    Add **activateApp** with your app's ID so the script ends in a known state.
   </Step>
 </Steps>
 
