@@ -339,6 +339,40 @@ export function InspectorPage() {
 		[appendLines],
 	);
 
+	const handleAddAppAction = useCallback(
+		(kind: "activate-app" | "terminate-app" | "restart-app", appId: string) => {
+			const trimmed = appId.trim();
+			if (!trimmed) return;
+			const label =
+				kind === "activate-app"
+					? "activate app"
+					: kind === "terminate-app"
+						? "terminate app"
+						: "restart app";
+			appendLines([`# ${label}`, formatActionShellLine({ kind, appId: trimmed })]);
+		},
+		[appendLines],
+	);
+
+	const handleAddOpenUrl = useCallback(
+		(url: string) => {
+			const trimmed = url.trim();
+			if (!trimmed) return;
+			appendLines(["# open url", formatActionShellLine({ kind: "open-url", url: trimmed })]);
+		},
+		[appendLines],
+	);
+
+	const handleAddAlert = useCallback(
+		(alertAction: "accept" | "dismiss") => {
+			appendLines([
+				`# ${alertAction} alert`,
+				formatActionShellLine({ kind: "alert", alertAction }),
+			]);
+		},
+		[appendLines],
+	);
+
 	const handleInsertLines = useCallback(
 		(lines: string[]) => {
 			if (lines.length === 0) return;
@@ -632,6 +666,10 @@ export function InspectorPage() {
 	const connected = active != null;
 	const live = connected && pageVisible;
 	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(script) && casePreview.script != null;
+	const defaultAppId =
+		platform === "ios"
+			? (selectedApp?.iosBundleId.trim() ?? "")
+			: (selectedApp?.androidApplicationId.trim() ?? "");
 
 	return (
 		<div className={["flex flex-col", entered ? "motion-enter-done" : "motion-enter"].join(" ")}>
@@ -684,7 +722,16 @@ export function InspectorPage() {
 				/>
 
 				<div className="flex flex-col gap-3">
-					<CommandBar disabled={running} onAddSwipe={handleAddSwipe} onAddWait={handleAddWait} />
+					<CommandBar
+						disabled={running}
+						platform={platform}
+						defaultAppId={defaultAppId}
+						onAddSwipe={handleAddSwipe}
+						onAddWait={handleAddWait}
+						onAddAppAction={handleAddAppAction}
+						onAddOpenUrl={handleAddOpenUrl}
+						onAddAlert={handleAddAlert}
+					/>
 					<ScriptEditor
 						value={script}
 						onChange={setScript}
