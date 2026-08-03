@@ -25,7 +25,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 **Desktop**
 - Selection-anchored **ElementActionMenu** (suggested + Selector Commands; Insert / Insert & Run / Copy)
 - Menu always opens to the right; `tap --x/--y` always offered alongside id/label taps
-- **Selector Commands** include app control: `activateApp` / `terminateApp` / `restartApp`, `openUrl`, `acceptAlert` / `dismissAlert` (App ID prefilled from selected app)
+- **Selector Commands** include app control: `activateApp` / `terminateApp` / `restartApp`, `openUrl`, `acceptAlert` / `dismissAlert` (App ID prefilled from selected app); and screenshots: `screenshot` / `screenshot (path)`
 - Command bar: swipe + wait
 - **Save as test case** on the run panel (requires selected app + convertible actions); recorded taps/inputs always include `--x/--y` so conversion does not depend on the live accessibility tree
 
@@ -34,14 +34,15 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 1. Open desktop → **Inspector** → Connect a device (select an app first).
 2. Record taps / input / waits via the element menu (id/label taps also get coordinates).
 3. App control / deeplink: select any element → **Selector Commands** → `activateApp` (e.g. `com.apple.mobilenotes`) → insert & run; paste a deeplink in Notes → tap it → `acceptAlert` if prompted; or use `openUrl` with the deeplink directly.
-4. Click **Save as test case** → name the case → **Create test case**.
-5. Confirm navigation to the new case Script tab with actions present.
-6. Prefer **tap (x,y)** or id/label taps (Inspector now also records `--x/--y` with selectors so Save as test case works after the screen tree changes). Asserts/swipes/app lifecycle/open-url are skipped with warnings when not convertible to CaseScript.
+4. Capture evidence: **Selector Commands** → `screenshot` or `screenshot (path)` → Insert & Run.
+5. Click **Save as test case** → name the case → **Create test case**.
+6. Confirm navigation to the new case Script tab with actions present.
+7. Prefer **tap (x,y)** or id/label taps (Inspector now also records `--x/--y` with selectors so Save as test case works after the screen tree changes). Asserts/swipes/app lifecycle/open-url/screenshot are skipped with warnings when not convertible to CaseScript.
 
 ## Follow-ups
 
 - Change Selector (cycle overlapping / parent-child hierarchy)
 - All Commands catalog + View Docs links
 - `scrollUntilVisible`, `copyTextFrom`, `extendedWaitUntil`
-- CaseScript support for assert / swipe / double / long-press / activate-app / open-url
+- CaseScript support for assert / swipe / double / long-press / activate-app / open-url / screenshot
 - Adaptive poll rate / MJPEG-style stream for lower latency

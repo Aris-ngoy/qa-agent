@@ -3,6 +3,7 @@ import {
 	type ActionRequest,
 	formatActionShellLine,
 	formatAssertShellLine,
+	formatScreenshotShellLine,
 	formatSleepShellLine,
 } from "@yoqa/runner-client";
 
@@ -20,7 +21,9 @@ export type SnippetCommandId =
 	| "restartApp"
 	| "openUrl"
 	| "acceptAlert"
-	| "dismissAlert";
+	| "dismissAlert"
+	| "screenshot"
+	| "screenshotPath";
 
 export type SnippetContext = {
 	defaultAppId: string;
@@ -34,8 +37,8 @@ export type CommandSnippet = {
 	previewLines: string[];
 	/** True when the user must supply a value before insert. */
 	needsPrompt: "text" | "seconds" | null;
-	/** Hint for the prompt field (app id / url / wait). */
-	promptKind?: "appId" | "url" | "seconds" | "text";
+	/** Hint for the prompt field (app id / url / wait / path). */
+	promptKind?: "appId" | "url" | "seconds" | "text" | "path";
 };
 
 const LONG_PRESS_MS = 2000;
@@ -44,6 +47,7 @@ const DEFAULT_WAIT_SECONDS = 1;
 const INPUT_PLACEHOLDER = "…";
 const APP_ID_PLACEHOLDER = "com.example.app";
 const URL_PLACEHOLDER = "myapp://path";
+const SCREENSHOT_PATH_PLACEHOLDER = "/tmp/yoqa-screenshot.png";
 
 const EDITABLE_TYPE_RE =
 	/(textfield|edittext|searchfield|securetextfield|textarea|autocorrect|uitextfield|android\.widget\.edit)/i;
@@ -179,6 +183,11 @@ function openUrlLines(url: string): string[] {
 
 function alertLines(alertAction: "accept" | "dismiss"): string[] {
 	return [`# ${alertAction} alert`, formatActionShellLine({ kind: "alert", alertAction })];
+}
+
+function screenshotLines(path?: string): string[] {
+	const trimmed = path?.trim();
+	return [trimmed ? `# screenshot ${trimmed}` : "# screenshot", formatScreenshotShellLine(trimmed)];
 }
 
 function previewTap(
@@ -327,6 +336,19 @@ export function selectorCommands(
 			previewLines: [formatActionShellLine({ kind: "alert", alertAction: "dismiss" })],
 			needsPrompt: null,
 		},
+		{
+			id: "screenshot",
+			label: "screenshot",
+			previewLines: [formatScreenshotShellLine()],
+			needsPrompt: null,
+		},
+		{
+			id: "screenshotPath",
+			label: "screenshot (path)",
+			previewLines: [formatScreenshotShellLine(SCREENSHOT_PATH_PLACEHOLDER)],
+			needsPrompt: "text",
+			promptKind: "path",
+		},
 	];
 
 	return [
@@ -433,5 +455,9 @@ export function buildCommandLines(
 			return alertLines("accept");
 		case "dismissAlert":
 			return alertLines("dismiss");
+		case "screenshot":
+			return screenshotLines();
+		case "screenshotPath":
+			return screenshotLines(promptValue ?? SCREENSHOT_PATH_PLACEHOLDER);
 	}
 }
