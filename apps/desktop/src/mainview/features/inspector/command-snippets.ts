@@ -14,7 +14,17 @@ export type SnippetCommandId =
 	| "assertVisible"
 	| "assertNotVisible"
 	| "inputText"
-	| "wait";
+	| "wait"
+	| "activateApp"
+	| "terminateApp"
+	| "restartApp"
+	| "openUrl"
+	| "acceptAlert"
+	| "dismissAlert";
+
+export type SnippetContext = {
+	defaultAppId: string;
+};
 
 export type CommandSnippet = {
 	id: SnippetCommandId;
@@ -24,12 +34,16 @@ export type CommandSnippet = {
 	previewLines: string[];
 	/** True when the user must supply a value before insert. */
 	needsPrompt: "text" | "seconds" | null;
+	/** Hint for the prompt field (app id / url / wait). */
+	promptKind?: "appId" | "url" | "seconds" | "text";
 };
 
 const LONG_PRESS_MS = 2000;
 const DEFAULT_ASSERT_TIMEOUT = 5;
 const DEFAULT_WAIT_SECONDS = 1;
 const INPUT_PLACEHOLDER = "…";
+const APP_ID_PLACEHOLDER = "com.example.app";
+const URL_PLACEHOLDER = "myapp://path";
 
 const EDITABLE_TYPE_RE =
 	/(textfield|edittext|searchfield|securetextfield|textarea|autocorrect|uitextfield|android\.widget\.edit)/i;
@@ -134,6 +148,31 @@ export function waitLines(seconds: number): string[] {
 	return [formatSleepShellLine(seconds)];
 }
 
+function appActionLines(
+	kind: "activate-app" | "terminate-app" | "restart-app",
+	appId: string,
+): string[] {
+	const trimmed = appId.trim();
+	if (!trimmed) return [];
+	const label =
+		kind === "activate-app"
+			? "activate app"
+			: kind === "terminate-app"
+				? "terminate app"
+				: "restart app";
+	return [`# ${label}`, formatActionShellLine({ kind, appId: trimmed })];
+}
+
+function openUrlLines(url: string): string[] {
+	const trimmed = url.trim();
+	if (!trimmed) return [];
+	return ["# open url", formatActionShellLine({ kind: "open-url", url: trimmed })];
+}
+
+function alertLines(alertAction: "accept" | "dismiss"): string[] {
+	return [`# ${alertAction} alert`, formatActionShellLine({ kind: "alert", alertAction })];
+}
+
 function previewTap(
 	selection: InspectorSelection,
 	extras?: Partial<Pick<ActionRequest, "double" | "durationMs">>,
@@ -176,6 +215,18 @@ function previewInput(selection: InspectorSelection): string[] {
 	];
 }
 
+function previewAppAction(
+	kind: "activate-app" | "terminate-app" | "restart-app",
+	appId: string,
+): string[] {
+	return [
+		formatActionShellLine({
+			kind,
+			appId: appId.trim() || APP_ID_PLACEHOLDER,
+		}),
+	];
+}
+
 /** Suggested chips shown at the top of the element menu. */
 export function suggestedCommands(selection: InspectorSelection): CommandSnippet[] {
 	const editable = isEditableElementType(selection.element?.type);
@@ -199,12 +250,14 @@ export function suggestedCommands(selection: InspectorSelection): CommandSnippet
 		label: "assertVisible",
 		previewLines: previewAssert(selection, "visible"),
 		needsPrompt: hasLabel ? null : "text",
+		promptKind: "text",
 	};
 	const inputText: CommandSnippet = {
 		id: "inputText",
 		label: "inputText",
 		previewLines: previewInput(selection),
 		needsPrompt: "text",
+		promptKind: "text",
 	};
 
 	// Prefer id/label tap first when available, but always surface the x,y tap too.
@@ -217,21 +270,71 @@ export function suggestedCommands(selection: InspectorSelection): CommandSnippet
 }
 
 /** Full selector-commands list for the submenu. */
-export function selectorCommands(selection: InspectorSelection): CommandSnippet[] {
+export function selectorCommands(
+	selection: InspectorSelection,
+	context: SnippetContext,
+): CommandSnippet[] {
 	const hasLabel = Boolean(selection.element?.label?.trim());
 	const stable = hasStableSelector(selection);
+	const appId = context.defaultAppId.trim();
+
+	const appControl: CommandSnippet[] = [
+		{
+			id: "activateApp",
+			label: "activateApp",
+			previewLines: previewAppAction("activate-app", appId),
+			needsPrompt: "text",
+			promptKind: "appId",
+		},
+		{
+			id: "terminateApp",
+			label: "terminateApp",
+			previewLines: previewAppAction("terminate-app", appId),
+			needsPrompt: "text",
+			promptKind: "appId",
+		},
+		{
+			id: "restartApp",
+			label: "restartApp",
+			previewLines: previewAppAction("restart-app", appId),
+			needsPrompt: "text",
+			promptKind: "appId",
+		},
+		{
+			id: "openUrl",
+			label: "openUrl",
+			previewLines: [formatActionShellLine({ kind: "open-url", url: URL_PLACEHOLDER })],
+			needsPrompt: "text",
+			promptKind: "url",
+		},
+		{
+			id: "acceptAlert",
+			label: "acceptAlert",
+			previewLines: [formatActionShellLine({ kind: "alert", alertAction: "accept" })],
+			needsPrompt: null,
+		},
+		{
+			id: "dismissAlert",
+			label: "dismissAlert",
+			previewLines: [formatActionShellLine({ kind: "alert", alertAction: "dismiss" })],
+			needsPrompt: null,
+		},
+	];
+
 	return [
 		{
 			id: "assertVisible",
 			label: "assertVisible",
 			previewLines: previewAssert(selection, "visible"),
 			needsPrompt: hasLabel ? null : "text",
+			promptKind: "text",
 		},
 		{
 			id: "assertNotVisible",
 			label: "assertNotVisible",
 			previewLines: previewAssert(selection, "not-visible"),
 			needsPrompt: hasLabel ? null : "text",
+			promptKind: "text",
 		},
 		...(stable
 			? [
@@ -266,13 +369,16 @@ export function selectorCommands(selection: InspectorSelection): CommandSnippet[
 			label: "inputText",
 			previewLines: previewInput(selection),
 			needsPrompt: "text",
+			promptKind: "text",
 		},
 		{
 			id: "wait",
 			label: "wait",
 			previewLines: [formatSleepShellLine(DEFAULT_WAIT_SECONDS)],
 			needsPrompt: "seconds",
+			promptKind: "seconds",
 		},
+		...appControl,
 	];
 }
 
@@ -281,6 +387,7 @@ export function buildCommandLines(
 	selection: InspectorSelection,
 	commandId: SnippetCommandId,
 	promptValue?: string,
+	context?: SnippetContext,
 ): string[] {
 	switch (commandId) {
 		case "tap":
@@ -306,5 +413,17 @@ export function buildCommandLines(
 			if (!Number.isFinite(seconds) || seconds < 0) return waitLines(DEFAULT_WAIT_SECONDS);
 			return waitLines(seconds);
 		}
+		case "activateApp":
+			return appActionLines("activate-app", promptValue ?? context?.defaultAppId ?? "");
+		case "terminateApp":
+			return appActionLines("terminate-app", promptValue ?? context?.defaultAppId ?? "");
+		case "restartApp":
+			return appActionLines("restart-app", promptValue ?? context?.defaultAppId ?? "");
+		case "openUrl":
+			return openUrlLines(promptValue ?? "");
+		case "acceptAlert":
+			return alertLines("accept");
+		case "dismissAlert":
+			return alertLines("dismiss");
 	}
 }

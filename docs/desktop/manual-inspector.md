@@ -25,14 +25,15 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 **Desktop**
 - Selection-anchored **ElementActionMenu** (suggested + Selector Commands; Insert / Insert & Run / Copy)
 - Menu always opens to the right; `tap --x/--y` always offered alongside id/label taps
-- Command bar: swipe + wait; **app control** (Activate / Terminate / Restart, Open Notes on iOS, Open URL, Accept/Dismiss alert)
+- **Selector Commands** include app control: `activateApp` / `terminateApp` / `restartApp`, `openUrl`, `acceptAlert` / `dismissAlert` (App ID prefilled from selected app)
+- Command bar: swipe + wait
 - **Save as test case** on the run panel (requires selected app + convertible actions)
 
 ## How to verify
 
 1. Open desktop → **Inspector** → Connect a device (select an app first).
 2. Record taps / input / waits via the element menu.
-3. App control / deeplink: **Open Notes** (iOS) → paste a deeplink in a note → tap the link → **Accept alert** if prompted → confirm the target app; or use **Open URL** with the deeplink directly. App ID pre-fills from the selected app for Activate / Terminate / Restart.
+3. App control / deeplink: select any element → **Selector Commands** → `activateApp` (e.g. `com.apple.mobilenotes`) → insert & run; paste a deeplink in Notes → tap it → `acceptAlert` if prompted; or use `openUrl` with the deeplink directly.
 4. Click **Save as test case** → name the case → **Create test case**.
 5. Confirm navigation to the new case Script tab with actions present.
 6. Prefer **tap (x,y)** or ensure the live tree can resolve id/label; asserts/swipes/app lifecycle/open-url are skipped with warnings in the dialog when not convertible to CaseScript.
