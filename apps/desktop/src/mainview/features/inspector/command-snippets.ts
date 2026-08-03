@@ -1,4 +1,3 @@
-import type { DevicePlatform } from "@/features/devices/select-device-modal";
 import type { InspectorSelection } from "@/features/inspector/selection";
 import {
 	type ActionRequest,
@@ -19,14 +18,12 @@ export type SnippetCommandId =
 	| "activateApp"
 	| "terminateApp"
 	| "restartApp"
-	| "openNotes"
 	| "openUrl"
 	| "acceptAlert"
 	| "dismissAlert";
 
 export type SnippetContext = {
 	defaultAppId: string;
-	platform: DevicePlatform;
 };
 
 export type CommandSnippet = {
@@ -45,7 +42,6 @@ const LONG_PRESS_MS = 2000;
 const DEFAULT_ASSERT_TIMEOUT = 5;
 const DEFAULT_WAIT_SECONDS = 1;
 const INPUT_PLACEHOLDER = "…";
-const NOTES_BUNDLE_ID = "com.apple.mobilenotes";
 const APP_ID_PLACEHOLDER = "com.example.app";
 const URL_PLACEHOLDER = "myapp://path";
 
@@ -304,16 +300,6 @@ export function selectorCommands(
 			needsPrompt: "text",
 			promptKind: "appId",
 		},
-		...(context.platform === "ios"
-			? [
-					{
-						id: "openNotes" as const,
-						label: "openNotes",
-						previewLines: previewAppAction("activate-app", NOTES_BUNDLE_ID),
-						needsPrompt: null,
-					},
-				]
-			: []),
 		{
 			id: "openUrl",
 			label: "openUrl",
@@ -433,8 +419,6 @@ export function buildCommandLines(
 			return appActionLines("terminate-app", promptValue ?? context?.defaultAppId ?? "");
 		case "restartApp":
 			return appActionLines("restart-app", promptValue ?? context?.defaultAppId ?? "");
-		case "openNotes":
-			return appActionLines("activate-app", NOTES_BUNDLE_ID);
 		case "openUrl":
 			return openUrlLines(promptValue ?? "");
 		case "acceptAlert":

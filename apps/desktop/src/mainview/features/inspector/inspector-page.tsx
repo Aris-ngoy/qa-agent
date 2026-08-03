@@ -634,7 +634,6 @@ export function InspectorPage() {
 	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(script) && casePreview.script != null;
 	const snippetContext = useMemo(
 		() => ({
-			platform,
 			defaultAppId:
 				platform === "ios"
 					? (selectedApp?.iosBundleId.trim() ?? "")
