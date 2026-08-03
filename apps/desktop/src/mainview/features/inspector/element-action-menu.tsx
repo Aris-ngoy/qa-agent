@@ -137,6 +137,7 @@ function promptHeading(prompt: PromptState): string {
 	if (prompt.kind === "seconds") return `Wait seconds for ${prompt.label}`;
 	if (prompt.promptKind === "appId") return `App ID for ${prompt.label}`;
 	if (prompt.promptKind === "url") return `URL for ${prompt.label}`;
+	if (prompt.promptKind === "path") return `Output path for ${prompt.label}`;
 	return `Text for ${prompt.label}`;
 }
 
@@ -144,6 +145,7 @@ function promptPlaceholder(prompt: PromptState): string {
 	if (prompt.kind === "seconds") return "1";
 	if (prompt.promptKind === "appId") return "com.example.app";
 	if (prompt.promptKind === "url") return "myapp://path or https://…";
+	if (prompt.promptKind === "path") return "/tmp/yoqa-screenshot.png";
 	return "Enter text…";
 }
 
@@ -188,7 +190,9 @@ export function ElementActionMenu({
 					? "1"
 					: snippet.promptKind === "appId"
 						? snippetContext.defaultAppId
-						: "";
+						: snippet.promptKind === "path"
+							? "/tmp/yoqa-screenshot.png"
+							: "";
 			setPromptValue(initial);
 			setView("prompt");
 			setFlyoutId(null);
@@ -353,9 +357,11 @@ export function ElementActionMenu({
 									? "App ID"
 									: prompt.promptKind === "url"
 										? "URL"
-										: prompt.kind === "seconds"
-											? "Seconds"
-											: "Text"}
+										: prompt.promptKind === "path"
+											? "Path"
+											: prompt.kind === "seconds"
+												? "Seconds"
+												: "Text"}
 							</Label>
 							<Input
 								className="rounded-lg border border-white/15 bg-black/40 text-white"

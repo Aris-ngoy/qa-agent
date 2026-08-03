@@ -3,6 +3,7 @@ import {
 	type ActionRequest,
 	formatActionShellLine,
 	formatAssertShellLine,
+	formatScreenshotShellLine,
 	formatSleepShellLine,
 } from "@yoqa/runner-client";
 
@@ -20,7 +21,9 @@ export type SnippetCommandId =
 	| "restartApp"
 	| "openUrl"
 	| "acceptAlert"
-	| "dismissAlert";
+	| "dismissAlert"
+	| "screenshot"
+	| "screenshotPath";
 
 export type SnippetContext = {
 	defaultAppId: string;
@@ -34,8 +37,8 @@ export type CommandSnippet = {
 	previewLines: string[];
 	/** True when the user must supply a value before insert. */
 	needsPrompt: "text" | "seconds" | null;
-	/** Hint for the prompt field (app id / url / wait). */
-	promptKind?: "appId" | "url" | "seconds" | "text";
+	/** Hint for the prompt field (app id / url / wait / path). */
+	promptKind?: "appId" | "url" | "seconds" | "text" | "path";
 };
 
 const LONG_PRESS_MS = 2000;
@@ -44,6 +47,7 @@ const DEFAULT_WAIT_SECONDS = 1;
 const INPUT_PLACEHOLDER = "…";
 const APP_ID_PLACEHOLDER = "com.example.app";
 const URL_PLACEHOLDER = "myapp://path";
+const SCREENSHOT_PATH_PLACEHOLDER = "/tmp/yoqa-screenshot.png";
 
 const EDITABLE_TYPE_RE =
 	/(textfield|edittext|searchfield|securetextfield|textarea|autocorrect|uitextfield|android\.widget\.edit)/i;
@@ -62,14 +66,22 @@ function selectionComment(selection: InspectorSelection): string | null {
 	return null;
 }
 
+/**
+ * Always include normalized x/y so Save as test case can convert without the live tree.
+ * Prefer id/label when present for readable scripts and runtime targeting.
+ */
 function targetFields(
 	selection: InspectorSelection,
 ): Pick<ActionRequest, "id" | "label" | "x" | "y"> {
+	const fields: Pick<ActionRequest, "id" | "label" | "x" | "y"> = {
+		x: selection.x,
+		y: selection.y,
+	};
 	const id = selection.element?.id?.trim();
-	if (id) return { id };
+	if (id) fields.id = id;
 	const label = selection.element?.label?.trim();
-	if (label) return { label };
-	return { x: selection.x, y: selection.y };
+	if (label) fields.label = label;
+	return fields;
 }
 
 function withComment(selection: InspectorSelection, line: string): string[] {
@@ -171,6 +183,11 @@ function openUrlLines(url: string): string[] {
 
 function alertLines(alertAction: "accept" | "dismiss"): string[] {
 	return [`# ${alertAction} alert`, formatActionShellLine({ kind: "alert", alertAction })];
+}
+
+function screenshotLines(path?: string): string[] {
+	const trimmed = path?.trim();
+	return [trimmed ? `# screenshot ${trimmed}` : "# screenshot", formatScreenshotShellLine(trimmed)];
 }
 
 function previewTap(
@@ -319,6 +336,19 @@ export function selectorCommands(
 			previewLines: [formatActionShellLine({ kind: "alert", alertAction: "dismiss" })],
 			needsPrompt: null,
 		},
+		{
+			id: "screenshot",
+			label: "screenshot",
+			previewLines: [formatScreenshotShellLine()],
+			needsPrompt: null,
+		},
+		{
+			id: "screenshotPath",
+			label: "screenshot (path)",
+			previewLines: [formatScreenshotShellLine(SCREENSHOT_PATH_PLACEHOLDER)],
+			needsPrompt: "text",
+			promptKind: "path",
+		},
 	];
 
 	return [
@@ -425,5 +455,9 @@ export function buildCommandLines(
 			return alertLines("accept");
 		case "dismissAlert":
 			return alertLines("dismiss");
+		case "screenshot":
+			return screenshotLines();
+		case "screenshotPath":
+			return screenshotLines(promptValue ?? SCREENSHOT_PATH_PLACEHOLDER);
 	}
 }

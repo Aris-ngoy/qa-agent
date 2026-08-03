@@ -6,6 +6,7 @@ import {
 	findElementByLabel,
 	formatActionShellLine,
 	formatAssertShellLine,
+	formatScreenshotShellLine,
 	formatSleepShellLine,
 	parseYoqaShellScript,
 	screenHasText,
@@ -70,16 +71,18 @@ describe("tokenizeShellLine", () => {
 });
 
 describe("parseYoqaShellScript", () => {
-	test("parses sleep, tap, assert, and ignores comments", () => {
+	test("parses sleep, tap, assert, screenshot, and ignores comments", () => {
 		const result = parseYoqaShellScript(`
 # comment
 set -euo pipefail
 sleep 1.5
 yoqa action tap --x 100 --y 200 --double
 yoqa assert visible --text 'Welcome' --timeout 3
+yoqa screenshot
+yoqa screenshot '/tmp/shot.png'
 `);
 		expect(result.errors).toEqual([]);
-		expect(result.steps).toHaveLength(3);
+		expect(result.steps).toHaveLength(5);
 		expect(result.steps[0]).toMatchObject({ kind: "sleep", seconds: 1.5 });
 		expect(result.steps[1]).toMatchObject({
 			kind: "action",
@@ -91,6 +94,8 @@ yoqa assert visible --text 'Welcome' --timeout 3
 			text: "Welcome",
 			timeoutSeconds: 3,
 		});
+		expect(result.steps[3]).toMatchObject({ kind: "screenshot", path: null });
+		expect(result.steps[4]).toMatchObject({ kind: "screenshot", path: "/tmp/shot.png" });
 	});
 
 	test("collects parse errors without aborting later lines", () => {
@@ -124,6 +129,8 @@ describe("format helpers", () => {
 		expect(formatAssertShellLine({ assertion: "visible", text: "OK", timeoutSeconds: 8 })).toBe(
 			"yoqa assert visible --text 'OK' --timeout 8",
 		);
+		expect(formatScreenshotShellLine()).toBe("yoqa screenshot");
+		expect(formatScreenshotShellLine("/tmp/a.png")).toBe("yoqa screenshot '/tmp/a.png'");
 	});
 });
 
@@ -192,5 +199,46 @@ sleep 15
 		const result = shellToCaseScript(`yoqa assert visible --text 'Nope'`);
 		expect(result.script).toBeNull();
 		expect(result.warnings.length).toBeGreaterThan(0);
+	});
+
+	test("skips screenshot steps when converting to CaseScript", () => {
+		const result = shellToCaseScript(`
+yoqa screenshot
+yoqa action tap --x 10 --y 20
+yoqa screenshot '/tmp/x.png'
+`);
+		expect(result.script?.actions).toEqual([{ type: "tap", x: 10, y: 20 }]);
+		expect(result.warnings.filter((w) => w.includes("screenshot")).length).toBe(2);
+	});
+
+	test("tap with id and x/y converts without a live element tree", () => {
+		const result = shellToCaseScript("yoqa action tap --id Note --x 120 --y 340", {
+			elements: [],
+			savedAt: 7,
+		});
+		expect(result.errors).toEqual([]);
+		expect(result.script?.actions).toEqual([{ type: "tap", x: 120, y: 340 }]);
+		expect(result.warnings).toEqual([]);
+	});
+
+	test("tap with id only cannot convert when the element is gone from the tree", () => {
+		const result = shellToCaseScript("yoqa action tap --id Note", { elements: [] });
+		expect(result.script).toBeNull();
+		expect(result.warnings.some((w) => w.includes("tap needs"))).toBe(true);
+	});
+
+	test("inspector-style tap lines with id and coordinates convert for Save as test case", () => {
+		const line = formatActionShellLine({
+			kind: "tap",
+			id: "Note",
+			label: "All iCloud",
+			x: 180,
+			y: 420,
+		});
+		const result = shellToCaseScript(line, { elements: [], savedAt: 99 });
+		expect(line).toContain("--id");
+		expect(line).toContain("--x");
+		expect(line).toContain("--y");
+		expect(result.script?.actions).toEqual([{ type: "tap", x: 180, y: 420 }]);
 	});
 });
