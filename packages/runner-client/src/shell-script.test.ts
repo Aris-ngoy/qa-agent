@@ -193,4 +193,35 @@ sleep 15
 		expect(result.script).toBeNull();
 		expect(result.warnings.length).toBeGreaterThan(0);
 	});
+
+	test("tap with id and x/y converts without a live element tree", () => {
+		const result = shellToCaseScript("yoqa action tap --id Note --x 120 --y 340", {
+			elements: [],
+			savedAt: 7,
+		});
+		expect(result.errors).toEqual([]);
+		expect(result.script?.actions).toEqual([{ type: "tap", x: 120, y: 340 }]);
+		expect(result.warnings).toEqual([]);
+	});
+
+	test("tap with id only cannot convert when the element is gone from the tree", () => {
+		const result = shellToCaseScript("yoqa action tap --id Note", { elements: [] });
+		expect(result.script).toBeNull();
+		expect(result.warnings.some((w) => w.includes("tap needs"))).toBe(true);
+	});
+
+	test("inspector-style tap lines with id and coordinates convert for Save as test case", () => {
+		const line = formatActionShellLine({
+			kind: "tap",
+			id: "Note",
+			label: "All iCloud",
+			x: 180,
+			y: 420,
+		});
+		const result = shellToCaseScript(line, { elements: [], savedAt: 99 });
+		expect(line).toContain("--id");
+		expect(line).toContain("--x");
+		expect(line).toContain("--y");
+		expect(result.script?.actions).toEqual([{ type: "tap", x: 180, y: 420 }]);
+	});
 });

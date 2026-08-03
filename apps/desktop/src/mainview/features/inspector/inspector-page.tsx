@@ -12,7 +12,12 @@ import { ScriptEditor } from "@/features/inspector/script-editor";
 import { type InspectorSelection, appendScriptLines } from "@/features/inspector/selection";
 import { SessionToolbar } from "@/features/inspector/session-toolbar";
 import { useActiveRun } from "@/features/runs/active-run-context";
-import { type TestCase, casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
+import {
+	type TestCase,
+	caseQueryKey,
+	casesQueryKey,
+	mapCatalogCase,
+} from "@/features/test-cases/data";
 import { toast } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -574,12 +579,22 @@ export function InspectorPage() {
 			showErrorToast(new Error("Select an app first"), "Select an app");
 			return;
 		}
+		if (!scriptHasBody(script)) {
+			showErrorToast(new Error("Add actions to the script first"), "Nothing to save");
+			return;
+		}
 		if (!casePreview.script) {
-			showErrorToast(new Error("No convertible actions in the script"), "Nothing to save");
+			showErrorToast(
+				new Error(
+					casePreview.warnings[0] ??
+						"Only tap, type, and wait convert to a saved script. Prefer tap (x,y) or re-record after this fix.",
+				),
+				"Nothing convertible",
+			);
 			return;
 		}
 		setSaveOpen(true);
-	}, [casePreview.script, selectedApp]);
+	}, [casePreview.script, casePreview.warnings, script, selectedApp]);
 
 	const handleSaveAsCase = useCallback(
 		async (name: string) => {
@@ -612,6 +627,7 @@ export function InspectorPage() {
 					script: converted.script,
 				});
 				const mapped = mapCatalogCase(updated);
+				queryClient.setQueryData(caseQueryKey(mapped.id), mapped);
 				queryClient.setQueryData<TestCase[]>(casesQueryKey(selectedApp.id), (current) =>
 					current ? [mapped, ...current.filter((row) => row.id !== mapped.id)] : [mapped],
 				);
@@ -631,7 +647,7 @@ export function InspectorPage() {
 
 	const connected = active != null;
 	const live = connected && pageVisible;
-	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(script) && casePreview.script != null;
+	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(script);
 	const snippetContext = useMemo(
 		() => ({
 			defaultAppId:

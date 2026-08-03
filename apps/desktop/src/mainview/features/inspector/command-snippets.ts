@@ -62,14 +62,22 @@ function selectionComment(selection: InspectorSelection): string | null {
 	return null;
 }
 
+/**
+ * Always include normalized x/y so Save as test case can convert without the live tree.
+ * Prefer id/label when present for readable scripts and runtime targeting.
+ */
 function targetFields(
 	selection: InspectorSelection,
 ): Pick<ActionRequest, "id" | "label" | "x" | "y"> {
+	const fields: Pick<ActionRequest, "id" | "label" | "x" | "y"> = {
+		x: selection.x,
+		y: selection.y,
+	};
 	const id = selection.element?.id?.trim();
-	if (id) return { id };
+	if (id) fields.id = id;
 	const label = selection.element?.label?.trim();
-	if (label) return { label };
-	return { x: selection.x, y: selection.y };
+	if (label) fields.label = label;
+	return fields;
 }
 
 function withComment(selection: InspectorSelection, line: string): string[] {
