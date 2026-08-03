@@ -43,8 +43,10 @@ Select an element on the live screenshot to open its action menu. Alongside the 
 - **restartApp** — terminate then activate the same App ID.
 - **openUrl** — open a URL through the OS. Works for custom schemes (`myapp://path`) and `https://` universal links.
 - **acceptAlert** / **dismissAlert** — respond to the next system alert (permissions, App Store prompts, "Open in MyApp?" deeplink confirmations, etc.).
+- **screenshot** — capture the current screen. Use **Insert & Run** to save an evidence PNG mid-flow (for example, right after a deeplink lands).
+- **screenshot (path)** — same as above, but prompts for a destination path (for example, `/tmp/yoqa-screenshot.png`) so multiple captures don't overwrite each other.
 
-Prompts for App ID and URL prefill from the current selection or last-used value, so scripting a cross-app hop is a few clicks per step.
+Prompts for App ID, URL, and screenshot path prefill from the current selection or last-used value, so scripting a cross-app hop is a few clicks per step.
 
 ### Example: test a deeplink from Notes (iOS)
 
