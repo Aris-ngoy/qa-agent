@@ -38,6 +38,7 @@ type SessionToolbarProps = {
 	connecting: boolean;
 	live: boolean;
 	onConnect: () => void;
+	onRestart: () => void;
 	onDisconnect: () => void;
 	runLiveWarning: boolean;
 };
@@ -51,11 +52,13 @@ export function SessionToolbar({
 	connecting,
 	live,
 	onConnect,
+	onRestart,
 	onDisconnect,
 	runLiveWarning,
 }: SessionToolbarProps) {
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const connected = active != null;
+	const canRestart = connected || device != null;
 
 	return (
 		<div className="flex flex-col gap-2 border-b border-outline-variant/40 px-4 py-3">
@@ -116,6 +119,16 @@ export function SessionToolbar({
 						<Button
 							isDisabled={connecting}
 							size="sm"
+							variant="secondary"
+							onPress={() => {
+								onRestart();
+							}}
+						>
+							{connecting ? "Restarting…" : "Restart session"}
+						</Button>
+						<Button
+							isDisabled={connecting}
+							size="sm"
 							variant="danger"
 							onPress={() => {
 								onDisconnect();
@@ -125,16 +138,30 @@ export function SessionToolbar({
 						</Button>
 					</>
 				) : (
-					<Button
-						isDisabled={!device || connecting}
-						size="sm"
-						variant="primary"
-						onPress={() => {
-							onConnect();
-						}}
-					>
-						{connecting ? "Connecting…" : "Connect"}
-					</Button>
+					<>
+						<Button
+							isDisabled={!device || connecting}
+							size="sm"
+							variant="primary"
+							onPress={() => {
+								onConnect();
+							}}
+						>
+							{connecting ? "Connecting…" : "Connect"}
+						</Button>
+						{canRestart && device ? (
+							<Button
+								isDisabled={connecting}
+								size="sm"
+								variant="secondary"
+								onPress={() => {
+									onRestart();
+								}}
+							>
+								{connecting ? "Restarting…" : "Restart session"}
+							</Button>
+						) : null}
+					</>
 				)}
 			</div>
 

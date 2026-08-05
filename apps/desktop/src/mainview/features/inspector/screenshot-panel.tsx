@@ -195,7 +195,7 @@ export function ScreenshotPanel({
 				</div>
 				{liveControl ? (
 					<span className="text-helper text-on-surface-variant">
-						Drag on the screen to control the device
+						Tap / drag to control · double-click to double-tap
 					</span>
 				) : selection ? (
 					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
@@ -228,7 +228,7 @@ export function ScreenshotPanel({
 							role="img"
 							aria-label={
 								liveControl
-									? "Live device screen — drag to control"
+									? "Live device screen — tap, drag, or double-click to double-tap"
 									: "Live device screen — click to select actions, double-click to add tap"
 							}
 							className={[

@@ -40,6 +40,28 @@ export function requireActiveSession(): ActiveSession {
 	return active;
 }
 
+/** Appium/WDA session vanished while the runner still held a handle. */
+export function isMissingAppiumSessionError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return /session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i.test(
+		message,
+	);
+}
+
+/**
+ * Drop the in-memory active session without calling deleteSession
+ * (the remote session is already gone).
+ */
+export function abandonActiveSession(): ActiveSessionInfo | null {
+	if (!active) return null;
+	const info = getActiveSessionInfo();
+	active = null;
+	console.warn(
+		`[yoqa-runner] abandoned dead Appium session for ${info?.platform} ${info?.deviceId}`,
+	);
+	return info;
+}
+
 export async function connectDevice(options: {
 	deviceId: string;
 	platform: DevicePlatform;
@@ -57,6 +79,9 @@ export async function connectDevice(options: {
 		caseCaps: [],
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
+		onSessionDead: () => {
+			abandonActiveSession();
+		},
 	});
 
 	active = {

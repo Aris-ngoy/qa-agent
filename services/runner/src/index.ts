@@ -19,6 +19,8 @@ const app = createApp(settings, startedAt);
 const server = Bun.serve<ControlWsData>({
 	hostname: settings.host,
 	port: settings.port,
+	// MJPEG proxy holds the HTTP connection open; default 10s idle kills the stream.
+	idleTimeout: 0,
 	async fetch(req, server) {
 		const url = new URL(req.url);
 		if (isControlUpgrade(url.pathname)) {

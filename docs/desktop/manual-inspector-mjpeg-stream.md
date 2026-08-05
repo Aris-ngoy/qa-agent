@@ -16,11 +16,13 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 
 **Runner**
 
-- Allocates a free MJPEG port on connect; sets `mjpegServerPort` + `mjpegScreenshotUrl`
-- Applies settings: framerate 20, JPEG quality 40, scaling 50
+- Allocates a free MJPEG port on connect; sets `mjpegServerPort` (not `mjpegScreenshotUrl`, which needs optional `mjpeg-consumer`)
+- Applies settings: framerate **60** (sim / Android) or **30** (physical iOS), JPEG quality 35, scaling 50
+- `appium:newCommandTimeout` **3600** so interactive Inspector sessions do not idle-out under WDA load
 - `GET /stream.mjpeg` proxies the Appium MJPEG body
 - `GET /screenshot/image` uses in-memory `captureFrame()`
 - `WS /ws/control` for live pointer; action gate blocks interleaving with scripts
+- Live gestures are **buffered** locally and flushed as one tap/drag on pointer-up (WDA cannot stream mid-gesture `performActions`)
 - Active device response includes `mjpegPort`, `streamReady`, `streamUrl`
 
 **Client (`@yoqa/runner-client`)**
@@ -31,9 +33,11 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 **Desktop Inspector**
 
 - Primary feed: `<img src="/stream.mjpeg">` (no 150ms PNG poll)
-- Tree refresh every 2s independently
+- Tree refresh every **5s** independently (lighter load on physical WDA)
 - **Live control** checkbox: pointer drag → WS; script select/menu when off
 - **Stream** vs **Poll** badge
+- **Restart session** in the toolbar: disconnect + reconnect and remount the MJPEG URL
+- On unexpected session death: up to **2 auto-reconnects** within 90s, then the manual Restart toast
 
 ## How to verify
 
@@ -42,6 +46,7 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 3. Explicit screenshot / script report still persists files.
 4. Disconnect closes the stream and control socket cleanly.
 5. If MJPEG fails to probe, badge shows **Poll** and the feed still updates.
+6. On a real iPhone, session should stay up under stream + tree refresh; if WDA dies, Inspector auto-reconnects (or prompts Restart after the budget).
 
 ## Follow-ups
 
@@ -49,3 +54,4 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 - Binary WS pointer protocol (serve-sim-style) if JSON coalescing is not enough
 - Hardware home / rotate over the control channel
 - Tune framerate/quality per platform from Settings
+- Further soften physical-iOS MJPEG (quality / scaling) if WDA still flakes
