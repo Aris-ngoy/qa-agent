@@ -1,4 +1,4 @@
-import type { InspectorSelection } from "@/features/inspector/selection";
+import type { InspectorSelection, PreferredLocator } from "@/features/inspector/selection";
 import {
 	type ActionRequest,
 	formatActionShellLine,
@@ -9,6 +9,7 @@ import {
 
 export type SnippetCommandId =
 	| "tap"
+	| "tapAlt"
 	| "tapPoint"
 	| "doubleTap"
 	| "longPress"
@@ -88,31 +89,54 @@ export function usableLabel(
 	return label;
 }
 
+function preferredLocatorOf(selection: InspectorSelection): PreferredLocator {
+	return selection.preferredLocator ?? (usableId(selection.element) ? "id" : "label");
+}
+
 function selectionComment(selection: InspectorSelection): string | null {
+	const preferred = preferredLocatorOf(selection);
 	const id = usableId(selection.element);
-	if (id) return `# id ${id}`;
 	const label = usableLabel(selection.element);
+	if (preferred === "id" && id) return `# id ${id}`;
 	if (label) return `# ${label}`;
+	if (id) return `# id ${id}`;
 	if (selection.element?.type) return `# ${selection.element.type}`;
 	return null;
 }
 
 /**
  * Always include normalized x/y so Save as test case can convert without the live tree.
- * Prefer id/label when present for readable scripts and runtime targeting.
+ * When `locator` is set, only that usable field is attached (Change Selector preference).
+ * When omitted, attach both id and label when present.
  */
 function targetFields(
 	selection: InspectorSelection,
+	locator?: PreferredLocator | "both",
 ): Pick<ActionRequest, "id" | "label" | "x" | "y"> {
 	const fields: Pick<ActionRequest, "id" | "label" | "x" | "y"> = {
 		x: selection.x,
 		y: selection.y,
 	};
 	const id = usableId(selection.element);
-	if (id) fields.id = id;
 	const label = usableLabel(selection.element);
+	const mode = locator ?? "both";
+	if (mode === "both") {
+		if (id) fields.id = id;
+		if (label) fields.label = label;
+		return fields;
+	}
+	if (mode === "id") {
+		if (id) fields.id = id;
+		else if (label) fields.label = label;
+		return fields;
+	}
 	if (label) fields.label = label;
+	else if (id) fields.id = id;
 	return fields;
+}
+
+function altLocator(preferred: PreferredLocator): PreferredLocator {
+	return preferred === "id" ? "label" : "id";
 }
 
 function withComment(selection: InspectorSelection, line: string): string[] {
@@ -123,10 +147,12 @@ function withComment(selection: InspectorSelection, line: string): string[] {
 export function tapActionForSelection(
 	selection: InspectorSelection,
 	extras: Partial<Pick<ActionRequest, "double" | "durationMs">> = {},
+	locator?: PreferredLocator | "both",
 ): ActionRequest {
+	const mode = locator ?? preferredLocatorOf(selection);
 	return {
 		kind: "tap",
-		...targetFields(selection),
+		...targetFields(selection, mode),
 		...extras,
 	};
 }
@@ -147,8 +173,12 @@ export function tapPointActionForSelection(
 export function tapLinesForSelection(
 	selection: InspectorSelection,
 	extras: Partial<Pick<ActionRequest, "double" | "durationMs">> = {},
+	locator?: PreferredLocator | "both",
 ): string[] {
-	return withComment(selection, formatActionShellLine(tapActionForSelection(selection, extras)));
+	return withComment(
+		selection,
+		formatActionShellLine(tapActionForSelection(selection, extras, locator)),
+	);
 }
 
 export function tapPointLinesForSelection(
@@ -182,7 +212,7 @@ export function inputLinesForSelection(selection: InspectorSelection, text: stri
 	const action: ActionRequest = {
 		kind: "input",
 		text: trimmed,
-		...targetFields(selection),
+		...targetFields(selection, preferredLocatorOf(selection)),
 	};
 	return withComment(selection, formatActionShellLine(action));
 }
@@ -224,8 +254,9 @@ function screenshotLines(path?: string): string[] {
 function previewTap(
 	selection: InspectorSelection,
 	extras?: Partial<Pick<ActionRequest, "double" | "durationMs">>,
+	locator?: PreferredLocator | "both",
 ): string[] {
-	return [formatActionShellLine(tapActionForSelection(selection, extras))];
+	return [formatActionShellLine(tapActionForSelection(selection, extras, locator))];
 }
 
 function previewTapPoint(
@@ -258,7 +289,7 @@ function previewInput(selection: InspectorSelection): string[] {
 		formatActionShellLine({
 			kind: "input",
 			text: INPUT_PLACEHOLDER,
-			...targetFields(selection),
+			...targetFields(selection, preferredLocatorOf(selection)),
 		}),
 	];
 }
@@ -279,14 +310,12 @@ function previewAppAction(
 export function suggestedCommands(selection: InspectorSelection): CommandSnippet[] {
 	const editable = isEditableElementType(selection.element?.type);
 	const hasLabel = Boolean(usableLabel(selection.element));
-	const stable = hasStableSelector(selection);
+	const id = usableId(selection.element);
+	const label = usableLabel(selection.element);
+	const preferred = preferredLocatorOf(selection);
+	const other = altLocator(preferred);
+	const otherValue = other === "id" ? id : label;
 
-	const tap: CommandSnippet = {
-		id: "tap",
-		label: "tap",
-		previewLines: previewTap(selection),
-		needsPrompt: null,
-	};
 	const tapPoint: CommandSnippet = {
 		id: "tapPoint",
 		label: "tap (x,y)",
@@ -308,8 +337,24 @@ export function suggestedCommands(selection: InspectorSelection): CommandSnippet
 		promptKind: "text",
 	};
 
-	// Prefer id/label tap first when available, but always surface the x,y tap too.
-	const taps = stable ? [tap, tapPoint] : [tapPoint];
+	const taps: CommandSnippet[] = [];
+	if (id || label) {
+		taps.push({
+			id: "tap",
+			label: preferred === "id" && id ? "tap (id)" : "tap (label)",
+			previewLines: previewTap(selection, undefined, preferred),
+			needsPrompt: null,
+		});
+		if (otherValue) {
+			taps.push({
+				id: "tapAlt",
+				label: other === "id" ? "tap (id)" : "tap (label)",
+				previewLines: previewTap(selection, undefined, other),
+				needsPrompt: null,
+			});
+		}
+	}
+	taps.push(tapPoint);
 
 	if (editable) {
 		return [inputText, ...taps, assertVisible];
@@ -382,6 +427,12 @@ export function selectorCommands(
 		},
 	];
 
+	const preferred = preferredLocatorOf(selection);
+	const other = altLocator(preferred);
+	const id = usableId(selection.element);
+	const label = usableLabel(selection.element);
+	const otherValue = other === "id" ? id : label;
+
 	return [
 		{
 			id: "assertVisible",
@@ -401,10 +452,20 @@ export function selectorCommands(
 			? [
 					{
 						id: "tap" as const,
-						label: "tap",
-						previewLines: previewTap(selection),
+						label: preferred === "id" && id ? "tap (id)" : "tap (label)",
+						previewLines: previewTap(selection, undefined, preferred),
 						needsPrompt: null,
 					},
+					...(otherValue
+						? [
+								{
+									id: "tapAlt" as const,
+									label: other === "id" ? "tap (id)" : "tap (label)",
+									previewLines: previewTap(selection, undefined, other),
+									needsPrompt: null,
+								},
+							]
+						: []),
 				]
 			: []),
 		{
@@ -416,13 +477,13 @@ export function selectorCommands(
 		{
 			id: "doubleTap",
 			label: "doubleTap",
-			previewLines: previewTap(selection, { double: true }),
+			previewLines: previewTap(selection, { double: true }, preferred),
 			needsPrompt: null,
 		},
 		{
 			id: "longPress",
 			label: "longPress",
-			previewLines: previewTap(selection, { durationMs: LONG_PRESS_MS }),
+			previewLines: previewTap(selection, { durationMs: LONG_PRESS_MS }, preferred),
 			needsPrompt: null,
 		},
 		{
@@ -450,15 +511,18 @@ export function buildCommandLines(
 	promptValue?: string,
 	context?: SnippetContext,
 ): string[] {
+	const preferred = preferredLocatorOf(selection);
 	switch (commandId) {
 		case "tap":
-			return tapLinesForSelection(selection);
+			return tapLinesForSelection(selection, {}, preferred);
+		case "tapAlt":
+			return tapLinesForSelection(selection, {}, altLocator(preferred));
 		case "tapPoint":
 			return tapPointLinesForSelection(selection);
 		case "doubleTap":
-			return tapLinesForSelection(selection, { double: true });
+			return tapLinesForSelection(selection, { double: true }, preferred);
 		case "longPress":
-			return tapLinesForSelection(selection, { durationMs: LONG_PRESS_MS });
+			return tapLinesForSelection(selection, { durationMs: LONG_PRESS_MS }, preferred);
 		case "assertVisible": {
 			const lines = assertLinesForSelection(selection, "visible", promptValue);
 			return lines ?? [];

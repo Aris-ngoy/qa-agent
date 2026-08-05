@@ -1,10 +1,24 @@
 import type { SnippetContext } from "@/features/inspector/command-snippets";
 import { ElementActionMenu } from "@/features/inspector/element-action-menu";
-import { type InspectorSelection, hitTestElements } from "@/features/inspector/selection";
+import {
+	type InspectorSelection,
+	activeSelectorCaption,
+	hitTestElements,
+	selectionFromPoint,
+} from "@/features/inspector/selection";
 import type { ScreenElement } from "@yoqa/runner-client";
-import { type MouseEvent, type PointerEvent, useCallback, useRef, useState } from "react";
+import {
+	type MouseEvent,
+	type PointerEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 
 function isSameSelection(a: InspectorSelection, b: InspectorSelection): boolean {
+	if (a.preferredLocator !== b.preferredLocator) return false;
+	if (a.candidateIndex !== b.candidateIndex) return false;
 	const aId = a.element?.id?.trim() ?? "";
 	const bId = b.element?.id?.trim() ?? "";
 	const aLabel = a.element?.label?.trim() ?? "";
@@ -15,19 +29,18 @@ function isSameSelection(a: InspectorSelection, b: InspectorSelection): boolean 
 	return a.x === b.x && a.y === b.y;
 }
 
-function selectionFromPoint(
-	elements: ScreenElement[],
-	point: { x: number; y: number },
-): InspectorSelection {
-	const element = hitTestElements(elements, point.x, point.y);
-	if (element) {
-		return {
-			x: Math.round(element.x + element.width / 2),
-			y: Math.round(element.y + element.height / 2),
-			element,
-		};
-	}
-	return { x: point.x, y: point.y, element: null };
+function elementBoxPercent(element: ScreenElement): {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+} {
+	return {
+		left: element.x / 10,
+		top: element.y / 10,
+		width: element.width / 10,
+		height: element.height / 10,
+	};
 }
 
 type ScreenshotPanelProps = {
@@ -36,15 +49,19 @@ type ScreenshotPanelProps = {
 	selection: InspectorSelection | null;
 	/** Initial connect / first frame only — not every live poll. */
 	loading: boolean;
+	/** True while warming / refreshing the accessibility tree. */
+	treeRefreshing: boolean;
 	live: boolean;
 	feedMode: "mjpeg" | "poll" | null;
 	liveControl: boolean;
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
 	snippetContext: SnippetContext;
-	/** Under MJPEG, fetch a fresh accessibility tree before hit-testing. */
-	resolveElements?: () => Promise<ScreenElement[]>;
+	/** Optional: notify parent after a local select so it can background-refresh a stale tree. */
+	onSelectWithPoint?: (selection: InspectorSelection) => void;
 	onSelect: (selection: InspectorSelection) => void;
+	onChangeSelector: () => void;
+	onRefreshTree: () => void;
 	/** Double-click records a tap for the hit element/point. */
 	onDoubleTap: (selection: InspectorSelection) => void;
 	onPointer: (phase: "begin" | "move" | "end", x: number, y: number) => void;
@@ -59,14 +76,17 @@ export function ScreenshotPanel({
 	elements,
 	selection,
 	loading,
+	treeRefreshing,
 	live,
 	feedMode,
 	liveControl,
 	onLiveControlChange,
 	disabled,
 	snippetContext,
-	resolveElements,
+	onSelectWithPoint,
 	onSelect,
+	onChangeSelector,
+	onRefreshTree,
 	onDoubleTap,
 	onPointer,
 	onInsertLines,
@@ -76,8 +96,11 @@ export function ScreenshotPanel({
 }: ScreenshotPanelProps) {
 	const imgRef = useRef<HTMLImageElement | null>(null);
 	const pointerActiveRef = useRef(false);
-	const selectGenRef = useRef(0);
-	const [resolvingTree, setResolvingTree] = useState(false);
+	const [hoverElement, setHoverElement] = useState<ScreenElement | null>(null);
+
+	useEffect(() => {
+		if (liveControl) setHoverElement(null);
+	}, [liveControl]);
 
 	const coordsAtEvent = useCallback(
 		(event: { clientX: number; clientY: number }): { x: number; y: number } | null => {
@@ -95,57 +118,62 @@ export function ScreenshotPanel({
 	);
 
 	const selectAtEvent = useCallback(
-		async (event: MouseEvent<HTMLElement>): Promise<InspectorSelection | null> => {
+		(event: MouseEvent<HTMLElement>): InspectorSelection | null => {
 			if (disabled || !imgRef.current) return null;
 			const point = coordsAtEvent(event);
 			if (!point) return null;
-
-			let tree = elements;
-			if (resolveElements) {
-				const gen = ++selectGenRef.current;
-				setResolvingTree(true);
-				try {
-					tree = await resolveElements();
-				} finally {
-					if (selectGenRef.current === gen) {
-						setResolvingTree(false);
-					}
-				}
-				if (selectGenRef.current !== gen) return null;
-			}
-
-			return selectionFromPoint(tree, point);
+			return selectionFromPoint(elements, point);
 		},
-		[coordsAtEvent, disabled, elements, resolveElements],
+		[coordsAtEvent, disabled, elements],
 	);
 
 	const handleClick = useCallback(
 		(event: MouseEvent<HTMLElement>) => {
 			if (liveControl) return;
-			void (async () => {
-				const next = await selectAtEvent(event);
-				if (!next) return;
-				// Clicking the current selection again dismisses the action menu.
-				if (selection && isSameSelection(selection, next)) {
-					onClearSelection();
-					return;
-				}
-				onSelect(next);
-			})();
+			const next = selectAtEvent(event);
+			if (!next) return;
+			// Clicking the current selection again dismisses the action menu.
+			if (selection && isSameSelection(selection, next)) {
+				onClearSelection();
+				return;
+			}
+			setHoverElement(null);
+			onSelect(next);
+			onSelectWithPoint?.(next);
 		},
-		[liveControl, onClearSelection, onSelect, selectAtEvent, selection],
+		[liveControl, onClearSelection, onSelect, onSelectWithPoint, selectAtEvent, selection],
 	);
 
 	const handleDoubleClick = useCallback(
 		(event: MouseEvent<HTMLElement>) => {
 			if (liveControl) return;
-			void (async () => {
-				const next = await selectAtEvent(event);
-				if (next) onDoubleTap(next);
-			})();
+			const next = selectAtEvent(event);
+			if (next) onDoubleTap(next);
 		},
 		[liveControl, onDoubleTap, selectAtEvent],
 	);
+
+	const handleHoverMove = useCallback(
+		(event: PointerEvent<HTMLElement>) => {
+			if (liveControl || disabled || pointerActiveRef.current) return;
+			if (elements.length === 0) {
+				setHoverElement(null);
+				return;
+			}
+			const point = coordsAtEvent(event);
+			if (!point) {
+				setHoverElement(null);
+				return;
+			}
+			const hit = hitTestElements(elements, point.x, point.y);
+			setHoverElement(hit);
+		},
+		[coordsAtEvent, disabled, elements, liveControl],
+	);
+
+	const handlePointerLeave = useCallback(() => {
+		setHoverElement(null);
+	}, []);
 
 	const handlePointerDown = useCallback(
 		(event: PointerEvent<HTMLElement>) => {
@@ -163,12 +191,15 @@ export function ScreenshotPanel({
 
 	const handlePointerMove = useCallback(
 		(event: PointerEvent<HTMLElement>) => {
-			if (!liveControl || !pointerActiveRef.current) return;
-			const point = coordsAtEvent(event);
-			if (!point) return;
-			onPointer("move", point.x, point.y);
+			if (liveControl && pointerActiveRef.current) {
+				const point = coordsAtEvent(event);
+				if (!point) return;
+				onPointer("move", point.x, point.y);
+				return;
+			}
+			handleHoverMove(event);
 		},
-		[coordsAtEvent, liveControl, onPointer],
+		[coordsAtEvent, handleHoverMove, liveControl, onPointer],
 	);
 
 	const handlePointerUp = useCallback(
@@ -195,8 +226,25 @@ export function ScreenshotPanel({
 			}
 		: null;
 
+	const hoverBox =
+		hoverElement &&
+		!liveControl &&
+		!(
+			selection?.element &&
+			hoverElement.x === selection.element.x &&
+			hoverElement.y === selection.element.y &&
+			hoverElement.width === selection.element.width &&
+			hoverElement.height === selection.element.height
+		)
+			? elementBoxPercent(hoverElement)
+			: null;
+
 	const liveLabel =
 		feedMode === "poll" ? "Poll" : feedMode === "mjpeg" ? "Stream" : live ? "Live" : null;
+
+	const caption = selection ? activeSelectorCaption(selection) : null;
+	const canInspect = !disabled && !liveControl;
+	const showRefreshing = treeRefreshing && elements.length === 0;
 
 	return (
 		<div className="flex flex-col gap-2">
@@ -223,23 +271,36 @@ export function ScreenshotPanel({
 							Live control
 						</label>
 					) : null}
+					{live && canInspect ? (
+						<button
+							type="button"
+							className="rounded-md px-1.5 py-0.5 text-helper font-medium text-on-surface-variant underline-offset-2 hover:text-on-surface hover:underline disabled:opacity-50"
+							disabled={treeRefreshing}
+							onClick={() => {
+								onRefreshTree();
+							}}
+						>
+							{treeRefreshing ? "Refreshing…" : "Refresh tree"}
+						</button>
+					) : null}
 				</div>
 				{liveControl ? (
 					<span className="text-helper text-on-surface-variant">
 						Tap / drag to control · double-click to double-tap
 					</span>
-				) : resolvingTree ? (
-					<span className="text-helper text-on-surface-variant">Reading screen…</span>
+				) : showRefreshing ? (
+					<span className="text-helper text-on-surface-variant">Refreshing…</span>
+				) : selection && caption ? (
+					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
+						{caption} · {selection.x},{selection.y}
+					</span>
 				) : selection ? (
 					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
-						{selection.element?.id
-							? `id ${selection.element.id}`
-							: selection.element?.label || selection.element?.type || "point"}{" "}
-						· {selection.x},{selection.y}
+						{selection.x},{selection.y}
 					</span>
 				) : (
 					<span className="text-helper text-on-surface-variant">
-						Click to inspect element (like Appium Inspector) · double-click to insert tap
+						Hover to preview · click to select · double-click to insert tap
 					</span>
 				)}
 			</div>
@@ -262,22 +323,23 @@ export function ScreenshotPanel({
 							aria-label={
 								liveControl
 									? "Live device screen — tap, drag, or double-click to double-tap"
-									: "Live device screen — click to select actions, double-click to add tap"
+									: "Live device screen — hover to preview, click to select actions, double-click to add tap"
 							}
 							className={[
 								"relative block w-fit max-w-full touch-none",
-								disabled || resolvingTree
+								disabled
 									? "cursor-wait opacity-60"
 									: liveControl
 										? "cursor-grab active:cursor-grabbing"
 										: "cursor-crosshair",
 							].join(" ")}
-							onClick={disabled || resolvingTree ? undefined : handleClick}
-							onDoubleClick={disabled || resolvingTree ? undefined : handleDoubleClick}
+							onClick={disabled ? undefined : handleClick}
+							onDoubleClick={disabled ? undefined : handleDoubleClick}
 							onPointerDown={disabled ? undefined : handlePointerDown}
 							onPointerMove={disabled ? undefined : handlePointerMove}
 							onPointerUp={disabled ? undefined : handlePointerUp}
 							onPointerCancel={disabled ? undefined : handlePointerUp}
+							onPointerLeave={handlePointerLeave}
 						>
 							<img
 								ref={imgRef}
@@ -286,6 +348,18 @@ export function ScreenshotPanel({
 								draggable={false}
 								src={imageUrl}
 							/>
+							{hoverBox ? (
+								<span
+									aria-hidden="true"
+									className="pointer-events-none absolute border border-dashed border-secondary/70 bg-secondary/10"
+									style={{
+										left: `${hoverBox.left}%`,
+										top: `${hoverBox.top}%`,
+										width: `${hoverBox.width}%`,
+										height: `${hoverBox.height}%`,
+									}}
+								/>
+							) : null}
 							{selection && selectionAnchor && !liveControl ? (
 								<span
 									aria-hidden="true"
@@ -300,17 +374,32 @@ export function ScreenshotPanel({
 							) : null}
 						</div>
 						{selection && selectionAnchor && !liveControl ? (
-							<ElementActionMenu
-								key={`${selection.x},${selection.y},${selection.element?.id ?? ""},${selection.element?.label ?? ""}`}
-								selection={selection}
-								anchor={selectionAnchor}
-								disabled={disabled}
-								snippetContext={snippetContext}
-								onInsert={onInsertLines}
-								onInsertAndRun={onInsertAndRunLines}
-								onCopyLines={onCopyLines}
-								onClearSelection={onClearSelection}
-							/>
+							<>
+								{caption ? (
+									<div
+										className="pointer-events-none absolute z-10 max-w-[14rem] truncate rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white"
+										style={{
+											left: `${selectionAnchor.left}%`,
+											top: `calc(${selectionAnchor.top + selectionAnchor.height}% + 4px)`,
+										}}
+									>
+										{caption}
+									</div>
+								) : null}
+								<ElementActionMenu
+									key={`${selection.x},${selection.y},${selection.candidateIndex},${selection.preferredLocator},${selection.element?.id ?? ""},${selection.element?.label ?? ""}`}
+									selection={selection}
+									anchor={selectionAnchor}
+									disabled={disabled}
+									snippetContext={snippetContext}
+									canChangeSelector={Boolean(selection.element)}
+									onChangeSelector={onChangeSelector}
+									onInsert={onInsertLines}
+									onInsertAndRun={onInsertAndRunLines}
+									onCopyLines={onCopyLines}
+									onClearSelection={onClearSelection}
+								/>
+							</>
 						) : null}
 					</div>
 				) : null}

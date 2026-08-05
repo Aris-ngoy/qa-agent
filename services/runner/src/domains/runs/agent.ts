@@ -47,7 +47,7 @@ export type AgentDecision = z.infer<typeof agentDecisionSchema>;
 const SYSTEM_PROMPT = `You are a mobile QA agent controlling an app via screenshots.
 A screenshot of the current device screen is ALWAYS attached to the user message as an image. You can see it. Never claim that no screenshot was provided, missing, blank, or unavailable.
 
-Your entire reply MUST be a single JSON object and nothing else — no markdown fences, no commentary before or after.
+Your entire reply MUST be a single strict JSON object (double quotes only — never single quotes) and nothing else — no markdown fences, no commentary before or after.
 Every action MUST include:
 - "reason": one short sentence summarizing the action choice
 - "thoughts": 2–4 sentences describing what you see on screen and how that led to this action
@@ -70,7 +70,7 @@ Rules:
 - On fail, say what you see (e.g. "splash logo only, no bottom tabs") — never "no screenshot".`;
 
 const JSON_REPAIR_PROMPT =
-	"Your previous reply was not valid JSON for this task. Reply again with ONLY one JSON object (no markdown, no prose) matching: " +
+	"Your previous reply was not valid JSON for this task. Reply again with ONLY one strict JSON object using double quotes for every key and string (no single quotes, no markdown, no prose) matching: " +
 	'{"type":"tap"|"type"|"wait"|"verify"|"done"|"fail", "reason":"...", "thoughts":"...", ...}';
 type VisionImage = { base64: string; mediaType: "image/png" | "image/jpeg" };
 
@@ -277,6 +277,7 @@ export async function decideNextAction(input: {
 		if (!(error instanceof AgentProviderError)) throw error;
 		if (
 			!error.message.includes("did not return JSON") &&
+			!error.message.includes("invalid JSON") &&
 			!error.message.includes("empty response") &&
 			!error.message.includes("not a valid action") &&
 			!error.message.includes("truncated while reasoning")

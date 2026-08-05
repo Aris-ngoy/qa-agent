@@ -22,8 +22,14 @@ export type DesktopRpcClient = {
 		installCli: () => Promise<InstallResult>;
 		installSkill: () => Promise<InstallSkillResult>;
 		openSkillFolder: () => Promise<OpenPathResult>;
+		openExternalUrl: (params: { url: string }) => Promise<{ ok: boolean }>;
 	};
 };
+
+/** Open an http(s) URL in the system browser via the Bun host. */
+export async function openExternalUrl(url: string): Promise<void> {
+	await getDesktopRpc().request.openExternalUrl({ url });
+}
 
 const rpc = Electroview.defineRPC<DesktopRPC>({
 	maxRequestTime: 60_000,

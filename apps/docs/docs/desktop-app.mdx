@@ -7,7 +7,30 @@ description: Set up and run YoQA in local mode on macOS.
 
 The YoQA desktop app is the local host for Appium sessions, device browsing, apps/cases/runs, Manual Inspector, and Settings.
 
-In development from this monorepo:
+### Install the Mac app
+
+Download the latest **Apple Silicon** DMG from [GitHub Releases](https://github.com/Aris-ngoy/qa-agent/releases), open it, and drag `yoqa.app` to `/Applications`.
+
+The DMG is **unsigned**, so macOS Gatekeeper flags it on first launch. Recent macOS versions show **"yoqa" is damaged and can't be opened** instead of the older unidentified-developer dialog. Clear the quarantine attribute before opening the app:
+
+```bash
+xattr -cr /Applications/yoqa.app
+open /Applications/yoqa.app
+```
+
+You only need to do this once per install.
+
+The runner is bundled inside the app, so launching `yoqa.app` starts the local Hono API on `http://127.0.0.1:7420` automatically. You do **not** need a monorepo checkout.
+
+Verify:
+
+```bash
+curl -s http://127.0.0.1:7420/health
+```
+
+### Run from source (contributors)
+
+If you're hacking on YoQA from the monorepo, start the runner and UI processes yourself:
 
 ```bash
 bun run runner

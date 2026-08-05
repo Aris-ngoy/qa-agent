@@ -1,3 +1,4 @@
+import { openExternalUrl } from "@/app/desktop-rpc";
 import { RhfSelectField, RhfTextField, requiredTrimmed } from "@/app/forms";
 import { useReducedMotion } from "@/app/motion/use-reduced-motion";
 import { getRunnerClient } from "@/app/runner-client";
@@ -426,8 +427,11 @@ function InstructionsPanel({
 				<a
 					className="inline-flex items-center gap-1.5 text-body-sm font-medium text-on-surface underline-offset-2 hover:underline"
 					href="https://yoqa.mintlify.site/guide/writing-test-cases"
+					onClick={(event) => {
+						event.preventDefault();
+						void openExternalUrl("https://yoqa.mintlify.site/guide/writing-test-cases");
+					}}
 					rel="noreferrer"
-					target="_blank"
 				>
 					Writing good test cases
 					<svg
