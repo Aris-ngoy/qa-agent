@@ -33,11 +33,11 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 **Desktop Inspector**
 
 - Primary feed: `<img src="/stream.mjpeg">` (no 150ms PNG poll)
-- Tree refresh every **5s** independently (lighter load on physical WDA)
+- Tree refresh every **5s** independently (lighter load on physical WDA), with a **4s warm-up** after connect
 - **Live control** checkbox: pointer drag → WS; script select/menu when off
 - **Stream** vs **Poll** badge
 - **Restart session** in the toolbar: disconnect + reconnect and remount the MJPEG URL
-- On unexpected session death: up to **2 auto-reconnects** within 90s, then the manual Restart toast
+- On unexpected session death: **1 auto-reconnect** within 90s (single toast); stale 410s from the previous session are ignored so they cannot tear down the new stream
 - Disconnect aborts open MJPEG proxies and time-bounds `deleteSession` so WebDriverAgentRunner can exit instead of hanging forever
 
 ## How to verify

@@ -40,10 +40,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** Accessibility tree refresh while the MJPEG (or poll) feed is live. */
 const TREE_REFRESH_MS = 5000;
+/** Wait after connect before first page-source so WDA can settle (esp. physical iOS). */
+const TREE_WARMUP_MS = 4000;
 /** Fallback screenshot poll when Appium MJPEG is unavailable. */
 const FALLBACK_SCREENSHOT_MS = 250;
 /** Auto-reconnect budget after WDA/Appium drops the session. */
-const AUTO_RESTART_MAX = 2;
+const AUTO_RESTART_MAX = 1;
 const AUTO_RESTART_WINDOW_MS = 90_000;
 
 type InspectorReportStep = {
@@ -172,9 +174,14 @@ export function InspectorPage() {
 	const activeRef = useRef<ActiveDeviceResponse | null>(null);
 	const controlWsRef = useRef<WebSocket | null>(null);
 	const pointerSeqRef = useRef(0);
+	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
+	const sessionEpochRef = useRef(0);
 	const autoRestartAttemptsRef = useRef<number[]>([]);
 	const autoRestartInFlightRef = useRef(false);
-	const restartSessionRef = useRef<(() => Promise<void>) | null>(null);
+	const restartSessionRef = useRef<((options?: { quiet?: boolean }) => Promise<void>) | null>(null);
+	const startLiveFeedRef = useRef<(deviceInfo: ActiveDeviceResponse) => Promise<void>>(
+		async () => {},
+	);
 
 	useEffect(() => {
 		activeRef.current = active;
@@ -215,6 +222,18 @@ export function InspectorPage() {
 		setImageUrl(nextUrl);
 	}, []);
 
+	const clearSessionUi = useCallback(() => {
+		activeRef.current = null;
+		setActive(null);
+		setSelection(null);
+		setElements([]);
+		setFeedMode(null);
+		setLiveControl(false);
+		controlWsRef.current?.close();
+		controlWsRef.current = null;
+		revokeImage();
+	}, [revokeImage]);
+
 	const handleSessionGone = useCallback(() => {
 		if (autoRestartInFlightRef.current) return;
 
@@ -244,15 +263,8 @@ export function InspectorPage() {
 					},
 			);
 		}
-		activeRef.current = null;
-		setActive(null);
-		setSelection(null);
-		setElements([]);
-		setFeedMode(null);
-		setLiveControl(false);
-		controlWsRef.current?.close();
-		controlWsRef.current = null;
-		revokeImage();
+		sessionEpochRef.current += 1;
+		clearSessionUi();
 
 		const now = Date.now();
 		const recent = autoRestartAttemptsRef.current.filter((t) => now - t < AUTO_RESTART_WINDOW_MS);
@@ -263,10 +275,9 @@ export function InspectorPage() {
 		if (canAutoRestart) {
 			autoRestartAttemptsRef.current = [...recent, now];
 			autoRestartInFlightRef.current = true;
-			notify("Device session ended — reconnecting…");
 			void (async () => {
 				try {
-					await restartSessionRef.current?.();
+					await restartSessionRef.current?.({ quiet: true });
 				} catch {
 					/* restart handler already toasts */
 				} finally {
@@ -277,20 +288,22 @@ export function InspectorPage() {
 		}
 
 		notify("Device session ended — use Restart session to reconnect");
-	}, [device, revokeImage]);
+	}, [clearSessionUi, device]);
 
 	const refreshTree = useCallback(
 		async (options: { silent?: boolean } = {}) => {
 			const silent = options.silent ?? false;
 			if (inFlightRef.current) return;
 			if (!activeRef.current) return;
+			const epoch = sessionEpochRef.current;
 			inFlightRef.current = true;
 			try {
 				const client = await getRunnerClient();
 				const screen = await client.getScreen();
-				if (!activeRef.current) return;
+				if (sessionEpochRef.current !== epoch || !activeRef.current) return;
 				setElements(screen.elements ?? []);
 			} catch (error) {
+				if (sessionEpochRef.current !== epoch) return;
 				if (isDeviceSessionGone(error)) {
 					handleSessionGone();
 					return;
@@ -311,6 +324,7 @@ export function InspectorPage() {
 			const silent = options.silent ?? false;
 			if (inFlightRef.current) return;
 			if (!activeRef.current) return;
+			const epoch = sessionEpochRef.current;
 			inFlightRef.current = true;
 			if (!silent && !imageUrlRef.current) setBootLoading(true);
 			try {
@@ -318,12 +332,13 @@ export function InspectorPage() {
 				const bytesPromise = client.fetchScreenshotBytes();
 				const treePromise = includeTree ? client.getScreen() : Promise.resolve(null);
 				const [bytes, screen] = await Promise.all([bytesPromise, treePromise]);
-				if (!activeRef.current) return;
+				if (sessionEpochRef.current !== epoch || !activeRef.current) return;
 				setBlobImage(bytes);
 				if (screen) {
 					setElements(screen.elements ?? []);
 				}
 			} catch (error) {
+				if (sessionEpochRef.current !== epoch) return;
 				if (isDeviceSessionGone(error)) {
 					handleSessionGone();
 					return;
@@ -348,7 +363,7 @@ export function InspectorPage() {
 					setFeedMode("mjpeg");
 					// Cache-bust so a stuck <img> MJPEG connection is remounted.
 					setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
-					await refreshTree({ silent: false });
+					// Do not page-source immediately — WDA often dies under MJPEG + source on connect.
 				} else {
 					setFeedMode("poll");
 					await refreshPollFrame({ includeTree: true, silent: false });
@@ -361,8 +376,10 @@ export function InspectorPage() {
 				setBootLoading(false);
 			}
 		},
-		[refreshPollFrame, refreshTree, setStreamImage],
+		[refreshPollFrame, setStreamImage],
 	);
+
+	startLiveFeedRef.current = startLiveFeed;
 
 	const connectWithDevice = useCallback(
 		async (target: SelectedDevice) => {
@@ -379,6 +396,8 @@ export function InspectorPage() {
 				bundleId,
 				appPackage,
 			});
+			sessionEpochRef.current += 1;
+			activeRef.current = info;
 			setActive(info);
 			setSelection(null);
 			setLiveControl(false);
@@ -396,6 +415,8 @@ export function InspectorPage() {
 		return () => document.removeEventListener("visibilitychange", onVisibility);
 	}, []);
 
+	// Bootstrap once — do not re-run when startLiveFeed identity changes (that was
+	// revoking the MJPEG <img> mid-stream and looking like the feed "quit by itself").
 	useEffect(() => {
 		let cancelled = false;
 		void (async () => {
@@ -403,10 +424,12 @@ export function InspectorPage() {
 				const client = await getRunnerClient();
 				const current = await client.getActiveDevice();
 				if (cancelled) return;
-				setActive(current);
 				if (current) {
+					sessionEpochRef.current += 1;
+					activeRef.current = current;
+					setActive(current);
 					setPlatform(current.platform);
-					await startLiveFeed(current);
+					await startLiveFeedRef.current(current);
 				}
 			} catch {
 				/* runner may still be starting */
@@ -419,7 +442,7 @@ export function InspectorPage() {
 			controlWsRef.current = null;
 			revokeImage();
 		};
-	}, [revokeImage, startLiveFeed]);
+	}, [revokeImage]);
 
 	// Accessibility tree refresh (independent of video stream).
 	useEffect(() => {
@@ -431,13 +454,16 @@ export function InspectorPage() {
 			await refreshTree({ silent: true });
 		};
 
-		void tick();
+		const warmup = window.setTimeout(() => {
+			void tick();
+		}, TREE_WARMUP_MS);
 		const timer = window.setInterval(() => {
 			void tick();
 		}, TREE_REFRESH_MS);
 
 		return () => {
 			cancelled = true;
+			window.clearTimeout(warmup);
 			window.clearInterval(timer);
 		};
 	}, [active, pageVisible, refreshTree]);
@@ -534,55 +560,67 @@ export function InspectorPage() {
 		}
 	}, [connectWithDevice, device]);
 
-	const handleRestartSession = useCallback(async () => {
-		const target: SelectedDevice | null =
-			device ??
-			(active
-				? {
-						id: active.deviceId,
-						platform: active.platform,
-						label: active.deviceId,
-						name: active.deviceId,
-						osVersion: "",
-						kind: "physical",
-					}
-				: null);
-		if (!target) {
-			showErrorToast(new Error("Select a device first"), "Nothing to restart");
-			return;
-		}
-
-		setConnecting(true);
-		setLiveControl(false);
-		controlWsRef.current?.close();
-		controlWsRef.current = null;
-		try {
-			const client = await getRunnerClient();
-			try {
-				await client.disconnectDevice();
-			} catch {
-				/* already dead / no session */
+	const handleRestartSession = useCallback(
+		async (options: { quiet?: boolean } = {}) => {
+			const quiet = options.quiet ?? false;
+			const target: SelectedDevice | null =
+				device ??
+				(active
+					? {
+							id: active.deviceId,
+							platform: active.platform,
+							label: active.deviceId,
+							name: active.deviceId,
+							osVersion: "",
+							kind: "physical",
+						}
+					: null);
+			if (!target) {
+				showErrorToast(new Error("Select a device first"), "Nothing to restart");
+				return;
 			}
-			setActive(null);
-			revokeImage();
-			setFeedMode(null);
-			if (!device) setDevice(target);
-			const info = await connectWithDevice(target);
-			notify(
-				info.streamReady === false
-					? "Session restarted — screenshot poll"
-					: "Session restarted — live stream refreshed",
-			);
-		} catch (error) {
-			setActive(null);
-			showErrorToast(error, "Failed to restart session");
-		} finally {
-			setConnecting(false);
-		}
-	}, [active, connectWithDevice, device, revokeImage]);
+
+			setConnecting(true);
+			setLiveControl(false);
+			controlWsRef.current?.close();
+			controlWsRef.current = null;
+			try {
+				const client = await getRunnerClient();
+				try {
+					await client.disconnectDevice();
+				} catch {
+					/* already dead / no session */
+				}
+				sessionEpochRef.current += 1;
+				clearSessionUi();
+				if (!device) setDevice(target);
+				const info = await connectWithDevice(target);
+				if (!quiet) {
+					notify(
+						info.streamReady === false
+							? "Session restarted — screenshot poll"
+							: "Session restarted — live stream refreshed",
+					);
+				} else {
+					notify(
+						info.streamReady === false
+							? "Reconnected — screenshot poll"
+							: "Reconnected — live stream on",
+					);
+				}
+			} catch (error) {
+				sessionEpochRef.current += 1;
+				clearSessionUi();
+				showErrorToast(error, "Failed to restart session");
+			} finally {
+				setConnecting(false);
+			}
+		},
+		[active, clearSessionUi, connectWithDevice, device],
+	);
 
 	useEffect(() => {
-		restartSessionRef.current = () => handleRestartSession();
+		restartSessionRef.current = (opts) => handleRestartSession(opts);
 	}, [handleRestartSession]);
 
 	const handleDisconnect = useCallback(async () => {
