@@ -9,7 +9,12 @@ import { type RunLogEntry, RunPanel } from "@/features/inspector/run-panel";
 import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
 import { ScriptEditor } from "@/features/inspector/script-editor";
-import { type InspectorSelection, appendScriptLines } from "@/features/inspector/selection";
+import {
+	type InspectorSelection,
+	appendScriptLines,
+	cycleChangeSelector,
+	selectionFromPoint,
+} from "@/features/inspector/selection";
 import { SessionToolbar } from "@/features/inspector/session-toolbar";
 import { useActiveRun } from "@/features/runs/active-run-context";
 import {
@@ -42,6 +47,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const TREE_REFRESH_MS = 8000;
 /** Fallback screenshot poll when Appium MJPEG is unavailable. */
 const FALLBACK_SCREENSHOT_MS = 250;
+/** Background-refresh the cached tree if older than this on select. */
+const TREE_STALE_MS = 3000;
 
 type InspectorReportStep = {
 	index: number;
@@ -147,6 +154,7 @@ export function InspectorPage() {
 	const [feedMode, setFeedMode] = useState<"mjpeg" | "poll" | null>(null);
 	const [liveControl, setLiveControl] = useState(false);
 	const [elements, setElements] = useState<ScreenElement[]>([]);
+	const [treeRefreshing, setTreeRefreshing] = useState(false);
 	const [selection, setSelection] = useState<InspectorSelection | null>(null);
 	const [script, setScript] = useState(DEFAULT_SHELL_SCRIPT_HEADER);
 	const [running, setRunning] = useState(false);
@@ -168,6 +176,8 @@ export function InspectorPage() {
 	const inFlightRef = useRef(false);
 	const activeRef = useRef<ActiveDeviceResponse | null>(null);
 	const elementsRef = useRef<ScreenElement[]>([]);
+	const treeUpdatedAtRef = useRef(0);
+	const selectionRef = useRef<InspectorSelection | null>(null);
 	const controlWsRef = useRef<WebSocket | null>(null);
 	const pointerSeqRef = useRef(0);
 	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
@@ -184,6 +194,10 @@ export function InspectorPage() {
 	useEffect(() => {
 		elementsRef.current = elements;
 	}, [elements]);
+
+	useEffect(() => {
+		selectionRef.current = selection;
+	}, [selection]);
 
 	useEffect(() => {
 		feedModeRef.current = feedMode;
@@ -235,6 +249,8 @@ export function InspectorPage() {
 		setActive(null);
 		setSelection(null);
 		setElements([]);
+		treeUpdatedAtRef.current = 0;
+		setTreeRefreshing(false);
 		setFeedMode(null);
 		setLiveControl(false);
 		controlWsRef.current?.close();
@@ -270,6 +286,7 @@ export function InspectorPage() {
 			const epoch = sessionEpochRef.current;
 			const pauseMjpeg = feedModeRef.current === "mjpeg";
 			inFlightRef.current = true;
+			setTreeRefreshing(true);
 			try {
 				const client = await getRunnerClient();
 				// pauseMjpeg aborts live stream proxies on the runner before pageSource
@@ -278,6 +295,7 @@ export function InspectorPage() {
 				if (sessionEpochRef.current !== epoch || !activeRef.current) return null;
 				const next = screen.elements ?? [];
 				setElements(next);
+				treeUpdatedAtRef.current = Date.now();
 				return next;
 			} catch (error) {
 				if (sessionEpochRef.current !== epoch) return null;
@@ -291,6 +309,7 @@ export function InspectorPage() {
 				return null;
 			} finally {
 				inFlightRef.current = false;
+				setTreeRefreshing(false);
 				if (pauseMjpeg && sessionEpochRef.current === epoch && activeRef.current) {
 					void remountMjpegStream();
 				}
@@ -300,18 +319,66 @@ export function InspectorPage() {
 	);
 
 	/**
-	 * Appium Inspector Element Mode: fetch page source (pausing MJPEG first),
-	 * then hit-test. Stream remounts after the tree returns.
+	 * Warm / refresh the cached accessibility tree (pauses MJPEG briefly under Stream).
+	 * Selection hit-tests locally against the cache — not on every click.
 	 */
-	const resolveElementsForHitTest = useCallback(async (): Promise<ScreenElement[]> => {
-		const deadline = Date.now() + 8_000;
-		while (inFlightRef.current && Date.now() < deadline) {
-			await new Promise((r) => setTimeout(r, 50));
-		}
-		const next = await refreshTree({ silent: true });
-		return next ?? elementsRef.current;
+	const warmTree = useCallback(() => {
+		void refreshTree({ silent: true });
 	}, [refreshTree]);
 
+	const handleLiveControlChange = useCallback(
+		(enabled: boolean) => {
+			setLiveControl(enabled);
+			if (!enabled && activeRef.current) {
+				// Entering Select mode: one pageSource warm so hover/click are instant.
+				warmTree();
+			}
+		},
+		[warmTree],
+	);
+
+	/** After a local select, refresh in the background if the cache is stale. */
+	const handleSelectWithPoint = useCallback(
+		(next: InspectorSelection) => {
+			const age = Date.now() - treeUpdatedAtRef.current;
+			if (age <= TREE_STALE_MS) return;
+			void (async () => {
+				const tree = await refreshTree({ silent: true });
+				if (!tree) return;
+				const current = selectionRef.current;
+				if (!current) return;
+				// Only update if this is still the same click point the user just made.
+				if (current.pointX !== next.pointX || current.pointY !== next.pointY) return;
+				const refreshed = selectionFromPoint(tree, {
+					x: next.pointX,
+					y: next.pointY,
+				});
+				// Keep locator preference if the same element is still under the point.
+				const sameElement =
+					current.element &&
+					refreshed.element &&
+					(current.element.id ?? "") === (refreshed.element.id ?? "") &&
+					(current.element.label ?? "") === (refreshed.element.label ?? "") &&
+					current.element.x === refreshed.element.x &&
+					current.element.y === refreshed.element.y;
+				setSelection(
+					sameElement ? { ...refreshed, preferredLocator: current.preferredLocator } : refreshed,
+				);
+			})();
+		},
+		[refreshTree],
+	);
+
+	const handleChangeSelector = useCallback(() => {
+		setSelection((prev) => {
+			if (!prev) return prev;
+			return cycleChangeSelector(elementsRef.current, prev);
+		});
+	}, []);
+
+	const handleRefreshTree = useCallback(() => {
+		void refreshTree({ silent: false });
+	}, [refreshTree]);
 	const refreshPollFrame = useCallback(
 		async (options: { includeTree?: boolean; silent?: boolean } = {}) => {
 			const includeTree = options.includeTree ?? true;
@@ -330,6 +397,7 @@ export function InspectorPage() {
 				setBlobImage(bytes);
 				if (screen) {
 					setElements(screen.elements ?? []);
+					treeUpdatedAtRef.current = Date.now();
 				}
 			} catch (error) {
 				if (sessionEpochRef.current !== epoch) return;
@@ -460,6 +528,19 @@ export function InspectorPage() {
 			window.clearInterval(timer);
 		};
 	}, [active, feedMode, pageVisible, refreshTree]);
+
+	// Under Stream + Select mode, warm the tree once after connect (deferred so MJPEG can settle).
+	useEffect(() => {
+		if (!active || !pageVisible || feedMode !== "mjpeg" || liveControl) return;
+		if (treeUpdatedAtRef.current > 0) return;
+		const timer = window.setTimeout(() => {
+			if (!activeRef.current || treeUpdatedAtRef.current > 0) return;
+			warmTree();
+		}, 700);
+		return () => {
+			window.clearTimeout(timer);
+		};
+	}, [active, feedMode, liveControl, pageVisible, warmTree]);
 
 	// Fallback PNG poll only when MJPEG is unavailable.
 	useEffect(() => {
@@ -1005,14 +1086,17 @@ export function InspectorPage() {
 					elements={elements}
 					selection={selection}
 					loading={bootLoading && !imageUrl}
+					treeRefreshing={treeRefreshing}
 					live={live}
 					feedMode={feedMode}
 					liveControl={liveControl}
-					onLiveControlChange={setLiveControl}
+					onLiveControlChange={handleLiveControlChange}
 					disabled={!connected || running}
 					snippetContext={snippetContext}
-					resolveElements={resolveElementsForHitTest}
 					onSelect={setSelection}
+					onSelectWithPoint={handleSelectWithPoint}
+					onChangeSelector={handleChangeSelector}
+					onRefreshTree={handleRefreshTree}
 					onDoubleTap={handleDoubleTap}
 					onPointer={sendPointer}
 					onInsertLines={handleInsertLines}

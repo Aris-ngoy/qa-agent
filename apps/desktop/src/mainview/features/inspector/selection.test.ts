@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { ScreenElement } from "@yoqa/runner-client";
-import { hitTestElements } from "./selection";
+import {
+	activeSelectorCaption,
+	candidatesAtPoint,
+	cycleChangeSelector,
+	hitTestElements,
+	selectionFromPoint,
+} from "./selection";
 
 function el(
 	partial: Partial<ScreenElement> & Pick<ScreenElement, "type" | "x" | "y" | "width" | "height">,
@@ -115,5 +121,101 @@ describe("hitTestElements", () => {
 		});
 		const hit = hitTestElements([junk, button], 120, 120);
 		expect(hit).toBe(button);
+	});
+});
+
+describe("candidatesAtPoint", () => {
+	test("returns containing selectable nodes smallest → largest", () => {
+		const parent = el({
+			type: "XCUIElementTypeOther",
+			label: "Card",
+			id: "card",
+			x: 50,
+			y: 50,
+			width: 300,
+			height: 200,
+		});
+		const child = el({
+			type: "XCUIElementTypeButton",
+			label: "Continue",
+			id: "continue_btn",
+			x: 100,
+			y: 100,
+			width: 100,
+			height: 40,
+		});
+		const candidates = candidatesAtPoint([parent, child], 120, 120);
+		expect(candidates).toEqual([child, parent]);
+	});
+});
+
+describe("cycleChangeSelector", () => {
+	const parent = el({
+		type: "XCUIElementTypeOther",
+		label: "Card",
+		id: "card",
+		x: 50,
+		y: 50,
+		width: 300,
+		height: 200,
+	});
+	const child = el({
+		type: "XCUIElementTypeButton",
+		label: "Continue",
+		id: "continue_btn",
+		x: 100,
+		y: 100,
+		width: 100,
+		height: 40,
+	});
+	const elements = [parent, child];
+
+	test("first Change Selector flips id → label on same element", () => {
+		const initial = selectionFromPoint(elements, { x: 120, y: 120 });
+		expect(initial.element).toBe(child);
+		expect(initial.preferredLocator).toBe("id");
+
+		const next = cycleChangeSelector(elements, initial);
+		expect(next.element).toBe(child);
+		expect(next.preferredLocator).toBe("label");
+		expect(activeSelectorCaption(next)).toBe("label: Continue");
+	});
+
+	test("second Change Selector advances to parent candidate", () => {
+		const initial = selectionFromPoint(elements, { x: 120, y: 120 });
+		const afterLabel = cycleChangeSelector(elements, initial);
+		const afterParent = cycleChangeSelector(elements, afterLabel);
+		expect(afterParent.element).toBe(parent);
+		expect(afterParent.preferredLocator).toBe("id");
+		expect(activeSelectorCaption(afterParent)).toBe("id: card");
+	});
+
+	test("cycles back to leaf after parent", () => {
+		let sel = selectionFromPoint(elements, { x: 120, y: 120 });
+		sel = cycleChangeSelector(elements, sel); // label on child
+		sel = cycleChangeSelector(elements, sel); // parent
+		sel = cycleChangeSelector(elements, sel); // label on parent (has both)
+		sel = cycleChangeSelector(elements, sel); // back to child
+		expect(sel.element).toBe(child);
+		expect(sel.preferredLocator).toBe("id");
+	});
+});
+
+describe("selectionFromPoint", () => {
+	test("defaults preferredLocator to id when present", () => {
+		const button = el({
+			type: "XCUIElementTypeButton",
+			label: "Continue",
+			id: "continue_btn",
+			x: 100,
+			y: 100,
+			width: 100,
+			height: 40,
+		});
+		const sel = selectionFromPoint([button], { x: 120, y: 120 });
+		expect(sel.preferredLocator).toBe("id");
+		expect(sel.pointX).toBe(120);
+		expect(sel.pointY).toBe(120);
+		expect(activeSelectorCaption(sel)).toBe("id: continue_btn");
 	});
 });

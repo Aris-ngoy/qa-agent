@@ -35,7 +35,7 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 
 - Primary feed: `<img src="/stream.mjpeg">` (no 150ms PNG poll)
 - **No automatic page-source while MJPEG is idle** — continuous source+stream dual-loads WDA and kills the session
-- **Appium Inspector–style Element Mode:** on click-to-select, runner aborts MJPEG proxies (`GET /screen?pauseMjpeg=1`), reads page source, then the desktop remounts `/stream.mjpeg` — so hit-test gets real id/label nodes without leaving Stream mode
+- **Cached Select Mode (Maestro-like):** tree warms when Live control is off / after commands / Refresh tree; clicks and hover hit-test the cache locally. Refresh still uses `GET /screen?pauseMjpeg=1` then remounts `/stream.mjpeg` — never per-click blocking under a warm cache
 - Live control still uses the continuous MJPEG feed (~60 FPS) without page-source
 - Tree also refreshes after script/commands (same pause+remount under Stream) and on the poll feed
 - **Live control** checkbox: pointer drag → WS; script select/menu when off
@@ -47,8 +47,8 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 ## How to verify
 
 1. Connect an iOS Simulator (or real iOS / Android) in Inspector → badge **Stream**; idle connect does not grow `~/.yoqa/runs/screenshots/`.
-2. On a real iPhone, the live stream should stay up for minutes with no tree polling in the background.
-3. Disable **Live control** → click a button/word: briefly “Reading screen…”, then highlight the full control and the menu offers `tap` with `--id` / `--label` (plus `tap (x,y)`). Stream remounts afterward.
+2. On a real iPhone, the live stream should stay up for minutes with no continuous tree polling in the background.
+3. Disable **Live control** → wait for tree warm (or **Refresh tree**) → hover then click a button/word: highlight + menu with `tap (id)` / `tap (label)` without per-click “Reading screen…”. Stream remounts only when the tree actually refreshes.
 4. Enable **Live control** → drag/swipe on the mirror (no page-source); disable → select again for commands.
 5. Explicit screenshot / script report still persists files.
 6. Disconnect closes the stream and control socket cleanly.

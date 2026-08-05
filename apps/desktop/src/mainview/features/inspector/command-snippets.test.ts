@@ -20,6 +20,10 @@ function selection(
 		x: partial.x ?? 521,
 		y: partial.y ?? 500,
 		element: partial.element ?? null,
+		pointX: partial.pointX ?? partial.x ?? 521,
+		pointY: partial.pointY ?? partial.y ?? 500,
+		candidateIndex: partial.candidateIndex ?? 0,
+		preferredLocator: partial.preferredLocator ?? "id",
 	};
 }
 
@@ -123,10 +127,11 @@ describe("command snippets selector quality", () => {
 		expect(tapCmd?.previewLines.join("\n")).not.toContain("--label");
 	});
 
-	test("stable id/label still appear in tap lines", () => {
+	test("stable id/label prefer id chip first; tap uses preferred locator only", () => {
 		const button = selection({
 			x: 200,
 			y: 300,
+			preferredLocator: "id",
 			element: {
 				type: "XCUIElementTypeButton",
 				label: "Continue",
@@ -140,8 +145,36 @@ describe("command snippets selector quality", () => {
 		const lines = buildCommandLines(button, "tap").join("\n");
 		expect(lines).toContain("# id continue_btn");
 		expect(lines).toContain("--id 'continue_btn'");
-		expect(lines).toContain("--label 'Continue'");
+		expect(lines).not.toContain("--label 'Continue'");
 		expect(lines).toContain("--x 200");
 		expect(lines).toContain("--y 300");
+
+		const alt = buildCommandLines(button, "tapAlt").join("\n");
+		expect(alt).toContain("--label 'Continue'");
+		expect(alt).not.toContain("--id 'continue_btn'");
+
+		const suggested = suggestedCommands(button);
+		expect(suggested[0]?.id).toBe("tap");
+		expect(suggested[0]?.previewLines.join("\n")).toContain("--id 'continue_btn'");
+		expect(suggested[1]?.id).toBe("tapAlt");
+		expect(suggested[1]?.previewLines.join("\n")).toContain("--label 'Continue'");
+	});
+
+	test("preferredLocator label puts label chip first", () => {
+		const button = selection({
+			preferredLocator: "label",
+			element: {
+				type: "XCUIElementTypeButton",
+				label: "Continue",
+				id: "continue_btn",
+				x: 100,
+				y: 250,
+				width: 200,
+				height: 100,
+			},
+		});
+		const suggested = suggestedCommands(button);
+		expect(suggested[0]?.previewLines.join("\n")).toContain("--label 'Continue'");
+		expect(suggested[1]?.previewLines.join("\n")).toContain("--id 'continue_btn'");
 	});
 });
