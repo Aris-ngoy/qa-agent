@@ -41,6 +41,10 @@ Live control is exclusive with running scripts. Inspector blocks pointer input w
 
 The live mirror never writes to disk. Explicit screenshots and script reports still persist to `~/.yoqa/runs/screenshots/`.
 
+### Element tree refresh
+
+The element tree does not refresh automatically while the **Stream** badge is active. Continuous tree polling on top of the MJPEG feed destabilizes WebDriverAgent on real iOS, so Inspector only refreshes the tree after you run a script or inspector command, or while the mirror is on the **Poll** fallback. If you need a fresh tree between actions, run any inspector command (for example, an explicit screenshot) to trigger a refresh.
+
 ### Recovering a dropped session
 
 Real iOS sessions can occasionally drop under WDA load (for example, during long Inspector sessions with the live mirror running). When that happens, Inspector clears the feed and prompts you to reconnect manually — it does not attempt to reconnect on its own.
