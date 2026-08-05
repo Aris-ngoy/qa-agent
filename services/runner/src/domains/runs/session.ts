@@ -281,6 +281,13 @@ async function buildW3cCapabilities(
 		if (!caps["appium:xcodeSigningId"]) {
 			caps["appium:xcodeSigningId"] = "Apple Development";
 		}
+		// Fail connect instead of sitting forever on a wedged WebDriverAgentRunner.
+		if (caps["appium:wdaLaunchTimeout"] === undefined) {
+			caps["appium:wdaLaunchTimeout"] = 60_000;
+		}
+		if (caps["appium:wdaConnectionTimeout"] === undefined) {
+			caps["appium:wdaConnectionTimeout"] = 60_000;
+		}
 	}
 
 	return caps;
@@ -553,6 +560,20 @@ class ActionGate {
 	}
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			promise,
+			new Promise<T>((_, reject) => {
+				timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
 export async function createDeviceSession(options: SessionOptions): Promise<DeviceSession> {
 	const port = await ensureAppiumServer();
 	const mjpegPort = await pickMjpegPort();
@@ -611,17 +632,22 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		Math.round((Math.min(1000, Math.max(0, norm)) / 1000) * size);
 
 	const quit = async () => {
-		try {
-			if (!sessionDeadNotified) {
-				await gate.forceEnd(browser, toPx, getWindowSize);
+		// Only flush an in-flight live gesture — never block quit on a dead WDA.
+		if (gate.isPointerActive() && !sessionDeadNotified) {
+			try {
+				await withTimeout(gate.forceEnd(browser, toPx, getWindowSize), 3_000, "live gesture flush");
+			} catch (error) {
+				console.warn(
+					"[yoqa-runner] gesture flush on quit:",
+					error instanceof Error ? error.message : error,
+				);
 			}
-		} catch {
-			// gesture flush may fail if the session already died
 		}
-		// Avoid DELETE on a dead session — WebdriverIO logs a noisy ERROR otherwise.
 		if (sessionDeadNotified) return;
 		try {
-			await browser.deleteSession();
+			// WDA often hangs on DELETE while MJPEG clients are still attached;
+			// callers abort proxies first, and we still bound deleteSession.
+			await withTimeout(browser.deleteSession(), 8_000, "deleteSession");
 		} catch (error) {
 			if (!isMissingSessionError(error)) {
 				console.warn(

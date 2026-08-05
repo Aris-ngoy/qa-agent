@@ -1,5 +1,6 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
 import { type DeviceSession, createDeviceSession } from "../runs/session";
+import { abortAllMjpegProxies } from "./mjpeg-proxy";
 
 export type ActiveSessionInfo = {
 	deviceId: string;
@@ -56,6 +57,7 @@ export function abandonActiveSession(): ActiveSessionInfo | null {
 	if (!active) return null;
 	const info = getActiveSessionInfo();
 	active = null;
+	abortAllMjpegProxies();
 	console.warn(
 		`[yoqa-runner] abandoned dead Appium session for ${info?.platform} ${info?.deviceId}`,
 	);
@@ -104,11 +106,15 @@ export async function connectDevice(options: {
 export async function disconnectDevice(): Promise<ActiveSessionInfo | null> {
 	if (!active) return null;
 	const info = getActiveSessionInfo();
-	try {
-		await active.session.quit();
-	} catch {
-		// ignore
-	}
+	const session = active.session;
+	// Drop the handle first so new stream proxies refuse; then cut upstream
+	// MJPEG so WebDriverAgentRunner can actually terminate on deleteSession.
 	active = null;
+	abortAllMjpegProxies();
+	try {
+		await session.quit();
+	} catch {
+		// ignore — timed out or already dead
+	}
 	return info;
 }
