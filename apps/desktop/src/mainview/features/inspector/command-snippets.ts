@@ -52,15 +52,46 @@ const SCREENSHOT_PATH_PLACEHOLDER = "/tmp/yoqa-screenshot.png";
 const EDITABLE_TYPE_RE =
 	/(textfield|edittext|searchfield|securetextfield|textarea|autocorrect|uitextfield|android\.widget\.edit)/i;
 
+const URL_LIKE_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+
 export function isEditableElementType(type: string | undefined): boolean {
 	if (!type) return false;
 	return EDITABLE_TYPE_RE.test(type);
 }
 
+/** Reject empty, URL-like, and type-name values that are not real selectors. */
+export function isUsableSelectorValue(
+	value: string | undefined,
+	elementType?: string | null,
+): boolean {
+	const trimmed = value?.trim() ?? "";
+	if (!trimmed) return false;
+	if (URL_LIKE_RE.test(trimmed)) return false;
+	if (elementType && trimmed === elementType) return false;
+	if (/^XCUIElementType/i.test(trimmed)) return false;
+	return true;
+}
+
+export function usableId(
+	element: { id?: string; type?: string } | null | undefined,
+): string | null {
+	const id = element?.id?.trim();
+	if (!id || !isUsableSelectorValue(id, element?.type)) return null;
+	return id;
+}
+
+export function usableLabel(
+	element: { label?: string; type?: string } | null | undefined,
+): string | null {
+	const label = element?.label?.trim();
+	if (!label || !isUsableSelectorValue(label, element?.type)) return null;
+	return label;
+}
+
 function selectionComment(selection: InspectorSelection): string | null {
-	const id = selection.element?.id?.trim();
+	const id = usableId(selection.element);
 	if (id) return `# id ${id}`;
-	const label = selection.element?.label?.trim();
+	const label = usableLabel(selection.element);
 	if (label) return `# ${label}`;
 	if (selection.element?.type) return `# ${selection.element.type}`;
 	return null;
@@ -77,9 +108,9 @@ function targetFields(
 		x: selection.x,
 		y: selection.y,
 	};
-	const id = selection.element?.id?.trim();
+	const id = usableId(selection.element);
 	if (id) fields.id = id;
-	const label = selection.element?.label?.trim();
+	const label = usableLabel(selection.element);
 	if (label) fields.label = label;
 	return fields;
 }
@@ -134,7 +165,7 @@ export function assertLinesForSelection(
 	assertion: "visible" | "not-visible",
 	textOverride?: string,
 ): string[] | null {
-	const text = (textOverride ?? selection.element?.label ?? "").trim();
+	const text = (textOverride ?? usableLabel(selection.element) ?? "").trim();
 	if (!text) return null;
 	return [
 		formatAssertShellLine({
@@ -205,14 +236,14 @@ function previewTapPoint(
 }
 
 function hasStableSelector(selection: InspectorSelection): boolean {
-	return Boolean(selection.element?.id?.trim() || selection.element?.label?.trim());
+	return Boolean(usableId(selection.element) || usableLabel(selection.element));
 }
 
 function previewAssert(
 	selection: InspectorSelection,
 	assertion: "visible" | "not-visible",
 ): string[] {
-	const text = selection.element?.label?.trim() || "…";
+	const text = usableLabel(selection.element) || "…";
 	return [
 		formatAssertShellLine({
 			assertion,
@@ -247,7 +278,7 @@ function previewAppAction(
 /** Suggested chips shown at the top of the element menu. */
 export function suggestedCommands(selection: InspectorSelection): CommandSnippet[] {
 	const editable = isEditableElementType(selection.element?.type);
-	const hasLabel = Boolean(selection.element?.label?.trim());
+	const hasLabel = Boolean(usableLabel(selection.element));
 	const stable = hasStableSelector(selection);
 
 	const tap: CommandSnippet = {
@@ -291,7 +322,7 @@ export function selectorCommands(
 	selection: InspectorSelection,
 	context: SnippetContext,
 ): CommandSnippet[] {
-	const hasLabel = Boolean(selection.element?.label?.trim());
+	const hasLabel = Boolean(usableLabel(selection.element));
 	const stable = hasStableSelector(selection);
 	const appId = context.defaultAppId.trim();
 

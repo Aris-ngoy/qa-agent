@@ -49,4 +49,48 @@ describe("cleanPageSource", () => {
 			visible: true,
 		});
 	});
+
+	test("does not treat deeplink name as id or label", () => {
+		const xml = `
+<XCUIElementTypeApplication x="0" y="0" width="390" height="844">
+  <XCUIElementTypeCell x="0" y="100" width="390" height="80" name="cashgiraffeSB://game-details/6751056655" visible="true" />
+  <XCUIElementTypeLink x="10" y="200" width="100" height="40" label="Open game" name="https://example.com/game" visible="true" />
+</XCUIElementTypeApplication>
+`;
+		const cleaned = cleanPageSource(xml, { width: 390, height: 844 });
+		expect(cleaned.elements).toHaveLength(2);
+
+		const cell = cleaned.elements[0];
+		expect(cell).toMatchObject({
+			type: "XCUIElementTypeCell",
+			label: "",
+		});
+		expect(cell?.id).toBeUndefined();
+
+		const link = cleaned.elements[1];
+		expect(link).toMatchObject({
+			type: "XCUIElementTypeLink",
+			label: "Open game",
+		});
+		expect(link?.id).toBeUndefined();
+	});
+
+	test("drops unlabeled iOS scroll/table containers and never uses type as label", () => {
+		const xml = `
+<XCUIElementTypeApplication x="0" y="0" width="390" height="844">
+  <XCUIElementTypeScrollView x="0" y="0" width="390" height="844" visible="true" />
+  <XCUIElementTypeCollectionView x="0" y="0" width="390" height="400" visible="true" />
+  <XCUIElementTypeTable x="0" y="400" width="390" height="400" visible="true" />
+  <XCUIElementTypeWebView x="0" y="0" width="390" height="844" visible="true" />
+  <XCUIElementTypeStaticText x="20" y="40" width="100" height="24" label="Discover" visible="true" />
+</XCUIElementTypeApplication>
+`;
+		const cleaned = cleanPageSource(xml, { width: 390, height: 844 });
+		expect(cleaned.elements).toHaveLength(1);
+		expect(cleaned.elements[0]).toMatchObject({
+			type: "XCUIElementTypeStaticText",
+			label: "Discover",
+		});
+		expect(cleaned.elements.every((el) => el.label !== el.type)).toBe(true);
+	});
 });

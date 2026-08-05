@@ -66,28 +66,53 @@ function attrsFromTag(tag: string): { name: string; attrs: Record<string, string
 	return { name, attrs };
 }
 
-function labelFromAttrs(attrs: Record<string, string>): string {
-	return (
-		attrs.contentDesc ||
-		attrs["content-desc"] ||
-		attrs.label ||
-		attrs.name ||
-		attrs.text ||
-		attrs.value ||
-		attrs.resourceId ||
-		attrs["resource-id"] ||
-		""
+/** Deeplink / http URLs are not stable accessibility identifiers or human labels. */
+function isUrlLike(value: string): boolean {
+	const trimmed = value.trim();
+	if (!trimmed) return false;
+	return /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed);
+}
+
+function firstUsableAttr(candidates: Array<string | undefined>, elementType: string): string {
+	for (const raw of candidates) {
+		const value = raw?.trim() ?? "";
+		if (!value) continue;
+		if (isUrlLike(value)) continue;
+		if (value === elementType) continue;
+		if (/^XCUIElementType/i.test(value)) continue;
+		return value;
+	}
+	return "";
+}
+
+function labelFromAttrs(attrs: Record<string, string>, elementType: string): string {
+	return firstUsableAttr(
+		[
+			attrs.contentDesc,
+			attrs["content-desc"],
+			attrs.label,
+			attrs.name,
+			attrs.text,
+			attrs.value,
+			attrs.resourceId,
+			attrs["resource-id"],
+		],
+		elementType,
 	);
 }
 
-function idFromAttrs(attrs: Record<string, string>): string {
-	return (
+function idFromAttrs(attrs: Record<string, string>, elementType: string): string {
+	const explicit = (
 		attrs["resource-id"] ||
 		attrs.resourceId ||
 		attrs.accessibilityIdentifier ||
-		attrs.name ||
 		""
 	).trim();
+	if (explicit && !isUrlLike(explicit) && explicit !== elementType) {
+		return explicit;
+	}
+	// iOS often puts the accessibility id in `name`; skip deeplink / type strings.
+	return firstUsableAttr([attrs.name], elementType);
 }
 
 function isLayoutOnly(name: string, label: string): boolean {
@@ -98,6 +123,10 @@ function isLayoutOnly(name: string, label: string): boolean {
 		lower.includes("viewgroup") ||
 		lower === "xcuielementtypeother" ||
 		lower === "xcuielementtypeapplication" ||
+		lower === "xcuielementtypescrollview" ||
+		lower === "xcuielementtypecollectionview" ||
+		lower === "xcuielementtypetable" ||
+		lower === "xcuielementtypewebview" ||
 		lower === "hierarchy" ||
 		lower === "android.widget.framelayout" ||
 		lower === "android.view.view"
@@ -130,7 +159,7 @@ export function cleanPageSource(
 			continue;
 		}
 
-		const label = labelFromAttrs(attrs);
+		const label = labelFromAttrs(attrs, name);
 		if (isLayoutOnly(name, label)) continue;
 
 		const visible =
@@ -140,11 +169,11 @@ export function cleanPageSource(
 		const enabled =
 			attrs.enabled === undefined ? undefined : attrs.enabled === "true" || attrs.enabled === "1";
 
-		const id = idFromAttrs(attrs);
+		const id = idFromAttrs(attrs, name);
 
 		elements.push({
 			type: name,
-			label: label || name,
+			label,
 			...(id ? { id } : {}),
 			x: Math.round((rect.x / window.width) * 1000),
 			y: Math.round((rect.y / window.height) * 1000),
