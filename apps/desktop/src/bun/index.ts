@@ -9,7 +9,7 @@ import {
 import { getIosToolchainSnapshot, setIosToolchainSelection } from "./features/ios-toolchain";
 import { ensureLocalServices, stopRunnerSidecar } from "./features/runner-sidecar";
 
-const DOCS_QUICKSTART_URL = "https://yoqa.mintlify.site/docs/quickstart";
+const DOCS_QUICKSTART_URL = "https://docs.yoqa.ai";
 
 async function getMainViewUrl(): Promise<string> {
 	const viteUrl = "http://localhost:5173";
