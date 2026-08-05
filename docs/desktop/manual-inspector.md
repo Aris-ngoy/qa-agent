@@ -7,7 +7,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 ## Plan summary
 
 - **Script format:** Bash-style lines (`yoqa action …`, `yoqa assert …`, `sleep N`) — not Maestro YAML.
-- **Interaction model:** Click element (label-aware hit-test for full word/control bounds) → floating action menu to the right and downward (suggested commands + Selector Commands) → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut.
+- **Interaction model:** Click element (pause stream → page source → Appium Inspector–style hit-test for full word/control) → floating action menu to the right and downward (suggested commands + Selector Commands) → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut. Live control keeps continuous MJPEG without source.
 - **Input text:** Menu action focuses the selected field (`--id` / `--label` / coords) then types; runner taps whenever coordinates are resolved.
 - **Save as test case:** Convert convertible shell steps → CaseScript (`tap` / `type` / `wait`), `createCase` + `updateCase({ script })`, open the new case.
 - Rejected for this slice: hierarchical Change Selector tree, All Commands catalog, View Docs, `scrollUntilVisible` / `copyTextFrom`, full assert/swipe in CaseScript.
@@ -26,7 +26,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 **Desktop**
 - Selection-anchored **ElementActionMenu** (suggested + Selector Commands; Insert / Insert & Run / Copy)
 - **Hit-test** prefers elements with a usable `label`/`id`; when several share the same label (e.g. StaticText + Button “Continue”), selects the **largest** so the highlight covers the full word/control instead of a tiny nested leaf
-- Under **MJPEG**, do **not** page-source on a timer or on click (that killed the stream); the accessibility tree refreshes after script/commands and on the poll feed so id/label taps appear once the tree is cached
+- **Select = Appium Inspector Element Mode:** click pauses MJPEG proxies, fetches page source, hit-tests, remounts stream — so suggested commands include `tap --id` / `tap --label`, not only coords. Live stream stays for viewing/control (serve-sim style FPS)
 - Menu always opens to the **right** and **downward** (no upward flip near the bottom); `tap --x/--y` always offered alongside id/label taps
 - Snippet generation only attaches `--id` / `--label` / assert `--text` when values look like real selectors (not deeplink URLs or `XCUIElementType…` type names); assert prompts for text when no usable label
 - **Selector Commands** include app control: `activateApp` / `terminateApp` / `restartApp`, `openUrl`, `acceptAlert` / `dismissAlert` (App ID prefilled from selected app); and screenshots: `screenshot` / `screenshot (path)`
@@ -36,7 +36,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 ## How to verify
 
 1. Open desktop → **Inspector** → Connect a device (select an app first).
-2. Click a labeled control (e.g. “Continue”): highlight should cover the full button/word when the tree is available; the command menu opens to the right and downward. Under Stream mode, first clicks may only offer `tap (x,y)` until a command has refreshed the tree; then `--id` / `--label` appear.
+2. Click a labeled control (e.g. “Continue”) with Live control off: “Reading screen…” then highlight the full control; menu offers `tap` with `--id` / `--label` plus `tap (x,y)`. Stream resumes after select.
 3. Record taps / input / waits via the element menu (id/label taps also get coordinates).
 4. Selector quality: click a blank scroll area or a deeplink cell — tap should be coords-only (no `--id 'scheme://…'`, no `--label 'XCUIElementType…'`); assert should prompt for text instead of inserting the type name. A labeled button still emits `--id` / `--label` plus coords.
 5. App control / deeplink: select any element → **Selector Commands** → `activateApp` (e.g. `com.apple.mobilenotes`) → insert & run; paste a deeplink in Notes → tap it → `acceptAlert` if prompted; or use `openUrl` with the deeplink directly.
@@ -48,6 +48,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 ## Follow-ups
 
 - Change Selector (cycle overlapping / parent-child hierarchy)
+- Dedicated **type by id** command chip (input already can emit `--id` when present)
 - All Commands catalog + View Docs links
 - `scrollUntilVisible`, `copyTextFrom`, `extendedWaitUntil`
 - CaseScript support for assert / swipe / double / long-press / activate-app / open-url / screenshot

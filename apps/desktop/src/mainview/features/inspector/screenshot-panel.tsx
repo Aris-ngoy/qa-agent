@@ -239,7 +239,7 @@ export function ScreenshotPanel({
 					</span>
 				) : (
 					<span className="text-helper text-on-surface-variant">
-						Click element for actions · double-click to insert tap
+						Click to inspect element (like Appium Inspector) · double-click to insert tap
 					</span>
 				)}
 			</div>

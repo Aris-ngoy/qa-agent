@@ -22,7 +22,7 @@ import {
 	requireActiveSession,
 } from "../../domains/devices/active-session";
 import { groundDescription } from "../../domains/devices/grounding";
-import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
+import { abortAllMjpegProxies, trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 import { cleanPageSource } from "../../domains/devices/screen";
 
 function sessionErrorResponse(error: unknown) {
@@ -83,6 +83,12 @@ export function createSessionRoutes() {
 		try {
 			const { session } = requireActiveSession();
 			const full = c.req.query("full") === "1" || c.req.query("full") === "true";
+			// Appium Inspector-style: drop live MJPEG consumers before pageSource so WDA
+			// is not dual-loaded (stream + source), which otherwise kills the session.
+			const pauseMjpeg = c.req.query("pauseMjpeg") === "1" || c.req.query("pauseMjpeg") === "true";
+			if (pauseMjpeg) {
+				abortAllMjpegProxies();
+			}
 			const raw = await session.pageSource();
 			const window = await session.getWindowSize();
 			if (full) {

@@ -34,7 +34,10 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 **Desktop Inspector**
 
 - Primary feed: `<img src="/stream.mjpeg">` (no 150ms PNG poll)
-- **No automatic page-source while MJPEG is live** (that combo killed WDA a few seconds after connect); tree refresh runs on poll feed and after script/commands only — never on a timer after stream start
+- **No automatic page-source while MJPEG is idle** — continuous source+stream dual-loads WDA and kills the session
+- **Appium Inspector–style Element Mode:** on click-to-select, runner aborts MJPEG proxies (`GET /screen?pauseMjpeg=1`), reads page source, then the desktop remounts `/stream.mjpeg` — so hit-test gets real id/label nodes without leaving Stream mode
+- Live control still uses the continuous MJPEG feed (~60 FPS) without page-source
+- Tree also refreshes after script/commands (same pause+remount under Stream) and on the poll feed
 - **Live control** checkbox: pointer drag → WS; script select/menu when off
 - **Stream** vs **Poll** badge
 - **Restart session** in the toolbar: disconnect + reconnect and remount the MJPEG URL (manual only)
@@ -45,16 +48,17 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 
 1. Connect an iOS Simulator (or real iOS / Android) in Inspector → badge **Stream**; idle connect does not grow `~/.yoqa/runs/screenshots/`.
 2. On a real iPhone, the live stream should stay up for minutes with no tree polling in the background.
-3. Enable **Live control** → drag/swipe on the mirror; disable → click element → Insert & Run still works (tree refresh after the command enables id/label suggestions on later clicks).
-4. Explicit screenshot / script report still persists files.
-5. Disconnect closes the stream and control socket cleanly.
-6. If MJPEG fails to probe, badge shows **Poll** and the feed still updates.
-7. If WDA dies, Inspector stops the feed and prompts **Restart session** (no automatic reconnect).
+3. Disable **Live control** → click a button/word: briefly “Reading screen…”, then highlight the full control and the menu offers `tap` with `--id` / `--label` (plus `tap (x,y)`). Stream remounts afterward.
+4. Enable **Live control** → drag/swipe on the mirror (no page-source); disable → select again for commands.
+5. Explicit screenshot / script report still persists files.
+6. Disconnect closes the stream and control socket cleanly.
+7. If MJPEG fails to probe, badge shows **Poll** and the feed still updates.
+8. If WDA dies, Inspector stops the feed and prompts **Restart session** (no automatic reconnect).
 
 ## Follow-ups
 
 - Img `onError` auto-fallback from MJPEG → poll mid-session
-- Safe “load selectors” under MJPEG (pause stream proxies → pageSource → remount) without killing WDA
+- Dedicated **type by id** command chip in the element menu
 - Binary WS pointer protocol (serve-sim-style) if JSON coalescing is not enough
 - Hardware home / rotate over the control channel
 - Tune framerate/quality per platform from Settings
