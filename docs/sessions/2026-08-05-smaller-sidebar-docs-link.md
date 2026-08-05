@@ -27,3 +27,7 @@ Make the desktop side menu a bit narrower and point Docs (and related Help / in-
 
 - Switch links to `docs.yoqa.ai` when the custom domain is connected
 - None required for sidebar density unless visual QA asks for further tweaks
+
+## Fix: Docs opens in system browser
+
+Webview `<a target="_blank">` does not launch the OS browser in Electrobun. Added `openExternalUrl` RPC (`Utils.openExternal` on the Bun host) and wired Docs + writing-guide links through it.

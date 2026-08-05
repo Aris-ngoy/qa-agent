@@ -1,3 +1,4 @@
+import { openExternalUrl } from "@/app/desktop-rpc";
 import { AddApplicationModal } from "@/features/apps/add-application-modal";
 import { useApps } from "@/features/apps/context";
 import { useActiveRun } from "@/features/runs/active-run-context";
@@ -13,6 +14,8 @@ import {
 	useRef,
 	useState,
 } from "react";
+
+const DOCS_URL = "https://yoqa.mintlify.site/docs/quickstart";
 
 function NavIcon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -339,9 +342,12 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 					<div className="flex flex-col gap-2 px-2 pt-2">
 						<a
 							className="text-helper font-medium text-sidebar-muted underline-offset-2 hover:text-sidebar-fg hover:underline"
-							href="https://yoqa.mintlify.site/docs/quickstart"
+							href={DOCS_URL}
+							onClick={(event) => {
+								event.preventDefault();
+								void openExternalUrl(DOCS_URL);
+							}}
 							rel="noreferrer"
-							target="_blank"
 						>
 							Docs
 						</a>
