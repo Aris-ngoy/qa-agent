@@ -48,7 +48,12 @@ git push origin v0.2.0
 # watch Actions → Release macOS
 ```
 
-Gatekeeper: right-click → Open on first launch (unsigned).
+Gatekeeper: unsigned downloads get `com.apple.quarantine`, and recent macOS shows **“yoqa” is damaged…** instead of the old unidentified-developer dialog. Clear it before first launch:
+
+```bash
+xattr -cr /Applications/yoqa.app
+open /Applications/yoqa.app
+```
 
 ## Follow-ups
 
