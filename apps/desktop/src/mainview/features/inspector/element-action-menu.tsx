@@ -115,21 +115,18 @@ function CodeIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
-/** Always anchor the menu to the right of the selection; flip vertically near the bottom. */
+/** Always anchor the menu to the right of the selection, opening downward. */
 function menuPosition(anchor: ElementActionMenuProps["anchor"]): {
 	left: string;
 	top: string;
 	transform: string;
 } {
-	const preferBelow = anchor.top + anchor.height < 70;
 	const left = Math.min(92, anchor.left + anchor.width + 2);
-	const top = preferBelow
-		? Math.min(88, anchor.top + Math.min(anchor.height, 8))
-		: Math.max(2, anchor.top - 1.5);
+	const top = Math.min(88, Math.max(2, anchor.top + Math.min(anchor.height, 8)));
 	return {
 		left: `${left}%`,
 		top: `${top}%`,
-		transform: preferBelow ? "translate(0, 0)" : "translate(0, -100%)",
+		transform: "translate(0, 0)",
 	};
 }
 

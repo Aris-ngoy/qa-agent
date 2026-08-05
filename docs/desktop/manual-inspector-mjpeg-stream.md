@@ -34,7 +34,7 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 **Desktop Inspector**
 
 - Primary feed: `<img src="/stream.mjpeg">` (no 150ms PNG poll)
-- **No automatic page-source while MJPEG is live** (that combo killed WDA a few seconds after connect); tree refresh runs on poll feed and after script/commands
+- **No automatic page-source while MJPEG is live** (that combo killed WDA a few seconds after connect); tree refresh runs on poll feed, once ~1.5s after stream connect, **on each element click** (so id/label taps work), and after script/commands
 - **Live control** checkbox: pointer drag → WS; script select/menu when off
 - **Stream** vs **Poll** badge
 - **Restart session** in the toolbar: disconnect + reconnect and remount the MJPEG URL (manual only)
@@ -45,11 +45,12 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 
 1. Connect an iOS Simulator (or real iOS / Android) in Inspector → badge **Stream**; idle connect does not grow `~/.yoqa/runs/screenshots/`.
 2. On a real iPhone, the live stream should stay up for minutes with no tree polling in the background.
-3. Enable **Live control** → drag/swipe on the mirror; disable → click element → Insert & Run still works.
-4. Explicit screenshot / script report still persists files.
-5. Disconnect closes the stream and control socket cleanly.
-6. If MJPEG fails to probe, badge shows **Poll** and the feed still updates.
-7. If WDA dies, Inspector stops the feed and prompts **Restart session** (no automatic reconnect).
+3. Disable **Live control** → click a labeled control (e.g. Continue): wait for “Reading screen…” if needed → highlight covers the control and the menu offers `tap` with `--id` / `--label` plus `tap (x,y)`.
+4. Enable **Live control** → drag/swipe on the mirror; disable → click element → Insert & Run still works.
+5. Explicit screenshot / script report still persists files.
+6. Disconnect closes the stream and control socket cleanly.
+7. If MJPEG fails to probe, badge shows **Poll** and the feed still updates.
+8. If WDA dies, Inspector stops the feed and prompts **Restart session** (no automatic reconnect).
 
 ## Follow-ups
 
