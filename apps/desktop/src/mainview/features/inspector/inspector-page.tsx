@@ -9,7 +9,12 @@ import { type RunLogEntry, RunPanel } from "@/features/inspector/run-panel";
 import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
 import { ScriptEditor } from "@/features/inspector/script-editor";
-import { type InspectorSelection, appendScriptLines } from "@/features/inspector/selection";
+import {
+	type InspectorSelection,
+	appendScriptLines,
+	cycleChangeSelector,
+	selectionFromPoint,
+} from "@/features/inspector/selection";
 import { SessionToolbar } from "@/features/inspector/session-toolbar";
 import { useActiveRun } from "@/features/runs/active-run-context";
 import {
@@ -38,10 +43,12 @@ import {
 } from "@yoqa/runner-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-/** How often to pull a fresh screenshot while connected. */
-const LIVE_SCREENSHOT_MS = 150;
-/** Refresh the accessibility tree every N screenshot polls (tree is slower). */
-const TREE_EVERY_N_POLLS = 15;
+/** Accessibility tree refresh when using screenshot poll (not during MJPEG). */
+const TREE_REFRESH_MS = 8000;
+/** Fallback screenshot poll when Appium MJPEG is unavailable. */
+const FALLBACK_SCREENSHOT_MS = 250;
+/** Background-refresh the cached tree if older than this on select. */
+const TREE_STALE_MS = 3000;
 
 type InspectorReportStep = {
 	index: number;
@@ -115,9 +122,16 @@ function defaultCaseNameFromScript(script: string): string {
 	return `Inspector script · ${stamp}`;
 }
 
-function bytesToPngBlob(bytes: Uint8Array): Blob {
+function bytesToImageBlob(bytes: Uint8Array, mime = "image/png"): Blob {
 	const copy = Uint8Array.from(bytes);
-	return new Blob([copy.buffer], { type: "image/png" });
+	return new Blob([copy.buffer], { type: mime });
+}
+
+function isDeviceSessionGone(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return /device session ended|session does not exist|invalid session id|no such session|HTTP 410/i.test(
+		message,
+	);
 }
 
 function miniScriptFromLines(lines: string[]): string {
@@ -137,7 +151,10 @@ export function InspectorPage() {
 	const [connecting, setConnecting] = useState(false);
 	const [bootLoading, setBootLoading] = useState(false);
 	const [imageUrl, setImageUrl] = useState<string | null>(null);
+	const [feedMode, setFeedMode] = useState<"mjpeg" | "poll" | null>(null);
+	const [liveControl, setLiveControl] = useState(false);
 	const [elements, setElements] = useState<ScreenElement[]>([]);
+	const [treeRefreshing, setTreeRefreshing] = useState(false);
 	const [selection, setSelection] = useState<InspectorSelection | null>(null);
 	const [script, setScript] = useState(DEFAULT_SHELL_SCRIPT_HEADER);
 	const [running, setRunning] = useState(false);
@@ -155,13 +172,36 @@ export function InspectorPage() {
 	const abortRef = useRef<AbortController | null>(null);
 	const logIdRef = useRef(0);
 	const imageUrlRef = useRef<string | null>(null);
+	const imageIsBlobRef = useRef(false);
 	const inFlightRef = useRef(false);
-	const pollCountRef = useRef(0);
 	const activeRef = useRef<ActiveDeviceResponse | null>(null);
+	const elementsRef = useRef<ScreenElement[]>([]);
+	const treeUpdatedAtRef = useRef(0);
+	const selectionRef = useRef<InspectorSelection | null>(null);
+	const controlWsRef = useRef<WebSocket | null>(null);
+	const pointerSeqRef = useRef(0);
+	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
+	const sessionEpochRef = useRef(0);
+	const feedModeRef = useRef<"mjpeg" | "poll" | null>(null);
+	const startLiveFeedRef = useRef<(deviceInfo: ActiveDeviceResponse) => Promise<void>>(
+		async () => {},
+	);
 
 	useEffect(() => {
 		activeRef.current = active;
 	}, [active]);
+
+	useEffect(() => {
+		elementsRef.current = elements;
+	}, [elements]);
+
+	useEffect(() => {
+		selectionRef.current = selection;
+	}, [selection]);
+
+	useEffect(() => {
+		feedModeRef.current = feedMode;
+	}, [feedMode]);
 
 	const pushLog = useCallback((text: string, tone: RunLogEntry["tone"] = "info") => {
 		logIdRef.current += 1;
@@ -170,19 +210,182 @@ export function InspectorPage() {
 	}, []);
 
 	const revokeImage = useCallback(() => {
-		if (imageUrlRef.current) {
+		if (imageUrlRef.current && imageIsBlobRef.current) {
 			URL.revokeObjectURL(imageUrlRef.current);
-			imageUrlRef.current = null;
 		}
+		imageUrlRef.current = null;
+		imageIsBlobRef.current = false;
 		setImageUrl(null);
 	}, []);
 
-	const refreshFrame = useCallback(
+	const setStreamImage = useCallback((url: string) => {
+		if (imageUrlRef.current && imageIsBlobRef.current) {
+			URL.revokeObjectURL(imageUrlRef.current);
+		}
+		imageUrlRef.current = url;
+		imageIsBlobRef.current = false;
+		setImageUrl(url);
+	}, []);
+
+	const setBlobImage = useCallback((bytes: Uint8Array) => {
+		const blob = bytesToImageBlob(bytes);
+		const nextUrl = URL.createObjectURL(blob);
+		if (imageUrlRef.current && imageIsBlobRef.current) {
+			URL.revokeObjectURL(imageUrlRef.current);
+		}
+		imageUrlRef.current = nextUrl;
+		imageIsBlobRef.current = true;
+		setImageUrl(nextUrl);
+	}, []);
+
+	const remountMjpegStream = useCallback(async () => {
+		if (feedModeRef.current !== "mjpeg" || !activeRef.current) return;
+		const client = await getRunnerClient();
+		setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
+	}, [setStreamImage]);
+
+	const clearSessionUi = useCallback(() => {
+		activeRef.current = null;
+		setActive(null);
+		setSelection(null);
+		setElements([]);
+		treeUpdatedAtRef.current = 0;
+		setTreeRefreshing(false);
+		setFeedMode(null);
+		setLiveControl(false);
+		controlWsRef.current?.close();
+		controlWsRef.current = null;
+		revokeImage();
+	}, [revokeImage]);
+
+	const handleSessionGone = useCallback(() => {
+		const current = activeRef.current;
+		if (current) {
+			setDevice(
+				(prev) =>
+					prev ?? {
+						id: current.deviceId,
+						platform: current.platform,
+						label: current.deviceId,
+						name: current.deviceId,
+						osVersion: "",
+						kind: "physical",
+					},
+			);
+		}
+		sessionEpochRef.current += 1;
+		clearSessionUi();
+		notify("Device session ended — use Restart session to reconnect");
+	}, [clearSessionUi]);
+
+	const refreshTree = useCallback(
+		async (options: { silent?: boolean } = {}): Promise<ScreenElement[] | null> => {
+			const silent = options.silent ?? false;
+			if (inFlightRef.current) return null;
+			if (!activeRef.current) return null;
+			const epoch = sessionEpochRef.current;
+			const pauseMjpeg = feedModeRef.current === "mjpeg";
+			inFlightRef.current = true;
+			setTreeRefreshing(true);
+			try {
+				const client = await getRunnerClient();
+				// pauseMjpeg aborts live stream proxies on the runner before pageSource
+				// (Appium Inspector Element Mode — source without dual-loading WDA).
+				const screen = await client.getScreen({ pauseMjpeg });
+				if (sessionEpochRef.current !== epoch || !activeRef.current) return null;
+				const next = screen.elements ?? [];
+				setElements(next);
+				treeUpdatedAtRef.current = Date.now();
+				return next;
+			} catch (error) {
+				if (sessionEpochRef.current !== epoch) return null;
+				if (isDeviceSessionGone(error)) {
+					handleSessionGone();
+					return null;
+				}
+				if (!silent) {
+					showErrorToast(error, "Failed to refresh screen tree");
+				}
+				return null;
+			} finally {
+				inFlightRef.current = false;
+				setTreeRefreshing(false);
+				if (pauseMjpeg && sessionEpochRef.current === epoch && activeRef.current) {
+					void remountMjpegStream();
+				}
+			}
+		},
+		[handleSessionGone, remountMjpegStream],
+	);
+
+	/**
+	 * Warm / refresh the cached accessibility tree (pauses MJPEG briefly under Stream).
+	 * Selection hit-tests locally against the cache — not on every click.
+	 */
+	const warmTree = useCallback(() => {
+		void refreshTree({ silent: true });
+	}, [refreshTree]);
+
+	const handleLiveControlChange = useCallback(
+		(enabled: boolean) => {
+			setLiveControl(enabled);
+			if (!enabled && activeRef.current) {
+				// Entering Select mode: one pageSource warm so hover/click are instant.
+				warmTree();
+			}
+		},
+		[warmTree],
+	);
+
+	/** After a local select, refresh in the background if the cache is stale. */
+	const handleSelectWithPoint = useCallback(
+		(next: InspectorSelection) => {
+			const age = Date.now() - treeUpdatedAtRef.current;
+			if (age <= TREE_STALE_MS) return;
+			void (async () => {
+				const tree = await refreshTree({ silent: true });
+				if (!tree) return;
+				const current = selectionRef.current;
+				if (!current) return;
+				// Only update if this is still the same click point the user just made.
+				if (current.pointX !== next.pointX || current.pointY !== next.pointY) return;
+				const refreshed = selectionFromPoint(tree, {
+					x: next.pointX,
+					y: next.pointY,
+				});
+				// Keep locator preference if the same element is still under the point.
+				const sameElement =
+					current.element &&
+					refreshed.element &&
+					(current.element.id ?? "") === (refreshed.element.id ?? "") &&
+					(current.element.label ?? "") === (refreshed.element.label ?? "") &&
+					current.element.x === refreshed.element.x &&
+					current.element.y === refreshed.element.y;
+				setSelection(
+					sameElement ? { ...refreshed, preferredLocator: current.preferredLocator } : refreshed,
+				);
+			})();
+		},
+		[refreshTree],
+	);
+
+	const handleChangeSelector = useCallback(() => {
+		setSelection((prev) => {
+			if (!prev) return prev;
+			return cycleChangeSelector(elementsRef.current, prev);
+		});
+	}, []);
+
+	const handleRefreshTree = useCallback(() => {
+		void refreshTree({ silent: false });
+	}, [refreshTree]);
+	const refreshPollFrame = useCallback(
 		async (options: { includeTree?: boolean; silent?: boolean } = {}) => {
 			const includeTree = options.includeTree ?? true;
 			const silent = options.silent ?? false;
 			if (inFlightRef.current) return;
 			if (!activeRef.current) return;
+			const epoch = sessionEpochRef.current;
 			inFlightRef.current = true;
 			if (!silent && !imageUrlRef.current) setBootLoading(true);
 			try {
@@ -190,19 +393,18 @@ export function InspectorPage() {
 				const bytesPromise = client.fetchScreenshotBytes();
 				const treePromise = includeTree ? client.getScreen() : Promise.resolve(null);
 				const [bytes, screen] = await Promise.all([bytesPromise, treePromise]);
-				if (!activeRef.current) return;
-
-				const blob = bytesToPngBlob(bytes);
-				const nextUrl = URL.createObjectURL(blob);
-				const prev = imageUrlRef.current;
-				imageUrlRef.current = nextUrl;
-				setImageUrl(nextUrl);
-				if (prev) URL.revokeObjectURL(prev);
-
+				if (sessionEpochRef.current !== epoch || !activeRef.current) return;
+				setBlobImage(bytes);
 				if (screen) {
 					setElements(screen.elements ?? []);
+					treeUpdatedAtRef.current = Date.now();
 				}
 			} catch (error) {
+				if (sessionEpochRef.current !== epoch) return;
+				if (isDeviceSessionGone(error)) {
+					handleSessionGone();
+					return;
+				}
 				if (!silent) {
 					showErrorToast(error, "Failed to refresh screen");
 				}
@@ -211,7 +413,61 @@ export function InspectorPage() {
 				setBootLoading(false);
 			}
 		},
-		[],
+		[handleSessionGone, setBlobImage],
+	);
+
+	const startLiveFeed = useCallback(
+		async (deviceInfo: ActiveDeviceResponse) => {
+			setBootLoading(true);
+			try {
+				const client = await getRunnerClient();
+				if (deviceInfo.streamReady !== false && (deviceInfo.streamUrl || deviceInfo.mjpegPort)) {
+					setFeedMode("mjpeg");
+					// Cache-bust so a stuck <img> MJPEG connection is remounted.
+					setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
+					// Do not page-source while MJPEG is starting — WDA dies a few seconds later.
+					// Tree is loaded after script/commands (and on poll feed).
+				} else {
+					setFeedMode("poll");
+					await refreshPollFrame({ includeTree: true, silent: false });
+				}
+			} catch (error) {
+				showErrorToast(error, "Failed to start live feed");
+				setFeedMode("poll");
+				await refreshPollFrame({ includeTree: true, silent: true });
+			} finally {
+				setBootLoading(false);
+			}
+		},
+		[refreshPollFrame, setStreamImage],
+	);
+
+	startLiveFeedRef.current = startLiveFeed;
+
+	const connectWithDevice = useCallback(
+		async (target: SelectedDevice) => {
+			const client = await getRunnerClient();
+			const bundleId =
+				target.platform === "ios" ? selectedApp?.iosBundleId.trim() || undefined : undefined;
+			const appPackage =
+				target.platform === "android"
+					? selectedApp?.androidApplicationId.trim() || undefined
+					: undefined;
+			const info = await client.connectDevice({
+				deviceId: target.id,
+				platform: target.platform,
+				bundleId,
+				appPackage,
+			});
+			sessionEpochRef.current += 1;
+			activeRef.current = info;
+			setActive(info);
+			setSelection(null);
+			setLiveControl(false);
+			await startLiveFeed(info);
+			return info;
+		},
+		[selectedApp, startLiveFeed],
 	);
 
 	useEffect(() => {
@@ -222,6 +478,8 @@ export function InspectorPage() {
 		return () => document.removeEventListener("visibilitychange", onVisibility);
 	}, []);
 
+	// Bootstrap once — do not re-run when startLiveFeed identity changes (that was
+	// revoking the MJPEG <img> mid-stream and looking like the feed "quit by itself").
 	useEffect(() => {
 		let cancelled = false;
 		void (async () => {
@@ -229,10 +487,12 @@ export function InspectorPage() {
 				const client = await getRunnerClient();
 				const current = await client.getActiveDevice();
 				if (cancelled) return;
-				setActive(current);
 				if (current) {
+					sessionEpochRef.current += 1;
+					activeRef.current = current;
+					setActive(current);
 					setPlatform(current.platform);
-					await refreshFrame({ includeTree: true, silent: false });
+					await startLiveFeedRef.current(current);
 				}
 			} catch {
 				/* runner may still be starting */
@@ -241,62 +501,185 @@ export function InspectorPage() {
 		return () => {
 			cancelled = true;
 			abortRef.current?.abort();
+			controlWsRef.current?.close();
+			controlWsRef.current = null;
 			revokeImage();
 		};
-	}, [refreshFrame, revokeImage]);
+	}, [revokeImage]);
 
-	// Live screenshot loop while connected and the page is visible.
+	// Accessibility tree refresh — only on poll feed. MJPEG + pageSource on the
+	// same WDA session routinely kills the stream a few seconds after connect.
 	useEffect(() => {
-		if (!active || !pageVisible) return;
+		if (!active || !pageVisible || feedMode !== "poll") return;
 
 		let cancelled = false;
-		pollCountRef.current = 0;
-
 		const tick = async () => {
 			if (cancelled || !activeRef.current) return;
-			pollCountRef.current += 1;
-			const includeTree = pollCountRef.current % TREE_EVERY_N_POLLS === 0;
-			await refreshFrame({ includeTree, silent: true });
+			await refreshTree({ silent: true });
 		};
 
 		void tick();
 		const timer = window.setInterval(() => {
 			void tick();
-		}, LIVE_SCREENSHOT_MS);
+		}, TREE_REFRESH_MS);
 
 		return () => {
 			cancelled = true;
 			window.clearInterval(timer);
 		};
-	}, [active, pageVisible, refreshFrame]);
+	}, [active, feedMode, pageVisible, refreshTree]);
+
+	// Under Stream + Select mode, warm the tree once after connect (deferred so MJPEG can settle).
+	useEffect(() => {
+		if (!active || !pageVisible || feedMode !== "mjpeg" || liveControl) return;
+		if (treeUpdatedAtRef.current > 0) return;
+		const timer = window.setTimeout(() => {
+			if (!activeRef.current || treeUpdatedAtRef.current > 0) return;
+			warmTree();
+		}, 700);
+		return () => {
+			window.clearTimeout(timer);
+		};
+	}, [active, feedMode, liveControl, pageVisible, warmTree]);
+
+	// Fallback PNG poll only when MJPEG is unavailable.
+	useEffect(() => {
+		if (!active || !pageVisible || feedMode !== "poll") return;
+
+		let cancelled = false;
+		const tick = async () => {
+			if (cancelled || !activeRef.current) return;
+			await refreshPollFrame({ includeTree: false, silent: true });
+		};
+
+		void tick();
+		const timer = window.setInterval(() => {
+			void tick();
+		}, FALLBACK_SCREENSHOT_MS);
+
+		return () => {
+			cancelled = true;
+			window.clearInterval(timer);
+		};
+	}, [active, feedMode, pageVisible, refreshPollFrame]);
+
+	// Live control WebSocket while the toggle is on.
+	useEffect(() => {
+		if (!active || !liveControl || !pageVisible) {
+			controlWsRef.current?.close();
+			controlWsRef.current = null;
+			return;
+		}
+
+		let cancelled = false;
+		let ws: WebSocket | null = null;
+
+		void (async () => {
+			try {
+				const client = await getRunnerClient();
+				if (cancelled) return;
+				ws = new WebSocket(client.getControlWsUrl());
+				controlWsRef.current = ws;
+				ws.onclose = () => {
+					if (controlWsRef.current === ws) {
+						controlWsRef.current = null;
+					}
+				};
+			} catch (error) {
+				if (!cancelled) {
+					showErrorToast(error, "Failed to open live control");
+					setLiveControl(false);
+				}
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+			ws?.close();
+			if (controlWsRef.current === ws) {
+				controlWsRef.current = null;
+			}
+		};
+	}, [active, liveControl, pageVisible]);
+
+	const sendPointer = useCallback((phase: "begin" | "move" | "end", x: number, y: number) => {
+		const ws = controlWsRef.current;
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		pointerSeqRef.current += 1;
+		ws.send(
+			JSON.stringify({
+				type: "pointer",
+				phase,
+				x,
+				y,
+				seq: pointerSeqRef.current,
+			}),
+		);
+	}, []);
 
 	const handleConnect = useCallback(async () => {
 		if (!device) return;
 		setConnecting(true);
 		try {
-			const client = await getRunnerClient();
-			const bundleId =
-				device.platform === "ios" ? selectedApp?.iosBundleId.trim() || undefined : undefined;
-			const appPackage =
-				device.platform === "android"
-					? selectedApp?.androidApplicationId.trim() || undefined
-					: undefined;
-			const info = await client.connectDevice({
-				deviceId: device.id,
-				platform: device.platform,
-				bundleId,
-				appPackage,
-			});
-			setActive(info);
-			setSelection(null);
-			await refreshFrame({ includeTree: true, silent: false });
-			notify("Connected — live feed on");
+			const info = await connectWithDevice(device);
+			notify(
+				info.streamReady === false
+					? "Connected — screenshot poll (MJPEG unavailable)"
+					: "Connected — live stream on",
+			);
 		} catch (error) {
 			showErrorToast(error, "Failed to connect device");
 		} finally {
 			setConnecting(false);
 		}
-	}, [device, refreshFrame, selectedApp]);
+	}, [connectWithDevice, device]);
+
+	const handleRestartSession = useCallback(async () => {
+		const target: SelectedDevice | null =
+			device ??
+			(active
+				? {
+						id: active.deviceId,
+						platform: active.platform,
+						label: active.deviceId,
+						name: active.deviceId,
+						osVersion: "",
+						kind: "physical",
+					}
+				: null);
+		if (!target) {
+			showErrorToast(new Error("Select a device first"), "Nothing to restart");
+			return;
+		}
+
+		setConnecting(true);
+		setLiveControl(false);
+		controlWsRef.current?.close();
+		controlWsRef.current = null;
+		try {
+			const client = await getRunnerClient();
+			try {
+				await client.disconnectDevice();
+			} catch {
+				/* already dead / no session */
+			}
+			sessionEpochRef.current += 1;
+			clearSessionUi();
+			if (!device) setDevice(target);
+			const info = await connectWithDevice(target);
+			notify(
+				info.streamReady === false
+					? "Session restarted — screenshot poll"
+					: "Session restarted — live stream refreshed",
+			);
+		} catch (error) {
+			sessionEpochRef.current += 1;
+			clearSessionUi();
+			showErrorToast(error, "Failed to restart session");
+		} finally {
+			setConnecting(false);
+		}
+	}, [active, clearSessionUi, connectWithDevice, device]);
 
 	const handleDisconnect = useCallback(async () => {
 		if (scriptHasBody(script) && !window.confirm("Disconnect and keep the current script?")) {
@@ -309,6 +692,10 @@ export function InspectorPage() {
 			setActive(null);
 			setSelection(null);
 			setElements([]);
+			setFeedMode(null);
+			setLiveControl(false);
+			controlWsRef.current?.close();
+			controlWsRef.current = null;
 			revokeImage();
 			notify("Disconnected");
 		} catch (error) {
@@ -407,10 +794,10 @@ export function InspectorPage() {
 				setRunning(false);
 				setActiveLineNumber(null);
 				abortRef.current = null;
-				void refreshFrame({ includeTree: true, silent: true });
+				void refreshTree({ silent: true });
 			}
 		},
-		[active, pushLog, refreshFrame, running],
+		[active, pushLog, refreshTree, running],
 	);
 
 	const handleInsertAndRunLines = useCallback(
@@ -515,9 +902,9 @@ export function InspectorPage() {
 			setRunning(false);
 			setActiveLineNumber(null);
 			abortRef.current = null;
-			void refreshFrame({ includeTree: true, silent: true });
+			void refreshTree({ silent: true });
 		}
-	}, [active, device?.name, pushLog, refreshFrame, running, script, selectedApp?.name]);
+	}, [active, device?.name, pushLog, refreshTree, running, script, selectedApp?.name]);
 
 	const handleStop = useCallback(() => {
 		abortRef.current?.abort();
@@ -646,7 +1033,7 @@ export function InspectorPage() {
 	);
 
 	const connected = active != null;
-	const live = connected && pageVisible;
+	const live = connected && pageVisible && imageUrl != null;
 	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(script);
 	const snippetContext = useMemo(
 		() => ({
@@ -684,6 +1071,9 @@ export function InspectorPage() {
 				onConnect={() => {
 					void handleConnect();
 				}}
+				onRestart={() => {
+					void handleRestartSession();
+				}}
 				onDisconnect={() => {
 					void handleDisconnect();
 				}}
@@ -696,11 +1086,19 @@ export function InspectorPage() {
 					elements={elements}
 					selection={selection}
 					loading={bootLoading && !imageUrl}
+					treeRefreshing={treeRefreshing}
 					live={live}
+					feedMode={feedMode}
+					liveControl={liveControl}
+					onLiveControlChange={handleLiveControlChange}
 					disabled={!connected || running}
 					snippetContext={snippetContext}
 					onSelect={setSelection}
+					onSelectWithPoint={handleSelectWithPoint}
+					onChangeSelector={handleChangeSelector}
+					onRefreshTree={handleRefreshTree}
 					onDoubleTap={handleDoubleTap}
+					onPointer={sendPointer}
 					onInsertLines={handleInsertLines}
 					onInsertAndRunLines={handleInsertAndRunLines}
 					onCopyLines={(lines) => {

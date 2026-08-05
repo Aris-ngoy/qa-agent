@@ -14,13 +14,31 @@ import {
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
 import {
+	abandonActiveSession,
 	connectDevice,
 	disconnectDevice,
 	getActiveSessionInfo,
+	isMissingAppiumSessionError,
 	requireActiveSession,
 } from "../../domains/devices/active-session";
 import { groundDescription } from "../../domains/devices/grounding";
+import { abortAllMjpegProxies, trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 import { cleanPageSource } from "../../domains/devices/screen";
+
+function sessionErrorResponse(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error);
+	if (isMissingAppiumSessionError(error)) {
+		abandonActiveSession();
+		return {
+			status: 410 as const,
+			body: {
+				error: "Device session ended",
+				detail: message,
+			},
+		};
+	}
+	return null;
+}
 
 export function createSessionRoutes() {
 	const app = new Hono();
@@ -65,6 +83,12 @@ export function createSessionRoutes() {
 		try {
 			const { session } = requireActiveSession();
 			const full = c.req.query("full") === "1" || c.req.query("full") === "true";
+			// Appium Inspector-style: drop live MJPEG consumers before pageSource so WDA
+			// is not dual-loaded (stream + source), which otherwise kills the session.
+			const pauseMjpeg = c.req.query("pauseMjpeg") === "1" || c.req.query("pauseMjpeg") === "true";
+			if (pauseMjpeg) {
+				abortAllMjpegProxies();
+			}
 			const raw = await session.pageSource();
 			const window = await session.getWindowSize();
 			if (full) {
@@ -85,6 +109,8 @@ export function createSessionRoutes() {
 				}),
 			);
 		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Failed to read screen", detail: message }, 500);
 		}
@@ -112,6 +138,8 @@ export function createSessionRoutes() {
 			}
 			return c.json(screenshotResponseSchema.parse({ path }));
 		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Failed to take screenshot", detail: message }, 500);
 		}
@@ -120,18 +148,73 @@ export function createSessionRoutes() {
 	app.get("/screenshot/image", async (c) => {
 		try {
 			const { session } = requireActiveSession();
-			const shot = await session.screenshot();
-			const bytes = Buffer.from(shot.base64, "base64");
+			const frame = await session.captureFrame();
+			const bytes = Buffer.from(frame.base64, "base64");
 			return new Response(bytes, {
 				status: 200,
 				headers: {
-					"Content-Type": "image/png",
+					"Content-Type": frame.mime,
 					"Cache-Control": "no-store",
 				},
 			});
 		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Failed to take screenshot", detail: message }, 500);
+		}
+	});
+
+	app.get("/stream.mjpeg", async (c) => {
+		try {
+			const active = requireActiveSession();
+			if (!active.streamReady || !active.mjpegPort) {
+				return c.json(
+					{
+						error: "MJPEG stream not available",
+						detail: "Device connected without a reachable Appium MJPEG broadcaster",
+					},
+					503,
+				);
+			}
+			const proxyAbort = trackMjpegProxy();
+			let upstream: Response;
+			try {
+				upstream = await fetch(`http://127.0.0.1:${active.mjpegPort}/`, {
+					signal: proxyAbort.signal,
+					headers: { Accept: "multipart/x-mixed-replace,image/jpeg,*/*" },
+				});
+			} catch (error) {
+				if (proxyAbort.signal.aborted) {
+					return c.json({ error: "MJPEG proxy aborted" }, 503);
+				}
+				throw error;
+			}
+			if (!upstream.ok || !upstream.body) {
+				proxyAbort.abort();
+				return c.json(
+					{
+						error: "Upstream MJPEG unavailable",
+						detail: `HTTP ${upstream.status} from mjpeg port ${active.mjpegPort}`,
+					},
+					502,
+				);
+			}
+			const contentType =
+				upstream.headers.get("Content-Type") ??
+				"multipart/x-mixed-replace; boundary=--BoundaryLine--";
+			// Aborting proxyAbort cancels the upstream body when disconnect/quit runs.
+			return new Response(upstream.body, {
+				status: 200,
+				headers: {
+					"Content-Type": contentType,
+					"Cache-Control": "no-store",
+					Connection: "close",
+				},
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return c.json({ error: "Failed to proxy MJPEG stream", detail: message }, 500);
 		}
 	});
 
@@ -258,6 +341,8 @@ export function createSessionRoutes() {
 				}),
 			);
 		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Action failed", detail: message }, 500);
 		}

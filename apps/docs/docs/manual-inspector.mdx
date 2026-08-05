@@ -1,6 +1,6 @@
 ---
 title: Manual Inspector
-description: Explore the device UI, build shell scripts, and save actions without writing locator code.
+description: Explore the device UI, pick elements with instant hit-tests, and build shell scripts without writing locator code.
 ---
 
 The Manual Inspector is a desktop surface for **exploring** a connected device the way a QA engineer would, then turning what you did into a reusable script.
@@ -24,6 +24,43 @@ The Manual Inspector is a desktop surface for **exploring** a connected device t
     Execute the script against the session, export a report, or keep it for later regression.
   </Step>
 </Steps>
+
+## Picking elements
+
+The Inspector caches the current accessibility tree so hover and click hit-tests run locally. You get an instant highlight without waiting for a fresh page source per click.
+
+- **Hover preview.** With Live control off, moving the cursor over the screen draws a dashed outline around the element under the pointer.
+- **Click to select.** Clicking picks the smallest labeled control containing the point. When several nodes share the same label (for example, a `StaticText` inside a `Button` both labeled "Continue"), the Inspector selects the largest one so the highlight covers the full control instead of a nested leaf.
+- **Refresh tree.** Use the toolbar **Refresh tree** button to warm the cache manually. The tree also refreshes automatically after Insert & Run or when Live control turns off.
+- **Live mirror.** Under Stream, a tree refresh briefly pauses MJPEG and then resumes. The stream stays continuous the rest of the time.
+
+## Change Selector
+
+Every selection has a **preferred locator** — `id` when the element has one, otherwise `label`. The chosen locator drives the suggested action chips (`tap (id)`, `tap (label)`, `tap (x,y)`) and shows as a caption under the highlight.
+
+Open the element action menu and choose **Change Selector** to cycle through alternatives without moving the cursor:
+
+1. If the element has both an `id` and a `label`, the first press flips the preference from `id` to `label`.
+2. The next press advances to the next overlapping candidate under the click point, from leaf to parent.
+3. Cycling wraps back to the first candidate.
+
+Use Change Selector when the initial highlight targets the wrong layer — for example, when you want the surrounding card instead of the button inside it, or when a locator by `id` is too brittle and you'd rather target by visible `label`.
+
+### Example: switching from id to label
+
+Say you click a "Continue" button that exposes both `id="continue_btn"` and `label="Continue"`. The Inspector selects the button with `id` preferred:
+
+```text
+id: continue_btn
+```
+
+Press **Change Selector** once to prefer the label instead:
+
+```text
+label: Continue
+```
+
+The suggested chip list re-orders to put `tap (label)` first, so the next Insert writes the action with `--label 'Continue'`.
 
 ## Command bar
 

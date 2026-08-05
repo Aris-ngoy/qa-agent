@@ -70,7 +70,7 @@ export type RunYoqaShellScriptOptions = {
 
 type ScriptClient = {
 	performAction: (request: ActionRequest) => Promise<ActionResponse>;
-	getScreen: (options?: { full?: boolean }) => Promise<ScreenResponse>;
+	getScreen: (options?: { full?: boolean; pauseMjpeg?: boolean }) => Promise<ScreenResponse>;
 	takeScreenshot: (request?: ScreenshotRequest) => Promise<ScreenshotResponse>;
 };
 

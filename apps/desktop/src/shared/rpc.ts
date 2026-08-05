@@ -53,6 +53,14 @@ export type DesktopRPC = {
 				params: undefined;
 				response: OpenPathResult;
 			};
+			openExternalUrl: {
+				params: {
+					url: string;
+				};
+				response: {
+					ok: boolean;
+				};
+			};
 		};
 		messages: {
 			log: { msg: string };

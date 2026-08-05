@@ -1,10 +1,24 @@
 import type { SnippetContext } from "@/features/inspector/command-snippets";
 import { ElementActionMenu } from "@/features/inspector/element-action-menu";
-import { type InspectorSelection, hitTestElements } from "@/features/inspector/selection";
+import {
+	type InspectorSelection,
+	activeSelectorCaption,
+	hitTestElements,
+	selectionFromPoint,
+} from "@/features/inspector/selection";
 import type { ScreenElement } from "@yoqa/runner-client";
-import { type MouseEvent, useCallback, useRef } from "react";
+import {
+	type MouseEvent,
+	type PointerEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 
 function isSameSelection(a: InspectorSelection, b: InspectorSelection): boolean {
+	if (a.preferredLocator !== b.preferredLocator) return false;
+	if (a.candidateIndex !== b.candidateIndex) return false;
 	const aId = a.element?.id?.trim() ?? "";
 	const bId = b.element?.id?.trim() ?? "";
 	const aLabel = a.element?.label?.trim() ?? "";
@@ -15,18 +29,42 @@ function isSameSelection(a: InspectorSelection, b: InspectorSelection): boolean 
 	return a.x === b.x && a.y === b.y;
 }
 
+function elementBoxPercent(element: ScreenElement): {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+} {
+	return {
+		left: element.x / 10,
+		top: element.y / 10,
+		width: element.width / 10,
+		height: element.height / 10,
+	};
+}
+
 type ScreenshotPanelProps = {
 	imageUrl: string | null;
 	elements: ScreenElement[];
 	selection: InspectorSelection | null;
 	/** Initial connect / first frame only — not every live poll. */
 	loading: boolean;
+	/** True while warming / refreshing the accessibility tree. */
+	treeRefreshing: boolean;
 	live: boolean;
+	feedMode: "mjpeg" | "poll" | null;
+	liveControl: boolean;
+	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
 	snippetContext: SnippetContext;
+	/** Optional: notify parent after a local select so it can background-refresh a stale tree. */
+	onSelectWithPoint?: (selection: InspectorSelection) => void;
 	onSelect: (selection: InspectorSelection) => void;
+	onChangeSelector: () => void;
+	onRefreshTree: () => void;
 	/** Double-click records a tap for the hit element/point. */
 	onDoubleTap: (selection: InspectorSelection) => void;
+	onPointer: (phase: "begin" | "move" | "end", x: number, y: number) => void;
 	onInsertLines: (lines: string[]) => void;
 	onInsertAndRunLines: (lines: string[]) => void;
 	onCopyLines: (lines: string[]) => void;
@@ -38,42 +76,60 @@ export function ScreenshotPanel({
 	elements,
 	selection,
 	loading,
+	treeRefreshing,
 	live,
+	feedMode,
+	liveControl,
+	onLiveControlChange,
 	disabled,
 	snippetContext,
+	onSelectWithPoint,
 	onSelect,
+	onChangeSelector,
+	onRefreshTree,
 	onDoubleTap,
+	onPointer,
 	onInsertLines,
 	onInsertAndRunLines,
 	onCopyLines,
 	onClearSelection,
 }: ScreenshotPanelProps) {
 	const imgRef = useRef<HTMLImageElement | null>(null);
+	const pointerActiveRef = useRef(false);
+	const [hoverElement, setHoverElement] = useState<ScreenElement | null>(null);
 
-	const selectAtEvent = useCallback(
-		(event: MouseEvent<HTMLElement>): InspectorSelection | null => {
-			if (disabled || !imgRef.current) return null;
+	useEffect(() => {
+		if (liveControl) setHoverElement(null);
+	}, [liveControl]);
+
+	const coordsAtEvent = useCallback(
+		(event: { clientX: number; clientY: number }): { x: number; y: number } | null => {
+			if (!imgRef.current) return null;
 			const rect = imgRef.current.getBoundingClientRect();
 			if (rect.width <= 0 || rect.height <= 0) return null;
 			const x = Math.round(((event.clientX - rect.left) / rect.width) * 1000);
 			const y = Math.round(((event.clientY - rect.top) / rect.height) * 1000);
-			const clampedX = Math.min(1000, Math.max(0, x));
-			const clampedY = Math.min(1000, Math.max(0, y));
-			const element = hitTestElements(elements, clampedX, clampedY);
-			if (element) {
-				return {
-					x: Math.round(element.x + element.width / 2),
-					y: Math.round(element.y + element.height / 2),
-					element,
-				};
-			}
-			return { x: clampedX, y: clampedY, element: null };
+			return {
+				x: Math.min(1000, Math.max(0, x)),
+				y: Math.min(1000, Math.max(0, y)),
+			};
 		},
-		[disabled, elements],
+		[],
+	);
+
+	const selectAtEvent = useCallback(
+		(event: MouseEvent<HTMLElement>): InspectorSelection | null => {
+			if (disabled || !imgRef.current) return null;
+			const point = coordsAtEvent(event);
+			if (!point) return null;
+			return selectionFromPoint(elements, point);
+		},
+		[coordsAtEvent, disabled, elements],
 	);
 
 	const handleClick = useCallback(
 		(event: MouseEvent<HTMLElement>) => {
+			if (liveControl) return;
 			const next = selectAtEvent(event);
 			if (!next) return;
 			// Clicking the current selection again dismisses the action menu.
@@ -81,17 +137,84 @@ export function ScreenshotPanel({
 				onClearSelection();
 				return;
 			}
+			setHoverElement(null);
 			onSelect(next);
+			onSelectWithPoint?.(next);
 		},
-		[onClearSelection, onSelect, selectAtEvent, selection],
+		[liveControl, onClearSelection, onSelect, onSelectWithPoint, selectAtEvent, selection],
 	);
 
 	const handleDoubleClick = useCallback(
 		(event: MouseEvent<HTMLElement>) => {
+			if (liveControl) return;
 			const next = selectAtEvent(event);
 			if (next) onDoubleTap(next);
 		},
-		[onDoubleTap, selectAtEvent],
+		[liveControl, onDoubleTap, selectAtEvent],
+	);
+
+	const handleHoverMove = useCallback(
+		(event: PointerEvent<HTMLElement>) => {
+			if (liveControl || disabled || pointerActiveRef.current) return;
+			if (elements.length === 0) {
+				setHoverElement(null);
+				return;
+			}
+			const point = coordsAtEvent(event);
+			if (!point) {
+				setHoverElement(null);
+				return;
+			}
+			const hit = hitTestElements(elements, point.x, point.y);
+			setHoverElement(hit);
+		},
+		[coordsAtEvent, disabled, elements, liveControl],
+	);
+
+	const handlePointerLeave = useCallback(() => {
+		setHoverElement(null);
+	}, []);
+
+	const handlePointerDown = useCallback(
+		(event: PointerEvent<HTMLElement>) => {
+			if (!liveControl || disabled) return;
+			event.preventDefault();
+			event.currentTarget.setPointerCapture(event.pointerId);
+			const point = coordsAtEvent(event);
+			if (!point) return;
+			pointerActiveRef.current = true;
+			onClearSelection();
+			onPointer("begin", point.x, point.y);
+		},
+		[coordsAtEvent, disabled, liveControl, onClearSelection, onPointer],
+	);
+
+	const handlePointerMove = useCallback(
+		(event: PointerEvent<HTMLElement>) => {
+			if (liveControl && pointerActiveRef.current) {
+				const point = coordsAtEvent(event);
+				if (!point) return;
+				onPointer("move", point.x, point.y);
+				return;
+			}
+			handleHoverMove(event);
+		},
+		[coordsAtEvent, handleHoverMove, liveControl, onPointer],
+	);
+
+	const handlePointerUp = useCallback(
+		(event: PointerEvent<HTMLElement>) => {
+			if (!liveControl || !pointerActiveRef.current) return;
+			pointerActiveRef.current = false;
+			const point = coordsAtEvent(event) ?? { x: 500, y: 500 };
+			onPointer("end", point.x, point.y);
+			try {
+				event.currentTarget.releasePointerCapture(event.pointerId);
+			} catch {
+				/* already released */
+			}
+		},
+		[coordsAtEvent, liveControl, onPointer],
 	);
 
 	const selectionAnchor = selection
@@ -103,31 +226,81 @@ export function ScreenshotPanel({
 			}
 		: null;
 
+	const hoverBox =
+		hoverElement &&
+		!liveControl &&
+		!(
+			selection?.element &&
+			hoverElement.x === selection.element.x &&
+			hoverElement.y === selection.element.y &&
+			hoverElement.width === selection.element.width &&
+			hoverElement.height === selection.element.height
+		)
+			? elementBoxPercent(hoverElement)
+			: null;
+
+	const liveLabel =
+		feedMode === "poll" ? "Poll" : feedMode === "mjpeg" ? "Stream" : live ? "Live" : null;
+
+	const caption = selection ? activeSelectorCaption(selection) : null;
+	const canInspect = !disabled && !liveControl;
+	const showRefreshing = treeRefreshing && elements.length === 0;
+
 	return (
 		<div className="flex flex-col gap-2">
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2">
 					<h2 className="text-title-sm font-semibold text-on-surface">Device</h2>
-					{live ? (
+					{liveLabel ? (
 						<span className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-2 py-0.5 text-helper font-semibold text-on-secondary-container">
 							<span className="relative flex size-1.5">
 								<span className="absolute inline-flex size-full animate-ping rounded-full bg-secondary opacity-60" />
 								<span className="relative inline-flex size-1.5 rounded-full bg-secondary" />
 							</span>
-							Live
+							{liveLabel}
 						</span>
 					) : null}
+					{live && !disabled ? (
+						<label className="inline-flex cursor-pointer items-center gap-1.5 text-helper text-on-surface-variant">
+							<input
+								type="checkbox"
+								className="size-3.5 accent-secondary"
+								checked={liveControl}
+								onChange={(event) => onLiveControlChange(event.target.checked)}
+							/>
+							Live control
+						</label>
+					) : null}
+					{live && canInspect ? (
+						<button
+							type="button"
+							className="rounded-md px-1.5 py-0.5 text-helper font-medium text-on-surface-variant underline-offset-2 hover:text-on-surface hover:underline disabled:opacity-50"
+							disabled={treeRefreshing}
+							onClick={() => {
+								onRefreshTree();
+							}}
+						>
+							{treeRefreshing ? "Refreshing…" : "Refresh tree"}
+						</button>
+					) : null}
 				</div>
-				{selection ? (
+				{liveControl ? (
+					<span className="text-helper text-on-surface-variant">
+						Tap / drag to control · double-click to double-tap
+					</span>
+				) : showRefreshing ? (
+					<span className="text-helper text-on-surface-variant">Refreshing…</span>
+				) : selection && caption ? (
 					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
-						{selection.element?.id
-							? `id ${selection.element.id}`
-							: selection.element?.label || selection.element?.type || "point"}{" "}
-						· {selection.x},{selection.y}
+						{caption} · {selection.x},{selection.y}
+					</span>
+				) : selection ? (
+					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
+						{selection.x},{selection.y}
 					</span>
 				) : (
 					<span className="text-helper text-on-surface-variant">
-						Click element for actions · double-click to insert tap
+						Hover to preview · click to select · double-click to insert tap
 					</span>
 				)}
 			</div>
@@ -147,13 +320,26 @@ export function ScreenshotPanel({
 						{/* biome-ignore lint/a11y/useKeyWithClickEvents: screenshot hit-testing is pointer-driven */}
 						<div
 							role="img"
-							aria-label="Live device screen — click to select actions, double-click to add tap"
+							aria-label={
+								liveControl
+									? "Live device screen — tap, drag, or double-click to double-tap"
+									: "Live device screen — hover to preview, click to select actions, double-click to add tap"
+							}
 							className={[
-								"relative block w-fit max-w-full",
-								disabled ? "cursor-not-allowed opacity-60" : "cursor-crosshair",
+								"relative block w-fit max-w-full touch-none",
+								disabled
+									? "cursor-wait opacity-60"
+									: liveControl
+										? "cursor-grab active:cursor-grabbing"
+										: "cursor-crosshair",
 							].join(" ")}
 							onClick={disabled ? undefined : handleClick}
 							onDoubleClick={disabled ? undefined : handleDoubleClick}
+							onPointerDown={disabled ? undefined : handlePointerDown}
+							onPointerMove={disabled ? undefined : handlePointerMove}
+							onPointerUp={disabled ? undefined : handlePointerUp}
+							onPointerCancel={disabled ? undefined : handlePointerUp}
+							onPointerLeave={handlePointerLeave}
 						>
 							<img
 								ref={imgRef}
@@ -162,7 +348,19 @@ export function ScreenshotPanel({
 								draggable={false}
 								src={imageUrl}
 							/>
-							{selection && selectionAnchor ? (
+							{hoverBox ? (
+								<span
+									aria-hidden="true"
+									className="pointer-events-none absolute border border-dashed border-secondary/70 bg-secondary/10"
+									style={{
+										left: `${hoverBox.left}%`,
+										top: `${hoverBox.top}%`,
+										width: `${hoverBox.width}%`,
+										height: `${hoverBox.height}%`,
+									}}
+								/>
+							) : null}
+							{selection && selectionAnchor && !liveControl ? (
 								<span
 									aria-hidden="true"
 									className="pointer-events-none absolute border-2 border-secondary bg-secondary/20"
@@ -175,18 +373,33 @@ export function ScreenshotPanel({
 								/>
 							) : null}
 						</div>
-						{selection && selectionAnchor ? (
-							<ElementActionMenu
-								key={`${selection.x},${selection.y},${selection.element?.id ?? ""},${selection.element?.label ?? ""}`}
-								selection={selection}
-								anchor={selectionAnchor}
-								disabled={disabled}
-								snippetContext={snippetContext}
-								onInsert={onInsertLines}
-								onInsertAndRun={onInsertAndRunLines}
-								onCopyLines={onCopyLines}
-								onClearSelection={onClearSelection}
-							/>
+						{selection && selectionAnchor && !liveControl ? (
+							<>
+								{caption ? (
+									<div
+										className="pointer-events-none absolute z-10 max-w-[14rem] truncate rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white"
+										style={{
+											left: `${selectionAnchor.left}%`,
+											top: `calc(${selectionAnchor.top + selectionAnchor.height}% + 4px)`,
+										}}
+									>
+										{caption}
+									</div>
+								) : null}
+								<ElementActionMenu
+									key={`${selection.x},${selection.y},${selection.candidateIndex},${selection.preferredLocator},${selection.element?.id ?? ""},${selection.element?.label ?? ""}`}
+									selection={selection}
+									anchor={selectionAnchor}
+									disabled={disabled}
+									snippetContext={snippetContext}
+									canChangeSelector={Boolean(selection.element)}
+									onChangeSelector={onChangeSelector}
+									onInsert={onInsertLines}
+									onInsertAndRun={onInsertAndRunLines}
+									onCopyLines={onCopyLines}
+									onClearSelection={onClearSelection}
+								/>
+							</>
 						) : null}
 					</div>
 				) : null}

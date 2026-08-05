@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { extractAgentJsonObject } from "./agent-json";
 import type { ActiveProviderAuth } from "./application";
 import { CURSOR_DEFAULT_VISION_MODEL } from "./drivers/cursor";
 import { resolveBinary, runCommand } from "./drivers/probe";
@@ -34,17 +35,7 @@ const groundResultSchema = z.object({
 export type CursorDecision = z.infer<typeof agentDecisionSchema>;
 
 function extractJsonObject(text: string): unknown {
-	const trimmed = text.trim();
-	const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-	const candidate = fenced?.[1]?.trim() ?? trimmed;
-	const start = candidate.indexOf("{");
-	const end = candidate.lastIndexOf("}");
-	if (start < 0 || end <= start) {
-		throw new AgentProviderError(
-			`Cursor Agent CLI did not return JSON (got: ${trimmed.replace(/\s+/g, " ").slice(0, 160)})`,
-		);
-	}
-	return JSON.parse(candidate.slice(start, end + 1)) as unknown;
+	return extractAgentJsonObject(text, "Cursor Agent CLI");
 }
 
 function resolveCursorApiKey(auth: ActiveProviderAuth): string | null {
@@ -147,7 +138,7 @@ export async function decideWithCursorCli(input: {
 		input.repairHint ? `\n${input.repairHint}` : "",
 		`\nScreenshot file (open and look at it): ${shotName}`,
 		"The absolute path is in the current workspace. Open that image and base your answer on what you see.",
-		"Reply with ONLY one JSON action object — no markdown fences, no commentary.",
+		'Reply with ONLY one strict JSON action object (double quotes only, e.g. {"type":"tap",...}) — no single quotes, no markdown fences, no commentary.',
 	].join("");
 
 	try {
@@ -184,7 +175,7 @@ export async function groundWithCursorCli(input: {
 	const userText = [
 		input.prompt,
 		`\nScreenshot file (open and look at it): ${shotName}`,
-		'Reply with ONLY JSON: {"x":0-1000,"y":0-1000} — no markdown, no commentary.',
+		'Reply with ONLY strict JSON (double quotes): {"x":0-1000,"y":0-1000} — no single quotes, no markdown, no commentary.',
 	].join("");
 
 	try {

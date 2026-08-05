@@ -16,6 +16,8 @@ type ElementActionMenuProps = {
 	anchor: { left: number; top: number; width: number; height: number };
 	disabled: boolean;
 	snippetContext: SnippetContext;
+	canChangeSelector: boolean;
+	onChangeSelector: () => void;
 	onInsert: (lines: string[]) => void;
 	onInsertAndRun: (lines: string[]) => void;
 	onCopyLines: (lines: string[]) => void;
@@ -115,21 +117,32 @@ function CodeIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
-/** Always anchor the menu to the right of the selection; flip vertically near the bottom. */
+function ChangeSelectorIcon(props: SVGProps<SVGSVGElement>) {
+	return (
+		<svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true" {...props}>
+			<path
+				d="M3 5.5h7.5M10.5 3.5 12.5 5.5 10.5 7.5M13 10.5H5.5M5.5 8.5 3.5 10.5 5.5 12.5"
+				stroke="currentColor"
+				strokeWidth="1.4"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			/>
+		</svg>
+	);
+}
+
+/** Always anchor the menu to the right of the selection, opening downward. */
 function menuPosition(anchor: ElementActionMenuProps["anchor"]): {
 	left: string;
 	top: string;
 	transform: string;
 } {
-	const preferBelow = anchor.top + anchor.height < 70;
 	const left = Math.min(92, anchor.left + anchor.width + 2);
-	const top = preferBelow
-		? Math.min(88, anchor.top + Math.min(anchor.height, 8))
-		: Math.max(2, anchor.top - 1.5);
+	const top = Math.min(88, Math.max(2, anchor.top + Math.min(anchor.height, 8)));
 	return {
 		left: `${left}%`,
 		top: `${top}%`,
-		transform: preferBelow ? "translate(0, 0)" : "translate(0, -100%)",
+		transform: "translate(0, 0)",
 	};
 }
 
@@ -154,6 +167,8 @@ export function ElementActionMenu({
 	anchor,
 	disabled,
 	snippetContext,
+	canChangeSelector,
+	onChangeSelector,
 	onInsert,
 	onInsertAndRun,
 	onCopyLines,
@@ -273,6 +288,22 @@ export function ElementActionMenu({
 							))}
 						</div>
 						<div className="border-t border-white/10 py-1">
+							{canChangeSelector ? (
+								<button
+									type="button"
+									disabled={disabled}
+									className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-white/90 hover:bg-white/10 disabled:opacity-50"
+									onClick={() => {
+										setFlyoutId(null);
+										onChangeSelector();
+									}}
+								>
+									<span className="text-white/55">
+										<ChangeSelectorIcon />
+									</span>
+									<span className="flex-1">Change Selector</span>
+								</button>
+							) : null}
 							<button
 								type="button"
 								disabled={disabled}

@@ -57,7 +57,11 @@ jobs:
             ### Install
             1. Download `stable-macos-arm64-yoqa.dmg`
             2. Open the DMG and drag **yoqa** to Applications
-            3. First launch: right-click → **Open** (unsigned build; Gatekeeper may block double-click)
+            3. Clear Gatekeeper quarantine (unsigned build — macOS may say the app is “damaged”):
+               ```bash
+               xattr -cr /Applications/yoqa.app
+               open /Applications/yoqa.app
+               ```
 
             ### Notes
             - **Apple Silicon only** (`arm64`) for this release

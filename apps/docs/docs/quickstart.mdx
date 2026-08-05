@@ -5,7 +5,9 @@ description: Create test cases, connect a device, run tests, and review results.
 
 <Steps>
   <Step title="Start YoQA">
-    From the repo (dev) or the installed Mac app, start the desktop UI and local runner:
+    Download the Apple Silicon DMG from [GitHub Releases](https://github.com/Aris-ngoy/qa-agent/releases), drag `yoqa.app` to `/Applications`, and open it. The DMG is unsigned — right-click → **Open** the first time to bypass Gatekeeper. The bundled runner starts automatically on `http://127.0.0.1:7420`.
+
+    Running from a monorepo checkout instead? Start both processes manually:
 
     ```bash
     bun run runner   # local Appium + HTTP API
