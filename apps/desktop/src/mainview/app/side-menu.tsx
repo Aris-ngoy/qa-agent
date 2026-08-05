@@ -339,7 +339,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 					<div className="flex flex-col gap-2 px-2 pt-2">
 						<a
 							className="text-helper font-medium text-sidebar-muted underline-offset-2 hover:text-sidebar-fg hover:underline"
-							href="https://docs.yoqa.ai"
+							href="https://yoqa.mintlify.site/docs/quickstart"
 							rel="noreferrer"
 							target="_blank"
 						>

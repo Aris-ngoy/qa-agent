@@ -425,7 +425,7 @@ function InstructionsPanel({
 				</p>
 				<a
 					className="inline-flex items-center gap-1.5 text-body-sm font-medium text-on-surface underline-offset-2 hover:underline"
-					href="https://docs.yoqa.ai/guide/writing-test-cases"
+					href="https://yoqa.mintlify.site/guide/writing-test-cases"
 					rel="noreferrer"
 					target="_blank"
 				>
