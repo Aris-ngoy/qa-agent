@@ -1,3 +1,4 @@
+import { openExternalUrl } from "@/app/desktop-rpc";
 import { AddApplicationModal } from "@/features/apps/add-application-modal";
 import { useApps } from "@/features/apps/context";
 import { useActiveRun } from "@/features/runs/active-run-context";
@@ -13,6 +14,8 @@ import {
 	useRef,
 	useState,
 } from "react";
+
+const DOCS_URL = "https://yoqa.mintlify.site/docs/quickstart";
 
 function NavIcon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -186,9 +189,9 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 
 	return (
 		<>
-			<aside className="electrobun-webkit-app-region-no-drag flex h-full w-sidebar shrink-0 flex-col rounded-[var(--radius-platform)] bg-sidebar px-5 py-7 text-sidebar-fg shadow-float">
-				<div className="mb-10 flex flex-col items-start gap-3 px-1">
-					<YoqaMark className="size-10" />
+			<aside className="electrobun-webkit-app-region-no-drag flex h-full w-sidebar shrink-0 flex-col rounded-[var(--radius-platform)] bg-sidebar px-3.5 py-5 text-sidebar-fg shadow-float">
+				<div className="mb-7 flex flex-col items-start gap-3 px-1">
+					<YoqaMark className="size-8" />
 					<Dropdown isOpen={workspaceOpen} onOpenChange={setWorkspaceOpen}>
 						<Button
 							aria-expanded={workspaceOpen}
@@ -270,7 +273,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 					{navItems.map((item) => {
 						const isActive = isNavActive(item.to, activePath);
 						const className = [
-							"group relative z-[1] flex items-center gap-3 rounded-full px-4 py-3 text-body-md transition-colors duration-[var(--motion-fast)]",
+							"group relative z-[1] flex items-center gap-2.5 rounded-full px-3 py-2.5 text-body-md transition-colors duration-[var(--motion-fast)]",
 							isActive
 								? "font-semibold text-sidebar-active"
 								: "text-sidebar-muted hover:text-sidebar-fg",
@@ -318,11 +321,11 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				<div className="mt-6 flex flex-col gap-6">
 					<button
 						aria-label="Add application"
-						className="flex size-16 items-center justify-center self-center rounded-2xl border border-dashed border-white/25 transition-colors duration-[var(--motion-fast)] hover:scale-105 hover:border-white/50"
+						className="flex size-12 items-center justify-center self-center rounded-2xl border border-dashed border-white/25 transition-colors duration-[var(--motion-fast)] hover:scale-105 hover:border-white/50"
 						onClick={() => setModalOpen(true)}
 						type="button"
 					>
-						<span className="flex size-10 items-center justify-center rounded-full bg-white text-primary shadow-card transition-transform duration-[var(--motion-fast)]">
+						<span className="flex size-8 items-center justify-center rounded-full bg-white text-primary shadow-card transition-transform duration-[var(--motion-fast)]">
 							<svg
 								aria-hidden="true"
 								className="size-5"
@@ -336,12 +339,15 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 						</span>
 					</button>
 
-					<div className="flex flex-col gap-2 px-4 pt-2">
+					<div className="flex flex-col gap-2 px-2 pt-2">
 						<a
 							className="text-helper font-medium text-sidebar-muted underline-offset-2 hover:text-sidebar-fg hover:underline"
-							href="https://yoqa.mintlify.site/docs/quickstart"
+							href={DOCS_URL}
+							onClick={(event) => {
+								event.preventDefault();
+								void openExternalUrl(DOCS_URL);
+							}}
 							rel="noreferrer"
-							target="_blank"
 						>
 							Docs
 						</a>

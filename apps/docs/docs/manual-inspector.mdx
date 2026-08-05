@@ -25,10 +25,74 @@ The Manual Inspector is a desktop surface for **exploring** a connected device t
   </Step>
 </Steps>
 
+## Live mirror and control
+
+Inspector shows the device screen as a live MJPEG feed on iOS Simulator, real iOS, and Android. A badge on the mirror tells you which transport is active:
+
+- **Stream** — MJPEG feed from the Appium driver. This is the default when the stream is reachable.
+- **Poll** — fallback that refreshes a screenshot every ~250 ms. Inspector shows this if the MJPEG probe fails after connect.
+
+Toggle **Live control** above the mirror to drag directly on the device:
+
+- **On** — pointer drags on the mirror map to touch events on the device (tap, drag, swipe). Element selection and the action menu are paused while you drag.
+- **Off** — clicking an element opens the action menu so you can insert or run a scripted step.
+
+Live control is exclusive with running scripts. Inspector blocks pointer input while a script step is in flight so gestures do not interleave with the running script.
+
+The live mirror never writes to disk. Explicit screenshots and script reports still persist to `~/.yoqa/runs/screenshots/`.
+
+### Recovering a dropped session
+
+Real iOS sessions can occasionally drop under WDA load (for example, during long Inspector sessions with the live mirror running). When that happens, Inspector clears the feed and prompts you to reconnect manually — it does not attempt to reconnect on its own.
+
+- **Restart session** — the toolbar button above the mirror disconnects, reconnects, and remounts the live stream. Use it when Inspector shows the Restart prompt, or any time the mirror looks stuck.
+- **Connect** — pick the device again in the device selector to start a fresh session.
+
+## Command bar
+
+The command bar sits above the script and adds steps that don't need an element selection. It has two controls:
+
+- **Swipe up / down / left / right** — appends a directional swipe on the current screen.
+- **Wait** — enter seconds and click **Add wait** to pause the script (useful between an app launch and an assertion).
+
+Everything else — tap, assert, input, and app control — lives on the **Selector Commands** menu that opens when you select an element on the screenshot.
+
+## Selector Commands
+
+Select an element on the live screenshot to open its action menu. Alongside the usual `tap`, `assertVisible`, and `inputText` actions, the menu exposes app control and deeplink helpers you can drop into the script:
+
+- **activateApp** — bring an app to the foreground (launches it if needed). Prefilled with the selected app's iOS bundle ID or Android package; override to target a different app (for example, `com.apple.mobilenotes` to jump into Notes).
+- **terminateApp** — kill the app with the given App ID.
+- **restartApp** — terminate then activate the same App ID.
+- **openUrl** — open a URL through the OS. Works for custom schemes (`myapp://path`) and `https://` universal links.
+- **acceptAlert** / **dismissAlert** — respond to the next system alert (permissions, App Store prompts, "Open in MyApp?" deeplink confirmations, etc.).
+- **screenshot** — capture the current screen. Use **Insert & Run** to save an evidence PNG mid-flow (for example, right after a deeplink lands).
+- **screenshot (path)** — same as above, but prompts for a destination path (for example, `/tmp/yoqa-screenshot.png`) so multiple captures don't overwrite each other.
+
+Prompts for App ID, URL, and screenshot path prefill from the current selection or last-used value, so scripting a cross-app hop is a few clicks per step.
+
+### Example: test a deeplink from Notes (iOS)
+
+<Steps>
+  <Step title="Open Notes">
+    Add **activateApp** with `com.apple.mobilenotes` to jump into Apple Notes.
+  </Step>
+  <Step title="Trigger the deeplink">
+    Add **openUrl** with `myapp://path` — or select the pasted link in Notes and tap it.
+  </Step>
+  <Step title="Handle any system alert">
+    Add **acceptAlert** so the "Open in MyApp?" prompt resolves automatically on replay.
+  </Step>
+  <Step title="Return to the app">
+    Add **activateApp** with your app's ID so the script ends in a known state.
+  </Step>
+</Steps>
+
 ## When to use it
 
 - Learn screen structure before writing natural-language cases.
 - Reproduce a bug with an exact sequence of gestures.
+- Script cross-app or deeplink flows (Notes → universal link → your app) that are hard to describe in natural language.
 - Produce a **saved script** after you understand the happy path (complementary to AI agent runs).
 
 For autonomous NL cases, use [Test Cases](/docs/test-cases) + Runs. For agent-driven debugging from the terminal, use [CLI for agents](/guide/cli-for-agents).

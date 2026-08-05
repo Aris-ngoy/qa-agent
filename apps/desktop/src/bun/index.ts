@@ -76,6 +76,18 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 			installCli: () => installCli(),
 			installSkill: () => installSkill(),
 			openSkillFolder: () => openSkillFolder(),
+			openExternalUrl: ({ url }) => {
+				let parsed: URL;
+				try {
+					parsed = new URL(url);
+				} catch {
+					return { ok: false };
+				}
+				if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+					return { ok: false };
+				}
+				return { ok: Utils.openExternal(parsed.toString()) };
+			},
 		},
 		messages: {
 			log: ({ msg }) => {
