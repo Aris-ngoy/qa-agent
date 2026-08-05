@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { extractAgentJsonObject } from "./agent-json";
 import type { ActiveProviderAuth } from "./application";
 import { ANTIGRAVITY_DEFAULT_VISION_MODEL } from "./drivers/antigravity";
 import { resolveBinary, runCommand } from "./drivers/probe";
@@ -27,17 +28,7 @@ const agentDecisionSchema = z.object({
 export type AntigravityDecision = z.infer<typeof agentDecisionSchema>;
 
 function extractJsonObject(text: string): unknown {
-	const trimmed = text.trim();
-	const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-	const candidate = fenced?.[1]?.trim() ?? trimmed;
-	const start = candidate.indexOf("{");
-	const end = candidate.lastIndexOf("}");
-	if (start < 0 || end <= start) {
-		throw new AgentProviderError(
-			`Antigravity CLI did not return JSON (got: ${trimmed.replace(/\s+/g, " ").slice(0, 160)})`,
-		);
-	}
-	return JSON.parse(candidate.slice(start, end + 1)) as unknown;
+	return extractAgentJsonObject(text, "Antigravity CLI");
 }
 
 /**
@@ -70,7 +61,7 @@ export async function decideWithAntigravityCli(input: {
 			input.prompt,
 			input.repairHint ? `\n${input.repairHint}` : "",
 			`\nScreenshot file (open and look at it): ${shotPath}`,
-			"Reply with ONLY one JSON action object.",
+			"Reply with ONLY one strict JSON action object (double quotes only — no single quotes).",
 		].join("");
 
 		const result = await runCommand(

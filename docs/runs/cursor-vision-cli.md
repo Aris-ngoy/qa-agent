@@ -29,4 +29,4 @@ Rejected: `@cursor/sdk`, community OpenAI proxies.
 ## Follow-ups
 
 - Stream Cursor output into the live run UI
-- None required for MVP decide/ground
+- Loose JSON from Cursor (single quotes / trailing commas) is coerced in `agent-json.ts`; repair retry also covers `invalid JSON`
