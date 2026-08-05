@@ -11,6 +11,7 @@ import {
 	suggestedRunReportBasename,
 } from "@yoqa/runner-client";
 import { Command } from "commander";
+import packageJson from "../../../package.json" with { type: "json" };
 import { runnerBaseUrl } from "../../settings";
 
 const program = new Command();
@@ -18,7 +19,7 @@ const program = new Command();
 program
 	.name("yoqa")
 	.description("Local YoQA CLI (talks to the Bun runner over HTTP)")
-	.version("0.1.0");
+	.version(packageJson.version);
 
 function client(baseUrl: string) {
 	return createRunnerClient({ baseUrl });

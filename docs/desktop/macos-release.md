@@ -43,8 +43,8 @@ curl -s http://127.0.0.1:7420/health
 Cut a release:
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 # watch Actions → Release macOS
 ```
 
@@ -61,4 +61,4 @@ open /Applications/yoqa.app
 - `macos-x64` matrix build
 - Package CLI + skill into Resources for Settings installs without a checkout
 - Set `release.baseUrl` to the GitHub Releases download URL for Electrobun auto-update
-- Bundle or document Node requirement for managed Appium install
+- Optional: ship a Node/npm sidecar so Appium install works with zero host Node install
