@@ -7,7 +7,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 ## Plan summary
 
 - **Script format:** Bash-style lines (`yoqa action …`, `yoqa assert …`, `sleep N`) — not Maestro YAML.
-- **Interaction model:** Click element → floating action menu (suggested commands + Selector Commands) → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut.
+- **Interaction model:** Click element (label-aware hit-test for full word/control bounds) → floating action menu to the right and downward (suggested commands + Selector Commands) → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut.
 - **Input text:** Menu action focuses the selected field (`--id` / `--label` / coords) then types; runner taps whenever coordinates are resolved.
 - **Save as test case:** Convert convertible shell steps → CaseScript (`tap` / `type` / `wait`), `createCase` + `updateCase({ script })`, open the new case.
 - Rejected for this slice: hierarchical Change Selector tree, All Commands catalog, View Docs, `scrollUntilVisible` / `copyTextFrom`, full assert/swipe in CaseScript.
@@ -25,7 +25,8 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 
 **Desktop**
 - Selection-anchored **ElementActionMenu** (suggested + Selector Commands; Insert / Insert & Run / Copy)
-- Menu always opens to the right; `tap --x/--y` always offered alongside id/label taps
+- **Hit-test** prefers elements with a usable `label`/`id`; when several share the same label (e.g. StaticText + Button “Continue”), selects the **largest** so the highlight covers the full word/control instead of a tiny nested leaf
+- Menu always opens to the **right** and **downward** (no upward flip near the bottom); `tap --x/--y` always offered alongside id/label taps
 - Snippet generation only attaches `--id` / `--label` / assert `--text` when values look like real selectors (not deeplink URLs or `XCUIElementType…` type names); assert prompts for text when no usable label
 - **Selector Commands** include app control: `activateApp` / `terminateApp` / `restartApp`, `openUrl`, `acceptAlert` / `dismissAlert` (App ID prefilled from selected app); and screenshots: `screenshot` / `screenshot (path)`
 - Command bar: swipe + wait
@@ -34,13 +35,14 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 ## How to verify
 
 1. Open desktop → **Inspector** → Connect a device (select an app first).
-2. Record taps / input / waits via the element menu (id/label taps also get coordinates).
-3. Selector quality: click a blank scroll area or a deeplink cell — tap should be coords-only (no `--id 'scheme://…'`, no `--label 'XCUIElementType…'`); assert should prompt for text instead of inserting the type name. A labeled button still emits `--id` / `--label` plus coords.
-4. App control / deeplink: select any element → **Selector Commands** → `activateApp` (e.g. `com.apple.mobilenotes`) → insert & run; paste a deeplink in Notes → tap it → `acceptAlert` if prompted; or use `openUrl` with the deeplink directly.
-5. Capture evidence: **Selector Commands** → `screenshot` or `screenshot (path)` → Insert & Run.
-6. Click **Save as test case** → name the case → **Create test case**.
-7. Confirm navigation to the new case Script tab with actions present.
-8. Prefer **tap (x,y)** or id/label taps (Inspector now also records `--x/--y` with selectors so Save as test case works after the screen tree changes). Asserts/swipes/app lifecycle/open-url/screenshot are skipped with warnings when not convertible to CaseScript.
+2. Click a labeled control (e.g. “Continue”): highlight should cover the full button/word, not a tiny icon/text leaf; the command menu opens to the right and downward; suggested tap includes `--label`.
+3. Record taps / input / waits via the element menu (id/label taps also get coordinates).
+4. Selector quality: click a blank scroll area or a deeplink cell — tap should be coords-only (no `--id 'scheme://…'`, no `--label 'XCUIElementType…'`); assert should prompt for text instead of inserting the type name. A labeled button still emits `--id` / `--label` plus coords.
+5. App control / deeplink: select any element → **Selector Commands** → `activateApp` (e.g. `com.apple.mobilenotes`) → insert & run; paste a deeplink in Notes → tap it → `acceptAlert` if prompted; or use `openUrl` with the deeplink directly.
+6. Capture evidence: **Selector Commands** → `screenshot` or `screenshot (path)` → Insert & Run.
+7. Click **Save as test case** → name the case → **Create test case**.
+8. Confirm navigation to the new case Script tab with actions present.
+9. Prefer **tap (x,y)** or id/label taps (Inspector now also records `--x/--y` with selectors so Save as test case works after the screen tree changes). Asserts/swipes/app lifecycle/open-url/screenshot are skipped with warnings when not convertible to CaseScript.
 
 ## Follow-ups
 

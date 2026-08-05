@@ -1,3 +1,4 @@
+import { usableId, usableLabel } from "@/features/inspector/command-snippets";
 import type { ScreenElement } from "@yoqa/runner-client";
 
 export type InspectorSelection = {
@@ -14,7 +15,19 @@ export function elementCenter(element: ScreenElement): { x: number; y: number } 
 	};
 }
 
-/** Prefer the smallest element containing the point; else nearest center. */
+function area(el: ScreenElement): number {
+	return el.width * el.height;
+}
+
+function hasUsableSelector(el: ScreenElement): boolean {
+	return Boolean(usableLabel(el) || usableId(el));
+}
+
+/**
+ * Prefer a labeled/id control containing the point (full word/button bounds),
+ * expanding same-label leaves to the largest matching sibling; else smallest;
+ * else nearest center.
+ */
 export function hitTestElements(
 	elements: ScreenElement[],
 	x: number,
@@ -24,8 +37,19 @@ export function hitTestElements(
 		(el) => x >= el.x && x <= el.x + el.width && y >= el.y && y <= el.y + el.height,
 	);
 	if (containing.length > 0) {
-		containing.sort((a, b) => a.width * a.height - b.width * b.height);
-		return containing[0] ?? null;
+		const selectable = containing.filter(hasUsableSelector);
+		const pool = selectable.length > 0 ? selectable : containing;
+		pool.sort((a, b) => area(a) - area(b));
+		const smallest = pool[0];
+		if (!smallest) return null;
+
+		const label = usableLabel(smallest);
+		if (label) {
+			const sameLabel = pool.filter((el) => usableLabel(el) === label);
+			sameLabel.sort((a, b) => area(b) - area(a));
+			return sameLabel[0] ?? smallest;
+		}
+		return smallest;
 	}
 
 	let best: ScreenElement | null = null;
