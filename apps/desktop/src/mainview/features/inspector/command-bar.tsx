@@ -7,14 +7,14 @@ type CommandBarProps = {
 	onAddWait: (seconds: number) => void;
 };
 
-/** Global (non-element) script helpers — swipe + wait. Element actions live on the screenshot menu. */
+/** Global (non-element) script helpers — swipe + wait. Element / app actions live on the screenshot menu. */
 export function CommandBar({ disabled, onAddSwipe, onAddWait }: CommandBarProps) {
 	const [waitSeconds, setWaitSeconds] = useState("1");
 
 	return (
 		<div className="flex flex-col gap-2 rounded-xl border border-outline-variant/30 bg-surface-container/40 px-3 py-2.5">
 			<p className="text-helper text-on-surface-variant">
-				Screen gestures — select an element on the device for tap, assert, and input.
+				Screen gestures — select an element on the device for tap, assert, input, and app control.
 			</p>
 			<div className="flex flex-wrap items-end gap-2">
 				{(["up", "down", "left", "right"] as const).map((direction) => (

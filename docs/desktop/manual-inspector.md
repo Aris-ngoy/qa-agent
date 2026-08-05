@@ -7,39 +7,56 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 ## Plan summary
 
 - **Script format:** Bash-style lines (`yoqa action …`, `yoqa assert …`, `sleep N`) — not Maestro YAML.
-- **Interaction model:** Click element → floating action menu (suggested commands + Selector Commands) → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut.
+- **Interaction model:** Cached Select Mode (warm accessibility tree when Live control is off) → hover preview + instant click hit-test → floating action menu (Change Selector, preferred id/label chips, Selector Commands) → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut. Live control keeps continuous MJPEG without source.
 - **Input text:** Menu action focuses the selected field (`--id` / `--label` / coords) then types; runner taps whenever coordinates are resolved.
 - **Save as test case:** Convert convertible shell steps → CaseScript (`tap` / `type` / `wait`), `createCase` + `updateCase({ script })`, open the new case.
-- Rejected for this slice: hierarchical Change Selector tree, All Commands catalog, View Docs, `scrollUntilVisible` / `copyTextFrom`, full assert/swipe in CaseScript.
+- Rejected for this slice: All Commands catalog, View Docs, `scrollUntilVisible` / `copyTextFrom`, full assert/swipe in CaseScript, Maestro relational selectors (`above` / `childOf`).
 
 ## What shipped
 
 **Runner**
 - `input` taps to focus whenever `x,y` are present (id/label/description/coords), then types
 - `tap` supports `--double` and `--duration` (long-press hold)
+- Page-source cleaning skips URL-like iOS `name` values as ids/labels, drops unlabeled ScrollView/CollectionView/Table/WebView containers, and never falls back to the XML type as a label
 
 **Client (`@yoqa/runner-client`)**
 - `ActionRequest.double`; shell format/parse for `--double`
 - `shellToCaseScript` — maps inspector shell → CaseScript (resolves `--id`/`--label` via optional element tree; warns on skipped steps)
 
-**Desktop**
+**Desktop — Maestro-like picker**
+- **Cached Select Mode:** clicks hit-test the cached cleaned tree locally (no “Reading screen…” per click). Tree warms when Live control turns off, after connect (deferred under Stream), after Insert & Run / scripts, and via **Refresh tree**. Stale cache (&gt;3s) triggers a background refresh without blocking the first highlight.
+- **Hover preview:** dashed outline from the cached tree while Live control is off (no network).
+- **Change Selector:** cycles preferred locator (`id` → `label` when both exist), then overlapping candidates smallest → largest (leaf → parent). Default preference is **`id`** when present.
+- Active selector caption under the highlight (`id: …` / `label: …`).
+- Suggested chips ordered by preference: `tap (id)` / `tap (label)` then always `tap (x,y)`.
 - Selection-anchored **ElementActionMenu** (suggested + Selector Commands; Insert / Insert & Run / Copy)
-- Menu always opens to the right; `tap --x/--y` always offered alongside id/label taps
+- **Hit-test** prefers elements with a usable `label`/`id`; when several share the same label (e.g. StaticText + Button “Continue”), selects the **largest** so the highlight covers the full word/control instead of a tiny nested leaf
+- Under Stream, tree refresh still pauses MJPEG briefly (`GET /screen?pauseMjpeg=1`) then remounts the stream — never continuous pageSource + MJPEG
+- Snippet generation only attaches `--id` / `--label` / assert `--text` when values look like real selectors (not deeplink URLs or `XCUIElementType…` type names); assert prompts for text when no usable label
+- **Selector Commands** include app control: `activateApp` / `terminateApp` / `restartApp`, `openUrl`, `acceptAlert` / `dismissAlert` (App ID prefilled from selected app); and screenshots: `screenshot` / `screenshot (path)`
 - Command bar: swipe + wait
-- **Save as test case** on the run panel (requires selected app + convertible actions)
+- **Save as test case** on the run panel (requires selected app + convertible actions); recorded taps/inputs always include `--x/--y` so conversion does not depend on the live accessibility tree
 
 ## How to verify
 
-1. Open desktop → **Inspector** → Connect a device (select an app first).
-2. Record taps / input / waits via the element menu.
-3. Click **Save as test case** → name the case → **Create test case**.
-4. Confirm navigation to the new case Script tab with actions present.
-5. Prefer **tap (x,y)** or ensure the live tree can resolve id/label; asserts/swipes are skipped with warnings in the dialog.
+1. Open desktop → **Inspector** → Connect a device (select an app first). Live control off → wait briefly for tree warm (or click **Refresh tree**).
+2. Hover a labeled control: soft dashed outline tracks without pauses. Click: highlight + menu appear **without** “Reading screen…”. Stream stays up.
+3. With both id and label present: chips show `tap (id)` first, then `tap (label)`, then `tap (x,y)`. Caption shows `id: …`.
+4. **Change Selector:** first press flips caption/chips to `label`; next press expands to a parent/overlapping candidate when present.
+5. Record taps / input / waits via the element menu (preferred locator + coordinates).
+6. Selector quality: click a blank scroll area or a deeplink cell — tap should be coords-only (no `--id 'scheme://…'`, no `--label 'XCUIElementType…'`); assert should prompt for text instead of inserting the type name.
+7. App control / deeplink: select any element → **Selector Commands** → `activateApp` → insert & run; or use `openUrl` / `acceptAlert` as needed.
+8. Capture evidence: **Selector Commands** → `screenshot` → Insert & Run.
+9. Insert & Run a navigation tap → tree refreshes once → next click stays fast on the new cache.
+10. Click **Save as test case** → name the case → **Create test case**; confirm Script tab has actions.
+11. Physical iOS: long Stream sessions survive (no continuous pageSource under MJPEG).
 
 ## Follow-ups
 
-- Change Selector (cycle overlapping / parent-child hierarchy)
 - All Commands catalog + View Docs links
 - `scrollUntilVisible`, `copyTextFrom`, `extendedWaitUntil`
-- CaseScript support for assert / swipe / double / long-press
-- Adaptive poll rate / MJPEG-style stream for lower latency
+- CaseScript support for assert / swipe / double / long-press / activate-app / open-url / screenshot
+- Foreground-app awareness for `activateApp` prefill (catalog app vs visible process after deeplink)
+- Maestro-style relational matching (`above` / `below` / `childOf`) and optional `--index` on `yoqa action`
+
+See also: [MJPEG stream + live control](./manual-inspector-mjpeg-stream.md) (shipped).

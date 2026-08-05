@@ -34,7 +34,7 @@ export async function groundDescription(
 		},
 	);
 
-	const shot = await session.screenshot();
+	const shot = await session.captureFrame();
 	const window = await session.getWindowSize();
 	const raw = await session.pageSource();
 	const cleaned = cleanPageSource(raw, window);

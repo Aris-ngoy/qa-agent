@@ -6,6 +6,8 @@ import type {
 	CaseScriptAction,
 	ScreenElement,
 	ScreenResponse,
+	ScreenshotRequest,
+	ScreenshotResponse,
 } from "./schemas";
 import { actionKindSchema } from "./schemas";
 
@@ -34,7 +36,18 @@ export type ShellScriptAssertStep = {
 	raw: string;
 };
 
-export type ShellScriptStep = ShellScriptSleepStep | ShellScriptActionStep | ShellScriptAssertStep;
+export type ShellScriptScreenshotStep = {
+	kind: "screenshot";
+	path: string | null;
+	lineNumber: number;
+	raw: string;
+};
+
+export type ShellScriptStep =
+	| ShellScriptSleepStep
+	| ShellScriptActionStep
+	| ShellScriptAssertStep
+	| ShellScriptScreenshotStep;
 
 export type ParseYoqaShellScriptResult = {
 	steps: ShellScriptStep[];
@@ -57,7 +70,8 @@ export type RunYoqaShellScriptOptions = {
 
 type ScriptClient = {
 	performAction: (request: ActionRequest) => Promise<ActionResponse>;
-	getScreen: (options?: { full?: boolean }) => Promise<ScreenResponse>;
+	getScreen: (options?: { full?: boolean; pauseMjpeg?: boolean }) => Promise<ScreenResponse>;
+	takeScreenshot: (request?: ScreenshotRequest) => Promise<ScreenshotResponse>;
 };
 
 function shellSingleQuote(value: string): string {
@@ -216,6 +230,26 @@ function parseActionFromTokens(
 	return { kind: "action", action, lineNumber, raw };
 }
 
+function parseScreenshotFromTokens(
+	tokens: string[],
+	lineNumber: number,
+	raw: string,
+): ShellScriptScreenshotStep {
+	// Expected: yoqa screenshot [path]
+	if (tokens[0] !== "yoqa" || tokens[1] !== "screenshot") {
+		throw new Error("Expected `yoqa screenshot [path]`");
+	}
+	const pathToken = tokens[2];
+	if (pathToken?.startsWith("-")) {
+		throw new Error("`yoqa screenshot` accepts an optional output path only");
+	}
+	if (tokens.length > 3) {
+		throw new Error("`yoqa screenshot` accepts at most one path argument");
+	}
+	const path = pathToken?.trim() ? pathToken.trim() : null;
+	return { kind: "screenshot", path, lineNumber, raw };
+}
+
 function parseAssertFromTokens(
 	tokens: string[],
 	lineNumber: number,
@@ -284,6 +318,11 @@ export function parseYoqaShellScript(text: string): ParseYoqaShellScriptResult {
 				continue;
 			}
 
+			if (tokens[0] === "yoqa" && tokens[1] === "screenshot") {
+				steps.push(parseScreenshotFromTokens(tokens, lineNumber, trimmed));
+				continue;
+			}
+
 			if (tokens[0] === "yoqa") {
 				steps.push(parseActionFromTokens(tokens, lineNumber, trimmed));
 				continue;
@@ -335,6 +374,12 @@ export function formatSleepShellLine(seconds: number): string {
 	const safe = Math.max(0, seconds);
 	const rounded = Number.isInteger(safe) ? String(safe) : String(Number(safe.toFixed(3)));
 	return `sleep ${rounded}`;
+}
+
+export function formatScreenshotShellLine(path?: string | null): string {
+	const trimmed = path?.trim();
+	if (!trimmed) return "yoqa screenshot";
+	return `yoqa screenshot ${shellSingleQuote(trimmed)}`;
 }
 
 export function formatAssertShellLine(input: {
@@ -497,6 +542,8 @@ export async function runYoqaShellScript(
 				await sleepMs(step.seconds * 1000, options.signal);
 			} else if (step.kind === "assert") {
 				await runAssertStep(client, step, options.signal);
+			} else if (step.kind === "screenshot") {
+				await client.takeScreenshot(step.path ? { path: step.path } : {});
 			} else {
 				await client.performAction(step.action);
 				if (options.pauseAfterActionMs) {
@@ -589,6 +636,11 @@ export function shellToCaseScript(
 
 		if (step.kind === "assert") {
 			warnings.push(`L${step.lineNumber}: assert not supported in CaseScript — skipped`);
+			continue;
+		}
+
+		if (step.kind === "screenshot") {
+			warnings.push(`L${step.lineNumber}: screenshot not supported in CaseScript — skipped`);
 			continue;
 		}
 

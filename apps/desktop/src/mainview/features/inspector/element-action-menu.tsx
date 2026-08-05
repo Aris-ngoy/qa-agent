@@ -1,6 +1,7 @@
 import {
 	type CommandSnippet,
 	type SnippetCommandId,
+	type SnippetContext,
 	buildCommandLines,
 	selectorCommands,
 	suggestedCommands,
@@ -14,6 +15,9 @@ type ElementActionMenuProps = {
 	/** Anchor box in % of the screenshot image (0–100). */
 	anchor: { left: number; top: number; width: number; height: number };
 	disabled: boolean;
+	snippetContext: SnippetContext;
+	canChangeSelector: boolean;
+	onChangeSelector: () => void;
 	onInsert: (lines: string[]) => void;
 	onInsertAndRun: (lines: string[]) => void;
 	onCopyLines: (lines: string[]) => void;
@@ -26,6 +30,8 @@ type PromptState = {
 	commandId: SnippetCommandId;
 	kind: "text" | "seconds";
 	label: string;
+	promptKind?: CommandSnippet["promptKind"];
+	returnView: "main" | "selector";
 };
 
 function ChevronIcon(props: SVGProps<SVGSVGElement>) {
@@ -111,28 +117,58 @@ function CodeIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
-/** Always anchor the menu to the right of the selection; flip vertically near the bottom. */
+function ChangeSelectorIcon(props: SVGProps<SVGSVGElement>) {
+	return (
+		<svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true" {...props}>
+			<path
+				d="M3 5.5h7.5M10.5 3.5 12.5 5.5 10.5 7.5M13 10.5H5.5M5.5 8.5 3.5 10.5 5.5 12.5"
+				stroke="currentColor"
+				strokeWidth="1.4"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			/>
+		</svg>
+	);
+}
+
+/** Always anchor the menu to the right of the selection, opening downward. */
 function menuPosition(anchor: ElementActionMenuProps["anchor"]): {
 	left: string;
 	top: string;
 	transform: string;
 } {
-	const preferBelow = anchor.top + anchor.height < 70;
 	const left = Math.min(92, anchor.left + anchor.width + 2);
-	const top = preferBelow
-		? Math.min(88, anchor.top + Math.min(anchor.height, 8))
-		: Math.max(2, anchor.top - 1.5);
+	const top = Math.min(88, Math.max(2, anchor.top + Math.min(anchor.height, 8)));
 	return {
 		left: `${left}%`,
 		top: `${top}%`,
-		transform: preferBelow ? "translate(0, 0)" : "translate(0, -100%)",
+		transform: "translate(0, 0)",
 	};
+}
+
+function promptHeading(prompt: PromptState): string {
+	if (prompt.kind === "seconds") return `Wait seconds for ${prompt.label}`;
+	if (prompt.promptKind === "appId") return `App ID for ${prompt.label}`;
+	if (prompt.promptKind === "url") return `URL for ${prompt.label}`;
+	if (prompt.promptKind === "path") return `Output path for ${prompt.label}`;
+	return `Text for ${prompt.label}`;
+}
+
+function promptPlaceholder(prompt: PromptState): string {
+	if (prompt.kind === "seconds") return "1";
+	if (prompt.promptKind === "appId") return "com.example.app";
+	if (prompt.promptKind === "url") return "myapp://path or https://…";
+	if (prompt.promptKind === "path") return "/tmp/yoqa-screenshot.png";
+	return "Enter text…";
 }
 
 export function ElementActionMenu({
 	selection,
 	anchor,
 	disabled,
+	snippetContext,
+	canChangeSelector,
+	onChangeSelector,
 	onInsert,
 	onInsertAndRun,
 	onCopyLines,
@@ -146,7 +182,10 @@ export function ElementActionMenu({
 	const [committedValue, setCommittedValue] = useState<string | null>(null);
 
 	const suggested = useMemo(() => suggestedCommands(selection), [selection]);
-	const selector = useMemo(() => selectorCommands(selection), [selection]);
+	const selector = useMemo(
+		() => selectorCommands(selection, snippetContext),
+		[selection, snippetContext],
+	);
 
 	const position = menuPosition(anchor);
 
@@ -158,8 +197,18 @@ export function ElementActionMenu({
 				commandId: snippet.id,
 				kind: snippet.needsPrompt,
 				label: snippet.label,
+				promptKind: snippet.promptKind,
+				returnView: from,
 			});
-			setPromptValue(snippet.needsPrompt === "seconds" ? "1" : "");
+			const initial =
+				snippet.needsPrompt === "seconds"
+					? "1"
+					: snippet.promptKind === "appId"
+						? snippetContext.defaultAppId
+						: snippet.promptKind === "path"
+							? "/tmp/yoqa-screenshot.png"
+							: "";
+			setPromptValue(initial);
 			setView("prompt");
 			setFlyoutId(null);
 			return;
@@ -178,14 +227,14 @@ export function ElementActionMenu({
 		}
 		setCommittedValue(trimmed);
 		setFlyoutId(prompt.commandId);
-		setView("main");
+		setView(prompt.returnView);
 		setPrompt(null);
 	};
 
 	const activeLines = useMemo(() => {
 		if (!flyoutId || prompt) return [];
-		return buildCommandLines(selection, flyoutId, committedValue ?? undefined);
-	}, [committedValue, flyoutId, prompt, selection]);
+		return buildCommandLines(selection, flyoutId, committedValue ?? undefined, snippetContext);
+	}, [committedValue, flyoutId, prompt, selection, snippetContext]);
 
 	const runAction = (mode: "insert" | "insertRun" | "copy") => {
 		if (!flyoutId || activeLines.length === 0 || disabled) return;
@@ -239,6 +288,22 @@ export function ElementActionMenu({
 							))}
 						</div>
 						<div className="border-t border-white/10 py-1">
+							{canChangeSelector ? (
+								<button
+									type="button"
+									disabled={disabled}
+									className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-white/90 hover:bg-white/10 disabled:opacity-50"
+									onClick={() => {
+										setFlyoutId(null);
+										onChangeSelector();
+									}}
+								>
+									<span className="text-white/55">
+										<ChangeSelectorIcon />
+									</span>
+									<span className="flex-1">Change Selector</span>
+								</button>
+							) : null}
 							<button
 								type="button"
 								disabled={disabled}
@@ -316,16 +381,22 @@ export function ElementActionMenu({
 
 				{view === "prompt" && prompt ? (
 					<div className="flex flex-col gap-2 p-3">
-						<p className="text-[12px] text-white/70">
-							{prompt.kind === "seconds"
-								? `Wait seconds for ${prompt.label}`
-								: `Text for ${prompt.label}`}
-						</p>
+						<p className="text-[12px] text-white/70">{promptHeading(prompt)}</p>
 						<TextField className="w-full" value={promptValue} onChange={setPromptValue}>
-							<Label className="sr-only">{prompt.kind === "seconds" ? "Seconds" : "Text"}</Label>
+							<Label className="sr-only">
+								{prompt.promptKind === "appId"
+									? "App ID"
+									: prompt.promptKind === "url"
+										? "URL"
+										: prompt.promptKind === "path"
+											? "Path"
+											: prompt.kind === "seconds"
+												? "Seconds"
+												: "Text"}
+							</Label>
 							<Input
 								className="rounded-lg border border-white/15 bg-black/40 text-white"
-								placeholder={prompt.kind === "seconds" ? "1" : "Enter text…"}
+								placeholder={promptPlaceholder(prompt)}
 								inputMode={prompt.kind === "seconds" ? "decimal" : "text"}
 								autoFocus
 								onKeyDown={(event) => {
@@ -342,8 +413,9 @@ export function ElementActionMenu({
 								variant="tertiary"
 								className="text-white/80"
 								onPress={() => {
+									const back = prompt.returnView;
 									setPrompt(null);
-									setView("main");
+									setView(back);
 								}}
 							>
 								Cancel
