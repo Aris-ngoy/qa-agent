@@ -21,15 +21,22 @@ const MJPEG_SETTINGS_BASE = {
 	mjpegScalingFactor: 50,
 } as const;
 
-/** Simulators can sustain 60; real devices often crash WDA at that rate. */
+/** Simulators can sustain 60; real devices need a much gentler encode load. */
 function mjpegSettingsForDevice(options: {
 	platform: DevicePlatform;
 	deviceId: string;
 }): Record<string, number> {
 	const physicalIos = options.platform === "ios" && looksLikePhysicalIosUdid(options.deviceId);
+	if (physicalIos) {
+		return {
+			mjpegServerFramerate: 15,
+			mjpegServerScreenshotQuality: 25,
+			mjpegScalingFactor: 40,
+		};
+	}
 	return {
 		...MJPEG_SETTINGS_BASE,
-		mjpegServerFramerate: physicalIos ? 30 : 60,
+		mjpegServerFramerate: 60,
 	};
 }
 
@@ -287,6 +294,10 @@ async function buildW3cCapabilities(
 		}
 		if (caps["appium:wdaConnectionTimeout"] === undefined) {
 			caps["appium:wdaConnectionTimeout"] = 60_000;
+		}
+		// Don't wait for the app to be idle before commands — cheaper under MJPEG.
+		if (caps["appium:waitForIdleTimeout"] === undefined) {
+			caps["appium:waitForIdleTimeout"] = 0;
 		}
 	}
 

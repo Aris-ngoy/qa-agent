@@ -38,10 +38,8 @@ import {
 } from "@yoqa/runner-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-/** Accessibility tree refresh while the MJPEG (or poll) feed is live. */
-const TREE_REFRESH_MS = 5000;
-/** Wait after connect before first page-source so WDA can settle (esp. physical iOS). */
-const TREE_WARMUP_MS = 4000;
+/** Accessibility tree refresh when using screenshot poll (not during MJPEG). */
+const TREE_REFRESH_MS = 8000;
 /** Fallback screenshot poll when Appium MJPEG is unavailable. */
 const FALLBACK_SCREENSHOT_MS = 250;
 
@@ -402,9 +400,10 @@ export function InspectorPage() {
 		};
 	}, [revokeImage]);
 
-	// Accessibility tree refresh (independent of video stream).
+	// Accessibility tree refresh — only on poll feed. MJPEG + pageSource on the
+	// same WDA session routinely kills the stream a few seconds after connect.
 	useEffect(() => {
-		if (!active || !pageVisible) return;
+		if (!active || !pageVisible || feedMode !== "poll") return;
 
 		let cancelled = false;
 		const tick = async () => {
@@ -412,19 +411,16 @@ export function InspectorPage() {
 			await refreshTree({ silent: true });
 		};
 
-		const warmup = window.setTimeout(() => {
-			void tick();
-		}, TREE_WARMUP_MS);
+		void tick();
 		const timer = window.setInterval(() => {
 			void tick();
 		}, TREE_REFRESH_MS);
 
 		return () => {
 			cancelled = true;
-			window.clearTimeout(warmup);
 			window.clearInterval(timer);
 		};
-	}, [active, pageVisible, refreshTree]);
+	}, [active, feedMode, pageVisible, refreshTree]);
 
 	// Fallback PNG poll only when MJPEG is unavailable.
 	useEffect(() => {
