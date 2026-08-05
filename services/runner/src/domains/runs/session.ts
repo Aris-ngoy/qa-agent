@@ -14,11 +14,24 @@ const DEFAULT_MJPEG_PORT = Number(process.env.YOQA_MJPEG_PORT ?? "9100");
 const APPIUM_HOST = process.env.YOQA_APPIUM_HOST ?? "127.0.0.1";
 const SCREENSHOT_DIR = join(YOQA_ROOT, "runs", "screenshots");
 
-const MJPEG_SETTINGS = {
-	mjpegServerFramerate: 20,
-	mjpegServerScreenshotQuality: 40,
+const MJPEG_SETTINGS_BASE = {
+	/** Lower quality keeps high FPS workable over the proxy. */
+	mjpegServerScreenshotQuality: 35,
+	/** Half-res frames cut encode + bandwidth cost for the Inspector. */
 	mjpegScalingFactor: 50,
 } as const;
+
+/** Simulators can sustain 60; real devices often crash WDA at that rate. */
+function mjpegSettingsForDevice(options: {
+	platform: DevicePlatform;
+	deviceId: string;
+}): Record<string, number> {
+	const physicalIos = options.platform === "ios" && looksLikePhysicalIosUdid(options.deviceId);
+	return {
+		...MJPEG_SETTINGS_BASE,
+		mjpegServerFramerate: physicalIos ? 30 : 60,
+	};
+}
 
 type AppiumProcess = {
 	proc: ReturnType<typeof Bun.spawn>;
@@ -113,9 +126,12 @@ async function probeMjpegStream(mjpegPort: number, timeoutMs = 4000): Promise<bo
 	return false;
 }
 
-async function applyMjpegSettings(browser: Browser): Promise<void> {
+async function applyMjpegSettings(
+	browser: Browser,
+	options: { platform: DevicePlatform; deviceId: string },
+): Promise<void> {
 	try {
-		await browser.updateSettings({ ...MJPEG_SETTINGS });
+		await browser.updateSettings(mjpegSettingsForDevice(options));
 	} catch (error) {
 		console.warn(
 			"[yoqa-runner] MJPEG settings update failed:",
@@ -171,6 +187,8 @@ export type SessionOptions = {
 	caseCaps: Capability[];
 	bundleId?: string;
 	appPackage?: string;
+	/** Called once when Appium reports the session is gone. */
+	onSessionDead?: () => void;
 };
 
 export type CapturedFrame = {
@@ -219,15 +237,16 @@ async function buildW3cCapabilities(
 	const merged = mergeCapabilities(options.appCaps, options.caseCaps);
 	const platformName = options.platform === "ios" ? "iOS" : "Android";
 	const automationName = options.platform === "ios" ? "XCUITest" : "UiAutomator2";
-	const streamUrl = mjpegUpstreamUrl(mjpegPort);
 
 	const caps: Record<string, unknown> = {
 		platformName,
 		"appium:automationName": automationName,
 		"appium:udid": options.deviceId,
-		"appium:newCommandTimeout": 120,
+		"appium:newCommandTimeout": 3600,
+		// Expose WDA/UIA2 MJPEG for our /stream.mjpeg proxy. Do NOT set
+		// mjpegScreenshotUrl — that requires the optional `mjpeg-consumer`
+		// Appium package and we capture one-shots via takeScreenshot instead.
 		"appium:mjpegServerPort": mjpegPort,
-		"appium:mjpegScreenshotUrl": streamUrl,
 		...Object.fromEntries(
 			Object.entries(merged).map(([key, value]) =>
 				key.includes(":") ? [key, value] : [`appium:${key}`, value],
@@ -269,17 +288,31 @@ async function buildW3cCapabilities(
 
 class ActionGate {
 	private locked = false;
-	private pointerDown = false;
-	private lastMoveSeq = -1;
-	private moveTimer: ReturnType<typeof setTimeout> | null = null;
-	private pendingMove: { x: number; y: number; seq: number } | null = null;
+	/** Buffered live gesture — Appium only sees one complete tap/drag on end. */
+	private gesture: {
+		startXNorm: number;
+		startYNorm: number;
+		endXNorm: number;
+		endYNorm: number;
+		startedAt: number;
+		lastSeq: number;
+		double: boolean;
+	} | null = null;
+	/** Single tap waiting to see if a second tap arrives (double-click). */
+	private deferredTap: {
+		gesture: NonNullable<ActionGate["gesture"]>;
+		browser: Browser;
+		toPx: (norm: number, size: number) => number;
+		getWindowSize: () => Promise<{ width: number; height: number }>;
+		timer: ReturnType<typeof setTimeout>;
+	} | null = null;
 
 	isPointerActive(): boolean {
-		return this.pointerDown;
+		return this.gesture != null || this.deferredTap != null;
 	}
 
 	async withLock<T>(fn: () => Promise<T>): Promise<T> {
-		if (this.pointerDown) {
+		if (this.gesture || this.deferredTap) {
 			throw new Error("Device is busy with live pointer control");
 		}
 		if (this.locked) {
@@ -302,134 +335,221 @@ class ActionGate {
 		yNorm: number,
 		seq: number,
 	): Promise<void> {
-		if (this.locked && !this.pointerDown) {
+		if (this.locked && !this.gesture && !this.deferredTap) {
 			throw new Error("Device is busy with another action");
 		}
 
-		const size = await getWindowSize();
-		const x = toPx(xNorm, size.width);
-		const y = toPx(yNorm, size.height);
+		const x = Math.min(1000, Math.max(0, xNorm));
+		const y = Math.min(1000, Math.max(0, yNorm));
+		/** Normalized grid distance for double-click pairing (~5% of screen). */
+		const doubleSlopNorm = 50;
+		const doubleTapMs = 320;
 
 		if (phase === "begin") {
-			if (this.pointerDown) {
-				await this.forceEnd(browser);
+			if (this.deferredTap) {
+				const pending = this.deferredTap;
+				const near =
+					Math.hypot(x - pending.gesture.startXNorm, y - pending.gesture.startYNorm) <
+					doubleSlopNorm;
+				clearTimeout(pending.timer);
+				this.deferredTap = null;
+				if (near) {
+					this.locked = true;
+					this.gesture = {
+						startXNorm: pending.gesture.startXNorm,
+						startYNorm: pending.gesture.startYNorm,
+						endXNorm: x,
+						endYNorm: y,
+						startedAt: Date.now(),
+						lastSeq: seq,
+						double: true,
+					};
+					return;
+				}
+				await this.flushGesture(
+					pending.gesture,
+					pending.browser,
+					pending.toPx,
+					pending.getWindowSize,
+				);
+			}
+
+			if (this.gesture) {
+				await this.flushGesture(this.gesture, browser, toPx, getWindowSize);
+				this.gesture = null;
 			}
 			this.locked = true;
-			this.pointerDown = true;
-			this.lastMoveSeq = seq;
-			this.clearPendingMove();
-			await browser.performActions([
-				{
-					type: "pointer",
-					id: "finger1",
-					parameters: { pointerType: "touch" },
-					actions: [
-						{ type: "pointerMove", duration: 0, x, y },
-						{ type: "pointerDown", button: 0 },
-					],
-				},
-			]);
+			this.gesture = {
+				startXNorm: x,
+				startYNorm: y,
+				endXNorm: x,
+				endYNorm: y,
+				startedAt: Date.now(),
+				lastSeq: seq,
+				double: false,
+			};
 			return;
 		}
 
-		if (!this.pointerDown) {
+		if (!this.gesture) {
 			throw new Error("No active pointer — send begin before move/end");
 		}
 
 		if (phase === "move") {
-			if (seq < this.lastMoveSeq) return;
-			this.lastMoveSeq = seq;
-			this.pendingMove = { x, y, seq };
-			if (this.moveTimer) return;
-			this.moveTimer = setTimeout(() => {
-				this.moveTimer = null;
-				const pending = this.pendingMove;
-				this.pendingMove = null;
-				if (!pending || !this.pointerDown) return;
-				void browser
-					.performActions([
+			if (seq < this.gesture.lastSeq) return;
+			this.gesture.lastSeq = seq;
+			this.gesture.endXNorm = x;
+			this.gesture.endYNorm = y;
+			return;
+		}
+
+		this.gesture.endXNorm = x;
+		this.gesture.endYNorm = y;
+
+		const size = await getWindowSize();
+		const startX = toPx(this.gesture.startXNorm, size.width);
+		const startY = toPx(this.gesture.startYNorm, size.height);
+		const endX = toPx(this.gesture.endXNorm, size.width);
+		const endY = toPx(this.gesture.endYNorm, size.height);
+		const distance = Math.hypot(endX - startX, endY - startY);
+		const tapSlopPx = 12;
+
+		if (distance >= tapSlopPx || this.gesture.double) {
+			const gesture = this.gesture;
+			this.gesture = null;
+			await this.flushGesture(gesture, browser, toPx, getWindowSize);
+			return;
+		}
+
+		// Defer single tap so a quick second click can become a double-tap.
+		const gesture = this.gesture;
+		this.gesture = null;
+		const timer = setTimeout(() => {
+			if (this.deferredTap?.timer !== timer) return;
+			const pending = this.deferredTap;
+			this.deferredTap = null;
+			void this.flushGesture(
+				pending.gesture,
+				pending.browser,
+				pending.toPx,
+				pending.getWindowSize,
+			).catch((error) => {
+				console.warn(
+					"[yoqa-runner] deferred tap failed:",
+					error instanceof Error ? error.message : error,
+				);
+				this.locked = false;
+			});
+		}, doubleTapMs);
+		this.deferredTap = { gesture, browser, toPx, getWindowSize, timer };
+	}
+
+	/** Flush buffered begin→move→end as a single WDA-safe performActions chain. */
+	private async flushGesture(
+		gesture: NonNullable<ActionGate["gesture"]>,
+		browser: Browser,
+		toPx: (norm: number, size: number) => number,
+		getWindowSize: () => Promise<{ width: number; height: number }>,
+	): Promise<void> {
+		const size = await getWindowSize();
+		const startX = toPx(gesture.startXNorm, size.width);
+		const startY = toPx(gesture.startYNorm, size.height);
+		const endX = toPx(gesture.endXNorm, size.width);
+		const endY = toPx(gesture.endYNorm, size.height);
+		const distance = Math.hypot(endX - startX, endY - startY);
+		const elapsedMs = Math.max(50, Date.now() - gesture.startedAt);
+		const tapSlopPx = 12;
+
+		try {
+			if (distance < tapSlopPx || gesture.double) {
+				const holdMs = Math.min(200, elapsedMs);
+				const tapOnce = async () => {
+					await browser.performActions([
 						{
 							type: "pointer",
 							id: "finger1",
 							parameters: { pointerType: "touch" },
-							actions: [{ type: "pointerMove", duration: 16, x: pending.x, y: pending.y }],
+							actions: [
+								{ type: "pointerMove", duration: 0, x: startX, y: startY },
+								{ type: "pointerDown", button: 0 },
+								{ type: "pause", duration: holdMs },
+								{ type: "pointerUp", button: 0 },
+							],
 						},
-					])
-					.catch((error) => {
-						console.warn(
-							"[yoqa-runner] pointer move failed:",
-							error instanceof Error ? error.message : error,
-						);
-					});
-			}, 16);
+					]);
+					try {
+						await browser.releaseActions();
+					} catch {
+						// ignore
+					}
+				};
+				await tapOnce();
+				if (gesture.double) {
+					await Bun.sleep(50);
+					await tapOnce();
+				}
+			} else {
+				const duration = Math.min(2000, Math.max(80, elapsedMs));
+				await browser.performActions([
+					{
+						type: "pointer",
+						id: "finger1",
+						parameters: { pointerType: "touch" },
+						actions: [
+							{ type: "pointerMove", duration: 0, x: startX, y: startY },
+							{ type: "pointerDown", button: 0 },
+							{ type: "pointerMove", duration, x: endX, y: endY },
+							{ type: "pointerUp", button: 0 },
+						],
+					},
+				]);
+				try {
+					await browser.releaseActions();
+				} catch {
+					// ignore
+				}
+			}
+		} finally {
+			this.locked = false;
+		}
+	}
+
+	async forceEnd(
+		browser: Browser,
+		toPx?: (norm: number, size: number) => number,
+		getWindowSize?: () => Promise<{ width: number; height: number }>,
+	): Promise<void> {
+		if (this.deferredTap) {
+			clearTimeout(this.deferredTap.timer);
+			const pending = this.deferredTap;
+			this.deferredTap = null;
+			if (toPx && getWindowSize) {
+				try {
+					await this.flushGesture(pending.gesture, pending.browser, toPx, getWindowSize);
+				} catch {
+					this.locked = false;
+				}
+			} else {
+				this.locked = false;
+			}
 			return;
 		}
-
-		// end
-		const pending = this.pendingMove;
-		this.clearPendingMove();
-		this.pendingMove = null;
-		if (pending) {
-			await browser.performActions([
-				{
-					type: "pointer",
-					id: "finger1",
-					parameters: { pointerType: "touch" },
-					actions: [{ type: "pointerMove", duration: 16, x: pending.x, y: pending.y }],
-				},
-			]);
-		}
-		await browser.performActions([
-			{
-				type: "pointer",
-				id: "finger1",
-				parameters: { pointerType: "touch" },
-				actions: [
-					{ type: "pointerMove", duration: 0, x, y },
-					{ type: "pointerUp", button: 0 },
-				],
-			},
-		]);
-		try {
-			await browser.releaseActions();
-		} catch {
-			// ignore
-		}
-		this.pointerDown = false;
-		this.locked = false;
-		this.lastMoveSeq = -1;
-	}
-
-	private clearPendingMove() {
-		if (this.moveTimer) {
-			clearTimeout(this.moveTimer);
-			this.moveTimer = null;
-		}
-	}
-
-	async forceEnd(browser: Browser): Promise<void> {
-		this.clearPendingMove();
-		this.pendingMove = null;
-		if (!this.pointerDown) {
+		if (!this.gesture) {
 			this.locked = false;
 			return;
 		}
-		try {
-			await browser.performActions([
-				{
-					type: "pointer",
-					id: "finger1",
-					parameters: { pointerType: "touch" },
-					actions: [{ type: "pointerUp", button: 0 }],
-				},
-			]);
-			await browser.releaseActions();
-		} catch {
-			// ignore
+		if (!toPx || !getWindowSize) {
+			this.gesture = null;
+			this.locked = false;
+			return;
 		}
-		this.pointerDown = false;
-		this.locked = false;
-		this.lastMoveSeq = -1;
+		const gesture = this.gesture;
+		this.gesture = null;
+		try {
+			await this.flushGesture(gesture, browser, toPx, getWindowSize);
+		} catch {
+			this.locked = false;
+		}
 	}
 }
 
@@ -443,12 +563,15 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		port,
 		path: "/",
 		capabilities,
-		logLevel: "error",
+		logLevel: "silent",
 		connectionRetryCount: 2,
 		connectionRetryTimeout: 60_000,
 	});
 
-	await applyMjpegSettings(browser);
+	await applyMjpegSettings(browser, {
+		platform: options.platform,
+		deviceId: options.deviceId,
+	});
 	const streamReady = await probeMjpegStream(mjpegPort);
 	if (!streamReady) {
 		console.warn(
@@ -457,26 +580,66 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	}
 
 	const gate = new ActionGate();
+	let sessionDeadNotified = false;
+	const notifySessionDead = () => {
+		if (sessionDeadNotified) return;
+		sessionDeadNotified = true;
+		options.onSessionDead?.();
+	};
 
-	const quit = async () => {
-		await gate.forceEnd(browser);
+	const isMissingSessionError = (error: unknown): boolean => {
+		const message = error instanceof Error ? error.message : String(error);
+		return /session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i.test(
+			message,
+		);
+	};
+
+	const guard = async <T>(fn: () => Promise<T>): Promise<T> => {
 		try {
-			await browser.deleteSession();
-		} catch {
-			// session may already be gone
+			return await fn();
+		} catch (error) {
+			if (isMissingSessionError(error)) {
+				notifySessionDead();
+			}
+			throw error;
 		}
 	};
 
-	const getWindowSize = async () => browser.getWindowSize();
+	const getWindowSize = async () => guard(() => browser.getWindowSize());
 
 	const toPx = (norm: number, size: number) =>
 		Math.round((Math.min(1000, Math.max(0, norm)) / 1000) * size);
 
-	const captureFrame = async (): Promise<CapturedFrame> => {
-		const base64 = await browser.takeScreenshot();
-		// Appium returns PNG base64 for takeScreenshot even when MJPEG is JPEG upstream.
-		return { base64, mime: "image/png" };
+	const quit = async () => {
+		try {
+			if (!sessionDeadNotified) {
+				await gate.forceEnd(browser, toPx, getWindowSize);
+			}
+		} catch {
+			// gesture flush may fail if the session already died
+		}
+		// Avoid DELETE on a dead session — WebdriverIO logs a noisy ERROR otherwise.
+		if (sessionDeadNotified) return;
+		try {
+			await browser.deleteSession();
+		} catch (error) {
+			if (!isMissingSessionError(error)) {
+				console.warn(
+					"[yoqa-runner] deleteSession failed:",
+					error instanceof Error ? error.message : error,
+				);
+			}
+		} finally {
+			sessionDeadNotified = true;
+		}
 	};
+
+	const captureFrame = async (): Promise<CapturedFrame> =>
+		guard(async () => {
+			const base64 = await browser.takeScreenshot();
+			// Appium returns PNG base64 for takeScreenshot even when MJPEG is JPEG upstream.
+			return { base64, mime: "image/png" as const };
+		});
 
 	const screenshot = async () => {
 		await mkdir(SCREENSHOT_DIR, { recursive: true });
@@ -486,53 +649,62 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		return { path, base64: frame.base64 };
 	};
 
-	const pageSource = async () => browser.getPageSource();
+	const pageSource = async () => guard(() => browser.getPageSource());
 
-	const tap = async (xNorm: number, yNorm: number, options?: { durationMs?: number }) => {
+	const tap = async (xNorm: number, yNorm: number, tapOptions?: { durationMs?: number }) => {
 		await gate.withLock(async () => {
-			const size = await getWindowSize();
-			const x = toPx(xNorm, size.width);
-			const y = toPx(yNorm, size.height);
-			const holdMs = Math.max(50, options?.durationMs ?? 50);
-			await browser.performActions([
-				{
-					type: "pointer",
-					id: "finger1",
-					parameters: { pointerType: "touch" },
-					actions: [
-						{ type: "pointerMove", duration: 0, x, y },
-						{ type: "pointerDown", button: 0 },
-						{ type: "pause", duration: holdMs },
-						{ type: "pointerUp", button: 0 },
-					],
-				},
-			]);
-			await browser.releaseActions();
+			await guard(async () => {
+				const size = await getWindowSize();
+				const x = toPx(xNorm, size.width);
+				const y = toPx(yNorm, size.height);
+				const holdMs = Math.max(50, tapOptions?.durationMs ?? 50);
+				await browser.performActions([
+					{
+						type: "pointer",
+						id: "finger1",
+						parameters: { pointerType: "touch" },
+						actions: [
+							{ type: "pointerMove", duration: 0, x, y },
+							{ type: "pointerDown", button: 0 },
+							{ type: "pause", duration: holdMs },
+							{ type: "pointerUp", button: 0 },
+						],
+					},
+				]);
+				await browser.releaseActions();
+			});
 		});
 	};
 
 	const swipe = async (x1: number, y1: number, x2: number, y2: number, durationMs = 400) => {
 		await gate.withLock(async () => {
-			const size = await getWindowSize();
-			await browser.performActions([
-				{
-					type: "pointer",
-					id: "finger1",
-					parameters: { pointerType: "touch" },
-					actions: [
-						{ type: "pointerMove", duration: 0, x: toPx(x1, size.width), y: toPx(y1, size.height) },
-						{ type: "pointerDown", button: 0 },
-						{
-							type: "pointerMove",
-							duration: durationMs,
-							x: toPx(x2, size.width),
-							y: toPx(y2, size.height),
-						},
-						{ type: "pointerUp", button: 0 },
-					],
-				},
-			]);
-			await browser.releaseActions();
+			await guard(async () => {
+				const size = await getWindowSize();
+				await browser.performActions([
+					{
+						type: "pointer",
+						id: "finger1",
+						parameters: { pointerType: "touch" },
+						actions: [
+							{
+								type: "pointerMove",
+								duration: 0,
+								x: toPx(x1, size.width),
+								y: toPx(y1, size.height),
+							},
+							{ type: "pointerDown", button: 0 },
+							{
+								type: "pointerMove",
+								duration: durationMs,
+								x: toPx(x2, size.width),
+								y: toPx(y2, size.height),
+							},
+							{ type: "pointerUp", button: 0 },
+						],
+					},
+				]);
+				await browser.releaseActions();
+			});
 		});
 	};
 
@@ -542,48 +714,64 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 
 	const type = async (text: string) => {
 		await gate.withLock(async () => {
-			await browser.keys(text.split(""));
+			await guard(async () => {
+				await browser.keys(text.split(""));
+			});
 		});
 	};
 
 	const activateApp = async (appId: string) => {
 		await gate.withLock(async () => {
-			await browser.execute("mobile: activateApp", { bundleId: appId, appId });
+			await guard(async () => {
+				await browser.execute("mobile: activateApp", { bundleId: appId, appId });
+			});
 		});
 	};
 
 	const terminateApp = async (appId: string) => {
 		await gate.withLock(async () => {
-			await browser.execute("mobile: terminateApp", { bundleId: appId, appId });
+			await guard(async () => {
+				await browser.execute("mobile: terminateApp", { bundleId: appId, appId });
+			});
 		});
 	};
 
 	const backgroundApp = async (seconds = 3) => {
 		await gate.withLock(async () => {
-			await browser.execute("mobile: backgroundApp", { seconds });
+			await guard(async () => {
+				await browser.execute("mobile: backgroundApp", { seconds });
+			});
 		});
 	};
 
 	const openUrl = async (url: string) => {
 		await gate.withLock(async () => {
-			await browser.url(url);
+			await guard(async () => {
+				await browser.url(url);
+			});
 		});
 	};
 
 	const acceptAlert = async () => {
 		await gate.withLock(async () => {
-			await browser.acceptAlert();
+			await guard(async () => {
+				await browser.acceptAlert();
+			});
 		});
 	};
 
 	const dismissAlert = async () => {
 		await gate.withLock(async () => {
-			await browser.dismissAlert();
+			await guard(async () => {
+				await browser.dismissAlert();
+			});
 		});
 	};
 
 	const pointerEvent = async (phase: PointerPhase, xNorm: number, yNorm: number, seq: number) => {
-		await gate.handlePointer(browser, toPx, getWindowSize, phase, xNorm, yNorm, seq);
+		await guard(async () => {
+			await gate.handlePointer(browser, toPx, getWindowSize, phase, xNorm, yNorm, seq);
+		});
 	};
 
 	return {

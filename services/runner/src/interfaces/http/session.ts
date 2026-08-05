@@ -14,13 +14,30 @@ import {
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
 import {
+	abandonActiveSession,
 	connectDevice,
 	disconnectDevice,
 	getActiveSessionInfo,
+	isMissingAppiumSessionError,
 	requireActiveSession,
 } from "../../domains/devices/active-session";
 import { groundDescription } from "../../domains/devices/grounding";
 import { cleanPageSource } from "../../domains/devices/screen";
+
+function sessionErrorResponse(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error);
+	if (isMissingAppiumSessionError(error)) {
+		abandonActiveSession();
+		return {
+			status: 410 as const,
+			body: {
+				error: "Device session ended",
+				detail: message,
+			},
+		};
+	}
+	return null;
+}
 
 export function createSessionRoutes() {
 	const app = new Hono();
@@ -85,6 +102,8 @@ export function createSessionRoutes() {
 				}),
 			);
 		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Failed to read screen", detail: message }, 500);
 		}
@@ -112,6 +131,8 @@ export function createSessionRoutes() {
 			}
 			return c.json(screenshotResponseSchema.parse({ path }));
 		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Failed to take screenshot", detail: message }, 500);
 		}
@@ -130,6 +151,8 @@ export function createSessionRoutes() {
 				},
 			});
 		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Failed to take screenshot", detail: message }, 500);
 		}
@@ -299,6 +322,8 @@ export function createSessionRoutes() {
 				}),
 			);
 		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Action failed", detail: message }, 500);
 		}
