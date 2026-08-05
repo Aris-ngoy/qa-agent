@@ -5,7 +5,14 @@ description: Create test cases, connect a device, run tests, and review results.
 
 <Steps>
   <Step title="Start YoQA">
-    Download the Apple Silicon DMG from [GitHub Releases](https://github.com/Aris-ngoy/qa-agent/releases), drag `yoqa.app` to `/Applications`, and open it. The DMG is unsigned — right-click → **Open** the first time to bypass Gatekeeper. The bundled runner starts automatically on `http://127.0.0.1:7420`.
+    Download the Apple Silicon DMG from [GitHub Releases](https://github.com/Aris-ngoy/qa-agent/releases) and drag `yoqa.app` to `/Applications`. The DMG is unsigned, so recent macOS versions show **"yoqa" is damaged and can't be opened** on first launch. Clear the quarantine attribute once, then open the app:
+
+    ```bash
+    xattr -cr /Applications/yoqa.app
+    open /Applications/yoqa.app
+    ```
+
+    The bundled runner starts automatically on `http://127.0.0.1:7420`.
 
     Running from a monorepo checkout instead? Start both processes manually:
 
