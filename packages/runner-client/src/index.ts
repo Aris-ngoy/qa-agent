@@ -16,6 +16,8 @@ import {
 	type CatalogFlow,
 	type CatalogTag,
 	type ConnectDeviceRequest,
+	type ControlMessage,
+	type ControlPointerMessage,
 	type CreateAppRequest,
 	type CreateBuildRequest,
 	type CreateCaseRequest,
@@ -85,6 +87,8 @@ import {
 	catalogFlowSchema,
 	catalogTagSchema,
 	connectDeviceRequestSchema,
+	controlMessageSchema,
+	controlPointerMessageSchema,
 	createAppRequestSchema,
 	createBuildRequestSchema,
 	createCaseRequestSchema,
@@ -156,6 +160,8 @@ export {
 	caseScriptActionSchema,
 	caseScriptSchema,
 	connectDeviceRequestSchema,
+	controlMessageSchema,
+	controlPointerMessageSchema,
 	createAppRequestSchema,
 	createBuildRequestSchema,
 	createCaseRequestSchema,
@@ -224,6 +230,8 @@ export {
 	type CaseScript,
 	type CaseScriptAction,
 	type ConnectDeviceRequest,
+	type ControlMessage,
+	type ControlPointerMessage,
 	type CreateAppRequest,
 	type CreateBuildRequest,
 	type CreateCaseRequest,
@@ -858,6 +866,17 @@ export class RunnerClient {
 	getScreenshotImageUrl(cacheBust?: number): string {
 		const url = `${this.baseUrl}/screenshot/image`;
 		return cacheBust != null ? `${url}?t=${cacheBust}` : url;
+	}
+
+	/** Proxied Appium MJPEG stream for the Inspector live feed. */
+	getStreamMjpegUrl(): string {
+		return `${this.baseUrl}/stream.mjpeg`;
+	}
+
+	/** WebSocket URL for live pointer control. */
+	getControlWsUrl(): string {
+		const base = this.baseUrl.replace(/^http/i, "ws");
+		return `${base}/ws/control`;
 	}
 
 	async fetchScreenshotBytes(): Promise<Uint8Array> {

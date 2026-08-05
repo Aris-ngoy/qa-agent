@@ -38,10 +38,10 @@ import {
 } from "@yoqa/runner-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-/** How often to pull a fresh screenshot while connected. */
-const LIVE_SCREENSHOT_MS = 150;
-/** Refresh the accessibility tree every N screenshot polls (tree is slower). */
-const TREE_EVERY_N_POLLS = 15;
+/** Accessibility tree refresh while the MJPEG (or poll) feed is live. */
+const TREE_REFRESH_MS = 2000;
+/** Fallback screenshot poll when Appium MJPEG is unavailable. */
+const FALLBACK_SCREENSHOT_MS = 250;
 
 type InspectorReportStep = {
 	index: number;
@@ -115,9 +115,9 @@ function defaultCaseNameFromScript(script: string): string {
 	return `Inspector script · ${stamp}`;
 }
 
-function bytesToPngBlob(bytes: Uint8Array): Blob {
+function bytesToImageBlob(bytes: Uint8Array, mime = "image/png"): Blob {
 	const copy = Uint8Array.from(bytes);
-	return new Blob([copy.buffer], { type: "image/png" });
+	return new Blob([copy.buffer], { type: mime });
 }
 
 function miniScriptFromLines(lines: string[]): string {
@@ -137,6 +137,8 @@ export function InspectorPage() {
 	const [connecting, setConnecting] = useState(false);
 	const [bootLoading, setBootLoading] = useState(false);
 	const [imageUrl, setImageUrl] = useState<string | null>(null);
+	const [feedMode, setFeedMode] = useState<"mjpeg" | "poll" | null>(null);
+	const [liveControl, setLiveControl] = useState(false);
 	const [elements, setElements] = useState<ScreenElement[]>([]);
 	const [selection, setSelection] = useState<InspectorSelection | null>(null);
 	const [script, setScript] = useState(DEFAULT_SHELL_SCRIPT_HEADER);
@@ -155,9 +157,11 @@ export function InspectorPage() {
 	const abortRef = useRef<AbortController | null>(null);
 	const logIdRef = useRef(0);
 	const imageUrlRef = useRef<string | null>(null);
+	const imageIsBlobRef = useRef(false);
 	const inFlightRef = useRef(false);
-	const pollCountRef = useRef(0);
 	const activeRef = useRef<ActiveDeviceResponse | null>(null);
+	const controlWsRef = useRef<WebSocket | null>(null);
+	const pointerSeqRef = useRef(0);
 
 	useEffect(() => {
 		activeRef.current = active;
@@ -170,14 +174,54 @@ export function InspectorPage() {
 	}, []);
 
 	const revokeImage = useCallback(() => {
-		if (imageUrlRef.current) {
+		if (imageUrlRef.current && imageIsBlobRef.current) {
 			URL.revokeObjectURL(imageUrlRef.current);
-			imageUrlRef.current = null;
 		}
+		imageUrlRef.current = null;
+		imageIsBlobRef.current = false;
 		setImageUrl(null);
 	}, []);
 
-	const refreshFrame = useCallback(
+	const setStreamImage = useCallback((url: string) => {
+		if (imageUrlRef.current && imageIsBlobRef.current) {
+			URL.revokeObjectURL(imageUrlRef.current);
+		}
+		imageUrlRef.current = url;
+		imageIsBlobRef.current = false;
+		setImageUrl(url);
+	}, []);
+
+	const setBlobImage = useCallback((bytes: Uint8Array) => {
+		const blob = bytesToImageBlob(bytes);
+		const nextUrl = URL.createObjectURL(blob);
+		if (imageUrlRef.current && imageIsBlobRef.current) {
+			URL.revokeObjectURL(imageUrlRef.current);
+		}
+		imageUrlRef.current = nextUrl;
+		imageIsBlobRef.current = true;
+		setImageUrl(nextUrl);
+	}, []);
+
+	const refreshTree = useCallback(async (options: { silent?: boolean } = {}) => {
+		const silent = options.silent ?? false;
+		if (inFlightRef.current) return;
+		if (!activeRef.current) return;
+		inFlightRef.current = true;
+		try {
+			const client = await getRunnerClient();
+			const screen = await client.getScreen();
+			if (!activeRef.current) return;
+			setElements(screen.elements ?? []);
+		} catch (error) {
+			if (!silent) {
+				showErrorToast(error, "Failed to refresh screen tree");
+			}
+		} finally {
+			inFlightRef.current = false;
+		}
+	}, []);
+
+	const refreshPollFrame = useCallback(
 		async (options: { includeTree?: boolean; silent?: boolean } = {}) => {
 			const includeTree = options.includeTree ?? true;
 			const silent = options.silent ?? false;
@@ -191,14 +235,7 @@ export function InspectorPage() {
 				const treePromise = includeTree ? client.getScreen() : Promise.resolve(null);
 				const [bytes, screen] = await Promise.all([bytesPromise, treePromise]);
 				if (!activeRef.current) return;
-
-				const blob = bytesToPngBlob(bytes);
-				const nextUrl = URL.createObjectURL(blob);
-				const prev = imageUrlRef.current;
-				imageUrlRef.current = nextUrl;
-				setImageUrl(nextUrl);
-				if (prev) URL.revokeObjectURL(prev);
-
+				setBlobImage(bytes);
 				if (screen) {
 					setElements(screen.elements ?? []);
 				}
@@ -211,7 +248,31 @@ export function InspectorPage() {
 				setBootLoading(false);
 			}
 		},
-		[],
+		[setBlobImage],
+	);
+
+	const startLiveFeed = useCallback(
+		async (deviceInfo: ActiveDeviceResponse) => {
+			setBootLoading(true);
+			try {
+				const client = await getRunnerClient();
+				if (deviceInfo.streamReady !== false && (deviceInfo.streamUrl || deviceInfo.mjpegPort)) {
+					setFeedMode("mjpeg");
+					setStreamImage(client.getStreamMjpegUrl());
+					await refreshTree({ silent: false });
+				} else {
+					setFeedMode("poll");
+					await refreshPollFrame({ includeTree: true, silent: false });
+				}
+			} catch (error) {
+				showErrorToast(error, "Failed to start live feed");
+				setFeedMode("poll");
+				await refreshPollFrame({ includeTree: true, silent: true });
+			} finally {
+				setBootLoading(false);
+			}
+		},
+		[refreshPollFrame, refreshTree, setStreamImage],
 	);
 
 	useEffect(() => {
@@ -232,7 +293,7 @@ export function InspectorPage() {
 				setActive(current);
 				if (current) {
 					setPlatform(current.platform);
-					await refreshFrame({ includeTree: true, silent: false });
+					await startLiveFeed(current);
 				}
 			} catch {
 				/* runner may still be starting */
@@ -241,34 +302,107 @@ export function InspectorPage() {
 		return () => {
 			cancelled = true;
 			abortRef.current?.abort();
+			controlWsRef.current?.close();
+			controlWsRef.current = null;
 			revokeImage();
 		};
-	}, [refreshFrame, revokeImage]);
+	}, [revokeImage, startLiveFeed]);
 
-	// Live screenshot loop while connected and the page is visible.
+	// Accessibility tree refresh (independent of video stream).
 	useEffect(() => {
 		if (!active || !pageVisible) return;
 
 		let cancelled = false;
-		pollCountRef.current = 0;
-
 		const tick = async () => {
 			if (cancelled || !activeRef.current) return;
-			pollCountRef.current += 1;
-			const includeTree = pollCountRef.current % TREE_EVERY_N_POLLS === 0;
-			await refreshFrame({ includeTree, silent: true });
+			await refreshTree({ silent: true });
 		};
 
 		void tick();
 		const timer = window.setInterval(() => {
 			void tick();
-		}, LIVE_SCREENSHOT_MS);
+		}, TREE_REFRESH_MS);
 
 		return () => {
 			cancelled = true;
 			window.clearInterval(timer);
 		};
-	}, [active, pageVisible, refreshFrame]);
+	}, [active, pageVisible, refreshTree]);
+
+	// Fallback PNG poll only when MJPEG is unavailable.
+	useEffect(() => {
+		if (!active || !pageVisible || feedMode !== "poll") return;
+
+		let cancelled = false;
+		const tick = async () => {
+			if (cancelled || !activeRef.current) return;
+			await refreshPollFrame({ includeTree: false, silent: true });
+		};
+
+		void tick();
+		const timer = window.setInterval(() => {
+			void tick();
+		}, FALLBACK_SCREENSHOT_MS);
+
+		return () => {
+			cancelled = true;
+			window.clearInterval(timer);
+		};
+	}, [active, feedMode, pageVisible, refreshPollFrame]);
+
+	// Live control WebSocket while the toggle is on.
+	useEffect(() => {
+		if (!active || !liveControl || !pageVisible) {
+			controlWsRef.current?.close();
+			controlWsRef.current = null;
+			return;
+		}
+
+		let cancelled = false;
+		let ws: WebSocket | null = null;
+
+		void (async () => {
+			try {
+				const client = await getRunnerClient();
+				if (cancelled) return;
+				ws = new WebSocket(client.getControlWsUrl());
+				controlWsRef.current = ws;
+				ws.onclose = () => {
+					if (controlWsRef.current === ws) {
+						controlWsRef.current = null;
+					}
+				};
+			} catch (error) {
+				if (!cancelled) {
+					showErrorToast(error, "Failed to open live control");
+					setLiveControl(false);
+				}
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+			ws?.close();
+			if (controlWsRef.current === ws) {
+				controlWsRef.current = null;
+			}
+		};
+	}, [active, liveControl, pageVisible]);
+
+	const sendPointer = useCallback((phase: "begin" | "move" | "end", x: number, y: number) => {
+		const ws = controlWsRef.current;
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		pointerSeqRef.current += 1;
+		ws.send(
+			JSON.stringify({
+				type: "pointer",
+				phase,
+				x,
+				y,
+				seq: pointerSeqRef.current,
+			}),
+		);
+	}, []);
 
 	const handleConnect = useCallback(async () => {
 		if (!device) return;
@@ -289,14 +423,19 @@ export function InspectorPage() {
 			});
 			setActive(info);
 			setSelection(null);
-			await refreshFrame({ includeTree: true, silent: false });
-			notify("Connected — live feed on");
+			setLiveControl(false);
+			await startLiveFeed(info);
+			notify(
+				info.streamReady === false
+					? "Connected — screenshot poll (MJPEG unavailable)"
+					: "Connected — live stream on",
+			);
 		} catch (error) {
 			showErrorToast(error, "Failed to connect device");
 		} finally {
 			setConnecting(false);
 		}
-	}, [device, refreshFrame, selectedApp]);
+	}, [device, selectedApp, startLiveFeed]);
 
 	const handleDisconnect = useCallback(async () => {
 		if (scriptHasBody(script) && !window.confirm("Disconnect and keep the current script?")) {
@@ -309,6 +448,10 @@ export function InspectorPage() {
 			setActive(null);
 			setSelection(null);
 			setElements([]);
+			setFeedMode(null);
+			setLiveControl(false);
+			controlWsRef.current?.close();
+			controlWsRef.current = null;
 			revokeImage();
 			notify("Disconnected");
 		} catch (error) {
@@ -407,10 +550,10 @@ export function InspectorPage() {
 				setRunning(false);
 				setActiveLineNumber(null);
 				abortRef.current = null;
-				void refreshFrame({ includeTree: true, silent: true });
+				void refreshTree({ silent: true });
 			}
 		},
-		[active, pushLog, refreshFrame, running],
+		[active, pushLog, refreshTree, running],
 	);
 
 	const handleInsertAndRunLines = useCallback(
@@ -515,9 +658,9 @@ export function InspectorPage() {
 			setRunning(false);
 			setActiveLineNumber(null);
 			abortRef.current = null;
-			void refreshFrame({ includeTree: true, silent: true });
+			void refreshTree({ silent: true });
 		}
-	}, [active, device?.name, pushLog, refreshFrame, running, script, selectedApp?.name]);
+	}, [active, device?.name, pushLog, refreshTree, running, script, selectedApp?.name]);
 
 	const handleStop = useCallback(() => {
 		abortRef.current?.abort();
@@ -646,7 +789,7 @@ export function InspectorPage() {
 	);
 
 	const connected = active != null;
-	const live = connected && pageVisible;
+	const live = connected && pageVisible && imageUrl != null;
 	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(script);
 	const snippetContext = useMemo(
 		() => ({
@@ -697,10 +840,14 @@ export function InspectorPage() {
 					selection={selection}
 					loading={bootLoading && !imageUrl}
 					live={live}
+					feedMode={feedMode}
+					liveControl={liveControl}
+					onLiveControlChange={setLiveControl}
 					disabled={!connected || running}
 					snippetContext={snippetContext}
 					onSelect={setSelection}
 					onDoubleTap={handleDoubleTap}
+					onPointer={sendPointer}
 					onInsertLines={handleInsertLines}
 					onInsertAndRunLines={handleInsertAndRunLines}
 					onCopyLines={(lines) => {

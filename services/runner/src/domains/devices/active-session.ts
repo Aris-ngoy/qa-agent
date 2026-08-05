@@ -5,6 +5,10 @@ export type ActiveSessionInfo = {
 	deviceId: string;
 	platform: DevicePlatform;
 	connectedAt: number;
+	mjpegPort: number;
+	streamReady: boolean;
+	/** Relative path on the runner for the MJPEG proxy. */
+	streamUrl: string;
 };
 
 type ActiveSession = ActiveSessionInfo & {
@@ -23,6 +27,9 @@ export function getActiveSessionInfo(): ActiveSessionInfo | null {
 		deviceId: active.deviceId,
 		platform: active.platform,
 		connectedAt: active.connectedAt,
+		mjpegPort: active.mjpegPort,
+		streamReady: active.streamReady,
+		streamUrl: active.streamUrl,
 	};
 }
 
@@ -56,6 +63,9 @@ export async function connectDevice(options: {
 		deviceId: options.deviceId,
 		platform: options.platform,
 		connectedAt: Date.now(),
+		mjpegPort: session.mjpegPort,
+		streamReady: session.streamReady,
+		streamUrl: "/stream.mjpeg",
 		session,
 	};
 

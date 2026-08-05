@@ -48,5 +48,6 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 - All Commands catalog + View Docs links
 - `scrollUntilVisible`, `copyTextFrom`, `extendedWaitUntil`
 - CaseScript support for assert / swipe / double / long-press / activate-app / open-url / screenshot
-- Adaptive poll rate / MJPEG-style stream for lower latency
 - Foreground-app awareness for `activateApp` prefill (catalog app vs visible process after deeplink)
+
+See also: [MJPEG stream + live control](./manual-inspector-mjpeg-stream.md) (shipped).

@@ -618,8 +618,24 @@ export const activeDeviceResponseSchema = z.object({
 	deviceId: z.string().min(1),
 	platform: devicePlatformSchema,
 	connectedAt: z.number().int().nonnegative(),
+	mjpegPort: z.number().int().positive().optional(),
+	streamReady: z.boolean().optional(),
+	/** Relative path on the runner (e.g. `/stream.mjpeg`). */
+	streamUrl: z.string().min(1).optional(),
 });
 export type ActiveDeviceResponse = z.infer<typeof activeDeviceResponseSchema>;
+
+export const controlPointerMessageSchema = z.object({
+	type: z.literal("pointer"),
+	phase: z.union([z.literal("begin"), z.literal("move"), z.literal("end")]),
+	x: z.number().min(0).max(1000),
+	y: z.number().min(0).max(1000),
+	seq: z.number().int().nonnegative(),
+});
+export type ControlPointerMessage = z.infer<typeof controlPointerMessageSchema>;
+
+export const controlMessageSchema = controlPointerMessageSchema;
+export type ControlMessage = z.infer<typeof controlMessageSchema>;
 
 export const screenElementSchema = z.object({
 	type: z.string(),
