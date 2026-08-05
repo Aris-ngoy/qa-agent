@@ -172,6 +172,7 @@ export function InspectorPage() {
 	const pointerSeqRef = useRef(0);
 	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
 	const sessionEpochRef = useRef(0);
+	const feedModeRef = useRef<"mjpeg" | "poll" | null>(null);
 	const startLiveFeedRef = useRef<(deviceInfo: ActiveDeviceResponse) => Promise<void>>(
 		async () => {},
 	);
@@ -183,6 +184,10 @@ export function InspectorPage() {
 	useEffect(() => {
 		elementsRef.current = elements;
 	}, [elements]);
+
+	useEffect(() => {
+		feedModeRef.current = feedMode;
+	}, [feedMode]);
 
 	const pushLog = useCallback((text: string, tone: RunLogEntry["tone"] = "info") => {
 		logIdRef.current += 1;
@@ -218,6 +223,12 @@ export function InspectorPage() {
 		imageIsBlobRef.current = true;
 		setImageUrl(nextUrl);
 	}, []);
+
+	const remountMjpegStream = useCallback(async () => {
+		if (feedModeRef.current !== "mjpeg" || !activeRef.current) return;
+		const client = await getRunnerClient();
+		setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
+	}, [setStreamImage]);
 
 	const clearSessionUi = useCallback(() => {
 		activeRef.current = null;
@@ -257,10 +268,13 @@ export function InspectorPage() {
 			if (inFlightRef.current) return null;
 			if (!activeRef.current) return null;
 			const epoch = sessionEpochRef.current;
+			const pauseMjpeg = feedModeRef.current === "mjpeg";
 			inFlightRef.current = true;
 			try {
 				const client = await getRunnerClient();
-				const screen = await client.getScreen();
+				// pauseMjpeg aborts live stream proxies on the runner before pageSource
+				// (Appium Inspector Element Mode — source without dual-loading WDA).
+				const screen = await client.getScreen({ pauseMjpeg });
 				if (sessionEpochRef.current !== epoch || !activeRef.current) return null;
 				const next = screen.elements ?? [];
 				setElements(next);
@@ -277,25 +291,26 @@ export function InspectorPage() {
 				return null;
 			} finally {
 				inFlightRef.current = false;
+				if (pauseMjpeg && sessionEpochRef.current === epoch && activeRef.current) {
+					void remountMjpegStream();
+				}
 			}
 		},
-		[handleSessionGone],
+		[handleSessionGone, remountMjpegStream],
 	);
 
 	/**
-	 * Under MJPEG, never call page-source here — it kills WDA/stream.
-	 * Use the cached tree (filled after script/commands or on poll feed).
+	 * Appium Inspector Element Mode: fetch page source (pausing MJPEG first),
+	 * then hit-test. Stream remounts after the tree returns.
 	 */
 	const resolveElementsForHitTest = useCallback(async (): Promise<ScreenElement[]> => {
-		if (feedMode === "mjpeg") {
-			return elementsRef.current;
-		}
-		if (elementsRef.current.length > 0) {
-			return elementsRef.current;
+		const deadline = Date.now() + 8_000;
+		while (inFlightRef.current && Date.now() < deadline) {
+			await new Promise((r) => setTimeout(r, 50));
 		}
 		const next = await refreshTree({ silent: true });
 		return next ?? elementsRef.current;
-	}, [feedMode, refreshTree]);
+	}, [refreshTree]);
 
 	const refreshPollFrame = useCallback(
 		async (options: { includeTree?: boolean; silent?: boolean } = {}) => {

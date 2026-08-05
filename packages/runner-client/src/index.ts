@@ -836,9 +836,10 @@ export class RunnerClient {
 		return activeDeviceResponseSchema.parse(json);
 	}
 
-	async getScreen(options: { full?: boolean } = {}): Promise<ScreenResponse> {
+	async getScreen(options: { full?: boolean; pauseMjpeg?: boolean } = {}): Promise<ScreenResponse> {
 		const params = new URLSearchParams();
 		if (options.full) params.set("full", "1");
+		if (options.pauseMjpeg) params.set("pauseMjpeg", "1");
 		const qs = params.toString();
 		const json = await this.requestJson(
 			`/screen${qs ? `?${qs}` : ""}`,
