@@ -22,6 +22,7 @@ import {
 	requireActiveSession,
 } from "../../domains/devices/active-session";
 import { groundDescription } from "../../domains/devices/grounding";
+import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 import { cleanPageSource } from "../../domains/devices/screen";
 
 function sessionErrorResponse(error: unknown) {
@@ -170,10 +171,21 @@ export function createSessionRoutes() {
 					503,
 				);
 			}
-			const upstream = await fetch(`http://127.0.0.1:${active.mjpegPort}/`, {
-				headers: { Accept: "multipart/x-mixed-replace,image/jpeg,*/*" },
-			});
+			const proxyAbort = trackMjpegProxy();
+			let upstream: Response;
+			try {
+				upstream = await fetch(`http://127.0.0.1:${active.mjpegPort}/`, {
+					signal: proxyAbort.signal,
+					headers: { Accept: "multipart/x-mixed-replace,image/jpeg,*/*" },
+				});
+			} catch (error) {
+				if (proxyAbort.signal.aborted) {
+					return c.json({ error: "MJPEG proxy aborted" }, 503);
+				}
+				throw error;
+			}
 			if (!upstream.ok || !upstream.body) {
+				proxyAbort.abort();
 				return c.json(
 					{
 						error: "Upstream MJPEG unavailable",
@@ -185,6 +197,7 @@ export function createSessionRoutes() {
 			const contentType =
 				upstream.headers.get("Content-Type") ??
 				"multipart/x-mixed-replace; boundary=--BoundaryLine--";
+			// Aborting proxyAbort cancels the upstream body when disconnect/quit runs.
 			return new Response(upstream.body, {
 				status: 200,
 				headers: {

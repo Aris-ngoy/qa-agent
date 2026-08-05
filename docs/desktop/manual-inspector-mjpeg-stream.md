@@ -38,6 +38,7 @@ Make the Manual Inspector live feed as fast as Appium allows on **all platforms*
 - **Stream** vs **Poll** badge
 - **Restart session** in the toolbar: disconnect + reconnect and remount the MJPEG URL
 - On unexpected session death: up to **2 auto-reconnects** within 90s, then the manual Restart toast
+- Disconnect aborts open MJPEG proxies and time-bounds `deleteSession` so WebDriverAgentRunner can exit instead of hanging forever
 
 ## How to verify
 
