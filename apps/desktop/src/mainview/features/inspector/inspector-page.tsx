@@ -283,19 +283,14 @@ export function InspectorPage() {
 	);
 
 	/**
-	 * MJPEG mode skips background page-source (it kills WDA). Fetch on demand so
-	 * click selection can resolve id/label for tap/assert/input commands.
+	 * Under MJPEG, never call page-source here — it kills WDA/stream.
+	 * Use the cached tree (filled after script/commands or on poll feed).
 	 */
 	const resolveElementsForHitTest = useCallback(async (): Promise<ScreenElement[]> => {
-		if (feedMode !== "mjpeg" && elementsRef.current.length > 0) {
+		if (feedMode === "mjpeg") {
 			return elementsRef.current;
 		}
-		// Wait out a concurrent tree fetch (e.g. delayed post-connect refresh).
-		const deadline = Date.now() + 8_000;
-		while (inFlightRef.current && Date.now() < deadline) {
-			await new Promise((r) => setTimeout(r, 50));
-		}
-		if (feedMode !== "mjpeg" && elementsRef.current.length > 0) {
+		if (elementsRef.current.length > 0) {
 			return elementsRef.current;
 		}
 		const next = await refreshTree({ silent: true });
@@ -347,13 +342,8 @@ export function InspectorPage() {
 					setFeedMode("mjpeg");
 					// Cache-bust so a stuck <img> MJPEG connection is remounted.
 					setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
-					// Do not page-source immediately — WDA often dies under MJPEG + source on connect.
-					// One delayed tree fetch so the first click can resolve id/label taps.
-					const epoch = sessionEpochRef.current;
-					window.setTimeout(() => {
-						if (sessionEpochRef.current !== epoch || !activeRef.current) return;
-						void refreshTree({ silent: true });
-					}, 1500);
+					// Do not page-source while MJPEG is starting — WDA dies a few seconds later.
+					// Tree is loaded after script/commands (and on poll feed).
 				} else {
 					setFeedMode("poll");
 					await refreshPollFrame({ includeTree: true, silent: false });
@@ -366,7 +356,7 @@ export function InspectorPage() {
 				setBootLoading(false);
 			}
 		},
-		[refreshPollFrame, refreshTree, setStreamImage],
+		[refreshPollFrame, setStreamImage],
 	);
 
 	startLiveFeedRef.current = startLiveFeed;
