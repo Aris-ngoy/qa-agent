@@ -43,10 +43,10 @@ The live mirror never writes to disk. Explicit screenshots and script reports st
 
 ### Recovering a dropped session
 
-Real iOS sessions can occasionally drop under WDA load (for example, during long Inspector sessions with the live mirror running):
+Real iOS sessions can occasionally drop under WDA load (for example, during long Inspector sessions with the live mirror running). When that happens, Inspector clears the feed and prompts you to reconnect manually — it does not attempt to reconnect on its own.
 
-- **Auto-reconnect** — Inspector reconnects up to twice within a 90-second window when it detects an unexpected session death. The mirror and tree resume on their own if a reconnect succeeds.
-- **Restart session** — the toolbar button above the mirror disconnects, reconnects, and remounts the live stream. Use it when auto-reconnect has been exhausted and Inspector shows a Restart prompt, or any time the mirror looks stuck.
+- **Restart session** — the toolbar button above the mirror disconnects, reconnects, and remounts the live stream. Use it when Inspector shows the Restart prompt, or any time the mirror looks stuck.
+- **Connect** — pick the device again in the device selector to start a fresh session.
 
 ## When to use it
 
