@@ -25,6 +25,29 @@ The Manual Inspector is a desktop surface for **exploring** a connected device t
   </Step>
 </Steps>
 
+## Live mirror and control
+
+Inspector shows the device screen as a live MJPEG feed on iOS Simulator, real iOS, and Android. A badge on the mirror tells you which transport is active:
+
+- **Stream** — MJPEG feed from the Appium driver. This is the default when the stream is reachable.
+- **Poll** — fallback that refreshes a screenshot every ~250 ms. Inspector shows this if the MJPEG probe fails after connect.
+
+Toggle **Live control** above the mirror to drag directly on the device:
+
+- **On** — pointer drags on the mirror map to touch events on the device (tap, drag, swipe). Element selection and the action menu are paused while you drag.
+- **Off** — clicking an element opens the action menu so you can insert or run a scripted step.
+
+Live control is exclusive with running scripts. Inspector blocks pointer input while a script step is in flight so gestures do not interleave with the running script.
+
+The live mirror never writes to disk. Explicit screenshots and script reports still persist to `~/.yoqa/runs/screenshots/`.
+
+### Recovering a dropped session
+
+Real iOS sessions can occasionally drop under WDA load (for example, during long Inspector sessions with the live mirror running). When that happens, Inspector clears the feed and prompts you to reconnect manually — it does not attempt to reconnect on its own.
+
+- **Restart session** — the toolbar button above the mirror disconnects, reconnects, and remounts the live stream. Use it when Inspector shows the Restart prompt, or any time the mirror looks stuck.
+- **Connect** — pick the device again in the device selector to start a fresh session.
+
 ## Picking elements
 
 The Inspector caches the current accessibility tree so hover and click hit-tests run locally. You get an instant highlight without waiting for a fresh page source per click.
@@ -33,6 +56,8 @@ The Inspector caches the current accessibility tree so hover and click hit-tests
 - **Click to select.** Clicking picks the smallest labeled control containing the point. When several nodes share the same label (for example, a `StaticText` inside a `Button` both labeled "Continue"), the Inspector selects the largest one so the highlight covers the full control instead of a nested leaf.
 - **Refresh tree.** Use the toolbar **Refresh tree** button to warm the cache manually. The tree also refreshes automatically after Insert & Run or when Live control turns off.
 - **Live mirror.** Under Stream, a tree refresh briefly pauses MJPEG and then resumes. The stream stays continuous the rest of the time.
+
+Inspector never polls the accessibility tree continuously while the **Stream** badge is active — continuous tree polling on top of the MJPEG feed destabilizes WebDriverAgent on real iOS. With Live control on, drags go straight to the device over the WebSocket channel and Inspector does not fetch the tree.
 
 ## Change Selector
 
