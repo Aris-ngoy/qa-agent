@@ -45,12 +45,10 @@ The live mirror never writes to disk. Explicit screenshots and script reports st
 
 The element tree does not refresh continuously in the background while the **Stream** badge is active. Continuous tree polling on top of the MJPEG feed destabilizes WebDriverAgent on real iOS, so Inspector refreshes the tree only at these moments:
 
-- Once shortly after the stream connects.
-- Each time you click an element on the mirror (you may briefly see "Reading screen…" while the fetch completes).
 - After you run a script or an inspector command.
 - Continuously while the mirror is on the **Poll** fallback.
 
-Because the fetch is on click, suggested actions include `tap --id`, `tap --label`, and text asserts — not only `tap (x,y)`.
+Under Stream, the first clicks on a fresh screen may offer only `tap (x,y)` because the tree has not been fetched yet. Once any command runs, the tree is cached and later clicks on the same screen also suggest `tap --id`, `tap --label`, and text asserts. To load selectors before you have anything to run, use an inexpensive command such as an explicit screenshot.
 
 ### Recovering a dropped session
 
