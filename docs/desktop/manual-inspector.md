@@ -26,6 +26,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 **Desktop**
 - Selection-anchored **ElementActionMenu** (suggested + Selector Commands; Insert / Insert & Run / Copy)
 - **Hit-test** prefers elements with a usable `label`/`id`; when several share the same label (e.g. StaticText + Button “Continue”), selects the **largest** so the highlight covers the full word/control instead of a tiny nested leaf
+- Under **MJPEG**, accessibility tree is fetched on click (and once shortly after connect) so suggested commands include `tap --id` / `tap --label` / text asserts — not only `tap (x,y)`
 - Menu always opens to the **right** and **downward** (no upward flip near the bottom); `tap --x/--y` always offered alongside id/label taps
 - Snippet generation only attaches `--id` / `--label` / assert `--text` when values look like real selectors (not deeplink URLs or `XCUIElementType…` type names); assert prompts for text when no usable label
 - **Selector Commands** include app control: `activateApp` / `terminateApp` / `restartApp`, `openUrl`, `acceptAlert` / `dismissAlert` (App ID prefilled from selected app); and screenshots: `screenshot` / `screenshot (path)`
@@ -35,7 +36,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 ## How to verify
 
 1. Open desktop → **Inspector** → Connect a device (select an app first).
-2. Click a labeled control (e.g. “Continue”): highlight should cover the full button/word, not a tiny icon/text leaf; the command menu opens to the right and downward; suggested tap includes `--label`.
+2. Click a labeled control (e.g. “Continue”): you may briefly see “Reading screen…” under Stream mode; highlight should cover the full button/word; the command menu opens to the right and downward; suggested actions include `tap` with `--id` and/or `--label`, not only `tap (x,y)`.
 3. Record taps / input / waits via the element menu (id/label taps also get coordinates).
 4. Selector quality: click a blank scroll area or a deeplink cell — tap should be coords-only (no `--id 'scheme://…'`, no `--label 'XCUIElementType…'`); assert should prompt for text instead of inserting the type name. A labeled button still emits `--id` / `--label` plus coords.
 5. App control / deeplink: select any element → **Selector Commands** → `activateApp` (e.g. `com.apple.mobilenotes`) → insert & run; paste a deeplink in Notes → tap it → `acceptAlert` if prompted; or use `openUrl` with the deeplink directly.

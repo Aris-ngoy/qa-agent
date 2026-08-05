@@ -167,6 +167,7 @@ export function InspectorPage() {
 	const imageIsBlobRef = useRef(false);
 	const inFlightRef = useRef(false);
 	const activeRef = useRef<ActiveDeviceResponse | null>(null);
+	const elementsRef = useRef<ScreenElement[]>([]);
 	const controlWsRef = useRef<WebSocket | null>(null);
 	const pointerSeqRef = useRef(0);
 	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
@@ -178,6 +179,10 @@ export function InspectorPage() {
 	useEffect(() => {
 		activeRef.current = active;
 	}, [active]);
+
+	useEffect(() => {
+		elementsRef.current = elements;
+	}, [elements]);
 
 	const pushLog = useCallback((text: string, tone: RunLogEntry["tone"] = "info") => {
 		logIdRef.current += 1;
@@ -247,32 +252,55 @@ export function InspectorPage() {
 	}, [clearSessionUi]);
 
 	const refreshTree = useCallback(
-		async (options: { silent?: boolean } = {}) => {
+		async (options: { silent?: boolean } = {}): Promise<ScreenElement[] | null> => {
 			const silent = options.silent ?? false;
-			if (inFlightRef.current) return;
-			if (!activeRef.current) return;
+			if (inFlightRef.current) return null;
+			if (!activeRef.current) return null;
 			const epoch = sessionEpochRef.current;
 			inFlightRef.current = true;
 			try {
 				const client = await getRunnerClient();
 				const screen = await client.getScreen();
-				if (sessionEpochRef.current !== epoch || !activeRef.current) return;
-				setElements(screen.elements ?? []);
+				if (sessionEpochRef.current !== epoch || !activeRef.current) return null;
+				const next = screen.elements ?? [];
+				setElements(next);
+				return next;
 			} catch (error) {
-				if (sessionEpochRef.current !== epoch) return;
+				if (sessionEpochRef.current !== epoch) return null;
 				if (isDeviceSessionGone(error)) {
 					handleSessionGone();
-					return;
+					return null;
 				}
 				if (!silent) {
 					showErrorToast(error, "Failed to refresh screen tree");
 				}
+				return null;
 			} finally {
 				inFlightRef.current = false;
 			}
 		},
 		[handleSessionGone],
 	);
+
+	/**
+	 * MJPEG mode skips background page-source (it kills WDA). Fetch on demand so
+	 * click selection can resolve id/label for tap/assert/input commands.
+	 */
+	const resolveElementsForHitTest = useCallback(async (): Promise<ScreenElement[]> => {
+		if (feedMode !== "mjpeg" && elementsRef.current.length > 0) {
+			return elementsRef.current;
+		}
+		// Wait out a concurrent tree fetch (e.g. delayed post-connect refresh).
+		const deadline = Date.now() + 8_000;
+		while (inFlightRef.current && Date.now() < deadline) {
+			await new Promise((r) => setTimeout(r, 50));
+		}
+		if (feedMode !== "mjpeg" && elementsRef.current.length > 0) {
+			return elementsRef.current;
+		}
+		const next = await refreshTree({ silent: true });
+		return next ?? elementsRef.current;
+	}, [feedMode, refreshTree]);
 
 	const refreshPollFrame = useCallback(
 		async (options: { includeTree?: boolean; silent?: boolean } = {}) => {
@@ -320,6 +348,12 @@ export function InspectorPage() {
 					// Cache-bust so a stuck <img> MJPEG connection is remounted.
 					setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
 					// Do not page-source immediately — WDA often dies under MJPEG + source on connect.
+					// One delayed tree fetch so the first click can resolve id/label taps.
+					const epoch = sessionEpochRef.current;
+					window.setTimeout(() => {
+						if (sessionEpochRef.current !== epoch || !activeRef.current) return;
+						void refreshTree({ silent: true });
+					}, 1500);
 				} else {
 					setFeedMode("poll");
 					await refreshPollFrame({ includeTree: true, silent: false });
@@ -332,7 +366,7 @@ export function InspectorPage() {
 				setBootLoading(false);
 			}
 		},
-		[refreshPollFrame, setStreamImage],
+		[refreshPollFrame, refreshTree, setStreamImage],
 	);
 
 	startLiveFeedRef.current = startLiveFeed;
@@ -972,6 +1006,7 @@ export function InspectorPage() {
 					onLiveControlChange={setLiveControl}
 					disabled={!connected || running}
 					snippetContext={snippetContext}
+					resolveElements={resolveElementsForHitTest}
 					onSelect={setSelection}
 					onDoubleTap={handleDoubleTap}
 					onPointer={sendPointer}

@@ -2,7 +2,7 @@ import type { SnippetContext } from "@/features/inspector/command-snippets";
 import { ElementActionMenu } from "@/features/inspector/element-action-menu";
 import { type InspectorSelection, hitTestElements } from "@/features/inspector/selection";
 import type { ScreenElement } from "@yoqa/runner-client";
-import { type MouseEvent, type PointerEvent, useCallback, useRef } from "react";
+import { type MouseEvent, type PointerEvent, useCallback, useRef, useState } from "react";
 
 function isSameSelection(a: InspectorSelection, b: InspectorSelection): boolean {
 	const aId = a.element?.id?.trim() ?? "";
@@ -13,6 +13,21 @@ function isSameSelection(a: InspectorSelection, b: InspectorSelection): boolean 
 		return aId === bId && aLabel === bLabel && a.x === b.x && a.y === b.y;
 	}
 	return a.x === b.x && a.y === b.y;
+}
+
+function selectionFromPoint(
+	elements: ScreenElement[],
+	point: { x: number; y: number },
+): InspectorSelection {
+	const element = hitTestElements(elements, point.x, point.y);
+	if (element) {
+		return {
+			x: Math.round(element.x + element.width / 2),
+			y: Math.round(element.y + element.height / 2),
+			element,
+		};
+	}
+	return { x: point.x, y: point.y, element: null };
 }
 
 type ScreenshotPanelProps = {
@@ -27,6 +42,8 @@ type ScreenshotPanelProps = {
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
 	snippetContext: SnippetContext;
+	/** Under MJPEG, fetch a fresh accessibility tree before hit-testing. */
+	resolveElements?: () => Promise<ScreenElement[]>;
 	onSelect: (selection: InspectorSelection) => void;
 	/** Double-click records a tap for the hit element/point. */
 	onDoubleTap: (selection: InspectorSelection) => void;
@@ -48,6 +65,7 @@ export function ScreenshotPanel({
 	onLiveControlChange,
 	disabled,
 	snippetContext,
+	resolveElements,
 	onSelect,
 	onDoubleTap,
 	onPointer,
@@ -58,6 +76,8 @@ export function ScreenshotPanel({
 }: ScreenshotPanelProps) {
 	const imgRef = useRef<HTMLImageElement | null>(null);
 	const pointerActiveRef = useRef(false);
+	const selectGenRef = useRef(0);
+	const [resolvingTree, setResolvingTree] = useState(false);
 
 	const coordsAtEvent = useCallback(
 		(event: { clientX: number; clientY: number }): { x: number; y: number } | null => {
@@ -75,34 +95,43 @@ export function ScreenshotPanel({
 	);
 
 	const selectAtEvent = useCallback(
-		(event: MouseEvent<HTMLElement>): InspectorSelection | null => {
+		async (event: MouseEvent<HTMLElement>): Promise<InspectorSelection | null> => {
 			if (disabled || !imgRef.current) return null;
 			const point = coordsAtEvent(event);
 			if (!point) return null;
-			const element = hitTestElements(elements, point.x, point.y);
-			if (element) {
-				return {
-					x: Math.round(element.x + element.width / 2),
-					y: Math.round(element.y + element.height / 2),
-					element,
-				};
+
+			let tree = elements;
+			if (resolveElements) {
+				const gen = ++selectGenRef.current;
+				setResolvingTree(true);
+				try {
+					tree = await resolveElements();
+				} finally {
+					if (selectGenRef.current === gen) {
+						setResolvingTree(false);
+					}
+				}
+				if (selectGenRef.current !== gen) return null;
 			}
-			return { x: point.x, y: point.y, element: null };
+
+			return selectionFromPoint(tree, point);
 		},
-		[coordsAtEvent, disabled, elements],
+		[coordsAtEvent, disabled, elements, resolveElements],
 	);
 
 	const handleClick = useCallback(
 		(event: MouseEvent<HTMLElement>) => {
 			if (liveControl) return;
-			const next = selectAtEvent(event);
-			if (!next) return;
-			// Clicking the current selection again dismisses the action menu.
-			if (selection && isSameSelection(selection, next)) {
-				onClearSelection();
-				return;
-			}
-			onSelect(next);
+			void (async () => {
+				const next = await selectAtEvent(event);
+				if (!next) return;
+				// Clicking the current selection again dismisses the action menu.
+				if (selection && isSameSelection(selection, next)) {
+					onClearSelection();
+					return;
+				}
+				onSelect(next);
+			})();
 		},
 		[liveControl, onClearSelection, onSelect, selectAtEvent, selection],
 	);
@@ -110,8 +139,10 @@ export function ScreenshotPanel({
 	const handleDoubleClick = useCallback(
 		(event: MouseEvent<HTMLElement>) => {
 			if (liveControl) return;
-			const next = selectAtEvent(event);
-			if (next) onDoubleTap(next);
+			void (async () => {
+				const next = await selectAtEvent(event);
+				if (next) onDoubleTap(next);
+			})();
 		},
 		[liveControl, onDoubleTap, selectAtEvent],
 	);
@@ -197,6 +228,8 @@ export function ScreenshotPanel({
 					<span className="text-helper text-on-surface-variant">
 						Tap / drag to control · double-click to double-tap
 					</span>
+				) : resolvingTree ? (
+					<span className="text-helper text-on-surface-variant">Reading screen…</span>
 				) : selection ? (
 					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
 						{selection.element?.id
@@ -233,14 +266,14 @@ export function ScreenshotPanel({
 							}
 							className={[
 								"relative block w-fit max-w-full touch-none",
-								disabled
-									? "cursor-not-allowed opacity-60"
+								disabled || resolvingTree
+									? "cursor-wait opacity-60"
 									: liveControl
 										? "cursor-grab active:cursor-grabbing"
 										: "cursor-crosshair",
 							].join(" ")}
-							onClick={disabled ? undefined : handleClick}
-							onDoubleClick={disabled ? undefined : handleDoubleClick}
+							onClick={disabled || resolvingTree ? undefined : handleClick}
+							onDoubleClick={disabled || resolvingTree ? undefined : handleDoubleClick}
 							onPointerDown={disabled ? undefined : handlePointerDown}
 							onPointerMove={disabled ? undefined : handlePointerMove}
 							onPointerUp={disabled ? undefined : handlePointerUp}
