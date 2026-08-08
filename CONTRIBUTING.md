@@ -7,7 +7,7 @@ Thanks for contributing to YoQA (`qa-agent`).
 1. Branch from an up-to-date `main` (`<area>/<short-slug>`). **Direct pushes to `main` are blocked.**
 2. Open a PR using the GitHub template (`.github/PULL_REQUEST_TEMPLATE.md`).
 3. Keep the branch **rebased onto `main`** before merge (linear history). GitHub merge method is **rebase only**.
-4. Get **at least one approving review** (CODEOWNERS must approve owned paths — see `.github/CODEOWNERS`).
+4. Get **at least one approving review** (CODEOWNERS must approve owned paths — see `.github/CODEOWNERS`). Authors cannot approve their own PRs.
 5. **Resolve all review conversations** before merge.
 6. Required checks must be green or the PR **cannot** merge:
    - **Lint & format** — `bun run lint:ci`
@@ -15,6 +15,8 @@ Thanks for contributing to YoQA (`qa-agent`).
    - **Typecheck** — `bun run check`
 
 Do not merge with failing/pending checks, missing approval, or open review threads.
+
+**Repository owner (solo):** may merge **their own** PRs via the ruleset PR-only bypass after CI is green (no second reviewer available). That bypass must **not** be used on other people’s PRs — contributors still need a real CODEOWNER / maintainer approval.
 
 ### Fork PRs
 
