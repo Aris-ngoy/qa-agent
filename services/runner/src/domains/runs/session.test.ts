@@ -6,12 +6,12 @@ describe("mergeCapabilities", () => {
 		expect(
 			mergeCapabilities(
 				[
-					{ key: "autoLaunch", value: "true" },
-					{ key: "appPackage", value: "com.app" },
+					{ id: "1", key: "autoLaunch", value: "true" },
+					{ id: "2", key: "appPackage", value: "com.app" },
 				],
 				[
-					{ key: "autoLaunch", value: "false" },
-					{ key: "appActivity", value: ".Main" },
+					{ id: "3", key: "autoLaunch", value: "false" },
+					{ id: "4", key: "appActivity", value: ".Main" },
 				],
 			),
 		).toEqual({
@@ -25,10 +25,10 @@ describe("mergeCapabilities", () => {
 		expect(
 			mergeCapabilities(
 				[
-					{ key: "  ", value: "ignored" },
-					{ key: "ok", value: "1" },
+					{ id: "1", key: "  ", value: "ignored" },
+					{ id: "2", key: "ok", value: "1" },
 				],
-				[{ key: "", value: "nope" }],
+				[{ id: "3", key: "", value: "nope" }],
 			),
 		).toEqual({ ok: "1" });
 	});

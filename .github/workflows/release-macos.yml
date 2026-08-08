@@ -5,24 +5,45 @@ on:
     tags:
       - "v*"
 
+# Least privilege: read by default; write only on the publish job.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-macos-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  authorize:
+    name: Authorize release
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Restrict to repository owner
+        run: |
+          if [ "${GITHUB_ACTOR}" != "${GITHUB_REPOSITORY_OWNER}" ]; then
+            echo "::error::Only @${GITHUB_REPOSITORY_OWNER} can run the release job (actor was @${GITHUB_ACTOR})."
+            exit 1
+          fi
+          echo "Release allowed for owner @${GITHUB_REPOSITORY_OWNER}."
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+
   release:
     name: Build & publish macOS DMG
+    needs: authorize
     runs-on: macos-14
     timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version: 1.2.23
 
@@ -38,7 +59,7 @@ jobs:
           ls -la apps/desktop/build/stable-macos-arm64 || true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
         with:
           tag_name: ${{ github.ref_name }}
           name: YoQA ${{ github.ref_name }}

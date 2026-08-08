@@ -1,0 +1,12 @@
+# Default owner for review requests. Paths below get stricter ownership.
+* @Aris-ngoy
+
+# Workflows & release automation
+.github/workflows/ @Aris-ngoy
+.github/dependabot.yml @Aris-ngoy
+
+# Desktop shell & packaging
+apps/desktop/ @Aris-ngoy
+
+# Local runner / providers / secrets handling
+services/runner/ @Aris-ngoy
