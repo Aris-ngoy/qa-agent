@@ -10,3 +10,6 @@ apps/desktop/ @Aris-ngoy
 
 # Local runner / providers / secrets handling
 services/runner/ @Aris-ngoy
+
+# Public npm CLI
+packages/cli/ @Aris-ngoy

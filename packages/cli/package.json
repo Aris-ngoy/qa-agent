@@ -1,0 +1,41 @@
+{
+	"name": "yoqa",
+	"version": "0.3.4",
+	"description": "YoQA CLI — drive local mobile QA from the terminal or CI (talks to the YoQA runner over HTTP)",
+	"license": "UNLICENSED",
+	"type": "module",
+	"bin": {
+		"yoqa": "./dist/main.js"
+	},
+	"files": ["dist"],
+	"engines": {
+		"node": ">=20"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Aris-ngoy/qa-agent.git",
+		"directory": "packages/cli"
+	},
+	"homepage": "https://docs.yoqa.ai/docs/cli",
+	"bugs": {
+		"url": "https://github.com/Aris-ngoy/qa-agent/issues"
+	},
+	"keywords": ["yoqa", "cli", "mobile", "qa", "appium", "testing"],
+	"scripts": {
+		"yoqa": "bun run src/main.ts",
+		"build": "bun run build.ts",
+		"prepublishOnly": "bun run build",
+		"check": "tsc --noEmit",
+		"health": "bun run src/main.ts health"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.30",
+		"@yoqa/runner-client": "workspace:*",
+		"@yoqa/typescript-config": "workspace:*",
+		"commander": "^14.0.0",
+		"typescript": "^5.9.3"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

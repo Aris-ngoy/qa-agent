@@ -3,13 +3,10 @@
 	"version": "0.3.4",
 	"private": true,
 	"type": "module",
-	"bin": {
-		"yoqa": "./src/interfaces/cli/main.ts"
-	},
 	"scripts": {
 		"start": "bun run src/index.ts",
 		"dev": "bun run --watch src/index.ts",
-		"health": "bun run src/interfaces/cli/main.ts health",
+		"health": "bun run --filter yoqa health",
 		"check": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -21,7 +18,6 @@
 		"@ai-sdk/xai": "^4",
 		"@yoqa/runner-client": "workspace:*",
 		"ai": "^7.0.37",
-		"commander": "^14.0.0",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.13.0",
 		"webdriverio": "^9.16.2",

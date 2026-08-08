@@ -24,6 +24,7 @@ See `.cursor/rules/document-plan-builds.mdc` for when and how agents should add 
 | [providers/opencode-model-selection.md](./providers/opencode-model-selection.md) | OpenCode Free/Paid model picker + free default |
 | [providers/ai-sdk-settings-providers.md](./providers/ai-sdk-settings-providers.md) | Groq / Google / Vertex / Antigravity + Codex vision |
 | [providers/cursor-grok-custom-settings.md](./providers/cursor-grok-custom-settings.md) | Cursor Agent, xAI Grok, Custom OpenAI-compatible |
+| [cli/npm-publish.md](./cli/npm-publish.md) | Public `yoqa` npm CLI + release workflow |
 | [desktop/cli-and-agents.md](./desktop/cli-and-agents.md) | Settings CLI/skill install + full `yoqa` agent CLI |
 | [desktop/manual-inspector.md](./desktop/manual-inspector.md) | Script-first Manual Inspector (select → shell script → run) |
 | [desktop/motion-system.md](./desktop/motion-system.md) | CSS View Transitions + shell/list motion polish |

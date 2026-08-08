@@ -1,5 +1,5 @@
 {
-	"name": "yoqa",
+	"name": "yoqa-monorepo",
 	"private": true,
 	"workspaces": ["apps/desktop", "packages/*", "services/*"],
 	"scripts": {
@@ -12,7 +12,8 @@
 		"test": "bun test packages/runner-client/src services/runner/src apps/desktop/src",
 		"check": "turbo run check && biome check .",
 		"runner": "bun run --filter @yoqa/runner start",
-		"health": "bun run --filter @yoqa/runner health",
+		"health": "bun run --filter yoqa health",
+		"yoqa": "bun run --filter yoqa yoqa",
 		"desktop": "bun run --filter @yoqa/desktop dev",
 		"desktop:release": "bun run --filter @yoqa/desktop build:release",
 		"docs": "bun run --cwd apps/docs dev",

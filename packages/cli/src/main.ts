@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+import { readFile, writeFile } from "node:fs/promises";
 import {
 	type DevicePlatform,
 	buildRunReportFromCatalogRun,
@@ -11,14 +11,26 @@ import {
 	suggestedRunReportBasename,
 } from "@yoqa/runner-client";
 import { Command } from "commander";
-import packageJson from "../../../package.json" with { type: "json" };
-import { runnerBaseUrl } from "../../settings";
+import packageJson from "../package.json" with { type: "json" };
+
+function runnerBaseUrl(): string {
+	const host = process.env.YOQA_RUNNER_HOST ?? "127.0.0.1";
+	const port = Number(process.env.YOQA_RUNNER_PORT ?? "7420");
+	if (!Number.isFinite(port) || port <= 0) {
+		throw new Error("YOQA_RUNNER_PORT must be a positive number");
+	}
+	return `http://${host}:${port}`;
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const program = new Command();
 
 program
 	.name("yoqa")
-	.description("Local YoQA CLI (talks to the Bun runner over HTTP)")
+	.description("Local YoQA CLI (talks to the local runner over HTTP)")
 	.version(packageJson.version);
 
 function client(baseUrl: string) {
@@ -1117,7 +1129,7 @@ runsCmd
 			const extension = format === "html" ? "html" : "md";
 			const outputPath =
 				options.output?.trim() || `${suggestedRunReportBasename(doc)}.${extension}`;
-			await Bun.write(outputPath, contents);
+			await writeFile(outputPath, contents, "utf8");
 			console.log(`wrote ${outputPath} (${doc.status}, ${steps.length} steps)`);
 		} catch (error) {
 			fail("runs report", error);
@@ -1234,7 +1246,7 @@ scriptCmd
 	.option("--json", "Print raw JSON per step")
 	.action(async (file: string, options: { baseUrl: string; json?: boolean }) => {
 		try {
-			const raw = await Bun.file(file).text();
+			const raw = await readFile(file, "utf8");
 			const parsed = caseScriptSchema.safeParse(JSON.parse(raw) as unknown);
 			if (!parsed.success) {
 				throw new Error(`Invalid CaseScript: ${parsed.error.message}`);
@@ -1257,7 +1269,7 @@ scriptCmd
 					} else {
 						console.log(`ok wait ${ms}ms (${idx}/${script.actions.length})`);
 					}
-					await Bun.sleep(ms);
+					await sleep(ms);
 					continue;
 				}
 
@@ -1271,7 +1283,7 @@ scriptCmd
 				} else {
 					console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
 				}
-				await Bun.sleep(800);
+				await sleep(800);
 			}
 
 			if (!options.json) {
