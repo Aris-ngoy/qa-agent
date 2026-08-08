@@ -131,10 +131,10 @@ export const opencodeDriver: DriverDefinition = {
 	kind: "opencode",
 	label: "OpenCode",
 	defaultBinary: "opencode",
-	authModes: ["api_key", "cli"],
+	authModes: ["cli", "api_key"],
 	envHints: ["OPENCODE_API_KEY", "OPENCODE_ZEN_API_KEY", "OPENCODE_SERVER_PASSWORD"],
 	loginInstructions:
-		"Create a Zen API key at opencode.ai/auth (required for hosted vision), or point Server URL at a local `opencode serve` and set OPENCODE_SERVER_PASSWORD.",
+		"Install OpenCode and sign in with `opencode providers login` (same as T3 Code). Optional: paste a Zen API key or set Server URL.",
 	async probe(binaryPath) {
 		return probeCliWithFriendlyErrors(binaryPath);
 	},
@@ -211,24 +211,24 @@ export const opencodeDriver: DriverDefinition = {
 		}
 		if (probe.found) {
 			const cliModels = await listOpenCodeModelsFromCli(input.binaryPath);
+			const versionSuffix = probe.version ? ` ${probe.version}` : "";
 			if (cliModels.models.length > 0) {
 				return {
-					ok: false,
-					status: "invalid",
-					message: `OpenCode CLI found (${cliModels.models.length} models). Paste a Zen API key from opencode.ai/auth for hosted vision, or set Server URL for a local opencode serve.`,
+					ok: true,
+					status: "connected",
+					message: `Authenticated · opencode${versionSuffix} · ${cliModels.models.length} models via CLI`,
 				};
 			}
 			return {
-				ok: false,
-				status: "invalid",
-				message:
-					"OpenCode CLI found, but vision needs a Zen API key. Paste a key from opencode.ai/auth or run `opencode providers login`.",
+				ok: true,
+				status: "connected",
+				message: `Authenticated · opencode${versionSuffix} · CLI found (run \`opencode providers login\` if models are empty)`,
 			};
 		}
 		return {
 			ok: false,
 			status: "invalid",
-			message: "Paste an OpenCode API key from opencode.ai/auth, or set a local Server URL",
+			message: "Install the OpenCode CLI, paste a Zen API key, or set a local Server URL",
 		};
 	},
 	async listModels(input) {

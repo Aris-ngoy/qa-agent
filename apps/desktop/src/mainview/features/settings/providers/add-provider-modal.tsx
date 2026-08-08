@@ -168,10 +168,13 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 	const goConfig = async () => {
 		if (!meta || !selectedKind) return;
 		// Custom OpenAI-compatible hosts often need no API key (local Ollama / LM Studio).
-		// OpenCode vision always needs a Zen key even when "CLI login" is selected.
-		const requiresKey =
-			selectedKind !== "custom" && (authMode !== "cli" || selectedKind === "opencode");
-		if (requiresKey && !apiKey.trim()) {
+		// OpenCode matches T3 Code: CLI login is enough — no Zen key required to continue.
+		if (
+			selectedKind !== "custom" &&
+			selectedKind !== "opencode" &&
+			authMode !== "cli" &&
+			!apiKey.trim()
+		) {
 			const hasEnv = envRows.some((r) => r.key.trim() && r.value.trim());
 			if (!hasEnv) {
 				setError(
@@ -331,48 +334,31 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 									</div>
 
 									{authMode === "cli" ? (
-										<div className="space-y-3">
-											<div className="rounded-lg border border-outline-variant bg-surface-container/40 px-3 py-3">
-												<p className="text-body-sm text-on-surface">
-													{probeMutation.isPending
-														? "Checking CLI…"
-														: probe?.detail || meta.loginInstructions}
+										<div className="rounded-lg border border-outline-variant bg-surface-container/40 px-3 py-3">
+											<p className="text-body-sm text-on-surface">
+												{probeMutation.isPending
+													? "Checking CLI…"
+													: probe?.detail || meta.loginInstructions}
+											</p>
+											{meta.loginInstructions ? (
+												<p className="mt-2 text-helper text-on-surface-variant">
+													{meta.loginInstructions}
 												</p>
-												{meta.loginInstructions ? (
-													<p className="mt-2 text-helper text-on-surface-variant">
-														{meta.loginInstructions}
-													</p>
-												) : null}
-												<Button
-													className="mt-3"
-													isDisabled={probeMutation.isPending}
-													size="sm"
-													variant="secondary"
-													onPress={() =>
-														void probeMutation.mutateAsync({
-															kind: selectedKind,
-															binaryPath: getValues("binaryPath").trim() || null,
-														})
-													}
-												>
-													Re-check
-												</Button>
-											</div>
-											{selectedKind === "opencode" ? (
-												<div>
-													<RhfTextField
-														control={control}
-														inputClassName={fieldInputClass}
-														label="API key"
-														name="apiKey"
-														placeholder={meta.keyPlaceholder}
-														type="password"
-													/>
-													<p className="mt-1.5 text-helper text-on-surface-variant">
-														Required for vision runs — create a key at opencode.ai/auth.
-													</p>
-												</div>
 											) : null}
+											<Button
+												className="mt-3"
+												isDisabled={probeMutation.isPending}
+												size="sm"
+												variant="secondary"
+												onPress={() =>
+													void probeMutation.mutateAsync({
+														kind: selectedKind,
+														binaryPath: getValues("binaryPath").trim() || null,
+													})
+												}
+											>
+												Re-check
+											</Button>
 										</div>
 									) : (
 										<div>
