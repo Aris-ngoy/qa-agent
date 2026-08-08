@@ -19,7 +19,7 @@ Make the packaged macOS `.app` able to ensure the managed Appium runtime when la
 
 ## How to verify
 
-1. Quit YoQA and anything on port `7420`
+1. Quit Yoqa and anything on port `7420`
 2. Open `/Applications/yoqa.app` from Finder (not Terminal)
 3. Connect / ensure runtime — should find `/opt/homebrew/bin/npm` (or nvm sibling) without the previous PATH error
 4. `curl -s http://127.0.0.1:7420/health` should report version `0.3.1`

@@ -1,8 +1,8 @@
 # Builds
 
-The **build registry** holds the app binaries YoQA runs tests against. Register a build once, then reference it by **ID** across many runs — no need to re-pass a file path each time.
+The **build registry** holds the app binaries Yoqa runs tests against. Register a build once, then reference it by **ID** across many runs — no need to re-pass a file path each time.
 
-This file covers managing builds *in YoQA*. To produce a binary in the first place, see [iOS Native Builds](builds-ios-native.md) · [React Native Builds](builds-react-native.md) · [Android Builds](builds-android.md).
+This file covers managing builds *in Yoqa*. To produce a binary in the first place, see [iOS Native Builds](builds-ios-native.md) · [React Native Builds](builds-react-native.md) · [Android Builds](builds-android.md).
 
 ```bash
 yoqa builds list APP                                  # list builds (ID, NAME, VERSION, PLATFORM, SOURCE)

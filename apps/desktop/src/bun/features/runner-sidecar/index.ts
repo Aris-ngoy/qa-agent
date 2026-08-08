@@ -149,7 +149,7 @@ export async function resolveRunnerLaunch(): Promise<RunnerLaunch> {
 	}
 
 	throw new Error(
-		"Could not locate the YoQA runner. Install the desktop app release, open the monorepo, or start it with `bun run runner`.",
+		"Could not locate the Yoqa runner. Install the desktop app release, open the monorepo, or start it with `bun run runner`.",
 	);
 }
 

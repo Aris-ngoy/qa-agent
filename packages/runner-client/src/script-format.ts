@@ -35,7 +35,7 @@ export function formatCaseScriptShell(script: CaseScript, meta: CaseScriptExport
 	const title = titleParts.length > 0 ? titleParts.join(" ") : "exported script";
 	const lines = [
 		"#!/usr/bin/env bash",
-		`# YoQA exported script — ${title}`,
+		`# Yoqa exported script — ${title}`,
 		"# Requires an active device session: yoqa devices connect <id>",
 		"# Prefer JSON + `yoqa script run <file.yoqa.json>` for structured replay.",
 		"set -euo pipefail",

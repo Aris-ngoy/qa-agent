@@ -136,7 +136,7 @@ export function ProvidersSection({ enabled }: ProvidersSectionProps) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				Connect AI providers via API keys, tokens, or local CLI auth so YoQA can run agent tests.
+				Connect AI providers via API keys, tokens, or local CLI auth so Yoqa can run agent tests.
 			</p>
 
 			<div className="rounded-2xl border border-outline-variant/80 bg-surface-container-lowest p-6 shadow-card">

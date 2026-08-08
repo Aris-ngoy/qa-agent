@@ -1,6 +1,6 @@
 ---
 title: CLI for agents
-description: Let a coding agent drive the YoQA CLI — read the screen, debug on device, and author test cases.
+description: Let a coding agent drive the Yoqa CLI — read the screen, debug on device, and author test cases.
 ---
 
 The [`yoqa` CLI](/docs/cli) is plain commands in, structured output out — a natural tool for Cursor, Claude Code, Codex, and similar agents. Instead of clicking through the UI, your coding agent can inspect the screen, drive the device, and maintain cases as part of the normal loop: change code → ask it to test → get pass/fail with screenshots.
@@ -21,7 +21,7 @@ Full command surface: [CLI reference](/docs/cli). Public index (once hosted): `h
 | Debug on device (coordinates) | Runner + connected device |
 | Debug with `-d` grounding | Runner + device + [AI provider](/docs/providers) |
 | Manage apps / cases / flows | Runner only |
-| Run saved cases with the YoQA agent | Runner + device + provider |
+| Run saved cases with the Yoqa agent | Runner + device + provider |
 
 No cloud sign-in for these Phase 1 workflows.
 
@@ -44,9 +44,9 @@ Never fire an action blind.
 | Screenshot | ~2× | Tree empty / visual-only UI |
 | `yoqa screen --full` | ~7× | Rare — need raw Appium dump |
 
-## Hand off to the YoQA agent
+## Hand off to the Yoqa agent
 
-Your coding agent authors and maintains cases; `yoqa runs create` (or the Runs UI) hands a saved case to the **YoQA agent**, which runs the perception loop autonomously. That split keeps exploration cheap and regression hands-off.
+Your coding agent authors and maintains cases; `yoqa runs create` (or the Runs UI) hands a saved case to the **Yoqa agent**, which runs the perception loop autonomously. That split keeps exploration cheap and regression hands-off.
 
 <CardGroup cols={2}>
   <Card title="CLI reference" icon="terminal" href="/docs/cli">

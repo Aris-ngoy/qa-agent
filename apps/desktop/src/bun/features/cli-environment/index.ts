@@ -222,7 +222,7 @@ async function probeCliState(resolvedEntrypoint: string | null): Promise<CliInst
 async function isManagedWrapper(path: string): Promise<boolean> {
 	try {
 		const contents = await Bun.file(path).text();
-		return contents.includes("YoQA CLI wrapper") || contents.includes(CLI_WRAPPER_PATH);
+		return contents.includes("Yoqa CLI wrapper") || contents.includes(CLI_WRAPPER_PATH);
 	} catch {
 		return false;
 	}
@@ -325,7 +325,7 @@ async function writeCliWrapper(entrypoint: CliEntrypoint): Promise<string> {
 			? `exec "${entrypoint.path}" "$@"`
 			: `exec bun "${entrypoint.path}" "$@"`;
 	const script = `#!/usr/bin/env bash
-# YoQA CLI wrapper — managed by the YoQA desktop app
+# Yoqa CLI wrapper — managed by the Yoqa desktop app
 set -euo pipefail
 ${execLine}
 `;
@@ -339,7 +339,7 @@ export async function installCli(): Promise<InstallResult> {
 		return {
 			ok: false,
 			error:
-				"Could not find yoqa CLI in the app bundle. Reinstall the YoQA app, or open the YoQA repo in development.",
+				"Could not find yoqa CLI in the app bundle. Reinstall the Yoqa app, or open the Yoqa repo in development.",
 		};
 	}
 
@@ -396,7 +396,7 @@ export async function installSkill(): Promise<InstallSkillResult> {
 		return {
 			ok: false,
 			error:
-				"Could not find the yoqa-testing skill in the app bundle. Reinstall the YoQA app, or open the YoQA repo in development.",
+				"Could not find the yoqa-testing skill in the app bundle. Reinstall the Yoqa app, or open the Yoqa repo in development.",
 		};
 	}
 

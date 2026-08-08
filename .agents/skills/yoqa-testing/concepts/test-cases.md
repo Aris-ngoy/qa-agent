@@ -4,7 +4,7 @@
 > For how to phrase good instructions and results see [Writing Good Test Cases](writing-test-cases.md).
 > For the authoring process and commands see the [workflow](../workflows/test-cases.md).
 
-YoQA is a mobile testing platform. You describe test scenarios in plain English — the AI agent runs them on a real device or simulator and reports pass/fail with screenshots.
+Yoqa is a mobile testing platform. You describe test scenarios in plain English — the AI agent runs them on a real device or simulator and reports pass/fail with screenshots.
 
 ## Test case
 

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are applied on the latest released YoQA desktop version and on `main`. Older tags are generally not backported unless a critical issue warrants it.
+Security fixes are applied on the latest released Yoqa desktop version and on `main`. Older tags are generally not backported unless a critical issue warrants it.
 
 ## Reporting a vulnerability
 

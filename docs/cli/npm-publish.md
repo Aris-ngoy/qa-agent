@@ -2,7 +2,7 @@
 
 ## Goal
 
-Ship a Node-compatible YoQA CLI on npm so terminals and CI/CD can run `npx @yoqa/cli` / `npm i -g @yoqa/cli` without installing from the desktop app.
+Ship a Node-compatible Yoqa CLI on npm so terminals and CI/CD can run `npx @yoqa/cli` / `npm i -g @yoqa/cli` without installing from the desktop app.
 
 ## Plan summary
 

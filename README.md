@@ -1,8 +1,8 @@
-# YoQA
+# Yoqa
 
 Local-first agentic mobile QA. Bun + Turborepo monorepo with an Electrobun desktop shell and a TypeScript (Hono) local runner. Phase 1 is **local-only** — no login, no cloud.
 
-**Product name:** YoQA (`yoqa`) · **Code name:** `qa-agent`
+**Product name:** Yoqa (`yoqa`) · **Code name:** `qa-agent`
 
 **Docs:** [Quickstart](https://yoqa.mintlify.site/docs/quickstart)
 

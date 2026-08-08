@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: Drive YoQA from your terminal — devices, screen, actions, catalog, and runs.
+description: Drive Yoqa from your terminal — devices, screen, actions, catalog, and runs.
 ---
 
 The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app that starts it) running.
@@ -13,7 +13,7 @@ The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app th
 
 <Steps>
   <Step title="Start the runner">
-    Open the YoQA desktop app — the bundled runner starts on `http://127.0.0.1:7420`. If you're running from a monorepo checkout instead, start it manually:
+    Open the Yoqa desktop app — the bundled runner starts on `http://127.0.0.1:7420`. If you're running from a monorepo checkout instead, start it manually:
 
     ```bash
     bun run runner
@@ -50,7 +50,7 @@ The CLI is a thin HTTP client. In GitHub Actions (or any Node ≥20 job), instal
   with:
     node-version: "22"
 - run: npm install -g @yoqa/cli
-# Ensure the YoQA runner is listening on 127.0.0.1:7420, then:
+# Ensure the Yoqa runner is listening on 127.0.0.1:7420, then:
 - run: yoqa health
 - run: yoqa status
 ```

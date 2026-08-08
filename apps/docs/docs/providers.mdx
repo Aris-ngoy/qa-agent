@@ -3,7 +3,7 @@ title: AI Providers
 description: Bring your own vision models for agent runs and description grounding.
 ---
 
-YoQA is **BYO** — you paste API keys or use local CLIs. No YoQA cloud credits are required for Phase 1 local runs.
+Yoqa is **BYO** — you paste API keys or use local CLIs. No Yoqa cloud credits are required for Phase 1 local runs.
 
 ## Where to configure
 
@@ -11,7 +11,7 @@ Desktop app → **Settings → Providers**:
 
 1. Add a provider.
 2. Paste the key (or complete CLI login where applicable).
-3. **Validate** — YoQA probes models / auth.
+3. **Validate** — Yoqa probes models / auth.
 4. Set a **default** provider (and model when the list is available).
 5. Confirm with `yoqa status` (`provider: …`).
 
@@ -37,13 +37,13 @@ Desktop app → **Settings → Providers**:
 | ---------- | --------------- |
 | `yoqa screen` / coordinate actions | No |
 | Description grounding (`-d`) | Yes |
-| Autonomous case runs (YoQA agent) | Yes |
+| Autonomous case runs (Yoqa agent) | Yes |
 | Apps / cases / flows CRUD | No |
 
 ## Tips
 
 - Prefer models that accept **image** inputs — text-only models fail vision decide.
-- For OpenCode, paste a **Zen API key** from [opencode.ai](https://opencode.ai) in **Settings → Providers**. YoQA calls hosted Zen at `opencode.ai/zen/v1`. A local `opencode serve` does not expose OpenAI `/v1/chat/completions`, so CLI login alone will not authenticate vision. New providers default to `mimo-v2.5-free`; most other free Zen models are text-only and reject screenshots — switch to `mimo-v2.5-free` (or a paid multimodal model on Zen with billing) if a run reports "No endpoints found that support image input".
+- For OpenCode, paste a **Zen API key** from [opencode.ai](https://opencode.ai) in **Settings → Providers**. Yoqa calls hosted Zen at `opencode.ai/zen/v1`. A local `opencode serve` does not expose OpenAI `/v1/chat/completions`, so CLI login alone will not authenticate vision. New providers default to `mimo-v2.5-free`; most other free Zen models are text-only and reject screenshots — switch to `mimo-v2.5-free` (or a paid multimodal model on Zen with billing) if a run reports "No endpoints found that support image input".
 - Custom base URLs are ideal for private gateways; leave the API key empty only if the host allows it.
 
 <CardGroup cols={2}>

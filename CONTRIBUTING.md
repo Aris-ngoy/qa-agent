@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to YoQA (`qa-agent`).
+Thanks for contributing to Yoqa (`qa-agent`).
 
 ## Pull requests
 

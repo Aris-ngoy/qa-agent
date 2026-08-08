@@ -1,6 +1,6 @@
-# Workflow: Run Saved Tests with the YoQA Agent
+# Workflow: Run Saved Tests with the Yoqa Agent
 
-Runs **already-saved** test cases (by number) autonomously on a connected device using the YoQA agent. Requires a paid account with credits.
+Runs **already-saved** test cases (by number) autonomously on a connected device using the Yoqa agent. Requires a paid account with credits.
 
 > Developing a new scenario? Drive it on the device first by describing the target elements in plain language and iterate before saving the case — see [Debug directly on device](debug-on-device.md).
 

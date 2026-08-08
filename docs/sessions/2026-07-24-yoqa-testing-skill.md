@@ -1,4 +1,4 @@
-# YoQA testing skill
+# Yoqa testing skill
 
 ## Goal
 
@@ -7,7 +7,7 @@ Ship the full `yoqa-testing` agent skill in this repo so coding agents can follo
 ## Plan summary
 
 - Full skill tree (18 markdown files), not a Phase-1 trim.
-- CLI/product/docs URLs branded for YoQA; keep target CLI surface from ARCHITECTURE even where not all commands are implemented yet.
+- CLI/product/docs URLs branded for Yoqa; keep target CLI surface from ARCHITECTURE even where not all commands are implemented yet.
 - Dual destination: Cursor-local `.agents/skills/yoqa-testing` and packaged `packages/skill/yoqa-testing`.
 - Startup rules use this repo’s runner + desktop split (`bun run runner` / `health` / `desktop`).
 

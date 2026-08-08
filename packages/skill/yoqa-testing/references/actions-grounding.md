@@ -1,6 +1,6 @@
 # Actions by Description (automatic grounding)
 
-**The primary way to act — prefer this.** Describe the target element in plain language with `--description`/`-d` and YoQA resolves its on-screen location for you (vision grounding) — you never compute coordinates. Requires a configured AI provider in Settings → Provider (`yoqa status` shows `provider: …`). If grounding keeps mislocating a target, fall back to [Actions by coordinates](actions-coordinates.md).
+**The primary way to act — prefer this.** Describe the target element in plain language with `--description`/`-d` and Yoqa resolves its on-screen location for you (vision grounding) — you never compute coordinates. Requires a configured AI provider in Settings → Provider (`yoqa status` shows `provider: …`). If grounding keeps mislocating a target, fall back to [Actions by coordinates](actions-coordinates.md).
 
 **Always `yoqa screen` first** to confirm the target is on screen, then describe it. Base the description **only on what is currently visible** — see [Inspect & App Control](inspect-and-app-control.md).
 

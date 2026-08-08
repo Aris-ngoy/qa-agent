@@ -36,7 +36,7 @@ export function ProviderRow({
 		(provider.status === "connected"
 			? "Authenticated"
 			: provider.status === "disabled"
-				? "Disabled in YoQA settings"
+				? "Disabled in Yoqa settings"
 				: provider.status === "not_found"
 					? "Not found"
 					: provider.status === "invalid"

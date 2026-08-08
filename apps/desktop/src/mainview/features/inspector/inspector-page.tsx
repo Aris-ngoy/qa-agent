@@ -108,7 +108,7 @@ function scriptHasBody(script: string): boolean {
 function defaultCaseNameFromScript(script: string): string {
 	for (const line of script.split(/\r?\n/)) {
 		const trimmed = line.trim();
-		if (trimmed.startsWith("#") && !trimmed.startsWith("#!") && !trimmed.includes("YoQA")) {
+		if (trimmed.startsWith("#") && !trimmed.startsWith("#!") && !trimmed.includes("Yoqa")) {
 			const label = trimmed.replace(/^#\s*/, "").trim();
 			if (label.length > 0 && label.length <= 80) return label;
 		}
