@@ -25,7 +25,7 @@ Desktop app → **Settings → Providers**:
 | **Google** | API key | Google AI Studio / Gemini |
 | **Google Vertex** | GCP credentials | Vertex AI Gemini |
 | **Antigravity** (`agy`) | CLI login (+ optional AI Studio key) | Vision via `agy --print` |
-| **OpenCode** | CLI login (optional Zen API key or Server URL) | Run `opencode providers login` and YoQA spawns a local `opencode serve` for vision. Paste a Zen key or point Server URL at an existing serve (with `OPENCODE_SERVER_PASSWORD`) to override |
+| **OpenCode** | Zen API key | Vision runs against hosted Zen (`opencode.ai/zen/v1`). CLI login alone is not enough — local `opencode serve` has no OpenAI-compatible `/v1`. Defaults to the free `mimo-v2.5-free` model |
 | **Cursor** | Cursor Agent CLI (+ optional key) | Vision via `cursor-agent --print` |
 | **Grok** (xAI) | API key | `@ai-sdk/xai` |
 | **Custom** | Optional key + **Base URL** | Any OpenAI-compatible gateway (e.g. local Ollama `/v1`) |
@@ -43,7 +43,7 @@ Desktop app → **Settings → Providers**:
 ## Tips
 
 - Prefer models that accept **image** inputs — text-only models fail vision decide.
-- For OpenCode, the default path is **CLI login**: install OpenCode, run `opencode providers login`, and add the provider in **Settings → Providers** with no key pasted. YoQA spawns and reuses a local `opencode serve` for vision. Paste a **Zen API key** if you want hosted Zen (pick a free vision-capable model unless you have paid Zen credits), or set a **Server URL** with `OPENCODE_SERVER_PASSWORD` to reuse an existing `opencode serve` over Basic `opencode:<password>` auth.
+- For OpenCode, paste a **Zen API key** from [opencode.ai](https://opencode.ai) in **Settings → Providers**. YoQA calls hosted Zen at `opencode.ai/zen/v1`. A local `opencode serve` does not expose OpenAI `/v1/chat/completions`, so CLI login alone will not authenticate vision. New providers default to `mimo-v2.5-free`; most other free Zen models are text-only and reject screenshots — switch to `mimo-v2.5-free` (or a paid multimodal model on Zen with billing) if a run reports "No endpoints found that support image input".
 - Custom base URLs are ideal for private gateways; leave the API key empty only if the host allows it.
 
 <CardGroup cols={2}>
