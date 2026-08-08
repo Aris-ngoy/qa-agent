@@ -19,8 +19,16 @@ alwaysApply: true
 
 - At least **one approving review** is required (stale reviews dismiss on new pushes).
 - **CODEOWNERS** reviews are required for owned paths (see `.github/CODEOWNERS`).
-- Authors cannot approve their own PRs. Do not ask to disable review protection.
-- `enforce_admins` stays on — do not add admin bypass for checks or reviews.
+- Authors cannot approve their own PRs.
+- Required status checks stay enforced for everyone (`enforce_admins` on classic protection) — never skip CI.
+
+### Owner bypass — own work only
+
+GitHub grants the **repository owner** a ruleset bypass (`pull_request` mode) so solo owner PRs can merge without a second reviewer. That capability is **scoped by policy**, not by the API:
+
+- **Allowed:** use the bypass **only** when the PR **author is the repository owner** (the owner’s own work), and all required checks are green, threads are resolved, and the branch is up to date.
+- **Forbidden:** do **not** use bypass / `--admin` / admin merge on anyone else’s PR. Contributor and Dependabot PRs still need a real approving review (typically the owner as CODEOWNER) before merge.
+- Prefer merging owner self-PRs via the REST merge endpoint (ruleset bypass) rather than disabling protection or asking to drop reviews globally.
 
 ## Required checks (must pass)
 
@@ -48,5 +56,6 @@ External / fork PRs require maintainer approval before Actions run (`all_externa
 ## Agent behavior
 
 - After opening or updating a plan-and-build PR, if checks fail, fix and push until green (or clearly report a blocker).
-- Never use admin bypass, `--no-verify`, or force-push to `main`.
-- Never merge a PR that is behind `main`, lacks required approval, has unresolved conversations, or has failing required checks.
+- Never use `--no-verify` or force-push to `main`.
+- Never merge a PR that is behind `main`, has unresolved conversations, or has failing required checks.
+- For **owner-authored** PRs only: after green checks, merging via ruleset bypass is OK. For **any other author**: require a real approval first; never admin-bypass their review gate.

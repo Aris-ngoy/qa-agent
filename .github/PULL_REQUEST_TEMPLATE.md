@@ -34,6 +34,8 @@
 
 Missing approval, open threads, or failing/pending required checks = **not mergeable**.
 
+Owner self-PRs may use the PR-only ruleset bypass after CI is green; do **not** bypass review for other authors.
+
 ## Docs
 
 <!-- Plan-and-build work usually updates docs/<area>/… or docs/sessions/…. -->

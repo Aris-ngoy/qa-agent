@@ -27,6 +27,7 @@ Harden how YoQA accepts contributions and ships releases: branch/PR lifecycle, C
 
 ## Follow-ups
 
-- Add a second reviewer (or owner bypass) so solo PRs can merge
-- Optional: require signed commits; migrate classic protection fully to rulesets
+- Done: owner PR-only ruleset bypass for **own** PRs; policy forbids bypass on others’ work (see `merge-and-ci.mdc` / `CONTRIBUTING.md`)
+- Optional: invite a second maintainer so owner self-PRs can use normal approvals instead of bypass
+- Optional: require signed commits; finish classic → rulesets migration (status checks still on classic)
 - Add codesign/notarize Environment secrets when ready
