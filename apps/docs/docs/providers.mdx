@@ -25,7 +25,7 @@ Desktop app → **Settings → Providers**:
 | **Google** | API key | Google AI Studio / Gemini |
 | **Google Vertex** | GCP credentials | Vertex AI Gemini |
 | **Antigravity** (`agy`) | CLI login (+ optional AI Studio key) | Vision via `agy --print` |
-| **OpenCode** | API key | Free / Paid model picker; prefer vision-capable free defaults |
+| **OpenCode** | Zen API key | Free / Paid model picker; the `opencode` CLI in `PATH` is not enough for vision — paste a Zen key to enable it |
 | **Cursor** | Cursor Agent CLI (+ optional key) | Vision via `cursor-agent --print` |
 | **Grok** (xAI) | API key | `@ai-sdk/xai` |
 | **Custom** | Optional key + **Base URL** | Any OpenAI-compatible gateway (e.g. local Ollama `/v1`) |
@@ -43,7 +43,7 @@ Desktop app → **Settings → Providers**:
 ## Tips
 
 - Prefer models that accept **image** inputs — text-only models fail vision decide.
-- For OpenCode, start with a **free vision-capable** model unless you have paid Zen credits.
+- For OpenCode, vision requires a **Zen API key** — installing the `opencode` CLI alone will look connected but agent runs will fail. Paste the key in **Settings → Providers**, then pick a free vision-capable model unless you have paid Zen credits.
 - Custom base URLs are ideal for private gateways; leave the API key empty only if the host allows it.
 
 <CardGroup cols={2}>
