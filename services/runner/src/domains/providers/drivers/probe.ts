@@ -14,9 +14,14 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 async function which(binary: string): Promise<string | null> {
+	const fromBun =
+		typeof Bun !== "undefined" && typeof Bun.which === "function" ? Bun.which(binary) : null;
+	if (fromBun) return fromBun;
+
 	const proc = Bun.spawn(["which", binary], {
 		stdout: "pipe",
 		stderr: "pipe",
+		env: process.env,
 	});
 	const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
 	if (exitCode !== 0) return null;

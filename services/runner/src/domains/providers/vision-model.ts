@@ -12,7 +12,11 @@ import type { ActiveProviderAuth } from "./application";
 import { ANTIGRAVITY_DEFAULT_VISION_MODEL } from "./drivers/antigravity";
 import { CURSOR_DEFAULT_VISION_MODEL } from "./drivers/cursor";
 import { GROK_DEFAULT_VISION_MODEL } from "./drivers/grok";
-import { OPENCODE_DEFAULT_VISION_MODEL } from "./drivers/opencode";
+import {
+	OPENCODE_DEFAULT_VISION_MODEL,
+	openCodeServerAuthHeaders,
+	resolveOpenCodeServerPassword,
+} from "./drivers/opencode";
 
 export {
 	OPENCODE_DEFAULT_VISION_MODEL,
@@ -104,15 +108,28 @@ async function readOpenCodeCliAuthKey(): Promise<string | null> {
 			if (!(await file.exists())) continue;
 			const json: unknown = await file.json();
 			if (!json || typeof json !== "object") continue;
-			const opencode = (json as Record<string, unknown>).opencode;
-			if (
-				opencode &&
-				typeof opencode === "object" &&
-				"key" in opencode &&
-				typeof (opencode as { key: unknown }).key === "string"
-			) {
-				const key = (opencode as { key: string }).key.trim();
-				if (key) return key;
+			const record = json as Record<string, unknown>;
+
+			const opencode = record.opencode;
+			if (opencode && typeof opencode === "object") {
+				const entry = opencode as Record<string, unknown>;
+				for (const field of ["key", "apiKey", "token"] as const) {
+					const value = entry[field];
+					if (typeof value === "string" && value.trim()) return value.trim();
+				}
+			}
+
+			// Newer CLI may store flat provider map entries with type/key.
+			for (const value of Object.values(record)) {
+				if (!value || typeof value !== "object") continue;
+				const entry = value as Record<string, unknown>;
+				const key = entry.key ?? entry.apiKey ?? entry.token;
+				if (typeof key === "string" && key.trim()) {
+					const type = typeof entry.type === "string" ? entry.type.toLowerCase() : "";
+					if (!type || type.includes("api") || type.includes("key") || type === "opencode") {
+						return key.trim();
+					}
+				}
 			}
 		} catch {
 			// Try next path.
@@ -211,28 +228,36 @@ export function formatProviderHttpError(label: string, status: number, body: str
 
 /**
  * DeepSeek-style OpenCode models burn tokens on reasoning unless thinking is off.
- * Inject into chat/completions JSON bodies via a custom fetch wrapper.
+ * Local `opencode serve` (t3code pattern) expects Basic `opencode:<password>` auth.
  */
-function withOpenCodeThinkingDisabled(fetchImpl: FetchFunction = globalThis.fetch): FetchFunction {
+function withOpenCodeRequestHooks(opts: {
+	disableThinking: boolean;
+	authHeaders: Record<string, string> | null;
+	fetchImpl?: FetchFunction;
+}): FetchFunction {
+	const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
 	return (async (input, init) => {
-		if (!init?.body || typeof init.body !== "string") {
-			return fetchImpl(input, init);
+		const headers = new Headers(init?.headers);
+		if (opts.authHeaders?.Authorization) {
+			headers.set("Authorization", opts.authHeaders.Authorization);
+		}
+
+		if (!opts.disableThinking || !init?.body || typeof init.body !== "string") {
+			return fetchImpl(input, { ...init, headers });
 		}
 		try {
 			const parsed: unknown = JSON.parse(init.body);
 			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-				return fetchImpl(input, init);
+				return fetchImpl(input, { ...init, headers });
 			}
-			const body = {
-				...(parsed as Record<string, unknown>),
-				thinking: { type: "disabled" },
-			};
+			const body = { ...(parsed as Record<string, unknown>), thinking: { type: "disabled" } };
 			return fetchImpl(input, {
 				...init,
+				headers,
 				body: JSON.stringify(body),
 			});
 		} catch {
-			return fetchImpl(input, init);
+			return fetchImpl(input, { ...init, headers });
 		}
 	}) as FetchFunction;
 }
@@ -242,8 +267,9 @@ async function hasVisionAuth(auth: ActiveProviderAuth): Promise<boolean> {
 		case "anthropic":
 			return Boolean(resolveAnthropicKey(auth));
 		case "openai":
-		case "opencode":
 			return Boolean(await resolveOpenAiCompatibleKey(auth));
+		case "opencode":
+			return Boolean(await resolveOpenAiCompatibleKey(auth)) || Boolean(auth.serverUrl?.trim());
 		case "groq":
 			return Boolean(resolveGroqKey(auth));
 		case "grok":
@@ -292,7 +318,7 @@ export async function assertVisionCapableProvider(
 	if (!(await hasVisionAuth(auth))) {
 		const hint =
 			auth.kind === "opencode"
-				? " Add an API key in Settings, set OPENCODE_API_KEY, or run `opencode providers login`."
+				? " Add an API key in Settings, set OPENCODE_API_KEY, run `opencode providers login`, or set Server URL for a local `opencode serve`."
 				: auth.kind === "codex"
 					? " Paste an OpenAI API key in Settings (Codex CLI OAuth vision needs Zod 4)."
 					: auth.kind === "antigravity"
@@ -336,17 +362,32 @@ export async function createVisionModel(auth: ActiveProviderAuth): Promise<Visio
 	}
 
 	if (auth.kind === "openai" || auth.kind === "opencode") {
-		const apiKey = await resolveOpenAiCompatibleKey(auth);
 		const label = auth.kind === "opencode" ? "OpenCode" : "OpenAI";
-		if (!apiKey) {
+		const baseURL = resolveOpenAiCompatibleBaseUrl(auth);
+		const apiKey = await resolveOpenAiCompatibleKey(auth);
+		const serverPassword =
+			auth.kind === "opencode" ? resolveOpenCodeServerPassword(auth.env) : null;
+		const usingLocalServer = auth.kind === "opencode" && Boolean(auth.serverUrl?.trim());
+
+		if (!apiKey && !usingLocalServer) {
 			throw new AgentProviderError(`${label} provider has no API key`);
 		}
-		const baseURL = resolveOpenAiCompatibleBaseUrl(auth);
+
+		const serverAuthHeaders =
+			usingLocalServer && serverPassword ? openCodeServerAuthHeaders(serverPassword) : null;
+
 		const provider = createOpenAI({
-			apiKey,
+			apiKey: apiKey || serverPassword || "opencode",
 			baseURL,
 			name: auth.kind,
-			...(auth.kind === "opencode" ? { fetch: withOpenCodeThinkingDisabled() } : {}),
+			...(auth.kind === "opencode"
+				? {
+						fetch: withOpenCodeRequestHooks({
+							disableThinking: true,
+							authHeaders: serverAuthHeaders,
+						}),
+					}
+				: {}),
 		});
 		return {
 			model: provider.chat(modelId),
