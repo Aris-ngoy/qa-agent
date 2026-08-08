@@ -17,7 +17,7 @@
 		"@ai-sdk/google": "^4.0.23",
 		"@ai-sdk/google-vertex": "^5.0.28",
 		"@ai-sdk/groq": "^4.0.13",
-		"@ai-sdk/openai": "^4.0.20",
+		"@ai-sdk/openai": "^4.0.30",
 		"@ai-sdk/xai": "^4",
 		"@yoqa/runner-client": "workspace:*",
 		"ai": "^7.0.37",
