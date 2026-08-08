@@ -14,21 +14,21 @@ Secrets for publishing releases (macOS codesign later, **npm CLI** now) live in 
 
 Add these as **Environment secrets** on [`release`](https://github.com/Aris-ngoy/qa-agent/settings/environments):
 
-### npm (`yoqa` CLI)
+### npm (`@yoqa/cli`)
 
 | Secret | Purpose |
 |--------|---------|
-| `NPM_TOKEN` | npm automation/granular access token with publish permission for the `yoqa` package |
+| `NPM_TOKEN` | npm granular access token with publish permission for `@yoqa/cli` (or the `@yoqa` scope). Enable **Bypass 2FA** for CI. |
 
 Used by [`.github/workflows/release-npm-cli.yml`](../../.github/workflows/release-npm-cli.yml) as `NODE_AUTH_TOKEN`.
 
 One-time setup:
 
-1. Log in to npm (`npm login`) and ensure you can publish the unscoped `yoqa` name.
-2. Create an automation token (or granular token scoped to `yoqa` publish).
+1. Create the npm org **`yoqa`** (so you can publish `@yoqa/*`) and ensure 2FA is enabled on your account.
+2. Create a granular token with read/write + **Bypass 2FA**, scoped to `@yoqa` (or all packages for the first publish).
 3. Paste it into Environment **release** → `NPM_TOKEN`.
 4. Bump [`packages/cli/package.json`](../../packages/cli/package.json) `version` to match the `v*` tag you will push (e.g. tag `v0.3.4` → version `0.3.4`).
-5. Push the tag as the repository owner; approve the `release` deployment; confirm `npx yoqa@<version> --version`.
+5. Push the tag as the repository owner; approve the `release` deployment; confirm `npx @yoqa/cli@<version> --version`.
 
 ### Apple codesign / notarize (later)
 

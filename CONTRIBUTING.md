@@ -24,9 +24,9 @@ Workflows from external contributors require a maintainer to **approve the workf
 
 ## Releases
 
-Only the **repository owner** can create `v*` tags. After the tag push, the owner must also **approve the `release` Environment** deployment in Actions (macOS DMG and **npm `yoqa` CLI**). Contributors should not push release tags.
+Only the **repository owner** can create `v*` tags. After the tag push, the owner must also **approve the `release` Environment** deployment in Actions (macOS DMG and **npm `@yoqa/cli`**). Contributors should not push release tags.
 
-Signing / publish secrets live only in the `release` Environment — see [docs/desktop/release-signing-secrets.md](./docs/desktop/release-signing-secrets.md) (`NPM_TOKEN` for the CLI; Apple certs later).
+Signing / publish secrets live only in the `release` Environment — see [docs/desktop/release-signing-secrets.md](./docs/desktop/release-signing-secrets.md) (`NPM_TOKEN` for `@yoqa/cli`; Apple certs later).
 
 ## Security
 

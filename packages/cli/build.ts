@@ -19,4 +19,7 @@ if (!result.success) {
 	process.exit(1);
 }
 
+const { chmod } = await import("node:fs/promises");
+await chmod("./dist/main.js", 0o755);
+
 console.log("[yoqa] built dist/main.js (node target)");
