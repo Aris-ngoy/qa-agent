@@ -35,7 +35,7 @@
 		"@yoqa/typescript-config": "workspace:*",
 		"concurrently": "^9.2.1",
 		"tailwindcss": "^4.1.18",
-		"typescript": "^5.9.3",
+		"typescript": "^7.0.2",
 		"vite": "^6.4.1"
 	}
 }
