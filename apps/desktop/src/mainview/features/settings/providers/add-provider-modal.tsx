@@ -142,11 +142,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 			serverUrl: "",
 			baseUrl: "",
 			defaultModel:
-				kind === "opencode"
-					? "deepseek-v4-flash-free"
-					: kind === "grok"
-						? "grok-2-vision-1212"
-						: "",
+				kind === "opencode" ? "mimo-v2.5-free" : kind === "grok" ? "grok-2-vision-1212" : "",
 			envRows: driver.envHints.slice(0, 1).map((key) => newEnvRow(key)),
 		});
 		setProbe(null);
@@ -168,13 +164,14 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 	const goConfig = async () => {
 		if (!meta || !selectedKind) return;
 		// Custom OpenAI-compatible hosts often need no API key (local Ollama / LM Studio).
-		// OpenCode matches T3 Code: CLI login is enough — no Zen key required to continue.
-		if (
-			selectedKind !== "custom" &&
-			selectedKind !== "opencode" &&
-			authMode !== "cli" &&
-			!apiKey.trim()
-		) {
+		// OpenCode vision uses hosted Zen — require a key (local serve has no OpenAI /v1).
+		if (selectedKind === "opencode") {
+			const hasEnv = envRows.some((r) => r.key.trim() && r.value.trim());
+			if (!apiKey.trim() && !hasEnv) {
+				setError("Paste a Zen API key from opencode.ai to continue (required for vision)");
+				return;
+			}
+		} else if (selectedKind !== "custom" && authMode !== "cli" && !apiKey.trim()) {
 			const hasEnv = envRows.some((r) => r.key.trim() && r.value.trim());
 			if (!hasEnv) {
 				setError(
@@ -473,7 +470,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 											name="defaultModel"
 											placeholder={
 												selectedKind === "opencode"
-													? "deepseek-v4-flash-free"
+													? "mimo-v2.5-free"
 													: selectedKind === "grok"
 														? "grok-2-vision-1212"
 														: selectedKind === "custom"
@@ -483,8 +480,8 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 										/>
 										{selectedKind === "opencode" ? (
 											<p className="mt-1.5 text-helper text-on-surface-variant">
-												Defaults to deepseek-v4-flash-free (free + screenshots). Change later in
-												provider details.
+												Defaults to mimo-v2.5-free (free + screenshots). Change later in provider
+												details.
 											</p>
 										) : null}
 									</div>

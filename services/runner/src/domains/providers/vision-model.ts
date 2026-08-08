@@ -12,12 +12,7 @@ import type { ActiveProviderAuth } from "./application";
 import { ANTIGRAVITY_DEFAULT_VISION_MODEL } from "./drivers/antigravity";
 import { CURSOR_DEFAULT_VISION_MODEL } from "./drivers/cursor";
 import { GROK_DEFAULT_VISION_MODEL } from "./drivers/grok";
-import {
-	OPENCODE_DEFAULT_VISION_MODEL,
-	openCodeServerAuthHeaders,
-	resolveOpenCodeServerPassword,
-} from "./drivers/opencode";
-import { ensureOpenCodeServer, openCodeCliAvailable } from "./opencode-serve";
+import { OPENCODE_DEFAULT_VISION_MODEL } from "./drivers/opencode";
 
 export {
 	OPENCODE_DEFAULT_VISION_MODEL,
@@ -158,9 +153,8 @@ export function resolveOpenAiCompatibleBaseUrl(auth: ActiveProviderAuth): string
 		return auth.baseUrl.replace(/\/$/, "");
 	}
 	if (auth.kind === "opencode") {
-		if (auth.serverUrl?.trim()) {
-			return `${auth.serverUrl.replace(/\/$/, "")}/v1`;
-		}
+		// Local `opencode serve` exposes a native OpenAPI (session/message), not OpenAI /v1.
+		// Vision uses hosted Zen. Put an OpenAI-compatible proxy in Base URL if needed.
 		return "https://opencode.ai/zen/v1";
 	}
 	if (auth.kind === "groq") {
@@ -213,23 +207,38 @@ function resolveVertexApiKey(auth: ActiveProviderAuth): string | null {
 	);
 }
 
+export function looksLikeHtmlResponse(body: string): boolean {
+	const trimmed = body.trimStart().slice(0, 200).toLowerCase();
+	return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html");
+}
+
 export function formatProviderHttpError(label: string, status: number, body: string): string {
+	if (label === "OpenCode" && looksLikeHtmlResponse(body)) {
+		return `OpenCode returned its web UI instead of an API response (HTTP ${status}). Local \`opencode serve\` is not OpenAI-compatible — paste a Zen API key from opencode.ai in Settings → Provider (or set OPENCODE_API_KEY).`;
+	}
 	if (label === "OpenCode" && body.includes("CreditsError")) {
 		return `OpenCode Zen needs billing for this model, or pick a free model in Settings → Provider. Add a payment method at opencode.ai, or switch to a Free vision model (e.g. ${OPENCODE_DEFAULT_VISION_MODEL}).`;
+	}
+	if (
+		label === "OpenCode" &&
+		(body.includes("unknown variant `image_url`") ||
+			body.includes("No endpoints found that support image input") ||
+			body.includes("expected `text`"))
+	) {
+		return `This OpenCode model does not accept screenshots (text-only). In Settings → Provider, set the default model to ${OPENCODE_DEFAULT_VISION_MODEL} (or another vision-capable model). deepseek-v4-flash-free and big-pickle are text-only on Zen.`;
 	}
 	if (
 		label === "OpenCode" &&
 		status >= 500 &&
 		(body.includes("Internal server error") || body.includes('"type":"error"'))
 	) {
-		return `OpenCode Zen returned an internal error for this vision request. Many free models (including north-mini-code-free and big-pickle) reject screenshots with opaque 500s. In Settings → Provider, set the default model to ${OPENCODE_DEFAULT_VISION_MODEL} (or another vision-capable model).`;
+		return `OpenCode Zen returned an internal error for this vision request. Many free models reject screenshots. In Settings → Provider, set the default model to ${OPENCODE_DEFAULT_VISION_MODEL} (or another vision-capable model).`;
 	}
 	return `${label} request failed (${status}): ${body.slice(0, 400)}`;
 }
 
 /**
  * DeepSeek-style OpenCode models burn tokens on reasoning unless thinking is off.
- * Local `opencode serve` (t3code pattern) expects Basic `opencode:<password>` auth.
  */
 function withOpenCodeRequestHooks(opts: {
 	disableThinking: boolean;
@@ -270,12 +279,8 @@ async function hasVisionAuth(auth: ActiveProviderAuth): Promise<boolean> {
 		case "openai":
 			return Boolean(await resolveOpenAiCompatibleKey(auth));
 		case "opencode":
-			return (
-				Boolean(await resolveOpenAiCompatibleKey(auth)) ||
-				Boolean(auth.serverUrl?.trim()) ||
-				auth.authMode === "cli" ||
-				(await openCodeCliAvailable(auth.binaryPath))
-			);
+			// Vision speaks OpenAI /v1 against Zen. Local `opencode serve` is not compatible.
+			return Boolean(await resolveOpenAiCompatibleKey(auth));
 		case "groq":
 			return Boolean(resolveGroqKey(auth));
 		case "grok":
@@ -324,7 +329,7 @@ export async function assertVisionCapableProvider(
 	if (!(await hasVisionAuth(auth))) {
 		const hint =
 			auth.kind === "opencode"
-				? " Install OpenCode (`opencode`), run `opencode providers login`, paste a Zen API key, or set Server URL."
+				? " Paste a Zen API key from https://opencode.ai in Settings (or set OPENCODE_API_KEY). Local `opencode serve` is not OpenAI-compatible."
 				: auth.kind === "codex"
 					? " Paste an OpenAI API key in Settings (Codex CLI OAuth vision needs Zod 4)."
 					: auth.kind === "antigravity"
@@ -370,54 +375,33 @@ export async function createVisionModel(auth: ActiveProviderAuth): Promise<Visio
 	if (auth.kind === "openai" || auth.kind === "opencode") {
 		const label = auth.kind === "opencode" ? "OpenCode" : "OpenAI";
 		const apiKey = await resolveOpenAiCompatibleKey(auth);
-		const serverPassword =
-			auth.kind === "opencode" ? resolveOpenCodeServerPassword(auth.env) : null;
-
-		let baseURL = resolveOpenAiCompatibleBaseUrl(auth);
-		let usingLocalServer = auth.kind === "opencode" && Boolean(auth.serverUrl?.trim());
-		let modelIdForRequest = modelId;
-
-		if (auth.kind === "opencode" && !apiKey) {
-			try {
-				const server = await ensureOpenCodeServer({
-					binaryPath: auth.binaryPath,
-					serverUrl: auth.serverUrl,
-				});
-				baseURL = `${server.url}/v1`;
-				usingLocalServer = true;
-				// Local OpenCode expects provider/model slugs (t3code style).
-				if (!modelIdForRequest.includes("/")) {
-					modelIdForRequest = `opencode/${modelIdForRequest}`;
-				}
-			} catch (error) {
-				const detail = error instanceof Error ? error.message : String(error);
-				throw new AgentProviderError(`OpenCode CLI mode could not start a local server: ${detail}`);
-			}
-		} else if (!apiKey && !usingLocalServer) {
-			throw new AgentProviderError(`${label} provider has no API key`);
+		if (!apiKey) {
+			throw new AgentProviderError(
+				auth.kind === "opencode"
+					? "OpenCode vision needs a Zen API key. Local `opencode serve` returns a web UI for /v1 (not chat completions). Paste a key from https://opencode.ai in Settings → Provider, or set OPENCODE_API_KEY."
+					: `${label} provider has no API key`,
+			);
 		}
 
-		const serverAuthHeaders =
-			usingLocalServer && serverPassword ? openCodeServerAuthHeaders(serverPassword) : null;
-
+		const baseURL = resolveOpenAiCompatibleBaseUrl(auth);
 		const provider = createOpenAI({
-			apiKey: apiKey || serverPassword || "opencode",
+			apiKey,
 			baseURL,
 			name: auth.kind,
 			...(auth.kind === "opencode"
 				? {
 						fetch: withOpenCodeRequestHooks({
 							disableThinking: true,
-							authHeaders: serverAuthHeaders,
+							authHeaders: null,
 						}),
 					}
 				: {}),
 		});
 		return {
-			model: provider.chat(modelIdForRequest),
+			model: provider.chat(modelId),
 			label,
 			kind: auth.kind,
-			modelId: modelIdForRequest,
+			modelId,
 		};
 	}
 
