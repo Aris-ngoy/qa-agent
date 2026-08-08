@@ -13,7 +13,7 @@ Local-first agentic mobile QA. Bun + Turborepo monorepo with an Electrobun deskt
 | Monorepo | Bun workspaces + Turborepo |
 | Desktop | Electrobun + React 19 + TanStack Router/Query + Vite + Tailwind CSS v4 |
 | Runner | Bun + Hono + Zod (`@yoqa/runner`) |
-| CLI | `yoqa` (commander) → HTTP to the runner |
+| CLI | `yoqa` npm package (commander) → HTTP to the runner |
 | Lint/format | Biome |
 
 ## Prerequisites
@@ -60,7 +60,8 @@ bun run docs          # Mintlify product docs (apps/docs)
 ```
 apps/desktop          Electrobun + React UI
 apps/docs             Public Mintlify docs (not a Bun workspace package)
-services/runner       Local Hono runner + yoqa CLI
+services/runner       Local Hono runner
+packages/cli          Public `yoqa` CLI (npm / npx)
 packages/runner-client
 packages/ui
 packages/typescript-config

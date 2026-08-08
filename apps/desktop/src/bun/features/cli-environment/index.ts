@@ -139,7 +139,7 @@ async function resolveCliEntrypoint(): Promise<CliEntrypoint | null> {
 
 	const repoRoot = await findRepoRoot();
 	if (!repoRoot) return null;
-	const mainTs = join(repoRoot, "services/runner/src/interfaces/cli/main.ts");
+	const mainTs = join(repoRoot, "packages/cli/src/main.ts");
 	return (await pathExists(mainTs)) ? { kind: "script", path: mainTs } : null;
 }
 

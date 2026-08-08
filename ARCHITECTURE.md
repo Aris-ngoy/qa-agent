@@ -169,7 +169,7 @@ Desktop + local runner + Appium + optional cloud, implemented in **TypeScript th
 | Desktop UI | **React 19 + Vite + TanStack Router + Query** | Type-safe routes; Start reserved for later web |
 | Styling / lint | **Tailwind CSS v4 + Biome** | Shared UI + fast lint/format |
 | Local runner | **Bun + Hono + Zod + Drizzle/SQLite** | Same language as desktop/CLI; local catalog in `~/.yoqa/yoqa.db` |
-| CLI | **commander** in runner package → HTTP | `yoqa` binary; thin client over localhost |
+| CLI | **commander** in `packages/cli` (`yoqa` on npm) → HTTP | Thin Node/npx client over localhost runner |
 | Device control | **Appium 2** + WebDriverIO | Documented under the hood |
 | Runtime bundle | Ship **Node 22 + Appium** per arch | Zero global install for users |
 | Local catalog | **SQLite via Drizzle** in runner | Apps, cases, flows, tags, AI providers (Phase 3+); devices stay live-discovered |
@@ -522,7 +522,7 @@ repo/
 │       └── package.json
 ├── services/
 │   └── runner/                       # @yoqa/runner (Bun + Hono)
-│       ├── package.json              # bin: yoqa
+│       ├── package.json
 │       └── src/
 │           ├── index.ts              # HTTP server entry
 │           ├── settings.ts           # APPIUM_HOST, port, paths
@@ -534,20 +534,17 @@ repo/
 │           │       ├── application.ts  # screen, screenshot, actions
 │           │       └── tree-cleaner.ts # raw → cleaned 0–1000 tree
 │           ├── interfaces/
-│           │   ├── http/
-│           │   │   ├── health.ts
-│           │   │   ├── devices.ts
-│           │   │   ├── inspect.ts
-│           │   │   └── actions.ts
-│           │   └── cli/
-│           │       ├── main.ts         # commander `yoqa`
-│           │       └── commands/
-│           │           └── health.ts
+│           │   └── http/
+│           │       ├── health.ts
+│           │       ├── devices.ts
+│           │       ├── inspect.ts
+│           │       └── actions.ts
 │           └── shared/
 │               └── adapters/
 │                   └── appium.ts       # WebDriverIO session wrapper
 └── packages/
-    ├── runner-client/                # typed fetch → localhost runner
+    ├── cli/                          # `yoqa` npm package (Node bin → runner HTTP)
+    ├── runner-client/                # typed HTTP client + Zod schemas
     ├── ui/                           # shared Tailwind primitives
     ├── typescript-config/
     └── skill/
@@ -563,7 +560,7 @@ repo/
 | `adapters/appium.ts` | start/stop session, screenshot, page_source, tap/swipe/drag/type, activate/terminate/background, open_url, alert |
 | `devices/application.ts` | `xcrun simctl` / `adb devices` listing + connect |
 | `tree-cleaner.ts` | filter + relative bounds 0–1000 |
-| `cli/commands/*` | thin HTTP client to local runner |
+| `packages/cli` | thin HTTP client to local runner (`yoqa` on npm) |
 
 ---
 

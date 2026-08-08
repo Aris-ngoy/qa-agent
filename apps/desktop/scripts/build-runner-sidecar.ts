@@ -44,11 +44,7 @@ await compileBinary(
 	"runner sidecar",
 );
 
-await compileBinary(
-	join(repoRoot, "services/runner/src/interfaces/cli/main.ts"),
-	cliOutfile,
-	"CLI",
-);
+await compileBinary(join(repoRoot, "packages/cli/src/main.ts"), cliOutfile, "CLI");
 
 if (!(await Bun.file(join(skillSourceDir, "SKILL.md")).exists())) {
 	throw new Error(`Skill source missing: ${skillSourceDir}`);
