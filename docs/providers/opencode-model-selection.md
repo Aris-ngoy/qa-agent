@@ -20,12 +20,13 @@ Stop OpenCode runs from failing with Zen `CreditsError` (no payment method) or o
 
 ## Auth note
 
-Vision runs use Zen HTTP **or** a local OpenCode server:
+Vision can use either path (T3 Code style CLI is the default):
 
-- Hosted Zen: Settings API key, `OPENCODE_API_KEY` / `OPENCODE_ZEN_API_KEY`, or CLI `~/.local/share/opencode/auth.json` (`opencode providers login`)
-- Local serve: set Server URL (+ `OPENCODE_SERVER_PASSWORD` for Basic `opencode:<password>` auth, same as t3code)
+- **CLI login:** install OpenCode, run `opencode providers login` — YoQA spawns `opencode serve` for vision (no Zen key paste required)
+- **Zen API key:** Settings paste / `OPENCODE_API_KEY` / `auth.json` against `opencode.ai/zen`
+- **External Server URL:** point at an already-running serve (+ `OPENCODE_SERVER_PASSWORD` for Basic auth)
 
-Finding the `opencode` binary alone is not enough for hosted Zen — see [2026-08-08-opencode-auth-fix](../sessions/2026-08-08-opencode-auth-fix.md).
+See [2026-08-08-opencode-auth-fix](../sessions/2026-08-08-opencode-auth-fix.md).
 
 ## How to verify
 

@@ -17,6 +17,7 @@ import {
 	openCodeServerAuthHeaders,
 	resolveOpenCodeServerPassword,
 } from "./drivers/opencode";
+import { ensureOpenCodeServer, openCodeCliAvailable } from "./opencode-serve";
 
 export {
 	OPENCODE_DEFAULT_VISION_MODEL,
@@ -269,7 +270,12 @@ async function hasVisionAuth(auth: ActiveProviderAuth): Promise<boolean> {
 		case "openai":
 			return Boolean(await resolveOpenAiCompatibleKey(auth));
 		case "opencode":
-			return Boolean(await resolveOpenAiCompatibleKey(auth)) || Boolean(auth.serverUrl?.trim());
+			return (
+				Boolean(await resolveOpenAiCompatibleKey(auth)) ||
+				Boolean(auth.serverUrl?.trim()) ||
+				auth.authMode === "cli" ||
+				(await openCodeCliAvailable(auth.binaryPath))
+			);
 		case "groq":
 			return Boolean(resolveGroqKey(auth));
 		case "grok":
@@ -318,7 +324,7 @@ export async function assertVisionCapableProvider(
 	if (!(await hasVisionAuth(auth))) {
 		const hint =
 			auth.kind === "opencode"
-				? " Add an API key in Settings, set OPENCODE_API_KEY, run `opencode providers login`, or set Server URL for a local `opencode serve`."
+				? " Install OpenCode (`opencode`), run `opencode providers login`, paste a Zen API key, or set Server URL."
 				: auth.kind === "codex"
 					? " Paste an OpenAI API key in Settings (Codex CLI OAuth vision needs Zod 4)."
 					: auth.kind === "antigravity"
@@ -363,13 +369,31 @@ export async function createVisionModel(auth: ActiveProviderAuth): Promise<Visio
 
 	if (auth.kind === "openai" || auth.kind === "opencode") {
 		const label = auth.kind === "opencode" ? "OpenCode" : "OpenAI";
-		const baseURL = resolveOpenAiCompatibleBaseUrl(auth);
 		const apiKey = await resolveOpenAiCompatibleKey(auth);
 		const serverPassword =
 			auth.kind === "opencode" ? resolveOpenCodeServerPassword(auth.env) : null;
-		const usingLocalServer = auth.kind === "opencode" && Boolean(auth.serverUrl?.trim());
 
-		if (!apiKey && !usingLocalServer) {
+		let baseURL = resolveOpenAiCompatibleBaseUrl(auth);
+		let usingLocalServer = auth.kind === "opencode" && Boolean(auth.serverUrl?.trim());
+		let modelIdForRequest = modelId;
+
+		if (auth.kind === "opencode" && !apiKey) {
+			try {
+				const server = await ensureOpenCodeServer({
+					binaryPath: auth.binaryPath,
+					serverUrl: auth.serverUrl,
+				});
+				baseURL = `${server.url}/v1`;
+				usingLocalServer = true;
+				// Local OpenCode expects provider/model slugs (t3code style).
+				if (!modelIdForRequest.includes("/")) {
+					modelIdForRequest = `opencode/${modelIdForRequest}`;
+				}
+			} catch (error) {
+				const detail = error instanceof Error ? error.message : String(error);
+				throw new AgentProviderError(`OpenCode CLI mode could not start a local server: ${detail}`);
+			}
+		} else if (!apiKey && !usingLocalServer) {
 			throw new AgentProviderError(`${label} provider has no API key`);
 		}
 
@@ -390,10 +414,10 @@ export async function createVisionModel(auth: ActiveProviderAuth): Promise<Visio
 				: {}),
 		});
 		return {
-			model: provider.chat(modelId),
+			model: provider.chat(modelIdForRequest),
 			label,
 			kind: auth.kind,
-			modelId,
+			modelId: modelIdForRequest,
 		};
 	}
 

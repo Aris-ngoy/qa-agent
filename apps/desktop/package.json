@@ -4,8 +4,8 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "vite build && concurrently -k -n vite,app -c green,magenta \"vite --port 5173\" \"bun scripts/wait-for-vite.ts && electrobun dev --watch\"",
-		"start": "vite build && electrobun dev",
+		"dev": "vite build && concurrently -k -n vite,app -c green,magenta \"vite --port 5173\" \"bun scripts/wait-for-vite.ts && YOQA_REPO_ROOT=$(cd ../.. && pwd) electrobun dev --watch\"",
+		"start": "vite build && YOQA_REPO_ROOT=$(cd ../.. && pwd) electrobun dev",
 		"build": "vite build && electrobun build --env=canary",
 		"build:release": "vite build && electrobun build --env=stable",
 		"build:runner": "bun scripts/build-runner-sidecar.ts",

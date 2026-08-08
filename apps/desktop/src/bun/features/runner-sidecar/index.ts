@@ -76,7 +76,10 @@ async function findPackagedRunner(): Promise<string | null> {
 }
 
 async function findRepoRoot(): Promise<string | null> {
-	const starts = [process.cwd()];
+	const starts: string[] = [];
+	const fromEnv = process.env.YOQA_REPO_ROOT?.trim();
+	if (fromEnv) starts.push(fromEnv);
+	starts.push(process.cwd());
 	if (typeof import.meta.dir === "string") {
 		starts.push(import.meta.dir);
 	}
@@ -112,20 +115,7 @@ async function resolveBunExecutable(): Promise<string> {
 	throw new Error("Could not find a bun executable to start the local runner.");
 }
 
-/** Resolve how to launch the runner: packaged binary first, monorepo source for dev. */
-export async function resolveRunnerLaunch(): Promise<RunnerLaunch> {
-	const packaged = await findPackagedRunner();
-	if (packaged) {
-		return { command: [packaged], source: "packaged" };
-	}
-
-	const repoRoot = await findRepoRoot();
-	if (!repoRoot) {
-		throw new Error(
-			"Could not locate the YoQA runner. Install the desktop app release, open the monorepo, or start it with `bun run runner`.",
-		);
-	}
-
+async function monorepoRunnerLaunch(repoRoot: string): Promise<RunnerLaunch> {
 	const entry = join(repoRoot, "services", "runner", "src", "index.ts");
 	if (!(await pathExists(entry))) {
 		throw new Error(`Runner entry not found at ${entry}`);
@@ -137,6 +127,30 @@ export async function resolveRunnerLaunch(): Promise<RunnerLaunch> {
 		cwd: join(repoRoot, "services", "runner"),
 		source: "monorepo",
 	};
+}
+
+/**
+ * Resolve how to launch the runner.
+ * Prefer monorepo source when available so Electrobun `.app` embeds of an older
+ * `yoqa-runner` do not shadow local PATH/auth fixes during `electrobun dev`.
+ * Production `/Applications/yoqa.app` has no repo marker → packaged binary.
+ * Force packaged with `YOQA_RUNNER_SOURCE=packaged`.
+ */
+export async function resolveRunnerLaunch(): Promise<RunnerLaunch> {
+	const forcePackaged = process.env.YOQA_RUNNER_SOURCE?.trim() === "packaged";
+	const repoRoot = forcePackaged ? null : await findRepoRoot();
+	if (repoRoot) {
+		return monorepoRunnerLaunch(repoRoot);
+	}
+
+	const packaged = await findPackagedRunner();
+	if (packaged) {
+		return { command: [packaged], source: "packaged" };
+	}
+
+	throw new Error(
+		"Could not locate the YoQA runner. Install the desktop app release, open the monorepo, or start it with `bun run runner`.",
+	);
 }
 
 async function isHealthy(baseUrl: string): Promise<boolean> {

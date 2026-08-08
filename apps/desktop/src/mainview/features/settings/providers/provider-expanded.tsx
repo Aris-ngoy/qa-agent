@@ -617,9 +617,7 @@ export function ProviderExpanded({
 					</div>
 				) : null}
 
-				{(provider.authMode === "api_key" ||
-					provider.authMode === "token" ||
-					provider.kind === "opencode") && (
+				{(provider.authMode === "api_key" || provider.authMode === "token") && (
 					<RhfTextField
 						control={control}
 						inputClassName={fieldInputClass}
@@ -636,9 +634,10 @@ export function ProviderExpanded({
 						type="password"
 					/>
 				)}
-				{provider.kind === "opencode" && provider.authMode === "cli" && !provider.apiKeyLast4 ? (
-					<p className="-mt-2 text-helper text-on-surface-variant">
-						Vision needs a Zen API key from opencode.ai/auth (CLI alone is not enough).
+				{provider.kind === "opencode" && provider.authMode === "cli" ? (
+					<p className="text-helper text-on-surface-variant">
+						CLI mode uses a local OpenCode server for vision (same as T3 Code). Switch to API key
+						only if you want hosted Zen.
 					</p>
 				) : null}
 
