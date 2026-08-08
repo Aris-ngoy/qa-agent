@@ -32,3 +32,4 @@ Stop the OpenCode “`opencode` is not installed or not on PATH” / “Provider
 
 - Optionally spawn a managed `opencode serve` process (full t3code lifecycle) instead of requiring an external Server URL
 - Read additional auth shapes if OpenCode migrates fully off `auth.json`
+- **Dev note (2026-08-08):** Settings was talking to a stale `/Applications/yoqa.app` `yoqa-runner` (v0.3.1) without the PATH fix — T3 Code worked because it resolves/spawns OpenCode itself. Sidecar now prefers monorepo runner source when `YOQA_REPO_ROOT` / repo marker is present; quit YoQA fully before retesting so the old process is not still bound to `:7420`.
