@@ -1,0 +1,65 @@
+---
+description: Plan-and-build work starts on a new branch, then docs, commit, push, and open a PR
+alwaysApply: true
+---
+
+# Plan-and-build: branch → ship → commit → PR
+
+Whenever a feature or change is **planned first** (Plan mode, design discussion, or an agreed build plan) and then **implemented**, follow this full lifecycle—do not wait for the user to ask for branch, commit, push, or PR.
+
+## When this applies
+
+- User asked to plan, then build / implement
+- Agent switched from Plan → Agent and shipped the plan
+- Multi-step builds that followed an explicit plan (even mid-conversation)
+
+## When this does not apply
+
+- Tiny one-off fixes with no plan step
+- Pure Q&A or exploration with no implementation
+- Documentation-only or rule-only changes (unless the plan itself was about docs)
+
+## Start sequence (before writing code)
+
+Do these **before** implementing the plan:
+
+1. **Confirm base** — start from an up-to-date `main` (or the branch the user named as base): `git fetch` and checkout/pull as needed
+2. **New branch** — create and switch to a dedicated branch for this plan, e.g. `git checkout -b <area>/<short-slug>`
+   - One plan → one branch; do not implement on `main` or reuse an unrelated WIP branch
+   - If already on a clean branch created for this plan, keep it; otherwise create a new one
+
+## Completion sequence (after the plan is executed)
+
+After implementation is complete (or after a meaningful partial milestone), do these **in order** in the same turn:
+
+1. **Document** — write or update the docs entry (below)
+2. **Commit** — stage the feature changes **and** the docs, then commit (follow the repo’s git commit protocol; HEREDOC message focused on why)
+3. **Push** — push the branch to the remote (`git push -u origin HEAD` if needed)
+4. **Merge request / PR** — open a pull request against the base branch with `gh pr create`, filling `.github/PULL_REQUEST_TEMPLATE.md` (Summary, Changes, Test plan, Merge readiness, Docs, Notes). Return the PR URL to the user. If a PR for this branch already exists, update it if needed and share the existing URL instead of opening a duplicate.
+5. **CI gates** — follow `.cursor/rules/merge-and-ci.mdc`: rebase onto `main` if behind; if **Lint & format** or **Unit tests** fail, fix and push until green (do not merge or ask to bypass).
+
+This rule **authorizes** branch creation, commit, push, and PR creation for plan-and-build work without an extra user request. Still never force-push to `main`, amend others’ commits, skip hooks, or update git config.
+
+## What to write
+
+Create or update a markdown file under `docs/`:
+
+| Kind of work | Path |
+|--------------|------|
+| Feature / domain change | `docs/<area>/<short-slug>.md` (e.g. `docs/providers/provider-settings.md`) |
+| Cross-cutting / architecture | `docs/architecture/<short-slug>.md` |
+| One-off session notes | `docs/sessions/YYYY-MM-DD-<short-slug>.md` |
+
+Prefer a durable area doc when the topic will keep evolving; use a session note for ephemeral build logs.
+
+## Required sections
+
+Every new or updated doc must cover:
+
+1. **Goal** — what we set out to do (from the plan)
+2. **Plan summary** — key decisions and rejected alternatives (brief)
+3. **What shipped** — concrete changes (packages/files/APIs/UI), not a file dump
+4. **How to verify** — how someone can check it works
+5. **Follow-ups** — known gaps, TODOs, or next steps (or “none”)
+
+Keep it concise. Link to existing specs (`ARCHITECTURE.md`, etc.) instead of duplicating them.

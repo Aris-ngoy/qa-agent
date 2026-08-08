@@ -1,0 +1,60 @@
+---
+title: How YoQA agent works
+description: The perception–decision–action loop, available actions, speed, and limitations.
+---
+
+## Perception → Decision → Action
+
+On autonomous **runs**, the YoQA agent operates from screenshots (not hand-written locators). On every step:
+
+1. **Perceive** — capture a screenshot and analyze what is visible: buttons, text, images, current state.
+2. **Decide** — choose the next action toward the test goal (via your configured [AI provider](/docs/providers)).
+3. **Act** — execute the gesture through Appium and observe the result.
+
+This loop repeats until the goal is reached or the agent determines the test has failed. Per-step **thoughts** appear in the Runs UI so you can see why it acted.
+
+## Available actions
+
+| Action | Description |
+| ------ | ----------- |
+| **Tap** | Tap any visible element; supports double tap and long press |
+| **Swipe** | Swipe to navigate or dismiss |
+| **Drag** | Drag from one position to another |
+| **Input text** | Focus a field and type |
+| **Open link / deeplink** | Navigate to a URL or in-app deeplink |
+| **Terminate / background / activate app** | App lifecycle controls |
+
+Actions work across the device — including system alerts and UI outside your app — subject to local device capabilities.
+
+## Script vs AI mode
+
+After a **passing** AI run, you can **save a script** of the executed steps. Later runs can replay the script (faster, deterministic) or continue with full AI vision. Use AI when the UI is unstable; use scripts for stable smoke paths.
+
+## Understanding instructions
+
+Write at the **goal** level. Example: a long onboarding with many "Next" screens can be "Complete onboarding until the paywall" — the agent walks the screens itself.
+
+<Tip>
+  Learn phrasing patterns in [Writing good test cases](/guide/writing-test-cases).
+</Tip>
+
+## Speed
+
+Cold steps typically take several seconds (screenshot + model + action). Similar screens on later runs can be faster. Exact latency depends on your provider and device.
+
+## Limitations
+
+- **Timing** — brief toasts or transitions may be missed between screenshots.
+- **Test length** — keep cases under ~100 actions when possible; long flows lose context more easily.
+- **Local only (Phase 1)** — no cloud farm yet; see [Local testing](/guide/local-testing).
+- **Provider quality** — grounding and decide quality vary by model; pick vision-capable defaults.
+
+<CardGroup cols={2}>
+  <Card title="Writing test cases" icon="pen" href="/guide/writing-test-cases">
+    Instructions that the agent can follow
+  </Card>
+
+  <Card title="CLI for agents" icon="terminal" href="/guide/cli-for-agents">
+    When your coding agent drives each step
+  </Card>
+</CardGroup>

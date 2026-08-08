@@ -1,0 +1,47 @@
+---
+title: Local Builds
+description: Register and install local .ipa, .app, and .apk builds for testing.
+---
+
+## What is a build?
+
+A **build** is a local app binary registered with YoQA so runs can install it on the connected device before executing cases.
+
+Supported artifacts:
+
+| Platform | Formats |
+| -------- | ------- |
+| iOS | `.ipa`, `.app` (simulator) |
+| Android | `.apk` |
+
+## Register a build
+
+In the desktop app, attach a build to an app, or use the CLI:
+
+```bash
+yoqa builds list APP
+yoqa builds create APP --path ./MyApp.app
+yoqa builds delete APP <build-id>
+```
+
+When you start a run, pass `buildId` (or a direct `buildPath` in advanced flows) so YoQA installs the artifact on the selected device.
+
+## Tips
+
+- Prefer **simulator `.app`** for fast iOS Simulator iteration; use signed **`.ipa`** for physical devices.
+- Keep package / bundle IDs aligned with the [app identifiers](/docs/apps).
+- If the app is already installed and you only need to launch it, you can run without registering a new build.
+
+<Note>
+  App Store / TestFlight / remote URL installs are not required for Phase 1 local workflows. Point at files on disk.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Device preparation" icon="mobile" href="/docs/device-preparation">
+    Ready devices before install
+  </Card>
+
+  <Card title="Quickstart" icon="rocket" href="/docs/quickstart">
+    First end-to-end run
+  </Card>
+</CardGroup>

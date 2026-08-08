@@ -1,0 +1,19 @@
+{
+	"name": "@yoqa/runner-client",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"zod": "^3.25.67"
+	},
+	"devDependencies": {
+		"@yoqa/typescript-config": "workspace:*",
+		"typescript": "^5.9.3"
+	}
+}

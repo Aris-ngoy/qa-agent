@@ -1,0 +1,52 @@
+---
+title: Device Preparation
+description: Prepare iOS and Android devices for local testing with YoQA.
+---
+
+YoQA drives devices through **Appium** (XCUITest / UiAutomator2). Get the toolchain healthy once, then connect from the desktop UI or CLI.
+
+## Checklist
+
+```bash
+yoqa setup ios       # when available — guides Xcode / WDA readiness
+yoqa setup android   # when available — guides adb / emulator readiness
+yoqa status          # runner, runtime, provider, active device
+yoqa devices ios
+yoqa devices android
+```
+
+## iOS
+
+1. Install **Xcode** and accept the license; install additional platforms if prompted.
+2. Boot an **iOS Simulator**, or connect a physical device with Developer Mode enabled.
+3. For **physical devices**, WebDriverAgent (WDA) must be built/signed for your team. In the desktop app you can **Skip** (reuse) or **Rebuild** WDA when selecting a device or starting a run.
+4. Confirm the device appears in `yoqa devices ios`.
+
+## Android
+
+1. Install Android SDK / platform-tools so `adb` is on your `PATH`.
+2. Start an emulator or plug in a device with USB debugging enabled (`adb devices` should list it).
+3. Confirm the device appears in `yoqa devices android`.
+
+## Connect a session
+
+```bash
+yoqa devices connect <device-id>   # use the full id from the list
+yoqa devices active
+```
+
+The desktop app performs the same connect when you select a device for a run or Manual Inspector.
+
+<Tip>
+  If runs fail before the first step, re-check `yoqa status` and WDA/adb — most local issues are toolchain, not test wording.
+</Tip>
+
+<CardGroup cols={2}>
+  <Card title="Desktop app" icon="desktop" href="/docs/desktop-app">
+    Settings and device picker
+  </Card>
+
+  <Card title="CLI" icon="terminal" href="/docs/cli">
+    Device and screen commands
+  </Card>
+</CardGroup>

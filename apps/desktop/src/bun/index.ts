@@ -1,0 +1,126 @@
+import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/bun";
+import type { DesktopRPC } from "../shared/rpc";
+import {
+	getCliEnvironmentSnapshot,
+	installCli,
+	installSkill,
+	openSkillFolder,
+} from "./features/cli-environment";
+import { getIosToolchainSnapshot, setIosToolchainSelection } from "./features/ios-toolchain";
+import { ensureLocalServices, stopRunnerSidecar } from "./features/runner-sidecar";
+
+const DOCS_QUICKSTART_URL = "https://yoqa.mintlify.site/docs/quickstart";
+
+async function getMainViewUrl(): Promise<string> {
+	const viteUrl = "http://localhost:5173";
+	// Retry briefly so electrobun relaunches still pick up an already-running Vite
+	for (let attempt = 0; attempt < 10; attempt++) {
+		try {
+			const response = await fetch(viteUrl);
+			if (response.ok) {
+				console.log("[yoqa desktop] loading UI from Vite HMR", viteUrl);
+				return viteUrl;
+			}
+		} catch {
+			// Vite HMR server not ready yet
+		}
+		await Bun.sleep(100);
+	}
+	console.log("[yoqa desktop] Vite HMR unavailable — using bundled views");
+	return "views://mainview/index.html";
+}
+
+ApplicationMenu.setApplicationMenu([
+	{
+		submenu: [
+			{ label: "About YoQA", role: "about" },
+			{ type: "separator" },
+			{ label: "Quit", role: "quit", accelerator: "q" },
+		],
+	},
+	{
+		label: "Edit",
+		submenu: [
+			{ role: "undo" },
+			{ role: "redo" },
+			{ type: "separator" },
+			{ role: "cut" },
+			{ role: "copy" },
+			{ role: "paste" },
+			{ role: "selectAll" },
+		],
+	},
+	{
+		label: "Help",
+		submenu: [{ label: "Documentation", action: "open-docs" }],
+	},
+]);
+
+ApplicationMenu.on("application-menu-clicked", (event) => {
+	const clicked = event as { data?: { action?: string } };
+	if (clicked.data?.action === "open-docs") {
+		Utils.openExternal(DOCS_QUICKSTART_URL);
+	}
+});
+
+const mainRPC = BrowserView.defineRPC<DesktopRPC>({
+	maxRequestTime: 60_000,
+	handlers: {
+		requests: {
+			ping: () => "pong",
+			getRunnerBaseUrl: () => process.env.YOQA_RUNNER_URL ?? "http://127.0.0.1:7420",
+			ensureLocalServices: () => ensureLocalServices(),
+			getIosToolchain: () => getIosToolchainSnapshot(),
+			setIosToolchainSelection: (params) => setIosToolchainSelection(params),
+			getCliEnvironment: () => getCliEnvironmentSnapshot(),
+			installCli: () => installCli(),
+			installSkill: () => installSkill(),
+			openSkillFolder: () => openSkillFolder(),
+			openExternalUrl: ({ url }) => {
+				let parsed: URL;
+				try {
+					parsed = new URL(url);
+				} catch {
+					return { ok: false };
+				}
+				if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+					return { ok: false };
+				}
+				return { ok: Utils.openExternal(parsed.toString()) };
+			},
+		},
+		messages: {
+			log: ({ msg }) => {
+				console.log("[webview]", msg);
+			},
+		},
+	},
+});
+
+const mainWindow = new BrowserWindow({
+	title: "YoQA",
+	url: await getMainViewUrl(),
+	// Transparent titlebar so the app canvas paints under the traffic lights
+	titleBarStyle: "hiddenInset",
+	frame: {
+		width: 1100,
+		height: 720,
+		x: 80,
+		y: 80,
+	},
+	rpc: mainRPC,
+});
+
+function shutdown(): void {
+	stopRunnerSidecar();
+	process.exit(0);
+}
+
+mainWindow.on("close", () => {
+	shutdown();
+});
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
+console.log("[yoqa desktop] started");

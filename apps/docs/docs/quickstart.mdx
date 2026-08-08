@@ -1,0 +1,62 @@
+---
+title: Quickstart
+description: Create test cases, connect a device, run tests, and review results.
+---
+
+<Steps>
+  <Step title="Start YoQA">
+    Download the Apple Silicon DMG from [GitHub Releases](https://github.com/Aris-ngoy/qa-agent/releases) and drag `yoqa.app` to `/Applications`. The DMG is unsigned, so recent macOS versions show **"yoqa" is damaged and can't be opened** on first launch. Clear the quarantine attribute once, then open the app:
+
+    ```bash
+    xattr -cr /Applications/yoqa.app
+    open /Applications/yoqa.app
+    ```
+
+    The bundled runner starts automatically on `http://127.0.0.1:7420`.
+
+    Running from a monorepo checkout instead? Start both processes manually:
+
+    ```bash
+    bun run runner   # local Appium + HTTP API
+    bun run desktop  # YoQA Mac UI
+    ```
+
+    Confirm with `yoqa health` after installing the CLI (Settings → CLI & Agents).
+  </Step>
+
+  <Step title="Configure an AI provider">
+    Open **Settings → Providers**, add a key (Anthropic, OpenAI, Groq, Google, Cursor, Grok, OpenCode, or a custom OpenAI-compatible endpoint), validate, and set it as default. See [AI Providers](/docs/providers).
+  </Step>
+
+  <Step title="Add an app">
+    In the desktop app, create an app with a name and iOS bundle ID and/or Android package name. Note the short **prefix** — CLI catalog commands use it.
+  </Step>
+
+  <Step title="Create test cases">
+    Add a case with a title, natural-language **instructions**, and an optional **expected result**. Repeat for more coverage. Tips: [Writing good test cases](/guide/writing-test-cases).
+  </Step>
+
+  <Step title="Prepare a device">
+    Boot an iOS Simulator / Android emulator, or connect a physical device. Complete [Device preparation](/docs/device-preparation) (Xcode / adb / WDA as needed).
+  </Step>
+
+  <Step title="Select cases and run">
+    Pick the device, optional [local build](/docs/local-builds), and one or more cases — then **Run**. The agent executes each flow from screenshots.
+  </Step>
+
+  <Step title="Review results">
+    Open **Runs** for live progress, per-step status, expandable AI thoughts, and screenshots. Export an HTML or Markdown report when you want to share.
+  </Step>
+</Steps>
+
+## What's next?
+
+<CardGroup cols={2}>
+  <Card title="Test cases" icon="list-check" href="/docs/test-cases">
+    How cases, flows, and tags work
+  </Card>
+
+  <Card title="CLI" icon="terminal" href="/docs/cli">
+    Drive YoQA from the terminal
+  </Card>
+</CardGroup>

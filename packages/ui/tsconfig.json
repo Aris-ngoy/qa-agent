@@ -1,0 +1,4 @@
+{
+	"extends": "@yoqa/typescript-config/react.json",
+	"include": ["src"]
+}

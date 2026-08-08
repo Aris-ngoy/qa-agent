@@ -1,0 +1,28 @@
+{
+	"name": "@yoqa/ui",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./styles.css": "./src/styles.css"
+	},
+	"scripts": {
+		"check": "tsc --noEmit"
+	},
+	"peerDependencies": {
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0"
+	},
+	"devDependencies": {
+		"@yoqa/typescript-config": "workspace:*",
+		"@types/react": "^19.2.7",
+		"@types/react-dom": "^19.2.4",
+		"react": "^19.2.3",
+		"react-dom": "^19.2.8",
+		"typescript": "^5.9.3"
+	},
+	"dependencies": {
+		"@heroui/styles": "^3.2.2"
+	}
+}

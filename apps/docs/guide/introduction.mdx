@@ -1,0 +1,22 @@
+---
+title: Introduction
+description: What agentic QA is, why visual testing is different, and who YoQA is for.
+---
+
+Script-based tools like Appium or XCUITest break when the UI changes and struggle with non-native surfaces — games, WebViews, canvas UIs, and system dialogs. Manual testing works anywhere, but it does not scale.
+
+YoQA replaces brittle locator scripts with an **AI agent** that interacts with your app the way a human tester would. For autonomous runs it operates from **screenshots** — no hand-written locators. You describe the goal in plain English; the agent decides what to tap, swipe, or type based on what it sees.
+
+Coding agents can also drive the same device through the [`yoqa` CLI](/docs/cli) using a cleaned accessibility tree for cheap, precise inspect → act → verify loops.
+
+## Who YoQA is for
+
+- **Individual developers** — validate a feature before it goes to QA. Catch obvious regressions in minutes.
+- **QA engineers** — automate repetitive regression flows and free time for exploratory testing.
+- **Mobile teams** — keep a living suite of natural-language cases on local simulators and devices while cloud/CI lands later.
+
+## Local-first
+
+Phase 1 runs entirely on your Mac: desktop app + runner + BYO [AI providers](/docs/providers). No account wall for local debug, catalog, or agent runs.
+
+Ready to see how it works? [How YoQA agent works →](/guide/how-yoqa-agent-works)

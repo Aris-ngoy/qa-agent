@@ -1,0 +1,23 @@
+---
+title: Cross-App Flows
+description: Testing flows that leave your app (browser, OS settings, other apps).
+---
+
+Many real journeys leave your process: OAuth in a browser, deep links from Messages, OS Settings toggles, or handoff to a sibling app.
+
+## Write the journey explicitly
+
+Tell the agent where the flow starts and what "success" looks like when control returns:
+
+```
+Open the share sheet and choose Messages.
+Return to MyApp and confirm the shared item appears in Recents.
+```
+
+## Launch control
+
+If the test should **not** auto-open your app, set `appium:autoLaunch` to `false` and begin from the home screen or browser. See [Appium capabilities](/guide/best-practices-appium-capabilities).
+
+## Deeplinks
+
+Use instructions like "Open `myapp://profile`" or CLI `yoqa action open-url` during debug. Assert the destination screen in the expected result.

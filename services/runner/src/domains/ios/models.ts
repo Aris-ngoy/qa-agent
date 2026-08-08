@@ -1,0 +1,43 @@
+/** Base reverse-DNS prefix; prefer {@link wdaBundleIdForTeam} for installs. */
+export const WDA_BUNDLE_ID = "io.yoqa.WebDriverAgentRunner";
+
+/** Team-scoped bundle id: keeps provisioning/signing isolated per team. */
+export function wdaBundleIdForTeam(developmentTeam: string): string {
+	const team = developmentTeam.trim();
+	if (!team) return WDA_BUNDLE_ID;
+	return `${WDA_BUNDLE_ID}.${team}`;
+}
+
+export type IosWdaInstallParams = {
+	deviceId: string;
+	xcodeDeveloperDir: string;
+	developmentTeam: string;
+	codeSignIdentity: string;
+	/** Override APPIUM_HOME when resolving the bundled WDA project */
+	appiumHome?: string;
+	/** When true, always rebuild and reinstall even if prep/cache is valid */
+	force?: boolean;
+};
+
+export type IosWdaAction = "reused" | "reinstalled" | "built";
+
+export type IosWdaInstallResult = {
+	ok: true;
+	bundleId: string;
+	appPath: string;
+	derivedDataPath: string;
+	deviceId: string;
+	action: IosWdaAction;
+};
+
+export type DevicePrepRecord = {
+	deviceId: string;
+	platform: "ios";
+	bundleId: string;
+	appPath: string;
+	derivedDataPath: string;
+	developmentTeam: string;
+	codeSignIdentity: string;
+	xcodeDeveloperDir: string;
+	installedAt: string;
+};

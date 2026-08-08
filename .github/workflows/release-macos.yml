@@ -1,0 +1,95 @@
+name: Release macOS
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Least privilege: read by default; write only on the publish job.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    name: Authorize release
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Restrict to repository owner
+        run: |
+          if [ "${GITHUB_ACTOR}" != "${GITHUB_REPOSITORY_OWNER}" ]; then
+            echo "::error::Only @${GITHUB_REPOSITORY_OWNER} can run the release job (actor was @${GITHUB_ACTOR})."
+            exit 1
+          fi
+          echo "Release allowed for owner @${GITHUB_REPOSITORY_OWNER}."
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+
+  release:
+    name: Build & publish macOS DMG
+    needs: authorize
+    runs-on: macos-14
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.2.23
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build stable desktop release
+        run: bun run --filter @yoqa/desktop build:release
+
+      - name: List artifacts
+        run: |
+          ls -la apps/desktop/artifacts || true
+          ls -la apps/desktop/build/stable-macos-arm64 || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: YoQA ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
+          files: |
+            apps/desktop/artifacts/stable-macos-arm64-yoqa.dmg
+            apps/desktop/artifacts/stable-macos-arm64-yoqa.app.tar.zst
+            apps/desktop/artifacts/stable-macos-arm64-update.json
+          body: |
+            ## YoQA Desktop ${{ github.ref_name }} (macOS Apple Silicon)
+
+            Local-first agentic mobile QA for Mac.
+
+            ### Install
+            1. Download `stable-macos-arm64-yoqa.dmg`
+            2. Open the DMG and drag **yoqa** to Applications
+            3. Clear Gatekeeper quarantine (unsigned build — macOS may say the app is “damaged”):
+               ```bash
+               xattr -cr /Applications/yoqa.app
+               open /Applications/yoqa.app
+               ```
+
+            ### Notes
+            - **Apple Silicon only** (`arm64`) for this release
+            - Bundled local runner starts with the app (no monorepo checkout required)
+            - Appium / Xcode / adb stay on the host; first device setup may install Appium under `~/.yoqa`
+            - Settings → CLI & Agents installs the bundled `yoqa` CLI and skill (no monorepo checkout)
+
+            ### Verify
+            After launch, the runner should answer `http://127.0.0.1:7420/health`.
+            In Settings → CLI & Agents, Reinstall CLI / skill should succeed; then `yoqa health`.

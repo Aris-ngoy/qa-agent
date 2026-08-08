@@ -1,0 +1,59 @@
+---
+title: CLI for agents
+description: Let a coding agent drive the YoQA CLI — read the screen, debug on device, and author test cases.
+---
+
+The [`yoqa` CLI](/docs/cli) is plain commands in, structured output out — a natural tool for Cursor, Claude Code, Codex, and similar agents. Instead of clicking through the UI, your coding agent can inspect the screen, drive the device, and maintain cases as part of the normal loop: change code → ask it to test → get pass/fail with screenshots.
+
+## Install the CLI and skill
+
+Both live in the desktop app **Settings → CLI & Agents** (or install the CLI from npm with `npm i -g @yoqa/cli` / `npx @yoqa/cli`):
+
+- **Install CLI** — links `yoqa` into `~/.local/bin` (or use the npm global binary).
+- **Install skill** — installs `yoqa-testing` into common agent skill directories so the agent knows the workflows without you pasting docs.
+
+Full command surface: [CLI reference](/docs/cli). Public index (once hosted): `https://docs.yoqa.ai/llms.txt`.
+
+## What you can do locally
+
+| Need | Requirement |
+| ---- | ----------- |
+| Debug on device (coordinates) | Runner + connected device |
+| Debug with `-d` grounding | Runner + device + [AI provider](/docs/providers) |
+| Manage apps / cases / flows | Runner only |
+| Run saved cases with the YoQA agent | Runner + device + provider |
+
+No cloud sign-in for these Phase 1 workflows.
+
+## Debug loop: inspect → act → verify
+
+1. **Connect** — `yoqa devices connect <device-id>`.
+2. **Ensure the app is on device** — install a [build](/docs/local-builds) or launch an already-installed app.
+3. **Loop one step at a time:**
+   - **Inspect** — `yoqa screen` (prefer over screenshot / `--full`).
+   - **Act** — one `yoqa action …`, preferably `-d "…"`.
+   - **Verify** — `yoqa screen` again (or `yoqa screenshot` for a visual check).
+
+Never fire an action blind.
+
+### Reading the screen efficiently
+
+| Approach | Relative cost | Use when |
+| -------- | ------------- | -------- |
+| `yoqa screen` | ~1× | Default — cleaned tree + coords |
+| Screenshot | ~2× | Tree empty / visual-only UI |
+| `yoqa screen --full` | ~7× | Rare — need raw Appium dump |
+
+## Hand off to the YoQA agent
+
+Your coding agent authors and maintains cases; `yoqa runs create` (or the Runs UI) hands a saved case to the **YoQA agent**, which runs the perception loop autonomously. That split keeps exploration cheap and regression hands-off.
+
+<CardGroup cols={2}>
+  <Card title="CLI reference" icon="terminal" href="/docs/cli">
+    Every command and option
+  </Card>
+
+  <Card title="How the agent thinks" icon="brain" href="/guide/how-yoqa-agent-works">
+    Perception → decision → action
+  </Card>
+</CardGroup>

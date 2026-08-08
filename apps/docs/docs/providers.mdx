@@ -1,0 +1,57 @@
+---
+title: AI Providers
+description: Bring your own vision models for agent runs and description grounding.
+---
+
+YoQA is **BYO** — you paste API keys or use local CLIs. No YoQA cloud credits are required for Phase 1 local runs.
+
+## Where to configure
+
+Desktop app → **Settings → Providers**:
+
+1. Add a provider.
+2. Paste the key (or complete CLI login where applicable).
+3. **Validate** — YoQA probes models / auth.
+4. Set a **default** provider (and model when the list is available).
+5. Confirm with `yoqa status` (`provider: …`).
+
+## Supported providers
+
+| Provider | Auth | Notes |
+| -------- | ---- | ----- |
+| **Anthropic** | API key | Claude vision via AI SDK |
+| **OpenAI** | API key | GPT vision via AI SDK |
+| **Groq** | API key | Fast OpenAI-compatible vision models |
+| **Google** | API key | Google AI Studio / Gemini |
+| **Google Vertex** | GCP credentials | Vertex AI Gemini |
+| **Antigravity** (`agy`) | CLI login (+ optional AI Studio key) | Vision via `agy --print` |
+| **OpenCode** | Zen API key | Vision runs against hosted Zen (`opencode.ai/zen/v1`). CLI login alone is not enough — local `opencode serve` has no OpenAI-compatible `/v1`. Defaults to the free `mimo-v2.5-free` model |
+| **Cursor** | Cursor Agent CLI (+ optional key) | Vision via `cursor-agent --print` |
+| **Grok** (xAI) | API key | `@ai-sdk/xai` |
+| **Custom** | Optional key + **Base URL** | Any OpenAI-compatible gateway (e.g. local Ollama `/v1`) |
+| **Codex / Claude CLI** | CLI where supported | Additional local agent backends |
+
+## What needs a provider?
+
+| Capability | Needs provider? |
+| ---------- | --------------- |
+| `yoqa screen` / coordinate actions | No |
+| Description grounding (`-d`) | Yes |
+| Autonomous case runs (YoQA agent) | Yes |
+| Apps / cases / flows CRUD | No |
+
+## Tips
+
+- Prefer models that accept **image** inputs — text-only models fail vision decide.
+- For OpenCode, paste a **Zen API key** from [opencode.ai](https://opencode.ai) in **Settings → Providers**. YoQA calls hosted Zen at `opencode.ai/zen/v1`. A local `opencode serve` does not expose OpenAI `/v1/chat/completions`, so CLI login alone will not authenticate vision. New providers default to `mimo-v2.5-free`; most other free Zen models are text-only and reject screenshots — switch to `mimo-v2.5-free` (or a paid multimodal model on Zen with billing) if a run reports "No endpoints found that support image input".
+- Custom base URLs are ideal for private gateways; leave the API key empty only if the host allows it.
+
+<CardGroup cols={2}>
+  <Card title="How the agent works" icon="brain" href="/guide/how-yoqa-agent-works">
+    Where vision is used in the loop
+  </Card>
+
+  <Card title="Quickstart" icon="rocket" href="/docs/quickstart">
+    First run with a provider configured
+  </Card>
+</CardGroup>

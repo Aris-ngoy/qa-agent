@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+artifacts/
+*.dmg
+.electrobun/
+apps/desktop/resources/runner/
+apps/desktop/resources/skills/
+
+# Turbo
+.turbo/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs & OS
+*.log
+.DS_Store
+
+# Scratch / local notes
+.scratch/
+
+# IDE / tooling
+.idea/
+*.swp
+*.swo
+
+# Coverage / caches
+coverage/
+.cache/
+
+# Stitch design exports
+.stitch/

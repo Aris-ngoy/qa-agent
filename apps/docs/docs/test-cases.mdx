@@ -1,0 +1,40 @@
+---
+title: Test Cases
+description: Use natural language instructions for the AI agent.
+---
+
+## Where to create
+
+In the desktop app: open an app → **Test Cases** → add a case. Or use the CLI:
+
+```bash
+yoqa cases list APP
+yoqa cases create APP '{"title": "Login", "tags": ["smoke"], "flows": [{"instructions": "Sign in with the test account", "result": "Home screen is visible"}]}'
+```
+
+## Structure
+
+A test case has a **title**, one or more **flows**, and optional **tags**.
+
+### Flows
+
+- **Instructions** — natural language description of what the agent should do.
+- **Expected result** — what to verify after the instructions. If omitted, the agent mainly checks that the flow completed without errors.
+- **Reusable flows** — reference a shared flow by id instead of inlining instructions. Update the reusable flow once; every case that uses it picks up the change.
+
+Each flow is either inline (`instructions` + `result`) **or** a reusable reference (`id`) — never both.
+
+### Tags
+
+Tags (e.g. `smoke`, `regression`) help filter cases in the UI and CLI (`yoqa cases list APP --tag smoke`). Naming a new tag creates it automatically.
+
+## Configuration
+
+Per-case options:
+
+- **Appium capabilities** — override how the session starts for this case only. See [Appium capabilities](/guide/best-practices-appium-capabilities).
+- **Saved scripts** — after a passing AI run, you can save a scripted replay for faster subsequent runs (script vs AI mode).
+
+<Tip>
+  For phrasing tips, see [Writing good test cases](/guide/writing-test-cases).
+</Tip>

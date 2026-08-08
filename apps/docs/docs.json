@@ -1,0 +1,105 @@
+{
+	"$schema": "https://mintlify.com/docs.json",
+	"theme": "mint",
+	"name": "YoQA",
+	"description": "Local-first agentic mobile QA — test iOS and Android apps with AI, no locator scripts.",
+	"colors": {
+		"primary": "#8b7ec8",
+		"light": "#c9b8e8",
+		"dark": "#4a3f7a"
+	},
+	"favicon": "/logo/icon.svg",
+	"logo": {
+		"light": "/logo/icon.svg",
+		"dark": "/logo/icon.svg"
+	},
+	"appearance": {
+		"default": "light"
+	},
+	"fonts": {
+		"family": "Inter"
+	},
+	"navbar": {
+		"links": [
+			{
+				"label": "GitHub",
+				"href": "https://github.com/Aris-ngoy/qa-agent"
+			}
+		]
+	},
+	"footer": {
+		"socials": {
+			"github": "https://github.com/Aris-ngoy/qa-agent"
+		}
+	},
+	"redirects": [
+		{
+			"source": "/",
+			"destination": "/docs/overview"
+		}
+	],
+	"navigation": {
+		"tabs": [
+			{
+				"tab": "Docs",
+				"groups": [
+					{
+						"group": "Get started",
+						"icon": "rocket",
+						"pages": ["docs/overview", "docs/quickstart"]
+					},
+					{
+						"group": "Testing",
+						"icon": "mobile",
+						"pages": ["docs/apps", "docs/test-cases"]
+					},
+					{
+						"group": "Local",
+						"icon": "desktop",
+						"pages": [
+							"docs/desktop-app",
+							"docs/local-builds",
+							"docs/device-preparation",
+							"docs/cli",
+							"docs/manual-inspector"
+						]
+					},
+					{
+						"group": "Setup",
+						"icon": "gear",
+						"pages": ["docs/providers"]
+					}
+				]
+			},
+			{
+				"tab": "Guide",
+				"groups": [
+					{
+						"group": "Guide",
+						"icon": "book-open",
+						"pages": [
+							"guide/introduction",
+							"guide/how-yoqa-agent-works",
+							"guide/writing-test-cases",
+							"guide/local-testing",
+							"guide/cli-for-agents"
+						]
+					},
+					{
+						"group": "Best practices",
+						"icon": "lightbulb",
+						"pages": [
+							"guide/best-practices-cross-platform",
+							"guide/best-practices-games",
+							"guide/best-practices-iap",
+							"guide/best-practices-cross-app",
+							"guide/best-practices-non-native-ui",
+							"guide/best-practices-app-state",
+							"guide/best-practices-appium-capabilities"
+						]
+					}
+				]
+			}
+		]
+	}
+}
