@@ -66,17 +66,17 @@ type FormValues = {
 
 /** Used when Zen catalog has not loaded yet so the user can still pick a free model. */
 const OPENCODE_FALLBACK_FREE_MODELS: ProviderModel[] = [
+	{ id: "mimo-v2.5-free", name: "MiMo V2.5 Free", tier: "free" },
 	{ id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free", tier: "free" },
 	{ id: "big-pickle", name: "Big Pickle", tier: "free" },
-	{ id: "mimo-v2.5-free", name: "MiMo V2.5 Free", tier: "free" },
 	{ id: "laguna-s-2.1-free", name: "Laguna S 2.1 Free", tier: "free" },
 	{ id: "north-mini-code-free", name: "North Mini Code Free", tier: "free" },
 	{ id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", tier: "free" },
 ];
 
-/** Free models known to fail Zen vision/screenshot requests with opaque HTTP 500s. */
+/** Hint: most Zen free models are text-only; mimo-v2.5-free accepts screenshots. */
 const OPENCODE_NON_VISION_FREE_HINT =
-	"YoQA sends screenshots. Prefer deepseek-v4-flash-free — several free models (north-mini-code-free, big-pickle, …) return opaque 500s on image inputs.";
+	"YoQA sends screenshots. Prefer mimo-v2.5-free — deepseek-v4-flash-free, big-pickle, and most other free models are text-only on Zen.";
 
 function isPaidModelSelected(models: ProviderModel[], defaultModel: string): boolean {
 	const id = defaultModel.trim();
@@ -592,7 +592,8 @@ export function ProviderExpanded({
 							placeholder="http://127.0.0.1:4096"
 						/>
 						<p className="mt-1.5 text-helper text-on-surface-variant">
-							Leave blank to let YoQA use the CLI / hosted OpenCode catalogs when needed.
+							Optional. Local `opencode serve` is not used for vision (no OpenAI /v1). Prefer a Zen
+							API key below.
 						</p>
 					</div>
 				) : null}
@@ -636,8 +637,8 @@ export function ProviderExpanded({
 				)}
 				{provider.kind === "opencode" && provider.authMode === "cli" ? (
 					<p className="text-helper text-on-surface-variant">
-						CLI mode uses a local OpenCode server for vision (same as T3 Code). Switch to API key
-						only if you want hosted Zen.
+						Vision needs a Zen API key (Settings API key mode or OPENCODE_API_KEY). Local serve is
+						not OpenAI-compatible.
 					</p>
 				) : null}
 

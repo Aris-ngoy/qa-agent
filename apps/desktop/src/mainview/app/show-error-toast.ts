@@ -37,8 +37,7 @@ export function summarizeError(message: string): SummarizedError {
 		) {
 			return {
 				title: "Provider not authenticated",
-				description:
-					"Run `opencode providers login`, or add a Zen API key / Server URL in Settings.",
+				description: "Paste a Zen API key from opencode.ai in Settings (OPENCODE_API_KEY).",
 			};
 		}
 		return {

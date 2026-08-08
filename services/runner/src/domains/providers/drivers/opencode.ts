@@ -5,7 +5,8 @@ import type { DriverDefinition, ModelEntry, ProbeResult } from "./types";
 const OPENCODE_FREE_MODEL_IDS = new Set(["big-pickle"]);
 
 /** Default OpenCode model for screenshot / vision QA runs. */
-export const OPENCODE_DEFAULT_VISION_MODEL = "deepseek-v4-flash-free";
+/** Free Zen model verified to accept screenshot `image_url` payloads (Aug 2026). */
+export const OPENCODE_DEFAULT_VISION_MODEL = "mimo-v2.5-free";
 
 export function isOpenCodeFreeModel(id: string): boolean {
 	const normalized = id.trim().toLowerCase();
@@ -134,7 +135,7 @@ export const opencodeDriver: DriverDefinition = {
 	authModes: ["cli", "api_key"],
 	envHints: ["OPENCODE_API_KEY", "OPENCODE_ZEN_API_KEY", "OPENCODE_SERVER_PASSWORD"],
 	loginInstructions:
-		"Install OpenCode and sign in with `opencode providers login` (same as T3 Code). Optional: paste a Zen API key or set Server URL.",
+		"Paste a Zen API key from https://opencode.ai for vision. Local `opencode serve` is not OpenAI-compatible.",
 	async probe(binaryPath) {
 		return probeCliWithFriendlyErrors(binaryPath);
 	},

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { formatProviderHttpError, looksLikeHtmlResponse } from "../vision-model";
 import {
 	listOpenCodeModelsFromCli,
 	openCodeServerAuthHeaders,
@@ -41,5 +42,35 @@ describe("listOpenCodeModelsFromCli", () => {
 		}
 		expect(result.models.some((m) => m.id === "deepseek-v4-flash-free")).toBe(true);
 		expect(result.models.every((m) => !m.id.includes("/"))).toBe(true);
+	});
+});
+
+describe("OpenCode HTML error formatting", () => {
+	test("detects SPA HTML bodies", () => {
+		expect(
+			looksLikeHtmlResponse(
+				'<!doctype html> <html lang="en" style="background-color: var(--v2-background-bg-deep, #fafafa)">',
+			),
+		).toBe(true);
+	});
+
+	test("maps HTML 200 to Zen key guidance", () => {
+		const message = formatProviderHttpError(
+			"OpenCode",
+			200,
+			'<!doctype html> <html lang="en"><title>OpenCode</title>',
+		);
+		expect(message).toContain("Zen API key");
+		expect(message).not.toContain("<!doctype");
+	});
+
+	test("maps text-only image_url 400 to vision model guidance", () => {
+		const message = formatProviderHttpError(
+			"OpenCode",
+			400,
+			'{"error":{"message":"unknown variant `image_url`, expected `text`"}}',
+		);
+		expect(message).toContain("mimo-v2.5-free");
+		expect(message).toContain("text-only");
 	});
 });
