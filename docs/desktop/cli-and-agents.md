@@ -17,8 +17,12 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
 ### Desktop Settings → CLI & Agents
 
 - RPC: `getCliEnvironment`, `installCli`, `installSkill`, `openSkillFolder`
-- CLI symlink: `~/.local/bin/yoqa` → App Support wrapper that runs `bun` on the runner CLI entry
+- CLI symlink: `~/.local/bin/yoqa` → App Support wrapper
+  - Packaged app: wrapper execs bundled `runner/yoqa` binary (no Bun required)
+  - Dev checkout: wrapper runs `bun` on `services/runner/src/interfaces/cli/main.ts`
 - Skill: copy to `~/Library/Application Support/yoqa/skills/yoqa-testing`, symlink into Standard / Claude / Cursor / Codex skill dirs
+  - Packaged app: source is `skills/yoqa-testing.tar.gz` in Resources (extracted on install)
+  - Dev checkout: source is `packages/skill/yoqa-testing`
 - UI wired with live ✓/× status, Install/Reinstall, Open folder
 
 ### Runner / CLI
@@ -48,7 +52,6 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
 
 ## Follow-ups
 
-- Bundle skill into packaged Electrobun resources (`build.copy`) for non-dev installs
 - Uninstall CLI / skill buttons
 - Richer screen cleanup + swipe-by-description
 - Cloud auth / credits when that product surface exists

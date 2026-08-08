@@ -1,6 +1,12 @@
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import packageJson from "../../../../package.json" with { type: "json" };
+import {
+	execRoots,
+	findFirstExisting,
+	packagedRunnerFileCandidates,
+	pathExists,
+} from "../packaged-resources";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 7420;
@@ -57,44 +63,13 @@ function getHost(): string {
 	return process.env.YOQA_RUNNER_HOST ?? DEFAULT_HOST;
 }
 
-async function pathExists(path: string): Promise<boolean> {
-	try {
-		return await Bun.file(path).exists();
-	} catch {
-		return false;
-	}
-}
-
-function execRoots(): string[] {
-	const roots: string[] = [];
-	for (const candidate of [process.execPath, process.argv0]) {
-		if (!candidate) continue;
-		const dir = dirname(candidate);
-		if (!roots.includes(dir)) roots.push(dir);
-	}
-	return roots;
-}
-
 /** Candidate locations for the compiled runner inside a packaged Electrobun .app. */
 export function packagedRunnerCandidates(roots: string[] = execRoots()): string[] {
-	const paths: string[] = [];
-	for (const root of roots) {
-		paths.push(
-			join(root, "yoqa-runner"),
-			join(root, "../Resources/app.asar.unpacked/runner/yoqa-runner"),
-			join(root, "../Resources/runner/yoqa-runner"),
-			join(root, "Resources/app.asar.unpacked/runner/yoqa-runner"),
-			join(root, "Resources/runner/yoqa-runner"),
-		);
-	}
-	return paths;
+	return packagedRunnerFileCandidates("yoqa-runner", roots);
 }
 
 async function findPackagedRunner(): Promise<string | null> {
-	for (const candidate of packagedRunnerCandidates()) {
-		if (await pathExists(candidate)) return candidate;
-	}
-	return null;
+	return findFirstExisting(packagedRunnerCandidates());
 }
 
 async function findRepoRoot(): Promise<string | null> {

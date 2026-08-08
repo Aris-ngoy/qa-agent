@@ -10,13 +10,22 @@ import type {
 	SkillTargetId,
 	SkillTargetState,
 } from "../../../shared/cli-environment";
+import {
+	findFirstExisting,
+	packagedRunnerFileCandidates,
+	packagedSkillFileCandidates,
+	pathExists,
+} from "../packaged-resources";
 
 const APP_SUPPORT = join(homedir(), "Library/Application Support/yoqa");
 const SKILL_INSTALL_DIR = join(APP_SUPPORT, "skills/yoqa-testing");
+const SKILL_SOURCE_CACHE_DIR = join(APP_SUPPORT, "skills/.source-yoqa-testing");
 const CLI_WRAPPER_DIR = join(APP_SUPPORT, "bin");
 const CLI_WRAPPER_PATH = join(CLI_WRAPPER_DIR, "yoqa");
 const PREFERRED_LINK_PATH = join(homedir(), ".local/bin/yoqa");
 const DISPLAY_SKILL_DIR = "~/Library/Application Support/yoqa/skills/yoqa-testing";
+
+type CliEntrypoint = { kind: "binary"; path: string } | { kind: "script"; path: string };
 
 const SKILL_TARGETS: Array<{
 	id: SkillTargetId;
@@ -50,14 +59,6 @@ const SKILL_TARGETS: Array<{
 	},
 ];
 
-async function pathExists(path: string): Promise<boolean> {
-	try {
-		return await Bun.file(path).exists();
-	} catch {
-		return false;
-	}
-}
-
 async function findRepoRoot(): Promise<string | null> {
 	const starts = [process.cwd()];
 	if (typeof import.meta.dir === "string") {
@@ -80,6 +81,30 @@ async function findRepoRoot(): Promise<string | null> {
 	return null;
 }
 
+async function extractSkillArchive(archivePath: string): Promise<string | null> {
+	await mkdir(dirname(SKILL_SOURCE_CACHE_DIR), { recursive: true });
+	await rm(SKILL_SOURCE_CACHE_DIR, { recursive: true, force: true });
+	await mkdir(SKILL_SOURCE_CACHE_DIR, { recursive: true });
+
+	const proc = Bun.spawn(["tar", "-xzf", archivePath, "-C", SKILL_SOURCE_CACHE_DIR], {
+		stdout: "ignore",
+		stderr: "pipe",
+		stdin: "ignore",
+	});
+	const code = await proc.exited;
+	if (code !== 0) {
+		const err = await new Response(proc.stderr).text();
+		console.error("[yoqa desktop] skill extract failed:", err || `exit ${code}`);
+		return null;
+	}
+
+	const extracted = join(SKILL_SOURCE_CACHE_DIR, "yoqa-testing");
+	if (await pathExists(join(extracted, "SKILL.md"))) {
+		return extracted;
+	}
+	return null;
+}
+
 async function resolveSkillSourceDir(): Promise<string | null> {
 	const repoRoot = await findRepoRoot();
 	if (repoRoot) {
@@ -94,20 +119,34 @@ async function resolveSkillSourceDir(): Promise<string | null> {
 		return nextToApp;
 	}
 
+	const archive = await findFirstExisting(packagedSkillFileCandidates("yoqa-testing.tar.gz"));
+	if (archive) {
+		const cachedSkill = join(SKILL_SOURCE_CACHE_DIR, "yoqa-testing");
+		if (await pathExists(join(cachedSkill, "SKILL.md"))) {
+			return cachedSkill;
+		}
+		return extractSkillArchive(archive);
+	}
+
 	return null;
 }
 
-async function resolveCliMainTs(): Promise<string | null> {
+async function resolveCliEntrypoint(): Promise<CliEntrypoint | null> {
+	const packaged = await findFirstExisting(packagedRunnerFileCandidates("yoqa"));
+	if (packaged) {
+		return { kind: "binary", path: packaged };
+	}
+
 	const repoRoot = await findRepoRoot();
 	if (!repoRoot) return null;
 	const mainTs = join(repoRoot, "services/runner/src/interfaces/cli/main.ts");
-	return (await pathExists(mainTs)) ? mainTs : null;
+	return (await pathExists(mainTs)) ? { kind: "script", path: mainTs } : null;
 }
 
-function isManagedTarget(target: string | null, resolvedMain: string | null): boolean {
+function isManagedTarget(target: string | null, resolvedEntrypoint: string | null): boolean {
 	if (!target) return false;
 	if (target === CLI_WRAPPER_PATH) return true;
-	if (resolvedMain && target === resolvedMain) return true;
+	if (resolvedEntrypoint && target === resolvedEntrypoint) return true;
 	if (target.startsWith(APP_SUPPORT)) return true;
 	return false;
 }
@@ -127,7 +166,7 @@ async function readSymlinkTarget(path: string): Promise<string | null> {
 	}
 }
 
-async function probeCliState(resolvedMain: string | null): Promise<CliInstallState> {
+async function probeCliState(resolvedEntrypoint: string | null): Promise<CliInstallState> {
 	const whichYoqa = Bun.which("yoqa");
 
 	try {
@@ -136,7 +175,10 @@ async function probeCliState(resolvedMain: string | null): Promise<CliInstallSta
 			? ((await readSymlinkTarget(PREFERRED_LINK_PATH)) ?? (await readlink(PREFERRED_LINK_PATH)))
 			: PREFERRED_LINK_PATH;
 
-		if (isManagedTarget(target, resolvedMain) || (await isManagedWrapper(PREFERRED_LINK_PATH))) {
+		if (
+			isManagedTarget(target, resolvedEntrypoint) ||
+			(await isManagedWrapper(PREFERRED_LINK_PATH))
+		) {
 			return {
 				status: "installed",
 				path: PREFERRED_LINK_PATH,
@@ -156,7 +198,10 @@ async function probeCliState(resolvedMain: string | null): Promise<CliInstallSta
 
 	if (whichYoqa) {
 		const target = await readSymlinkTarget(whichYoqa);
-		if (isManagedTarget(target ?? whichYoqa, resolvedMain) || (await isManagedWrapper(whichYoqa))) {
+		if (
+			isManagedTarget(target ?? whichYoqa, resolvedEntrypoint) ||
+			(await isManagedWrapper(whichYoqa))
+		) {
 			return {
 				status: "installed",
 				path: whichYoqa,
@@ -242,12 +287,12 @@ function localBinOnPath(): boolean {
 }
 
 export async function getCliEnvironmentSnapshot(): Promise<CliEnvironmentSnapshot> {
-	const [sourceDir, resolvedMain] = await Promise.all([
+	const [sourceDir, entrypoint] = await Promise.all([
 		resolveSkillSourceDir(),
-		resolveCliMainTs(),
+		resolveCliEntrypoint(),
 	]);
 	const bunAvailable = Bun.which("bun") != null;
-	const cliState = await probeCliState(resolvedMain);
+	const cliState = await probeCliState(entrypoint?.path ?? null);
 	const skillInstalled = await pathExists(join(SKILL_INSTALL_DIR, "SKILL.md"));
 	const targets = await Promise.all(SKILL_TARGETS.map(probeSkillTarget));
 
@@ -259,7 +304,7 @@ export async function getCliEnvironmentSnapshot(): Promise<CliEnvironmentSnapsho
 		cli: {
 			...cliState,
 			preferredLinkPath: PREFERRED_LINK_PATH,
-			resolvedBinaryTarget: resolvedMain,
+			resolvedBinaryTarget: entrypoint?.path ?? null,
 			bunAvailable,
 			pathHint: cliState.status === "installed" ? null : pathHint,
 		},
@@ -273,36 +318,40 @@ export async function getCliEnvironmentSnapshot(): Promise<CliEnvironmentSnapsho
 	};
 }
 
-async function writeCliWrapper(mainTs: string): Promise<string> {
+async function writeCliWrapper(entrypoint: CliEntrypoint): Promise<string> {
 	await mkdir(CLI_WRAPPER_DIR, { recursive: true });
+	const execLine =
+		entrypoint.kind === "binary"
+			? `exec "${entrypoint.path}" "$@"`
+			: `exec bun "${entrypoint.path}" "$@"`;
 	const script = `#!/usr/bin/env bash
 # YoQA CLI wrapper — managed by the YoQA desktop app
 set -euo pipefail
-exec bun "${mainTs}" "$@"
+${execLine}
 `;
 	await writeFile(CLI_WRAPPER_PATH, script, { mode: 0o755 });
 	return CLI_WRAPPER_PATH;
 }
 
 export async function installCli(): Promise<InstallResult> {
-	const mainTs = await resolveCliMainTs();
-	if (!mainTs) {
+	const entrypoint = await resolveCliEntrypoint();
+	if (!entrypoint) {
 		return {
 			ok: false,
 			error:
-				"Could not find yoqa CLI entrypoint. Open the project from the YoQA repo in development.",
+				"Could not find yoqa CLI in the app bundle. Reinstall the YoQA app, or open the YoQA repo in development.",
 		};
 	}
 
-	if (!Bun.which("bun")) {
+	if (entrypoint.kind === "script" && !Bun.which("bun")) {
 		return {
 			ok: false,
-			error: "Bun is required on PATH to run the yoqa CLI.",
+			error: "Bun is required on PATH to run the yoqa CLI in development.",
 		};
 	}
 
 	try {
-		const wrapper = await writeCliWrapper(mainTs);
+		const wrapper = await writeCliWrapper(entrypoint);
 		const linkDir = dirname(PREFERRED_LINK_PATH);
 		await mkdir(linkDir, { recursive: true });
 
@@ -310,7 +359,10 @@ export async function installCli(): Promise<InstallResult> {
 			const existing = await lstat(PREFERRED_LINK_PATH);
 			if (existing.isSymbolicLink()) {
 				const target = await readSymlinkTarget(PREFERRED_LINK_PATH);
-				if (!isManagedTarget(target, mainTs) && !(await isManagedWrapper(PREFERRED_LINK_PATH))) {
+				if (
+					!isManagedTarget(target, entrypoint.path) &&
+					!(await isManagedWrapper(PREFERRED_LINK_PATH))
+				) {
 					return {
 						ok: false,
 						error: `A different yoqa already exists at ${PREFERRED_LINK_PATH}. Remove it first.`,
@@ -343,7 +395,8 @@ export async function installSkill(): Promise<InstallSkillResult> {
 	if (!sourceDir) {
 		return {
 			ok: false,
-			error: "Could not find packages/skill/yoqa-testing. Open the YoQA repo or reinstall the app.",
+			error:
+				"Could not find the yoqa-testing skill in the app bundle. Reinstall the YoQA app, or open the YoQA repo in development.",
 		};
 	}
 

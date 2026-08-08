@@ -7,8 +7,11 @@ Ship a downloadable **unsigned** Apple Silicon DMG where YoQA Desktop starts its
 ## Plan summary
 
 - Compile `services/runner` with `bun build --compile` into `apps/desktop/resources/runner/yoqa-runner`
-- Electrobun `preBuild` + `copy` + `asarUnpack: ["runner/yoqa-runner", …]` (zig-asar needs an exact file path — `runner/**` does **not** unpack)
+- Compile CLI `services/runner/src/interfaces/cli/main.ts` → `apps/desktop/resources/runner/yoqa`
+- Pack `packages/skill/yoqa-testing` → `apps/desktop/resources/skills/yoqa-testing.tar.gz`
+- Electrobun `preBuild` + `copy` + `asarUnpack` for runner, CLI, and skill archive (zig-asar needs exact file paths — globs like `runner/**` do **not** unpack)
 - Sidecar prefers `Contents/Resources/app.asar.unpacked/runner/yoqa-runner`; falls back to monorepo `bun run` for `electrobun dev`
+- Settings → CLI & Agents resolves packaged `runner/yoqa` + skill archive (no monorepo checkout)
 - Tag `v*` triggers GitHub Actions on `macos-14` → stable Electrobun DMG → GitHub Release
 
 Rejected for v0.1.0: shipping Appium/Node inside the DMG; Apple codesign/notarize; Intel x64.
@@ -43,8 +46,8 @@ curl -s http://127.0.0.1:7420/health
 Cut a release:
 
 ```bash
-git tag v0.3.1
-git push origin v0.3.1
+git tag v0.3.2
+git push origin v0.3.2
 # watch Actions → Release macOS
 ```
 
@@ -59,6 +62,5 @@ open /Applications/yoqa.app
 
 - Apple codesign + notarize secrets
 - `macos-x64` matrix build
-- Package CLI + skill into Resources for Settings installs without a checkout
 - Set `release.baseUrl` to the GitHub Releases download URL for Electrobun auto-update
 - Optional: ship a Node/npm sidecar so Appium install works with zero host Node install
