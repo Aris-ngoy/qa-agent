@@ -75,11 +75,12 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		kind: "opencode",
 		label: "OpenCode",
 		description: "OpenCode CLI + Zen HTTP catalog (AI SDK). Vision uses OpenAI-compatible Zen.",
-		authModes: ["cli", "api_key"],
+		authModes: ["api_key", "cli"],
 		defaultBinary: "opencode",
 		envHints: ["OPENCODE_API_KEY"],
 		keyPlaceholder: "sk-…",
-		loginInstructions: "Create a key at opencode.ai/auth, or point Server URL at a local server.",
+		loginInstructions:
+			"Create a Zen API key at opencode.ai/auth (required for vision). CLI is optional for local tools.",
 	},
 	{
 		kind: "github-copilot",

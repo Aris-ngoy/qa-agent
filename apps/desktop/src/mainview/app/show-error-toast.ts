@@ -30,6 +30,16 @@ export function summarizeError(message: string): SummarizedError {
 		};
 	}
 	if (message.includes("is not authenticated for vision")) {
+		if (
+			message.includes('"opencode"') ||
+			message.includes("opencode providers login") ||
+			message.includes("OPENCODE_API_KEY")
+		) {
+			return {
+				title: "Provider not authenticated",
+				description: "Paste an OpenCode API key in Settings (opencode.ai/auth).",
+			};
+		}
 		return {
 			title: "Provider not authenticated",
 			description: "Fix auth or API key in Settings.",

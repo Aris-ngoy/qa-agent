@@ -52,17 +52,24 @@ function parseModelsPayload(json: unknown): ModelEntry[] {
 function resolveOpenCodeKey(input: { apiKey: string | null; env: Record<string, string> }):
 	| string
 	| null {
-	return input.apiKey || input.env.OPENCODE_API_KEY || input.env.OPENCODE_ZEN_API_KEY || null;
+	return (
+		input.apiKey?.trim() ||
+		input.env.OPENCODE_API_KEY?.trim() ||
+		input.env.OPENCODE_ZEN_API_KEY?.trim() ||
+		process.env.OPENCODE_API_KEY?.trim() ||
+		process.env.OPENCODE_ZEN_API_KEY?.trim() ||
+		null
+	);
 }
 
 export const opencodeDriver: DriverDefinition = {
 	kind: "opencode",
 	label: "OpenCode",
 	defaultBinary: "opencode",
-	authModes: ["cli", "api_key"],
+	authModes: ["api_key", "cli"],
 	envHints: ["OPENCODE_API_KEY", "OPENCODE_ZEN_API_KEY"],
 	loginInstructions:
-		"Install OpenCode, set OPENCODE_API_KEY (from opencode.ai/auth), or point Server URL at a local OpenCode server.",
+		"Create a Zen API key at opencode.ai/auth (required for vision). CLI is optional for local tools.",
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "opencode",
@@ -123,13 +130,6 @@ export const opencodeDriver: DriverDefinition = {
 				message: `Authenticated · opencode${probe.version ? ` ${probe.version}` : ""}`,
 			};
 		}
-		if (probe.found) {
-			return {
-				ok: true,
-				status: "connected",
-				message: `OpenCode CLI found${probe.version ? ` · ${probe.version}` : ""} — add OPENCODE_API_KEY for hosted catalogs`,
-			};
-		}
 		if (key) {
 			return {
 				ok: true,
@@ -137,10 +137,18 @@ export const opencodeDriver: DriverDefinition = {
 				message: "OpenCode API key stored (CLI not on PATH)",
 			};
 		}
+		if (probe.found) {
+			return {
+				ok: false,
+				status: "invalid",
+				message:
+					"OpenCode CLI found, but vision needs a Zen API key. Paste a key from opencode.ai/auth or run `opencode providers login`.",
+			};
+		}
 		return {
 			ok: false,
 			status: "invalid",
-			message: "Provide an OpenCode API key, local server URL, or install the `opencode` CLI",
+			message: "Paste an OpenCode API key from opencode.ai/auth, or set a local Server URL",
 		};
 	},
 	async listModels(input) {

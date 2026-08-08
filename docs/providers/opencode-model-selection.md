@@ -18,6 +18,10 @@ Stop OpenCode runs from failing with Zen `CreditsError` (no payment method) or o
 - **Runs:** [`services/runner/src/domains/runs/agent.ts`](../../services/runner/src/domains/runs/agent.ts) defaults OpenCode to `deepseek-v4-flash-free`; clearer messages for `CreditsError` and opaque vision `500`s.
 - **UI:** OpenCode details show Free/Paid models; hint that YoQA needs screenshot-capable models. New providers default to `deepseek-v4-flash-free`.
 
+## Auth note
+
+Vision runs use Zen HTTP and require a Zen API key (Settings paste, `OPENCODE_API_KEY` / `OPENCODE_ZEN_API_KEY`, or CLI `auth.json`). Finding the `opencode` binary alone is not enough — see [2026-08-08-opencode-auth-fix](../sessions/2026-08-08-opencode-auth-fix.md).
+
 ## How to verify
 
 1. Settings → Provider → expand OpenCode (with API key) → Free / Paid list appears → click `deepseek-v4-flash-free` → Save.

@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import type { ProbeResult } from "./types";
 
 async function pathExists(path: string): Promise<boolean> {
@@ -23,6 +24,28 @@ async function which(binary: string): Promise<string | null> {
 	return resolved || null;
 }
 
+/** Absolute dirs Finder/Dock PATH often omits — used when `which` misses the binary. */
+function knownHomeBinCandidates(binaryName: string, home: string = homedir()): string[] {
+	return [
+		join(home, ".opencode", "bin", binaryName),
+		join(home, ".grok", "bin", binaryName),
+		join(home, ".antigravity", "antigravity", "bin", binaryName),
+		join(home, ".local", "bin", binaryName),
+		join(home, ".bun", "bin", binaryName),
+		`/opt/homebrew/bin/${binaryName}`,
+		`/usr/local/bin/${binaryName}`,
+	];
+}
+
+async function resolveFromKnownBins(binaryName: string): Promise<string | null> {
+	for (const candidate of knownHomeBinCandidates(binaryName)) {
+		if (await pathExists(candidate)) {
+			return candidate;
+		}
+	}
+	return null;
+}
+
 export async function resolveBinary(
 	defaultName: string,
 	binaryPath?: string | null,
@@ -37,7 +60,7 @@ export async function resolveBinary(
 			detail: `${candidate} not found`,
 		};
 	}
-	const resolved = await which(candidate);
+	const resolved = (await which(candidate)) ?? (await resolveFromKnownBins(candidate));
 	if (!resolved) {
 		return {
 			path: null,
