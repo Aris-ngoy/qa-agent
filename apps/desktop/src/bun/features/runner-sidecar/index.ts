@@ -1,4 +1,12 @@
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import packageJson from "../../../../package.json" with { type: "json" };
+import {
+	execRoots,
+	findFirstExisting,
+	packagedRunnerFileCandidates,
+	pathExists,
+} from "../packaged-resources";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 7420;
@@ -24,6 +32,21 @@ type RunnerLaunch = {
 let child: RunnerChild | null = null;
 let ensureInFlight: Promise<EnsureLocalServicesResult> | null = null;
 
+/** Finder/Dock omit Homebrew from PATH — mirror runner host-path.ts. */
+function pathWithHostTools(): string {
+	const home = homedir();
+	const extras = [
+		"/opt/homebrew/bin",
+		"/opt/homebrew/sbin",
+		"/usr/local/bin",
+		join(home, ".local", "bin"),
+		join(home, ".bun", "bin"),
+	];
+	const existing = (process.env.PATH ?? "").split(":").filter(Boolean);
+	const prepend = extras.filter((dir) => !existing.includes(dir));
+	return [...prepend, ...existing].join(":");
+}
+
 function getBaseUrl(): string {
 	return (process.env.YOQA_RUNNER_URL ?? `http://${DEFAULT_HOST}:${DEFAULT_PORT}`).replace(
 		/\/$/,
@@ -40,44 +63,13 @@ function getHost(): string {
 	return process.env.YOQA_RUNNER_HOST ?? DEFAULT_HOST;
 }
 
-async function pathExists(path: string): Promise<boolean> {
-	try {
-		return await Bun.file(path).exists();
-	} catch {
-		return false;
-	}
-}
-
-function execRoots(): string[] {
-	const roots: string[] = [];
-	for (const candidate of [process.execPath, process.argv0]) {
-		if (!candidate) continue;
-		const dir = dirname(candidate);
-		if (!roots.includes(dir)) roots.push(dir);
-	}
-	return roots;
-}
-
 /** Candidate locations for the compiled runner inside a packaged Electrobun .app. */
 export function packagedRunnerCandidates(roots: string[] = execRoots()): string[] {
-	const paths: string[] = [];
-	for (const root of roots) {
-		paths.push(
-			join(root, "yoqa-runner"),
-			join(root, "../Resources/app.asar.unpacked/runner/yoqa-runner"),
-			join(root, "../Resources/runner/yoqa-runner"),
-			join(root, "Resources/app.asar.unpacked/runner/yoqa-runner"),
-			join(root, "Resources/runner/yoqa-runner"),
-		);
-	}
-	return paths;
+	return packagedRunnerFileCandidates("yoqa-runner", roots);
 }
 
 async function findPackagedRunner(): Promise<string | null> {
-	for (const candidate of packagedRunnerCandidates()) {
-		if (await pathExists(candidate)) return candidate;
-	}
-	return null;
+	return findFirstExisting(packagedRunnerCandidates());
 }
 
 async function findRepoRoot(): Promise<string | null> {
@@ -188,8 +180,10 @@ async function spawnRunner(baseUrl: string): Promise<void> {
 		cwd: launch.cwd,
 		env: {
 			...process.env,
+			PATH: pathWithHostTools(),
 			YOQA_RUNNER_HOST: getHost(),
 			YOQA_RUNNER_PORT: String(getPort()),
+			YOQA_RUNNER_VERSION: process.env.YOQA_RUNNER_VERSION ?? packageJson.version,
 		},
 		stdout: "inherit",
 		stderr: "inherit",

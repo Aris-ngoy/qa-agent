@@ -4,7 +4,7 @@ export default {
 	app: {
 		name: "yoqa",
 		identifier: "ai.yoqa.app",
-		version: "0.3.0",
+		version: "0.3.2",
 	},
 	build: {
 		useAsar: true,
@@ -17,9 +17,19 @@ export default {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets/": "views/mainview/assets/",
 			"resources/runner/yoqa-runner": "runner/yoqa-runner",
+			"resources/runner/yoqa": "runner/yoqa",
+			"resources/skills/yoqa-testing.tar.gz": "skills/yoqa-testing.tar.gz",
 		},
-		asarUnpack: ["runner/yoqa-runner", "*.node", "*.dll", "*.dylib", "*.so"],
-		watchIgnore: ["dist/**", "resources/runner/**", "artifacts/**"],
+		asarUnpack: [
+			"runner/yoqa-runner",
+			"runner/yoqa",
+			"skills/yoqa-testing.tar.gz",
+			"*.node",
+			"*.dll",
+			"*.dylib",
+			"*.so",
+		],
+		watchIgnore: ["dist/**", "resources/runner/**", "resources/skills/**", "artifacts/**"],
 		mac: {
 			codesign: false,
 			notarize: false,

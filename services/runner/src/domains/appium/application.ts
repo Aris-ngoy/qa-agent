@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { DevicePlatform, SetupPlatformRequest } from "@yoqa/runner-client";
 import { installWdaOnDevice } from "../ios/application";
+import { ensureHostToolPath } from "./host-path";
 import {
 	type AppiumDriverName,
 	MANAGED_APPIUM_VERSION,
@@ -21,10 +22,19 @@ const MANAGED_APPIUM_HOME = join(YOQA_ROOT, "appium");
 const MANAGED_APPIUM_BIN = join(MANAGED_RUNTIME_DIR, "node_modules", "appium", "index.js");
 const MANAGED_PACKAGE_JSON = join(MANAGED_RUNTIME_DIR, "package.json");
 
+async function pathExists(path: string): Promise<boolean> {
+	try {
+		return await Bun.file(path).exists();
+	} catch {
+		return false;
+	}
+}
+
 async function runCommand(
 	command: string[],
 	options?: { env?: Record<string, string>; cwd?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+	ensureHostToolPath();
 	try {
 		const proc = Bun.spawn(command, {
 			cwd: options?.cwd,
@@ -86,11 +96,15 @@ async function readNodeVersion(nodeBin: string): Promise<string | null> {
  * for a Node that Appium will accept (avoids silent attach to foreign Appium).
  */
 export async function resolveAppiumNodeBin(): Promise<string> {
+	ensureHostToolPath();
 	const home = homedir();
 	const candidates: string[] = [];
 
 	const pathNode = await which("node");
 	if (pathNode) candidates.push(pathNode);
+
+	// Explicit well-known locations for GUI launches that still miss Homebrew.
+	candidates.push("/opt/homebrew/bin/node", "/usr/local/bin/node");
 
 	const nvmDir = process.env.NVM_DIR ?? join(home, ".nvm");
 	const asdfDir = process.env.ASDF_DATA_DIR ?? join(home, ".asdf");
@@ -113,6 +127,7 @@ export async function resolveAppiumNodeBin(): Promise<string> {
 	for (const candidate of candidates) {
 		if (!candidate || seen.has(candidate)) continue;
 		seen.add(candidate);
+		if (!(await pathExists(candidate))) continue;
 		const version = await readNodeVersion(candidate);
 		if (version && isAppiumCompatibleNode(version)) return candidate;
 	}
@@ -139,15 +154,17 @@ async function readAppiumVersion(
 	return version || null;
 }
 
-async function ensureNpmAvailable(): Promise<void> {
-	const npm = await which("npm");
-	if (!npm) {
-		throw new Error("npm is required to install Appium but was not found on PATH");
-	}
-	const node = await which("node");
-	if (!node) {
-		throw new Error("node is required to install Appium but was not found on PATH");
-	}
+/** Prefer npm next to the Appium Node binary (nvm/Homebrew), then PATH. */
+async function resolveNpmBin(nodeBin: string): Promise<string> {
+	const sibling = join(dirname(nodeBin), "npm");
+	if (await pathExists(sibling)) return sibling;
+
+	const fromPath = await which("npm");
+	if (fromPath) return fromPath;
+
+	throw new Error(
+		"npm is required to install Appium but was not found next to Node or on PATH. Install Node (with npm) via Homebrew or nvm, then retry.",
+	);
 }
 
 async function writeManagedPackageJson(): Promise<void> {
@@ -171,8 +188,8 @@ function managedAppiumEnv(): Record<string, string> {
 }
 
 async function ensureManagedAppium(): Promise<ResolvedAppium> {
-	await ensureNpmAvailable();
 	const nodeBin = await resolveAppiumNodeBin();
+	const npmBin = await resolveNpmBin(nodeBin);
 	await mkdir(MANAGED_RUNTIME_DIR, { recursive: true });
 	await mkdir(MANAGED_APPIUM_HOME, { recursive: true });
 	await writeManagedPackageJson();
@@ -181,7 +198,7 @@ async function ensureManagedAppium(): Promise<ResolvedAppium> {
 	const existingVersion = await readAppiumVersion(MANAGED_APPIUM_BIN, env, nodeBin);
 	if (!existingVersion) {
 		const { stderr, stdout, exitCode } = await runCommand(
-			["npm", "install", "--no-fund", "--no-audit", "--prefix", MANAGED_RUNTIME_DIR],
+			[npmBin, "install", "--no-fund", "--no-audit", "--prefix", MANAGED_RUNTIME_DIR],
 			{ cwd: MANAGED_RUNTIME_DIR, env },
 		);
 		if (exitCode !== 0) {
@@ -493,8 +510,16 @@ async function probeHostTools(): Promise<{ xcode: RuntimeCheck; adb: RuntimeChec
 
 /** Read-only readiness snapshot (does not install anything). */
 export async function getRuntimeStatus(): Promise<RuntimeStatus> {
-	const nodePath = await which("node");
-	const npmPath = await which("npm");
+	ensureHostToolPath();
+	let nodePath: string | null = null;
+	let npmPath: string | null = null;
+	try {
+		nodePath = await resolveAppiumNodeBin();
+		npmPath = await resolveNpmBin(nodePath);
+	} catch {
+		nodePath = await which("node");
+		npmPath = await which("npm");
+	}
 	const appium = await probeAppium();
 	const host = await probeHostTools();
 

@@ -1,3 +1,5 @@
+import packageJson from "../package.json" with { type: "json" };
+
 export type RunnerSettings = {
 	host: string;
 	port: number;
@@ -13,7 +15,7 @@ export function loadSettings(): RunnerSettings {
 	return {
 		host: process.env.YOQA_RUNNER_HOST ?? "127.0.0.1",
 		port,
-		version: process.env.YOQA_RUNNER_VERSION ?? "0.1.0",
+		version: process.env.YOQA_RUNNER_VERSION ?? packageJson.version,
 	};
 }
 

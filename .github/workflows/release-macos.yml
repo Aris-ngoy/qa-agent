@@ -67,7 +67,8 @@ jobs:
             - **Apple Silicon only** (`arm64`) for this release
             - Bundled local runner starts with the app (no monorepo checkout required)
             - Appium / Xcode / adb stay on the host; first device setup may install Appium under `~/.yoqa`
-            - Settings → CLI & Agents install still expects a monorepo checkout for now
+            - Settings → CLI & Agents installs the bundled `yoqa` CLI and skill (no monorepo checkout)
 
             ### Verify
             After launch, the runner should answer `http://127.0.0.1:7420/health`.
+            In Settings → CLI & Agents, Reinstall CLI / skill should succeed; then `yoqa health`.
