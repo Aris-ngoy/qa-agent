@@ -23,8 +23,8 @@ async function exchangeCopilotToken(
 				Authorization: `token ${githubToken}`,
 				Accept: "application/json",
 				"User-Agent": "yoqa-runner",
-				"Editor-Version": "YoQA/1.0.0",
-				"Editor-Plugin-Version": "YoQA/1.0.0",
+				"Editor-Version": "Yoqa/1.0.0",
+				"Editor-Plugin-Version": "Yoqa/1.0.0",
 			},
 		});
 		if (!response.ok) {
@@ -62,8 +62,8 @@ async function listCopilotModels(
 				Authorization: `Bearer ${copilotToken}`,
 				Accept: "application/json",
 				"User-Agent": "yoqa-runner",
-				"Editor-Version": "YoQA/1.0.0",
-				"Editor-Plugin-Version": "YoQA/1.0.0",
+				"Editor-Version": "Yoqa/1.0.0",
+				"Editor-Plugin-Version": "Yoqa/1.0.0",
 				"Copilot-Integration-Id": "vscode-chat",
 			},
 		});

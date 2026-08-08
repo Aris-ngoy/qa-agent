@@ -1,6 +1,6 @@
 # Installing an Android Build
 
-> Only needed for **debug mode** (manual device interaction). When running tests via the YoQA agent, the build is installed automatically.
+> Only needed for **debug mode** (manual device interaction). When running tests via the Yoqa agent, the build is installed automatically.
 
 The commands below are baseline examples and may need adjustment depending on the connected device configuration.
 

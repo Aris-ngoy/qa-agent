@@ -30,7 +30,7 @@ describe("formatCaseScriptShell", () => {
 			caseNumber: 3,
 			caseName: "Login",
 		});
-		expect(out).toContain("# YoQA exported script — #3 Login");
+		expect(out).toContain("# Yoqa exported script — #3 Login");
 		expect(out).toContain("yoqa action tap --x 100 --y 200");
 		expect(out).toContain("yoqa action input --text 'it'\\''s ok'");
 		expect(out).toContain("sleep 1.5");

@@ -24,4 +24,4 @@ yoqa devices connect <device_id>   # open an Appium session on this device
 
 - Prefer a booted simulator over a physical device for speed
 - If `yoqa devices connect` fails, check that the device is available (`STATUS: available` or `shutdown`)
-- iOS physical device requires the YoQA app to be trusted on the device
+- iOS physical device requires the Yoqa app to be trusted on the device

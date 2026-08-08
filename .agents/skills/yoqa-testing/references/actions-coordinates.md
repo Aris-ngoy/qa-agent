@@ -1,8 +1,8 @@
 # Actions by Coordinates (fallback)
 
-**Fallback path — prefer [Actions by description](actions-grounding.md) (grounding).** Grounding is the primary approach: you describe the element and YoQA locates it. Use coordinates only when grounding isn't a good fit — e.g. it keeps mislocating a target, or you already know the exact spot (a point on a map/canvas with no distinct element to describe).
+**Fallback path — prefer [Actions by description](actions-grounding.md) (grounding).** Grounding is the primary approach: you describe the element and Yoqa locates it. Use coordinates only when grounding isn't a good fit — e.g. it keeps mislocating a target, or you already know the exact spot (a point on a map/canvas with no distinct element to describe).
 
-Here **you** locate the element and pass its coordinates — YoQA performs no resolution. Coordinates are relative (`0–1000`). X increases left→right, Y increases top→bottom. Read them from the `relative_bbox_2d` of the target element in `yoqa screen` — see [Inspect & App Control](inspect-and-app-control.md).
+Here **you** locate the element and pass its coordinates — Yoqa performs no resolution. Coordinates are relative (`0–1000`). X increases left→right, Y increases top→bottom. Read them from the `relative_bbox_2d` of the target element in `yoqa screen` — see [Inspect & App Control](inspect-and-app-control.md).
 
 **Always `yoqa screen` first** to find the element and compute its center; never guess coordinates.
 

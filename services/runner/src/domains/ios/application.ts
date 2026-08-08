@@ -110,13 +110,13 @@ export async function resolveWdaProjectPath(appiumHome?: string): Promise<string
 }
 
 /**
- * Swap Appium's AppIcon for the YoQA mark so the installed WebDriverAgent
+ * Swap Appium's AppIcon for the Yoqa mark so the installed WebDriverAgent
  * shows our branding on the device home screen. The WDA scheme's
  * embed-runner-icon.sh post-action then lifts the compiled icons into Runner.app.
  */
 async function brandWdaAppIcon(projectPath: string): Promise<void> {
 	if (!(await pathExists(WDA_APP_ICON_PATH))) {
-		throw new Error(`YoQA WebDriverAgent icon not found at ${WDA_APP_ICON_PATH}`);
+		throw new Error(`Yoqa WebDriverAgent icon not found at ${WDA_APP_ICON_PATH}`);
 	}
 
 	const iconPath = join(
@@ -403,7 +403,7 @@ async function prepIsReusable(
 }
 
 /**
- * True when the YoQA WebDriverAgent bundle is installed on the physical device.
+ * True when the Yoqa WebDriverAgent bundle is installed on the physical device.
  */
 export async function isWdaInstalledOnDevice(deviceId: string, bundleId: string): Promise<boolean> {
 	const tempDir = await mkdtemp(join(tmpdir(), "yoqa-wda-apps-"));

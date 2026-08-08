@@ -2,7 +2,7 @@
 
 ## Goal
 
-Ship a downloadable **unsigned** Apple Silicon DMG where YoQA Desktop starts its local Hono runner without a monorepo checkout.
+Ship a downloadable **unsigned** Apple Silicon DMG where Yoqa Desktop starts its local Hono runner without a monorepo checkout.
 
 ## Plan summary
 

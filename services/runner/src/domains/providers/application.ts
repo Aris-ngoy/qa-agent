@@ -292,7 +292,7 @@ export async function updateProvider(
 		patch.enabled = request.enabled ? 1 : 0;
 		if (!request.enabled) {
 			patch.status = "disabled";
-			patch.statusDetail = "Disabled in YoQA settings";
+			patch.statusDetail = "Disabled in Yoqa settings";
 		} else if (row.status === "disabled") {
 			patch.status = "unchecked";
 			patch.statusDetail = null;
@@ -376,7 +376,7 @@ export async function validateProvider(
 			.update(providers)
 			.set({
 				status: "disabled",
-				statusDetail: "Disabled in YoQA settings",
+				statusDetail: "Disabled in Yoqa settings",
 				updatedAt: Date.now(),
 			})
 			.where(eq(providers.id, id));

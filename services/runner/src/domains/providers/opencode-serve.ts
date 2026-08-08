@@ -24,7 +24,7 @@ function isManagedAlive(): boolean {
 	return managed !== null && managed.proc.exitCode === null;
 }
 
-/** Stop a YoQA-spawned OpenCode serve (no-op for external Server URL). */
+/** Stop a Yoqa-spawned OpenCode serve (no-op for external Server URL). */
 export function stopManagedOpenCodeServer(): void {
 	if (!managed) return;
 	const current = managed;

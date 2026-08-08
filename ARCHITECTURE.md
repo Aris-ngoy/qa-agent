@@ -1,8 +1,8 @@
-# YoQA — Feature Spec & Build Architecture
+# Yoqa — Feature Spec & Build Architecture
 
-**Product:** YoQA (`yoqa.ai`) · **Code name:** `qa-agent`
+**Product:** Yoqa (`yoqa.ai`) · **Code name:** `qa-agent`
 
-This document is the product design and build architecture for YoQA: desktop + local runner + Appium + agent skill, with optional cloud later.
+This document is the product design and build architecture for Yoqa: desktop + local runner + Appium + agent skill, with optional cloud later.
 
 Related: public docs in [`apps/docs/`](apps/docs/) (Mintlify) and engineering notes under [`docs/`](docs/).
 
@@ -17,7 +17,7 @@ Two complementary modes:
 | Mode | Who decides each step | Who pays / when |
 |------|------------------------|-----------------|
 | **Device connector (CLI)** | External coding agent (`yoqa screen` → `yoqa action` loop) | Free when signed in |
-| **YoQA agent (runs)** | Autonomous perception→decision→action loop | Paid credits |
+| **Yoqa agent (runs)** | Autonomous perception→decision→action loop | Paid credits |
 
 ---
 
@@ -403,7 +403,7 @@ run_steps(id, run_test_id, idx, action jsonb, screenshot_uri, ok, latency_ms)
 
 ## 9. Design ownership
 
-YoQA owns its stack end-to-end:
+Yoqa owns its stack end-to-end:
 
 - Vision / agent prompts and provider wiring (`resolveActiveProviderAuth()`, Settings → Provider)
 - Cleaned accessibility-tree heuristics measured against real Appium trees
@@ -602,7 +602,7 @@ Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done
 ## References
 
 - [Appium Capabilities](https://docs.yoqa.ai/guide/best-practices-appium-capabilities)
-- [How YoQA agent works](https://docs.yoqa.ai/guide/how-yoqa-agent-works)
+- [How Yoqa agent works](https://docs.yoqa.ai/guide/how-yoqa-agent-works)
 - [CLI](https://docs.yoqa.ai/docs/cli)
 - [CLI for agents](https://docs.yoqa.ai/guide/cli-for-agents)
 - [Writing good test cases](https://docs.yoqa.ai/guide/writing-test-cases)

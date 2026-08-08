@@ -30,7 +30,7 @@ const program = new Command();
 
 program
 	.name("yoqa")
-	.description("Local YoQA CLI (talks to the local runner over HTTP)")
+	.description("Local Yoqa CLI (talks to the local runner over HTTP)")
 	.version(packageJson.version);
 
 function client(baseUrl: string) {

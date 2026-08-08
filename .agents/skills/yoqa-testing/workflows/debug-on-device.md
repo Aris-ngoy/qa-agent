@@ -1,6 +1,6 @@
 # Workflow: Debug Directly on Device
 
-You drive the device yourself — inspect, then tap/swipe/drag/type. **Prefer describing the target element in plain language** — YoQA resolves its on-screen location for you (grounding — free, only requires being signed in). See [Actions by description](../references/actions-grounding.md). As a fallback, you can pass explicit relative coordinates read from the screen tree — see [Actions by coordinates](../references/actions-coordinates.md).
+You drive the device yourself — inspect, then tap/swipe/drag/type. **Prefer describing the target element in plain language** — Yoqa resolves its on-screen location for you (grounding — free, only requires being signed in). See [Actions by description](../references/actions-grounding.md). As a fallback, you can pass explicit relative coordinates read from the screen tree — see [Actions by coordinates](../references/actions-coordinates.md).
 
 ### 1. Connect a device
 List available devices and connect the one to test on. See [Devices](../references/devices.md).

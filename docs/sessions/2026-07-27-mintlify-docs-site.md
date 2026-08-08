@@ -1,8 +1,8 @@
-# YoQA Mintlify docs site
+# Yoqa Mintlify docs site
 
 ## Goal
 
-Ship a public product docs site (Mintlify IA: Docs + Guide tabs) branded for YoQA, covering Phase 1 local features.
+Ship a public product docs site (Mintlify IA: Docs + Guide tabs) branded for Yoqa, covering Phase 1 local features.
 
 ## Plan summary
 
@@ -13,7 +13,7 @@ Ship a public product docs site (Mintlify IA: Docs + Guide tabs) branded for YoQ
 
 ## What shipped
 
-- `apps/docs/docs.json` — YoQA branding (teal), Docs + Guide tabs, redirects `/` → `/docs/overview`
+- `apps/docs/docs.json` — Yoqa branding (teal), Docs + Guide tabs, redirects `/` → `/docs/overview`
 - Docs pages: overview, quickstart, apps, test-cases, desktop-app, local-builds, device-preparation, cli, manual-inspector, providers
 - Guide pages: introduction, how-yoqa-agent-works, writing-test-cases, local-testing, cli-for-agents, and best-practices set
 - Logos / favicon SVGs; root script `bun run docs`

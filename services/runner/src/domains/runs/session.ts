@@ -84,7 +84,7 @@ function isPortFree(port: number): Promise<boolean> {
 async function pickAppiumPort(): Promise<number> {
 	if (await isPortFree(DEFAULT_APPIUM_PORT)) return DEFAULT_APPIUM_PORT;
 	// Prefer a free port over silently attaching to a foreign Appium
-	// that rebuilds WDA without YoQA signing / preinstalled caps.
+	// that rebuilds WDA without Yoqa signing / preinstalled caps.
 	for (let offset = 1; offset <= 20; offset++) {
 		const candidate = DEFAULT_APPIUM_PORT + offset;
 		if (await isPortFree(candidate)) return candidate;
@@ -275,7 +275,7 @@ async function buildW3cCapabilities(
 				`iOS device ${options.deviceId} is not prepared. Run device setup so WebDriverAgent is installed before starting a run.`,
 			);
 		}
-		// Reuse the YoQA-built/signed WDA instead of Appium's unsigned xcodebuild (code 65).
+		// Reuse the Yoqa-built/signed WDA instead of Appium's unsigned xcodebuild (code 65).
 		if (caps["appium:usePreinstalledWDA"] === undefined) {
 			caps["appium:usePreinstalledWDA"] = true;
 		}

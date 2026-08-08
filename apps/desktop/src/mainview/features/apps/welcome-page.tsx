@@ -20,7 +20,7 @@ export function WelcomePage() {
 						Y
 					</span>
 					<h1 className="mb-3 text-headline-lg font-semibold tracking-tight text-on-surface">
-						YoQA
+						Yoqa
 					</h1>
 					<p className="mb-8 text-body-md leading-relaxed text-on-surface-variant">
 						{hasApps

@@ -1,7 +1,7 @@
 {
 	"$schema": "https://mintlify.com/docs.json",
 	"theme": "mint",
-	"name": "YoQA",
+	"name": "Yoqa",
 	"description": "Local-first agentic mobile QA — test iOS and Android apps with AI, no locator scripts.",
 	"colors": {
 		"primary": "#8b7ec8",

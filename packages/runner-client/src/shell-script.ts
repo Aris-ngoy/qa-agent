@@ -397,7 +397,7 @@ export function formatAssertShellLine(input: {
 
 export const DEFAULT_SHELL_SCRIPT_HEADER = [
 	"#!/usr/bin/env bash",
-	"# YoQA inspector script",
+	"# Yoqa inspector script",
 	"# Requires an active device session: yoqa devices connect <id>",
 	"set -euo pipefail",
 	"",

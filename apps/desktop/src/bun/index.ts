@@ -33,7 +33,7 @@ async function getMainViewUrl(): Promise<string> {
 ApplicationMenu.setApplicationMenu([
 	{
 		submenu: [
-			{ label: "About YoQA", role: "about" },
+			{ label: "About Yoqa", role: "about" },
 			{ type: "separator" },
 			{ label: "Quit", role: "quit", accelerator: "q" },
 		],
@@ -98,7 +98,7 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 });
 
 const mainWindow = new BrowserWindow({
-	title: "YoQA",
+	title: "Yoqa",
 	url: await getMainViewUrl(),
 	// Transparent titlebar so the app canvas paints under the traffic lights
 	titleBarStyle: "hiddenInset",

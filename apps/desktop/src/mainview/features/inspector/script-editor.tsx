@@ -17,7 +17,7 @@ export function ScriptEditor({ value, onChange, disabled, activeLineNumber }: Sc
 				)}
 			</div>
 			<textarea
-				aria-label="YoQA shell script"
+				aria-label="Yoqa shell script"
 				className="min-h-72 w-full resize-y rounded-xl border border-outline-variant/40 bg-surface-container px-3 py-2.5 font-mono text-body-sm leading-relaxed text-on-surface outline-none transition-colors focus:border-secondary disabled:opacity-60"
 				disabled={disabled}
 				rows={14}

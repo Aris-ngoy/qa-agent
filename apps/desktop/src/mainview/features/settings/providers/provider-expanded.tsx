@@ -76,7 +76,7 @@ const OPENCODE_FALLBACK_FREE_MODELS: ProviderModel[] = [
 
 /** Hint: most Zen free models are text-only; mimo-v2.5-free accepts screenshots. */
 const OPENCODE_NON_VISION_FREE_HINT =
-	"YoQA sends screenshots. Prefer mimo-v2.5-free — deepseek-v4-flash-free, big-pickle, and most other free models are text-only on Zen.";
+	"Yoqa sends screenshots. Prefer mimo-v2.5-free — deepseek-v4-flash-free, big-pickle, and most other free models are text-only on Zen.";
 
 function isPaidModelSelected(models: ProviderModel[], defaultModel: string): boolean {
 	const id = defaultModel.trim();

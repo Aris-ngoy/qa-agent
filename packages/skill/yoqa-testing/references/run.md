@@ -1,6 +1,6 @@
 # Run Tests
 
-Starts a test run with the YoQA agent on the active device. Requires a paid account with credits.
+Starts a test run with the Yoqa agent on the active device. Requires a paid account with credits.
 
 The first argument is always the **app prefix**, followed by the cases to run — either saved case numbers or an inline JSON array of ad-hoc cases.
 

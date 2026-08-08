@@ -2,7 +2,7 @@
 
 ## Goal
 
-Harden how YoQA accepts contributions and ships releases: branch/PR lifecycle, CI gates, owner-only releases, and public security reporting.
+Harden how Yoqa accepts contributions and ships releases: branch/PR lifecycle, CI gates, owner-only releases, and public security reporting.
 
 ## Plan summary
 
