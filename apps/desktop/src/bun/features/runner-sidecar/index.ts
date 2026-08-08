@@ -41,6 +41,9 @@ function pathWithHostTools(): string {
 		"/usr/local/bin",
 		join(home, ".local", "bin"),
 		join(home, ".bun", "bin"),
+		join(home, ".opencode", "bin"),
+		join(home, ".grok", "bin"),
+		join(home, ".antigravity", "antigravity", "bin"),
 	];
 	const existing = (process.env.PATH ?? "").split(":").filter(Boolean);
 	const prepend = extras.filter((dir) => !existing.includes(dir));

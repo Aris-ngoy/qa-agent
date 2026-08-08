@@ -46,8 +46,8 @@ curl -s http://127.0.0.1:7420/health
 Cut a release:
 
 ```bash
-git tag v0.3.2
-git push origin v0.3.2
+git tag v0.3.3
+git push origin v0.3.3
 # watch Actions → Release macOS
 ```
 

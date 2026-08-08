@@ -1,3 +1,4 @@
+import { ensureHostToolPath } from "./domains/appium/host-path";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
 import { createApp } from "./interfaces/http/app";
 import {
@@ -6,6 +7,9 @@ import {
 	isControlUpgrade,
 } from "./interfaces/http/control-ws";
 import { loadSettings } from "./settings";
+
+// Finder/Dock launches get a stripped PATH — include Homebrew + agent CLIs before probes.
+ensureHostToolPath();
 
 const settings = loadSettings();
 const startedAt = Date.now();

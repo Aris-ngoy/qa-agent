@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 /**
  * macOS GUI apps (Finder / Dock) get a minimal PATH without Homebrew / version managers.
- * Build a PATH that still finds npm/node for managed Appium installs.
+ * Build a PATH that still finds npm/node and common agent CLIs (opencode, grok, etc.).
  */
 export function pathWithHostTools(
 	currentPath: string = process.env.PATH ?? "",
@@ -15,6 +15,9 @@ export function pathWithHostTools(
 		"/usr/local/bin",
 		join(home, ".local", "bin"),
 		join(home, ".bun", "bin"),
+		join(home, ".opencode", "bin"),
+		join(home, ".grok", "bin"),
+		join(home, ".antigravity", "antigravity", "bin"),
 	];
 	const existing = currentPath.split(":").filter(Boolean);
 	const prepend = extras.filter((dir) => !existing.includes(dir));
