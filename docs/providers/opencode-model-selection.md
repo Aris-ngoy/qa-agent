@@ -20,7 +20,12 @@ Stop OpenCode runs from failing with Zen `CreditsError` (no payment method) or o
 
 ## Auth note
 
-Vision runs use Zen HTTP and require a Zen API key (Settings paste, `OPENCODE_API_KEY` / `OPENCODE_ZEN_API_KEY`, or CLI `auth.json`). Finding the `opencode` binary alone is not enough — see [2026-08-08-opencode-auth-fix](../sessions/2026-08-08-opencode-auth-fix.md).
+Vision runs use Zen HTTP **or** a local OpenCode server:
+
+- Hosted Zen: Settings API key, `OPENCODE_API_KEY` / `OPENCODE_ZEN_API_KEY`, or CLI `~/.local/share/opencode/auth.json` (`opencode providers login`)
+- Local serve: set Server URL (+ `OPENCODE_SERVER_PASSWORD` for Basic `opencode:<password>` auth, same as t3code)
+
+Finding the `opencode` binary alone is not enough for hosted Zen — see [2026-08-08-opencode-auth-fix](../sessions/2026-08-08-opencode-auth-fix.md).
 
 ## How to verify
 
