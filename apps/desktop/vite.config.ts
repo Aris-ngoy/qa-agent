@@ -27,7 +27,8 @@ export default defineConfig({
 		port: 5173,
 		strictPort: true,
 		fs: {
-			allow: [rootDir, workspacePackages],
+			// Monorepo: deps are hoisted to the repo root node_modules
+			allow: [rootDir, workspacePackages, path.resolve(rootDir, "../..")],
 		},
 	},
 });
