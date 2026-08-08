@@ -14,7 +14,7 @@
     },
     "apps/desktop": {
       "name": "@yoqa/desktop",
-      "version": "0.1.0",
+      "version": "0.3.4",
       "dependencies": {
         "@fontsource/inter": "^5.3.0",
         "@heroui/react": "^3.2.2",
@@ -82,7 +82,7 @@
     },
     "services/runner": {
       "name": "@yoqa/runner",
-      "version": "0.1.0",
+      "version": "0.3.4",
       "bin": {
         "yoqa": "./src/interfaces/cli/main.ts",
       },
