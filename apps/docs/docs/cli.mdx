@@ -6,7 +6,7 @@ description: Drive YoQA from your terminal — devices, screen, actions, catalog
 The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app that starts it) running.
 
 <Note>
-  Install via **npm** (`npm i -g yoqa` / `npx yoqa`) for terminals and CI, or from the desktop app: **Settings → CLI & Agents → Install CLI**. Restart the terminal after a desktop install. For coding agents, also install the skill — see [CLI for agents](/guide/cli-for-agents).
+  Install via **npm** (`npm i -g @yoqa/cli` / `npx @yoqa/cli`) for terminals and CI, or from the desktop app: **Settings → CLI & Agents → Install CLI**. Restart the terminal after a desktop install. For coding agents, also install the skill — see [CLI for agents](/guide/cli-for-agents).
 </Note>
 
 ## Setup
@@ -24,9 +24,9 @@ The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app th
     **npm / CI (recommended for pipelines):**
 
     ```bash
-    npm install -g yoqa
+    npm install -g @yoqa/cli
     # or one-off
-    npx yoqa health
+    npx @yoqa/cli health
     ```
 
     **Desktop:** Settings → **CLI & Agents** → **Install CLI**. Links `yoqa` into `~/.local/bin`.
@@ -43,13 +43,13 @@ The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app th
 
 ## CI / CD
 
-The CLI is a thin HTTP client. In GitHub Actions (or any Node ≥20 job), install `yoqa`, start a runner on the same machine (desktop sidecar or monorepo `bun run runner`), then invoke commands:
+The CLI is a thin HTTP client. In GitHub Actions (or any Node ≥20 job), install `@yoqa/cli`, start a runner on the same machine (desktop sidecar or monorepo `bun run runner`), then invoke commands:
 
 ```yaml
 - uses: actions/setup-node@v4
   with:
     node-version: "22"
-- run: npm install -g yoqa
+- run: npm install -g @yoqa/cli
 # Ensure the YoQA runner is listening on 127.0.0.1:7420, then:
 - run: yoqa health
 - run: yoqa status

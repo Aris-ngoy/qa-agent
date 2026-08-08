@@ -30,7 +30,7 @@ jobs:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
 
   publish:
-    name: Build & publish yoqa to npm
+    name: Build & publish @yoqa/cli to npm
     needs: authorize
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -54,7 +54,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build CLI
-        run: bun run --filter yoqa build
+        run: bun run --filter @yoqa/cli build
 
       - name: Smoke CLI
         run: node packages/cli/dist/main.js --version

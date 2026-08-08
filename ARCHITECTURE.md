@@ -543,7 +543,7 @@ repo/
 │               └── adapters/
 │                   └── appium.ts       # WebDriverIO session wrapper
 └── packages/
-    ├── cli/                          # `yoqa` npm package (Node bin → runner HTTP)
+    ├── cli/                          # `@yoqa/cli` npm package (`yoqa` bin → runner HTTP)
     ├── runner-client/                # typed HTTP client + Zod schemas
     ├── ui/                           # shared Tailwind primitives
     ├── typescript-config/

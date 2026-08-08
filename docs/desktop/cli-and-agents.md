@@ -20,7 +20,7 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
 - CLI symlink: `~/.local/bin/yoqa` → App Support wrapper
   - Packaged app: wrapper execs bundled `runner/yoqa` binary (no Bun required)
   - Dev checkout: wrapper runs `bun` on `packages/cli/src/main.ts`
-  - Also installable from npm: `npm i -g yoqa` / `npx yoqa` (Node ≥20; same HTTP client)
+  - Also installable from npm: `npm i -g @yoqa/cli` / `npx @yoqa/cli` (Node ≥20; same HTTP client; global install exposes the `yoqa` command)
 - Skill: copy to `~/Library/Application Support/yoqa/skills/yoqa-testing`, symlink into Standard / Claude / Cursor / Codex skill dirs
   - Packaged app: source is `skills/yoqa-testing.tar.gz` in Resources (extracted on install)
   - Dev checkout: source is `packages/skill/yoqa-testing`
