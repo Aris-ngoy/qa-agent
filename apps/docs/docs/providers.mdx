@@ -25,7 +25,7 @@ Desktop app → **Settings → Providers**:
 | **Google** | API key | Google AI Studio / Gemini |
 | **Google Vertex** | GCP credentials | Vertex AI Gemini |
 | **Antigravity** (`agy`) | CLI login (+ optional AI Studio key) | Vision via `agy --print` |
-| **OpenCode** | Zen API key **or** local `opencode serve` | Free / Paid model picker. Vision needs a Zen key or a Server URL pointing at `opencode serve` with `OPENCODE_SERVER_PASSWORD`. The `opencode` CLI in `PATH` alone is not enough |
+| **OpenCode** | CLI login (optional Zen API key or Server URL) | Run `opencode providers login` and YoQA spawns a local `opencode serve` for vision. Paste a Zen key or point Server URL at an existing serve (with `OPENCODE_SERVER_PASSWORD`) to override |
 | **Cursor** | Cursor Agent CLI (+ optional key) | Vision via `cursor-agent --print` |
 | **Grok** (xAI) | API key | `@ai-sdk/xai` |
 | **Custom** | Optional key + **Base URL** | Any OpenAI-compatible gateway (e.g. local Ollama `/v1`) |
@@ -43,7 +43,7 @@ Desktop app → **Settings → Providers**:
 ## Tips
 
 - Prefer models that accept **image** inputs — text-only models fail vision decide.
-- For OpenCode, vision runs against hosted Zen or a local server. Either paste a **Zen API key** in **Settings → Providers** (then pick a free vision-capable model unless you have paid Zen credits), or run `opencode serve` locally and set the provider's **Server URL** with `OPENCODE_SERVER_PASSWORD` for Basic `opencode:<password>` auth. The `opencode` CLI in `PATH` alone looks connected but agent runs will fail.
+- For OpenCode, the default path is **CLI login**: install OpenCode, run `opencode providers login`, and add the provider in **Settings → Providers** with no key pasted. YoQA spawns and reuses a local `opencode serve` for vision. Paste a **Zen API key** if you want hosted Zen (pick a free vision-capable model unless you have paid Zen credits), or set a **Server URL** with `OPENCODE_SERVER_PASSWORD` to reuse an existing `opencode serve` over Basic `opencode:<password>` auth.
 - Custom base URLs are ideal for private gateways; leave the API key empty only if the host allows it.
 
 <CardGroup cols={2}>
