@@ -1,0 +1,52 @@
+---
+description: PR-only main, reviews, rebase, CI gates, owner-only releases
+alwaysApply: true
+---
+
+# Merge & CI gates
+
+`main` is protected. Do not merge (or advise merging) a PR that violates these rules.
+
+## Pull requests required
+
+- Do **not** push commits directly to `main`. Always use a feature branch + PR.
+- Merge method is **rebase only** (no merge commits, no squash on GitHub).
+- Before merge, the branch must be **up to date with `main`**. Prefer `git fetch origin && git rebase origin/main` (resolve conflicts, then force-push with lease only on the feature branch).
+- Keep history linear. Do not merge `main` into the feature branch with a merge commit when updating.
+- **All review conversations must be resolved** before merge.
+
+## Reviews required
+
+- At least **one approving review** is required (stale reviews dismiss on new pushes).
+- **CODEOWNERS** reviews are required for owned paths (see `.github/CODEOWNERS`).
+- Authors cannot approve their own PRs. Do not ask to disable review protection.
+- `enforce_admins` stays on — do not add admin bypass for checks or reviews.
+
+## Required checks (must pass)
+
+A PR **must not** be merged if any required check is failing, pending, or cancelled. Required checks:
+
+| Check | Workflow | What it runs |
+|-------|----------|--------------|
+| Lint & format | `.github/workflows/lint.yml` | `bun run lint:ci` (Biome) |
+| Unit tests | `.github/workflows/test.yml` | `bun run test` |
+| Typecheck | `.github/workflows/typecheck.yml` | `bun run check` |
+
+Treat a red or incomplete check as a **reject**: fix the code (or flake), push, and wait for green. Do not ask the user to bypass or disable protection.
+
+## Fork workflow runs
+
+External / fork PRs require maintainer approval before Actions run (`all_external_contributors`). Do not approve fork workflow runs until you have reviewed the diff (especially `.github/workflows/**`).
+
+## Releases
+
+- Only the **repository owner** may create/update/delete `v*` tags (tag ruleset) and pass the authorize step (`github.actor == github.repository_owner`).
+- The publish job uses the GitHub Environment **`release`** (required reviewer). Approve the deployment in the Actions UI after the tag push.
+- Future codesign/notarize secrets belong in **Environment secrets** on `release` only — see `docs/desktop/release-signing-secrets.md`. Never commit them.
+- Do not push `v*` tags or trigger releases unless the user is the owner and explicitly asks.
+
+## Agent behavior
+
+- After opening or updating a plan-and-build PR, if checks fail, fix and push until green (or clearly report a blocker).
+- Never use admin bypass, `--no-verify`, or force-push to `main`.
+- Never merge a PR that is behind `main`, lacks required approval, has unresolved conversations, or has failing required checks.

@@ -43,13 +43,15 @@ open /tmp/yoqa.app
 curl -s http://127.0.0.1:7420/health
 ```
 
-Cut a release:
+Cut a release (**repository owner only** — `v*` tags are restricted by ruleset; authorize step + **`release` Environment** approval are both required):
 
 ```bash
 git tag v0.3.4
 git push origin v0.3.4
-# watch Actions → Release macOS
+# Actions → Release macOS → approve the "release" environment deployment
 ```
+
+Codesign/notarize secrets (when added): [release-signing-secrets.md](./release-signing-secrets.md).
 
 Gatekeeper: unsigned downloads get `com.apple.quarantine`, and recent macOS shows **“yoqa” is damaged…** instead of the old unidentified-developer dialog. Clear it before first launch:
 
