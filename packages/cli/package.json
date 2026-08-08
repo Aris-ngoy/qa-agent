@@ -16,7 +16,7 @@
 		"url": "git+https://github.com/Aris-ngoy/qa-agent.git",
 		"directory": "packages/cli"
 	},
-	"homepage": "https://docs.yoqa.ai/docs/cli",
+	"homepage": "https://yoqa.mintlify.app/docs/cli",
 	"bugs": {
 		"url": "https://github.com/Aris-ngoy/qa-agent/issues"
 	},
