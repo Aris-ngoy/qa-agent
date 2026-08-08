@@ -1,11 +1,11 @@
 ---
-description: After plan-then-build, document the outcome, then commit and push
+description: Plan-and-build work starts on a new branch, then docs, commit, push, and open a PR
 alwaysApply: true
 ---
 
-# Document plan-and-build work
+# Plan-and-build: branch → ship → commit → PR
 
-Whenever a feature or change is **planned first** (Plan mode, design discussion, or an agreed build plan) and then **implemented**, finish the session by documenting, committing, and pushing—do not wait for the user to ask.
+Whenever a feature or change is **planned first** (Plan mode, design discussion, or an agreed build plan) and then **implemented**, follow this full lifecycle—do not wait for the user to ask for branch, commit, push, or PR.
 
 ## When this applies
 
@@ -19,15 +19,26 @@ Whenever a feature or change is **planned first** (Plan mode, design discussion,
 - Pure Q&A or exploration with no implementation
 - Documentation-only or rule-only changes (unless the plan itself was about docs)
 
-## Completion sequence
+## Start sequence (before writing code)
 
-After implementation is complete (or after a meaningful partial milestone), do these steps **in order** in the same turn:
+Do these **before** implementing the plan:
+
+1. **Confirm base** — start from an up-to-date `main` (or the branch the user named as base): `git fetch` and checkout/pull as needed
+2. **New branch** — create and switch to a dedicated branch for this plan, e.g. `git checkout -b <area>/<short-slug>`
+   - One plan → one branch; do not implement on `main` or reuse an unrelated WIP branch
+   - If already on a clean branch created for this plan, keep it; otherwise create a new one
+
+## Completion sequence (after the plan is executed)
+
+After implementation is complete (or after a meaningful partial milestone), do these **in order** in the same turn:
 
 1. **Document** — write or update the docs entry (below)
 2. **Commit** — stage the feature changes **and** the docs, then commit (follow the repo’s git commit protocol; HEREDOC message focused on why)
-3. **Push** — push the branch to the remote (`git push` or `git push -u origin HEAD` if needed)
+3. **Push** — push the branch to the remote (`git push -u origin HEAD` if needed)
+4. **Merge request / PR** — open a pull request against the base branch with `gh pr create`, filling `.github/PULL_REQUEST_TEMPLATE.md` (Summary, Changes, Test plan, Merge readiness, Docs, Notes). Return the PR URL to the user. If a PR for this branch already exists, update it if needed and share the existing URL instead of opening a duplicate.
+5. **CI gates** — follow `.cursor/rules/merge-and-ci.mdc`: rebase onto `main` if behind; if **Lint & format** or **Unit tests** fail, fix and push until green (do not merge or ask to bypass).
 
-This rule **authorizes** commit + push for plan-and-build work without an extra user request. Still never force-push, amend others’ commits, skip hooks, or update git config.
+This rule **authorizes** branch creation, commit, push, and PR creation for plan-and-build work without an extra user request. Still never force-push to `main`, amend others’ commits, skip hooks, or update git config.
 
 ## What to write
 
