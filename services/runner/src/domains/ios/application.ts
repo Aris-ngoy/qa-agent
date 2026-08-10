@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import wdaAppIconFile from "../../../assets/wda-icon-1024.png" with { type: "file" };
@@ -113,9 +113,13 @@ export async function resolveWdaProjectPath(appiumHome?: string): Promise<string
  * Swap Appium's AppIcon for the Yoqa mark so the installed WebDriverAgent
  * shows our branding on the device home screen. The WDA scheme's
  * embed-runner-icon.sh post-action then lifts the compiled icons into Runner.app.
+ *
+ * Must use Bun.file / Bun.write: `bun build --compile` embeds the PNG under
+ * `/$bunfs/…`, which node:fs.copyFile cannot read (ENOENT in production builds).
  */
 async function brandWdaAppIcon(projectPath: string): Promise<void> {
-	if (!(await pathExists(WDA_APP_ICON_PATH))) {
+	const iconSource = Bun.file(WDA_APP_ICON_PATH);
+	if (!(await iconSource.exists())) {
 		throw new Error(`Yoqa WebDriverAgent icon not found at ${WDA_APP_ICON_PATH}`);
 	}
 
@@ -133,7 +137,7 @@ async function brandWdaAppIcon(projectPath: string): Promise<void> {
 		);
 	}
 
-	await copyFile(WDA_APP_ICON_PATH, iconPath);
+	await Bun.write(iconPath, iconSource);
 }
 
 async function stripIos17TestFrameworks(appPath: string): Promise<void> {
