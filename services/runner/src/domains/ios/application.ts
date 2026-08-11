@@ -114,8 +114,9 @@ export async function resolveWdaProjectPath(appiumHome?: string): Promise<string
  * shows our branding on the device home screen. The WDA scheme's
  * embed-runner-icon.sh post-action then lifts the compiled icons into Runner.app.
  *
- * Must use Bun.file / Bun.write: `bun build --compile` embeds the PNG under
- * `/$bunfs/…`, which node:fs.copyFile cannot read (ENOENT in production builds).
+ * Compiled runners embed the PNG under `/$bunfs/…`. `node:fs.copyFile` cannot
+ * read that VFS (ENOENT). Read bytes via Bun.file, then Bun.write the buffer so
+ * we never path-copy from bunfs.
  */
 async function brandWdaAppIcon(projectPath: string): Promise<void> {
 	const iconSource = Bun.file(WDA_APP_ICON_PATH);
@@ -137,7 +138,12 @@ async function brandWdaAppIcon(projectPath: string): Promise<void> {
 		);
 	}
 
-	await Bun.write(iconPath, iconSource);
+	// Materialize bytes first — Bun.write(path, BunFile) can still copyfile in some builds.
+	const bytes = new Uint8Array(await iconSource.arrayBuffer());
+	if (bytes.byteLength === 0) {
+		throw new Error(`Yoqa WebDriverAgent icon is empty at ${WDA_APP_ICON_PATH}`);
+	}
+	await Bun.write(iconPath, bytes);
 }
 
 async function stripIos17TestFrameworks(appPath: string): Promise<void> {

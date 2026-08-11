@@ -12,10 +12,17 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 7420;
 const HEALTH_POLL_MS = 400;
 const HEALTH_TIMEOUT_MS = 20_000;
+const PORT_FREE_WAIT_MS = 400;
 
 export type EnsureLocalServicesResult = {
 	baseUrl: string;
 	started: boolean;
+};
+
+export type RunnerHealthSnapshot = {
+	ok: true;
+	service: "yoqa-runner";
+	version: string;
 };
 
 type RunnerChild = {
@@ -64,6 +71,37 @@ function getPort(): number {
 
 function getHost(): string {
 	return process.env.YOQA_RUNNER_HOST ?? DEFAULT_HOST;
+}
+
+/** Desktop app version expected from `/health` when we own the local runner. */
+export function expectedRunnerVersion(): string {
+	return process.env.YOQA_RUNNER_VERSION?.trim() || packageJson.version;
+}
+
+/** True when the URL points at this machine's loopback runner port. */
+export function isLocalRunnerUrl(baseUrl: string): boolean {
+	try {
+		const url = new URL(baseUrl);
+		return url.hostname === "127.0.0.1" || url.hostname === "localhost";
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Accept only a healthy runner whose reported version matches the desktop build.
+ * Otherwise upgrades keep serving a stale `yoqa-runner` already bound to :7420.
+ */
+export function isCompatibleRunnerHealth(
+	health: RunnerHealthSnapshot | null,
+	expectedVersion: string,
+): boolean {
+	return (
+		health !== null &&
+		health.ok === true &&
+		health.service === "yoqa-runner" &&
+		health.version === expectedVersion
+	);
 }
 
 /** Candidate locations for the compiled runner inside a packaged Electrobun .app. */
@@ -153,33 +191,82 @@ export async function resolveRunnerLaunch(): Promise<RunnerLaunch> {
 	);
 }
 
-async function isHealthy(baseUrl: string): Promise<boolean> {
+async function fetchRunnerHealth(baseUrl: string): Promise<RunnerHealthSnapshot | null> {
 	try {
 		const response = await fetch(`${baseUrl}/health`, {
 			signal: AbortSignal.timeout(1500),
 		});
-		if (!response.ok) return false;
-		const json = (await response.json()) as { ok?: boolean; service?: string };
-		return json.ok === true && json.service === "yoqa-runner";
+		if (!response.ok) return null;
+		const json = (await response.json()) as {
+			ok?: boolean;
+			service?: string;
+			version?: string;
+		};
+		if (json.ok === true && json.service === "yoqa-runner" && typeof json.version === "string") {
+			return { ok: true, service: "yoqa-runner", version: json.version };
+		}
+		return null;
 	} catch {
-		return false;
+		return null;
 	}
 }
 
-async function waitForHealthy(baseUrl: string, timeoutMs: number): Promise<boolean> {
+async function waitForCompatibleRunner(
+	baseUrl: string,
+	expectedVersion: string,
+	timeoutMs: number,
+): Promise<boolean> {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		if (await isHealthy(baseUrl)) return true;
+		const health = await fetchRunnerHealth(baseUrl);
+		if (isCompatibleRunnerHealth(health, expectedVersion)) return true;
 		if (child && child.proc.exitCode !== null) {
 			return false;
 		}
 		await Bun.sleep(HEALTH_POLL_MS);
 	}
-	return await isHealthy(baseUrl);
+	return isCompatibleRunnerHealth(await fetchRunnerHealth(baseUrl), expectedVersion);
 }
 
 function isChildAlive(): boolean {
 	return child !== null && child.proc.exitCode === null;
+}
+
+/** SIGTERM any process listening on the local runner port (macOS/Linux `lsof`). */
+export async function killListenersOnPort(port: number): Promise<number[]> {
+	const proc = Bun.spawn(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
+		stdout: "pipe",
+		stderr: "pipe",
+		stdin: "ignore",
+	});
+	const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+	if (exitCode !== 0 && !stdout.trim()) {
+		return [];
+	}
+
+	const pids = [
+		...new Set(
+			stdout
+				.split(/\s+/)
+				.map((part) => part.trim())
+				.filter(Boolean)
+				.map((part) => Number(part))
+				.filter((pid) => Number.isInteger(pid) && pid > 0),
+		),
+	];
+
+	for (const pid of pids) {
+		try {
+			process.kill(pid, "SIGTERM");
+		} catch {
+			// Already gone.
+		}
+	}
+
+	if (pids.length > 0) {
+		await Bun.sleep(PORT_FREE_WAIT_MS);
+	}
+	return pids;
 }
 
 async function spawnRunner(baseUrl: string): Promise<void> {
@@ -200,7 +287,7 @@ async function spawnRunner(baseUrl: string): Promise<void> {
 			PATH: pathWithHostTools(),
 			YOQA_RUNNER_HOST: getHost(),
 			YOQA_RUNNER_PORT: String(getPort()),
-			YOQA_RUNNER_VERSION: process.env.YOQA_RUNNER_VERSION ?? packageJson.version,
+			YOQA_RUNNER_VERSION: expectedRunnerVersion(),
 		},
 		stdout: "inherit",
 		stderr: "inherit",
@@ -217,18 +304,42 @@ async function spawnRunner(baseUrl: string): Promise<void> {
 	});
 }
 
+async function replaceIncompatibleLocalRunner(
+	baseUrl: string,
+	health: RunnerHealthSnapshot,
+	expectedVersion: string,
+): Promise<void> {
+	if (!isLocalRunnerUrl(baseUrl)) {
+		throw new Error(
+			`Runner at ${baseUrl} reports version ${health.version}, but this app expects ${expectedVersion}. Point YOQA_RUNNER_URL at a matching runner or unset it to use the bundled sidecar.`,
+		);
+	}
+
+	console.warn(
+		`[yoqa desktop] replacing stale runner ${health.version} with ${expectedVersion} on ${baseUrl}`,
+	);
+	stopRunnerSidecar();
+	await killListenersOnPort(getPort());
+}
+
 async function ensureOnce(): Promise<EnsureLocalServicesResult> {
 	const baseUrl = getBaseUrl();
+	const expectedVersion = expectedRunnerVersion();
+	const existing = await fetchRunnerHealth(baseUrl);
 
-	if (await isHealthy(baseUrl)) {
+	if (isCompatibleRunnerHealth(existing, expectedVersion)) {
 		return { baseUrl, started: false };
+	}
+
+	if (existing) {
+		await replaceIncompatibleLocalRunner(baseUrl, existing, expectedVersion);
 	}
 
 	if (!isChildAlive()) {
 		await spawnRunner(baseUrl);
 	}
 
-	const healthy = await waitForHealthy(baseUrl, HEALTH_TIMEOUT_MS);
+	const healthy = await waitForCompatibleRunner(baseUrl, expectedVersion, HEALTH_TIMEOUT_MS);
 	if (!healthy) {
 		const exitHint =
 			child?.proc.exitCode !== null && child?.proc.exitCode !== undefined

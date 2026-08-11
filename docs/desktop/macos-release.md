@@ -20,8 +20,8 @@ Rejected for v0.1.0: shipping Appium/Node inside the DMG; Apple codesign/notariz
 
 - [`apps/desktop/scripts/build-runner-sidecar.ts`](../../apps/desktop/scripts/build-runner-sidecar.ts) — compile step (Bun plugin rewrites WebdriverIO’s dynamic `import(automationProtocol || "webdriver")` to a literal so the packaged binary embeds `webdriver`)
 - [`apps/desktop/electrobun.config.ts`](../../apps/desktop/electrobun.config.ts) — `preBuild`, `copy`, `asarUnpack`, `generatePatch: false`
-- [`apps/desktop/src/bun/features/runner-sidecar/index.ts`](../../apps/desktop/src/bun/features/runner-sidecar/index.ts) — packaged-first launch
-- WDA icon embedded via Bun `with { type: "file" }` so compiled runner keeps branding
+- [`apps/desktop/src/bun/features/runner-sidecar/index.ts`](../../apps/desktop/src/bun/features/runner-sidecar/index.ts) — packaged-first launch; replaces stale loopback runners whose `/health` version ≠ desktop (see [runner-sidecar-version-gate.md](./runner-sidecar-version-gate.md))
+- WDA icon embedded via Bun `with { type: "file" }` so compiled runner keeps branding (write bytes, never `copyFile` from `/$bunfs`)
 - Scripts: `bun run --filter @yoqa/desktop build:release`, root `desktop:release`
 - Workflow: [`.github/workflows/release-macos.yml`](../../.github/workflows/release-macos.yml)
 
