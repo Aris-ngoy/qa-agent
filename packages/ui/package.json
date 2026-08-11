@@ -23,6 +23,6 @@
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
-		"@heroui/styles": "^3.2.2"
+		"@heroui/styles": "^3.2.4"
 	}
 }
