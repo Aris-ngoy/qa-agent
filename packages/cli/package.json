@@ -29,7 +29,7 @@
 		"health": "bun run src/main.ts health"
 	},
 	"devDependencies": {
-		"@types/node": "^22.15.30",
+		"@types/node": "^26.2.0",
 		"@yoqa/runner-client": "workspace:*",
 		"@yoqa/typescript-config": "workspace:*",
 		"commander": "^14.0.0",
