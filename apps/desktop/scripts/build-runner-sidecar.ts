@@ -11,9 +11,16 @@
  * package resolve against `/$bunfs/root/…`, which fails with:
  *   ResolveMessage: Cannot find package 'webdriver' from '/$bunfs/root/yoqa-runner'
  * The plugin below rewrites those imports to `import("webdriver")` so Bun embeds the package.
+ * After compile, macOS binaries are adhoc-signed — Bun's bytecode append invalidates the
+ * linker signature and Apple Silicon AMFI SIGKILLs the unsigned result (exit 137).
  */
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import {
+	CLI_CODE_IDENTIFIER,
+	RUNNER_CODE_IDENTIFIER,
+	ensureAdhocCodeSignature,
+} from "../src/bun/features/macos-adhoc-sign";
 
 const desktopRoot = resolve(import.meta.dir, "..");
 const repoRoot = resolve(desktopRoot, "../..");
@@ -52,6 +59,7 @@ async function compileBinary(
 	entry: string,
 	outfile: string,
 	label: string,
+	identifier: string,
 	plugins: Bun.BunPlugin[] = [],
 ): Promise<void> {
 	console.log(`[yoqa desktop] compiling ${label} → ${outfile}`);
@@ -70,6 +78,8 @@ async function compileBinary(
 	if (!(await Bun.file(outfile).exists())) {
 		throw new Error(`${label} binary missing after compile: ${outfile}`);
 	}
+	const sign = await ensureAdhocCodeSignature(outfile, identifier);
+	console.log(`[yoqa desktop] codesign ${label}: ${sign}`);
 }
 
 await mkdir(outDir, { recursive: true });
@@ -79,10 +89,16 @@ await compileBinary(
 	join(repoRoot, "services/runner/src/index.ts"),
 	runnerOutfile,
 	"runner sidecar",
+	RUNNER_CODE_IDENTIFIER,
 	[forceWebdriverLiteralImport],
 );
 
-await compileBinary(join(repoRoot, "packages/cli/src/main.ts"), cliOutfile, "CLI");
+await compileBinary(
+	join(repoRoot, "packages/cli/src/main.ts"),
+	cliOutfile,
+	"CLI",
+	CLI_CODE_IDENTIFIER,
+);
 
 if (!(await Bun.file(join(skillSourceDir, "SKILL.md")).exists())) {
 	throw new Error(`Skill source missing: ${skillSourceDir}`);

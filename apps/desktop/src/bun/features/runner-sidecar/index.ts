@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import packageJson from "../../../../package.json" with { type: "json" };
+import { RUNNER_CODE_IDENTIFIER, ensureAdhocCodeSignature } from "../macos-adhoc-sign";
 import {
 	execRoots,
 	findFirstExisting,
@@ -273,6 +274,12 @@ async function spawnRunner(baseUrl: string): Promise<void> {
 	if (isChildAlive()) return;
 
 	const launch = await resolveRunnerLaunch();
+	if (launch.source === "packaged") {
+		const binary = launch.command[0];
+		if (binary) {
+			await ensureAdhocCodeSignature(binary, RUNNER_CODE_IDENTIFIER);
+		}
+	}
 	console.log(`[yoqa desktop] starting runner sidecar → ${baseUrl}`);
 	console.log(
 		`[yoqa desktop] source=${launch.source} command=${launch.command.join(" ")}${

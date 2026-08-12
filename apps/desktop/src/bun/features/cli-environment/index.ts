@@ -10,6 +10,7 @@ import type {
 	SkillTargetId,
 	SkillTargetState,
 } from "../../../shared/cli-environment";
+import { CLI_CODE_IDENTIFIER, ensureAdhocCodeSignature } from "../macos-adhoc-sign";
 import {
 	findFirstExisting,
 	packagedRunnerFileCandidates,
@@ -348,6 +349,18 @@ export async function installCli(): Promise<InstallResult> {
 			ok: false,
 			error: "Bun is required on PATH to run the yoqa CLI in development.",
 		};
+	}
+
+	if (entrypoint.kind === "binary") {
+		try {
+			await ensureAdhocCodeSignature(entrypoint.path, CLI_CODE_IDENTIFIER);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return {
+				ok: false,
+				error: `Could not repair the yoqa CLI code signature: ${message}`,
+			};
+		}
 	}
 
 	try {
