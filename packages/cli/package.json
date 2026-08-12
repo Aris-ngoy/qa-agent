@@ -28,6 +28,9 @@
 		"check": "tsc --noEmit",
 		"health": "bun run src/main.ts health"
 	},
+	"dependencies": {
+		"@yoqa/runner": "workspace:*"
+	},
 	"devDependencies": {
 		"@types/node": "^22.15.30",
 		"@yoqa/runner-client": "workspace:*",

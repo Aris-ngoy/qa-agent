@@ -12,14 +12,17 @@ import {
 } from "@yoqa/runner-client";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
+import {
+	commandChainIncludes,
+	ensureRunner,
+	fetchRunnerHealth,
+	runnerBaseUrlFromEnv,
+	shouldSkipAutostart,
+	stopOwnedRunner,
+} from "./ensure-runner";
 
 function runnerBaseUrl(): string {
-	const host = process.env.YOQA_RUNNER_HOST ?? "127.0.0.1";
-	const port = Number(process.env.YOQA_RUNNER_PORT ?? "7420");
-	if (!Number.isFinite(port) || port <= 0) {
-		throw new Error("YOQA_RUNNER_PORT must be a positive number");
-	}
-	return `http://${host}:${port}`;
+	return runnerBaseUrlFromEnv();
 }
 
 function sleep(ms: number): Promise<void> {
@@ -40,9 +43,47 @@ function client(baseUrl: string) {
 function fail(command: string, error: unknown): void {
 	const message = error instanceof Error ? error.message : String(error);
 	console.error(`yoqa ${command} failed: ${message}`);
-	console.error("Is the runner up? Try: bun run runner");
+	if (!message.includes("yoqa serve") && !message.includes("Bun")) {
+		console.error("Is the runner up? Try: yoqa serve");
+	}
 	process.exitCode = 1;
 }
+
+program
+	.command("serve")
+	.description("Start the local Yoqa runner in the foreground (no desktop app required)")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--stop", "Stop a runner previously started by yoqa (pid file)")
+	.action(async (options: { baseUrl: string; stop?: boolean }) => {
+		try {
+			if (options.stop) {
+				const result = await stopOwnedRunner();
+				console.log(result.message);
+				if (!result.ok) process.exitCode = 1;
+				return;
+			}
+			const baseUrl = options.baseUrl;
+			const health = await fetchRunnerHealth(baseUrl);
+			if (health) {
+				console.log(`already running at ${baseUrl} (${health.version})`);
+				return;
+			}
+			await ensureRunner({ mode: "foreground", baseUrl });
+		} catch (error) {
+			fail("serve", error);
+		}
+	});
+
+program.hook("preAction", async (_thisCommand, actionCommand) => {
+	if (commandChainIncludes(actionCommand, "serve")) return;
+	if (shouldSkipAutostart()) return;
+	try {
+		await ensureRunner({ mode: "detached" });
+	} catch (error) {
+		fail("autostart", error);
+		throw error;
+	}
+});
 
 async function resolveAppId(
 	c: ReturnType<typeof client>,

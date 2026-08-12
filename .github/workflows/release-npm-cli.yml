@@ -30,7 +30,7 @@ jobs:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
 
   publish:
-    name: Build & publish @yoqa/cli to npm
+    name: Build & publish @yoqa/runner and @yoqa/cli to npm
     needs: authorize
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -53,13 +53,36 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build runner
+        run: bun run --filter @yoqa/runner build
+
+      - name: Publish @yoqa/runner
+        working-directory: services/runner
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Point CLI at published runner version
+        run: |
+          bun -e '
+            const fs = require("fs");
+            const path = "packages/cli/package.json";
+            const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+            if (pkg.dependencies?.["@yoqa/runner"] === "workspace:*") {
+              pkg.dependencies["@yoqa/runner"] = pkg.version;
+              fs.writeFileSync(path, JSON.stringify(pkg, null, "\t") + "\n");
+            }
+          '
+
       - name: Build CLI
         run: bun run --filter @yoqa/cli build
 
       - name: Smoke CLI
-        run: node packages/cli/dist/main.js --version
+        run: |
+          node packages/cli/dist/main.js --version
+          node packages/cli/dist/main.js serve --help
 
-      - name: Publish to npm
+      - name: Publish @yoqa/cli
         working-directory: packages/cli
         run: npm publish --access public
         env:

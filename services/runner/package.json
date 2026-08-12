@@ -1,11 +1,35 @@
 {
 	"name": "@yoqa/runner",
 	"version": "0.3.11",
-	"private": true,
+	"description": "Yoqa local runner — Appium + catalog HTTP API (Bun). Start with yoqa serve or the yoqa-runner bin.",
+	"license": "UNLICENSED",
 	"type": "module",
+	"bin": {
+		"yoqa-runner": "bin/yoqa-runner.cjs"
+	},
+	"files": ["dist", "bin"],
+	"exports": {
+		".": "./dist/index.js",
+		"./package.json": "./package.json"
+	},
+	"engines": {
+		"bun": ">=1.2.0"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Aris-ngoy/qa-agent.git",
+		"directory": "services/runner"
+	},
+	"homepage": "https://yoqa.mintlify.app/docs/cli",
+	"bugs": {
+		"url": "https://github.com/Aris-ngoy/qa-agent/issues"
+	},
+	"keywords": ["yoqa", "runner", "appium", "mobile", "qa"],
 	"scripts": {
 		"start": "bun run src/index.ts",
 		"dev": "bun run --watch src/index.ts",
+		"build": "bun run build.ts",
+		"prepublishOnly": "bun run build",
 		"health": "bun run --filter @yoqa/cli health",
 		"check": "tsc --noEmit"
 	},
@@ -16,7 +40,6 @@
 		"@ai-sdk/groq": "^4.0.13",
 		"@ai-sdk/openai": "^4.0.30",
 		"@ai-sdk/xai": "^4",
-		"@yoqa/runner-client": "workspace:*",
 		"ai": "^7.0.37",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.13.0",
@@ -26,8 +49,12 @@
 	},
 	"devDependencies": {
 		"@types/bun": "^1.2.18",
+		"@yoqa/runner-client": "workspace:*",
 		"@yoqa/typescript-config": "workspace:*",
 		"drizzle-kit": "^0.31.10",
 		"typescript": "^5.9.3"
+	},
+	"publishConfig": {
+		"access": "public"
 	}
 }
