@@ -459,7 +459,7 @@ export function RunsPanel() {
 
 	return (
 		<>
-			<header className="flex w-full shrink-0 flex-col gap-2 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-4 py-3 shadow-soft backdrop-blur-md">
+			<header className="relative z-40 flex w-full shrink-0 flex-col gap-2 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-4 py-3 shadow-soft backdrop-blur-md">
 				<div className="flex w-full items-center justify-between gap-4">
 					<div className="blob-actions flex shrink-0 items-center gap-4 px-5 py-3.5 shadow-card">
 						<button
