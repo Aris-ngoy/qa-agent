@@ -1,3 +1,5 @@
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { AgentProviderError, createSdkVisionPort, resolveGoogleKey } from "../vision-model";
 import type { DriverDefinition } from "./types";
 
 const DEFAULT_MODELS = [
@@ -62,6 +64,17 @@ export const googleDriver: DriverDefinition = {
 	envHints: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
 	loginInstructions: null,
 	capabilities: { vision: true },
+	vision: createSdkVisionPort({
+		label: "Google",
+		defaultModel: "gemini-2.5-flash",
+		createModel: (auth, modelId) => {
+			const apiKey = resolveGoogleKey(auth);
+			if (!apiKey) {
+				throw new AgentProviderError("Google provider has no API key");
+			}
+			return createGoogleGenerativeAI({ apiKey })(modelId);
+		},
+	}),
 	async probe() {
 		return {
 			found: true,

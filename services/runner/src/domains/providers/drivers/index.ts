@@ -59,4 +59,7 @@ export type {
 	ProbeResult,
 	ValidateResult,
 	ListModelsResult,
+	VisionPort,
+	VisionAuth,
+	VisionCompleteInput,
 } from "./types";

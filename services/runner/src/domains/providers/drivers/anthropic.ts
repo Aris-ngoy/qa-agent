@@ -1,3 +1,5 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { AgentProviderError, createSdkVisionPort, resolveAnthropicKey } from "../vision-model";
 import { pingAnthropic } from "./probe";
 import type { DriverDefinition } from "./types";
 
@@ -10,6 +12,19 @@ export const anthropicDriver: DriverDefinition = {
 	envHints: ["ANTHROPIC_API_KEY"],
 	loginInstructions: null,
 	capabilities: { vision: true },
+	vision: createSdkVisionPort({
+		label: "Anthropic",
+		defaultModel: "claude-sonnet-4-20250514",
+		createModel: (auth, modelId) => {
+			const apiKey = resolveAnthropicKey(auth);
+			if (!apiKey) {
+				throw new AgentProviderError("Anthropic provider has no API key");
+			}
+			const rawBase = (auth.baseUrl ?? "https://api.anthropic.com").replace(/\/$/, "");
+			const baseURL = rawBase.endsWith("/v1") ? rawBase : `${rawBase}/v1`;
+			return createAnthropic({ apiKey, baseURL }).chat(modelId);
+		},
+	}),
 	async probe() {
 		return {
 			found: true,

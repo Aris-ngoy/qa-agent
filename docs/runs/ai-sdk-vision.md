@@ -19,9 +19,11 @@ Rejected for this pass: redesigning provider drivers around AI SDK; CLI-only vis
 - `ai`, `@ai-sdk/anthropic`, `@ai-sdk/openai`
 
 **Runner**
-- [`vision-model.ts`](../../services/runner/src/domains/providers/vision-model.ts) — key/baseURL resolution, `createVisionModel`, `assertVisionCapableProvider`, OpenCode error formatting
-- [`agent.ts`](../../services/runner/src/domains/runs/agent.ts) — `decideNextAction` via `generateObject`; keeps `prepareVisionImage` + repair retry
-- [`grounding.ts`](../../services/runner/src/domains/devices/grounding.ts) — same factory + `generateObject` for `{x,y}`
+- [`vision-model.ts`](../../services/runner/src/domains/providers/vision-model.ts) — shared SDK `completeObject` helper, image prep, OpenCode error formatting
+- [`agent.ts`](../../services/runner/src/domains/runs/agent.ts) — `decideNextAction` via `completeVision` (prompt + schema stay here)
+- [`grounding.ts`](../../services/runner/src/domains/devices/grounding.ts) — same interface for `{x,y}`
+
+See [vision-complete-object.md](../providers/vision-complete-object.md).
 
 ## How to verify
 
@@ -35,4 +37,4 @@ Rejected for this pass: redesigning provider drivers around AI SDK; CLI-only vis
 - Prefer `generateText` + `Output.object` when dropping deprecated `generateObject`
 - Stream model tokens into the live run UI
 - Vision for remaining CLI-only adapters if needed (Codex CLI OAuth still blocked on Zod 4)
-- Cursor vision uses Agent CLI (`cursor-decide.ts`), not AI SDK — see [cursor-grok-custom-settings.md](../providers/cursor-grok-custom-settings.md)
+- Cursor vision uses Agent CLI (`drivers/cursor-vision.ts`), not AI SDK — see [cursor-grok-custom-settings.md](../providers/cursor-grok-custom-settings.md)

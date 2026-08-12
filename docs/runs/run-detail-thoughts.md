@@ -16,7 +16,6 @@ Rejected: snapshotting device fields onto the `runs` row; raw model CoT logs.
 
 **Runner**
 - [`agent.ts`](../../services/runner/src/domains/runs/agent.ts) — `reason` + `thoughts` required on every decision; system prompt updated
-- [`antigravity-decide.ts`](../../services/runner/src/domains/providers/antigravity-decide.ts) — matching schema
 - Synthetic fail decisions in [`application.ts`](../../services/runner/src/domains/runs/application.ts) include both fields
 
 **Desktop**

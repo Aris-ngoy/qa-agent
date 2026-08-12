@@ -1,3 +1,5 @@
+import { createOpenAI } from "@ai-sdk/openai";
+import { AgentProviderError, createSdkVisionPort, resolveCustomKey } from "../vision-model";
 import { pingOpenAiCompatible } from "./probe";
 import type { DriverDefinition } from "./types";
 
@@ -18,6 +20,23 @@ export const customDriver: DriverDefinition = {
 	loginInstructions:
 		"Point Base URL at an OpenAI-compatible /v1 endpoint (Ollama, LM Studio, gateway). API key is optional for local hosts.",
 	capabilities: { vision: true },
+	vision: createSdkVisionPort({
+		label: "Custom",
+		defaultModel: "",
+		createModel: (auth, modelId) => {
+			const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || null;
+			if (!baseURL) {
+				throw new AgentProviderError("Custom provider needs a Base URL in Settings");
+			}
+			if (!modelId.trim()) {
+				throw new AgentProviderError(
+					"Custom provider needs a default model in Settings before vision runs",
+				);
+			}
+			const apiKey = resolveCustomKey(auth) || "no-key";
+			return createOpenAI({ apiKey, baseURL, name: "custom" }).chat(modelId);
+		},
+	}),
 	async probe() {
 		return {
 			found: true,

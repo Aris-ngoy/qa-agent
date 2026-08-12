@@ -19,7 +19,7 @@ Expose Groq, Google, Google Vertex, and **Antigravity** (`agy`, replaces Gemini 
 
 **Drivers:** groq, google, google-vertex, [`antigravity.ts`](../../services/runner/src/domains/providers/drivers/antigravity.ts)
 
-**Vision:** [`vision-model.ts`](../../services/runner/src/domains/providers/vision-model.ts), [`antigravity-decide.ts`](../../services/runner/src/domains/providers/antigravity-decide.ts)
+**Vision:** [`vision.completeObject`](../../services/runner/src/domains/providers/drivers/types.ts) on each adapter; Antigravity CLI in [`antigravity-vision.ts`](../../services/runner/src/domains/providers/drivers/antigravity-vision.ts)
 
 ## How to verify
 

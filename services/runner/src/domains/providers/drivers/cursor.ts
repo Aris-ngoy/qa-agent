@@ -1,3 +1,4 @@
+import { cursorVision } from "./cursor-vision";
 import { probeCli, runCommand } from "./probe";
 import type { DriverDefinition, ModelEntry } from "./types";
 
@@ -139,6 +140,7 @@ export const cursorDriver: DriverDefinition = {
 	loginInstructions:
 		"Run `cursor-agent login` (or `cursor agent login`) in a terminal, then re-check. Or paste a CURSOR_API_KEY.",
 	capabilities: { vision: true },
+	vision: cursorVision,
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "cursor-agent",
