@@ -1,6 +1,6 @@
 import { Switch } from "@heroui/react";
 import type { AiProvider, ProviderModel } from "@yoqa/runner-client";
-import { DriverGlyph, getDriverMeta, statusDotClass } from "./driver-meta";
+import { DriverGlyph, statusDotClass, useDriverMeta } from "./driver-meta";
 import { ProviderExpanded } from "./provider-expanded";
 
 type ProviderRowProps = {
@@ -30,7 +30,7 @@ export function ProviderRow({
 	onDisconnect,
 	onSetDefault,
 }: ProviderRowProps) {
-	const meta = getDriverMeta(provider.kind);
+	const meta = useDriverMeta(provider.kind);
 	const detail =
 		provider.statusDetail ||
 		(provider.status === "connected"

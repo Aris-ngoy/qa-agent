@@ -1,6 +1,7 @@
 import {
 	aiProviderSchema,
 	createProviderRequestSchema,
+	listProviderCatalogResponseSchema,
 	listProviderModelsResponseSchema,
 	listProvidersResponseSchema,
 	probeProviderRequestSchema,
@@ -22,6 +23,7 @@ import {
 	updateProvider,
 	validateProvider,
 } from "../../domains/providers/application";
+import { listDriverCatalog } from "../../domains/providers/drivers";
 
 function providerErrorResponse(error: unknown): {
 	status: 400 | 404 | 500;
@@ -54,6 +56,16 @@ export function createProviderRoutes() {
 		try {
 			const providers = await listProviders();
 			return c.json(listProvidersResponseSchema.parse({ providers }));
+		} catch (error) {
+			const { status, body } = providerErrorResponse(error);
+			return c.json(body, status);
+		}
+	});
+
+	app.get("/providers/catalog", async (c) => {
+		try {
+			const drivers = listDriverCatalog();
+			return c.json(listProviderCatalogResponseSchema.parse({ drivers }));
 		} catch (error) {
 			const { status, body } = providerErrorResponse(error);
 			return c.json(body, status);

@@ -494,73 +494,49 @@ sequenceDiagram
 
 ---
 
-## 12. Phase 1 file tree (concrete stubs)
+## 12. Phase 1 file tree (current + target seams)
+
+Canonical layout notes: [`docs/architecture/current-layout.md`](docs/architecture/current-layout.md). Domain vocabulary: [`CONTEXT.md`](CONTEXT.md). Decisions: [`docs/adr/`](docs/adr/).
 
 ```
 repo/
 ├── apps/
 │   └── desktop/                      # Electrobun + Vite + React + TanStack Router
-│       ├── src/
-│       │   ├── bun/                  # Electrobun main process
-│       │   │   ├── index.ts          # window, menu, RPC handlers
-│       │   │   └── features/
-│       │   │       └── ios-toolchain/  # Xcode / signing prefs (Node APIs)
-│       │   ├── shared/               # isomorphic RPC contracts + DTOs only
-│       │   │   ├── rpc.ts
-│       │   │   └── ios-toolchain.ts
-│       │   └── mainview/             # React renderer (Vite entry)
-│       │       ├── main.tsx
-│       │       ├── app/              # shell, side-menu, route-tree, desktop-rpc
-│       │       └── features/
-│       │           ├── apps/         # context, welcome, configuration
-│       │           ├── devices/      # runs panel, device select/setup
-│       │           ├── settings/     # settings modal → toolchain RPC
-│       │           ├── test-cases/
-│       │           └── status/       # runner health via @yoqa/runner-client
-│       ├── electrobun.config.ts
-│       ├── vite.config.ts            # `@` → src/mainview
-│       └── package.json
+│       └── src/
+│           ├── bun/                  # main process (ios-toolchain prefs RPC)
+│           ├── shared/               # RPC contracts
+│           └── mainview/features/    # apps, devices, inspector, settings, runs UI
 ├── services/
 │   └── runner/                       # @yoqa/runner (Bun + Hono)
-│       ├── package.json
 │       └── src/
-│           ├── index.ts              # HTTP server entry
-│           ├── settings.ts           # APPIUM_HOST, port, paths
+│           ├── settings.ts           # listen host/port/version (not product prefs)
 │           ├── domains/
-│           │   ├── devices/
-│           │   │   ├── application.ts  # list_ios, list_android, connect
-│           │   │   └── models.ts       # Device, ActiveSession
-│           │   └── testing/
-│           │       ├── application.ts  # screen, screenshot, actions
-│           │       └── tree-cleaner.ts # raw → cleaned 0–1000 tree
-│           ├── interfaces/
-│           │   └── http/
-│           │       ├── health.ts
-│           │       ├── devices.ts
-│           │       ├── inspect.ts
-│           │       └── actions.ts
-│           └── shared/
-│               └── adapters/
-│                   └── appium.ts       # WebDriverIO session wrapper
+│           │   ├── devices/          # Device Session, Screen, Action, Active Session, MJPEG
+│           │   ├── appium/           # Appium Runtime + Appium Server ensureServer
+│           │   ├── ios/              # WDA / signing prep
+│           │   ├── providers/        # Provider adapters + vision completion
+│           │   ├── runs/             # Run orchestration + Case executor + agent prompts
+│           │   ├── catalog/          # apps, cases, flows
+│           │   └── builds/
+│           └── interfaces/http/      # thin Zod + status mapping (session, runs, …)
 └── packages/
-    ├── cli/                          # `@yoqa/cli` npm package (`yoqa` bin → runner HTTP)
-    ├── runner-client/                # typed HTTP client + Zod schemas
-    ├── ui/                           # shared Tailwind primitives
+    ├── cli/                          # `@yoqa/cli` → runner HTTP
+    ├── runner-client/                # typed client + Zod schemas
+    ├── ui/
     ├── typescript-config/
-    └── skill/
-        └── yoqa-testing/
-            ├── SKILL.md
-            └── workflows/debug-on-device.md
+    └── skill/yoqa-testing/
 ```
 
-**Phase 1 stub responsibilities**
+**Module responsibilities (target)**
 
-| Module | Must implement |
-|--------|----------------|
-| `adapters/appium.ts` | start/stop session, screenshot, page_source, tap/swipe/drag/type, activate/terminate/background, open_url, alert |
-| `devices/application.ts` | `xcrun simctl` / `adb devices` listing + connect |
-| `tree-cleaner.ts` | filter + relative bounds 0–1000 |
-| `packages/cli` | thin HTTP client to local runner (`yoqa` on npm) |
+| Module | Owns |
+|--------|------|
+| `devices/` Device Session | create/attach, gestures, screenshots, Dead Session errors; Active Session registry |
+| `devices/` Screen & Action | `getScreen`, `performAction` (incl. Grounding); MJPEG pause on Screen read |
+| `appium/` | Runtime install + listening Appium Server |
+| `providers/` | probe/validate/listModels + optional decide/ground; catalog for Settings UI |
+| `runs/` Case executor | one case with injected session/decide/clock/abort; uses Screen & Action |
+| `packages/cli` | thin HTTP client to local runner |
 
 ---
 

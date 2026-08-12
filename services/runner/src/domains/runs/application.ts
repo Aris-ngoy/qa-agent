@@ -13,25 +13,22 @@ import { installBuildOnDevice, resolveBuildForRun } from "../builds/application"
 import { getApp, getCase, getCaseScriptJson, saveCaseScript } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
+import { type DeviceSession, createDeviceSession } from "../devices/session";
 import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
 import {
 	type AgentDecision,
 	AgentProviderError,
 	assertVisionCapableProvider,
 	decideNextAction,
-	isAbsurdNoScreenshotFail,
 } from "./agent";
+import {
+	executeAgentCase as runAgentCase,
+	executeScriptCase as runScriptCase,
+} from "./case-executor";
 import { runSteps, runTests, runs } from "./schema";
 import { buildScriptFromDecisions, parseCaseScript, serializeCaseScript } from "./script";
-import { type DeviceSession, createDeviceSession } from "./session";
 
-const MAX_STEPS_PER_CASE = 25;
-/** Let splash / nav transitions settle before the next screenshot. */
-const POST_ACTION_SETTLE_MS = 800;
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["passed", "errored", "cancelled"]);
 
 type RunControl = {
 	aborted: boolean;
@@ -39,7 +36,9 @@ type RunControl = {
 
 const runControls = new Map<string, RunControl>();
 
-const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["passed", "errored", "cancelled"]);
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export class RunValidationError extends Error {
 	constructor(message: string) {
@@ -229,116 +228,18 @@ async function executeScriptCase(input: {
 		return "errored";
 	}
 
-	let stepIdx = 0;
-	let lastScreenshotUri: string | null = null;
-
-	try {
-		for (const action of script.actions) {
-			if (isAborted(input.runId)) {
-				return "cancelled";
-			}
-
-			const shotStarted = Date.now();
-			const shot = await input.session.screenshot();
-			lastScreenshotUri = shot.path;
-			const latencyMs = Date.now() - shotStarted;
-
-			if (isAborted(input.runId)) {
-				return "cancelled";
-			}
-
-			if (action.type === "tap") {
-				await input.session.tap(action.x, action.y);
-				await sleep(POST_ACTION_SETTLE_MS);
-				await appendStep({
-					runTestId: input.runTestId,
-					idx: stepIdx,
-					action: {
-						type: "tap",
-						x: action.x,
-						y: action.y,
-						reason: action.reason ?? "Replayed saved script tap",
-						thoughts: "Replaying the saved script without calling the AI agent.",
-					},
-					screenshotUri: shot.path,
-					ok: true,
-					latencyMs,
-					detail: action.reason ?? null,
-				});
-			} else if (action.type === "type") {
-				await input.session.type(action.text);
-				await sleep(POST_ACTION_SETTLE_MS);
-				await appendStep({
-					runTestId: input.runTestId,
-					idx: stepIdx,
-					action: {
-						type: "type",
-						text: action.text,
-						reason: action.reason ?? "Replayed saved script type",
-						thoughts: "Replaying the saved script without calling the AI agent.",
-					},
-					screenshotUri: shot.path,
-					ok: true,
-					latencyMs,
-					detail: action.reason ?? null,
-				});
-			} else {
-				const waitMs = Math.min(3000, Math.max(500, action.ms));
-				await sleep(waitMs);
-				await appendStep({
-					runTestId: input.runTestId,
-					idx: stepIdx,
-					action: {
-						type: "wait",
-						ms: waitMs,
-						reason: action.reason ?? `wait ${waitMs}ms`,
-						thoughts: "Replaying the saved script without calling the AI agent.",
-					},
-					screenshotUri: shot.path,
-					ok: true,
-					latencyMs,
-					detail: action.reason ?? `wait ${waitMs}ms`,
-				});
-			}
-
-			stepIdx += 1;
-		}
-
-		await appendStep({
-			runTestId: input.runTestId,
-			idx: stepIdx,
-			action: {
-				type: "done",
-				reason: "Saved script completed",
-				thoughts: "All replayed script actions finished successfully.",
-			},
-			screenshotUri: lastScreenshotUri,
-			ok: true,
-			latencyMs: 0,
-			detail: "Saved script completed",
-		});
-
-		return "passed";
-	} catch (error) {
-		if (isAborted(input.runId)) {
-			return "cancelled";
-		}
-		const message = error instanceof Error ? error.message : String(error);
-		await appendStep({
-			runTestId: input.runTestId,
-			idx: stepIdx,
-			action: {
-				type: "fail",
-				reason: message,
-				thoughts: `Script replay stopped because of an error: ${message}`,
-			},
-			screenshotUri: lastScreenshotUri,
-			ok: false,
-			latencyMs: 0,
-			detail: message,
-		});
-		return "errored";
-	}
+	return runScriptCase({
+		script,
+		session: input.session,
+		isAborted: () => isAborted(input.runId),
+		appendStep: async (step) => {
+			await appendStep({
+				runTestId: input.runTestId,
+				...step,
+			});
+		},
+		clock: { sleep, now: () => Date.now() },
+	});
 }
 
 async function executeAgentCase(input: {
@@ -358,189 +259,21 @@ async function executeAgentCase(input: {
 		throw new RunValidationError(`Case not found: ${input.caseId}`);
 	}
 
-	let stepIdx = 0;
-	let caseStatus: "passed" | "errored" | "cancelled" = "passed";
-	let caseError: string | null = null;
-	let lastScreenshotUri: string | null = null;
-	const recordedDecisions: AgentDecision[] = [];
-
-	try {
-		const flows =
-			catalogCase.flows.length > 0
-				? catalogCase.flows
-				: [{ id: "empty", instructions: "", expectedResult: "", flowId: null }];
-
-		for (const flow of flows) {
-			if (isAborted(input.runId)) {
-				caseStatus = "cancelled";
-				break;
-			}
-
-			const recentActions: AgentDecision[] = [];
-			let flowDone = false;
-			for (let attempt = 0; attempt < MAX_STEPS_PER_CASE && !flowDone; attempt++) {
-				if (isAborted(input.runId)) {
-					caseStatus = "cancelled";
-					flowDone = true;
-					break;
-				}
-
-				const shotStarted = Date.now();
-				const shot = await input.session.screenshot();
-				lastScreenshotUri = shot.path;
-
-				if (isAborted(input.runId)) {
-					caseStatus = "cancelled";
-					flowDone = true;
-					break;
-				}
-
-				let decision = await decideNextAction({
-					auth: input.auth,
-					appContext: input.appContext,
-					caseTitle: catalogCase.name,
-					instructions: flow.instructions,
-					expectedResult: flow.expectedResult,
-					stepIndex: stepIdx,
-					imageBase64: shot.base64,
-					recentActions,
-				});
-
-				// Vision models occasionally claim the image is missing; retry once.
-				if (isAbsurdNoScreenshotFail(decision)) {
-					decision = await decideNextAction({
-						auth: input.auth,
-						appContext: input.appContext,
-						caseTitle: catalogCase.name,
-						instructions: flow.instructions,
-						expectedResult: flow.expectedResult,
-						stepIndex: stepIdx,
-						imageBase64: shot.base64,
-						recentActions,
-					});
-					if (isAbsurdNoScreenshotFail(decision)) {
-						decision = {
-							type: "fail",
-							reason:
-								"Model ignored the attached screenshot (claimed none was provided). Try a stronger vision model in Settings → Provider.",
-							thoughts:
-								"The vision model returned fail claiming no screenshot was available even though an image was attached to the request. After one retry it still denied the screenshot, so the step was marked failed.",
-						};
-					}
-				}
-
-				const latencyMs = Date.now() - shotStarted;
-
-				if (isAborted(input.runId)) {
-					caseStatus = "cancelled";
-					flowDone = true;
-					break;
-				}
-
-				recentActions.push(decision);
-				recordedDecisions.push(decision);
-
-				if (decision.type === "tap") {
-					const x = decision.x ?? 500;
-					const y = decision.y ?? 500;
-					await input.session.tap(x, y);
-					await sleep(POST_ACTION_SETTLE_MS);
-					await appendStep({
-						runTestId: input.runTestId,
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: decision.reason ?? null,
-					});
-				} else if (decision.type === "type") {
-					await input.session.type(decision.text ?? "");
-					await sleep(POST_ACTION_SETTLE_MS);
-					await appendStep({
-						runTestId: input.runTestId,
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: decision.reason ?? null,
-					});
-				} else if (decision.type === "wait") {
-					const waitMs = Math.min(3000, Math.max(500, decision.ms ?? 1500));
-					await sleep(waitMs);
-					await appendStep({
-						runTestId: input.runTestId,
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: decision.reason ?? `wait ${waitMs}ms`,
-					});
-				} else if (decision.type === "verify" || decision.type === "done") {
-					await appendStep({
-						runTestId: input.runTestId,
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: decision.reason ?? null,
-					});
-					flowDone = true;
-				} else {
-					await appendStep({
-						runTestId: input.runTestId,
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: false,
-						latencyMs,
-						detail: decision.reason ?? "Agent failed the step",
-					});
-					caseStatus = "errored";
-					caseError = decision.reason ?? "Agent marked the flow as failed";
-					flowDone = true;
-				}
-
-				stepIdx += 1;
-			}
-
-			if (caseStatus === "errored" || caseStatus === "cancelled") break;
-			if (!flowDone) {
-				caseStatus = "errored";
-				caseError = `Exceeded max steps (${MAX_STEPS_PER_CASE}) for a flow`;
-				break;
-			}
-		}
-	} catch (error) {
-		if (isAborted(input.runId)) {
-			caseStatus = "cancelled";
-		} else {
-			caseStatus = "errored";
-			caseError = error instanceof Error ? error.message : String(error);
+	return runAgentCase({
+		catalogCase,
+		appContext: input.appContext,
+		auth: input.auth,
+		session: input.session,
+		isAborted: () => isAborted(input.runId),
+		appendStep: async (step) => {
 			await appendStep({
 				runTestId: input.runTestId,
-				idx: stepIdx,
-				action: {
-					type: "fail",
-					reason: caseError,
-					thoughts: `The run stopped because of an error: ${caseError}`,
-				},
-				screenshotUri: lastScreenshotUri,
-				ok: false,
-				latencyMs: 0,
-				detail: caseError,
+				...step,
 			});
-		}
-	}
-
-	if (isAborted(input.runId) || caseStatus === "cancelled") {
-		return { status: "cancelled", decisions: recordedDecisions, error: null };
-	}
-
-	return { status: caseStatus, decisions: recordedDecisions, error: caseError };
+		},
+		decide: decideNextAction,
+		clock: { sleep, now: () => Date.now() },
+	});
 }
 
 async function executeCase(input: {

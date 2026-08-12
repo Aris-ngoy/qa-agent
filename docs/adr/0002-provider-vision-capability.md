@@ -1,0 +1,3 @@
+# Provider adapters declare optional vision; catalog is runner-owned
+
+`DriverDefinition` only covered probe/validate/listModels while decide/ground and UI metadata lived in parallel kind-switches and `driver-meta.tsx`. We decided each Provider adapter exposes settings operations plus **optional** decide/ground when vision-capable; callers must not switch on kind. Settings UI consumes the **runner catalog** for product facts (label, auth modes, capabilities); presentation (logos) may stay in the desktop. Agent system prompt and decision schema stay in Runs; Providers perform vision completion only. Rejected: a second vision-only registry, a central `VISION_KINDS` allowlist beside drivers, and dual authoritative meta tables.

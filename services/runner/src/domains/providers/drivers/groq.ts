@@ -6,10 +6,12 @@ const DEFAULT_BASE = "https://api.groq.com/openai/v1";
 export const groqDriver: DriverDefinition = {
 	kind: "groq",
 	label: "Groq",
+	description: "Groq API via @ai-sdk/groq (fast Llama / vision-capable scout models).",
 	defaultBinary: null,
 	authModes: ["api_key"],
 	envHints: ["GROQ_API_KEY"],
 	loginInstructions: null,
+	capabilities: { vision: true },
 	async probe() {
 		return {
 			found: true,

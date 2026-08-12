@@ -11,6 +11,7 @@ const DEFAULT_MODELS = [
 export const googleVertexDriver: DriverDefinition = {
 	kind: "google-vertex",
 	label: "Google Vertex",
+	description: "Vertex AI Gemini via @ai-sdk/google-vertex (express API key or GCP project).",
 	defaultBinary: null,
 	authModes: ["api_key"],
 	envHints: [
@@ -21,6 +22,7 @@ export const googleVertexDriver: DriverDefinition = {
 	],
 	loginInstructions:
 		"Paste a Vertex express-mode API key, or set GOOGLE_VERTEX_PROJECT + GOOGLE_VERTEX_LOCATION (and ADC / GOOGLE_APPLICATION_CREDENTIALS).",
+	capabilities: { vision: true },
 	async probe() {
 		return {
 			found: true,

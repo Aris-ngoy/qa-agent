@@ -423,6 +423,31 @@ export const listProvidersResponseSchema = z.object({
 
 export type ListProvidersResponse = z.infer<typeof listProvidersResponseSchema>;
 
+export const providerDriverCapabilitiesSchema = z.object({
+	vision: z.boolean(),
+});
+
+export type ProviderDriverCapabilities = z.infer<typeof providerDriverCapabilitiesSchema>;
+
+export const providerDriverCatalogEntrySchema = z.object({
+	kind: providerKindSchema,
+	label: z.string().min(1),
+	description: z.string().nullable(),
+	authModes: z.array(providerAuthModeSchema).min(1),
+	defaultBinary: z.string().nullable(),
+	envHints: z.array(z.string()),
+	loginInstructions: z.string().nullable(),
+	capabilities: providerDriverCapabilitiesSchema,
+});
+
+export type ProviderDriverCatalogEntry = z.infer<typeof providerDriverCatalogEntrySchema>;
+
+export const listProviderCatalogResponseSchema = z.object({
+	drivers: z.array(providerDriverCatalogEntrySchema),
+});
+
+export type ListProviderCatalogResponse = z.infer<typeof listProviderCatalogResponseSchema>;
+
 export const createProviderRequestSchema = z.object({
 	kind: providerKindSchema,
 	authMode: providerAuthModeSchema.optional(),

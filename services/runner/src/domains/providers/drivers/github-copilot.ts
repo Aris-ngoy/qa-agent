@@ -105,11 +105,13 @@ async function listCopilotModels(
 export const githubCopilotDriver: DriverDefinition = {
 	kind: "github-copilot",
 	label: "GitHub Copilot",
+	description: "Authenticate with a GitHub token that has Copilot access.",
 	defaultBinary: null,
 	authModes: ["token"],
 	envHints: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
 	loginInstructions:
 		"Paste a GitHub token with Copilot access (COPILOT_GITHUB_TOKEN). Device login requires a terminal: visit github.com/login/device after starting a Copilot device flow.",
+	capabilities: { vision: false },
 	async probe() {
 		return {
 			found: true,

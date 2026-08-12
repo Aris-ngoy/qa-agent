@@ -8,15 +8,15 @@ import type {
 	ProviderAuthMode,
 	ProviderKind,
 } from "@yoqa/runner-client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import {
-	ACTIVE_DRIVERS,
-	ALL_DRIVER_CARDS,
 	DriverGlyph,
 	type DriverMeta,
 	fieldInputClass,
-	getDriverMeta,
+	useActiveDrivers,
+	useDriverCards,
+	useDriverMeta,
 } from "./driver-meta";
 import { Stepper } from "./stepper";
 
@@ -86,7 +86,9 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 	const apiKey = useWatch({ control, name: "apiKey" });
 	const envRows = useWatch({ control, name: "envRows" }) ?? [];
 
-	const meta = useMemo(() => (selectedKind ? getDriverMeta(selectedKind) : null), [selectedKind]);
+	const activeDrivers = useActiveDrivers(open);
+	const driverCards = useDriverCards(open);
+	const meta = useDriverMeta(selectedKind ?? "anthropic", open && selectedKind != null);
 	const currentStep = stepIndex(step);
 
 	useEffect(() => {
@@ -131,7 +133,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 	});
 
 	const selectDriver = (driver: DriverMeta) => {
-		if (driver.comingSoon || !ACTIVE_DRIVERS.some((d) => d.kind === driver.kind)) return;
+		if (driver.comingSoon || !activeDrivers.some((d) => d.kind === driver.kind)) return;
 		const kind = driver.kind as ProviderKind;
 		setSelectedKind(kind);
 		setAuthMode(driver.authModes[0] ?? "api_key");
@@ -263,7 +265,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 
 							{step === "driver" ? (
 								<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-									{ALL_DRIVER_CARDS.map((driver) => {
+									{driverCards.map((driver) => {
 										const selected = selectedKind === driver.kind;
 										const disabled = Boolean(driver.comingSoon);
 										return (

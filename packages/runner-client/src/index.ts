@@ -36,6 +36,7 @@ import {
 	type ListCasesResponse,
 	type ListDevicesResponse,
 	type ListFlowsResponse,
+	type ListProviderCatalogResponse,
 	type ListProviderModelsResponse,
 	type ListProvidersResponse,
 	type ListRunsResponse,
@@ -44,6 +45,8 @@ import {
 	type ProbeProviderResponse,
 	type ProviderAccentColor,
 	type ProviderAuthMode,
+	type ProviderDriverCapabilities,
+	type ProviderDriverCatalogEntry,
 	type ProviderError,
 	type ProviderKind,
 	type ProviderModel,
@@ -107,6 +110,7 @@ import {
 	listCasesResponseSchema,
 	listDevicesResponseSchema,
 	listFlowsResponseSchema,
+	listProviderCatalogResponseSchema,
 	listProviderModelsResponseSchema,
 	listProvidersResponseSchema,
 	listRunsResponseSchema,
@@ -115,6 +119,8 @@ import {
 	probeProviderResponseSchema,
 	providerAccentColorSchema,
 	providerAuthModeSchema,
+	providerDriverCapabilitiesSchema,
+	providerDriverCatalogEntrySchema,
 	providerErrorSchema,
 	providerKindSchema,
 	providerModelSchema,
@@ -179,6 +185,7 @@ export {
 	listCasesResponseSchema,
 	listDevicesResponseSchema,
 	listFlowsResponseSchema,
+	listProviderCatalogResponseSchema,
 	listProviderModelsResponseSchema,
 	listProvidersResponseSchema,
 	listRunsResponseSchema,
@@ -187,6 +194,8 @@ export {
 	probeProviderResponseSchema,
 	providerAccentColorSchema,
 	providerAuthModeSchema,
+	providerDriverCapabilitiesSchema,
+	providerDriverCatalogEntrySchema,
 	providerErrorSchema,
 	providerKindSchema,
 	providerModelSchema,
@@ -250,6 +259,7 @@ export {
 	type ListCasesResponse,
 	type ListDevicesResponse,
 	type ListFlowsResponse,
+	type ListProviderCatalogResponse,
 	type ListProviderModelsResponse,
 	type ListProvidersResponse,
 	type ListRunsResponse,
@@ -258,6 +268,8 @@ export {
 	type ProbeProviderResponse,
 	type ProviderAccentColor,
 	type ProviderAuthMode,
+	type ProviderDriverCapabilities,
+	type ProviderDriverCatalogEntry,
 	type ProviderError,
 	type ProviderKind,
 	type ProviderModel,
@@ -659,6 +671,15 @@ export class RunnerClient {
 	async listProviders(): Promise<AiProvider[]> {
 		const json = await this.requestJson("/providers", undefined, "List providers failed");
 		return listProvidersResponseSchema.parse(json).providers;
+	}
+
+	async listProviderCatalog(): Promise<ProviderDriverCatalogEntry[]> {
+		const json = await this.requestJson(
+			"/providers/catalog",
+			undefined,
+			"List provider catalog failed",
+		);
+		return listProviderCatalogResponseSchema.parse(json).drivers;
 	}
 
 	async getProvider(providerId: string): Promise<AiProvider> {

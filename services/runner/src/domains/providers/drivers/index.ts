@@ -12,7 +12,7 @@ import { grokDriver } from "./grok";
 import { groqDriver } from "./groq";
 import { openaiDriver } from "./openai";
 import { opencodeDriver } from "./opencode";
-import type { DriverDefinition } from "./types";
+import type { DriverCatalogEntry, DriverDefinition } from "./types";
 
 const DRIVERS: Record<ProviderKind, DriverDefinition> = {
 	anthropic: anthropicDriver,
@@ -38,4 +38,25 @@ export function listDrivers(): DriverDefinition[] {
 	return Object.values(DRIVERS);
 }
 
-export type { DriverDefinition, ProbeResult, ValidateResult, ListModelsResult } from "./types";
+/** Product facts for Settings UI — logos remain desktop-owned. */
+export function listDriverCatalog(): DriverCatalogEntry[] {
+	return listDrivers().map((driver) => ({
+		kind: driver.kind,
+		label: driver.label,
+		description: driver.description ?? null,
+		authModes: driver.authModes,
+		defaultBinary: driver.defaultBinary,
+		envHints: driver.envHints,
+		loginInstructions: driver.loginInstructions,
+		capabilities: driver.capabilities,
+	}));
+}
+
+export type {
+	DriverCatalogEntry,
+	DriverCapabilities,
+	DriverDefinition,
+	ProbeResult,
+	ValidateResult,
+	ListModelsResult,
+} from "./types";

@@ -1,6 +1,11 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
-import { type DeviceSession, createDeviceSession } from "../runs/session";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
+import {
+	type DeviceSession,
+	createDeviceSession,
+	isDeadSessionError,
+	onDeviceSessionExclusiveRelease,
+} from "./session";
 
 export type ActiveSessionInfo = {
 	deviceId: string;
@@ -17,6 +22,9 @@ type ActiveSession = ActiveSessionInfo & {
 };
 
 let active: ActiveSession | null = null;
+
+/** Compat alias — prefer `isDeadSessionError` from `./session`. */
+export const isMissingAppiumSessionError = isDeadSessionError;
 
 export function getActiveSession(): ActiveSession | null {
 	return active;
@@ -41,14 +49,6 @@ export function requireActiveSession(): ActiveSession {
 	return active;
 }
 
-/** Appium/WDA session vanished while the runner still held a handle. */
-export function isMissingAppiumSessionError(error: unknown): boolean {
-	const message = error instanceof Error ? error.message : String(error);
-	return /session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i.test(
-		message,
-	);
-}
-
 /**
  * Drop the in-memory active session without calling deleteSession
  * (the remote session is already gone).
@@ -63,6 +63,13 @@ export function abandonActiveSession(): ActiveSessionInfo | null {
 	);
 	return info;
 }
+
+/** When exclusivity releases this device's session (e.g. a Run took it), clear the Active Session singleton. */
+onDeviceSessionExclusiveRelease((deviceId) => {
+	if (active?.deviceId === deviceId) {
+		abandonActiveSession();
+	}
+});
 
 export async function connectDevice(options: {
 	deviceId: string;

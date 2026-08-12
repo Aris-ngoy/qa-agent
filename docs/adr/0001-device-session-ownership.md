@@ -1,0 +1,3 @@
+# Device Session lives under `devices/`, exclusive per device
+
+Appium session logic had grown under `runs/` while interactive connect lived in a thin `devices/active-session` registry. We decided the **Device Session** module owns create/attach, gestures, Dead Session errors, and the Active Session registry as a second entry point — all under `domains/devices/`. **Appium Server** process lifecycle stays in `domains/appium/` (`ensureServer`); Device Session only attaches. At most one Device Session may exist per device id (Run and Active Session contend; starting one releases the other on that device). Rejected: burying server lifecycle inside the session module, a runner-wide single session, and leaving dead-session regexes in HTTP/UI.

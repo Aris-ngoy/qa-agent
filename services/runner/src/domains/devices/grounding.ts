@@ -9,8 +9,8 @@ import {
 	formatProviderHttpError,
 } from "../providers/vision-model";
 import { prepareVisionImage } from "../runs/agent";
-import type { DeviceSession } from "../runs/session";
 import { cleanPageSource } from "./screen";
+import type { DeviceSession } from "./session";
 
 const groundResultSchema = z.object({
 	x: z.number().min(0).max(1000),

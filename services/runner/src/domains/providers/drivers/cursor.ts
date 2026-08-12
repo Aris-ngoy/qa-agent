@@ -131,11 +131,14 @@ async function cursorStatus(binary: string): Promise<{ authenticated: boolean; d
 export const cursorDriver: DriverDefinition = {
 	kind: "cursor",
 	label: "Cursor",
+	description:
+		"Reuse Cursor Agent CLI login (`cursor-agent`) or paste a CURSOR_API_KEY. Vision runs use `cursor-agent --print` in ask mode.",
 	defaultBinary: "cursor-agent",
 	authModes: ["cli", "api_key"],
 	envHints: ["CURSOR_API_KEY"],
 	loginInstructions:
 		"Run `cursor-agent login` (or `cursor agent login`) in a terminal, then re-check. Or paste a CURSOR_API_KEY.",
+	capabilities: { vision: true },
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "cursor-agent",

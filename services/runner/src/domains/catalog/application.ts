@@ -2,7 +2,6 @@ import {
 	type Capability,
 	type CaseFlowStep,
 	type CaseRunStatus,
-	type CaseScript,
 	type CatalogApp,
 	type CatalogCase,
 	type CatalogFlow,
@@ -15,25 +14,14 @@ import {
 	type UpdateCaseRequest,
 	type UpdateFlowRequest,
 	caseRunStatusSchema,
-	caseScriptSchema,
 } from "@yoqa/runner-client";
 import { and, asc, desc, eq, max } from "drizzle-orm";
+import { parseCaseScript } from "../runs/script";
 import { getCatalogDb } from "./db";
 import { type CapabilityRow, apps, caseFlows, caseTags, cases, flows, tags } from "./schema";
 
 function newId(prefix: string): string {
 	return `${prefix}_${crypto.randomUUID()}`;
-}
-
-function parseCaseScript(raw: string | null | undefined): CaseScript | null {
-	if (!raw) return null;
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		const result = caseScriptSchema.safeParse(parsed);
-		return result.success ? result.data : null;
-	} catch {
-		return null;
-	}
 }
 
 function parseCapabilities(raw: string): Capability[] {

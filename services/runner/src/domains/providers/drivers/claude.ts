@@ -4,11 +4,13 @@ import type { DriverDefinition } from "./types";
 export const claudeDriver: DriverDefinition = {
 	kind: "claude",
 	label: "Claude",
+	description: "Reuse Claude Code CLI login or paste an Anthropic API key.",
 	defaultBinary: "claude",
 	authModes: ["cli", "api_key"],
 	envHints: ["ANTHROPIC_API_KEY"],
 	loginInstructions:
 		"Run `claude auth login` in a terminal, then re-check. Or paste an Anthropic API key.",
+	capabilities: { vision: false },
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "claude",
