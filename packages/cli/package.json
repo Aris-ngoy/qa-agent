@@ -35,7 +35,7 @@
 		"@types/node": "^22.15.30",
 		"@yoqa/runner-client": "workspace:*",
 		"@yoqa/typescript-config": "workspace:*",
-		"commander": "^14.0.0",
+		"commander": "^15.0.0",
 		"typescript": "^5.9.3"
 	},
 	"publishConfig": {
