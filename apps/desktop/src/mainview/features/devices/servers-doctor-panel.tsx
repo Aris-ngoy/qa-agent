@@ -156,7 +156,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 	const warnCount = doctorQuery.data?.checks.filter((check) => check.status === "warn").length ?? 0;
 
 	return (
-		<div className="relative">
+		<div className="relative z-50">
 			<button
 				aria-expanded={open}
 				aria-haspopup="dialog"
@@ -173,7 +173,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 			</button>
 
 			{open ? (
-				<div className="absolute top-[calc(100%+0.75rem)] right-0 z-50 w-[22rem] rounded-2xl border border-outline-variant bg-surface-container-lowest p-3 shadow-float">
+				<div className="absolute top-[calc(100%+0.75rem)] right-0 z-[100] w-[22rem] rounded-2xl border border-outline-variant bg-surface-container-lowest p-3 shadow-float">
 					<Tabs
 						className="w-full"
 						onSelectionChange={(key) => setTab(String(key) as "servers" | "doctor")}
