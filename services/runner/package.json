@@ -40,7 +40,7 @@
 		"@ai-sdk/groq": "^4.0.13",
 		"@ai-sdk/openai": "^4.0.30",
 		"@ai-sdk/xai": "^4",
-		"ai": "^7.0.37",
+		"ai": "^7.0.58",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.13.0",
 		"webdriver": "^9.16.2",
