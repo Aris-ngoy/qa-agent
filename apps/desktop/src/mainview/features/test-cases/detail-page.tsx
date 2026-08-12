@@ -694,6 +694,7 @@ function ScriptPanel({
 	const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 	const stepsRef = useRef(steps);
 	stepsRef.current = steps;
+	const reduceMotion = useReducedMotion();
 
 	const exportMeta = { caseNumber, caseName };
 
@@ -821,8 +822,6 @@ function ScriptPanel({
 		{ id: "json", label: "JSON" },
 		{ id: "shell", label: "CLI shell" },
 	];
-
-	const reduceMotion = useReducedMotion();
 
 	return (
 		<div className="flex w-full max-w-2xl flex-col gap-5">
