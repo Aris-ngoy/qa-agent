@@ -1,6 +1,6 @@
 {
 	"name": "@yoqa/cli",
-	"version": "0.3.13",
+	"version": "0.3.14",
 	"description": "Yoqa CLI — drive local mobile QA from the terminal or CI (talks to the Yoqa runner over HTTP)",
 	"license": "UNLICENSED",
 	"type": "module",
