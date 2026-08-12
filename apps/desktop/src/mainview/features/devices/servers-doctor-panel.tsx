@@ -383,7 +383,10 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 											Refresh
 										</Button>
 										<Button
-											isDisabled={repairMutation.isPending}
+											isDisabled={
+												repairMutation.isPending ||
+												!doctorQuery.data.steps.some((step) => step.repair)
+											}
 											onPress={() => {
 												if (doctorQuery.data) repairMutation.mutate(doctorQuery.data);
 											}}
