@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "qa-agent",
@@ -46,6 +47,9 @@
       "version": "0.3.11",
       "bin": {
         "yoqa": "dist/main.js",
+      },
+      "dependencies": {
+        "@yoqa/runner": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^22.15.30",
@@ -96,6 +100,9 @@
     "services/runner": {
       "name": "@yoqa/runner",
       "version": "0.3.11",
+      "bin": {
+        "yoqa-runner": "bin/yoqa-runner.cjs",
+      },
       "dependencies": {
         "@ai-sdk/anthropic": "^4.0.30",
         "@ai-sdk/google": "^4.0.23",
@@ -103,7 +110,6 @@
         "@ai-sdk/groq": "^4.0.13",
         "@ai-sdk/openai": "^4.0.30",
         "@ai-sdk/xai": "^4",
-        "@yoqa/runner-client": "workspace:*",
         "ai": "^7.0.37",
         "drizzle-orm": "^0.45.2",
         "hono": "^4.13.0",
@@ -113,6 +119,7 @@
       },
       "devDependencies": {
         "@types/bun": "^1.2.18",
+        "@yoqa/runner-client": "workspace:*",
         "@yoqa/typescript-config": "workspace:*",
         "drizzle-kit": "^0.31.10",
         "typescript": "^5.9.3",

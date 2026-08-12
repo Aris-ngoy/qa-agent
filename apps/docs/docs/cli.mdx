@@ -3,7 +3,7 @@ title: CLI
 description: Drive Yoqa from your terminal — devices, screen, actions, catalog, and runs.
 ---
 
-The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app that starts it) running.
+The `yoqa` CLI talks to the **local runner**. If nothing is listening on `http://127.0.0.1:7420`, the CLI starts `@yoqa/runner` for you (requires [Bun](https://bun.sh)). The desktop app is optional.
 
 <Note>
   Install via **npm** (`npm i -g @yoqa/cli` / `npx @yoqa/cli`) for terminals and CI, or from the desktop app: **Settings → CLI & Agents → Install CLI**. Restart the terminal after a desktop install. For coding agents, also install the skill — see [CLI for agents](/guide/cli-for-agents).
@@ -12,11 +12,11 @@ The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app th
 ## Setup
 
 <Steps>
-  <Step title="Start the runner">
-    Open the Yoqa desktop app — the bundled runner starts on `http://127.0.0.1:7420`. If you're running from a monorepo checkout instead, start it manually:
+  <Step title="Install Bun (for the runner)">
+    The runner is Bun-only. CI and headless terminals need Bun on `PATH`:
 
     ```bash
-    bun run runner
+    curl -fsSL https://bun.sh/install | bash
     ```
   </Step>
 
@@ -32,6 +32,16 @@ The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app th
     **Desktop:** Settings → **CLI & Agents** → **Install CLI**. Links `yoqa` into `~/.local/bin`.
   </Step>
 
+  <Step title="Start the runner (optional)">
+    `yoqa health` and other commands auto-start the runner. To run it in the foreground (typical for a dedicated CI service step):
+
+    ```bash
+    yoqa serve
+    ```
+
+    From a monorepo checkout you can still use `bun run runner`. The desktop app also starts a sidecar on the same port. Disable auto-start with `YOQA_NO_AUTOSTART=1`.
+  </Step>
+
   <Step title="Verify">
     ```bash
     yoqa health
@@ -44,19 +54,28 @@ The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app th
 
 ## CI / CD
 
-The CLI is a thin HTTP client. In GitHub Actions (or any Node ≥20 job), install `@yoqa/cli`, start a runner on the same machine (desktop sidecar or monorepo `bun run runner`), then invoke commands:
+Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later steps reuse it. Host **Node/npm** must be on `PATH` so managed Appium can install under `~/.yoqa/runtime`.
 
 ```yaml
+- uses: oven-sh/setup-bun@v2
+  with:
+    bun-version: "1.2.23"
 - uses: actions/setup-node@v4
   with:
     node-version: "22"
 - run: npm install -g @yoqa/cli
-# Ensure the Yoqa runner is listening on 127.0.0.1:7420, then:
 - run: yoqa health
-- run: yoqa status
+- run: yoqa doctor
 ```
 
-Override the runner URL with `YOQA_RUNNER_HOST` / `YOQA_RUNNER_PORT` when needed.
+```bash
+yoqa serve                 # foreground (use `yoqa serve &` or a service step)
+yoqa serve --stop          # SIGTERM a runner this CLI started (~/.yoqa/runner.pid)
+```
+
+Override the runner URL with `YOQA_RUNNER_HOST` / `YOQA_RUNNER_PORT` / `YOQA_RUNNER_URL`. Pin a binary with `YOQA_RUNNER_BIN`.
+
+Device runs still need a simulator or emulator, Appium drivers (`yoqa doctor --fix` / `yoqa runtime ensure`), and provider secrets. GitHub-hosted iOS needs `macos-*` + Xcode. This is not a cloud device farm — cache `~/.yoqa/runtime` between jobs to skip reinstalling Appium.
 
 ## Doctor & servers
 

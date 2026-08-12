@@ -11,7 +11,7 @@ Pick one workflow below by what the user wants. Follow that workflow's file — 
 
 ## Before you start
 
-1. Ensure the local runner is up (`bun run runner` or via the Yoqa desktop app). Confirm with `yoqa health`.
+1. Ensure the local runner is up. `yoqa health` auto-starts it when Bun is installed; otherwise run `yoqa serve` or open the Yoqa desktop app. Confirm with `yoqa health`.
 2. Check local readiness with `yoqa status` — it reports runner, Appium runtime, AI provider, and active device (no cloud account required for local use).
 3. **Find the app & its prefix** — run `yoqa apps list` and note the `PREFIX`. Most catalog commands take the prefix as the first argument. See [Apps, Cases & Flows](references/apps-cases-and-flows.md).
 4. For **description grounding** (`-d` / `--description`) and **agent runs**, configure an AI provider in Settings → Provider (`yoqa status` should show a configured provider).
@@ -53,8 +53,8 @@ Not implemented yet — in development.
 ## Rules
 
 - If any command reports that Yoqa / the runner is not running / not reachable / "start it first":
-  1. Ensure the local runner is up: `bun run runner` (from the repo root)
-  2. Confirm with `yoqa health` (or `bun run health`)
+  1. Ensure the local runner is up: `yoqa serve` (or `bun run runner` from this repo)
+  2. Confirm with `yoqa health` (auto-starts when Bun is installed)
   3. If the desktop UI is needed: `bun run desktop`
   4. Do not invent other start commands; if it still fails, ask the user to start the runner/desktop
 - If grounding or runs fail because no provider is configured, tell the user to open Settings → Provider in the Yoqa app
