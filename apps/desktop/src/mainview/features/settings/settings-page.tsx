@@ -9,7 +9,7 @@ import {
 	doctorStatusRowClass,
 	doctorStepSeverityClass,
 } from "@/features/doctor/status-ui";
-import { Button, ListBox, Select, Tabs } from "@heroui/react";
+import { Button, ListBox, Select, Spinner, Tabs } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { type ReactNode, type SVGProps, useEffect, useMemo, useState } from "react";
@@ -637,8 +637,7 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 	const doctorQuery = useQuery({
 		queryKey: doctorQueryKey,
 		queryFn: async () => (await getRunnerClient()).getDoctorReport(),
-		enabled,
-		refetchInterval: enabled ? 15_000 : false,
+		enabled: false,
 	});
 
 	const repairMutation = useMutation({
@@ -657,12 +656,24 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 			}
 			return (await getRunnerClient()).repairDoctor({ repairs });
 		},
-		onSuccess: async (result) => {
+		onSuccess: (result) => {
 			queryClient.setQueryData(doctorQueryKey, result.report);
-			await queryClient.invalidateQueries({ queryKey: doctorQueryKey });
 		},
 		onError: (error) => showErrorToast(error, "Repair failed"),
 	});
+
+	const runDoctor = () => {
+		if (!enabled || doctorQuery.isFetching || repairMutation.isPending) return;
+		void doctorQuery.refetch();
+	};
+
+	const statusLabel = doctorQuery.isFetching
+		? "Running checks…"
+		: !doctorQuery.data
+			? "Not run yet"
+			: doctorQuery.data.ok
+				? "All required checks passed"
+				: "Some required checks need attention";
 
 	return (
 		<div className="flex flex-col gap-6">
@@ -678,38 +689,52 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 						<p
 							className={[
 								"mt-2 inline-flex rounded-full px-3 py-1 text-body-sm font-semibold",
-								doctorQuery.isLoading
+								doctorQuery.isFetching || !doctorQuery.data
 									? "bg-surface-container text-on-surface-variant"
-									: doctorQuery.data?.ok
+									: doctorQuery.data.ok
 										? "bg-secondary-container text-on-secondary-container"
-										: (doctorQuery.data?.checks.some((c) => c.status === "fail") ?? false)
+										: (doctorQuery.data.checks.some((c) => c.status === "fail") ?? false)
 											? "bg-error-container text-on-error-container"
 											: "bg-amber-100 text-amber-900",
 							].join(" ")}
 						>
-							{doctorQuery.isLoading
-								? "Running checks…"
-								: doctorQuery.data?.ok
-									? "All required checks passed"
-									: "Some required checks need attention"}
+							{statusLabel}
 						</p>
 					</div>
 					<div className="flex flex-wrap gap-2">
 						<Button
-							isDisabled={doctorQuery.isFetching}
-							onPress={() => void doctorQuery.refetch()}
+							isDisabled={!enabled || doctorQuery.isFetching || repairMutation.isPending}
+							onPress={runDoctor}
 							variant="secondary"
 						>
-							Refresh
+							{doctorQuery.isFetching ? (
+								<>
+									<Spinner aria-label="Running diagnostics" color="current" size="sm" />
+									{doctorQuery.data ? "Refreshing…" : "Running…"}
+								</>
+							) : doctorQuery.data ? (
+								"Refresh"
+							) : (
+								"Run doctor"
+							)}
 						</Button>
 						<Button
 							isDisabled={
-								repairMutation.isPending || !doctorQuery.data?.steps.some((step) => step.repair)
+								!enabled ||
+								repairMutation.isPending ||
+								!doctorQuery.data?.steps.some((step) => step.repair)
 							}
 							onPress={() => repairMutation.mutate()}
 							variant="primary"
 						>
-							{repairMutation.isPending ? "Repairing…" : "Repair safe issues"}
+							{repairMutation.isPending ? (
+								<>
+									<Spinner aria-label="Repairing" color="current" size="sm" />
+									Repairing…
+								</>
+							) : (
+								"Repair safe issues"
+							)}
 						</Button>
 					</div>
 				</div>
@@ -717,6 +742,10 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 				{doctorQuery.isError ? (
 					<p className="text-body-md text-error">
 						Could not load doctor report. Is the local runner up?
+					</p>
+				) : !doctorQuery.data && !doctorQuery.isFetching ? (
+					<p className="text-body-md text-on-surface-variant">
+						Click Run doctor to generate a diagnostics report.
 					</p>
 				) : (
 					<ul className="flex flex-col gap-2">
