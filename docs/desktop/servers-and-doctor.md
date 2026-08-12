@@ -37,7 +37,7 @@ Rejected: killing the runner from `POST /servers/stop-all`, and auto-running ful
 1. Start runner (`bun run runner` or desktop app).
 2. `yoqa servers` — should at least show `runner-self`.
 3. Connect a device or start a run so Appium starts; `yoqa servers` lists managed Appium; Stop/Restart from UI or CLI.
-4. `yoqa doctor` — color table (green PASS / red FAIL / yellow WARN) plus steps; `yoqa doctor --json` for raw JSON; `yoqa doctor --fix` only runs allowlisted repairs.
+4. `yoqa doctor` — color bullet list (green pass / red fail / yellow warn) plus next steps; `yoqa doctor --json` for raw JSON; `yoqa doctor --fix` only runs allowlisted repairs.
 5. Desktop: open Servers button left of Play → list / stop all / select stop|restart; Doctor tab → **Run doctor** (manual) → Refresh / Repair; Open Diagnostics.
 6. Settings → Diagnostics → **Run doctor** / Refresh / Repair safe issues (Repair is enabled only when a step has a safe repair, and disabled while a repair is running).
 

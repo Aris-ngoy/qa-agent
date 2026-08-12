@@ -43,20 +43,15 @@ describe("doctorColorEnabled", () => {
 });
 
 describe("formatDoctorReport", () => {
-	test("renders a status table with pass/fail/warn and steps", () => {
+	test("renders a colored bullet list for checks and steps", () => {
 		const text = formatDoctorReport(report, false);
 		expect(text).toContain("doctor  issues found");
-		expect(text).toContain("STATUS");
-		expect(text).toContain("CHECK");
-		expect(text).toContain("PASS");
-		expect(text).toContain("FAIL");
-		expect(text).toContain("WARN");
-		expect(text).toContain("Node.js");
-		expect(text).toContain("Appium");
-		expect(text).toContain("yoqa runtime ensure");
-		expect(text).toContain("SEV");
-		expect(text).toContain("ERROR");
-		expect(text).toContain("Install Appium");
+		expect(text).toContain("• Node.js — v22.14.0");
+		expect(text).toContain("• Appium — not installed · yoqa runtime ensure");
+		expect(text).toContain("• Foreign Appium — pid 4321 on :4723");
+		expect(text).toContain("next");
+		expect(text).toContain("• Install Appium — Run yoqa runtime ensure");
+		expect(text).not.toContain("STATUS");
 		expect(text.includes("\u001b")).toBe(false);
 	});
 
@@ -65,9 +60,9 @@ describe("formatDoctorReport", () => {
 		expect(text).toContain("\u001b[32m");
 		expect(text).toContain("\u001b[31m");
 		expect(text).toContain("\u001b[33m");
-		expect(text).toContain("PASS");
-		expect(text).toContain("FAIL");
-		expect(text).toContain("WARN");
+		expect(text).toContain("•");
+		expect(text).toContain("Node.js");
+		expect(text).toContain("Appium");
 	});
 
 	test("ok reports use a green summary and skip empty steps", () => {
@@ -81,6 +76,7 @@ describe("formatDoctorReport", () => {
 			false,
 		);
 		expect(text).toContain("doctor  ok");
-		expect(text).not.toContain("SEV");
+		expect(text).toContain("• Node.js — v22");
+		expect(text).not.toContain("next");
 	});
 });
