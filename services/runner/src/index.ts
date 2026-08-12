@@ -1,5 +1,6 @@
 import { ensureHostToolPath } from "./domains/appium/host-path";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
+import { installAppiumSessionBridge } from "./domains/servers/application";
 import { createApp } from "./interfaces/http/app";
 import {
 	type ControlWsData,
@@ -10,6 +11,7 @@ import { loadSettings } from "./settings";
 
 // Finder/Dock launches get a stripped PATH — include Homebrew + agent CLIs before probes.
 ensureHostToolPath();
+installAppiumSessionBridge();
 
 const settings = loadSettings();
 const startedAt = Date.now();

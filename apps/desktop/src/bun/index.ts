@@ -7,7 +7,12 @@ import {
 	openSkillFolder,
 } from "./features/cli-environment";
 import { getIosToolchainSnapshot, setIosToolchainSelection } from "./features/ios-toolchain";
-import { ensureLocalServices, stopRunnerSidecar } from "./features/runner-sidecar";
+import {
+	ensureLocalServices,
+	restartLocalRunner,
+	stopLocalRunner,
+	stopRunnerSidecar,
+} from "./features/runner-sidecar";
 
 const DOCS_QUICKSTART_URL = "https://yoqa.mintlify.site/docs/quickstart";
 
@@ -70,6 +75,8 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 			ping: () => "pong",
 			getRunnerBaseUrl: () => process.env.YOQA_RUNNER_URL ?? "http://127.0.0.1:7420",
 			ensureLocalServices: () => ensureLocalServices(),
+			stopLocalRunner: () => stopLocalRunner(),
+			restartLocalRunner: () => restartLocalRunner(),
 			getIosToolchain: () => getIosToolchainSnapshot(),
 			setIosToolchainSelection: (params) => setIosToolchainSelection(params),
 			getCliEnvironment: () => getCliEnvironmentSnapshot(),

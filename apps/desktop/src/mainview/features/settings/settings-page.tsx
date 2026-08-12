@@ -1,6 +1,10 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
+import { getRunnerClient } from "@/app/runner-client";
+import { showErrorToast } from "@/app/show-error-toast";
+import { doctorQueryKey } from "@/features/devices/servers-doctor-panel";
 import { Button, ListBox, Select, Tabs } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import { type ReactNode, type SVGProps, useEffect, useMemo, useState } from "react";
 import type { CliEnvironmentSnapshot } from "../../../shared/cli-environment";
 import type {
@@ -11,13 +15,14 @@ import type {
 } from "../../../shared/ios-toolchain";
 import { ProvidersSection } from "./providers/providers-section";
 
-type SettingsSection = "ios" | "cli" | "provider";
+type SettingsSection = "ios" | "cli" | "provider" | "diagnostics";
 type IdentityFilter = "all" | SigningTier;
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "ios", label: "iOS" },
 	{ id: "cli", label: "CLI & Agents" },
 	{ id: "provider", label: "Provider" },
+	{ id: "diagnostics", label: "Diagnostics" },
 ];
 
 const IOS_TOOLCHAIN_QUERY_KEY = ["ios-toolchain"] as const;
@@ -601,8 +606,158 @@ function CliSettings({ enabled }: { enabled: boolean }) {
 	);
 }
 
+function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
+	const queryClient = useQueryClient();
+	const doctorQuery = useQuery({
+		queryKey: doctorQueryKey,
+		queryFn: async () => (await getRunnerClient()).getDoctorReport(),
+		enabled,
+		refetchInterval: enabled ? 15_000 : false,
+	});
+
+	const repairMutation = useMutation({
+		mutationFn: async () => {
+			const report = doctorQuery.data;
+			if (!report) throw new Error("No doctor report loaded");
+			const repairs = [
+				...new Set(
+					report.steps
+						.map((step) => step.repair)
+						.filter((id): id is NonNullable<typeof id> => Boolean(id)),
+				),
+			];
+			if (repairs.length === 0) {
+				throw new Error("No safe repairs available");
+			}
+			return (await getRunnerClient()).repairDoctor({ repairs });
+		},
+		onSuccess: async (result) => {
+			queryClient.setQueryData(doctorQueryKey, result.report);
+			await queryClient.invalidateQueries({ queryKey: doctorQueryKey });
+		},
+		onError: (error) => showErrorToast(error, "Repair failed"),
+	});
+
+	return (
+		<div className="flex flex-col gap-6">
+			<p className="text-body-md text-on-surface-variant">
+				System checks for Node, Appium, drivers, host tools, and leftover processes. Same report as{" "}
+				<code className="font-mono text-helper">yoqa doctor</code>.
+			</p>
+
+			<SectionCard>
+				<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+					<div>
+						<h3 className="text-subheading font-semibold text-on-surface">Doctor report</h3>
+						<p className="mt-1 text-body-md text-on-surface-variant">
+							{doctorQuery.isLoading
+								? "Running checks…"
+								: doctorQuery.data?.ok
+									? "All required checks passed"
+									: "Some required checks need attention"}
+						</p>
+					</div>
+					<div className="flex flex-wrap gap-2">
+						<Button
+							isDisabled={doctorQuery.isFetching}
+							onPress={() => void doctorQuery.refetch()}
+							variant="secondary"
+						>
+							Refresh
+						</Button>
+						<Button
+							isDisabled={
+								repairMutation.isPending || !doctorQuery.data?.steps.some((step) => step.repair)
+							}
+							onPress={() => repairMutation.mutate()}
+							variant="primary"
+						>
+							{repairMutation.isPending ? "Repairing…" : "Repair safe issues"}
+						</Button>
+					</div>
+				</div>
+
+				{doctorQuery.isError ? (
+					<p className="text-body-md text-error">
+						Could not load doctor report. Is the local runner up?
+					</p>
+				) : (
+					<ul className="flex flex-col gap-2">
+						{(doctorQuery.data?.checks ?? []).map((check) => (
+							<li
+								className="flex items-start justify-between gap-3 rounded-xl bg-surface-container px-3.5 py-3"
+								key={check.id}
+							>
+								<div className="min-w-0">
+									<p className="text-body-md font-medium text-on-surface">{check.label}</p>
+									{check.detail ? (
+										<p className="mt-0.5 text-body-sm text-on-surface-variant">{check.detail}</p>
+									) : null}
+									{check.fixHint && check.status !== "pass" ? (
+										<p className="mt-1 text-helper text-on-surface-variant">{check.fixHint}</p>
+									) : null}
+								</div>
+								<span
+									className={[
+										"shrink-0 rounded-full px-2 py-0.5 text-helper font-medium",
+										check.status === "pass"
+											? "bg-primary/15 text-primary"
+											: check.status === "fail"
+												? "bg-error/15 text-error"
+												: "bg-surface-container-high text-on-surface-variant",
+									].join(" ")}
+								>
+									{check.status}
+								</span>
+							</li>
+						))}
+					</ul>
+				)}
+			</SectionCard>
+
+			{doctorQuery.data && doctorQuery.data.steps.length > 0 ? (
+				<SectionCard>
+					<h3 className="text-subheading font-semibold text-on-surface">Next steps</h3>
+					<ul className="mt-3 flex flex-col gap-2">
+						{doctorQuery.data.steps.map((step) => (
+							<li
+								className="rounded-xl bg-surface-container px-3.5 py-3"
+								key={`${step.title}-${step.detail}`}
+							>
+								<p className="text-body-md font-medium text-on-surface">
+									[{step.severity}] {step.title}
+								</p>
+								<p className="mt-0.5 text-body-sm text-on-surface-variant">{step.detail}</p>
+							</li>
+						))}
+					</ul>
+				</SectionCard>
+			) : null}
+		</div>
+	);
+}
+
 export function SettingsPage() {
-	const [section, setSection] = useState<SettingsSection>("ios");
+	const search = useSearch({ from: "/settings" });
+	const initial =
+		search.section === "ios" ||
+		search.section === "cli" ||
+		search.section === "provider" ||
+		search.section === "diagnostics"
+			? search.section
+			: "ios";
+	const [section, setSection] = useState<SettingsSection>(initial);
+
+	useEffect(() => {
+		if (
+			search.section === "ios" ||
+			search.section === "cli" ||
+			search.section === "provider" ||
+			search.section === "diagnostics"
+		) {
+			setSection(search.section);
+		}
+	}, [search.section]);
 
 	return (
 		<div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-8">
@@ -641,6 +796,9 @@ export function SettingsPage() {
 				</Tabs.Panel>
 				<Tabs.Panel className="pt-6" id="provider">
 					<ProvidersSection enabled={section === "provider"} />
+				</Tabs.Panel>
+				<Tabs.Panel className="pt-6" id="diagnostics">
+					<DiagnosticsSettings enabled={section === "diagnostics"} />
 				</Tabs.Panel>
 			</Tabs>
 		</div>

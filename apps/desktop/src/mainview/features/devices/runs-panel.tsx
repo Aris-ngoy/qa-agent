@@ -17,6 +17,7 @@ import {
 import { type SVGProps, useEffect, useMemo, useRef, useState } from "react";
 import { DeviceSetupPanel, type DeviceSetupStatus } from "./device-setup-panel";
 import { type DevicePlatform, SelectDeviceModal, type SelectedDevice } from "./select-device-modal";
+import { ServersDoctorPanel } from "./servers-doctor-panel";
 
 async function resolveIosPhysicalSetup(): Promise<
 	Pick<SetupPlatformRequest, "xcodeDeveloperDir" | "developmentTeam" | "codeSignIdentity">
@@ -241,6 +242,7 @@ export function RunsPanel() {
 	const [wdaOpen, setWdaOpen] = useState(false);
 	const [modalPlatform, setModalPlatform] = useState<DevicePlatform | null>(null);
 	const [executionPromptOpen, setExecutionPromptOpen] = useState(false);
+	const [serversOpen, setServersOpen] = useState(false);
 	const setupAbortRef = useRef<AbortController | null>(null);
 
 	const casesQuery = useQuery({
@@ -575,6 +577,8 @@ export function RunsPanel() {
 								</ListBox>
 							</Select.Popover>
 						</Select>
+
+						<ServersDoctorPanel onOpenChange={setServersOpen} open={serversOpen} />
 
 						<button
 							aria-label={isRunLive ? "Cancel run" : "Run tests"}

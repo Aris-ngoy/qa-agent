@@ -4,10 +4,12 @@ import type { RunnerSettings } from "../../settings";
 import { createBuildsRoutes } from "./builds";
 import { createCatalogRoutes } from "./catalog";
 import { createDevicesRoutes } from "./devices";
+import { createDoctorRoutes } from "./doctor";
 import { createHealthRoutes } from "./health";
 import { createProviderRoutes } from "./providers";
 import { createRunsRoutes } from "./runs";
 import { createRuntimeRoutes } from "./runtime";
+import { createServersRoutes } from "./servers";
 import { createSessionRoutes } from "./session";
 import { createStatusRoutes } from "./status";
 
@@ -40,6 +42,8 @@ export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 	app.route("/", createDevicesRoutes());
 	app.route("/", createSessionRoutes());
 	app.route("/", createRuntimeRoutes());
+	app.route("/", createServersRoutes());
+	app.route("/", createDoctorRoutes());
 	app.route("/", createCatalogRoutes());
 	app.route("/", createBuildsRoutes());
 	app.route("/", createProviderRoutes());
@@ -48,7 +52,7 @@ export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 	app.get("/", (c) =>
 		c.json({
 			name: "yoqa-runner",
-			docs: "GET /health · GET /status · GET /devices · POST /devices/connect · GET /screen · GET /screenshot/image · GET /stream.mjpeg · WS /ws/control · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds",
+			docs: "GET /health · GET /status · GET /doctor · GET /servers · GET /devices · POST /devices/connect · GET /screen · GET /screenshot/image · GET /stream.mjpeg · WS /ws/control · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds",
 		}),
 	);
 

@@ -36,6 +36,7 @@ The `yoqa` CLI talks to the **local runner**. Keep the runner (or desktop app th
     ```bash
     yoqa health
     yoqa status
+    yoqa doctor
     yoqa devices ios
     ```
   </Step>
@@ -56,6 +57,23 @@ The CLI is a thin HTTP client. In GitHub Actions (or any Node ≥20 job), instal
 ```
 
 Override the runner URL with `YOQA_RUNNER_HOST` / `YOQA_RUNNER_PORT` when needed.
+
+## Doctor & servers
+
+```bash
+yoqa doctor                                  # full diagnostics (runtime, drivers, host tools, leftover Appium)
+yoqa doctor --fix                              # apply safe repairs only
+yoqa doctor --json
+
+yoqa servers                                 # list Appium / runner / device session
+yoqa servers stop-all                        # stop Appium + disconnect session (not the runner)
+yoqa servers stop <id>
+yoqa servers restart <id>
+```
+
+`yoqa runtime status` / `ensure` remain the thin install-readiness commands. Prefer `yoqa doctor` when something is broken or foreign Appium processes are stuck.
+
+In the desktop app: **Servers** button next to Play, and **Settings → Diagnostics**.
 
 ## Devices
 

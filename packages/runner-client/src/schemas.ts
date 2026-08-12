@@ -134,6 +134,105 @@ export const ensureRuntimeResponseSchema = z.object({
 
 export type EnsureRuntimeResponse = z.infer<typeof ensureRuntimeResponseSchema>;
 
+// --- Servers lifecycle ---
+
+export const serverKindSchema = z.union([
+	z.literal("appium"),
+	z.literal("runner"),
+	z.literal("device-session"),
+]);
+export type ServerKind = z.infer<typeof serverKindSchema>;
+
+export const serverOwnershipSchema = z.union([
+	z.literal("managed"),
+	z.literal("foreign"),
+	z.literal("self"),
+]);
+export type ServerOwnership = z.infer<typeof serverOwnershipSchema>;
+
+export const serverActionSchema = z.union([z.literal("stop"), z.literal("restart")]);
+export type ServerAction = z.infer<typeof serverActionSchema>;
+
+export const serverEntrySchema = z.object({
+	id: z.string().min(1),
+	kind: serverKindSchema,
+	ownership: serverOwnershipSchema,
+	label: z.string().min(1),
+	status: z.string().min(1),
+	pid: z.number().int().positive().optional(),
+	port: z.number().int().positive().optional(),
+	deviceId: z.string().min(1).optional(),
+	platform: devicePlatformSchema.optional(),
+	startedAt: z.number().nonnegative().optional(),
+	actions: z.array(serverActionSchema),
+});
+export type ServerEntry = z.infer<typeof serverEntrySchema>;
+
+export const listServersResponseSchema = z.object({
+	servers: z.array(serverEntrySchema),
+});
+export type ListServersResponse = z.infer<typeof listServersResponseSchema>;
+
+export const serverMutationResponseSchema = z.object({
+	ok: z.literal(true),
+	message: z.string().min(1),
+	servers: z.array(serverEntrySchema),
+});
+export type ServerMutationResponse = z.infer<typeof serverMutationResponseSchema>;
+
+// --- Doctor diagnostics ---
+
+export const doctorCheckStatusSchema = z.union([
+	z.literal("pass"),
+	z.literal("fail"),
+	z.literal("warn"),
+]);
+export type DoctorCheckStatus = z.infer<typeof doctorCheckStatusSchema>;
+
+export const doctorRepairIdSchema = z.union([
+	z.literal("ensure-runtime"),
+	z.literal("stop-foreign-appium"),
+	z.literal("disconnect-session"),
+]);
+export type DoctorRepairId = z.infer<typeof doctorRepairIdSchema>;
+
+export const doctorCheckSchema = z.object({
+	id: z.string().min(1),
+	label: z.string().min(1),
+	status: doctorCheckStatusSchema,
+	detail: z.string().optional(),
+	fixHint: z.string().optional(),
+});
+export type DoctorCheck = z.infer<typeof doctorCheckSchema>;
+
+export const doctorStepSchema = z.object({
+	severity: z.union([z.literal("error"), z.literal("warn"), z.literal("info")]),
+	title: z.string().min(1),
+	detail: z.string().min(1),
+	repair: doctorRepairIdSchema.optional(),
+});
+export type DoctorStep = z.infer<typeof doctorStepSchema>;
+
+export const doctorReportSchema = z.object({
+	ok: z.boolean(),
+	checks: z.array(doctorCheckSchema),
+	servers: z.array(serverEntrySchema),
+	steps: z.array(doctorStepSchema),
+});
+export type DoctorReport = z.infer<typeof doctorReportSchema>;
+
+export const doctorRepairRequestSchema = z.object({
+	repairs: z.array(doctorRepairIdSchema).min(1),
+});
+export type DoctorRepairRequest = z.infer<typeof doctorRepairRequestSchema>;
+
+export const doctorRepairResponseSchema = z.object({
+	ok: z.literal(true),
+	message: z.string().min(1),
+	report: doctorReportSchema,
+});
+export type DoctorRepairResponse = z.infer<typeof doctorRepairResponseSchema>;
+
 // --- Catalog: apps / cases / flows / tags ---
 
 export const capabilitySchema = z.object({
