@@ -51,6 +51,8 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
 4. Catalog: `yoqa apps list`, `yoqa cases list <prefix>`
 5. With a Provider configured: `yoqa action tap -d "…"` and `yoqa status`
 
+If `yoqa` exits immediately with `killed` (even `yoqa --version`), the bundled Mach-O has an invalid signature. Click **Install** CLI again (repairs adhoc codesign in place), or rebuild sidecars with `bun run --filter @yoqa/desktop build:runner`. See [macos-release.md](./macos-release.md).
+
 ## Follow-ups
 
 - Uninstall CLI / skill buttons

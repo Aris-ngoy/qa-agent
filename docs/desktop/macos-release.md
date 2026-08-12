@@ -8,6 +8,7 @@ Ship a downloadable **unsigned** Apple Silicon DMG where Yoqa Desktop starts its
 
 - Compile `services/runner` with `bun build --compile` into `apps/desktop/resources/runner/yoqa-runner`
 - Compile CLI `packages/cli/src/main.ts` → `apps/desktop/resources/runner/yoqa`
+- **Adhoc-sign both Mach-Os on macOS** after compile (`codesign --sign -`). Bun appends bytecode after the linker signature, which Apple Silicon AMFI treats as modified code and **SIGKILLs** (`killed`, exit 137) — even `yoqa --version`.
 - Pack `packages/skill/yoqa-testing` → `apps/desktop/resources/skills/yoqa-testing.tar.gz`
 - Electrobun `preBuild` + `copy` + `asarUnpack` for runner, CLI, and skill archive (zig-asar needs exact file paths — globs like `runner/**` do **not** unpack)
 - Sidecar prefers `Contents/Resources/app.asar.unpacked/runner/yoqa-runner`; falls back to monorepo `bun run` for `electrobun dev`
@@ -18,7 +19,8 @@ Rejected for v0.1.0: shipping Appium/Node inside the DMG; Apple codesign/notariz
 
 ## What shipped
 
-- [`apps/desktop/scripts/build-runner-sidecar.ts`](../../apps/desktop/scripts/build-runner-sidecar.ts) — compile step (Bun plugin rewrites WebdriverIO’s dynamic `import(automationProtocol || "webdriver")` to a literal so the packaged binary embeds `webdriver`)
+- [`apps/desktop/scripts/build-runner-sidecar.ts`](../../apps/desktop/scripts/build-runner-sidecar.ts) — compile step (Bun plugin rewrites WebdriverIO’s dynamic `import(automationProtocol || "webdriver")` to a literal so the packaged binary embeds `webdriver`; macOS adhoc re-sign after compile)
+- [`apps/desktop/src/bun/features/macos-adhoc-sign.ts`](../../apps/desktop/src/bun/features/macos-adhoc-sign.ts) — shared `codesign --sign -` helper; also repairs packaged CLI on Install and packaged runner on spawn
 - [`apps/desktop/electrobun.config.ts`](../../apps/desktop/electrobun.config.ts) — `preBuild`, `copy`, `asarUnpack`, `generatePatch: false`
 - [`apps/desktop/src/bun/features/runner-sidecar/index.ts`](../../apps/desktop/src/bun/features/runner-sidecar/index.ts) — packaged-first launch; replaces stale loopback runners whose `/health` version ≠ desktop (see [runner-sidecar-version-gate.md](./runner-sidecar-version-gate.md))
 - WDA icon embedded via Bun `with { type: "file" }` so compiled runner keeps branding (write bytes, never `copyFile` from `/$bunfs`)
@@ -41,6 +43,8 @@ bun run desktop:release
 cp -R apps/desktop/build/stable-macos-arm64/yoqa.app /tmp/yoqa.app
 open /tmp/yoqa.app
 curl -s http://127.0.0.1:7420/health
+codesign --verify apps/desktop/resources/runner/yoqa
+apps/desktop/resources/runner/yoqa --version
 ```
 
 Cut a release (**repository owner only** — `v*` tags are restricted by ruleset; authorize step + **`release` Environment** approval are both required):
