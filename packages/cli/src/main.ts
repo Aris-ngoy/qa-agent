@@ -12,6 +12,7 @@ import {
 } from "@yoqa/runner-client";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
+import { formatDoctorReport } from "./doctor-table";
 import {
 	commandChainIncludes,
 	ensureRunner,
@@ -715,15 +716,7 @@ program
 					console.log(JSON.stringify(result, null, 2));
 				} else {
 					console.log(result.message);
-					console.log(result.report.ok ? "doctor: ok" : "doctor: issues remain");
-					for (const check of result.report.checks) {
-						console.log(
-							`  [${check.status}] ${check.label}${check.detail ? ` — ${check.detail}` : ""}`,
-						);
-					}
-					for (const step of result.report.steps) {
-						console.log(`  → [${step.severity}] ${step.title}: ${step.detail}`);
-					}
+					console.log(formatDoctorReport(result.report));
 				}
 				if (!result.report.ok) process.exitCode = 1;
 				return;
@@ -733,18 +726,7 @@ program
 			if (options.json) {
 				console.log(JSON.stringify(report, null, 2));
 			} else {
-				console.log(report.ok ? "doctor: ok" : "doctor: issues found");
-				for (const check of report.checks) {
-					console.log(
-						`  [${check.status}] ${check.label}${check.detail ? ` — ${check.detail}` : ""}`,
-					);
-				}
-				if (report.steps.length > 0) {
-					console.log("steps:");
-					for (const step of report.steps) {
-						console.log(`  → [${step.severity}] ${step.title}: ${step.detail}`);
-					}
-				}
+				console.log(formatDoctorReport(report));
 			}
 			if (!report.ok) process.exitCode = 1;
 		} catch (error) {
