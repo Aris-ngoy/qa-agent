@@ -2,6 +2,12 @@ import { getDesktopRpc } from "@/app/desktop-rpc";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { doctorQueryKey } from "@/features/devices/servers-doctor-panel";
+import {
+	DoctorSeverityPill,
+	DoctorStatusPill,
+	doctorStatusRowClass,
+	doctorStepSeverityClass,
+} from "@/features/doctor/status-ui";
 import { Button, ListBox, Select, Tabs } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
@@ -649,7 +655,18 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 				<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
 					<div>
 						<h3 className="text-subheading font-semibold text-on-surface">Doctor report</h3>
-						<p className="mt-1 text-body-md text-on-surface-variant">
+						<p
+							className={[
+								"mt-2 inline-flex rounded-full px-3 py-1 text-body-sm font-semibold",
+								doctorQuery.isLoading
+									? "bg-surface-container text-on-surface-variant"
+									: doctorQuery.data?.ok
+										? "bg-secondary-container text-on-secondary-container"
+										: (doctorQuery.data?.checks.some((c) => c.status === "fail") ?? false)
+											? "bg-error-container text-on-error-container"
+											: "bg-amber-100 text-amber-900",
+							].join(" ")}
+						>
 							{doctorQuery.isLoading
 								? "Running checks…"
 								: doctorQuery.data?.ok
@@ -685,7 +702,10 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 					<ul className="flex flex-col gap-2">
 						{(doctorQuery.data?.checks ?? []).map((check) => (
 							<li
-								className="flex items-start justify-between gap-3 rounded-xl bg-surface-container px-3.5 py-3"
+								className={[
+									"flex items-start justify-between gap-3 rounded-xl px-3.5 py-3",
+									doctorStatusRowClass(check.status),
+								].join(" ")}
 								key={check.id}
 							>
 								<div className="min-w-0">
@@ -697,18 +717,7 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 										<p className="mt-1 text-helper text-on-surface-variant">{check.fixHint}</p>
 									) : null}
 								</div>
-								<span
-									className={[
-										"shrink-0 rounded-full px-2 py-0.5 text-helper font-medium",
-										check.status === "pass"
-											? "bg-primary/15 text-primary"
-											: check.status === "fail"
-												? "bg-error/15 text-error"
-												: "bg-surface-container-high text-on-surface-variant",
-									].join(" ")}
-								>
-									{check.status}
-								</span>
+								<DoctorStatusPill status={check.status} />
 							</li>
 						))}
 					</ul>
@@ -721,13 +730,17 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 					<ul className="mt-3 flex flex-col gap-2">
 						{doctorQuery.data.steps.map((step) => (
 							<li
-								className="rounded-xl bg-surface-container px-3.5 py-3"
+								className={[
+									"flex items-start justify-between gap-3 rounded-xl px-3.5 py-3",
+									doctorStepSeverityClass(step.severity),
+								].join(" ")}
 								key={`${step.title}-${step.detail}`}
 							>
-								<p className="text-body-md font-medium text-on-surface">
-									[{step.severity}] {step.title}
-								</p>
-								<p className="mt-0.5 text-body-sm text-on-surface-variant">{step.detail}</p>
+								<div className="min-w-0">
+									<p className="text-body-md font-medium text-on-surface">{step.title}</p>
+									<p className="mt-0.5 text-body-sm text-on-surface-variant">{step.detail}</p>
+								</div>
+								<DoctorSeverityPill severity={step.severity} />
 							</li>
 						))}
 					</ul>

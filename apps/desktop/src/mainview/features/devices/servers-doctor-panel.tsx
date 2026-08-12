@@ -1,6 +1,7 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
+import { DoctorSeverityPill, doctorStepSeverityClass } from "@/features/doctor/status-ui";
 import { Button, Tabs } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -323,7 +324,16 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 								<p className="text-body-sm text-error">Could not load doctor report.</p>
 							) : doctorQuery.data ? (
 								<div className="flex flex-col gap-3">
-									<p className="text-body-sm text-on-surface">
+									<p
+										className={[
+											"rounded-lg px-2.5 py-2 text-body-sm font-medium",
+											doctorQuery.data.ok
+												? "bg-secondary-container/70 text-on-secondary-container"
+												: failingCount > 0
+													? "bg-error-container/70 text-on-error-container"
+													: "bg-amber-100 text-amber-900",
+										].join(" ")}
+									>
 										{doctorQuery.data.ok
 											? "All required checks passed"
 											: `${failingCount} failing · ${warnCount} warning${warnCount === 1 ? "" : "s"}`}
@@ -340,11 +350,17 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 												]
 										).map((step) => (
 											<li
-												className="rounded-lg bg-surface-container px-2.5 py-2"
+												className={[
+													"flex items-start justify-between gap-2 rounded-lg px-2.5 py-2",
+													doctorStepSeverityClass(step.severity),
+												].join(" ")}
 												key={`${step.title}-${step.detail}`}
 											>
-												<p className="text-body-sm font-medium text-on-surface">{step.title}</p>
-												<p className="text-helper text-on-surface-variant">{step.detail}</p>
+												<div className="min-w-0">
+													<p className="text-body-sm font-medium text-on-surface">{step.title}</p>
+													<p className="text-helper text-on-surface-variant">{step.detail}</p>
+												</div>
+												<DoctorSeverityPill severity={step.severity} />
 											</li>
 										))}
 									</ul>
