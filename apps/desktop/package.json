@@ -23,7 +23,7 @@
 		"electrobun": "^1.16.0",
 		"react": "19.2.8",
 		"react-dom": "19.2.8",
-		"react-hook-form": "^7.82.0"
+		"react-hook-form": "^7.85.0"
 	},
 	"devDependencies": {
 		"@resvg/resvg-js": "^2.6.2",
