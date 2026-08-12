@@ -719,7 +719,9 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 							)}
 						</Button>
 						<Button
-							isDisabled={!enabled || repairMutation.isPending}
+							isDisabled={
+								repairMutation.isPending || !doctorQuery.data?.steps.some((step) => step.repair)
+							}
 							onPress={() => repairMutation.mutate()}
 							variant="primary"
 						>
