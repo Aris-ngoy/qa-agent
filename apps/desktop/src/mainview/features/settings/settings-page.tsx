@@ -1,4 +1,5 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
+import { useReducedMotion } from "@/app/motion/use-reduced-motion";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { doctorQueryKey } from "@/features/devices/servers-doctor-panel";
@@ -30,6 +31,25 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "provider", label: "Provider" },
 	{ id: "diagnostics", label: "Diagnostics" },
 ];
+
+/** Remounts on tab change so `motion-fade-up` plays for each section. */
+function SettingsSectionMotion({
+	sectionId,
+	active,
+	children,
+}: {
+	sectionId: SettingsSection;
+	active: boolean;
+	children: ReactNode;
+}) {
+	const reduceMotion = useReducedMotion();
+	if (!active) return null;
+	return (
+		<div className={reduceMotion ? undefined : "motion-fade-up"} key={sectionId}>
+			{children}
+		</div>
+	);
+}
 
 const IOS_TOOLCHAIN_QUERY_KEY = ["ios-toolchain"] as const;
 const CLI_ENVIRONMENT_QUERY_KEY = ["cli-environment"] as const;
@@ -803,17 +823,25 @@ export function SettingsPage() {
 					</Tabs.ListContainer>
 				</SectionCard>
 
-				<Tabs.Panel className="pt-0" id="ios">
-					<IosSettings enabled={section === "ios"} />
+				<Tabs.Panel className="pt-0 outline-none" id="ios">
+					<SettingsSectionMotion active={section === "ios"} sectionId="ios">
+						<IosSettings enabled={section === "ios"} />
+					</SettingsSectionMotion>
 				</Tabs.Panel>
-				<Tabs.Panel className="pt-0" id="cli">
-					<CliSettings enabled={section === "cli"} />
+				<Tabs.Panel className="pt-0 outline-none" id="cli">
+					<SettingsSectionMotion active={section === "cli"} sectionId="cli">
+						<CliSettings enabled={section === "cli"} />
+					</SettingsSectionMotion>
 				</Tabs.Panel>
-				<Tabs.Panel className="pt-0" id="provider">
-					<ProvidersSection enabled={section === "provider"} />
+				<Tabs.Panel className="pt-0 outline-none" id="provider">
+					<SettingsSectionMotion active={section === "provider"} sectionId="provider">
+						<ProvidersSection enabled={section === "provider"} />
+					</SettingsSectionMotion>
 				</Tabs.Panel>
-				<Tabs.Panel className="pt-0" id="diagnostics">
-					<DiagnosticsSettings enabled={section === "diagnostics"} />
+				<Tabs.Panel className="pt-0 outline-none" id="diagnostics">
+					<SettingsSectionMotion active={section === "diagnostics"} sectionId="diagnostics">
+						<DiagnosticsSettings enabled={section === "diagnostics"} />
+					</SettingsSectionMotion>
 				</Tabs.Panel>
 			</Tabs>
 		</div>
