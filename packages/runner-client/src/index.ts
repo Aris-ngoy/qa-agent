@@ -28,6 +28,13 @@ import {
 	type Device,
 	type DeviceKind,
 	type DevicePlatform,
+	type DoctorCheck,
+	type DoctorCheckStatus,
+	type DoctorRepairId,
+	type DoctorRepairRequest,
+	type DoctorRepairResponse,
+	type DoctorReport,
+	type DoctorStep,
 	type EnsureRuntimeResponse,
 	type HealthResponse,
 	type IosWdaAction,
@@ -40,6 +47,7 @@ import {
 	type ListProviderModelsResponse,
 	type ListProvidersResponse,
 	type ListRunsResponse,
+	type ListServersResponse,
 	type ListTagsResponse,
 	type ProbeProviderRequest,
 	type ProbeProviderResponse,
@@ -64,6 +72,11 @@ import {
 	type ScreenResponse,
 	type ScreenshotRequest,
 	type ScreenshotResponse,
+	type ServerAction,
+	type ServerEntry,
+	type ServerKind,
+	type ServerMutationResponse,
+	type ServerOwnership,
 	type SetupPlatformError,
 	type SetupPlatformRequest,
 	type SetupPlatformResponse,
@@ -102,6 +115,9 @@ import {
 	deviceKindSchema,
 	devicePlatformSchema,
 	deviceSchema,
+	doctorRepairRequestSchema,
+	doctorRepairResponseSchema,
+	doctorReportSchema,
 	ensureRuntimeResponseSchema,
 	healthResponseSchema,
 	iosWdaActionSchema,
@@ -114,6 +130,7 @@ import {
 	listProviderModelsResponseSchema,
 	listProvidersResponseSchema,
 	listRunsResponseSchema,
+	listServersResponseSchema,
 	listTagsResponseSchema,
 	probeProviderRequestSchema,
 	probeProviderResponseSchema,
@@ -137,6 +154,7 @@ import {
 	screenResponseSchema,
 	screenshotRequestSchema,
 	screenshotResponseSchema,
+	serverMutationResponseSchema,
 	setupPlatformErrorSchema,
 	setupPlatformRequestSchema,
 	setupPlatformResponseSchema,
@@ -178,6 +196,9 @@ export {
 	deviceKindSchema,
 	devicePlatformSchema,
 	deviceSchema,
+	doctorRepairRequestSchema,
+	doctorRepairResponseSchema,
+	doctorReportSchema,
 	ensureRuntimeResponseSchema,
 	healthResponseSchema,
 	listAppsResponseSchema,
@@ -189,6 +210,7 @@ export {
 	listProviderModelsResponseSchema,
 	listProvidersResponseSchema,
 	listRunsResponseSchema,
+	listServersResponseSchema,
 	listTagsResponseSchema,
 	probeProviderRequestSchema,
 	probeProviderResponseSchema,
@@ -212,6 +234,7 @@ export {
 	screenResponseSchema,
 	screenshotRequestSchema,
 	screenshotResponseSchema,
+	serverMutationResponseSchema,
 	iosWdaActionSchema,
 	setupPlatformErrorSchema,
 	setupPlatformRequestSchema,
@@ -251,6 +274,13 @@ export {
 	type Device,
 	type DeviceKind,
 	type DevicePlatform,
+	type DoctorCheck,
+	type DoctorCheckStatus,
+	type DoctorRepairId,
+	type DoctorRepairRequest,
+	type DoctorRepairResponse,
+	type DoctorReport,
+	type DoctorStep,
 	type EnsureRuntimeResponse,
 	type HealthResponse,
 	type IosWdaAction,
@@ -263,6 +293,7 @@ export {
 	type ListProviderModelsResponse,
 	type ListProvidersResponse,
 	type ListRunsResponse,
+	type ListServersResponse,
 	type ListTagsResponse,
 	type ProbeProviderRequest,
 	type ProbeProviderResponse,
@@ -287,6 +318,11 @@ export {
 	type ScreenResponse,
 	type ScreenshotRequest,
 	type ScreenshotResponse,
+	type ServerAction,
+	type ServerEntry,
+	type ServerKind,
+	type ServerMutationResponse,
+	type ServerOwnership,
 	type SetupPlatformError,
 	type SetupPlatformRequest,
 	type SetupPlatformResponse,
@@ -486,6 +522,96 @@ export class RunnerClient {
 			throw new Error(errorMessageFromBody(json, `Ensure runtime failed: HTTP ${response.status}`));
 		}
 		return ensureRuntimeResponseSchema.parse(json);
+	}
+
+	async listServers(options: { signal?: AbortSignal } = {}): Promise<ListServersResponse> {
+		const response = await this.fetchImpl(`${this.baseUrl}/servers`, {
+			signal: options.signal,
+		});
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw new Error(errorMessageFromBody(json, `List servers failed: HTTP ${response.status}`));
+		}
+		return listServersResponseSchema.parse(json);
+	}
+
+	async stopAllServers(options: { signal?: AbortSignal } = {}): Promise<ServerMutationResponse> {
+		const response = await this.fetchImpl(`${this.baseUrl}/servers/stop-all`, {
+			method: "POST",
+			signal: options.signal,
+		});
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw new Error(
+				errorMessageFromBody(json, `Stop all servers failed: HTTP ${response.status}`),
+			);
+		}
+		return serverMutationResponseSchema.parse(json);
+	}
+
+	async stopServer(
+		id: string,
+		options: { signal?: AbortSignal } = {},
+	): Promise<ServerMutationResponse> {
+		const response = await this.fetchImpl(
+			`${this.baseUrl}/servers/${encodeURIComponent(id)}/stop`,
+			{
+				method: "POST",
+				signal: options.signal,
+			},
+		);
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw new Error(errorMessageFromBody(json, `Stop server failed: HTTP ${response.status}`));
+		}
+		return serverMutationResponseSchema.parse(json);
+	}
+
+	async restartServer(
+		id: string,
+		options: { signal?: AbortSignal } = {},
+	): Promise<ServerMutationResponse> {
+		const response = await this.fetchImpl(
+			`${this.baseUrl}/servers/${encodeURIComponent(id)}/restart`,
+			{
+				method: "POST",
+				signal: options.signal,
+			},
+		);
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw new Error(errorMessageFromBody(json, `Restart server failed: HTTP ${response.status}`));
+		}
+		return serverMutationResponseSchema.parse(json);
+	}
+
+	async getDoctorReport(options: { signal?: AbortSignal } = {}): Promise<DoctorReport> {
+		const response = await this.fetchImpl(`${this.baseUrl}/doctor`, {
+			signal: options.signal,
+		});
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw new Error(errorMessageFromBody(json, `Doctor failed: HTTP ${response.status}`));
+		}
+		return doctorReportSchema.parse(json);
+	}
+
+	async repairDoctor(
+		request: DoctorRepairRequest,
+		options: { signal?: AbortSignal } = {},
+	): Promise<DoctorRepairResponse> {
+		const body = doctorRepairRequestSchema.parse(request);
+		const response = await this.fetchImpl(`${this.baseUrl}/doctor/repair`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+			signal: options.signal,
+		});
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw new Error(errorMessageFromBody(json, `Doctor repair failed: HTTP ${response.status}`));
+		}
+		return doctorRepairResponseSchema.parse(json);
 	}
 
 	async listApps(): Promise<CatalogApp[]> {

@@ -26,6 +26,14 @@ export type DesktopRPC = {
 				params: undefined;
 				response: EnsureLocalServicesResult;
 			};
+			stopLocalRunner: {
+				params: undefined;
+				response: { ok: true };
+			};
+			restartLocalRunner: {
+				params: undefined;
+				response: EnsureLocalServicesResult;
+			};
 			getIosToolchain: {
 				params: undefined;
 				response: IosToolchainSnapshot;

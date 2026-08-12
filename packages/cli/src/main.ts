@@ -506,6 +506,211 @@ runtime
 		}
 	});
 
+// --- servers / doctor ---
+
+const servers = program
+	.command("servers")
+	.description("List or control local Appium, runner, and device sessions")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(async (options: { baseUrl: string; json?: boolean }) => {
+		try {
+			const body = await client(options.baseUrl).listServers();
+			if (options.json) {
+				console.log(JSON.stringify(body, null, 2));
+				return;
+			}
+			if (body.servers.length === 0) {
+				console.log("No servers running");
+				return;
+			}
+			for (const entry of body.servers) {
+				const meta = [
+					entry.kind,
+					entry.ownership,
+					entry.status,
+					entry.port ? `:${entry.port}` : null,
+					entry.pid ? `pid ${entry.pid}` : null,
+					entry.actions.length > 0 ? `actions=${entry.actions.join(",")}` : "actions=none",
+				]
+					.filter(Boolean)
+					.join(" · ");
+				console.log(`${entry.id}\t${entry.label}\t${meta}`);
+			}
+		} catch (error) {
+			fail("servers", error);
+		}
+	});
+
+servers
+	.command("list")
+	.description("List running servers")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(async (options: { baseUrl: string; json?: boolean }) => {
+		try {
+			const body = await client(options.baseUrl).listServers();
+			if (options.json) {
+				console.log(JSON.stringify(body, null, 2));
+				return;
+			}
+			if (body.servers.length === 0) {
+				console.log("No servers running");
+				return;
+			}
+			for (const entry of body.servers) {
+				const meta = [
+					entry.kind,
+					entry.ownership,
+					entry.status,
+					entry.port ? `:${entry.port}` : null,
+					entry.pid ? `pid ${entry.pid}` : null,
+					entry.actions.length > 0 ? `actions=${entry.actions.join(",")}` : "actions=none",
+				]
+					.filter(Boolean)
+					.join(" · ");
+				console.log(`${entry.id}\t${entry.label}\t${meta}`);
+			}
+		} catch (error) {
+			fail("servers list", error);
+		}
+	});
+
+servers
+	.command("stop-all")
+	.description("Stop Appium processes and disconnect the device session (does not stop the runner)")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(async (options: { baseUrl: string; json?: boolean }) => {
+		try {
+			const body = await client(options.baseUrl).stopAllServers();
+			if (options.json) {
+				console.log(JSON.stringify(body, null, 2));
+				return;
+			}
+			console.log(body.message);
+		} catch (error) {
+			fail("servers stop-all", error);
+		}
+	});
+
+servers
+	.command("stop")
+	.description("Stop one server by id")
+	.argument("<id>", "Server id from yoqa servers list")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(async (id: string, options: { baseUrl: string; json?: boolean }) => {
+		try {
+			if (id === "runner-self") {
+				throw new Error(
+					"Stopping the runner over HTTP is not supported. Quit the desktop app or kill the process on the runner port.",
+				);
+			}
+			const body = await client(options.baseUrl).stopServer(id);
+			if (options.json) {
+				console.log(JSON.stringify(body, null, 2));
+				return;
+			}
+			console.log(body.message);
+		} catch (error) {
+			fail("servers stop", error);
+		}
+	});
+
+servers
+	.command("restart")
+	.description("Restart one server by id")
+	.argument("<id>", "Server id from yoqa servers list")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(async (id: string, options: { baseUrl: string; json?: boolean }) => {
+		try {
+			if (id === "runner-self") {
+				throw new Error(
+					"Restarting the runner over HTTP is not supported while it is serving requests. Prefer the desktop Servers panel.",
+				);
+			}
+			const body = await client(options.baseUrl).restartServer(id);
+			if (options.json) {
+				console.log(JSON.stringify(body, null, 2));
+				return;
+			}
+			console.log(body.message);
+		} catch (error) {
+			fail("servers restart", error);
+		}
+	});
+
+program
+	.command("doctor")
+	.description("Diagnose local tooling, drivers, and leftover Appium processes")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.option("--fix", "Apply safe repairs (ensure runtime, stop foreign Appium, disconnect session)")
+	.action(async (options: { baseUrl: string; json?: boolean; fix?: boolean }) => {
+		try {
+			const c = client(options.baseUrl);
+			if (options.fix) {
+				const report = await c.getDoctorReport();
+				const repairs = [
+					...new Set(
+						report.steps
+							.map((step) => step.repair)
+							.filter((id): id is NonNullable<typeof id> => Boolean(id)),
+					),
+				];
+				if (repairs.length === 0) {
+					if (options.json) {
+						console.log(JSON.stringify({ ok: true, message: "No safe repairs", report }, null, 2));
+					} else {
+						console.log("No safe repairs to apply");
+					}
+					if (!report.ok) process.exitCode = 1;
+					return;
+				}
+				const result = await c.repairDoctor({ repairs });
+				if (options.json) {
+					console.log(JSON.stringify(result, null, 2));
+				} else {
+					console.log(result.message);
+					console.log(result.report.ok ? "doctor: ok" : "doctor: issues remain");
+					for (const check of result.report.checks) {
+						console.log(
+							`  [${check.status}] ${check.label}${check.detail ? ` — ${check.detail}` : ""}`,
+						);
+					}
+					for (const step of result.report.steps) {
+						console.log(`  → [${step.severity}] ${step.title}: ${step.detail}`);
+					}
+				}
+				if (!result.report.ok) process.exitCode = 1;
+				return;
+			}
+
+			const report = await c.getDoctorReport();
+			if (options.json) {
+				console.log(JSON.stringify(report, null, 2));
+			} else {
+				console.log(report.ok ? "doctor: ok" : "doctor: issues found");
+				for (const check of report.checks) {
+					console.log(
+						`  [${check.status}] ${check.label}${check.detail ? ` — ${check.detail}` : ""}`,
+					);
+				}
+				if (report.steps.length > 0) {
+					console.log("steps:");
+					for (const step of report.steps) {
+						console.log(`  → [${step.severity}] ${step.title}: ${step.detail}`);
+					}
+				}
+			}
+			if (!report.ok) process.exitCode = 1;
+		} catch (error) {
+			fail("doctor", error);
+		}
+	});
+
 // --- apps / cases / flows / tags ---
 
 const assertCmd = program

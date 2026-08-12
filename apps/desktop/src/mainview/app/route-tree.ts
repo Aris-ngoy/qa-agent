@@ -58,6 +58,9 @@ const configurationRoute = createRoute({
 const settingsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/settings",
+	validateSearch: (search: Record<string, unknown>): { section?: string } => ({
+		section: typeof search.section === "string" ? search.section : undefined,
+	}),
 	component: SettingsPage,
 });
 

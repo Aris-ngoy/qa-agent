@@ -13,6 +13,8 @@ export type DesktopRpcClient = {
 		ping: () => Promise<string>;
 		getRunnerBaseUrl: () => Promise<string>;
 		ensureLocalServices: () => Promise<EnsureLocalServicesResult>;
+		stopLocalRunner: () => Promise<{ ok: true }>;
+		restartLocalRunner: () => Promise<EnsureLocalServicesResult>;
 		getIosToolchain: () => Promise<IosToolchainSnapshot>;
 		setIosToolchainSelection: (params: {
 			xcodeDeveloperDir?: string | null;

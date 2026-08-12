@@ -33,6 +33,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See `.cursor/rules/document-plan
 | [providers/cursor-grok-custom-settings.md](./providers/cursor-grok-custom-settings.md) | Cursor Agent, xAI Grok, Custom OpenAI-compatible |
 | [cli/npm-publish.md](./cli/npm-publish.md) | Public `@yoqa/cli` npm package + release workflow |
 | [desktop/cli-and-agents.md](./desktop/cli-and-agents.md) | Settings CLI/skill install + full `yoqa` agent CLI |
+| [desktop/servers-and-doctor.md](./desktop/servers-and-doctor.md) | Servers panel + `yoqa doctor` diagnostics |
 | [desktop/manual-inspector.md](./desktop/manual-inspector.md) | Script-first Manual Inspector (select → shell script → run) |
 | [desktop/motion-system.md](./desktop/motion-system.md) | CSS View Transitions + shell/list motion polish |
 | [desktop/react-hook-form.md](./desktop/react-hook-form.md) | RHF + HeroUI form helpers for all data-entry forms |

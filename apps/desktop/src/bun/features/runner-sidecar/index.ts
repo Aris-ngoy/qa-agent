@@ -376,3 +376,17 @@ export function stopRunnerSidecar(): void {
 		console.warn("[yoqa desktop] failed to stop runner sidecar", error);
 	}
 }
+
+/** Stop the local runner (sidecar child and any listeners on the runner port). */
+export async function stopLocalRunner(): Promise<{ ok: true }> {
+	stopRunnerSidecar();
+	await killListenersOnPort(getPort());
+	return { ok: true };
+}
+
+/** Stop then ensure a compatible local runner is listening again. */
+export async function restartLocalRunner(): Promise<EnsureLocalServicesResult> {
+	await stopLocalRunner();
+	await Bun.sleep(PORT_FREE_WAIT_MS);
+	return ensureLocalServices();
+}
