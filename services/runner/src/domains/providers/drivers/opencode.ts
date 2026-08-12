@@ -131,11 +131,13 @@ export async function listOpenCodeModelsFromCli(
 export const opencodeDriver: DriverDefinition = {
 	kind: "opencode",
 	label: "OpenCode",
+	description: "OpenCode Zen (OpenAI-compatible). Paste a Zen API key for vision runs.",
 	defaultBinary: "opencode",
 	authModes: ["cli", "api_key"],
 	envHints: ["OPENCODE_API_KEY", "OPENCODE_ZEN_API_KEY", "OPENCODE_SERVER_PASSWORD"],
 	loginInstructions:
 		"Paste a Zen API key from https://opencode.ai for vision. Local `opencode serve` is not OpenAI-compatible.",
+	capabilities: { vision: true },
 	async probe(binaryPath) {
 		return probeCliWithFriendlyErrors(binaryPath);
 	},

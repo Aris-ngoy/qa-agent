@@ -4,14 +4,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 import { type Browser, remote } from "webdriverio";
-import { resolveAppium } from "../appium/application";
-import type { ResolvedAppium } from "../appium/models";
+import { APPIUM_HOST, ensureAppiumServer } from "../appium/server";
 import { loadDevicePrep } from "../ios/application";
 
 const YOQA_ROOT = join(homedir(), ".yoqa");
-const DEFAULT_APPIUM_PORT = Number(process.env.YOQA_APPIUM_PORT ?? "4723");
 const DEFAULT_MJPEG_PORT = Number(process.env.YOQA_MJPEG_PORT ?? "9100");
-const APPIUM_HOST = process.env.YOQA_APPIUM_HOST ?? "127.0.0.1";
 const SCREENSHOT_DIR = join(YOQA_ROOT, "runs", "screenshots");
 
 const MJPEG_SETTINGS_BASE = {
@@ -20,6 +17,35 @@ const MJPEG_SETTINGS_BASE = {
 	/** Half-res frames cut encode + bandwidth cost for the Inspector. */
 	mjpegScalingFactor: 50,
 } as const;
+
+/** At most one Device Session per device id (Active Session or Run). */
+const openByDeviceId = new Map<string, DeviceSession>();
+
+/** Notified when exclusivity releases a prior session for a device id. */
+let exclusiveReleaseListener: ((deviceId: string) => void) | null = null;
+
+/** Active Session registry uses this to clear its singleton when a Run (or other create) takes the device. */
+export function onDeviceSessionExclusiveRelease(listener: (deviceId: string) => void): void {
+	exclusiveReleaseListener = listener;
+}
+
+const DEAD_SESSION_RE =
+	/session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i;
+
+/** Stable error for a Device Session Appium has already dropped. */
+export class DeadSessionError extends Error {
+	constructor(message = "Device session ended") {
+		super(message);
+		this.name = "DeadSessionError";
+	}
+}
+
+/** True when Appium reports the WebDriver session is gone (Dead Session). */
+export function isDeadSessionError(error: unknown): boolean {
+	if (error instanceof DeadSessionError) return true;
+	const message = error instanceof Error ? error.message : String(error);
+	return DEAD_SESSION_RE.test(message);
+}
 
 /** Simulators can sustain 60; real devices need a much gentler encode load. */
 function mjpegSettingsForDevice(options: {
@@ -40,36 +66,6 @@ function mjpegSettingsForDevice(options: {
 	};
 }
 
-type AppiumProcess = {
-	proc: ReturnType<typeof Bun.spawn>;
-	appium: ResolvedAppium;
-	port: number;
-};
-
-let appiumProcess: AppiumProcess | null = null;
-
-async function waitForAppium(port: number, timeoutMs = 30_000): Promise<void> {
-	const started = Date.now();
-	while (Date.now() - started < timeoutMs) {
-		try {
-			const response = await fetch(`http://${APPIUM_HOST}:${port}/status`);
-			if (response.ok) return;
-		} catch {
-			// not ready yet
-		}
-		await Bun.sleep(400);
-	}
-	throw new Error(`Appium did not become ready on ${APPIUM_HOST}:${port}`);
-}
-
-function appiumCommand(appium: ResolvedAppium, port: number): string[] {
-	const args = ["--address", APPIUM_HOST, "--port", String(port), "--relaxed-security"];
-	if (appium.invokeViaNode) {
-		return [appium.nodeBin ?? "node", appium.bin, ...args];
-	}
-	return [appium.bin, ...args];
-}
-
 function isPortFree(port: number): Promise<boolean> {
 	return new Promise((resolve) => {
 		const server = createServer();
@@ -79,19 +75,6 @@ function isPortFree(port: number): Promise<boolean> {
 			server.close(() => resolve(true));
 		});
 	});
-}
-
-async function pickAppiumPort(): Promise<number> {
-	if (await isPortFree(DEFAULT_APPIUM_PORT)) return DEFAULT_APPIUM_PORT;
-	// Prefer a free port over silently attaching to a foreign Appium
-	// that rebuilds WDA without Yoqa signing / preinstalled caps.
-	for (let offset = 1; offset <= 20; offset++) {
-		const candidate = DEFAULT_APPIUM_PORT + offset;
-		if (await isPortFree(candidate)) return candidate;
-	}
-	throw new Error(
-		`No free Appium port near ${DEFAULT_APPIUM_PORT}. Quit other Appium processes or set YOQA_APPIUM_PORT.`,
-	);
 }
 
 async function pickMjpegPort(): Promise<number> {
@@ -147,24 +130,19 @@ async function applyMjpegSettings(
 	}
 }
 
-export async function ensureAppiumServer(): Promise<number> {
-	if (appiumProcess) {
-		await waitForAppium(appiumProcess.port);
-		return appiumProcess.port;
+async function releaseExistingSession(deviceId: string): Promise<void> {
+	const existing = openByDeviceId.get(deviceId);
+	if (!existing) return;
+	openByDeviceId.delete(deviceId);
+	exclusiveReleaseListener?.(deviceId);
+	try {
+		await existing.quit();
+	} catch (error) {
+		console.warn(
+			"[yoqa-runner] quit prior Device Session for exclusivity:",
+			error instanceof Error ? error.message : error,
+		);
 	}
-
-	const appium = await resolveAppium();
-	const port = await pickAppiumPort();
-	const command = appiumCommand(appium, port);
-	const proc = Bun.spawn(command, {
-		cwd: appium.cwd,
-		env: { ...process.env, ...appium.env },
-		stdout: "ignore",
-		stderr: "ignore",
-	});
-	appiumProcess = { proc, appium, port };
-	await waitForAppium(port);
-	return port;
 }
 
 function capabilitiesToRecord(caps: Capability[]): Record<string, string> {
@@ -586,6 +564,8 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 }
 
 export async function createDeviceSession(options: SessionOptions): Promise<DeviceSession> {
+	await releaseExistingSession(options.deviceId);
+
 	const port = await ensureAppiumServer();
 	const mjpegPort = await pickMjpegPort();
 	const capabilities = await buildW3cCapabilities(options, mjpegPort);
@@ -619,18 +599,11 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		options.onSessionDead?.();
 	};
 
-	const isMissingSessionError = (error: unknown): boolean => {
-		const message = error instanceof Error ? error.message : String(error);
-		return /session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i.test(
-			message,
-		);
-	};
-
 	const guard = async <T>(fn: () => Promise<T>): Promise<T> => {
 		try {
 			return await fn();
 		} catch (error) {
-			if (isMissingSessionError(error)) {
+			if (isDeadSessionError(error)) {
 				notifySessionDead();
 			}
 			throw error;
@@ -642,7 +615,12 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const toPx = (norm: number, size: number) =>
 		Math.round((Math.min(1000, Math.max(0, norm)) / 1000) * size);
 
+	const owned: { current: DeviceSession | null } = { current: null };
+
 	const quit = async () => {
+		if (openByDeviceId.get(options.deviceId) === owned.current) {
+			openByDeviceId.delete(options.deviceId);
+		}
 		// Only flush an in-flight live gesture — never block quit on a dead WDA.
 		if (gate.isPointerActive() && !sessionDeadNotified) {
 			try {
@@ -660,7 +638,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 			// callers abort proxies first, and we still bound deleteSession.
 			await withTimeout(browser.deleteSession(), 8_000, "deleteSession");
 		} catch (error) {
-			if (!isMissingSessionError(error)) {
+			if (!isDeadSessionError(error)) {
 				console.warn(
 					"[yoqa-runner] deleteSession failed:",
 					error instanceof Error ? error.message : error,
@@ -811,7 +789,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		});
 	};
 
-	return {
+	const session: DeviceSession = {
 		browser,
 		mjpegPort,
 		streamReady,
@@ -834,4 +812,8 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		pointerEvent,
 		isPointerActive: () => gate.isPointerActive(),
 	};
+	owned.current = session;
+
+	openByDeviceId.set(options.deviceId, session);
+	return session;
 }

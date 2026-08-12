@@ -12,6 +12,7 @@ import type { ActiveProviderAuth } from "./application";
 import { ANTIGRAVITY_DEFAULT_VISION_MODEL } from "./drivers/antigravity";
 import { CURSOR_DEFAULT_VISION_MODEL } from "./drivers/cursor";
 import { GROK_DEFAULT_VISION_MODEL } from "./drivers/grok";
+import { getDriver } from "./drivers/index";
 import { OPENCODE_DEFAULT_VISION_MODEL } from "./drivers/opencode";
 
 export {
@@ -21,20 +22,7 @@ export {
 	CURSOR_DEFAULT_VISION_MODEL,
 };
 
-const VISION_KINDS = new Set([
-	"anthropic",
-	"openai",
-	"opencode",
-	"codex",
-	"groq",
-	"google",
-	"google-vertex",
-	"antigravity",
-	"grok",
-	"custom",
-	"cursor",
-]);
-
+/** Kinds that `createVisionModel` can build an AI SDK model for (CLI-only paths excluded). */
 export type VisionProviderKind =
 	| "anthropic"
 	| "openai"
@@ -321,7 +309,7 @@ export async function assertVisionCapableProvider(
 			"No enabled AI provider configured. Add a vision-capable provider in Settings (Anthropic, OpenAI, OpenCode, Codex, Groq, Grok, Google, Vertex, Antigravity, Cursor, or Custom).",
 		);
 	}
-	if (!VISION_KINDS.has(auth.kind)) {
+	if (!getDriver(auth.kind).capabilities.vision) {
 		throw new AgentProviderError(
 			`Provider kind "${auth.kind}" does not support vision runs yet. Configure Anthropic, OpenAI, OpenCode, Codex, Groq, Grok, Google, Vertex, Antigravity, Cursor, or Custom.`,
 		);

@@ -3,7 +3,7 @@ import { Accordion, Button, Form, Modal, Spinner } from "@heroui/react";
 import type { AiProvider, ProviderAccentColor, ProviderModel } from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
-import { ACCENT_COLORS, fieldInputClass, getDriverMeta } from "./driver-meta";
+import { ACCENT_COLORS, fieldInputClass, useDriverMeta } from "./driver-meta";
 
 function CheckIcon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -226,7 +226,7 @@ export function ProviderExpanded({
 	onDisconnect,
 	onSetDefault,
 }: ProviderExpandedProps) {
-	const meta = getDriverMeta(provider.kind);
+	const meta = useDriverMeta(provider.kind);
 	const [error, setError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [selectingModel, setSelectingModel] = useState(false);

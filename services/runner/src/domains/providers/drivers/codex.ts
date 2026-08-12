@@ -4,11 +4,14 @@ import type { DriverDefinition } from "./types";
 export const codexDriver: DriverDefinition = {
 	kind: "codex",
 	label: "Codex",
+	description:
+		"Reuse Codex CLI login for Settings auth, or paste an OpenAI API key for vision runs.",
 	defaultBinary: "codex",
 	authModes: ["cli", "api_key"],
 	envHints: ["OPENAI_API_KEY"],
 	loginInstructions:
 		"Run `codex login` (or `codex auth login`) in a terminal, then re-check. Or paste an OpenAI API key.",
+	capabilities: { vision: true },
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "codex",

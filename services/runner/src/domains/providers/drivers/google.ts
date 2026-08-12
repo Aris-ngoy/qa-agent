@@ -56,10 +56,12 @@ async function pingGoogleGenerativeAi(apiKey: string): Promise<{
 export const googleDriver: DriverDefinition = {
 	kind: "google",
 	label: "Google",
+	description: "Google Generative AI (Gemini) via @ai-sdk/google.",
 	defaultBinary: null,
 	authModes: ["api_key"],
 	envHints: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
 	loginInstructions: null,
+	capabilities: { vision: true },
 	async probe() {
 		return {
 			found: true,

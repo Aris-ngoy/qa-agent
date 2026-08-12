@@ -4,10 +4,12 @@ import type { DriverDefinition } from "./types";
 export const anthropicDriver: DriverDefinition = {
 	kind: "anthropic",
 	label: "Anthropic",
+	description: "Direct Anthropic API access with usage-based billing.",
 	defaultBinary: null,
 	authModes: ["api_key"],
 	envHints: ["ANTHROPIC_API_KEY"],
 	loginInstructions: null,
+	capabilities: { vision: true },
 	async probe() {
 		return {
 			found: true,

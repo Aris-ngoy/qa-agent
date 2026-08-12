@@ -10,11 +10,14 @@ function normalizeBaseUrl(baseUrl: string | null | undefined): string | null {
 export const customDriver: DriverDefinition = {
 	kind: "custom",
 	label: "Custom",
+	description:
+		"Any OpenAI-compatible endpoint (Ollama, LM Studio, gateway). Requires Base URL; API key optional for local hosts.",
 	defaultBinary: null,
 	authModes: ["api_key"],
 	envHints: ["OPENAI_API_KEY"],
 	loginInstructions:
 		"Point Base URL at an OpenAI-compatible /v1 endpoint (Ollama, LM Studio, gateway). API key is optional for local hosts.",
+	capabilities: { vision: true },
 	async probe() {
 		return {
 			found: true,

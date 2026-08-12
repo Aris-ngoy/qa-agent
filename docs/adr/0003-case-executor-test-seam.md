@@ -1,0 +1,3 @@
+# Case executor is the Run test seam
+
+`executeRun` mixes DB orchestration, Device Session creation, provider resolve, and per-case loops — so only leaf helpers (`parseCaseScript`, `mergeCapabilities`) were tested while abort/settle/script-vs-agent bugs lived in the loop. We decided the deep module is the **Case executor**: one Test Case against an injected Device Session, decide function, clock, abort signal, and step sink. `executeRun` remains thin orchestration + persistence. The case executor calls domain `getScreen` / `performAction` (same path as the connector), not raw session gestures. Rejected: faking the whole `executeRun` world in one harness, and extracting more pure helpers without a case-level seam.

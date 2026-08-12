@@ -1,4 +1,11 @@
-import type { ProviderAccentColor, ProviderAuthMode, ProviderKind } from "@yoqa/runner-client";
+import { getRunnerClient } from "@/app/runner-client";
+import { useQuery } from "@tanstack/react-query";
+import type {
+	ProviderAccentColor,
+	ProviderAuthMode,
+	ProviderDriverCatalogEntry,
+	ProviderKind,
+} from "@yoqa/runner-client";
 import type { ReactNode } from "react";
 import {
 	AcpLogo,
@@ -27,9 +34,15 @@ export type DriverMeta = {
 	comingSoon?: boolean;
 	earlyAccess?: boolean;
 	loginInstructions: string | null;
+	capabilities?: { vision: boolean };
 };
 
-export const ACTIVE_DRIVERS: DriverMeta[] = [
+/**
+ * Local fallback catalog when the runner is unreachable.
+ * Product facts (label, authModes, capabilities) prefer GET /providers/catalog.
+ * keyPlaceholder + logos stay desktop-owned.
+ */
+export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 	{
 		kind: "anthropic",
 		label: "Anthropic",
@@ -39,6 +52,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["ANTHROPIC_API_KEY"],
 		keyPlaceholder: "sk-ant-…",
 		loginInstructions: null,
+		capabilities: { vision: true },
 	},
 	{
 		kind: "openai",
@@ -49,6 +63,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["OPENAI_API_KEY"],
 		keyPlaceholder: "sk-…",
 		loginInstructions: null,
+		capabilities: { vision: true },
 	},
 	{
 		kind: "claude",
@@ -59,6 +74,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["ANTHROPIC_API_KEY"],
 		keyPlaceholder: "sk-ant-…",
 		loginInstructions: "Run `claude auth login` in a terminal, then re-check.",
+		capabilities: { vision: false },
 	},
 	{
 		kind: "codex",
@@ -70,6 +86,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["OPENAI_API_KEY"],
 		keyPlaceholder: "sk-…",
 		loginInstructions: "Run `codex login` in a terminal, then re-check.",
+		capabilities: { vision: true },
 	},
 	{
 		kind: "opencode",
@@ -81,6 +98,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		keyPlaceholder: "sk-…",
 		loginInstructions:
 			"Paste a Zen API key from https://opencode.ai for vision. CLI login alone is not enough (local serve has no OpenAI /v1).",
+		capabilities: { vision: true },
 	},
 	{
 		kind: "github-copilot",
@@ -91,6 +109,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN"],
 		keyPlaceholder: "ghp_… / gho_…",
 		loginInstructions: "Paste COPILOT_GITHUB_TOKEN / GH_TOKEN. Device login requires a terminal.",
+		capabilities: { vision: false },
 	},
 	{
 		kind: "groq",
@@ -101,6 +120,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["GROQ_API_KEY"],
 		keyPlaceholder: "gsk_…",
 		loginInstructions: null,
+		capabilities: { vision: true },
 	},
 	{
 		kind: "google",
@@ -111,6 +131,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
 		keyPlaceholder: "AIza…",
 		loginInstructions: null,
+		capabilities: { vision: true },
 	},
 	{
 		kind: "google-vertex",
@@ -127,6 +148,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		keyPlaceholder: "Vertex API key…",
 		loginInstructions:
 			"Paste express-mode API key, or set GOOGLE_VERTEX_PROJECT / LOCATION env in Advanced.",
+		capabilities: { vision: true },
 	},
 	{
 		kind: "antigravity",
@@ -139,6 +161,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		keyPlaceholder: "AIza…",
 		loginInstructions:
 			"Install `agy` and sign in via Antigravity. If eligibility fails, paste a Google AI Studio API key (or use the Google provider).",
+		capabilities: { vision: true },
 	},
 	{
 		kind: "cursor",
@@ -150,6 +173,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["CURSOR_API_KEY"],
 		keyPlaceholder: "key_…",
 		loginInstructions: "Run `cursor-agent login` (or `cursor agent login`), then re-check.",
+		capabilities: { vision: true },
 	},
 	{
 		kind: "grok",
@@ -160,6 +184,7 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["XAI_API_KEY"],
 		keyPlaceholder: "xai-…",
 		loginInstructions: null,
+		capabilities: { vision: true },
 	},
 	{
 		kind: "custom",
@@ -172,8 +197,12 @@ export const ACTIVE_DRIVERS: DriverMeta[] = [
 		keyPlaceholder: "optional…",
 		loginInstructions:
 			"Set Base URL to an OpenAI-compatible /v1 root (e.g. http://127.0.0.1:11434/v1).",
+		capabilities: { vision: true },
 	},
 ];
+
+/** @deprecated Prefer useActiveDrivers() — kept as alias of the local fallback. */
+export const ACTIVE_DRIVERS: DriverMeta[] = FALLBACK_ACTIVE_DRIVERS;
 
 export const COMING_SOON_DRIVERS: DriverMeta[] = [
 	{
@@ -200,6 +229,52 @@ export const COMING_SOON_DRIVERS: DriverMeta[] = [
 	},
 ];
 
+export const PROVIDERS_QUERY_KEY = ["ai-providers"] as const;
+export const PROVIDER_CATALOG_QUERY_KEY = [...PROVIDERS_QUERY_KEY, "catalog"] as const;
+
+export function mergeCatalogWithLocal(
+	catalog: ProviderDriverCatalogEntry[] | null | undefined,
+): DriverMeta[] {
+	if (!catalog?.length) return FALLBACK_ACTIVE_DRIVERS;
+	return catalog.map((entry) => {
+		const local = FALLBACK_ACTIVE_DRIVERS.find((d) => d.kind === entry.kind);
+		return {
+			kind: entry.kind,
+			label: entry.label,
+			description: entry.description ?? local?.description ?? "",
+			authModes: entry.authModes,
+			defaultBinary: entry.defaultBinary,
+			envHints: entry.envHints,
+			keyPlaceholder: local?.keyPlaceholder ?? "",
+			loginInstructions: entry.loginInstructions,
+			capabilities: entry.capabilities,
+		};
+	});
+}
+
+export function useProviderDriverCatalog(enabled = true) {
+	return useQuery({
+		queryKey: PROVIDER_CATALOG_QUERY_KEY,
+		enabled,
+		queryFn: async () => {
+			const client = await getRunnerClient();
+			return client.listProviderCatalog();
+		},
+		staleTime: 60_000,
+	});
+}
+
+/** Active drivers with runner catalog preferred when available. */
+export function useActiveDrivers(enabled = true): DriverMeta[] {
+	const catalogQuery = useProviderDriverCatalog(enabled);
+	return mergeCatalogWithLocal(catalogQuery.data);
+}
+
+export function useDriverCards(enabled = true): DriverMeta[] {
+	const active = useActiveDrivers(enabled);
+	return [...active, ...COMING_SOON_DRIVERS];
+}
+
 export const ALL_DRIVER_CARDS: DriverMeta[] = [...ACTIVE_DRIVERS, ...COMING_SOON_DRIVERS];
 
 export const ACCENT_COLORS: { id: ProviderAccentColor; className: string }[] = [
@@ -212,8 +287,11 @@ export const ACCENT_COLORS: { id: ProviderAccentColor; className: string }[] = [
 	{ id: "cyan", className: "bg-cyan-500" },
 ];
 
-export function getDriverMeta(kind: ProviderKind): DriverMeta {
-	const found = ACTIVE_DRIVERS.find((d) => d.kind === kind);
+export function getDriverMeta(
+	kind: ProviderKind,
+	catalog?: ProviderDriverCatalogEntry[] | null,
+): DriverMeta {
+	const found = mergeCatalogWithLocal(catalog).find((d) => d.kind === kind);
 	if (!found) {
 		return {
 			kind,
@@ -227,6 +305,11 @@ export function getDriverMeta(kind: ProviderKind): DriverMeta {
 		};
 	}
 	return found;
+}
+
+export function useDriverMeta(kind: ProviderKind, enabled = true): DriverMeta {
+	const catalogQuery = useProviderDriverCatalog(enabled);
+	return getDriverMeta(kind, catalogQuery.data);
 }
 
 export function statusDotClass(status: string): string {
@@ -288,5 +371,3 @@ export function DriverGlyph({ kind }: { kind: string }): ReactNode {
 
 export const fieldInputClass =
 	"h-10 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 text-body-md shadow-none";
-
-export const PROVIDERS_QUERY_KEY = ["ai-providers"] as const;

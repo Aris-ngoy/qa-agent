@@ -6,16 +6,23 @@ Build notes and feature write-ups produced after **plan → build** work.
 
 | Folder | Use for |
 |--------|---------|
-| `architecture/` | Cross-cutting design and system decisions |
+| `architecture/` | Cross-cutting design and system layout |
+| `adr/` | Architecture Decision Records (short why) |
 | `sessions/` | Dated one-off build logs (`YYYY-MM-DD-slug.md`) |
 | `<area>/` | Durable docs for a domain (e.g. `providers/`, `runner/`, `desktop/`, `runs/`) |
 
-See `.cursor/rules/document-plan-builds.mdc` for when and how agents should add entries.
+Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See `.cursor/rules/document-plan-builds.mdc` for when and how agents should add entries.
 
 ## Index
 
 | Doc | Topic |
 |-----|--------|
+| [architecture/current-layout.md](./architecture/current-layout.md) | Runner domain layout + config stores |
+| [architecture/deepening.md](./architecture/deepening.md) | Device Session / Provider / Case executor deepen |
+| [architecture/deepen-phases-3-5.md](./architecture/deepen-phases-3-5.md) | Provider catalog, case executor, script parse unify |
+| [adr/0001-device-session-ownership.md](./adr/0001-device-session-ownership.md) | Device Session under `devices/`, exclusive per device |
+| [adr/0002-provider-vision-capability.md](./adr/0002-provider-vision-capability.md) | Provider adapters + runner catalog |
+| [adr/0003-case-executor-test-seam.md](./adr/0003-case-executor-test-seam.md) | Case executor as Run test seam |
 | [runs/selection-and-runs-mvp.md](./runs/selection-and-runs-mvp.md) | Test case selection + local `POST /runs` MVP |
 | [runs/ai-sdk-vision.md](./runs/ai-sdk-vision.md) | Vision decide + grounding via Vercel AI SDK |
 | [runs/cursor-vision-cli.md](./runs/cursor-vision-cli.md) | Cursor Agent CLI vision decide + grounding |

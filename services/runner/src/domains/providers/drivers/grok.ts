@@ -8,10 +8,12 @@ export const GROK_DEFAULT_VISION_MODEL = "grok-2-vision-1212";
 export const grokDriver: DriverDefinition = {
 	kind: "grok",
 	label: "Grok",
+	description: "xAI Grok via @ai-sdk/xai (API key). Vision-capable for test runs.",
 	defaultBinary: null,
 	authModes: ["api_key"],
 	envHints: ["XAI_API_KEY"],
 	loginInstructions: null,
+	capabilities: { vision: true },
 	async probe() {
 		return {
 			found: true,

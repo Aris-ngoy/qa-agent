@@ -5,9 +5,6 @@ import {
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	connectDeviceRequestSchema,
-	elementCenterNorm,
-	findElementById,
-	findElementByLabel,
 	screenResponseSchema,
 	screenshotRequestSchema,
 	screenshotResponseSchema,
@@ -21,9 +18,13 @@ import {
 	isMissingAppiumSessionError,
 	requireActiveSession,
 } from "../../domains/devices/active-session";
-import { groundDescription } from "../../domains/devices/grounding";
-import { abortAllMjpegProxies, trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
-import { cleanPageSource } from "../../domains/devices/screen";
+import {
+	ActionNotFoundError,
+	ActionValidationError,
+	getScreen,
+	performAction,
+} from "../../domains/devices/interaction";
+import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 
 function sessionErrorResponse(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error);
@@ -83,31 +84,8 @@ export function createSessionRoutes() {
 		try {
 			const { session } = requireActiveSession();
 			const full = c.req.query("full") === "1" || c.req.query("full") === "true";
-			// Appium Inspector-style: drop live MJPEG consumers before pageSource so WDA
-			// is not dual-loaded (stream + source), which otherwise kills the session.
-			const pauseMjpeg = c.req.query("pauseMjpeg") === "1" || c.req.query("pauseMjpeg") === "true";
-			if (pauseMjpeg) {
-				abortAllMjpegProxies();
-			}
-			const raw = await session.pageSource();
-			const window = await session.getWindowSize();
-			if (full) {
-				return c.json(
-					screenResponseSchema.parse({
-						full: true,
-						window,
-						raw,
-					}),
-				);
-			}
-			const cleaned = cleanPageSource(raw, window);
-			return c.json(
-				screenResponseSchema.parse({
-					full: false,
-					window: cleaned.window,
-					elements: cleaned.elements,
-				}),
-			);
+			const result = await getScreen(session, { full });
+			return c.json(screenResponseSchema.parse(result));
 		} catch (error) {
 			const gone = sessionErrorResponse(error);
 			if (gone) return c.json(gone.body, gone.status);
@@ -203,7 +181,6 @@ export function createSessionRoutes() {
 			const contentType =
 				upstream.headers.get("Content-Type") ??
 				"multipart/x-mixed-replace; boundary=--BoundaryLine--";
-			// Aborting proxyAbort cancels the upstream body when disconnect/quit runs.
 			return new Response(upstream.body, {
 				status: 200,
 				headers: {
@@ -229,120 +206,19 @@ export function createSessionRoutes() {
 		if (!parsed.success) {
 			return c.json({ error: "Invalid action request", detail: parsed.error.message }, 400);
 		}
-		const body = parsed.data;
 		try {
 			const { session } = requireActiveSession();
-			let x = body.x;
-			let y = body.y;
-
-			if (
-				(body.id || body.label) &&
-				(body.kind === "tap" || body.kind === "input") &&
-				(x == null || y == null)
-			) {
-				const raw = await session.pageSource();
-				const window = await session.getWindowSize();
-				const cleaned = cleanPageSource(raw, window);
-				const match = body.id
-					? findElementById(cleaned.elements, body.id)
-					: findElementByLabel(cleaned.elements, body.label ?? "");
-				if (!match) {
-					return c.json(
-						{
-							error: body.id ? "No element matching id" : "No element matching label",
-							detail: body.id ?? body.label,
-						},
-						404,
-					);
-				}
-				const center = elementCenterNorm(match);
-				x = center.x;
-				y = center.y;
-			} else if (body.description && (body.kind === "tap" || body.kind === "input")) {
-				const grounded = await groundDescription(session, body.description);
-				x = grounded.x;
-				y = grounded.y;
-			}
-
-			switch (body.kind) {
-				case "tap": {
-					if (x == null || y == null) {
-						return c.json({ error: "tap requires x,y or --id or --label or description" }, 400);
-					}
-					await session.tap(x, y, { durationMs: body.durationMs });
-					if (body.double) {
-						await session.tap(x, y);
-					}
-					break;
-				}
-				case "swipe":
-				case "drag": {
-					if (x == null || y == null || body.x2 == null || body.y2 == null) {
-						return c.json({ error: `${body.kind} requires x,y,x2,y2` }, 400);
-					}
-					if (body.kind === "swipe") {
-						await session.swipe(x, y, body.x2, body.y2, body.durationMs);
-					} else {
-						await session.drag(x, y, body.x2, body.y2, body.durationMs);
-					}
-					break;
-				}
-				case "input": {
-					// Focus the target whenever coordinates are known (id/label/description/x,y).
-					if (x != null && y != null) {
-						await session.tap(x, y);
-					}
-					if (!body.text) {
-						return c.json({ error: "input requires text" }, 400);
-					}
-					await session.type(body.text);
-					break;
-				}
-				case "activate-app": {
-					if (!body.appId) return c.json({ error: "activate-app requires appId" }, 400);
-					await session.activateApp(body.appId);
-					break;
-				}
-				case "terminate-app": {
-					if (!body.appId) return c.json({ error: "terminate-app requires appId" }, 400);
-					await session.terminateApp(body.appId);
-					break;
-				}
-				case "restart-app": {
-					if (!body.appId) return c.json({ error: "restart-app requires appId" }, 400);
-					await session.terminateApp(body.appId);
-					await session.activateApp(body.appId);
-					break;
-				}
-				case "background-app": {
-					await session.backgroundApp(body.seconds ?? 3);
-					break;
-				}
-				case "open-url": {
-					if (!body.url) return c.json({ error: "open-url requires url" }, 400);
-					await session.openUrl(body.url);
-					break;
-				}
-				case "alert": {
-					if (body.alertAction === "dismiss") {
-						await session.dismissAlert();
-					} else {
-						await session.acceptAlert();
-					}
-					break;
-				}
-			}
-
-			return c.json(
-				actionResponseSchema.parse({
-					ok: true,
-					kind: body.kind,
-					resolved: x != null && y != null ? { x, y } : undefined,
-				}),
-			);
+			const result = await performAction(session, parsed.data);
+			return c.json(actionResponseSchema.parse(result));
 		} catch (error) {
 			const gone = sessionErrorResponse(error);
 			if (gone) return c.json(gone.body, gone.status);
+			if (error instanceof ActionValidationError) {
+				return c.json({ error: error.message }, 400);
+			}
+			if (error instanceof ActionNotFoundError) {
+				return c.json({ error: error.message }, 404);
+			}
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Action failed", detail: message }, 500);
 		}

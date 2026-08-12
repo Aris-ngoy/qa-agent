@@ -22,11 +22,14 @@ async function listAgyModels(binary: string): Promise<string[]> {
 export const antigravityDriver: DriverDefinition = {
 	kind: "antigravity",
 	label: "Antigravity",
+	description:
+		"Google Antigravity CLI (`agy`). Lists models via `agy models`; vision uses `agy --print` or a Google AI Studio API key fallback.",
 	defaultBinary: "agy",
 	authModes: ["cli", "api_key"],
 	envHints: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
 	loginInstructions:
 		"Install Antigravity CLI (`agy`). Sign in via the Antigravity app/IDE, or paste a Google AI Studio API key for vision if your account is not eligible for Antigravity.",
+	capabilities: { vision: true },
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "agy",

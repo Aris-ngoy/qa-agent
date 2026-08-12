@@ -4,10 +4,12 @@ import type { DriverDefinition } from "./types";
 export const openaiDriver: DriverDefinition = {
 	kind: "openai",
 	label: "OpenAI",
+	description: "Direct OpenAI API access with usage-based billing.",
 	defaultBinary: null,
 	authModes: ["api_key"],
 	envHints: ["OPENAI_API_KEY"],
 	loginInstructions: null,
+	capabilities: { vision: true },
 	async probe() {
 		return {
 			found: true,
