@@ -2,7 +2,7 @@ import { getDesktopRpc } from "@/app/desktop-rpc";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { DoctorSeverityPill, doctorStepSeverityClass } from "@/features/doctor/status-ui";
-import { Button, Tabs } from "@heroui/react";
+import { Button, Spinner, Tabs } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { DoctorReport, ServerEntry } from "@yoqa/runner-client";
@@ -71,12 +71,14 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 	const doctorQuery = useQuery({
 		queryKey: doctorQueryKey,
 		queryFn: async () => (await getRunnerClient()).getDoctorReport(),
-		enabled: open && tab === "doctor",
-		refetchInterval: open && tab === "doctor" ? 10_000 : false,
+		enabled: false,
 	});
 
 	const servers = serversQuery.data?.servers ?? [];
 	const selected = servers.find((item) => item.id === selectedId) ?? null;
+	const runDoctor = () => {
+		void doctorQuery.refetch();
+	};
 
 	useEffect(() => {
 		if (!open) {
@@ -89,15 +91,14 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 		}
 	}, [open, selectedId, servers]);
 
-	const invalidate = async () => {
+	const invalidateServers = async () => {
 		await queryClient.invalidateQueries({ queryKey: serversQueryKey });
-		await queryClient.invalidateQueries({ queryKey: doctorQueryKey });
 	};
 
 	const stopAllMutation = useMutation({
 		mutationFn: async () => (await getRunnerClient()).stopAllServers(),
 		onSuccess: async () => {
-			await invalidate();
+			await invalidateServers();
 		},
 		onError: (error) => showErrorToast(error, "Stop all failed"),
 	});
@@ -112,7 +113,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 		},
 		onSuccess: async () => {
 			setRunnerConfirm(null);
-			await invalidate();
+			await invalidateServers();
 		},
 		onError: (error) => showErrorToast(error, "Stop failed"),
 	});
@@ -127,7 +128,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 		},
 		onSuccess: async () => {
 			setRunnerConfirm(null);
-			await invalidate();
+			await invalidateServers();
 		},
 		onError: (error) => showErrorToast(error, "Restart failed"),
 	});
@@ -146,8 +147,8 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 			}
 			return (await getRunnerClient()).repairDoctor({ repairs });
 		},
-		onSuccess: async () => {
-			await invalidate();
+		onSuccess: async (result) => {
+			queryClient.setQueryData(doctorQueryKey, result.report);
 		},
 		onError: (error) => showErrorToast(error, "Repair failed"),
 	});
@@ -318,10 +319,18 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 						</Tabs.Panel>
 
 						<Tabs.Panel className="pt-3" id="doctor">
-							{doctorQuery.isLoading ? (
-								<p className="text-body-sm text-on-surface-variant">Running doctor…</p>
+							{doctorQuery.isFetching ? (
+								<p className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+									<Spinner aria-label="Running doctor" color="current" size="sm" />
+									Running doctor…
+								</p>
 							) : doctorQuery.isError ? (
-								<p className="text-body-sm text-error">Could not load doctor report.</p>
+								<div className="flex flex-col gap-3">
+									<p className="text-body-sm text-error">Could not load doctor report.</p>
+									<Button onPress={runDoctor} size="sm" variant="primary">
+										Run doctor
+									</Button>
+								</div>
 							) : doctorQuery.data ? (
 								<div className="flex flex-col gap-3">
 									<p
@@ -366,6 +375,14 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 									</ul>
 									<div className="flex flex-wrap gap-2">
 										<Button
+											isDisabled={doctorQuery.isFetching || repairMutation.isPending}
+											onPress={runDoctor}
+											size="sm"
+											variant="secondary"
+										>
+											Refresh
+										</Button>
+										<Button
 											isDisabled={
 												repairMutation.isPending ||
 												!doctorQuery.data.steps.some((step) => step.repair)
@@ -376,7 +393,14 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 											size="sm"
 											variant="secondary"
 										>
-											Repair safe issues
+											{repairMutation.isPending ? (
+												<>
+													<Spinner aria-label="Repairing" color="current" size="sm" />
+													Repairing…
+												</>
+											) : (
+												"Repair safe issues"
+											)}
 										</Button>
 										<Button
 											onPress={() => {
@@ -393,7 +417,16 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 										</Button>
 									</div>
 								</div>
-							) : null}
+							) : (
+								<div className="flex flex-col gap-3">
+									<p className="text-body-sm text-on-surface-variant">
+										Run doctor to check Node, Appium, drivers, and leftover processes.
+									</p>
+									<Button onPress={runDoctor} size="sm" variant="primary">
+										Run doctor
+									</Button>
+								</div>
+							)}
 						</Tabs.Panel>
 					</Tabs>
 				</div>
