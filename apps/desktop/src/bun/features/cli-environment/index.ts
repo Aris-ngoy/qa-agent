@@ -60,8 +60,16 @@ const SKILL_TARGETS: Array<{
 	},
 ];
 
+/** Prefer repo `bun` CLI during electrobun dev; force the bundle with `YOQA_CLI_SOURCE=packaged`. */
+export function shouldUseRepoCliSource(forcePackaged: boolean, repoMainExists: boolean): boolean {
+	return !forcePackaged && repoMainExists;
+}
+
 async function findRepoRoot(): Promise<string | null> {
-	const starts = [process.cwd()];
+	const starts: string[] = [];
+	const fromEnv = process.env.YOQA_REPO_ROOT?.trim();
+	if (fromEnv) starts.push(fromEnv);
+	starts.push(process.cwd());
 	if (typeof import.meta.dir === "string") {
 		starts.push(import.meta.dir);
 	}
@@ -133,15 +141,21 @@ async function resolveSkillSourceDir(): Promise<string | null> {
 }
 
 async function resolveCliEntrypoint(): Promise<CliEntrypoint | null> {
+	const forcePackaged = process.env.YOQA_CLI_SOURCE?.trim() === "packaged";
+	const repoRoot = forcePackaged ? null : await findRepoRoot();
+	if (repoRoot) {
+		const mainTs = join(repoRoot, "packages/cli/src/main.ts");
+		if (shouldUseRepoCliSource(forcePackaged, await pathExists(mainTs))) {
+			return { kind: "script", path: mainTs };
+		}
+	}
+
 	const packaged = await findFirstExisting(packagedRunnerFileCandidates("yoqa"));
 	if (packaged) {
 		return { kind: "binary", path: packaged };
 	}
 
-	const repoRoot = await findRepoRoot();
-	if (!repoRoot) return null;
-	const mainTs = join(repoRoot, "packages/cli/src/main.ts");
-	return (await pathExists(mainTs)) ? { kind: "script", path: mainTs } : null;
+	return null;
 }
 
 function isManagedTarget(target: string | null, resolvedEntrypoint: string | null): boolean {
