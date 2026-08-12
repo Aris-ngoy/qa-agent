@@ -13,7 +13,7 @@
     },
     "apps/desktop": {
       "name": "@yoqa/desktop",
-      "version": "0.3.8",
+      "version": "0.3.9",
       "dependencies": {
         "@fontsource/inter": "^5.3.0",
         "@heroui/react": "^3.2.3",
@@ -43,7 +43,7 @@
     },
     "packages/cli": {
       "name": "@yoqa/cli",
-      "version": "0.3.8",
+      "version": "0.3.9",
       "bin": {
         "yoqa": "dist/main.js",
       },
@@ -95,7 +95,7 @@
     },
     "services/runner": {
       "name": "@yoqa/runner",
-      "version": "0.3.8",
+      "version": "0.3.9",
       "dependencies": {
         "@ai-sdk/anthropic": "^4.0.30",
         "@ai-sdk/google": "^4.0.23",
