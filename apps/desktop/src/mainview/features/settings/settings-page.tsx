@@ -779,38 +779,40 @@ export function SettingsPage() {
 			</header>
 
 			<Tabs
-				className="w-full"
+				className="flex w-full flex-col gap-6"
 				onSelectionChange={(key) => setSection(String(key) as SettingsSection)}
 				selectedKey={section}
 			>
-				<Tabs.ListContainer>
-					<Tabs.List
-						aria-label="Settings sections"
-						className="relative w-fit max-w-full gap-1 rounded-xl bg-surface-container p-1"
-					>
-						{SECTIONS.map((item) => (
-							<Tabs.Tab
-								className="relative z-[1] h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium text-on-surface-variant transition-[color,opacity] duration-[var(--motion-fast)] data-[selected=true]:font-semibold data-[selected=true]:!text-on-surface"
-								id={item.id}
-								key={item.id}
-							>
-								{item.label}
-								<Tabs.Indicator className="-z-10 rounded-lg bg-surface-container-lowest shadow-card" />
-							</Tabs.Tab>
-						))}
-					</Tabs.List>
-				</Tabs.ListContainer>
+				<SectionCard>
+					<Tabs.ListContainer>
+						<Tabs.List
+							aria-label="Settings sections"
+							className="relative w-fit max-w-full gap-1 rounded-xl bg-surface-container p-1"
+						>
+							{SECTIONS.map((item) => (
+								<Tabs.Tab
+									className="relative z-[1] h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium text-on-surface-variant transition-[color,opacity] duration-[var(--motion-fast)] data-[selected=true]:font-semibold data-[selected=true]:!text-on-surface"
+									id={item.id}
+									key={item.id}
+								>
+									{item.label}
+									<Tabs.Indicator className="-z-10 rounded-lg bg-surface-container-lowest shadow-card" />
+								</Tabs.Tab>
+							))}
+						</Tabs.List>
+					</Tabs.ListContainer>
+				</SectionCard>
 
-				<Tabs.Panel className="pt-6" id="ios">
+				<Tabs.Panel className="pt-0" id="ios">
 					<IosSettings enabled={section === "ios"} />
 				</Tabs.Panel>
-				<Tabs.Panel className="pt-6" id="cli">
+				<Tabs.Panel className="pt-0" id="cli">
 					<CliSettings enabled={section === "cli"} />
 				</Tabs.Panel>
-				<Tabs.Panel className="pt-6" id="provider">
+				<Tabs.Panel className="pt-0" id="provider">
 					<ProvidersSection enabled={section === "provider"} />
 				</Tabs.Panel>
-				<Tabs.Panel className="pt-6" id="diagnostics">
+				<Tabs.Panel className="pt-0" id="diagnostics">
 					<DiagnosticsSettings enabled={section === "diagnostics"} />
 				</Tabs.Panel>
 			</Tabs>
