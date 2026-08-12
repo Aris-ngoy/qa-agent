@@ -17,7 +17,7 @@ Harden how Yoqa accepts contributions and ships releases: branch/PR lifecycle, C
 - `.github/PULL_REQUEST_TEMPLATE.md`, `CODEOWNERS`, `dependabot.yml`, `typecheck.yml`
 - Least-privilege + SHA-pinned Actions; release job uses `environment: release`
 - `CONTRIBUTING.md`, `SECURITY.md`, `docs/desktop/release-signing-secrets.md`
-- GitHub settings (already live): branch protection, tag ruleset, fork workflow approval, Dependabot security updates, `release` Environment
+- GitHub settings (already live): branch protection, tag ruleset, fork workflow approval, Dependabot alerts (security-update PRs disabled; version updates monthly), `release` Environment
 
 ## How to verify
 

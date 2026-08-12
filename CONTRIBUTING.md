@@ -34,7 +34,7 @@ Report vulnerabilities privately via [SECURITY.md](./SECURITY.md) — not public
 
 ## Dependencies
 
-Dependabot opens weekly PRs for Bun packages and GitHub Actions, plus automated security updates. Review those like any other PR.
+Dependabot opens monthly PRs for Bun packages and GitHub Actions. Automated security-update PRs are off so patches land on that same monthly cadence; Dependabot alerts still notify on vulnerabilities. Review those PRs like any other.
 
 ## Local checks
 
