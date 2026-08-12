@@ -23,8 +23,8 @@ Rejected: inventing a `grok` CLI; `@cursor/sdk` / OpenAI-compatible proxies for 
 **Probe:** [`pingOpenAiCompatible`](../../services/runner/src/domains/providers/drivers/probe.ts) supports `allowEmptyApiKey` for local hosts
 
 **Vision:**
-- Grok + Custom in [`vision-model.ts`](../../services/runner/src/domains/providers/vision-model.ts); dep `@ai-sdk/xai`
-- Cursor CLI decide + grounding in [`cursor-decide.ts`](../../services/runner/src/domains/providers/cursor-decide.ts) (`--mode ask --trust --force --workspace <tmpdir>`)
+- Grok + Custom via `createSdkVisionPort` in their driver files; shared helper in [`vision-model.ts`](../../services/runner/src/domains/providers/vision-model.ts); dep `@ai-sdk/xai`
+- Cursor CLI `completeObject` in [`cursor-vision.ts`](../../services/runner/src/domains/providers/drivers/cursor-vision.ts) (`--mode ask --trust --force --workspace <tmpdir>`)
 
 **Desktop:** Cursor / Grok / Custom active cards; Base URL field on Add + Expanded for Custom
 

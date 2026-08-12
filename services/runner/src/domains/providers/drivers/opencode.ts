@@ -1,3 +1,10 @@
+import { createOpenAI } from "@ai-sdk/openai";
+import {
+	AgentProviderError,
+	createSdkVisionPort,
+	resolveOpenAiCompatibleKey,
+	withOpenCodeRequestHooks,
+} from "../vision-model";
 import { pingOpenAiCompatible, probeCli, resolveBinary, runCommand } from "./probe";
 import type { DriverDefinition, ModelEntry, ProbeResult } from "./types";
 
@@ -138,6 +145,28 @@ export const opencodeDriver: DriverDefinition = {
 	loginInstructions:
 		"Paste a Zen API key from https://opencode.ai for vision. Local `opencode serve` is not OpenAI-compatible.",
 	capabilities: { vision: true },
+	vision: createSdkVisionPort({
+		label: "OpenCode",
+		defaultModel: OPENCODE_DEFAULT_VISION_MODEL,
+		createModel: async (auth, modelId) => {
+			const apiKey = await resolveOpenAiCompatibleKey(auth);
+			if (!apiKey) {
+				throw new AgentProviderError(
+					"OpenCode vision needs a Zen API key. Local `opencode serve` returns a web UI for /v1 (not chat completions). Paste a key from https://opencode.ai in Settings → Provider, or set OPENCODE_API_KEY.",
+				);
+			}
+			const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || "https://opencode.ai/zen/v1";
+			return createOpenAI({
+				apiKey,
+				baseURL,
+				name: "opencode",
+				fetch: withOpenCodeRequestHooks({
+					disableThinking: true,
+					authHeaders: null,
+				}),
+			}).chat(modelId);
+		},
+	}),
 	async probe(binaryPath) {
 		return probeCliWithFriendlyErrors(binaryPath);
 	},

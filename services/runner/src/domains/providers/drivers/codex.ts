@@ -1,5 +1,14 @@
+import { createOpenAI } from "@ai-sdk/openai";
+import {
+	AgentProviderError,
+	createSdkVisionPort,
+	resolveOpenAiCompatibleBaseUrl,
+	resolveOpenAiCompatibleKey,
+} from "../vision-model";
 import { pingOpenAiCompatible, probeCli, runCommand } from "./probe";
 import type { DriverDefinition } from "./types";
+
+const CODEX_DEFAULT_VISION = "gpt-5.1-codex";
 
 export const codexDriver: DriverDefinition = {
 	kind: "codex",
@@ -12,6 +21,24 @@ export const codexDriver: DriverDefinition = {
 	loginInstructions:
 		"Run `codex login` (or `codex auth login`) in a terminal, then re-check. Or paste an OpenAI API key.",
 	capabilities: { vision: true },
+	vision: createSdkVisionPort({
+		label: "Codex",
+		defaultModel: CODEX_DEFAULT_VISION,
+		createModel: async (auth, modelId) => {
+			const apiKey = await resolveOpenAiCompatibleKey(auth);
+			if (!apiKey) {
+				throw new AgentProviderError(
+					"Codex vision runs need an OpenAI API key (paste in Settings). Codex CLI OAuth via ai-sdk-provider-codex-cli requires Zod 4 and is not enabled yet.",
+				);
+			}
+			const openaiModelId = modelId === CODEX_DEFAULT_VISION ? "gpt-4o" : modelId;
+			return createOpenAI({
+				apiKey,
+				baseURL: resolveOpenAiCompatibleBaseUrl(auth),
+				name: "codex",
+			}).chat(openaiModelId);
+		},
+	}),
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "codex",

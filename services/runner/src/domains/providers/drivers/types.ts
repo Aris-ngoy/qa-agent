@@ -1,4 +1,5 @@
 import type { ProviderAuthMode, ProviderKind } from "@yoqa/runner-client";
+import type { z } from "zod";
 
 export type ProbeResult = {
 	found: boolean;
@@ -38,6 +39,31 @@ export type DriverCapabilities = {
 	vision: boolean;
 };
 
+/** Runtime auth blob passed into vision completion (same fields as ActiveProviderAuth minus id). */
+export type VisionAuth = {
+	kind: ProviderKind;
+	authMode: ProviderAuthMode;
+	apiKey: string | null;
+	baseUrl: string | null;
+	serverUrl: string | null;
+	defaultModel: string | null;
+	binaryPath: string | null;
+	env: Record<string, string>;
+};
+
+export type VisionCompleteInput<T> = {
+	auth: VisionAuth;
+	schema: z.ZodType<T>;
+	system: string;
+	prompt: string;
+	/** Raw screenshot (PNG base64). The adapter resizes before sending. */
+	imageBase64: string;
+};
+
+export type VisionPort = {
+	completeObject: <T>(input: VisionCompleteInput<T>) => Promise<T>;
+};
+
 /** Serializable provider facts for Settings UI (logos stay in the desktop). */
 export type DriverCatalogEntry = {
 	kind: ProviderKind;
@@ -60,6 +86,8 @@ export type DriverDefinition = {
 	envHints: string[];
 	loginInstructions: string | null;
 	capabilities: DriverCapabilities;
+	/** Present iff `capabilities.vision` is true. */
+	vision?: VisionPort;
 	probe: (binaryPath?: string | null) => Promise<ProbeResult>;
 	validate: (input: DriverValidateInput) => Promise<ValidateResult>;
 	listModels: (input: DriverValidateInput) => Promise<ListModelsResult>;

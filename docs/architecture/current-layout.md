@@ -9,7 +9,7 @@ Target layout after the architecture grill (2026-08). See `CONTEXT.md` for vocab
 | `devices/` | Device listing/prep, **Device Session** (create + Active Session), Screen (`getScreen`), Action (`performAction` + Grounding), MJPEG proxy |
 | `appium/` | Appium Runtime install + **Appium Server** `ensureServer` |
 | `ios/` | WDA / signing prep used when creating sessions |
-| `providers/` | Provider adapters (settings + optional vision completion), secrets, catalog for UI |
+| `providers/` | Provider adapters (settings + optional `vision.completeObject`), secrets, catalog for UI |
 | `runs/` | Run orchestration, **Case executor**, agent prompts/schema, Case Script parse consumers |
 | `catalog/` | Apps, cases, flows, tags |
 | `builds/` | Local build register/install |

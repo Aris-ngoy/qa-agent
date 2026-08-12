@@ -1,3 +1,5 @@
+import { createVertex } from "@ai-sdk/google-vertex";
+import { AgentProviderError, createSdkVisionPort, resolveVertexApiKey } from "../vision-model";
 import type { DriverDefinition } from "./types";
 
 const DEFAULT_MODELS = [
@@ -23,6 +25,30 @@ export const googleVertexDriver: DriverDefinition = {
 	loginInstructions:
 		"Paste a Vertex express-mode API key, or set GOOGLE_VERTEX_PROJECT + GOOGLE_VERTEX_LOCATION (and ADC / GOOGLE_APPLICATION_CREDENTIALS).",
 	capabilities: { vision: true },
+	vision: createSdkVisionPort({
+		label: "Google Vertex",
+		defaultModel: "gemini-2.5-flash",
+		createModel: (auth, modelId) => {
+			const apiKey = resolveVertexApiKey(auth);
+			const project =
+				auth.env.GOOGLE_VERTEX_PROJECT?.trim() ||
+				process.env.GOOGLE_VERTEX_PROJECT?.trim() ||
+				undefined;
+			const location =
+				auth.env.GOOGLE_VERTEX_LOCATION?.trim() ||
+				process.env.GOOGLE_VERTEX_LOCATION?.trim() ||
+				"us-central1";
+			if (!apiKey && !project) {
+				throw new AgentProviderError("Google Vertex needs an API key or GOOGLE_VERTEX_PROJECT");
+			}
+			return createVertex({
+				...(apiKey ? { apiKey } : {}),
+				...(project ? { project } : {}),
+				location,
+				...(auth.baseUrl?.trim() ? { baseURL: auth.baseUrl.replace(/\/$/, "") } : {}),
+			})(modelId);
+		},
+	}),
 	async probe() {
 		return {
 			found: true,

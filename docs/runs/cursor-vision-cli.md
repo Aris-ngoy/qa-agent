@@ -14,9 +14,9 @@ Rejected: `@cursor/sdk`, community OpenAI proxies.
 
 ## What shipped
 
-- [`cursor-decide.ts`](../../services/runner/src/domains/providers/cursor-decide.ts) — `decideWithCursorCli`, `groundWithCursorCli`
-- [`vision-model.ts`](../../services/runner/src/domains/providers/vision-model.ts) — `cursor` in `VISION_KINDS` / auth gates; `createVisionModel` refuses cursor
-- [`agent.ts`](../../services/runner/src/domains/runs/agent.ts) / [`grounding.ts`](../../services/runner/src/domains/devices/grounding.ts) — branch to CLI
+- [`cursor-vision.ts`](../../services/runner/src/domains/providers/drivers/cursor-vision.ts) — Cursor adapter `completeObject` via `cursor-agent --print`
+- [`vision.ts`](../../services/runner/src/domains/providers/vision.ts) — `resolveVision` / `completeVision` (no kind switch)
+- [`agent.ts`](../../services/runner/src/domains/runs/agent.ts) / [`grounding.ts`](../../services/runner/src/domains/devices/grounding.ts) — call `completeVision`
 - Desktop copy + docs updates for Cursor vision
 
 ## How to verify

@@ -1,3 +1,4 @@
+import { antigravityVision } from "./antigravity-vision";
 import { probeCli, runCommand } from "./probe";
 import type { DriverDefinition } from "./types";
 
@@ -30,6 +31,7 @@ export const antigravityDriver: DriverDefinition = {
 	loginInstructions:
 		"Install Antigravity CLI (`agy`). Sign in via the Antigravity app/IDE, or paste a Google AI Studio API key for vision if your account is not eligible for Antigravity.",
 	capabilities: { vision: true },
+	vision: antigravityVision,
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "agy",

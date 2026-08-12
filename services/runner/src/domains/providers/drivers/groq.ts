@@ -1,3 +1,5 @@
+import { createGroq } from "@ai-sdk/groq";
+import { AgentProviderError, createSdkVisionPort, resolveGroqKey } from "../vision-model";
 import { pingOpenAiCompatible } from "./probe";
 import type { DriverDefinition } from "./types";
 
@@ -12,6 +14,18 @@ export const groqDriver: DriverDefinition = {
 	envHints: ["GROQ_API_KEY"],
 	loginInstructions: null,
 	capabilities: { vision: true },
+	vision: createSdkVisionPort({
+		label: "Groq",
+		defaultModel: "meta-llama/llama-4-scout-17b-16e-instruct",
+		createModel: (auth, modelId) => {
+			const apiKey = resolveGroqKey(auth);
+			if (!apiKey) {
+				throw new AgentProviderError("Groq provider has no API key");
+			}
+			const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || DEFAULT_BASE;
+			return createGroq({ apiKey, baseURL })(modelId);
+		},
+	}),
 	async probe() {
 		return {
 			found: true,
