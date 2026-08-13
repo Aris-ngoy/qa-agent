@@ -4,6 +4,7 @@ import {
 	isCompatibleRunnerHealth,
 	isLocalRunnerUrl,
 	packagedRunnerCandidates,
+	shouldReuseExistingRunner,
 } from "./index";
 
 describe("packagedRunnerCandidates", () => {
@@ -34,6 +35,47 @@ describe("isCompatibleRunnerHealth", () => {
 
 	test("rejects missing health", () => {
 		expect(isCompatibleRunnerHealth(null, "0.3.7")).toBe(false);
+	});
+});
+
+describe("shouldReuseExistingRunner", () => {
+	const healthy = (version: string): RunnerHealthSnapshot => ({
+		ok: true,
+		service: "yoqa-runner",
+		version,
+	});
+
+	test("reuses a matching runner this process started", () => {
+		expect(
+			shouldReuseExistingRunner({
+				health: healthy("0.3.7"),
+				expectedVersion: "0.3.7",
+				isOurChild: true,
+				isLocal: true,
+			}),
+		).toBe(true);
+	});
+
+	test("replaces a leftover local runner from a previous launch", () => {
+		expect(
+			shouldReuseExistingRunner({
+				health: healthy("0.3.7"),
+				expectedVersion: "0.3.7",
+				isOurChild: false,
+				isLocal: true,
+			}),
+		).toBe(false);
+	});
+
+	test("reuses a matching remote YOQA_RUNNER_URL", () => {
+		expect(
+			shouldReuseExistingRunner({
+				health: healthy("0.3.7"),
+				expectedVersion: "0.3.7",
+				isOurChild: false,
+				isLocal: false,
+			}),
+		).toBe(true);
 	});
 });
 
