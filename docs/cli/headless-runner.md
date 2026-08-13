@@ -60,3 +60,4 @@ Host Node/npm must be on `PATH` for managed Appium (`~/.yoqa/runtime`). Cache th
 - Optional native `yoqa-runner` binaries on GitHub Releases so CI can skip Bun.
 - Composite action `yoqa/setup`.
 - Cloud farm / public run API (ARCHITECTURE §2.8).
+- Device E2E in GitHub Actions against [`examples/expo-demo`](../../examples/expo-demo) — see [github-actions-expo.md](./github-actions-expo.md).

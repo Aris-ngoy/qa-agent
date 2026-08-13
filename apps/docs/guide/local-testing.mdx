@@ -16,7 +16,8 @@ Phase 1 is **local-only**. Everything — Appium, vision calls, catalog, reports
 | Autonomous agent runs | Yes (BYO provider) |
 | Manual Inspector | Yes |
 | Cloud device farm | Not yet |
-| Hosted CI runners | Not yet |
+| GitHub Actions (your runner + sim/emulator) | [CLI CI example](/docs/cli) — `examples/expo-demo` |
+| Hosted Yoqa CI / device farm | Not yet |
 | Public API | Not yet |
 
 ## When local is the right choice
@@ -32,7 +33,7 @@ Phase 1 is **local-only**. Everything — Appium, vision calls, catalog, reports
 - [Device preparation](/docs/device-preparation) for the platforms you use
 - An [AI provider](/docs/providers) for grounding and agent runs
 
-Cloud and CI documentation will land when those surfaces ship. Until then, wire local `yoqa` commands into your own scripts if you need automation around the runner.
+You can also wire `yoqa` into GitHub Actions on `macos-*` with a simulator or emulator — see [CLI](/docs/cli). Cloud device farm and hosted Yoqa runners are still unshipped.
 
 <CardGroup cols={2}>
   <Card title="Desktop application" icon="desktop" href="/docs/desktop-app">
