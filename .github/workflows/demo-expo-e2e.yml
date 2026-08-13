@@ -2,6 +2,15 @@ name: Demo Expo E2E
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Which simulator/emulator jobs to run
+        type: choice
+        options:
+          - both
+          - ios
+          - android
+        default: both
   pull_request:
     paths:
       - examples/expo-demo/**
@@ -27,10 +36,139 @@ concurrency:
 
 env:
   YOQA_REPO_ROOT: ${{ github.workspace }}
+  YOQA_SMOKE_SHOTS: ${{ github.workspace }}/artifacts/screenshots
 
 jobs:
+  ios:
+    name: iOS Simulator
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'both' || github.event.inputs.platform == 'ios'
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          # Expo SDK 57 needs Xcode 26.4+. 26.5+ can fail ExpoModulesJSI SPM
+          # with an empty "Could not resolve package dependencies".
+          xcode-version: "26.4.1"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.2.23
+
+      - name: Setup Node
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: examples/expo-demo/package-lock.json
+
+      - name: Install monorepo dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build runner and CLI
+        run: |
+          bun run --filter @yoqa/runner build
+          bun run --filter @yoqa/cli build
+
+      - name: Put workspace yoqa on PATH
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '%s\n' '#!/usr/bin/env bash' "exec node \"${GITHUB_WORKSPACE}/packages/cli/dist/main.js\" \"\$@\"" > "$HOME/.local/bin/yoqa"
+          chmod +x "$HOME/.local/bin/yoqa"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Yoqa Appium runtime
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.yoqa/runtime
+          key: yoqa-runtime-${{ runner.os }}-${{ hashFiles('services/runner/package.json') }}
+          restore-keys: yoqa-runtime-${{ runner.os }}-
+
+      - name: Install Expo demo dependencies
+        working-directory: examples/expo-demo
+        run: npm ci
+
+      - name: Start Yoqa runner
+        run: |
+          yoqa health
+          yoqa runtime ensure
+
+      - name: Boot iPhone simulator
+        id: sim
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          data = json.loads(
+              subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"])
+          )
+          iphones = []
+          for rows in data.get("devices", {}).values():
+              for device in rows:
+                  if device.get("isAvailable") and "iPhone" in device.get("name", ""):
+                      iphones.append(device)
+          chosen = next((d for d in iphones if d["name"].startswith("iPhone 17")), None)
+          if chosen is None:
+              chosen = next((d for d in iphones if d["name"].startswith("iPhone 16")), None)
+          if chosen is None and iphones:
+              chosen = iphones[0]
+          if chosen is None:
+              sys.exit("No available iPhone simulator")
+          udid = chosen["udid"]
+          print(f"Using {chosen['name']} ({udid})")
+          subprocess.run(["xcrun", "simctl", "boot", udid], check=False)
+          subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"], check=True)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"udid={udid}\n")
+          PY
+
+      - name: Prebuild iOS (Expo CLI)
+        working-directory: examples/expo-demo
+        env:
+          LANG: en_US.UTF-8
+        run: npx expo prebuild --platform ios
+
+      - name: Build, install, and launch iOS (Expo CLI)
+        working-directory: examples/expo-demo
+        env:
+          RCT_NO_LAUNCH_PACKAGER: "1"
+          LANG: en_US.UTF-8
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+          defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+          npx expo run:ios --configuration Release --device "${{ steps.sim.outputs.udid }}" --no-bundler
+
+      - name: Connect Yoqa and smoke
+        run: bash examples/expo-demo/yoqa/ci-ios.sh "${{ steps.sim.outputs.udid }}"
+
+      - name: Upload smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: yoqa-expo-demo-ios-screenshots
+          path: artifacts/screenshots
+          if-no-files-found: ignore
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: yoqa-expo-demo-ios-failure
+          path: artifacts
+          if-no-files-found: ignore
+
   android:
     name: Android Emulator
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'both' || github.event.inputs.platform == 'android'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -115,12 +253,13 @@ jobs:
           # This action runs `script` with /bin/sh (dash on Ubuntu) — no pipefail.
           script: bash examples/expo-demo/yoqa/ci-android.sh
 
-      - name: Capture failure artifacts
-        if: failure()
-        run: |
-          mkdir -p artifacts
-          yoqa screenshot artifacts/android-failure.png || true
-          yoqa screen --json > artifacts/android-screen.json || true
+      - name: Upload smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: yoqa-expo-demo-android-screenshots
+          path: artifacts/screenshots
+          if-no-files-found: ignore
 
       - name: Upload failure artifacts
         if: failure()
