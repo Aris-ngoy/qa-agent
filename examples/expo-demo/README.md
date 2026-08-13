@@ -16,14 +16,11 @@ This package is **not** a Bun workspace. Use npm here; keep Expo’s toolchain o
 ```bash
 cd examples/expo-demo
 npm ci
-npx expo prebuild --platform ios --non-interactive
-npx expo run:ios --configuration Release --no-bundler
-# or
-npx expo prebuild --platform android --non-interactive
+npx expo prebuild --platform android
 npx expo run:android --variant release --no-bundler
 ```
 
-`expo prebuild` generates `ios/` / `android/` (gitignored). `expo run:*` then builds, installs, and launches. CI uses the same Expo CLI commands.
+`expo prebuild` generates `android/` (gitignored). `expo run:android` then builds, installs, and launches. CI uses the same Expo CLI commands.
 
 Then, from a repo checkout with the runner and CLI:
 
@@ -33,8 +30,8 @@ bun run --filter @yoqa/runner build
 export YOQA_REPO_ROOT="$(git rev-parse --show-toplevel)"
 yoqa health
 yoqa runtime ensure
-yoqa devices ios --booted-only   # or: yoqa devices android --booted-only
-yoqa devices connect <device-id> --platform ios --bundle-id ai.yoqa.demo
+yoqa devices android --booted-only
+yoqa devices connect <device-id> --platform android --app-package ai.yoqa.demo
 ./yoqa/ci-smoke.sh
 ```
 
