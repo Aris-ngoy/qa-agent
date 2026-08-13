@@ -10,7 +10,7 @@ Dogfood unpublished `@yoqa/cli` against a real Expo Android binary on GitHub-hos
 - CI builds `@yoqa/runner` + `@yoqa/cli` from the same commit and puts `node packages/cli/dist/main.js` on `PATH` as `yoqa`.
 - Smoke uses the device-connector surface only: `yoqa assert` and `yoqa action --label` ([`yoqa/ci-smoke.sh`](../../examples/expo-demo/yoqa/ci-smoke.sh)). No `--description`, no `yoqa runs create --mode agent`.
 - **Android only** on `ubuntu-latest` + KVM (`x86_64`). GitHub-hosted macOS has no HVF (ARM emulator exits with `HV_UNSUPPORTED`). iOS Simulator CI is a follow-up. Path-filtered + `workflow_dispatch`. **Not** a required status check.
-- Native Android is generated in CI with **Expo CLI**: `npx expo prebuild --platform android` then `npx expo run:android`. `android/` stays gitignored.
+- Native Android is generated in CI with **Expo CLI**: `npx expo prebuild --platform android` then `npx expo run:android --device <AVD name>` (`adb emu avd name`, not the `emulator-5554` serial). `android/` stays gitignored.
 - Rejected for this slice: separate public customer repo, catalog/`yoqa runs create`, making the job required.
 
 ## What shipped

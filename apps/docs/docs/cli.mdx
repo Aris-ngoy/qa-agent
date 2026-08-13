@@ -68,7 +68,7 @@ Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later s
 - run: yoqa runtime ensure
 ```
 
-This repo also ships a full device smoke against an Expo fixture (builds CLI from source, iOS Simulator + Android Emulator, no AI provider): see the **Demo Expo E2E** workflow and `examples/expo-demo`. Copy that YAML if you want `yoqa assert` / `yoqa action --label` in your own app repo.
+This repo also ships a full device smoke against an Expo fixture (builds CLI from source, Android Emulator on Ubuntu + KVM, no AI provider): see the **Demo Expo E2E** workflow and `examples/expo-demo`. Copy that YAML if you want `yoqa assert` / `yoqa action --label` in your own app repo.
 
 ```bash
 yoqa serve                 # foreground (use `yoqa serve &` or a service step)
