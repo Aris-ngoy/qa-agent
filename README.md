@@ -66,6 +66,7 @@ packages/runner-client
 packages/ui
 packages/typescript-config
 packages/skill/yoqa-testing
+examples/expo-demo    Expo fixture app for CLI GitHub Actions (not a Bun workspace)
 ```
 
 ### Desktop (`apps/desktop/src`)

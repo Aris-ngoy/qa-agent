@@ -36,3 +36,9 @@ coverage/
 
 # Stitch design exports
 .stitch/
+
+# Expo demo (generated native projects + caches)
+examples/expo-demo/ios/
+examples/expo-demo/android/
+examples/expo-demo/.expo/
+examples/expo-demo/dist/

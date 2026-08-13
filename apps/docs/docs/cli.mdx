@@ -65,8 +65,10 @@ Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later s
     node-version: "22"
 - run: npm install -g @yoqa/cli
 - run: yoqa health
-- run: yoqa doctor
+- run: yoqa runtime ensure
 ```
+
+This repo also ships a full device smoke against an Expo fixture (builds CLI from source, iOS Simulator + Android Emulator, no AI provider): see the **Demo Expo E2E** workflow and `examples/expo-demo`. Copy that YAML if you want `yoqa assert` / `yoqa action --label` in your own app repo.
 
 ```bash
 yoqa serve                 # foreground (use `yoqa serve &` or a service step)
@@ -75,7 +77,7 @@ yoqa serve --stop          # SIGTERM a runner this CLI started (~/.yoqa/runner.p
 
 Override the runner URL with `YOQA_RUNNER_HOST` / `YOQA_RUNNER_PORT` / `YOQA_RUNNER_URL`. Pin a binary with `YOQA_RUNNER_BIN`.
 
-Device runs still need a simulator or emulator, Appium drivers (`yoqa doctor --fix` / `yoqa runtime ensure`), and provider secrets. GitHub-hosted iOS needs `macos-*` + Xcode. This is not a cloud device farm — cache `~/.yoqa/runtime` between jobs to skip reinstalling Appium.
+Device runs need a simulator or emulator and Appium drivers (`yoqa doctor --fix` / `yoqa runtime ensure`). Description grounding and agent runs also need provider secrets. GitHub-hosted iOS needs `macos-*` + Xcode. This is not a cloud device farm — cache `~/.yoqa/runtime` between jobs to skip reinstalling Appium.
 
 ## Doctor & servers
 

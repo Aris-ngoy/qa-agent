@@ -11,7 +11,8 @@
 			"**/node_modules/**",
 			"**/.turbo/**",
 			"**/build/**",
-			"**/view-transition-types.css"
+			"**/view-transition-types.css",
+			"examples/expo-demo/**"
 		]
 	},
 	"formatter": {

@@ -1,0 +1,27 @@
+{
+	"expo": {
+		"name": "Yoqa Demo",
+		"slug": "yoqa-demo",
+		"version": "1.0.0",
+		"orientation": "portrait",
+		"icon": "./assets/icon.png",
+		"userInterfaceStyle": "light",
+		"ios": {
+			"bundleIdentifier": "ai.yoqa.demo",
+			"supportsTablet": false
+		},
+		"android": {
+			"package": "ai.yoqa.demo",
+			"adaptiveIcon": {
+				"backgroundColor": "#E6F4FE",
+				"foregroundImage": "./assets/android-icon-foreground.png",
+				"backgroundImage": "./assets/android-icon-background.png",
+				"monochromeImage": "./assets/android-icon-monochrome.png"
+			},
+			"predictiveBackGestureEnabled": false
+		},
+		"web": {
+			"favicon": "./assets/favicon.png"
+		}
+	}
+}
