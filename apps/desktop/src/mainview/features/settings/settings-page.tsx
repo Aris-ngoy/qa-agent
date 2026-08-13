@@ -9,10 +9,24 @@ import {
 	doctorStatusRowClass,
 	doctorStepSeverityClass,
 } from "@/features/doctor/status-ui";
-import { Button, ListBox, Select, Spinner, Tabs } from "@heroui/react";
+import {
+	Button,
+	Description,
+	FieldError,
+	Input,
+	ListBox,
+	Select,
+	Spinner,
+	Tabs,
+	TextField,
+} from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { type ReactNode, type SVGProps, useEffect, useMemo, useState } from "react";
+import type {
+	AndroidPathSource,
+	AndroidToolchainSnapshot,
+} from "../../../shared/android-toolchain";
 import type { CliEnvironmentSnapshot } from "../../../shared/cli-environment";
 import type {
 	IosToolchainSnapshot,
@@ -22,15 +36,22 @@ import type {
 } from "../../../shared/ios-toolchain";
 import { ProvidersSection } from "./providers/providers-section";
 
-type SettingsSection = "ios" | "cli" | "provider" | "diagnostics";
+type SettingsSection = "ios" | "android" | "cli" | "provider" | "diagnostics";
 type IdentityFilter = "all" | SigningTier;
+
+const SETTINGS_SECTIONS: SettingsSection[] = ["ios", "android", "cli", "provider", "diagnostics"];
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "ios", label: "iOS" },
+	{ id: "android", label: "Android" },
 	{ id: "cli", label: "CLI & Agents" },
 	{ id: "provider", label: "Provider" },
 	{ id: "diagnostics", label: "Diagnostics" },
 ];
+
+function isSettingsSection(value: string | undefined): value is SettingsSection {
+	return value != null && SETTINGS_SECTIONS.includes(value as SettingsSection);
+}
 
 /** Remounts on tab change so `motion-fade-up` plays for each section. */
 function SettingsSectionMotion({
@@ -52,6 +73,7 @@ function SettingsSectionMotion({
 }
 
 const IOS_TOOLCHAIN_QUERY_KEY = ["ios-toolchain"] as const;
+const ANDROID_TOOLCHAIN_QUERY_KEY = ["android-toolchain"] as const;
 const CLI_ENVIRONMENT_QUERY_KEY = ["cli-environment"] as const;
 
 function Icon(props: SVGProps<SVGSVGElement>) {
@@ -410,6 +432,199 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 					</ul>
 				</div>
 			</SectionCard>
+		</div>
+	);
+}
+
+function androidPathSourceLabel(kind: "sdk" | "java", source: AndroidPathSource): string {
+	if (source === "env") return kind === "sdk" ? "from ANDROID_HOME" : "from JAVA_HOME";
+	if (source === "android-studio") return "Android Studio JBR";
+	if (source === "platform-default") return "Android Studio default";
+	if (source === "java_home") return "from /usr/libexec/java_home";
+	return "not detected";
+}
+
+function AndroidPathField({
+	kind,
+	label,
+	description,
+	value,
+	placeholder,
+	detectedPath,
+	detectedSource,
+	exists,
+	overridden,
+	onChange,
+	onReset,
+}: {
+	kind: "sdk" | "java";
+	label: string;
+	description: string;
+	value: string;
+	placeholder: string;
+	detectedPath: string | null;
+	detectedSource: AndroidPathSource;
+	exists: boolean;
+	overridden: boolean;
+	onChange: (next: string) => void;
+	onReset: () => void;
+}) {
+	const savedMissing = value.trim().length > 0 && !exists;
+
+	return (
+		<SectionCard>
+			<h3 className="text-subheading font-semibold text-on-surface">{label}</h3>
+			<p className="mt-1 mb-3 text-body-md text-on-surface-variant">{description}</p>
+			<TextField
+				aria-label={label}
+				className="w-full"
+				isInvalid={savedMissing}
+				onChange={onChange}
+				value={value}
+			>
+				<Input
+					className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container px-3.5 font-mono text-body-sm shadow-none"
+					placeholder={placeholder}
+				/>
+				{savedMissing ? (
+					<FieldError>This folder was not found on disk.</FieldError>
+				) : (
+					<Description className="mt-1.5 text-helper text-on-surface-variant">
+						System default: {detectedPath ?? "not found"} (
+						{androidPathSourceLabel(kind, detectedSource)})
+						{overridden ? " · using a custom path" : ""}
+					</Description>
+				)}
+			</TextField>
+			{overridden ? (
+				<div className="mt-3">
+					<Button onPress={onReset} size="sm" variant="tertiary">
+						Use system default
+					</Button>
+				</div>
+			) : null}
+		</SectionCard>
+	);
+}
+
+function draftPathOverride(draft: string, detected: string | null): string | null {
+	const trimmed = draft.trim();
+	if (!trimmed) return null;
+	if (detected && trimmed === detected) return null;
+	return trimmed;
+}
+
+function AndroidSettings({ enabled }: { enabled: boolean }) {
+	const queryClient = useQueryClient();
+	const [sdkRoot, setSdkRoot] = useState("");
+	const [javaHome, setJavaHome] = useState("");
+	const [saveError, setSaveError] = useState<string | null>(null);
+
+	const toolchainQuery = useQuery({
+		queryKey: ANDROID_TOOLCHAIN_QUERY_KEY,
+		enabled,
+		queryFn: async () => getDesktopRpc().request.getAndroidToolchain(),
+		staleTime: 10_000,
+	});
+
+	useEffect(() => {
+		if (!toolchainQuery.data) return;
+		setSdkRoot(toolchainQuery.data.effective.sdkRoot ?? "");
+		setJavaHome(toolchainQuery.data.effective.javaHome ?? "");
+		setSaveError(null);
+	}, [toolchainQuery.data]);
+
+	const snapshot = toolchainQuery.data;
+	const sdkOverrideDraft = draftPathOverride(sdkRoot, snapshot?.detected.sdkRoot.path ?? null);
+	const javaOverrideDraft = draftPathOverride(javaHome, snapshot?.detected.javaHome.path ?? null);
+	const dirty =
+		snapshot != null &&
+		(sdkOverrideDraft !== snapshot.preferences.sdkRoot ||
+			javaOverrideDraft !== snapshot.preferences.javaHome);
+
+	const saveMutation = useMutation({
+		mutationFn: async () => {
+			const next = await getDesktopRpc().request.setAndroidToolchainSelection({
+				sdkRoot,
+				javaHome,
+			});
+			await getDesktopRpc().request.restartLocalRunner();
+			return next;
+		},
+		onSuccess: (next) => {
+			queryClient.setQueryData<AndroidToolchainSnapshot>(ANDROID_TOOLCHAIN_QUERY_KEY, next);
+			setSaveError(null);
+		},
+		onError: (error) => {
+			setSaveError(error instanceof Error ? error.message : String(error));
+		},
+	});
+
+	return (
+		<div className="flex flex-col gap-6">
+			<p className="text-body-md text-on-surface-variant">
+				Paths Appium uses for local Android tests. Detected from your system; override only if you
+				need a different SDK or JDK.
+			</p>
+
+			{toolchainQuery.isLoading ? (
+				<p className="text-body-md text-on-surface-variant">Detecting Android toolchain…</p>
+			) : toolchainQuery.isError ? (
+				<p className="text-body-md text-error">Could not detect Android SDK or Java paths.</p>
+			) : snapshot ? (
+				<>
+					<AndroidPathField
+						kind="sdk"
+						detectedPath={snapshot.detected.sdkRoot.path}
+						detectedSource={snapshot.detected.sdkRoot.source}
+						description="Folder that contains platform-tools and emulator. Used as ANDROID_HOME and ANDROID_SDK_ROOT."
+						exists={
+							sdkRoot.trim() === (snapshot.effective.sdkRoot ?? "")
+								? snapshot.effective.sdkRootExists
+								: true
+						}
+						label="Android SDK"
+						onChange={setSdkRoot}
+						onReset={() => setSdkRoot(snapshot.detected.sdkRoot.path ?? "")}
+						overridden={sdkOverrideDraft != null}
+						placeholder={snapshot.detected.sdkRoot.path ?? "~/Library/Android/sdk"}
+						value={sdkRoot}
+					/>
+					<AndroidPathField
+						kind="java"
+						detectedPath={snapshot.detected.javaHome.path}
+						detectedSource={snapshot.detected.javaHome.source}
+						description="JDK used to build and run UiAutomator2. Android Studio's bundled JBR is used when JAVA_HOME is unset."
+						exists={
+							javaHome.trim() === (snapshot.effective.javaHome ?? "")
+								? snapshot.effective.javaHomeExists
+								: true
+						}
+						label="JAVA_HOME"
+						onChange={setJavaHome}
+						onReset={() => setJavaHome(snapshot.detected.javaHome.path ?? "")}
+						overridden={javaOverrideDraft != null}
+						placeholder={snapshot.detected.javaHome.path ?? "/Library/Java/JavaVirtualMachines"}
+						value={javaHome}
+					/>
+				</>
+			) : null}
+
+			<div className="flex flex-wrap items-center gap-3">
+				<Button
+					isDisabled={!enabled || !dirty || saveMutation.isPending || toolchainQuery.isLoading}
+					onPress={() => saveMutation.mutate()}
+					variant="primary"
+				>
+					{saveMutation.isPending ? "Saving…" : "Save and restart runner"}
+				</Button>
+				{dirty ? (
+					<p className="text-body-sm text-on-surface-variant">
+						Saving restarts the local runner so Appium picks up the new paths.
+					</p>
+				) : null}
+			</div>
+			{saveError ? <p className="text-body-sm text-error">{saveError}</p> : null}
 		</div>
 	);
 }
@@ -799,22 +1014,11 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 
 export function SettingsPage() {
 	const search = useSearch({ from: "/settings" });
-	const initial =
-		search.section === "ios" ||
-		search.section === "cli" ||
-		search.section === "provider" ||
-		search.section === "diagnostics"
-			? search.section
-			: "ios";
+	const initial = isSettingsSection(search.section) ? search.section : "ios";
 	const [section, setSection] = useState<SettingsSection>(initial);
 
 	useEffect(() => {
-		if (
-			search.section === "ios" ||
-			search.section === "cli" ||
-			search.section === "provider" ||
-			search.section === "diagnostics"
-		) {
+		if (isSettingsSection(search.section)) {
 			setSection(search.section);
 		}
 	}, [search.section]);
@@ -853,6 +1057,11 @@ export function SettingsPage() {
 				<Tabs.Panel className="pt-0 outline-none" id="ios">
 					<SettingsSectionMotion active={section === "ios"} sectionId="ios">
 						<IosSettings enabled={section === "ios"} />
+					</SettingsSectionMotion>
+				</Tabs.Panel>
+				<Tabs.Panel className="pt-0 outline-none" id="android">
+					<SettingsSectionMotion active={section === "android"} sectionId="android">
+						<AndroidSettings enabled={section === "android"} />
 					</SettingsSectionMotion>
 				</Tabs.Panel>
 				<Tabs.Panel className="pt-0 outline-none" id="cli">

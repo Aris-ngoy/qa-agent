@@ -1,4 +1,5 @@
 import { Electroview } from "electrobun/view";
+import type { AndroidToolchainSnapshot } from "../../shared/android-toolchain";
 import type {
 	CliEnvironmentSnapshot,
 	InstallResult,
@@ -20,6 +21,11 @@ export type DesktopRpcClient = {
 			xcodeDeveloperDir?: string | null;
 			signingIdentityHash?: string | null;
 		}) => Promise<IosToolchainPreferences>;
+		getAndroidToolchain: () => Promise<AndroidToolchainSnapshot>;
+		setAndroidToolchainSelection: (params: {
+			sdkRoot?: string | null;
+			javaHome?: string | null;
+		}) => Promise<AndroidToolchainSnapshot>;
 		getCliEnvironment: () => Promise<CliEnvironmentSnapshot>;
 		installCli: () => Promise<InstallResult>;
 		installSkill: () => Promise<InstallSkillResult>;

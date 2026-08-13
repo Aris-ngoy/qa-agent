@@ -15,7 +15,7 @@ Make the desktop Settings page match other feature pages (Configuration-style ca
 ## What shipped
 
 - [`apps/desktop/src/mainview/features/settings/settings-page.tsx`](../../apps/desktop/src/mainview/features/settings/settings-page.tsx):
-  - Removed aside nav; added Settings header + controlled HeroUI `Tabs` (iOS / CLI & Agents / Provider).
+  - Removed aside nav; added Settings header + controlled HeroUI `Tabs` (iOS / Android / CLI & Agents / Provider / Diagnostics).
   - Upgraded `SectionCard` to Configuration card tokens.
   - Wrapped iOS Xcode and Code Signing blocks in `SectionCard`; dropped redundant per-panel `h2` titles on iOS/CLI.
 - Provider list wrapped in the same card tokens in [`providers-section.tsx`](../../apps/desktop/src/mainview/features/settings/providers/providers-section.tsx); redundant Provider `h2` removed.
@@ -25,7 +25,7 @@ Make the desktop Settings page match other feature pages (Configuration-style ca
 1. Open `/settings` — centered column, “Settings” title, no left settings aside.
 2. Switch tabs; content swaps; inactive-tab queries stay gated via `enabled`.
 3. Cards match Configuration (radius, border, `shadow-card`).
-4. iOS / CLI / Provider actions still work.
+4. iOS / Android / CLI / Provider actions still work.
 
 ## Follow-ups
 

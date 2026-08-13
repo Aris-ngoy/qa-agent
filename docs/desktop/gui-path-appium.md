@@ -27,4 +27,4 @@ Make the packaged macOS `.app` able to ensure the managed Appium runtime when la
 ## Follow-ups
 
 - Optional Node/npm sidecar for machines with no host Node
-- none otherwise for this bug
+- Settings → Android now exposes SDK / JAVA_HOME overrides; see `docs/desktop/android-toolchain-settings.md`.

@@ -1,6 +1,10 @@
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { DesktopRPC } from "../shared/rpc";
 import {
+	getAndroidToolchainSnapshot,
+	setAndroidToolchainSelection,
+} from "./features/android-toolchain";
+import {
 	getCliEnvironmentSnapshot,
 	installCli,
 	installSkill,
@@ -79,6 +83,8 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 			restartLocalRunner: () => restartLocalRunner(),
 			getIosToolchain: () => getIosToolchainSnapshot(),
 			setIosToolchainSelection: (params) => setIosToolchainSelection(params),
+			getAndroidToolchain: () => getAndroidToolchainSnapshot(),
+			setAndroidToolchainSelection: (params) => setAndroidToolchainSelection(params),
 			getCliEnvironment: () => getCliEnvironmentSnapshot(),
 			installCli: () => installCli(),
 			installSkill: () => installSkill(),

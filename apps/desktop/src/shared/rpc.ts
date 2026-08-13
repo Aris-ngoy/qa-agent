@@ -1,3 +1,4 @@
+import type { AndroidToolchainSnapshot } from "./android-toolchain";
 import type {
 	CliEnvironmentSnapshot,
 	InstallResult,
@@ -44,6 +45,17 @@ export type DesktopRPC = {
 					signingIdentityHash?: string | null;
 				};
 				response: IosToolchainPreferences;
+			};
+			getAndroidToolchain: {
+				params: undefined;
+				response: AndroidToolchainSnapshot;
+			};
+			setAndroidToolchainSelection: {
+				params: {
+					sdkRoot?: string | null;
+					javaHome?: string | null;
+				};
+				response: AndroidToolchainSnapshot;
 			};
 			getCliEnvironment: {
 				params: undefined;

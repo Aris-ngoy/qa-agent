@@ -1,4 +1,5 @@
 import { createServer } from "node:net";
+import { ensureAndroidSdkEnv } from "./android-sdk";
 import { resolveAppium } from "./application";
 import type { ResolvedAppium } from "./models";
 
@@ -147,6 +148,7 @@ export async function ensureAppiumServer(): Promise<number> {
 	const appium = await resolveAppium();
 	const port = await pickAppiumPort();
 	const command = appiumCommand(appium, port);
+	ensureAndroidSdkEnv();
 	const proc = Bun.spawn(command, {
 		cwd: appium.cwd,
 		env: { ...process.env, ...appium.env },
