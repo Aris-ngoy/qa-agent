@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import {
+	androidProcessEnv,
 	androidSdkEnvPatch,
 	defaultAndroidSdkRoot,
+	defaultJavaHomeCandidates,
 	pathWithAndroidSdk,
 	resolveAndroidSdkRoot,
 } from "./android-sdk";
@@ -70,7 +72,7 @@ describe("androidSdkEnvPatch", () => {
 		expect(
 			androidSdkEnvPatch(
 				{ PATH: "/usr/bin:/bin" },
-				{ ...darwin, sdkExists: (path) => path === sdk },
+				{ ...darwin, pathExists: (path) => path === sdk },
 			),
 		).toEqual({
 			ANDROID_HOME: sdk,
@@ -80,19 +82,60 @@ describe("androidSdkEnvPatch", () => {
 	});
 
 	test("does not invent ANDROID_HOME when the SDK directory is missing", () => {
-		expect(androidSdkEnvPatch({ PATH: "/usr/bin" }, { ...darwin, sdkExists: () => false })).toEqual(
-			{},
-		);
+		expect(
+			androidSdkEnvPatch({ PATH: "/usr/bin" }, { ...darwin, pathExists: () => false }),
+		).toEqual({});
 	});
 
 	test("keeps an existing ANDROID_HOME and still adds SDK bins to PATH", () => {
 		const sdk = "/opt/android-sdk";
 		const patch = androidSdkEnvPatch(
 			{ ANDROID_HOME: sdk, PATH: "/usr/bin" },
-			{ ...darwin, sdkExists: (path) => path === sdk },
+			{ ...darwin, pathExists: (path) => path === sdk },
 		);
 		expect(patch.ANDROID_HOME).toBeUndefined();
 		expect(patch.ANDROID_SDK_ROOT).toBeUndefined();
 		expect(patch.PATH?.startsWith(`${sdk}/platform-tools:`)).toBe(true);
+	});
+
+	test("exports Android Studio JBR as JAVA_HOME when JAVA_HOME is unset", () => {
+		const jbr = defaultJavaHomeCandidates("/Users/demo", "darwin")[0];
+		expect(jbr).toBeDefined();
+		const patch = androidSdkEnvPatch(
+			{ PATH: "/usr/bin" },
+			{ ...darwin, pathExists: (path) => path === jbr },
+		);
+		expect(patch.JAVA_HOME).toBe(jbr);
+		expect(patch.ANDROID_HOME).toBeUndefined();
+	});
+
+	test("keeps an existing JAVA_HOME", () => {
+		const jbr = defaultJavaHomeCandidates("/Users/demo", "darwin")[0];
+		const patch = androidSdkEnvPatch(
+			{ JAVA_HOME: "/opt/java", PATH: "/usr/bin" },
+			{ ...darwin, pathExists: (path) => path === jbr },
+		);
+		expect(patch.JAVA_HOME).toBeUndefined();
+	});
+});
+
+describe("androidProcessEnv", () => {
+	test("merges SDK and JDK fallbacks onto a GUI-like env for Appium spawn", () => {
+		const sdk = "/Users/demo/Library/Android/sdk";
+		const jbr = defaultJavaHomeCandidates("/Users/demo", "darwin")[0];
+		expect(jbr).toBeDefined();
+		const env = androidProcessEnv(
+			{ PATH: "/usr/bin", APPIUM_HOME: "/tmp/appium" },
+			{
+				home: "/Users/demo",
+				platform: "darwin",
+				pathExists: (path) => path === sdk || path === jbr,
+			},
+		);
+		expect(env.ANDROID_HOME).toBe(sdk);
+		expect(env.ANDROID_SDK_ROOT).toBe(sdk);
+		expect(env.JAVA_HOME).toBe(jbr);
+		expect(env.APPIUM_HOME).toBe("/tmp/appium");
+		expect(env.PATH?.startsWith(`${sdk}/platform-tools:`)).toBe(true);
 	});
 });

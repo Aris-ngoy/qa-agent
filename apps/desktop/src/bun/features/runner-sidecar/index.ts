@@ -106,6 +106,22 @@ export function isCompatibleRunnerHealth(
 	);
 }
 
+/**
+ * Reuse a healthy runner only when this process spawned it, or when
+ * YOQA_RUNNER_URL points at another host. Leftover local processes from a
+ * previous desktop/dev launch keep a GUI-stripped env (no ANDROID_HOME).
+ */
+export function shouldReuseExistingRunner(options: {
+	health: RunnerHealthSnapshot | null;
+	expectedVersion: string;
+	isOurChild: boolean;
+	isLocal: boolean;
+}): boolean {
+	if (!isCompatibleRunnerHealth(options.health, options.expectedVersion)) return false;
+	if (options.isOurChild) return true;
+	return !options.isLocal;
+}
+
 /** Candidate locations for the compiled runner inside a packaged Electrobun .app. */
 export function packagedRunnerCandidates(roots: string[] = execRoots()): string[] {
 	return packagedRunnerFileCandidates("yoqa-runner", roots);
@@ -337,7 +353,14 @@ async function ensureOnce(): Promise<EnsureLocalServicesResult> {
 	const expectedVersion = expectedRunnerVersion();
 	const existing = await fetchRunnerHealth(baseUrl);
 
-	if (isCompatibleRunnerHealth(existing, expectedVersion)) {
+	if (
+		shouldReuseExistingRunner({
+			health: existing,
+			expectedVersion,
+			isOurChild: isChildAlive(),
+			isLocal: isLocalRunnerUrl(baseUrl),
+		})
+	) {
 		return { baseUrl, started: false };
 	}
 

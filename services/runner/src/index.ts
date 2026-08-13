@@ -1,5 +1,6 @@
 import { ensureAndroidSdkEnv } from "./domains/appium/android-sdk";
 import { ensureHostToolPath } from "./domains/appium/host-path";
+import { stopAppiumServer } from "./domains/appium/server";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
 import { installAppiumSessionBridge } from "./domains/servers/application";
 import { createApp } from "./interfaces/http/app";
@@ -62,3 +63,11 @@ const server = Bun.serve<ControlWsData>({
 });
 
 console.log(`[yoqa-runner] listening on http://${server.hostname}:${server.port}`);
+
+function shutdown(signal: string): void {
+	console.log(`[yoqa-runner] ${signal} — stopping managed Appium`);
+	void stopAppiumServer().finally(() => process.exit(0));
+}
+
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("SIGTERM", () => shutdown("SIGTERM"));

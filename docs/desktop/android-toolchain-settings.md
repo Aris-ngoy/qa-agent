@@ -18,7 +18,9 @@ Let users see the Android SDK and JDK paths Yoqa detected, and override them whe
 - Desktop RPC `getAndroidToolchain` / `setAndroidToolchainSelection`
 - Shared `settings.json` store used by iOS and Android prefs
 - Runner sidecar spawn applies effective Android/Java env
-- Runner still fills missing `ANDROID_HOME` from the platform default when launched from the CLI
+- Runner still fills missing `ANDROID_HOME` / `JAVA_HOME` from the platform default when launched from the CLI
+- Desktop replaces a leftover local runner from a previous launch (same version, not our child) so Appium is not started with a GUI-stripped env
+- Managed Appium is spawned with an explicit SDK/JDK env and is stopped when the runner exits
 
 ## How to verify
 
@@ -26,6 +28,7 @@ Let users see the Android SDK and JDK paths Yoqa detected, and override them whe
 2. Change SDK to another existing SDK folder, click **Save and restart runner**, start an Android session — Appium should use the override.
 3. Click **Use system default**, save again — session should work with the detected path.
 4. `~/Library/Application Support/yoqa/settings.json` should contain `"android"` only when an override is set.
+5. Quit Yoqa, reopen, run on a physical Android device — session must not fail with `Neither ANDROID_HOME nor ANDROID_SDK_ROOT environment variable was exported`.
 
 ## Follow-ups
 
