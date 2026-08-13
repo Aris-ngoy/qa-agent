@@ -215,6 +215,11 @@ function looksLikePhysicalIosUdid(udid: string): boolean {
 	return /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}$/.test(udid.trim());
 }
 
+/** First simulator connect compiles WebDriverAgent; physical devices reuse a preinstalled WDA. */
+function iosSessionCreateTimeoutMs(deviceId: string): number {
+	return looksLikePhysicalIosUdid(deviceId) ? 60_000 : 240_000;
+}
+
 async function buildW3cCapabilities(
 	options: SessionOptions,
 	mjpegPort: number,
@@ -270,11 +275,12 @@ async function buildW3cCapabilities(
 			}
 		}
 		// Simulator first-connect compiles WDA (often >60s on a cold CI runner).
+		const wdaTimeoutMs = iosSessionCreateTimeoutMs(options.deviceId);
 		if (caps["appium:wdaLaunchTimeout"] === undefined) {
-			caps["appium:wdaLaunchTimeout"] = physical ? 60_000 : 240_000;
+			caps["appium:wdaLaunchTimeout"] = wdaTimeoutMs;
 		}
 		if (caps["appium:wdaConnectionTimeout"] === undefined) {
-			caps["appium:wdaConnectionTimeout"] = physical ? 60_000 : 240_000;
+			caps["appium:wdaConnectionTimeout"] = wdaTimeoutMs;
 		}
 		if (caps["appium:waitForIdleTimeout"] === undefined) {
 			caps["appium:waitForIdleTimeout"] = 0;
@@ -572,14 +578,20 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const mjpegPort = await pickMjpegPort();
 	const capabilities = await buildW3cCapabilities(options, mjpegPort);
 
+	const simulatorIos = options.platform === "ios" && !looksLikePhysicalIosUdid(options.deviceId);
+	const sessionCreateTimeoutMs = simulatorIos
+		? iosSessionCreateTimeoutMs(options.deviceId)
+		: 60_000;
+
 	const browser = await remote({
 		hostname: APPIUM_HOST,
 		port,
 		path: "/",
 		capabilities,
 		logLevel: "silent",
-		connectionRetryCount: 2,
-		connectionRetryTimeout: 60_000,
+		// Do not retry a still-running WDA compile — a second POST /session races the first.
+		connectionRetryCount: simulatorIos ? 0 : 2,
+		connectionRetryTimeout: sessionCreateTimeoutMs,
 	});
 
 	await applyMjpegSettings(browser, {
