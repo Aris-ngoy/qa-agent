@@ -246,34 +246,36 @@ async function buildW3cCapabilities(
 		caps["appium:appPackage"] = options.appPackage;
 	}
 
-	if (options.platform === "ios" && looksLikePhysicalIosUdid(options.deviceId)) {
-		const prep = await loadDevicePrep(options.deviceId);
-		if (!prep) {
-			throw new Error(
-				`iOS device ${options.deviceId} is not prepared. Run device setup so WebDriverAgent is installed before starting a run.`,
-			);
+	if (options.platform === "ios") {
+		const physical = looksLikePhysicalIosUdid(options.deviceId);
+		if (physical) {
+			const prep = await loadDevicePrep(options.deviceId);
+			if (!prep) {
+				throw new Error(
+					`iOS device ${options.deviceId} is not prepared. Run device setup so WebDriverAgent is installed before starting a run.`,
+				);
+			}
+			// Reuse the Yoqa-built/signed WDA instead of Appium's unsigned xcodebuild (code 65).
+			if (caps["appium:usePreinstalledWDA"] === undefined) {
+				caps["appium:usePreinstalledWDA"] = true;
+			}
+			if (!caps["appium:updatedWDABundleId"]) {
+				caps["appium:updatedWDABundleId"] = prep.bundleId;
+			}
+			if (!caps["appium:xcodeOrgId"]) {
+				caps["appium:xcodeOrgId"] = prep.developmentTeam;
+			}
+			if (!caps["appium:xcodeSigningId"]) {
+				caps["appium:xcodeSigningId"] = "Apple Development";
+			}
 		}
-		// Reuse the Yoqa-built/signed WDA instead of Appium's unsigned xcodebuild (code 65).
-		if (caps["appium:usePreinstalledWDA"] === undefined) {
-			caps["appium:usePreinstalledWDA"] = true;
-		}
-		if (!caps["appium:updatedWDABundleId"]) {
-			caps["appium:updatedWDABundleId"] = prep.bundleId;
-		}
-		if (!caps["appium:xcodeOrgId"]) {
-			caps["appium:xcodeOrgId"] = prep.developmentTeam;
-		}
-		if (!caps["appium:xcodeSigningId"]) {
-			caps["appium:xcodeSigningId"] = "Apple Development";
-		}
-		// Fail connect instead of sitting forever on a wedged WebDriverAgentRunner.
+		// Simulator first-connect compiles WDA (often >60s on a cold CI runner).
 		if (caps["appium:wdaLaunchTimeout"] === undefined) {
-			caps["appium:wdaLaunchTimeout"] = 60_000;
+			caps["appium:wdaLaunchTimeout"] = physical ? 60_000 : 240_000;
 		}
 		if (caps["appium:wdaConnectionTimeout"] === undefined) {
-			caps["appium:wdaConnectionTimeout"] = 60_000;
+			caps["appium:wdaConnectionTimeout"] = physical ? 60_000 : 240_000;
 		}
-		// Don't wait for the app to be idle before commands — cheaper under MJPEG.
 		if (caps["appium:waitForIdleTimeout"] === undefined) {
 			caps["appium:waitForIdleTimeout"] = 0;
 		}
