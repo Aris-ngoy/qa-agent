@@ -47,22 +47,17 @@ trap capture_failure ERR
 	npx expo run:android --variant release --no-bundler --device "$AVD_NAME"
 )
 
-echo "Waiting for ai.yoqa.demo to show Yoqa Demo…"
-found=0
-for _ in $(seq 1 60); do
+adb -s "$SERIAL" shell am start -W -n ai.yoqa.demo/.MainActivity >/dev/null || true
+echo "Waiting briefly for ai.yoqa.demo (Yoqa assert will wait if the dump is empty)…"
+for _ in $(seq 1 20); do
 	focus="$(adb -s "$SERIAL" shell dumpsys window 2>/dev/null | awk -F= '/mCurrentFocus/{print $2; exit}' || true)"
 	adb -s "$SERIAL" shell uiautomator dump /sdcard/yoqa-dump.xml >/dev/null 2>&1 || true
 	if adb -s "$SERIAL" shell cat /sdcard/yoqa-dump.xml 2>/dev/null | grep -q "Yoqa Demo"; then
 		echo "Found Yoqa Demo (focus: ${focus})"
-		found=1
 		break
 	fi
 	sleep 2
 done
-if [ "$found" -ne 1 ]; then
-	echo "Timed out waiting for Yoqa Demo in the view hierarchy" >&2
-	exit 1
-fi
 
 yoqa devices connect "$SERIAL" --platform android --app-package ai.yoqa.demo
 bash examples/expo-demo/yoqa/ci-smoke.sh

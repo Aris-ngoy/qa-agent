@@ -10,7 +10,7 @@ Dogfood unpublished `@yoqa/cli` against a real Expo binary on GitHub-hosted runn
 - CI builds `@yoqa/runner` + `@yoqa/cli` from the same commit and puts `node packages/cli/dist/main.js` on `PATH` as `yoqa`.
 - Smoke uses the device-connector surface only: `yoqa assert` and `yoqa action --label` ([`yoqa/ci-smoke.sh`](../../examples/expo-demo/yoqa/ci-smoke.sh)). No `--description`, no `yoqa runs create --mode agent`.
 - After every action (and each assert) the smoke writes a PNG under `artifacts/screenshots` (`yoqa screenshot`). Jobs upload that folder always.
-- **iOS** on `macos-26` + Xcode **26.4.1** (Expo SDK 57 needs 26.4+; 26.5+ can fail ExpoModulesJSI SPM with an empty “Could not resolve package dependencies”). **Android** on `ubuntu-latest` + KVM (`x86_64` API 34). Path-filtered + `workflow_dispatch`. **Not** a required status check.
+- **iOS** on `macos-26` + Xcode **26.4.1** (Expo SDK 57 needs 26.4+; 26.5+ can fail ExpoModulesJSI SPM with an empty “Could not resolve package dependencies”). Simulator connect allows 240s for the first WebDriverAgent compile. **Android** on `ubuntu-latest` + KVM (`x86_64` API 34). Path-filtered + `workflow_dispatch`. **Not** a required status check.
 - Native projects are generated in CI with **Expo CLI**: `npx expo prebuild` then `npx expo run:ios` / `npx expo run:android`. `ios/` and `android/` stay gitignored.
 - Rejected for this slice: separate public customer repo, catalog/`yoqa runs create`, making the job required.
 
