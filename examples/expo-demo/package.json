@@ -9,7 +9,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "prebuild": "expo prebuild",
-    "ios:release": "expo run:ios --configuration Release",
+    "prebuild:ios": "expo prebuild --platform ios --non-interactive",
+    "prebuild:android": "expo prebuild --platform android --non-interactive",
+    "ios:release": "expo run:ios --configuration Release --no-bundler",
     "android:release": "expo run:android --variant release --no-bundler"
   },
   "dependencies": {
