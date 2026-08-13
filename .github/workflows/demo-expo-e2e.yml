@@ -161,7 +161,7 @@ jobs:
   android:
     name: Android Emulator
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'both' || github.event.inputs.platform == 'android'
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -184,6 +184,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
@@ -221,16 +227,17 @@ jobs:
 
       - name: Prebuild Android (Expo CLI)
         working-directory: examples/expo-demo
-        run: npx expo prebuild --platform android --non-interactive
+        run: npx expo prebuild --platform android
 
       - name: Build, install, and smoke on emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
-          arch: arm64-v8a
+          arch: x86_64
           target: google_apis
-          force-avd-creation: false
+          force-avd-creation: true
           disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: |
             set -euo pipefail
             SERIAL="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
