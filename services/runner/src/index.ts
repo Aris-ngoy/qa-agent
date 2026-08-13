@@ -1,3 +1,4 @@
+import { ensureAndroidSdkEnv } from "./domains/appium/android-sdk";
 import { ensureHostToolPath } from "./domains/appium/host-path";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
 import { installAppiumSessionBridge } from "./domains/servers/application";
@@ -11,6 +12,8 @@ import { loadSettings } from "./settings";
 
 // Finder/Dock launches get a stripped PATH — include Homebrew + agent CLIs before probes.
 ensureHostToolPath();
+// GUI apps also omit ANDROID_HOME; UiAutomator2 requires it even when adb is on PATH.
+ensureAndroidSdkEnv();
 installAppiumSessionBridge();
 
 const settings = loadSettings();

@@ -1,5 +1,3 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import type {
 	IosToolchainPreferences,
@@ -8,13 +6,7 @@ import type {
 	SigningTier,
 	XcodeInstallation,
 } from "../../../shared/ios-toolchain";
-
-const PREFS_DIR = join(homedir(), "Library/Application Support/yoqa");
-const PREFS_PATH = join(PREFS_DIR, "settings.json");
-
-type StoredSettings = {
-	ios?: Partial<IosToolchainPreferences>;
-};
+import { patchStoredSettings, readStoredSettings } from "../app-settings/store";
 
 async function runCommand(
 	command: string[],
@@ -35,34 +27,15 @@ async function runCommand(
 }
 
 async function readPreferences(): Promise<IosToolchainPreferences> {
-	try {
-		const raw = await readFile(PREFS_PATH, "utf8");
-		const parsed = JSON.parse(raw) as StoredSettings;
-		return {
-			xcodeDeveloperDir: parsed.ios?.xcodeDeveloperDir ?? null,
-			signingIdentityHash: parsed.ios?.signingIdentityHash ?? null,
-		};
-	} catch {
-		return { xcodeDeveloperDir: null, signingIdentityHash: null };
-	}
+	const parsed = await readStoredSettings();
+	return {
+		xcodeDeveloperDir: parsed.ios?.xcodeDeveloperDir ?? null,
+		signingIdentityHash: parsed.ios?.signingIdentityHash ?? null,
+	};
 }
 
 async function writePreferences(prefs: IosToolchainPreferences): Promise<void> {
-	await mkdir(PREFS_DIR, { recursive: true });
-	let existing: StoredSettings = {};
-	try {
-		existing = JSON.parse(await readFile(PREFS_PATH, "utf8")) as StoredSettings;
-	} catch {
-		// First write
-	}
-	const next: StoredSettings = {
-		...existing,
-		ios: {
-			...existing.ios,
-			...prefs,
-		},
-	};
-	await writeFile(PREFS_PATH, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+	await patchStoredSettings({ ios: prefs });
 }
 
 async function getXcodeSelectPath(): Promise<string | null> {

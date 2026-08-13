@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Device } from "@yoqa/runner-client";
+import { resolveAndroidSdkRoot } from "../appium/android-sdk";
 import type { ListDevicesOptions } from "./models";
 
 async function runCommand(
@@ -26,10 +27,7 @@ async function runCommand(
 }
 
 function androidSdkRoot(): string | null {
-	const fromEnv = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
-	if (fromEnv?.trim()) return fromEnv.trim();
-	const fallback = join(process.env.HOME ?? "", "Library/Android/sdk");
-	return fallback;
+	return resolveAndroidSdkRoot();
 }
 
 async function resolveTool(candidates: string[]): Promise<string | null> {

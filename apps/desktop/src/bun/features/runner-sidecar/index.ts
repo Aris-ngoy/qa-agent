@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import packageJson from "../../../../package.json" with { type: "json" };
+import { androidToolchainProcessEnv } from "../android-toolchain";
 import { RUNNER_CODE_IDENTIFIER, ensureAdhocCodeSignature } from "../macos-adhoc-sign";
 import {
 	execRoots,
@@ -287,10 +288,12 @@ async function spawnRunner(baseUrl: string): Promise<void> {
 		}`,
 	);
 
+	const androidEnv = await androidToolchainProcessEnv();
 	const proc = Bun.spawn(launch.command, {
 		cwd: launch.cwd,
 		env: {
 			...process.env,
+			...androidEnv,
 			PATH: pathWithHostTools(),
 			YOQA_RUNNER_HOST: getHost(),
 			YOQA_RUNNER_PORT: String(getPort()),
