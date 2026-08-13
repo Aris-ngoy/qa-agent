@@ -10,12 +10,13 @@ Dogfood unpublished `@yoqa/cli` against a real Expo binary on GitHub-hosted runn
 - CI builds `@yoqa/runner` + `@yoqa/cli` from the same commit and puts `node packages/cli/dist/main.js` on `PATH` as `yoqa`.
 - Smoke uses the device-connector surface only: `yoqa assert` and `yoqa action --label` ([`yoqa/ci-smoke.sh`](../../examples/expo-demo/yoqa/ci-smoke.sh)). No `--description`, no `yoqa runs create --mode agent`.
 - Parallel `macos-15` jobs (Apple Silicon → Android `arch: arm64-v8a`). Path-filtered + `workflow_dispatch`. **Not** a required status check.
+- Native projects are generated in CI with **Expo CLI**: `npx expo prebuild` then `npx expo run:ios` / `npx expo run:android` (not raw `xcodebuild` / Gradle). `ios/` and `android/` stay gitignored.
 - Rejected for this slice: separate public customer repo, catalog/`yoqa runs create`, making the job required, Android on Ubuntu/KVM.
 
 ## What shipped
 
 - Expo SDK 57 TypeScript app, bundle / application id `ai.yoqa.demo`, Home + Greeting screens with `accessibilityLabel`.
-- [`.github/workflows/demo-expo-e2e.yml`](../../.github/workflows/demo-expo-e2e.yml) — iOS Release sim + Android API 35 emulator.
+- [`.github/workflows/demo-expo-e2e.yml`](../../.github/workflows/demo-expo-e2e.yml) — `npx expo prebuild` then `npx expo run:ios` / `run:android` on iOS Simulator + Android API 35 emulator.
 - Public Mintlify CI section + local-testing table updated to point at this example (hosted **device farm** remains “not yet”).
 
 Customer-equivalent (published CLI, not this repo’s workflow):
@@ -35,7 +36,7 @@ Then install a build, `yoqa devices connect`, and run `examples/expo-demo/yoqa/c
 
 ## How to verify
 
-1. Local: `cd examples/expo-demo && npm ci && npx expo run:ios --configuration Release`, then `yoqa health`, `yoqa devices connect … --bundle-id ai.yoqa.demo`, `./yoqa/ci-smoke.sh`.
+1. Local: `cd examples/expo-demo && npm ci && npx expo prebuild --platform ios --non-interactive && npx expo run:ios --configuration Release --no-bundler`, then `yoqa health`, `yoqa devices connect … --bundle-id ai.yoqa.demo`, `./yoqa/ci-smoke.sh`.
 2. `bun run lint:ci` and `bun run test` still ignore the Expo tree.
 3. GitHub: Actions → **Demo Expo E2E** → Run workflow (`ios` / `android` / `both`). On failure, download the `yoqa-expo-demo-*-failure` artifact (screenshot + `yoqa screen --json`).
 
