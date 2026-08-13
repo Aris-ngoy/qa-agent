@@ -3,7 +3,7 @@
 # `yoqa devices connect` session. No AI provider.
 set -euo pipefail
 
-yoqa assert visible -t "Yoqa Demo" --timeout 30
+yoqa assert visible -t "Yoqa Demo" --timeout 60
 yoqa action tap --label "Increment"
 yoqa assert visible -t "Count: 1" --timeout 15
 yoqa action tap --label "Open greeting"

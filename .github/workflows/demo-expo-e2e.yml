@@ -102,11 +102,15 @@ jobs:
       - name: Build, install, and smoke on emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: 35
+          api-level: 34
           arch: x86_64
           target: google_apis
+          profile: pixel_6
+          ram-size: 4096
+          heap-size: 512
           force-avd-creation: true
           disable-animations: true
+          emulator-boot-timeout: 600
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           # This action runs `script` with /bin/sh (dash on Ubuntu) — no pipefail.
           script: bash examples/expo-demo/yoqa/ci-android.sh
