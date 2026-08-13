@@ -122,7 +122,31 @@ jobs:
 
       - name: Build and install iOS Release
         working-directory: examples/expo-demo
-        run: npx expo run:ios --configuration Release --device "${{ steps.sim.outputs.udid }}" --no-bundler
+        env:
+          RCT_NO_LAUNCH_PACKAGER: "1"
+          LANG: en_US.UTF-8
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+          defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+          npx expo prebuild --platform ios --non-interactive
+          (cd ios && pod install)
+          xcodebuild \
+            -workspace ios/YoqaDemo.xcworkspace \
+            -scheme YoqaDemo \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$HOME/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            ONLY_ACTIVE_ARCH=YES
+          APP="$HOME/DerivedData/Build/Products/Release-iphonesimulator/YoqaDemo.app"
+          test -d "$APP"
+          xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP"
+          xcrun simctl launch "${{ steps.sim.outputs.udid }}" ai.yoqa.demo
+
 
       - name: Connect Yoqa and smoke
         run: |
