@@ -16,7 +16,7 @@ Dogfood unpublished `@yoqa/cli` against a real Expo Android binary on GitHub-hos
 ## What shipped
 
 - Expo SDK 57 TypeScript app, bundle / application id `ai.yoqa.demo`, Home + Greeting screens with `accessibilityLabel`.
-- [`.github/workflows/demo-expo-e2e.yml`](../../.github/workflows/demo-expo-e2e.yml) — `npx expo prebuild --platform android` then `npx expo run:android` on Ubuntu + KVM (API 35 x86_64).
+- [`.github/workflows/demo-expo-e2e.yml`](../../.github/workflows/demo-expo-e2e.yml) — `npx expo prebuild --platform android` then `npx expo run:android` on Ubuntu + KVM (API 34 x86_64).
 - Public Mintlify CI section + local-testing table updated to point at this example (hosted **device farm** remains “not yet”).
 
 Customer-equivalent (published CLI, not this repo’s workflow):
