@@ -3,6 +3,7 @@
 
 # Workflows & release automation
 .github/workflows/ @Aris-ngoy
+.github/actions/ @Aris-ngoy
 .github/dependabot.yml @Aris-ngoy
 
 # Desktop shell & packaging

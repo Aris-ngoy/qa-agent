@@ -46,6 +46,6 @@ Then install a build, `yoqa devices connect`, and run `examples/expo-demo/yoqa/c
 
 - `yoqa apps create` CLI + catalog / `yoqa runs create --mode script`
 - Agent mode in CI (provider secrets)
-- Composite action `yoqa/setup`
+- Composite action `yoqa/setup` — shipped as [`.github/actions/setup-yoqa`](../../.github/actions/setup-yoqa/action.yml); HTML catalog reports in [github-actions.md](./github-actions.md)
 - Making this workflow a required check
 - Extracting a standalone public example repo

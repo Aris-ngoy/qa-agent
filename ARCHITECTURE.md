@@ -103,7 +103,8 @@ cases list|get|create|update|delete
 flows list|get|create|update|delete
 tags <APP>
 builds list|create|delete
-runs create|list|get|delete
+runs create|list|get|wait|report|delete
+report [--latest] [--wait] [--github-summary]
 
 --json on read commands
 ```

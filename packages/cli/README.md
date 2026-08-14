@@ -18,4 +18,4 @@ yoqa serve
 
 Disable auto-start with `YOQA_NO_AUTOSTART=1`. Override the URL with `YOQA_RUNNER_HOST` / `YOQA_RUNNER_PORT` / `YOQA_RUNNER_URL`.
 
-See [CLI docs](https://yoqa.mintlify.app/docs/cli).
+See [CLI docs](https://yoqa.mintlify.app/docs/cli) and [GitHub Actions](https://yoqa.mintlify.app/docs/github-actions).

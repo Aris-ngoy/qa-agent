@@ -61,6 +61,7 @@
 							"docs/local-builds",
 							"docs/device-preparation",
 							"docs/cli",
+							"docs/github-actions",
 							"docs/manual-inspector"
 						]
 					},

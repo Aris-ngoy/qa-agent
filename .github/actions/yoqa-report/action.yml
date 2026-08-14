@@ -1,0 +1,77 @@
+name: Yoqa HTML report
+description: Export a Yoqa catalog-run HTML report, upload it as an artifact, and append a compact GitHub job summary.
+author: Yoqa
+inputs:
+  run-id:
+    description: Catalog run id from yoqa runs create / yoqa runs wait
+    required: true
+  output:
+    description: Path to write the HTML report
+    required: false
+    default: yoqa-report/index.html
+  artifact-name:
+    description: Name of the uploaded workflow artifact
+    required: false
+    default: yoqa-report
+  fail-on-error:
+    description: Fail this step when the run status is errored (after uploading the report)
+    required: false
+    default: "true"
+  base-url:
+    description: Runner base URL (optional; defaults to YOQA_RUNNER_URL / localhost:7420)
+    required: false
+    default: ""
+outputs:
+  run_id:
+    description: Catalog run id
+    value: ${{ steps.report.outputs.run_id }}
+  status:
+    description: Terminal run status (passed, errored, cancelled)
+    value: ${{ steps.report.outputs.status }}
+  report_path:
+    description: Path to the written HTML report
+    value: ${{ steps.report.outputs.report_path }}
+runs:
+  using: composite
+  steps:
+    - name: Generate HTML report
+      id: report
+      shell: bash
+      env:
+        YOQA_REPORT_BASE_URL: ${{ inputs.base-url }}
+      run: |
+        set -euo pipefail
+        if [ -n "${YOQA_REPORT_BASE_URL}" ]; then
+          yoqa report "${{ inputs.run-id }}" \
+            -o "${{ inputs.output }}" \
+            --github-summary \
+            --github-output \
+            --fail-on never \
+            --base-url "${YOQA_REPORT_BASE_URL}"
+        else
+          yoqa report "${{ inputs.run-id }}" \
+            -o "${{ inputs.output }}" \
+            --github-summary \
+            --github-output \
+            --fail-on never
+        fi
+
+    - name: Upload HTML report
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.output }}
+        if-no-files-found: error
+
+    - name: Fail on errored run
+      if: inputs.fail-on-error == 'true'
+      shell: bash
+      env:
+        YOQA_REPORT_STATUS: ${{ steps.report.outputs.status }}
+        YOQA_REPORT_RUN_ID: ${{ steps.report.outputs.run_id }}
+      run: |
+        set -euo pipefail
+        if [ "${YOQA_REPORT_STATUS}" = "errored" ]; then
+          echo "::error::Yoqa run ${YOQA_REPORT_RUN_ID} failed. Download the yoqa-report artifact for the HTML report."
+          exit 1
+        fi

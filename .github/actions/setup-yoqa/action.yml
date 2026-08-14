@@ -1,0 +1,40 @@
+name: Setup Yoqa CLI
+description: Install Bun, Node, and @yoqa/cli, then start the local runner via yoqa health.
+author: Yoqa
+inputs:
+  bun-version:
+    description: Bun version for @yoqa/runner
+    required: false
+    default: "1.2.23"
+  node-version:
+    description: Node.js version for the CLI and managed Appium
+    required: false
+    default: "22"
+  cli-version:
+    description: "@yoqa/cli version to install (npm dist-tag or semver). Use latest unless pinning."
+    required: false
+    default: latest
+runs:
+  using: composite
+  steps:
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    - name: Setup Node
+      uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install @yoqa/cli
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "${{ inputs.cli-version }}" = "latest" ]; then
+          npm install -g @yoqa/cli
+        else
+          npm install -g "@yoqa/cli@${{ inputs.cli-version }}"
+        fi
+        yoqa --version
+        yoqa health
