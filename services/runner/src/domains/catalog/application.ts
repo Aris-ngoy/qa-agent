@@ -266,6 +266,11 @@ export async function getAppByPrefix(prefix: string): Promise<CatalogApp | null>
 	if (!trimmed) return null;
 	const byPrefix = await db.query.apps.findFirst({ where: eq(apps.prefix, trimmed) });
 	if (byPrefix) return mapApp(byPrefix);
+	const slugged = slugifyPrefix(trimmed);
+	if (slugged !== trimmed) {
+		const bySlug = await db.query.apps.findFirst({ where: eq(apps.prefix, slugged) });
+		if (bySlug) return mapApp(bySlug);
+	}
 	return getApp(trimmed);
 }
 

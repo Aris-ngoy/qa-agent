@@ -9,7 +9,8 @@ Publish the same self-contained **HTML run report** from Demo Expo E2E that desk
 - Seed a local catalog in CI (`yoqa apps create` + a checked-in CaseScript) and run `yoqa runs create DEMO --cases 1 --mode script --wait`.
 - Extend CaseScript with **label/id taps** and **assert** so the smoke stays accessibility-based (no AI, no fragile coordinates).
 - Upload HTML via [`.github/actions/yoqa-report`](../../.github/actions/yoqa-report/action.yml). Artifact is on the **run** summary (`yoqa-expo-demo-*-report`), not the job log.
-- iOS: raise simulator session timeout to **10 minutes**, pin WDA `derivedDataPath` to `~/.yoqa/wda-sim` (cached), and precompile WDA in parallel with `expo run:ios`.
+- iOS: raise simulator session timeout to **10 minutes** and pin WDA `derivedDataPath` to `~/.yoqa/wda-sim` (cached). Do **not** compile WDA in parallel with `expo run:ios` (two `xcodebuild`s kill the Expo build).
+- CLI app lookup is **case-insensitive** (`DEMO` matches stored prefix `demo`).
 
 Rejected: generating a second HTML dialect from PNG folders; agent mode in CI; coordinate-only CaseScript.
 
@@ -18,12 +19,12 @@ Rejected: generating a second HTML dialect from PNG folders; agent mode in CI; c
 - CaseScript: `tap` may use `label` / `id`; new `assert` action (`visible` / `not-visible`).
 - CLI: `yoqa apps create`, `yoqa cases create|update --script-file`.
 - Demo: [`examples/expo-demo/yoqa/smoke.yoqa.json`](../../examples/expo-demo/yoqa/smoke.yoqa.json), [`seed-catalog.sh`](../../examples/expo-demo/yoqa/seed-catalog.sh). `ci-ios.sh` / `ci-android.sh` create a catalog run. [`ci-smoke.sh`](../../examples/expo-demo/yoqa/ci-smoke.sh) remains for connector-only local debugging.
-- Workflow: HTML artifact + Job Summary; iOS WDA prewarm + cache.
+- Workflow: HTML artifact + Job Summary; iOS WDA derivedData cache (compile happens on `yoqa devices connect` after the Expo build).
 
 ## How to verify
 
 ```bash
-bun test packages/runner-client/src/case-script.test.ts packages/runner-client/src/shell-script.test.ts packages/runner-client/src/script-format.test.ts packages/runner-client/src/run-report.test.ts services/runner/src/domains/runs/case-executor.test.ts
+bun test packages/cli/src/catalog-app.test.ts packages/runner-client/src/case-script.test.ts packages/runner-client/src/shell-script.test.ts packages/runner-client/src/script-format.test.ts packages/runner-client/src/run-report.test.ts services/runner/src/domains/runs/case-executor.test.ts
 ```
 
 GitHub: Actions → **Demo Expo E2E**. After a job finishes, open the **run** page → Artifacts → `yoqa-expo-demo-ios-report` or `yoqa-expo-demo-android-report` → `index.html`. Job Summary has the compact text report.
