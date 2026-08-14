@@ -12,10 +12,25 @@ function shellSingleQuote(value: string): string {
 
 function actionToShellLine(action: CaseScriptAction): string {
 	if (action.type === "tap") {
-		return `yoqa action tap --x ${Math.round(action.x)} --y ${Math.round(action.y)}`;
+		if (action.label) {
+			return `yoqa action tap --label ${shellSingleQuote(action.label)}`;
+		}
+		if (action.id) {
+			return `yoqa action tap --id ${shellSingleQuote(action.id)}`;
+		}
+		return `yoqa action tap --x ${Math.round(action.x ?? 0)} --y ${Math.round(action.y ?? 0)}`;
 	}
 	if (action.type === "type") {
 		return `yoqa action input --text ${shellSingleQuote(action.text)}`;
+	}
+	if (action.type === "assert") {
+		const timeoutSeconds =
+			action.timeoutMs != null ? Math.max(1, Math.round(action.timeoutMs / 1000)) : undefined;
+		const parts = ["yoqa", "assert", action.assertion, "--text", shellSingleQuote(action.text)];
+		if (timeoutSeconds != null) {
+			parts.push("--timeout", String(timeoutSeconds));
+		}
+		return parts.join(" ");
 	}
 	const seconds = Math.max(0.1, action.ms / 1000);
 	return `sleep ${seconds}`;

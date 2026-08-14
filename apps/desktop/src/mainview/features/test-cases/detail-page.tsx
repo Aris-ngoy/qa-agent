@@ -647,10 +647,15 @@ function formatScriptSavedAt(ms: number): string {
 
 function scriptActionSummary(action: CaseScriptAction): string {
 	if (action.type === "tap") {
-		return `Tap at (${Math.round(action.x)}, ${Math.round(action.y)})`;
+		if (action.label) return `Tap “${action.label}”`;
+		if (action.id) return `Tap #${action.id}`;
+		return `Tap at (${Math.round(action.x ?? 0)}, ${Math.round(action.y ?? 0)})`;
 	}
 	if (action.type === "type") {
 		return `Type “${action.text}”`;
+	}
+	if (action.type === "assert") {
+		return `Assert ${action.assertion}: “${action.text}”`;
 	}
 	return `Wait ${action.ms}ms`;
 }

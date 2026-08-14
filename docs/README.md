@@ -34,6 +34,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See `.cursor/rules/document-plan
 | [cli/npm-publish.md](./cli/npm-publish.md) | Public `@yoqa/cli` npm package + release workflow |
 | [cli/github-actions.md](./cli/github-actions.md) | `yoqa report` + composite actions for GitHub Actions HTML reports |
 | [cli/github-actions-expo.md](./cli/github-actions-expo.md) | Expo demo app + GitHub Actions device smoke for `@yoqa/cli` |
+| [cli/expo-e2e-catalog-report.md](./cli/expo-e2e-catalog-report.md) | Catalog script smoke + HTML artifacts + iOS WDA timeout |
 | [cli/headless-runner.md](./cli/headless-runner.md) | Headless `yoqa serve` / auto-start for CI |
 | [desktop/cli-and-agents.md](./desktop/cli-and-agents.md) | Settings CLI/skill install + full `yoqa` agent CLI |
 | [desktop/servers-and-doctor.md](./desktop/servers-and-doctor.md) | Servers panel + `yoqa doctor` diagnostics |

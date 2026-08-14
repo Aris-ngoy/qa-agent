@@ -295,13 +295,29 @@ export type CaseFlowStep = z.infer<typeof caseFlowStepSchema>;
 export const caseRunStatusSchema = z.union([z.literal("passed"), z.literal("errored")]);
 export type CaseRunStatus = z.infer<typeof caseRunStatusSchema>;
 
-export const caseScriptActionSchema = z.discriminatedUnion("type", [
-	z.object({
+const caseScriptTapSchema = z
+	.object({
 		type: z.literal("tap"),
-		x: z.number().min(0).max(1000),
-		y: z.number().min(0).max(1000),
+		x: z.number().min(0).max(1000).optional(),
+		y: z.number().min(0).max(1000).optional(),
+		/** Match a cleaned-tree element label (stable across screen sizes). */
+		label: z.string().min(1).optional(),
+		/** Match Android resource-id / iOS accessibility name. */
+		id: z.string().min(1).optional(),
 		reason: z.string().optional(),
-	}),
+	})
+	.superRefine((value, ctx) => {
+		const hasCoords = value.x != null && value.y != null;
+		if (!hasCoords && !value.label && !value.id) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "tap requires x/y or label or id",
+			});
+		}
+	});
+
+export const caseScriptActionSchema = z.union([
+	caseScriptTapSchema,
 	z.object({
 		type: z.literal("type"),
 		text: z.string(),
@@ -310,6 +326,13 @@ export const caseScriptActionSchema = z.discriminatedUnion("type", [
 	z.object({
 		type: z.literal("wait"),
 		ms: z.number().min(0).max(10_000),
+		reason: z.string().optional(),
+	}),
+	z.object({
+		type: z.literal("assert"),
+		assertion: z.union([z.literal("visible"), z.literal("not-visible")]).default("visible"),
+		text: z.string().min(1),
+		timeoutMs: z.number().min(0).max(120_000).optional(),
 		reason: z.string().optional(),
 	}),
 ]);

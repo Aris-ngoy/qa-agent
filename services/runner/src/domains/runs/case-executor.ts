@@ -1,5 +1,12 @@
-import type { ActionRequest, ActionResponse, CaseScript, CatalogCase } from "@yoqa/runner-client";
-import { performAction as defaultPerformAction } from "../devices/interaction";
+import {
+	type ActionRequest,
+	type ActionResponse,
+	type CaseScript,
+	type CatalogCase,
+	type ScreenElement,
+	screenHasText,
+} from "@yoqa/runner-client";
+import { performAction as defaultPerformAction, getScreen } from "../devices/interaction";
 import type { DeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import {
@@ -48,6 +55,7 @@ export type ScriptCaseDeps = {
 	isAborted: () => boolean;
 	appendStep: AppendCaseStep;
 	performAction?: PerformActionFn;
+	readScreen?: (session: DeviceSession) => Promise<{ elements?: ScreenElement[] }>;
 	clock?: CaseExecutorClock;
 	settleMs?: number;
 };
@@ -79,6 +87,12 @@ export async function executeScriptCase(
 	deps: ScriptCaseDeps,
 ): Promise<"passed" | "errored" | "cancelled"> {
 	const perform = deps.performAction ?? defaultPerformAction;
+	const readScreen =
+		deps.readScreen ??
+		(async (session) => {
+			const screen = await getScreen(session, { full: false });
+			return { elements: screen.elements };
+		});
 	const clock = deps.clock ?? defaultClock;
 	const settleMs = deps.settleMs ?? POST_ACTION_SETTLE_MS;
 
@@ -101,7 +115,12 @@ export async function executeScriptCase(
 			}
 
 			if (action.type === "tap") {
-				await perform(deps.session, { kind: "tap", x: action.x, y: action.y });
+				const tapBody: ActionRequest = { kind: "tap" };
+				if (action.label) tapBody.label = action.label;
+				if (action.id) tapBody.id = action.id;
+				if (action.x != null) tapBody.x = action.x;
+				if (action.y != null) tapBody.y = action.y;
+				await perform(deps.session, tapBody);
 				await clock.sleep(settleMs);
 				await deps.appendStep({
 					idx: stepIdx,
@@ -109,13 +128,15 @@ export async function executeScriptCase(
 						type: "tap",
 						x: action.x,
 						y: action.y,
+						label: action.label,
+						id: action.id,
 						reason: action.reason ?? "Replayed saved script tap",
 						thoughts: "Replaying the saved script without calling the AI agent.",
 					},
 					screenshotUri: shot.path,
 					ok: true,
 					latencyMs,
-					detail: action.reason ?? null,
+					detail: action.reason ?? action.label ?? action.id ?? null,
 				});
 			} else if (action.type === "type") {
 				await perform(deps.session, { kind: "input", text: action.text });
@@ -132,6 +153,42 @@ export async function executeScriptCase(
 					ok: true,
 					latencyMs,
 					detail: action.reason ?? null,
+				});
+			} else if (action.type === "assert") {
+				const timeoutMs = action.timeoutMs ?? 5_000;
+				const assertion = action.assertion;
+				const deadline = clock.now() + timeoutMs;
+				for (;;) {
+					if (deps.isAborted()) {
+						return "cancelled";
+					}
+					const screen = await readScreen(deps.session);
+					const found = screenHasText(screen.elements, action.text);
+					if (assertion === "visible" && found) break;
+					if (assertion === "not-visible" && !found) break;
+					if (clock.now() >= deadline) {
+						throw new Error(
+							assertion === "visible"
+								? `Expected visible text not found within ${Math.round(timeoutMs / 1000)}s: ${action.text}`
+								: `Unexpected text still visible after ${Math.round(timeoutMs / 1000)}s: ${action.text}`,
+						);
+					}
+					await clock.sleep(400);
+				}
+				await deps.appendStep({
+					idx: stepIdx,
+					action: {
+						type: "assert",
+						assertion,
+						text: action.text,
+						timeoutMs,
+						reason: action.reason ?? `Assert ${assertion}: ${action.text}`,
+						thoughts: "Replaying the saved script without calling the AI agent.",
+					},
+					screenshotUri: shot.path,
+					ok: true,
+					latencyMs,
+					detail: action.reason ?? `${assertion}: ${action.text}`,
 				});
 			} else {
 				const waitMs = Math.min(3000, Math.max(500, action.ms));

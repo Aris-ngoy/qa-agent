@@ -34,10 +34,12 @@ yoqa runtime ensure
 yoqa devices android --booted-only   # or: yoqa devices ios --booted-only
 yoqa devices connect <device-id> --platform android --app-package ai.yoqa.demo
 # yoqa devices connect <udid> --platform ios --bundle-id ai.yoqa.demo
-./yoqa/ci-smoke.sh
+./yoqa/seed-catalog.sh
+yoqa runs create DEMO --cases 1 --mode script --wait
+# or connector-only: ./yoqa/ci-smoke.sh
 ```
 
-`ci-smoke.sh` is the same script GitHub Actions runs: `yoqa assert` + `yoqa action --label` (no vision / agent). It writes a PNG after every action and assert to `artifacts/screenshots` (override with `YOQA_SMOKE_SHOTS`).
+CI runs the catalog CaseScript ([`yoqa/smoke.yoqa.json`](./yoqa/smoke.yoqa.json)): `assert` + `tap --label` (no vision / agent). Download `yoqa-expo-demo-*-report` from the GitHub Actions **run** Artifacts section for the HTML report. `ci-smoke.sh` is the same steps via `yoqa assert` / `yoqa action` for local debugging without a catalog.
 
 ## CI
 

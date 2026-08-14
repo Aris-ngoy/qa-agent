@@ -27,6 +27,7 @@ Use `yoqa` in GitHub Actions the same way as locally: wait for a catalog run to 
 **GitHub Actions**
 - [`.github/actions/setup-yoqa`](../../.github/actions/setup-yoqa/action.yml) — Bun + Node + `npm i -g @yoqa/cli` + `yoqa health`
 - [`.github/actions/yoqa-report`](../../.github/actions/yoqa-report/action.yml) — HTML file + artifact + job summary; optional fail after upload
+- [Demo Expo E2E](./github-actions-expo.md) uploads `yoqa-expo-demo-*-report` from catalog script runs
 
 ## How to verify
 
@@ -47,6 +48,5 @@ yoqa report --latest APP --format md -o /tmp/yoqa-report.md
 ## Follow-ups
 
 - Catalog import/export so CI does not need a pre-seeded `~/.yoqa/yoqa.db`
-- Wire `yoqa-report` into [Demo Expo E2E](./github-actions-expo.md) once that workflow uses catalog runs
 - Separate public `yoqa/setup` action repo
 - ZIP of raw PNGs / PDF (see [report-export.md](../runs/report-export.md))

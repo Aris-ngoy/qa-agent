@@ -36,4 +36,5 @@ capture_failure() {
 trap capture_failure ERR
 
 yoqa devices connect "$UDID" --platform ios --bundle-id ai.yoqa.demo
-bash examples/expo-demo/yoqa/ci-smoke.sh
+bash examples/expo-demo/yoqa/seed-catalog.sh
+yoqa runs create DEMO --cases 1 --mode script --wait --github-output

@@ -76,9 +76,18 @@ export function actionSummary(action: unknown): string {
 	if (!action || typeof action !== "object") return "Step";
 	const record = action as Record<string, unknown>;
 	const type = typeof record.type === "string" ? record.type : "step";
-	if (type === "tap") return "Tap";
+	if (type === "tap") {
+		if (typeof record.label === "string" && record.label.trim()) return `Tap: ${record.label}`;
+		if (typeof record.id === "string" && record.id.trim()) return `Tap #${record.id}`;
+		return "Tap";
+	}
 	if (type === "type") return `Type${typeof record.text === "string" ? `: ${record.text}` : ""}`;
 	if (type === "wait") return "Wait";
+	if (type === "assert") {
+		const assertion = typeof record.assertion === "string" ? record.assertion : "visible";
+		const text = typeof record.text === "string" ? record.text : "";
+		return text ? `Assert ${assertion}: ${text}` : `Assert ${assertion}`;
+	}
 	if (type === "verify") return "Verify";
 	if (type === "done") return "Done";
 	if (type === "fail") return "Failed";

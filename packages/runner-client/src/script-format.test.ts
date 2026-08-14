@@ -35,6 +35,19 @@ describe("formatCaseScriptShell", () => {
 		expect(out).toContain("yoqa action input --text 'it'\\''s ok'");
 		expect(out).toContain("sleep 1.5");
 	});
+
+	test("emits label taps and asserts", () => {
+		const out = formatCaseScriptShell({
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{ type: "assert", assertion: "visible", text: "Yoqa Demo", timeoutMs: 60_000 },
+				{ type: "tap", label: "Increment" },
+			],
+		});
+		expect(out).toContain("yoqa assert visible --text 'Yoqa Demo' --timeout 60");
+		expect(out).toContain("yoqa action tap --label 'Increment'");
+	});
 });
 
 describe("suggestedScriptBasename", () => {

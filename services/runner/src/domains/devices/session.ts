@@ -216,8 +216,14 @@ function looksLikePhysicalIosUdid(udid: string): boolean {
 }
 
 /** First simulator connect compiles WebDriverAgent; physical devices reuse a preinstalled WDA. */
-function iosSessionCreateTimeoutMs(deviceId: string): number {
-	return looksLikePhysicalIosUdid(deviceId) ? 60_000 : 240_000;
+export const PHYSICAL_IOS_SESSION_TIMEOUT_MS = 60_000;
+export const SIMULATOR_WDA_SESSION_TIMEOUT_MS = 600_000;
+const SIMULATOR_WDA_DERIVED_DATA = join(YOQA_ROOT, "wda-sim");
+
+export function iosSessionCreateTimeoutMs(deviceId: string): number {
+	return looksLikePhysicalIosUdid(deviceId)
+		? PHYSICAL_IOS_SESSION_TIMEOUT_MS
+		: SIMULATOR_WDA_SESSION_TIMEOUT_MS;
 }
 
 async function buildW3cCapabilities(
@@ -274,7 +280,7 @@ async function buildW3cCapabilities(
 				caps["appium:xcodeSigningId"] = "Apple Development";
 			}
 		}
-		// Simulator first-connect compiles WDA (often >60s on a cold CI runner).
+		// Simulator first-connect compiles WDA (often several minutes on a cold CI runner).
 		const wdaTimeoutMs = iosSessionCreateTimeoutMs(options.deviceId);
 		if (caps["appium:wdaLaunchTimeout"] === undefined) {
 			caps["appium:wdaLaunchTimeout"] = wdaTimeoutMs;
@@ -284,6 +290,10 @@ async function buildW3cCapabilities(
 		}
 		if (caps["appium:waitForIdleTimeout"] === undefined) {
 			caps["appium:waitForIdleTimeout"] = 0;
+		}
+		if (!physical && caps["appium:derivedDataPath"] === undefined) {
+			await mkdir(SIMULATOR_WDA_DERIVED_DATA, { recursive: true });
+			caps["appium:derivedDataPath"] = SIMULATOR_WDA_DERIVED_DATA;
 		}
 	}
 

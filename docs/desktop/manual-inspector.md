@@ -55,7 +55,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 
 - All Commands catalog + View Docs links
 - `scrollUntilVisible`, `copyTextFrom`, `extendedWaitUntil`
-- CaseScript support for assert / swipe / double / long-press / activate-app / open-url / screenshot
+- CaseScript support for swipe / double / long-press / activate-app / open-url / screenshot
 - Foreground-app awareness for `activateApp` prefill (catalog app vs visible process after deeplink)
 - Maestro-style relational matching (`above` / `below` / `childOf`) and optional `--index` on `yoqa action`
 
