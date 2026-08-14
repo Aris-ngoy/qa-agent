@@ -88,6 +88,40 @@ describe("executeScriptCase", () => {
 		expect(steps[1]?.action).toMatchObject({ type: "done" });
 	});
 
+	it("replays label taps and visible asserts", async () => {
+		const actions: ActionRequest[] = [];
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{ type: "assert", assertion: "visible", text: "Yoqa Demo", timeoutMs: 5_000 },
+				{ type: "tap", label: "Increment" },
+			],
+		};
+
+		const status = await executeScriptCase({
+			script,
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			performAction: async (_session, body) => {
+				actions.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			readScreen: async () => ({
+				elements: [{ label: "Yoqa Demo", type: "Text", x: 0, y: 0, width: 10, height: 10 }],
+			}),
+			clock: {
+				sleep: async () => {},
+				now: () => 1000,
+			},
+			settleMs: 0,
+		});
+
+		expect(status).toBe("passed");
+		expect(actions).toEqual([{ kind: "tap", label: "Increment" }]);
+	});
+
 	it("cancels mid-loop when aborted", async () => {
 		let shots = 0;
 		const script: CaseScript = {

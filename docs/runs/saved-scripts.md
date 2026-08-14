@@ -6,7 +6,8 @@ After a successful AI agent run, persist a replayable script on the test case so
 
 ## Plan summary
 
-- Store a versioned `CaseScript` (tap / type / wait actions) on each case.
+- Store a versioned `CaseScript` (tap / type / wait / assert actions) on each case.
+- Tap may use coordinates **or** a stable `label` / `id` (resolved against the cleaned tree at replay).
 - Auto-save after a **passed agent** run (overwrite previous script).
 - `createRun.executionMode`: `auto` | `script` | `agent`.
 - Per case: script mode if a script exists (unless forced to agent); otherwise agent.
@@ -20,7 +21,7 @@ Rejected for this slice: structured per-step visual editor, invalidating scripts
 ## What shipped
 
 **Client (`@yoqa/runner-client`)**
-- `caseScriptSchema` / `CaseScript`
+- `caseScriptSchema` / `CaseScript` — tap (x/y, `label`, or `id`), type, wait, and assert
 - `CatalogCase.hasScript`, `scriptSavedAt`, `script`
 - `UpdateCaseRequest.script` (`null` clears)
 - `formatCaseScriptJson` / `formatCaseScriptShell` / `suggestedScriptBasename`

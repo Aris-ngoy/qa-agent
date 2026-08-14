@@ -10,8 +10,13 @@ import {
 describe("actionSummary", () => {
 	test("maps known action types", () => {
 		expect(actionSummary({ type: "tap" })).toBe("Tap");
+		expect(actionSummary({ type: "tap", label: "Increment" })).toBe("Tap: Increment");
+		expect(actionSummary({ type: "tap", id: "submit" })).toBe("Tap #submit");
 		expect(actionSummary({ type: "type", text: "hi" })).toBe("Type: hi");
 		expect(actionSummary({ type: "wait" })).toBe("Wait");
+		expect(actionSummary({ type: "assert", assertion: "visible", text: "Yoqa Demo" })).toBe(
+			"Assert visible: Yoqa Demo",
+		);
 		expect(actionSummary({ type: "fail" })).toBe("Failed");
 		expect(actionSummary({ type: "input", text: "x" })).toBe("Input: x");
 	});

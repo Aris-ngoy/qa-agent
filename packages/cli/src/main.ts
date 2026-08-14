@@ -1,11 +1,13 @@
 import { readFile } from "node:fs/promises";
 import {
+	type ActionRequest,
 	type DevicePlatform,
 	WaitForRunTimeoutError,
 	caseScriptSchema,
 	createRunnerClient,
 	formatAssertShellLine,
 	runYoqaShellScript,
+	screenHasText,
 	waitForRun,
 } from "@yoqa/runner-client";
 import { Command } from "commander";
@@ -106,6 +108,15 @@ async function resolveAppId(
 		throw new Error(`App not found: ${prefixOrId}. Run: yoqa apps list`);
 	}
 	return { id: match.id, prefix: match.prefix, name: match.name };
+}
+
+async function loadCaseScriptFile(file: string) {
+	const raw = await readFile(file, "utf8");
+	const parsed = caseScriptSchema.safeParse(JSON.parse(raw) as unknown);
+	if (!parsed.success) {
+		throw new Error(`Invalid CaseScript: ${parsed.error.message}`);
+	}
+	return parsed.data;
 }
 
 async function handleReportCommand(
@@ -837,6 +848,44 @@ appsCmd
 	});
 
 appsCmd
+	.command("create")
+	.description("Create a local catalog app")
+	.requiredOption("--name <name>", "Display name")
+	.option("--prefix <prefix>", "CLI prefix (allocated from name when omitted)")
+	.option("--ios-bundle-id <id>", "iOS bundle id")
+	.option("--android-application-id <id>", "Android application id")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(
+		async (options: {
+			baseUrl: string;
+			name: string;
+			prefix?: string;
+			iosBundleId?: string;
+			androidApplicationId?: string;
+			json?: boolean;
+		}) => {
+			try {
+				const c = client(options.baseUrl);
+				let app = await c.createApp({ name: options.name, prefix: options.prefix });
+				if (options.iosBundleId || options.androidApplicationId) {
+					app = await c.updateApp(app.id, {
+						iosBundleId: options.iosBundleId,
+						androidApplicationId: options.androidApplicationId,
+					});
+				}
+				if (options.json) {
+					console.log(JSON.stringify(app, null, 2));
+					return;
+				}
+				console.log(`created ${app.prefix}`);
+			} catch (error) {
+				fail("apps create", error);
+			}
+		},
+	);
+
+appsCmd
 	.command("get")
 	.argument("<app>", "App prefix or id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
@@ -966,26 +1015,37 @@ casesCmd
 	.command("create")
 	.argument("<app>", "App prefix or id")
 	.requiredOption("--title <title>", "Case title")
+	.option("--script-file <path>", "Path to a .yoqa.json CaseScript to attach")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (appArg: string, options: { baseUrl: string; title: string; json?: boolean }) => {
-		try {
-			const c = client(options.baseUrl);
-			const resolved = await resolveAppId(c, appArg);
-			const created = await c.createCase(resolved.id, {
-				name: options.title,
-				flows: [],
-				tags: [],
-			});
-			if (options.json) {
-				console.log(JSON.stringify(created, null, 2));
-				return;
+	.action(
+		async (
+			appArg: string,
+			options: { baseUrl: string; title: string; scriptFile?: string; json?: boolean },
+		) => {
+			try {
+				const c = client(options.baseUrl);
+				const resolved = await resolveAppId(c, appArg);
+				let created = await c.createCase(resolved.id, {
+					name: options.title,
+					flows: [],
+					tags: [],
+				});
+				if (options.scriptFile) {
+					created = await c.updateCase(created.id, {
+						script: await loadCaseScriptFile(options.scriptFile),
+					});
+				}
+				if (options.json) {
+					console.log(JSON.stringify(created, null, 2));
+					return;
+				}
+				console.log(`created #${created.number} ${created.name}`);
+			} catch (error) {
+				fail("cases create", error);
 			}
-			console.log(`created #${created.number} ${created.name}`);
-		} catch (error) {
-			fail("cases create", error);
-		}
-	});
+		},
+	);
 
 casesCmd
 	.command("update")
@@ -993,12 +1053,13 @@ casesCmd
 	.argument("<number>", "Case number", (v) => Number(v))
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--title <title>", "New title")
+	.option("--script-file <path>", "Path to a .yoqa.json CaseScript to attach")
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
 			appArg: string,
 			number: number,
-			options: { baseUrl: string; title?: string; json?: boolean },
+			options: { baseUrl: string; title?: string; scriptFile?: string; json?: boolean },
 		) => {
 			try {
 				const c = client(options.baseUrl);
@@ -1006,7 +1067,10 @@ casesCmd
 				const cases = await c.listCases(resolved.id);
 				const found = cases.find((item) => item.number === number);
 				if (!found) throw new Error(`Case #${number} not found`);
-				const updated = await c.updateCase(found.id, { name: options.title });
+				const updated = await c.updateCase(found.id, {
+					name: options.title,
+					script: options.scriptFile ? await loadCaseScriptFile(options.scriptFile) : undefined,
+				});
 				if (options.json) {
 					console.log(JSON.stringify(updated, null, 2));
 					return;
@@ -1522,19 +1586,13 @@ scriptCmd
 	.option("--json", "Print raw JSON per step")
 	.action(async (file: string, options: { baseUrl: string; json?: boolean }) => {
 		try {
-			const raw = await readFile(file, "utf8");
-			const parsed = caseScriptSchema.safeParse(JSON.parse(raw) as unknown);
-			if (!parsed.success) {
-				throw new Error(`Invalid CaseScript: ${parsed.error.message}`);
-			}
-
+			const script = await loadCaseScriptFile(file);
 			const c = client(options.baseUrl);
 			const active = await c.getActiveDevice();
 			if (!active) {
 				throw new Error("No active device session. Connect first: yoqa devices connect <id>");
 			}
 
-			const script = parsed.data;
 			let idx = 0;
 			for (const action of script.actions) {
 				idx += 1;
@@ -1549,9 +1607,53 @@ scriptCmd
 					continue;
 				}
 
+				if (action.type === "assert") {
+					const timeoutMs = action.timeoutMs ?? 5_000;
+					const deadline = Date.now() + timeoutMs;
+					for (;;) {
+						const screen = await c.getScreen();
+						const found = screenHasText(screen.elements, action.text);
+						if (action.assertion === "visible" && found) break;
+						if (action.assertion === "not-visible" && !found) break;
+						if (Date.now() >= deadline) {
+							throw new Error(
+								action.assertion === "visible"
+									? `Expected visible text not found within ${Math.round(timeoutMs / 1000)}s: ${action.text}`
+									: `Unexpected text still visible after ${Math.round(timeoutMs / 1000)}s: ${action.text}`,
+							);
+						}
+						await sleep(400);
+					}
+					if (options.json) {
+						console.log(
+							JSON.stringify(
+								{
+									ok: true,
+									kind: "assert",
+									assertion: action.assertion,
+									text: action.text,
+									step: idx,
+								},
+								null,
+								2,
+							),
+						);
+					} else {
+						console.log(`ok assert ${action.assertion} (${idx}/${script.actions.length})`);
+					}
+					continue;
+				}
+
+				const tapBody: ActionRequest = { kind: "tap" };
+				if (action.type === "tap") {
+					if (action.label) tapBody.label = action.label;
+					if (action.id) tapBody.id = action.id;
+					if (action.x != null) tapBody.x = action.x;
+					if (action.y != null) tapBody.y = action.y;
+				}
 				const body =
 					action.type === "tap"
-						? await c.performAction({ kind: "tap", x: action.x, y: action.y })
+						? await c.performAction(tapBody)
 						: await c.performAction({ kind: "input", text: action.text });
 
 				if (options.json) {

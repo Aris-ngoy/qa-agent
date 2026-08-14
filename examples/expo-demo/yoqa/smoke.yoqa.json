@@ -1,0 +1,52 @@
+{
+	"version": 1,
+	"savedAt": 1,
+	"actions": [
+		{
+			"type": "assert",
+			"assertion": "visible",
+			"text": "Yoqa Demo",
+			"timeoutMs": 60000,
+			"reason": "Home screen is visible"
+		},
+		{
+			"type": "tap",
+			"label": "Increment",
+			"reason": "Increment the counter"
+		},
+		{
+			"type": "assert",
+			"assertion": "visible",
+			"text": "Count: 1",
+			"timeoutMs": 15000,
+			"reason": "Counter shows 1"
+		},
+		{
+			"type": "tap",
+			"label": "Open greeting",
+			"reason": "Open the greeting screen"
+		},
+		{
+			"type": "tap",
+			"label": "Name",
+			"reason": "Focus the name field"
+		},
+		{
+			"type": "type",
+			"text": "Ada",
+			"reason": "Type Ada"
+		},
+		{
+			"type": "tap",
+			"label": "Submit",
+			"reason": "Submit the greeting"
+		},
+		{
+			"type": "assert",
+			"assertion": "visible",
+			"text": "Hello, Ada",
+			"timeoutMs": 15000,
+			"reason": "Greeting shows Hello, Ada"
+		}
+	]
+}

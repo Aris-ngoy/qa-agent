@@ -574,7 +574,7 @@ export type ShellToCaseScriptOptions = {
 
 export type ShellToCaseScriptResult = {
 	script: CaseScript | null;
-	/** Steps that could not be represented in CaseScript (assert, swipe, unresolved id, …). */
+	/** Steps that could not be represented in CaseScript (swipe, unresolved coords, …). */
 	warnings: string[];
 	/** Parse errors from the shell script. */
 	errors: Array<{ lineNumber: number; raw: string; message: string }>;
@@ -608,8 +608,8 @@ function resolveTapPoint(
 
 /**
  * Convert an inspector / yoqa shell script into a CaseScript for catalog replay.
- * Supports tap (x/y or resolvable id/label), input→type (+ focus tap when coords known), sleep→wait.
- * Skips assert, swipe, drag, double/long-press nuances, and unresolved selectors (reported as warnings).
+ * Supports tap (x/y, id, or label), input→type (+ focus tap when coords known), sleep→wait, assert.
+ * Skips swipe, drag, double/long-press nuances, and unresolved coordinate-only selectors.
  */
 export function shellToCaseScript(
 	text: string,
@@ -635,7 +635,12 @@ export function shellToCaseScript(
 		}
 
 		if (step.kind === "assert") {
-			warnings.push(`L${step.lineNumber}: assert not supported in CaseScript — skipped`);
+			actions.push({
+				type: "assert",
+				assertion: step.assertion,
+				text: step.text,
+				timeoutMs: Math.round(step.timeoutSeconds * 1000),
+			});
 			continue;
 		}
 
@@ -651,6 +656,14 @@ export function shellToCaseScript(
 			}
 			if (action.durationMs != null && action.durationMs > 50) {
 				warnings.push(`L${step.lineNumber}: long-press saved as a normal tap`);
+			}
+			if (action.label) {
+				actions.push({ type: "tap", label: action.label });
+				continue;
+			}
+			if (action.id) {
+				actions.push({ type: "tap", id: action.id });
+				continue;
 			}
 			const point = resolveTapPoint(action, elements);
 			if (!point) {

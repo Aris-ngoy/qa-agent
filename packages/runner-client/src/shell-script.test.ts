@@ -160,7 +160,7 @@ describe("element helpers", () => {
 });
 
 describe("shellToCaseScript", () => {
-	test("converts tap/input/sleep and skips assert with warning", () => {
+	test("converts tap/input/sleep/assert and clamps long waits", () => {
 		const result = shellToCaseScript(
 			`
 yoqa action tap --x 100 --y 200
@@ -180,25 +180,27 @@ sleep 15
 				{ type: "tap", x: 100, y: 200 },
 				{ type: "type", text: "hello" },
 				{ type: "wait", ms: 2000 },
+				{ type: "assert", assertion: "visible", text: "Done", timeoutMs: 5000 },
 				{ type: "wait", ms: 10_000 },
 			],
 		});
-		expect(result.warnings.some((w) => w.includes("assert not supported"))).toBe(true);
 		expect(result.warnings.some((w) => w.includes("clamped to 10s"))).toBe(true);
 	});
 
-	test("resolves tap by id against live elements", () => {
+	test("keeps tap by id without requiring a live element tree", () => {
 		const result = shellToCaseScript("yoqa action tap --id get_bonus", {
 			elements: [button],
 			savedAt: 42,
 		});
-		expect(result.script?.actions).toEqual([{ type: "tap", x: 200, y: 240 }]);
+		expect(result.script?.actions).toEqual([{ type: "tap", id: "get_bonus" }]);
 	});
 
-	test("returns null script when nothing convertible remains", () => {
-		const result = shellToCaseScript(`yoqa assert visible --text 'Nope'`);
-		expect(result.script).toBeNull();
-		expect(result.warnings.length).toBeGreaterThan(0);
+	test("converts assert-only scripts", () => {
+		const result = shellToCaseScript(`yoqa assert visible --text 'Nope'`, { savedAt: 1 });
+		expect(result.script?.actions).toEqual([
+			{ type: "assert", assertion: "visible", text: "Nope", timeoutMs: 5000 },
+		]);
+		expect(result.warnings).toEqual([]);
 	});
 
 	test("skips screenshot steps when converting to CaseScript", () => {
@@ -211,20 +213,19 @@ yoqa screenshot '/tmp/x.png'
 		expect(result.warnings.filter((w) => w.includes("screenshot")).length).toBe(2);
 	});
 
-	test("tap with id and x/y converts without a live element tree", () => {
+	test("prefers id over coordinates when both are present", () => {
 		const result = shellToCaseScript("yoqa action tap --id Note --x 120 --y 340", {
 			elements: [],
 			savedAt: 7,
 		});
 		expect(result.errors).toEqual([]);
-		expect(result.script?.actions).toEqual([{ type: "tap", x: 120, y: 340 }]);
+		expect(result.script?.actions).toEqual([{ type: "tap", id: "Note" }]);
 		expect(result.warnings).toEqual([]);
 	});
 
-	test("tap with id only cannot convert when the element is gone from the tree", () => {
+	test("keeps tap by id when the element is gone from the tree", () => {
 		const result = shellToCaseScript("yoqa action tap --id Note", { elements: [] });
-		expect(result.script).toBeNull();
-		expect(result.warnings.some((w) => w.includes("tap needs"))).toBe(true);
+		expect(result.script?.actions).toEqual([{ type: "tap", id: "Note" }]);
 	});
 
 	test("inspector-style tap lines with id and coordinates convert for Save as test case", () => {
@@ -239,6 +240,6 @@ yoqa screenshot '/tmp/x.png'
 		expect(line).toContain("--id");
 		expect(line).toContain("--x");
 		expect(line).toContain("--y");
-		expect(result.script?.actions).toEqual([{ type: "tap", x: 180, y: 420 }]);
+		expect(result.script?.actions).toEqual([{ type: "tap", label: "All iCloud" }]);
 	});
 });

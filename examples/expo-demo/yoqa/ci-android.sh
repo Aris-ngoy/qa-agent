@@ -60,4 +60,5 @@ for _ in $(seq 1 20); do
 done
 
 yoqa devices connect "$SERIAL" --platform android --app-package ai.yoqa.demo
-bash examples/expo-demo/yoqa/ci-smoke.sh
+bash examples/expo-demo/yoqa/seed-catalog.sh
+yoqa runs create DEMO --cases 1 --mode script --wait --github-output

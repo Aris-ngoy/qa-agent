@@ -85,7 +85,9 @@ jobs:
       - name: Cache Yoqa Appium runtime
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.yoqa/runtime
+          path: |
+            ~/.yoqa/runtime
+            ~/.yoqa/wda-sim
           key: yoqa-runtime-${{ runner.os }}-${{ hashFiles('services/runner/package.json') }}
           restore-keys: yoqa-runtime-${{ runner.os }}-
 
@@ -130,6 +132,13 @@ jobs:
               fh.write(f"udid={udid}\n")
           PY
 
+      - name: Precompile WebDriverAgent
+        run: |
+          mkdir -p artifacts
+          nohup yoqa devices connect "${{ steps.sim.outputs.udid }}" --platform ios \
+            >artifacts/wda-prewarm.log 2>&1 &
+          echo $! >artifacts/wda-prewarm.pid
+
       - name: Prebuild iOS (Expo CLI)
         working-directory: examples/expo-demo
         env:
@@ -147,8 +156,28 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           npx expo run:ios --configuration Release --device "${{ steps.sim.outputs.udid }}" --no-bundler
 
+      - name: Wait for WebDriverAgent precompile
+        if: always()
+        run: |
+          pid="$(cat artifacts/wda-prewarm.pid 2>/dev/null || true)"
+          if [ -n "$pid" ]; then
+            while kill -0 "$pid" 2>/dev/null; do sleep 5; done
+          fi
+          yoqa devices disconnect || true
+          echo "=== WDA prewarm log (tail) ==="
+          tail -n 80 artifacts/wda-prewarm.log || true
+
       - name: Connect Yoqa and smoke
+        id: smoke
         run: bash examples/expo-demo/yoqa/ci-ios.sh "${{ steps.sim.outputs.udid }}"
+
+      - name: Upload HTML report
+        if: always() && steps.smoke.outputs.run_id != ''
+        uses: ./.github/actions/yoqa-report
+        with:
+          run-id: ${{ steps.smoke.outputs.run_id }}
+          artifact-name: yoqa-expo-demo-ios-report
+          fail-on-error: "false"
 
       - name: Upload smoke screenshots
         if: always()
@@ -220,7 +249,9 @@ jobs:
       - name: Cache Yoqa Appium runtime
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.yoqa/runtime
+          path: |
+            ~/.yoqa/runtime
+            ~/.yoqa/wda-sim
           key: yoqa-runtime-${{ runner.os }}-${{ hashFiles('services/runner/package.json') }}
           restore-keys: yoqa-runtime-${{ runner.os }}-
 
@@ -238,6 +269,7 @@ jobs:
         run: npx expo prebuild --platform android
 
       - name: Build, install, and smoke on emulator
+        id: smoke
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
@@ -252,6 +284,14 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           # This action runs `script` with /bin/sh (dash on Ubuntu) — no pipefail.
           script: bash examples/expo-demo/yoqa/ci-android.sh
+
+      - name: Upload HTML report
+        if: always() && steps.smoke.outputs.run_id != ''
+        uses: ./.github/actions/yoqa-report
+        with:
+          run-id: ${{ steps.smoke.outputs.run_id }}
+          artifact-name: yoqa-expo-demo-android-report
+          fail-on-error: "false"
 
       - name: Upload smoke screenshots
         if: always()
