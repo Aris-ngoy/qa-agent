@@ -12,6 +12,7 @@ import {
 } from "@yoqa/runner-client";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
+import { findCatalogApp } from "./catalog-app";
 import { formatDoctorReport } from "./doctor-table";
 import {
 	commandChainIncludes,
@@ -103,7 +104,7 @@ async function resolveAppId(
 	prefixOrId: string,
 ): Promise<{ id: string; prefix: string; name: string }> {
 	const apps = await c.listApps();
-	const match = apps.find((a) => a.prefix === prefixOrId) ?? apps.find((a) => a.id === prefixOrId);
+	const match = findCatalogApp(apps, prefixOrId);
 	if (!match) {
 		throw new Error(`App not found: ${prefixOrId}. Run: yoqa apps list`);
 	}
