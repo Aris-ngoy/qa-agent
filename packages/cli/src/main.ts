@@ -1,14 +1,12 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import {
 	type DevicePlatform,
-	buildRunReportFromCatalogRun,
+	WaitForRunTimeoutError,
 	caseScriptSchema,
 	createRunnerClient,
 	formatAssertShellLine,
-	formatRunReportHtml,
-	formatRunReportMarkdown,
 	runYoqaShellScript,
-	suggestedRunReportBasename,
+	waitForRun,
 } from "@yoqa/runner-client";
 import { Command } from "commander";
 import packageJson from "../package.json" with { type: "json" };
@@ -21,6 +19,18 @@ import {
 	shouldSkipAutostart,
 	stopOwnedRunner,
 } from "./ensure-runner";
+import {
+	DEFAULT_RUN_WAIT_TIMEOUT_SECONDS,
+	type ReportCommandOptions,
+	attachGithubOutputOptions,
+	attachReportCommandOptions,
+	createWaitStatusLogger,
+	exportCatalogRunReport,
+	maybeWriteGithubRunOutput,
+	parseTimeoutSeconds,
+	resolveReportRunId,
+	shouldFailOnRunStatus,
+} from "./report";
 
 function runnerBaseUrl(): string {
 	return runnerBaseUrlFromEnv();
@@ -96,6 +106,27 @@ async function resolveAppId(
 		throw new Error(`App not found: ${prefixOrId}. Run: yoqa apps list`);
 	}
 	return { id: match.id, prefix: match.prefix, name: match.name };
+}
+
+async function handleReportCommand(
+	commandLabel: string,
+	runIdArg: string | undefined,
+	options: ReportCommandOptions,
+): Promise<void> {
+	try {
+		const c = client(options.baseUrl);
+		let latestAppId: string | undefined;
+		if (options.latest) {
+			latestAppId = (await resolveAppId(c, options.latest)).id;
+		}
+		const runId = await resolveReportRunId(c, runIdArg, latestAppId, options.latest ?? "");
+		const result = await exportCatalogRunReport(c, runId, options, {
+			onWaitStatus: createWaitStatusLogger(),
+		});
+		if (result.shouldFail) process.exitCode = 1;
+	} catch (error) {
+		fail(commandLabel, error);
+	}
 }
 
 // --- health / status ---
@@ -1244,6 +1275,16 @@ buildsCmd
 
 // --- runs ---
 
+attachReportCommandOptions(
+	program
+		.command("report")
+		.description("Export a detailed HTML or Markdown report with step screenshots"),
+)
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.action(async (runId: string | undefined, options: ReportCommandOptions) => {
+		await handleReportCommand("report", runId, options);
+	});
+
 const runsCmd = program.command("runs").description("Create and inspect local agent runs");
 
 runsCmd
@@ -1289,80 +1330,59 @@ runsCmd
 		}
 	});
 
-runsCmd
-	.command("report")
-	.description("Export a detailed HTML or Markdown report with step screenshots")
-	.argument("<runId>", "Run id")
-	.option("--format <format>", "html | md (default: html)", "html")
-	.option("-o, --output <path>", "Output file path (default: yoqa-run-<id>-<status>.html|md)")
+attachReportCommandOptions(
+	runsCmd
+		.command("report")
+		.description("Export a detailed HTML or Markdown report with step screenshots"),
+)
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.action(async (runId: string, options: { baseUrl: string; format: string; output?: string }) => {
-		try {
-			const format =
-				options.format === "md" || options.format === "markdown" ? "md" : options.format;
-			if (format !== "html" && format !== "md") {
-				throw new Error("--format must be html or md");
-			}
-
-			const c = client(options.baseUrl);
-			const run = await c.getRun(runId);
-			if (run.status === "queued" || run.status === "running") {
-				throw new Error(
-					`Run is still ${run.status}. Wait until it finishes (passed / errored / cancelled).`,
-				);
-			}
-
-			const screenshotsByStepId: Record<string, string> = {};
-			const steps = run.tests.flatMap((test) => test.steps ?? []);
-			await Promise.all(
-				steps.map(async (step) => {
-					if (!step.screenshotUri) return;
-					const response = await fetch(c.getRunStepScreenshotUrl(run.id, step.id));
-					if (!response.ok) return;
-					const bytes = new Uint8Array(await response.arrayBuffer());
-					screenshotsByStepId[step.id] = Buffer.from(bytes).toString("base64");
-				}),
-			);
-
-			const apps = await c.listApps();
-			const app = apps.find((row) => row.id === run.appId);
-			const cases = await c.listCases(run.appId);
-			const caseTitles: Record<string, string> = {};
-			for (const item of cases) {
-				caseTitles[item.id] = `#${item.number} ${item.name}`;
-			}
-
-			let deviceLabel: string | null = run.deviceId;
-			try {
-				const devices = await c.listDevices(run.platform, { includeUnavailable: true });
-				const device = devices.devices.find((row) => row.id === run.deviceId);
-				if (device) {
-					deviceLabel = `${device.name} · ${run.platform} ${device.osVersion}`;
-				}
-			} catch {
-				/* device lookup optional */
-			}
-
-			const doc = buildRunReportFromCatalogRun(
-				run,
-				{
-					appLabel: app ? `${app.prefix} — ${app.name}` : run.appId,
-					deviceLabel,
-					caseTitles,
-				},
-				screenshotsByStepId,
-			);
-
-			const contents = format === "html" ? formatRunReportHtml(doc) : formatRunReportMarkdown(doc);
-			const extension = format === "html" ? "html" : "md";
-			const outputPath =
-				options.output?.trim() || `${suggestedRunReportBasename(doc)}.${extension}`;
-			await writeFile(outputPath, contents, "utf8");
-			console.log(`wrote ${outputPath} (${doc.status}, ${steps.length} steps)`);
-		} catch (error) {
-			fail("runs report", error);
-		}
+	.action(async (runId: string | undefined, options: ReportCommandOptions) => {
+		await handleReportCommand("runs report", runId, options);
 	});
+
+attachGithubOutputOptions(
+	runsCmd
+		.command("wait")
+		.description("Wait until a catalog run finishes")
+		.argument("<runId>", "Run id")
+		.option(
+			"--timeout <seconds>",
+			"Wait timeout in seconds (default: 1800)",
+			String(DEFAULT_RUN_WAIT_TIMEOUT_SECONDS),
+		),
+)
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(
+		async (
+			runId: string,
+			options: {
+				baseUrl: string;
+				timeout?: string;
+				githubOutput?: boolean;
+				json?: boolean;
+			},
+		) => {
+			try {
+				const finished = await waitForRun(client(options.baseUrl), runId, {
+					timeoutMs: parseTimeoutSeconds(options.timeout) * 1000,
+					onStatus: createWaitStatusLogger(),
+				});
+				await maybeWriteGithubRunOutput(finished, options.githubOutput);
+				if (options.json) {
+					console.log(JSON.stringify(finished, null, 2));
+				} else {
+					console.log(`${finished.id} ${finished.status}`);
+				}
+				if (shouldFailOnRunStatus("errored", finished.status)) process.exitCode = 1;
+			} catch (error) {
+				if (error instanceof WaitForRunTimeoutError && error.lastRun) {
+					await maybeWriteGithubRunOutput(error.lastRun, options.githubOutput);
+				}
+				fail("runs wait", error);
+			}
+		},
+	);
 
 runsCmd
 	.command("delete")
@@ -1388,6 +1408,14 @@ runsCmd
 	.option("--mode <mode>", "auto | script | agent (default: auto)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--wait", "Wait until the run finishes (passed / errored / cancelled)")
+	.option(
+		"--timeout <seconds>",
+		"Wait timeout in seconds (default: 1800)",
+		String(DEFAULT_RUN_WAIT_TIMEOUT_SECONDS),
+	)
+	.option("--github-output", "Write run_id and status to $GITHUB_OUTPUT")
+	.option("--no-github-output", "Do not write GitHub step outputs")
 	.action(
 		async (
 			appArg: string,
@@ -1400,6 +1428,9 @@ runsCmd
 				buildPath?: string;
 				mode?: string;
 				json?: boolean;
+				wait?: boolean;
+				timeout?: string;
+				githubOutput?: boolean;
 			},
 		) => {
 			try {
@@ -1443,7 +1474,7 @@ runsCmd
 					throw new Error("--mode must be auto, script, or agent");
 				}
 
-				const run = await c.createRun({
+				let run = await c.createRun({
 					appId: resolved.id,
 					caseIds,
 					deviceId,
@@ -1452,11 +1483,28 @@ runsCmd
 					buildPath: options.buildPath,
 					executionMode,
 				});
+				if (options.wait) {
+					try {
+						run = await waitForRun(c, run.id, {
+							timeoutMs: parseTimeoutSeconds(options.timeout) * 1000,
+							onStatus: createWaitStatusLogger(),
+						});
+					} catch (error) {
+						if (error instanceof WaitForRunTimeoutError && error.lastRun) {
+							await maybeWriteGithubRunOutput(error.lastRun, options.githubOutput);
+						}
+						throw error;
+					}
+				}
+				await maybeWriteGithubRunOutput(run, options.githubOutput);
 				if (options.json) {
 					console.log(JSON.stringify(run, null, 2));
-					return;
+				} else {
+					console.log(`created ${run.id} (${run.status})`);
 				}
-				console.log(`created ${run.id} (${run.status})`);
+				if (options.wait && shouldFailOnRunStatus("errored", run.status)) {
+					process.exitCode = 1;
+				}
 			} catch (error) {
 				fail("runs create", error);
 			}

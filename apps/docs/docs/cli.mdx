@@ -70,6 +70,8 @@ Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later s
 
 This repo also ships a full device smoke against an Expo fixture (builds CLI from source, iOS Simulator on `macos-26` + Android Emulator on Ubuntu + KVM, no AI provider): see the **Demo Expo E2E** workflow and `examples/expo-demo`. Copy that YAML if you want `yoqa assert` / `yoqa action --label` in your own app repo. Each action writes a screenshot under `artifacts/screenshots`.
 
+For catalog runs plus the same HTML report as desktop **Export HTML**, see [GitHub Actions](/docs/github-actions) (`yoqa report`, `setup-yoqa` / `yoqa-report` composite actions).
+
 ```bash
 yoqa serve                 # foreground (use `yoqa serve &` or a service step)
 yoqa serve --stop          # SIGTERM a runner this CLI started (~/.yoqa/runner.pid)
@@ -172,10 +174,12 @@ yoqa tags APP
 yoqa builds list APP
 yoqa builds create APP --path ./MyApp.app
 
-yoqa runs list
+yoqa runs list APP
 yoqa runs get <run-id>
-yoqa runs create ...          # start cases on the active device
-yoqa runs report <run-id>     # export HTML / Markdown
+yoqa runs create APP --cases 1,2 --wait   # start cases; --wait blocks until finished
+yoqa runs wait <run-id>
+yoqa report <run-id>                      # HTML / Markdown (same as desktop Export)
+yoqa runs report <run-id>                 # alias of yoqa report
 yoqa runs delete <run-id>
 ```
 

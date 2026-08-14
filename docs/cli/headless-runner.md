@@ -42,14 +42,7 @@ Or a single terminal: `yoqa health` auto-starts the runner if Bun and `@yoqa/run
 GitHub Actions:
 
 ```yaml
-- uses: oven-sh/setup-bun@v2
-  with:
-    bun-version: "1.2.23"
-- uses: actions/setup-node@v4
-  with:
-    node-version: "22"
-- run: npm i -g @yoqa/cli
-- run: yoqa health
+- uses: Aris-ngoy/qa-agent/.github/actions/setup-yoqa@main
 - run: yoqa doctor
 ```
 
@@ -58,6 +51,6 @@ Host Node/npm must be on `PATH` for managed Appium (`~/.yoqa/runtime`). Cache th
 ## Follow-ups
 
 - Optional native `yoqa-runner` binaries on GitHub Releases so CI can skip Bun.
-- Composite action `yoqa/setup`.
 - Cloud farm / public run API (ARCHITECTURE §2.8).
 - Device E2E in GitHub Actions against [`examples/expo-demo`](../../examples/expo-demo) — see [github-actions-expo.md](./github-actions-expo.md).
+- Composite actions + HTML report export — see [github-actions.md](./github-actions.md).

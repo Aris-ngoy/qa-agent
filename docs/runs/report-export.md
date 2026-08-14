@@ -11,13 +11,14 @@ Export a detailed end-to-end report for finished catalog runs and Manual Inspect
 - Inspector: capture per-step screenshots during full script runs into an ephemeral session report.
 - Formats: self-contained HTML (primary) and Markdown with data-URI images.
 - CLI: `yoqa runs report <runId>` writes the same report to disk.
+- CLI (CI): `yoqa report` / `--wait` / GitHub Job Summary — see [github-actions.md](../cli/github-actions.md).
 - Deferred: PDF, ZIP of raw PNGs, persisting inspector runs to SQLite.
 
 ## What shipped
 
 **Client (`@yoqa/runner-client`)**
 - `buildRunReportFromCatalogRun` / `buildRunReportFromInspectorSession`
-- `formatRunReportHtml` / `formatRunReportMarkdown` / `suggestedRunReportBasename`
+- `formatRunReportHtml` / `formatRunReportMarkdown` / `formatRunReportGithubSummary` / `suggestedRunReportBasename`
 - Shared `actionSummary` / `stepReasoning` helpers
 
 **Desktop — catalog Runs**
@@ -30,14 +31,16 @@ Export a detailed end-to-end report for finished catalog runs and Manual Inspect
 - Existing **Export .sh** unchanged
 
 **CLI**
-- `yoqa runs report <runId> [--format html|md] [-o path]` — embeds screenshots; defaults to `yoqa-run-<id>-<status>.html`
+- `yoqa report [runId]` / `yoqa runs report` — same HTML/Markdown as desktop; `--latest`, `--wait`, `--github-summary`, `--github-output`, `--fail-on never|errored`
+- Defaults to `yoqa-run-<id>-<status>.html`
 
 ## How to verify
 
 1. Run a catalog case → open `/runs/$id` after it finishes → Export HTML / Markdown → open the file; confirm status styling, steps, screenshots, and fail details when errored.
 2. Inspector: connect a device, run a short script → Export HTML / Markdown → confirm commands, pass/fail, and screenshots match the log.
 3. Cancel a catalog run mid-flight → export still works with cancelled styling.
-4. CLI: `yoqa runs report <runId> --format html` and `--format md -o ./report.md`; open the files and confirm screenshots + status.
+4. CLI: `yoqa report <runId>` and `yoqa runs report <runId> --format md -o ./report.md`; open the files and confirm screenshots + status.
+5. CI helpers: `bun test packages/cli/src/report.test.ts packages/runner-client/src/run-report.test.ts`.
 
 ## Follow-ups
 

@@ -1,0 +1,110 @@
+---
+title: GitHub Actions
+description: Run yoqa in CI and publish the same HTML report as the desktop app.
+---
+
+`yoqa` talks to a **local runner** on the GitHub-hosted (or self-hosted) machine. This is not a cloud device farm: you still need a simulator or emulator, Appium (`yoqa doctor --fix` / `yoqa runtime ensure`), and a catalog (apps/cases) on that host.
+
+The HTML file is the same self-contained report as desktop **Export HTML** (inline CSS + step screenshots). GitHub Job Summaries cannot hold those images (1MB cap), so CI also writes a compact text summary and uploads the HTML as an artifact.
+
+<Note>
+  Composite actions live in this repository: `Aris-ngoy/qa-agent/.github/actions/setup-yoqa` and `…/yoqa-report`. Pin a tag or SHA in production workflows.
+</Note>
+
+## Setup the CLI
+
+```yaml
+- uses: Aris-ngoy/qa-agent/.github/actions/setup-yoqa@main
+  with:
+    bun-version: "1.2.23"
+    node-version: "22"
+    # cli-version: "0.3.16"  # pin in production
+```
+
+Equivalent without the composite action:
+
+```yaml
+- uses: oven-sh/setup-bun@v2
+  with:
+    bun-version: "1.2.23"
+- uses: actions/setup-node@v4
+  with:
+    node-version: "22"
+- run: npm install -g @yoqa/cli
+- run: yoqa health
+```
+
+Cache `~/.yoqa/runtime` between jobs so managed Appium is not reinstalled every run. Host **Node/npm** must stay on `PATH`.
+
+## Create a run, then publish the report
+
+`yoqa runs create` returns immediately (`queued`). In CI, wait for a terminal status, then always export the report (even when the run failed):
+
+```yaml
+- name: Run cases
+  id: yoqa
+  run: yoqa runs create APP --cases 1,2 --wait --github-output
+- uses: Aris-ngoy/qa-agent/.github/actions/yoqa-report@main
+  if: always() && steps.yoqa.outputs.run_id != ''
+  with:
+    run-id: ${{ steps.yoqa.outputs.run_id }}
+```
+
+`--wait` on create exits **1** when the run **errored** (cancelled stays 0). The report action uses `if: always()` so the HTML artifact still uploads. It then fails the job if `fail-on-error` is true (default) and the run status is `errored`.
+
+Equivalent CLI-only report step:
+
+```yaml
+- name: HTML report
+  if: always() && steps.yoqa.outputs.run_id != ''
+  run: |
+    yoqa report "${{ steps.yoqa.outputs.run_id }}" \
+      -o yoqa-report/index.html \
+      --github-summary \
+      --github-output \
+      --fail-on never
+- uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: yoqa-report
+    path: yoqa-report/index.html
+```
+
+## CLI flags
+
+```bash
+yoqa report <runId>                 # same HTML as desktop Export
+yoqa report --latest APP            # newest catalog run for that app
+yoqa report <runId> --wait          # poll if the run is still queued/running
+yoqa runs wait <runId>              # poll only
+yoqa runs create APP --cases 1 --wait --github-output
+```
+
+| Flag | Meaning |
+| ---- | ------- |
+| `-o, --output` | File path (default `yoqa-run-<id>-<status>.html`) |
+| `--format html\|md` | Full report (Markdown still embeds screenshots; use HTML in CI) |
+| `--wait` / `--timeout` | Poll until passed / errored / cancelled (default 1800s) |
+| `--github-summary` | Compact markdown on `$GITHUB_STEP_SUMMARY` (auto in GHA) |
+| `--github-output` | `run_id`, `status`, `report_path` on `$GITHUB_OUTPUT` (auto in GHA) |
+| `--fail-on never\|errored` | Report command default **never** so upload can run after a failed suite |
+
+`--no-github-summary` / `--no-github-output` disable the auto-detect.
+
+## Prerequisites
+
+- **macOS** + Xcode for iOS Simulator jobs; **Linux + KVM** (or macOS) for Android emulators
+- A connected device session: `yoqa devices connect …`
+- Apps and cases already in the runner catalog on that machine (`yoqa apps` / `yoqa cases`). Catalog-as-code is not in this CLI yet.
+- Agent / `--description` runs need [provider](/docs/providers) secrets
+
+For a device-connector smoke that does **not** use catalog runs, see this repo’s **Demo Expo E2E** workflow and `examples/expo-demo`.
+
+<CardGroup cols={2}>
+  <Card title="CLI reference" icon="terminal" href="/docs/cli">
+    Commands, doctor, devices, runs
+  </Card>
+  <Card title="Local testing" icon="laptop" href="/guide/local-testing">
+    What runs on your machine vs cloud
+  </Card>
+</CardGroup>

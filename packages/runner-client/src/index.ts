@@ -165,6 +165,7 @@ import {
 	validateProviderResponseSchema,
 	yoqaStatusResponseSchema,
 } from "./schemas";
+import { type WaitForRunOptions, waitForRun } from "./wait-for-run";
 
 export {
 	actionRequestSchema,
@@ -345,6 +346,7 @@ export {
 	actionSummary,
 	buildRunReportFromCatalogRun,
 	buildRunReportFromInspectorSession,
+	formatRunReportGithubSummary,
 	formatRunReportHtml,
 	formatRunReportMarkdown,
 	stepReasoning,
@@ -356,6 +358,19 @@ export {
 	type RunReportStep,
 	type RunReportTest,
 } from "./run-report";
+
+export {
+	DEFAULT_WAIT_FOR_RUN_INTERVAL_MS,
+	DEFAULT_WAIT_FOR_RUN_TIMEOUT_MS,
+	WaitForRunAbortedError,
+	WaitForRunTimeoutError,
+	isTerminalRunStatus,
+	pickLatestRun,
+	waitForRun,
+	type TerminalRunStatus,
+	type WaitForRunClient,
+	type WaitForRunOptions,
+} from "./wait-for-run";
 
 export {
 	DEFAULT_SHELL_SCRIPT_HEADER,
@@ -925,6 +940,10 @@ export class RunnerClient {
 			"Get run failed",
 		);
 		return runSchema.parse(json);
+	}
+
+	async waitForRun(runId: string, options?: WaitForRunOptions): Promise<Run> {
+		return waitForRun(this, runId, options);
 	}
 
 	async deleteRun(runId: string): Promise<void> {
