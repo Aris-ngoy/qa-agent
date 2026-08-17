@@ -407,13 +407,14 @@ export function withOpenCodeRequestHooks(opts: {
 			}
 		}
 
+		const rawBody = init?.body;
 		const shouldRewriteBody =
-			(opts.disableThinking || Boolean(opts.stripResponseFormat)) && typeof init?.body === "string";
-		if (!shouldRewriteBody) {
+			(opts.disableThinking || Boolean(opts.stripResponseFormat)) && typeof rawBody === "string";
+		if (!shouldRewriteBody || typeof rawBody !== "string") {
 			return fetchImpl(input, { ...init, headers });
 		}
 		try {
-			const parsed: unknown = JSON.parse(init.body);
+			const parsed: unknown = JSON.parse(rawBody);
 			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 				return fetchImpl(input, { ...init, headers });
 			}
