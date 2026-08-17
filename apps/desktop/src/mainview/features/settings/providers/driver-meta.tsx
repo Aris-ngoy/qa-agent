@@ -91,13 +91,14 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 	{
 		kind: "opencode",
 		label: "OpenCode",
-		description: "OpenCode Zen (OpenAI-compatible). Paste a Zen API key for vision runs.",
+		description:
+			"OpenCode Zen or LiteLLM (OpenAI-compatible). Paste a Zen API key for Zen; LiteLLM uses opencode.json.",
 		authModes: ["cli", "api_key"],
 		defaultBinary: "opencode",
-		envHints: ["OPENCODE_API_KEY", "OPENCODE_ZEN_API_KEY"],
+		envHints: ["OPENCODE_API_KEY", "OPENCODE_ZEN_API_KEY", "LITELLM_API_KEY"],
 		keyPlaceholder: "sk-…",
 		loginInstructions:
-			"Paste a Zen API key from https://opencode.ai for vision. CLI login alone is not enough (local serve has no OpenAI /v1).",
+			"Paste a Zen API key from https://opencode.ai for Zen vision. LiteLLM uses opencode.json plus CLI auth or LITELLM_API_KEY. CLI login alone is not enough for Zen (local serve has no OpenAI /v1).",
 		capabilities: { vision: true },
 	},
 	{

@@ -1,40 +1,49 @@
-# OpenCode free / paid model selection
+# OpenCode model selection by provider
 
 ## Goal
 
-Stop OpenCode runs from failing with Zen `CreditsError` (no payment method) or text-only model errors by defaulting to a free **vision-capable** model, and let users pick Free vs Paid models from OpenCode provider details.
+Let users pick OpenCode models grouped the same way OpenCode does — **Amazon Bedrock**, **OpenCode Zen**, **LiteLLM**, **GitHub Copilot**, and other connected CLI providers — instead of a Free / Paid split. Yoqa vision should run against **OpenCode Zen** or an OpenAI-compatible OpenCode gateway such as **LiteLLM**.
 
 ## Plan summary
 
-- Zen `GET /models` returns ids only — no pricing or vision metadata — so classify free models locally (`*-free` suffix + known ids like `big-pickle`).
-- Default OpenCode runs to `mimo-v2.5-free` (verified Aug 2026 to accept screenshot `image_url` and return visible content).
-- Replace the OpenCode free-text + flat model list with a Free / Paid grouped Select.
-- Rejected: embedding billing UI in Yoqa; filtering to free-only (paid remains selectable when the user has credits); assuming all free models support vision.
+- `opencode models` prints `provider/model` slugs (`amazon-bedrock/amazon.nova-lite-v1:0`, `opencode/mimo-v2.5-free`, `litellm/claude-haiku-4-5`). Keep that prefix as the catalog id and group by provider.
+- Prefer the CLI catalog over Zen `GET /models` so connected providers (Bedrock, Copilot, LiteLLM, …) appear even when a Zen API key is set. Zen-only listings still group as **OpenCode Zen**.
+- Rejected: keeping Free / Paid as the primary accordion; inferring vendor from model name (GPT vs Claude) instead of OpenCode’s provider id; sending LiteLLM slugs to hosted Zen.
+- Screenshot runs use hosted Zen (`opencode.ai/zen/v1`) for `opencode/…` models. LiteLLM (and other `opencode.json` OpenAI-compatible providers) use that provider’s `options.baseURL`. Bedrock / Copilot stay listed but are still rejected for vision.
 
 ## What shipped
 
-- **Schema:** optional `tier: "free" | "paid"` on `ModelEntry` / `providerModelSchema`.
-- **Driver:** [`services/runner/src/domains/providers/drivers/opencode.ts`](../../services/runner/src/domains/providers/drivers/opencode.ts) tags and humanizes models when listing; default `mimo-v2.5-free`.
-- **Runs:** clearer messages for `CreditsError`, text-only `image_url` 400s, and opaque vision failures.
-- **UI:** OpenCode details show Free/Paid models; hint that Yoqa needs screenshot-capable models.
+- **Schema:** optional `provider` (display label) on `ModelEntry` / `providerModelSchema`; removed `tier: "free" | "paid"`.
+- **Driver:** [`services/runner/src/domains/providers/drivers/opencode.ts`](../../services/runner/src/domains/providers/drivers/opencode.ts) parses CLI slugs, labels providers (Amazon Bedrock, OpenCode Zen, LiteLLM, …), and lists CLI models first.
+- **Vision:**
+  - Zen: strips `opencode/` and calls `opencode.ai/zen/v1`. Default remains `mimo-v2.5-free`.
+  - LiteLLM: reads `provider.litellm` from `~/.config/opencode/opencode.json` (`baseURL`, `{env:…}` API key / headers) and the LiteLLM key from OpenCode `auth.json` or `LITELLM_API_KEY`. Does **not** reuse the Zen API key. Strips OpenAI `response_format` so Bedrock-backed LiteLLM models do not fail with `output_config.format: Extra inputs are not permitted`.
+  - Amazon Bedrock / Copilot / other native CLI providers: actionable error to pick Zen or LiteLLM.
+- **UI:** OpenCode details accordion groups by OpenCode provider. LiteLLM selection explains gateway routing instead of telling the user to switch to Zen. Existing bare ids (`mimo-v2.5-free`) still match `opencode/mimo-v2.5-free`.
 
 ## Auth note
 
-Vision uses **hosted Zen** (`opencode.ai/zen/v1`) with an OpenAI-compatible client.
+**OpenCode Zen** uses hosted Zen (`opencode.ai/zen/v1`) with an OpenAI-compatible client.
 
-- **Zen API key (required for vision):** Settings paste / `OPENCODE_API_KEY` / CLI `auth.json`
-- **CLI login alone is not enough for Yoqa vision:** local `opencode serve` exposes a native session API, not `/v1/chat/completions`
-- **Base URL:** optional OpenAI-compatible proxy; do not point Server URL at `opencode serve` expecting OpenAI `/v1`
+- **Zen API key (required for Zen vision):** Settings paste / `OPENCODE_API_KEY` / CLI `auth.json` `opencode` entry
+- **CLI login alone is not enough for Zen:** local `opencode serve` exposes a native session API, not `/v1/chat/completions`
+
+**LiteLLM** uses the OpenCode-configured gateway:
+
+- **Config:** `~/.config/opencode/opencode.json` → `provider.litellm.options.baseURL` (and optional headers such as `x-litellm-end-user-id`)
+- **Key:** OpenCode `auth.json` `litellm` entry, interpolated `{env:LITELLM_API_KEY}`, or Settings env `LITELLM_API_KEY`
+- **Do not** point Server URL at `opencode serve` expecting OpenAI `/v1`
 
 See [2026-08-08-opencode-zen-not-local-serve](../sessions/2026-08-08-opencode-zen-not-local-serve.md).
 
 ## How to verify
 
-1. Settings → Provider → expand OpenCode (with API key) → Free / Paid list → click `mimo-v2.5-free` → Save.
-2. Run a test case → agent receives a 200 from Zen with a screenshot attached.
+1. Settings → Provider → expand OpenCode (CLI on PATH) → model picker shows OpenCode Zen, LiteLLM, Amazon Bedrock, and any other connected providers — not Free / Paid.
+2. Click `opencode/mimo-v2.5-free` (or `mimo-v2.5-free`) → Save → run a test case → 200 from Zen with a screenshot attached.
 3. Clear `defaultModel` on the provider → agent uses `mimo-v2.5-free`.
-4. Select a paid model without billing → CreditsError message points at Settings / billing.
-5. Select `deepseek-v4-flash-free` → clear error that the model is text-only; switch to `mimo-v2.5-free`.
+4. Select `litellm/claude-haiku-4-5` (with LiteLLM configured in OpenCode) → vision hits the LiteLLM `baseURL`, not Zen. Helper text talks about the LiteLLM gateway.
+5. Select an Amazon Bedrock model → vision error says Yoqa uses OpenCode Zen or LiteLLM.
+6. Select `deepseek-v4-flash-free` → clear error that the model is text-only; switch to `mimo-v2.5-free`.
 
 ## Known upstream quirk
 
@@ -44,6 +53,7 @@ Paid multimodal models (Gemini / Claude / GPT on Zen) need billing and may use d
 
 ## Follow-ups
 
-- If Zen adds pricing / modality fields to `/models`, prefer API metadata over local heuristics.
+- Route Amazon Bedrock / Copilot / other native OpenCode providers through their own auth instead of Zen for vision.
+- If Zen adds pricing / modality fields to `/models`, surface that as secondary metadata (not as the primary grouping).
 - Optionally warn when an existing provider still has a non-vision `defaultModel` (proactive UI banner).
-- Route Claude/Gemini/GPT Zen models through their documented endpoints if we want paid vision without chat-completions quirks.
+- Route Claude/Gemini/GPT Zen models through their documented endpoints if we want paid Zen vision without chat-completions quirks.
