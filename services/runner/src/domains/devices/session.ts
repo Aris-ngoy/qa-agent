@@ -6,6 +6,7 @@ import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 import { type Browser, remote } from "webdriverio";
 import { APPIUM_HOST, ensureAppiumServer } from "../appium/server";
 import { loadDevicePrep } from "../ios/application";
+import { resolveAndroidAppiumIdentity } from "./application";
 
 const YOQA_ROOT = join(homedir(), ".yoqa");
 const DEFAULT_MJPEG_PORT = Number(process.env.YOQA_MJPEG_PORT ?? "9100");
@@ -237,7 +238,6 @@ async function buildW3cCapabilities(
 	const caps: Record<string, unknown> = {
 		platformName,
 		"appium:automationName": automationName,
-		"appium:udid": options.deviceId,
 		"appium:newCommandTimeout": 3600,
 		// Expose WDA/UIA2 MJPEG for our /stream.mjpeg proxy. Do NOT set
 		// mjpegScreenshotUrl — that requires the optional `mjpeg-consumer`
@@ -250,14 +250,13 @@ async function buildW3cCapabilities(
 		),
 	};
 
-	if (options.platform === "ios" && options.bundleId && !caps["appium:bundleId"]) {
-		caps["appium:bundleId"] = options.bundleId;
-	}
-	if (options.platform === "android" && options.appPackage && !caps["appium:appPackage"]) {
-		caps["appium:appPackage"] = options.appPackage;
-	}
-
 	if (options.platform === "ios") {
+		if (caps["appium:udid"] === undefined) {
+			caps["appium:udid"] = options.deviceId;
+		}
+		if (options.bundleId && !caps["appium:bundleId"]) {
+			caps["appium:bundleId"] = options.bundleId;
+		}
 		const physical = looksLikePhysicalIosUdid(options.deviceId);
 		if (physical) {
 			const prep = await loadDevicePrep(options.deviceId);
@@ -294,6 +293,20 @@ async function buildW3cCapabilities(
 		if (!physical && caps["appium:derivedDataPath"] === undefined) {
 			await mkdir(SIMULATOR_WDA_DERIVED_DATA, { recursive: true });
 			caps["appium:derivedDataPath"] = SIMULATOR_WDA_DERIVED_DATA;
+		}
+	}
+
+	if (options.platform === "android") {
+		const requested = String(caps["appium:udid"] ?? options.deviceId);
+		const identity = await resolveAndroidAppiumIdentity(requested);
+		if (identity.udid) {
+			caps["appium:udid"] = identity.udid;
+		}
+		if (identity.avd && caps["appium:avd"] === undefined) {
+			caps["appium:avd"] = identity.avd;
+		}
+		if (options.appPackage && !caps["appium:appPackage"]) {
+			caps["appium:appPackage"] = options.appPackage;
 		}
 	}
 
