@@ -2,6 +2,7 @@ import { basename, extname } from "node:path";
 import type { Build, CreateBuildRequest } from "@yoqa/runner-client";
 import { desc, eq } from "drizzle-orm";
 import { getCatalogDb } from "../catalog/db";
+import { resolveAndroidAppiumIdentity } from "../devices/application";
 import { builds } from "./schema";
 
 export class BuildNotFoundError extends Error {
@@ -158,8 +159,16 @@ export async function installBuildOnDevice(options: {
 		);
 	}
 
+	const identity = await resolveAndroidAppiumIdentity(deviceId);
+	const serial = identity.udid;
+	if (!serial) {
+		throw new Error(
+			`Android emulator ${deviceId} is not running. Boot it, then retry the install.`,
+		);
+	}
+
 	const adb = Bun.which("adb") ?? "adb";
-	const proc = Bun.spawn([adb, "-s", deviceId, "install", "-r", build.path], {
+	const proc = Bun.spawn([adb, "-s", serial, "install", "-r", build.path], {
 		stdout: "pipe",
 		stderr: "pipe",
 	});

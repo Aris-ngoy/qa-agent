@@ -3,6 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Device } from "@yoqa/runner-client";
 import { resolveAndroidSdkRoot } from "../appium/android-sdk";
+import {
+	type AndroidAppiumIdentity,
+	type ConnectedAndroidDevice,
+	matchAndroidAppiumIdentity,
+	parseAdbEmuAvdName,
+} from "./android-identity";
 import type { ListDevicesOptions } from "./models";
 
 async function runCommand(
@@ -362,10 +368,14 @@ async function readAvdConfig(
 }
 
 async function adbAvdName(adb: string, serial: string): Promise<string | null> {
+	const fromProp =
+		(await adbGetProp(adb, serial, "ro.boot.qemu.avd_name")) ??
+		(await adbGetProp(adb, serial, "ro.kernel.qemu.avd_name"));
+	if (fromProp) return fromProp;
+
 	const { stdout, exitCode } = await runCommand([adb, "-s", serial, "emu", "avd", "name"]);
 	if (exitCode !== 0) return null;
-	const name = stdout.trim().split("\n")[0]?.trim();
-	return name || null;
+	return parseAdbEmuAvdName(stdout);
 }
 
 async function adbGetProp(adb: string, serial: string, prop: string): Promise<string | null> {
@@ -468,6 +478,41 @@ async function listAndroidAvds(
 	}
 
 	return devices;
+}
+
+export async function resolveAndroidAppiumIdentity(
+	deviceId: string,
+): Promise<AndroidAppiumIdentity> {
+	const [adb, emulatorBin] = await Promise.all([resolveAdb(), resolveEmulator()]);
+	const connected: ConnectedAndroidDevice[] = [];
+
+	if (adb) {
+		const { stdout, exitCode } = await runCommand([adb, "devices", "-l"]);
+		if (exitCode === 0) {
+			for (const entry of parseAdbDevices(stdout)) {
+				const isEmulator = entry.serial.startsWith("emulator-") || entry.product === "sdk_gphone";
+				connected.push({
+					serial: entry.serial,
+					avdName: isEmulator ? await adbAvdName(adb, entry.serial) : null,
+				});
+			}
+		}
+	}
+
+	const knownAvds: string[] = [];
+	if (emulatorBin) {
+		const { stdout, exitCode } = await runCommand([emulatorBin, "-list-avds"]);
+		if (exitCode === 0) {
+			knownAvds.push(
+				...stdout
+					.split("\n")
+					.map((line) => line.trim())
+					.filter(Boolean),
+			);
+		}
+	}
+
+	return matchAndroidAppiumIdentity(deviceId, connected, knownAvds);
 }
 
 export async function listAndroidDevices(options: ListDevicesOptions = {}): Promise<Device[]> {
