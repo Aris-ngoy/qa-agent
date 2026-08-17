@@ -4,7 +4,7 @@ export default {
 	app: {
 		name: "yoqa",
 		identifier: "ai.yoqa.app",
-		version: "0.3.17",
+		version: "0.3.18",
 	},
 	build: {
 		useAsar: true,
