@@ -18,7 +18,8 @@ export type ValidateResult = {
 export type ModelEntry = {
 	id: string;
 	name: string;
-	tier?: "free" | "paid";
+	/** OpenCode catalog group, e.g. "Amazon Bedrock" or "OpenCode Zen". */
+	provider?: string;
 };
 
 export type ListModelsResult = {

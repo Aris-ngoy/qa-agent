@@ -96,6 +96,13 @@ export function formatProviderHttpError(label: string, status: number, body: str
 	}
 	if (
 		label === "OpenCode" &&
+		(body.includes("output_config.format") ||
+			(body.includes("BedrockException") && body.includes("Extra inputs are not permitted")))
+	) {
+		return "LiteLLM/Bedrock rejected JSON schema mode for this model (output_config.format). Restart the Yoqa runner and retry — LiteLLM vision now asks for JSON in the prompt only.";
+	}
+	if (
+		label === "OpenCode" &&
 		status >= 500 &&
 		(body.includes("Internal server error") || body.includes('"type":"error"'))
 	) {
@@ -148,6 +155,17 @@ function mapProviderError(label: string, error: unknown): never {
 	throw new AgentProviderError(String(error));
 }
 
+/** Unwrap markdown ```json fences so generateObject can parse LiteLLM/Bedrock replies. */
+export function repairModelJsonText(text: string): string {
+	const trimmed = text.trim();
+	const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+	const candidate = fenced?.[1]?.trim() ?? trimmed;
+	const start = candidate.indexOf("{");
+	const end = candidate.lastIndexOf("}");
+	if (start < 0 || end <= start) return trimmed;
+	return candidate.slice(start, end + 1);
+}
+
 export async function completeWithAiSdk<T>(input: {
 	label: string;
 	model: LanguageModel;
@@ -163,6 +181,7 @@ export async function completeWithAiSdk<T>(input: {
 				schema: input.schema,
 				system: input.system,
 				maxOutputTokens: VISION_MAX_TOKENS,
+				experimental_repairText: async ({ text }) => repairModelJsonText(text),
 				messages: [
 					{
 						role: "user",
@@ -179,6 +198,13 @@ export async function completeWithAiSdk<T>(input: {
 			});
 			return object;
 		} catch (error) {
+			if (NoObjectGeneratedError.isInstance(error) && error.text?.trim()) {
+				try {
+					return input.schema.parse(JSON.parse(repairModelJsonText(error.text)));
+				} catch {
+					// Fall through to the mapped provider error.
+				}
+			}
 			mapProviderError(input.label, error);
 		}
 	};
@@ -232,37 +258,54 @@ function openCodeAuthPaths(): string[] {
 	return paths;
 }
 
-export async function readOpenCodeCliAuthKey(): Promise<string | null> {
+function apiKeyFromOpenCodeAuthEntry(value: unknown): string | null {
+	if (!value || typeof value !== "object") return null;
+	const entry = value as Record<string, unknown>;
+	for (const field of ["key", "apiKey", "token"] as const) {
+		const candidate = entry[field];
+		if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+	}
+	return null;
+}
+
+async function readOpenCodeCliAuthJson(): Promise<Record<string, unknown> | null> {
 	for (const path of openCodeAuthPaths()) {
 		try {
 			const file = Bun.file(path);
 			if (!(await file.exists())) continue;
 			const json: unknown = await file.json();
-			if (!json || typeof json !== "object") continue;
-			const record = json as Record<string, unknown>;
-
-			const opencode = record.opencode;
-			if (opencode && typeof opencode === "object") {
-				const entry = opencode as Record<string, unknown>;
-				for (const field of ["key", "apiKey", "token"] as const) {
-					const value = entry[field];
-					if (typeof value === "string" && value.trim()) return value.trim();
-				}
-			}
-
-			for (const value of Object.values(record)) {
-				if (!value || typeof value !== "object") continue;
-				const entry = value as Record<string, unknown>;
-				const key = entry.key ?? entry.apiKey ?? entry.token;
-				if (typeof key === "string" && key.trim()) {
-					const type = typeof entry.type === "string" ? entry.type.toLowerCase() : "";
-					if (!type || type.includes("api") || type.includes("key") || type === "opencode") {
-						return key.trim();
-					}
-				}
-			}
+			if (!json || typeof json !== "object" || Array.isArray(json)) continue;
+			return json as Record<string, unknown>;
 		} catch {
 			// Try next path.
+		}
+	}
+	return null;
+}
+
+export async function readOpenCodeCliAuthKeyForProvider(
+	providerId: string,
+): Promise<string | null> {
+	const record = await readOpenCodeCliAuthJson();
+	if (!record) return null;
+	return apiKeyFromOpenCodeAuthEntry(record[providerId]);
+}
+
+export async function readOpenCodeCliAuthKey(): Promise<string | null> {
+	const record = await readOpenCodeCliAuthJson();
+	if (!record) return null;
+
+	const zen = apiKeyFromOpenCodeAuthEntry(record.opencode);
+	if (zen) return zen;
+
+	for (const value of Object.values(record)) {
+		const key = apiKeyFromOpenCodeAuthEntry(value);
+		if (!key) continue;
+		if (!value || typeof value !== "object") continue;
+		const entry = value as Record<string, unknown>;
+		const type = typeof entry.type === "string" ? entry.type.toLowerCase() : "";
+		if (!type || type.includes("api") || type.includes("key") || type === "opencode") {
+			return key;
 		}
 	}
 	return null;
@@ -341,20 +384,32 @@ export function resolveVertexApiKey(auth: VisionAuth): string | null {
 
 /**
  * DeepSeek-style OpenCode models burn tokens on reasoning unless thinking is off.
+ * LiteLLM/Bedrock rejects OpenAI `response_format` (mapped to `output_config.format`).
  */
 export function withOpenCodeRequestHooks(opts: {
 	disableThinking: boolean;
+	stripResponseFormat?: boolean;
 	authHeaders: Record<string, string> | null;
+	extraHeaders?: Record<string, string> | null;
 	fetchImpl?: FetchFunction;
 }): FetchFunction {
 	const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
 	return (async (input, init) => {
 		const headers = new Headers(init?.headers);
-		if (opts.authHeaders?.Authorization) {
-			headers.set("Authorization", opts.authHeaders.Authorization);
+		if (opts.authHeaders) {
+			for (const [key, value] of Object.entries(opts.authHeaders)) {
+				if (value) headers.set(key, value);
+			}
+		}
+		if (opts.extraHeaders) {
+			for (const [key, value] of Object.entries(opts.extraHeaders)) {
+				if (value) headers.set(key, value);
+			}
 		}
 
-		if (!opts.disableThinking || !init?.body || typeof init.body !== "string") {
+		const shouldRewriteBody =
+			(opts.disableThinking || Boolean(opts.stripResponseFormat)) && typeof init?.body === "string";
+		if (!shouldRewriteBody) {
 			return fetchImpl(input, { ...init, headers });
 		}
 		try {
@@ -362,7 +417,12 @@ export function withOpenCodeRequestHooks(opts: {
 			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 				return fetchImpl(input, { ...init, headers });
 			}
-			const body = { ...(parsed as Record<string, unknown>), thinking: { type: "disabled" } };
+			const parsedBody = { ...(parsed as Record<string, unknown>) };
+			if (opts.disableThinking) {
+				parsedBody.thinking = { type: "disabled" };
+			}
+			const { response_format: _responseFormat, ...withoutFormat } = parsedBody;
+			const body = opts.stripResponseFormat ? withoutFormat : parsedBody;
 			return fetchImpl(input, {
 				...init,
 				headers,

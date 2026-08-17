@@ -64,33 +64,70 @@ type FormValues = {
 	envRows: EnvRow[];
 };
 
-/** Used when Zen catalog has not loaded yet so the user can still pick a free model. */
-const OPENCODE_FALLBACK_FREE_MODELS: ProviderModel[] = [
-	{ id: "mimo-v2.5-free", name: "MiMo V2.5 Free", tier: "free" },
-	{ id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free", tier: "free" },
-	{ id: "big-pickle", name: "Big Pickle", tier: "free" },
-	{ id: "laguna-s-2.1-free", name: "Laguna S 2.1 Free", tier: "free" },
-	{ id: "north-mini-code-free", name: "North Mini Code Free", tier: "free" },
-	{ id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", tier: "free" },
+/** Used when the OpenCode catalog has not loaded yet so the user can still pick a Zen model. */
+const OPENCODE_FALLBACK_MODELS: ProviderModel[] = [
+	{ id: "mimo-v2.5-free", name: "MiMo V2.5 Free", provider: "OpenCode Zen" },
+	{ id: "deepseek-v4-flash-free", name: "DeepSeek V4 Flash Free", provider: "OpenCode Zen" },
+	{ id: "big-pickle", name: "Big Pickle", provider: "OpenCode Zen" },
+	{ id: "laguna-s-2.1-free", name: "Laguna S 2.1 Free", provider: "OpenCode Zen" },
+	{ id: "north-mini-code-free", name: "North Mini Code Free", provider: "OpenCode Zen" },
+	{ id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", provider: "OpenCode Zen" },
 ];
 
-/** Hint: most Zen free models are text-only; mimo-v2.5-free accepts screenshots. */
-const OPENCODE_NON_VISION_FREE_HINT =
-	"Yoqa sends screenshots. Prefer mimo-v2.5-free — deepseek-v4-flash-free, big-pickle, and most other free models are text-only on Zen.";
+const OPENCODE_ZEN_PROVIDER = "OpenCode Zen";
 
-function isPaidModelSelected(models: ProviderModel[], defaultModel: string): boolean {
-	const id = defaultModel.trim();
-	if (!id) return false;
-	const match = models.find((model) => model.id === id);
-	if (match?.tier === "paid") return true;
-	if (match?.tier === "free") return false;
-	const lower = id.toLowerCase();
-	return !(lower === "big-pickle" || lower.endsWith("-free"));
+/** Hint: most Zen free models are text-only; mimo-v2.5-free accepts screenshots. */
+const OPENCODE_VISION_HINT =
+	"Yoqa sends Zen screenshots through OpenCode Zen. Prefer mimo-v2.5-free — deepseek-v4-flash-free, big-pickle, and most other Zen free models are text-only. LiteLLM models use your OpenCode gateway instead.";
+
+const OPENCODE_LITELLM_VISION_HINT =
+	"Screenshot runs go through your OpenCode LiteLLM gateway (opencode.json + CLI auth or LITELLM_API_KEY). Yoqa does not send LiteLLM models to OpenCode Zen.";
+
+const OPENCODE_OTHER_PROVIDER_VISION_HINT =
+	"Amazon Bedrock, Copilot, and similar CLI providers are listed for browsing. Vision currently supports OpenCode Zen and LiteLLM — pick one of those for screenshot runs.";
+
+function parseOpenCodeSlug(slug: string): { providerId: string; modelId: string } {
+	const trimmed = slug.trim();
+	const sep = trimmed.indexOf("/");
+	if (sep <= 0 || sep === trimmed.length - 1) {
+		return { providerId: "opencode", modelId: trimmed };
+	}
+	return { providerId: trimmed.slice(0, sep), modelId: trimmed.slice(sep + 1) };
+}
+
+function openCodeModelIdsMatch(selected: string, catalogId: string): boolean {
+	if (selected.trim() === catalogId.trim()) return true;
+	const a = parseOpenCodeSlug(selected);
+	const b = parseOpenCodeSlug(catalogId);
+	return a.providerId === b.providerId && a.modelId === b.modelId;
+}
+
+function groupModelsByProvider(models: ProviderModel[]): Array<{
+	id: string;
+	label: string;
+	models: ProviderModel[];
+}> {
+	const buckets = new Map<string, ProviderModel[]>();
+	for (const model of models) {
+		const label = model.provider?.trim() || OPENCODE_ZEN_PROVIDER;
+		const existing = buckets.get(label);
+		if (existing) {
+			existing.push(model);
+		} else {
+			buckets.set(label, [model]);
+		}
+	}
+	return [...buckets.entries()]
+		.sort(([a], [b]) => {
+			if (a === OPENCODE_ZEN_PROVIDER && b !== OPENCODE_ZEN_PROVIDER) return -1;
+			if (b === OPENCODE_ZEN_PROVIDER && a !== OPENCODE_ZEN_PROVIDER) return 1;
+			return a.localeCompare(b);
+		})
+		.map(([label, grouped]) => ({ id: label, label, models: grouped }));
 }
 
 function ModelPickList({
-	freeModels,
-	paidModels,
+	groups,
 	flatModels,
 	selectedId,
 	disabled,
@@ -98,8 +135,7 @@ function ModelPickList({
 	emptyMessage,
 	onPick,
 }: {
-	freeModels?: ProviderModel[];
-	paidModels?: ProviderModel[];
+	groups?: Array<{ id: string; label: string; models: ProviderModel[] }>;
 	flatModels?: ProviderModel[];
 	selectedId: string;
 	disabled: boolean;
@@ -108,7 +144,7 @@ function ModelPickList({
 	onPick: (modelId: string) => void;
 }) {
 	const renderModelRow = (model: ProviderModel) => {
-		const selected = selectedId.trim() === model.id;
+		const selected = selectedId.trim() === model.id || openCodeModelIdsMatch(selectedId, model.id);
 		return (
 			<button
 				aria-pressed={selected}
@@ -157,9 +193,20 @@ function ModelPickList({
 		);
 	};
 
-	const hasGrouped = (freeModels?.length ?? 0) > 0 || (paidModels?.length ?? 0) > 0;
+	const hasGrouped = (groups?.length ?? 0) > 0;
 	const hasFlat = (flatModels?.length ?? 0) > 0;
 	const hasAny = hasGrouped || hasFlat;
+	const expandedKeys = new Set<string>();
+	const selectedGroup = groups?.find((group) =>
+		group.models.some((model) => openCodeModelIdsMatch(selectedId, model.id)),
+	);
+	if (selectedGroup) {
+		expandedKeys.add(selectedGroup.id);
+	} else if (groups?.some((group) => group.id === OPENCODE_ZEN_PROVIDER)) {
+		expandedKeys.add(OPENCODE_ZEN_PROVIDER);
+	} else if (groups?.[0]) {
+		expandedKeys.add(groups[0].id);
+	}
 
 	return (
 		<div className="max-h-[min(28rem,50vh)] min-h-40 overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-lowest">
@@ -171,27 +218,21 @@ function ModelPickList({
 			) : !hasAny ? (
 				<p className="px-3 py-8 text-center text-body-sm text-on-surface-variant">{emptyMessage}</p>
 			) : hasGrouped ? (
-				<Accordion defaultExpandedKeys={new Set(["free", "paid"])}>
-					<Accordion.Item id="free">
-						<Accordion.Heading>
-							<Accordion.Trigger>Free</Accordion.Trigger>
-						</Accordion.Heading>
-						<Accordion.Panel className="p-0">
-							<div className="divide-y divide-outline-variant">
-								{freeModels?.map(renderModelRow)}
-							</div>
-						</Accordion.Panel>
-					</Accordion.Item>
-					<Accordion.Item id="paid">
-						<Accordion.Heading>
-							<Accordion.Trigger>Paid</Accordion.Trigger>
-						</Accordion.Heading>
-						<Accordion.Panel className="p-0">
-							<div className="divide-y divide-outline-variant">
-								{paidModels?.map(renderModelRow)}
-							</div>
-						</Accordion.Panel>
-					</Accordion.Item>
+				<Accordion defaultExpandedKeys={expandedKeys} key={[...expandedKeys].join("|")}>
+					{groups?.map((group) => (
+						<Accordion.Item id={group.id} key={group.id}>
+							<Accordion.Heading>
+								<Accordion.Trigger>
+									{group.label} ({group.models.length})
+								</Accordion.Trigger>
+							</Accordion.Heading>
+							<Accordion.Panel className="p-0">
+								<div className="divide-y divide-outline-variant">
+									{group.models.map(renderModelRow)}
+								</div>
+							</Accordion.Panel>
+						</Accordion.Item>
+					))}
 				</Accordion>
 			) : (
 				<div className="divide-y divide-outline-variant">{flatModels?.map(renderModelRow)}</div>
@@ -255,19 +296,23 @@ export function ProviderExpanded({
 	const envKeysKey = provider.envKeys.join("\0");
 	const catalogModels = useMemo(() => {
 		if (models.length > 0) return models;
-		if (isOpenCode && !modelsLoading) return OPENCODE_FALLBACK_FREE_MODELS;
+		if (isOpenCode && !modelsLoading) return OPENCODE_FALLBACK_MODELS;
 		return models;
 	}, [isOpenCode, models, modelsLoading]);
 
-	const freeModels = useMemo(
-		() => catalogModels.filter((model) => model.tier === "free"),
-		[catalogModels],
-	);
-	const paidModels = useMemo(
-		() => catalogModels.filter((model) => model.tier !== "free"),
-		[catalogModels],
-	);
-	const selectedIsPaid = isOpenCode && isPaidModelSelected(catalogModels, defaultModel);
+	const modelGroups = useMemo(() => groupModelsByProvider(catalogModels), [catalogModels]);
+	const selectedProviderLabel = useMemo(() => {
+		if (!isOpenCode || !defaultModel.trim()) return null;
+		const match = catalogModels.find((model) => openCodeModelIdsMatch(defaultModel, model.id));
+		if (match?.provider?.trim()) return match.provider.trim();
+		const { providerId } = parseOpenCodeSlug(defaultModel);
+		if (providerId === "opencode") return OPENCODE_ZEN_PROVIDER;
+		return providerId
+			.split(/[-_]/)
+			.filter(Boolean)
+			.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+			.join(" ");
+	}, [catalogModels, defaultModel, isOpenCode]);
 
 	// Sync from server only when this provider instance or its saved fields change —
 	// never on every new object reference from React Query (that wiped local selection).
@@ -361,7 +406,7 @@ export function ProviderExpanded({
 		: isOpenCode
 			? models.length > 0
 				? modelsMessage
-				: "Showing free defaults (catalog unavailable)"
+				: "Showing OpenCode Zen defaults (catalog unavailable)"
 			: modelsMessage || "Pick from the list or type an id";
 
 	const modelPickerSummary = (
@@ -392,16 +437,14 @@ export function ProviderExpanded({
 				</Button>
 			</div>
 			{isOpenCode ? (
-				selectedIsPaid ? (
-					<p className="mt-1.5 text-helper text-on-surface-variant">
-						Paid models need Zen billing at opencode.ai. Prefer a Free model if you have no payment
-						method. {OPENCODE_NON_VISION_FREE_HINT}
-					</p>
-				) : (
-					<p className="mt-1.5 text-helper text-on-surface-variant">
-						{OPENCODE_NON_VISION_FREE_HINT}
-					</p>
-				)
+				<p className="mt-1.5 text-helper text-on-surface-variant">
+					{selectedProviderLabel === "LiteLLM" ||
+					parseOpenCodeSlug(defaultModel).providerId === "litellm"
+						? OPENCODE_LITELLM_VISION_HINT
+						: selectedProviderLabel && selectedProviderLabel !== OPENCODE_ZEN_PROVIDER
+							? OPENCODE_OTHER_PROVIDER_VISION_HINT
+							: OPENCODE_VISION_HINT}
+				</p>
 			) : null}
 		</div>
 	);
@@ -416,7 +459,7 @@ export function ProviderExpanded({
 							<Modal.Heading>Choose default model</Modal.Heading>
 							<p className="text-body-sm text-on-surface-variant">
 								{isOpenCode
-									? "Selection saves immediately for OpenCode."
+									? "Grouped by OpenCode provider. Vision runs support OpenCode Zen and LiteLLM; selection saves immediately."
 									: "Pick a catalog model or enter a custom id, then save the provider."}
 							</p>
 						</Modal.Header>
@@ -425,9 +468,8 @@ export function ProviderExpanded({
 								<ModelPickList
 									disabled={modelListBusy}
 									emptyMessage="No models listed yet. Add an API key or server URL, then try again."
-									freeModels={freeModels}
+									groups={modelGroups}
 									loading={modelsLoading && catalogModels.length === 0}
-									paidModels={paidModels}
 									selectedId={defaultModel}
 									onPick={(modelId) => void handlePickModel(modelId)}
 								/>
@@ -637,8 +679,8 @@ export function ProviderExpanded({
 				)}
 				{provider.kind === "opencode" && provider.authMode === "cli" ? (
 					<p className="text-helper text-on-surface-variant">
-						Vision needs a Zen API key (Settings API key mode or OPENCODE_API_KEY). Local serve is
-						not OpenAI-compatible.
+						Zen vision needs a Zen API key (Settings API key mode or OPENCODE_API_KEY). LiteLLM uses
+						opencode.json plus CLI auth or LITELLM_API_KEY. Local serve is not OpenAI-compatible.
 					</p>
 				) : null}
 

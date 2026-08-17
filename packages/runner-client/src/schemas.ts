@@ -632,7 +632,8 @@ export type ProbeProviderResponse = z.infer<typeof probeProviderResponseSchema>;
 export const providerModelSchema = z.object({
 	id: z.string().min(1),
 	name: z.string().min(1),
-	tier: z.enum(["free", "paid"]).optional(),
+	/** OpenCode catalog group, e.g. "Amazon Bedrock" or "OpenCode Zen". */
+	provider: z.string().min(1).optional(),
 });
 
 export type ProviderModel = z.infer<typeof providerModelSchema>;
