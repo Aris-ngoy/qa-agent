@@ -13,7 +13,8 @@ import { installBuildOnDevice, resolveBuildForRun } from "../builds/application"
 import { getApp, getCase, getCaseScriptJson, saveCaseScript } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
-import { type DeviceSession, createDeviceSession } from "../devices/session";
+import { acquireSessionForRun, releaseSessionFromRun } from "../devices/active-session";
+import type { DeviceSession } from "../devices/session";
 import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
 import {
 	type AgentDecision,
@@ -369,6 +370,7 @@ export async function executeRun(runId: string): Promise<void> {
 	registerControl(runId);
 
 	let session: DeviceSession | null = null;
+	let sharedSession = true;
 	try {
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
@@ -419,14 +421,19 @@ export async function executeRun(runId: string): Promise<void> {
 		}
 
 		const firstCase = run.tests[0] ? await getCase(run.tests[0].caseId) : null;
-		session = await createDeviceSession({
-			platform: run.platform,
+		// Adopt the shared Active Session when it already targets this device;
+		// otherwise connect (replacing any unheld session) and keep it live after.
+		const acquired = await acquireSessionForRun({
+			runId,
 			deviceId: run.deviceId,
+			platform: run.platform,
 			appCaps: app.capabilities,
 			caseCaps: firstCase?.capabilities ?? [],
 			bundleId: app.iosBundleId || undefined,
 			appPackage: app.androidApplicationId || undefined,
 		});
+		session = acquired.session;
+		sharedSession = acquired.shared;
 
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
@@ -523,13 +530,20 @@ export async function executeRun(runId: string): Promise<void> {
 		}
 	} finally {
 		if (session) {
-			await session.quit().catch(() => undefined);
+			// Shared sessions stay live as the Active Session; detached ones are quit.
+			await releaseSessionFromRun(runId, session, sharedSession);
 		}
 		clearControl(runId);
 	}
 }
 
 export async function createRun(input: CreateRunRequest): Promise<Run> {
+	if (runControls.size > 0) {
+		throw new RunValidationError(
+			"A run is already in progress. Cancel it before starting another.",
+		);
+	}
+
 	const uniqueCaseIds = [...new Set(input.caseIds)];
 	if (uniqueCaseIds.length === 0) {
 		throw new RunValidationError("At least one case id is required");

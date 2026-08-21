@@ -18,6 +18,7 @@ import { type SVGProps, useEffect, useMemo, useRef, useState } from "react";
 import { DeviceSetupPanel, type DeviceSetupStatus } from "./device-setup-panel";
 import { type DevicePlatform, SelectDeviceModal, type SelectedDevice } from "./select-device-modal";
 import { ServersDoctorPanel } from "./servers-doctor-panel";
+import { useActiveDeviceSession } from "./use-active-device-session";
 
 async function resolveIosPhysicalSetup(): Promise<
 	Pick<SetupPlatformRequest, "xcodeDeveloperDir" | "developmentTeam" | "codeSignIdentity">
@@ -230,6 +231,7 @@ export function RunsPanel() {
 	const { selectedApp } = useApps();
 	const { selectedCaseIds } = useTestCaseSelection();
 	const { activeRunId, isRunLive, setActiveRun, run: activeRun } = useActiveRun();
+	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
 	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [deviceReady, setDeviceReady] = useState(false);
 	const [setupDevice, setSetupDevice] = useState<SelectedDevice | null>(null);
@@ -244,6 +246,40 @@ export function RunsPanel() {
 	const [executionPromptOpen, setExecutionPromptOpen] = useState(false);
 	const [serversOpen, setServersOpen] = useState(false);
 	const setupAbortRef = useRef<AbortController | null>(null);
+	/** Last device id seen on the runner's Active Session — drives preselection. */
+	const lastSeenSessionDeviceRef = useRef<string | null>(null);
+	/** True while `device` mirrors the Active Session rather than an explicit user pick. */
+	const autoSelectedRef = useRef(false);
+
+	// Mirror the runner's Active Session into the play bar: the latest connected
+	// device (from any mode) is preselected and ready, until the user picks
+	// another device or the session is disconnected.
+	useEffect(() => {
+		if (setupDevice) return;
+		const deviceId = activeSession?.deviceId ?? null;
+		if (deviceId === lastSeenSessionDeviceRef.current) return;
+		lastSeenSessionDeviceRef.current = deviceId;
+		if (activeSession) {
+			autoSelectedRef.current = true;
+			const shortId =
+				activeSession.deviceId.length > 14
+					? `${activeSession.deviceId.slice(0, 14)}…`
+					: activeSession.deviceId;
+			setDevice({
+				id: activeSession.deviceId,
+				platform: activeSession.platform,
+				label: shortId,
+				name: shortId,
+				osVersion: "",
+				kind: "physical",
+			});
+			setDeviceReady(true);
+		} else if (autoSelectedRef.current) {
+			autoSelectedRef.current = false;
+			setDevice(null);
+			setDeviceReady(false);
+		}
+	}, [activeSession, setupDevice]);
 
 	const casesQuery = useQuery({
 		queryKey: selectedApp ? casesQueryKey(selectedApp.id) : ["catalog", "cases", "none"],
@@ -296,6 +332,7 @@ export function RunsPanel() {
 				void queryClient.invalidateQueries({ queryKey: casesQueryKey(selectedApp.id) });
 				void queryClient.invalidateQueries({ queryKey: runsListQueryKey(selectedApp.id) });
 			}
+			invalidateActiveDeviceSession();
 			queryClient.setQueryData(runQueryKey(run.id), run);
 			setActiveRun(run.id);
 			void navigate({ to: "/runs/$runId", params: { runId: run.id } });
@@ -315,6 +352,7 @@ export function RunsPanel() {
 		},
 		onSuccess: (run) => {
 			queryClient.setQueryData(runQueryKey(run.id), run);
+			invalidateActiveDeviceSession();
 			if (selectedApp) {
 				void queryClient.invalidateQueries({ queryKey: casesQueryKey(selectedApp.id) });
 			}
@@ -332,6 +370,7 @@ export function RunsPanel() {
 
 	const handleDeviceSelect = (selected: SelectedDevice) => {
 		setupAbortRef.current?.abort();
+		autoSelectedRef.current = false;
 		setDevice(null);
 		setDeviceReady(false);
 		setSetupStatus("loading");

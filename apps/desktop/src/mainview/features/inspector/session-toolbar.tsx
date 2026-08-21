@@ -40,7 +40,8 @@ type SessionToolbarProps = {
 	onConnect: () => void;
 	onRestart: () => void;
 	onDisconnect: () => void;
-	runLiveWarning: boolean;
+	/** A Run owns the shared session — watch-only until it finishes. */
+	viewOnly: boolean;
 };
 
 export function SessionToolbar({
@@ -54,7 +55,7 @@ export function SessionToolbar({
 	onConnect,
 	onRestart,
 	onDisconnect,
-	runLiveWarning,
+	viewOnly,
 }: SessionToolbarProps) {
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const connected = active != null;
@@ -117,7 +118,7 @@ export function SessionToolbar({
 							{active.platform} · {active.deviceId.slice(0, 8)}…
 						</span>
 						<Button
-							isDisabled={connecting}
+							isDisabled={connecting || viewOnly}
 							size="sm"
 							variant="secondary"
 							onPress={() => {
@@ -127,7 +128,7 @@ export function SessionToolbar({
 							{connecting ? "Restarting…" : "Restart session"}
 						</Button>
 						<Button
-							isDisabled={connecting}
+							isDisabled={connecting || viewOnly}
 							size="sm"
 							variant="danger"
 							onPress={() => {
@@ -165,10 +166,9 @@ export function SessionToolbar({
 				)}
 			</div>
 
-			{runLiveWarning ? (
+			{viewOnly ? (
 				<p className="text-helper text-on-surface-variant">
-					A catalog run is live (separate Appium session). Connect here for interactive inspect — it
-					won’t share that run’s session.
+					Test run in progress — watching live. Manual control resumes when the run finishes.
 				</p>
 			) : null}
 

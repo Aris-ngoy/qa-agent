@@ -770,6 +770,8 @@ export const activeDeviceResponseSchema = z.object({
 	streamReady: z.boolean().optional(),
 	/** Relative path on the runner (e.g. `/stream.mjpeg`). */
 	streamUrl: z.string().min(1).optional(),
+	/** A Run currently owns this session (interactive actions are view-only). */
+	heldByRun: z.boolean().optional(),
 });
 export type ActiveDeviceResponse = z.infer<typeof activeDeviceResponseSchema>;
 
