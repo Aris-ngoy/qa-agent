@@ -1,5 +1,5 @@
 import { controlMessageSchema } from "@yoqa/runner-client";
-import { getActiveSession } from "../../domains/devices/active-session";
+import { getActiveSession, isActiveSessionHeldByRun } from "../../domains/devices/active-session";
 
 export type ControlWsData = {
 	kind: "control";
@@ -63,6 +63,15 @@ export const controlWebSocket = {
 		}
 
 		const msg = result.data;
+		if (isActiveSessionHeldByRun()) {
+			ws.send(
+				JSON.stringify({
+					ok: false,
+					error: "A run is using this device session. Cancel the run to interact manually.",
+				}),
+			);
+			return;
+		}
 		try {
 			await active.session.pointerEvent(msg.phase, msg.x, msg.y, msg.seq);
 			if (msg.phase === "end" || msg.phase === "begin") {

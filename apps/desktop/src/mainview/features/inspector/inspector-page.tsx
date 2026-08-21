@@ -3,6 +3,7 @@ import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
 import type { DevicePlatform, SelectedDevice } from "@/features/devices/select-device-modal";
+import { useActiveDeviceSession } from "@/features/devices/use-active-device-session";
 import { CommandBar } from "@/features/inspector/command-bar";
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
 import { type RunLogEntry, RunPanel } from "@/features/inspector/run-panel";
@@ -16,7 +17,6 @@ import {
 	selectionFromPoint,
 } from "@/features/inspector/selection";
 import { SessionToolbar } from "@/features/inspector/session-toolbar";
-import { useActiveRun } from "@/features/runs/active-run-context";
 import {
 	type TestCase,
 	caseQueryKey,
@@ -143,7 +143,7 @@ export function InspectorPage() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
-	const { isRunLive } = useActiveRun();
+	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
 
 	const [platform, setPlatform] = useState<DevicePlatform>("ios");
 	const [device, setDevice] = useState<SelectedDevice | null>(null);
@@ -182,6 +182,8 @@ export function InspectorPage() {
 	const pointerSeqRef = useRef(0);
 	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
 	const sessionEpochRef = useRef(0);
+	/** Device id already adopted from the shared Active Session query. */
+	const adoptedDeviceIdRef = useRef<string | null>(null);
 	const feedModeRef = useRef<"mjpeg" | "poll" | null>(null);
 	const startLiveFeedRef = useRef<(deviceInfo: ActiveDeviceResponse) => Promise<void>>(
 		async () => {},
@@ -275,8 +277,9 @@ export function InspectorPage() {
 		}
 		sessionEpochRef.current += 1;
 		clearSessionUi();
+		invalidateActiveDeviceSession();
 		notify("Device session ended — use Restart session to reconnect");
-	}, [clearSessionUi]);
+	}, [clearSessionUi, invalidateActiveDeviceSession]);
 
 	const refreshTree = useCallback(
 		async (options: { silent?: boolean } = {}): Promise<ScreenElement[] | null> => {
@@ -465,9 +468,10 @@ export function InspectorPage() {
 			setSelection(null);
 			setLiveControl(false);
 			await startLiveFeed(info);
+			invalidateActiveDeviceSession();
 			return info;
 		},
-		[selectedApp, startLiveFeed],
+		[invalidateActiveDeviceSession, selectedApp, startLiveFeed],
 	);
 
 	useEffect(() => {
@@ -478,28 +482,29 @@ export function InspectorPage() {
 		return () => document.removeEventListener("visibilitychange", onVisibility);
 	}, []);
 
-	// Bootstrap once — do not re-run when startLiveFeed identity changes (that was
-	// revoking the MJPEG <img> mid-stream and looking like the feed "quit by itself").
+	// Adopt the shared Active Session (connected from any mode — play bar, CLI,
+	// another inspector visit) and mirror external disconnects into local UI.
 	useEffect(() => {
-		let cancelled = false;
-		void (async () => {
-			try {
-				const client = await getRunnerClient();
-				const current = await client.getActiveDevice();
-				if (cancelled) return;
-				if (current) {
-					sessionEpochRef.current += 1;
-					activeRef.current = current;
-					setActive(current);
-					setPlatform(current.platform);
-					await startLiveFeedRef.current(current);
-				}
-			} catch {
-				/* runner may still be starting */
+		if (!activeSession) {
+			if (activeRef.current) {
+				sessionEpochRef.current += 1;
+				clearSessionUi();
 			}
-		})();
+			return;
+		}
+		if (adoptedDeviceIdRef.current === activeSession.deviceId) return;
+		adoptedDeviceIdRef.current = activeSession.deviceId;
+		// Already showing this device locally (fresh connect) — keep the feed.
+		if (activeRef.current?.deviceId === activeSession.deviceId) return;
+		sessionEpochRef.current += 1;
+		activeRef.current = activeSession;
+		setActive(activeSession);
+		setPlatform(activeSession.platform);
+		void startLiveFeedRef.current(activeSession);
+	}, [activeSession, clearSessionUi]);
+
+	useEffect(() => {
 		return () => {
-			cancelled = true;
 			abortRef.current?.abort();
 			controlWsRef.current?.close();
 			controlWsRef.current = null;
@@ -697,13 +702,14 @@ export function InspectorPage() {
 			controlWsRef.current?.close();
 			controlWsRef.current = null;
 			revokeImage();
+			invalidateActiveDeviceSession();
 			notify("Disconnected");
 		} catch (error) {
 			showErrorToast(error, "Failed to disconnect");
 		} finally {
 			setConnecting(false);
 		}
-	}, [revokeImage, script]);
+	}, [invalidateActiveDeviceSession, revokeImage, script]);
 
 	const appendLines = useCallback((lines: string[]) => {
 		setScript((prev) => appendScriptLines(prev, lines));
@@ -1034,6 +1040,14 @@ export function InspectorPage() {
 
 	const connected = active != null;
 	const live = connected && pageVisible && imageUrl != null;
+	// A Run owns the shared session while live — the inspector becomes a viewer.
+	const viewOnly = connected && Boolean(activeSession?.heldByRun);
+
+	useEffect(() => {
+		if (viewOnly && liveControl) {
+			setLiveControl(false);
+		}
+	}, [viewOnly, liveControl]);
 	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(script);
 	const snippetContext = useMemo(
 		() => ({
@@ -1077,7 +1091,7 @@ export function InspectorPage() {
 				onDisconnect={() => {
 					void handleDisconnect();
 				}}
-				runLiveWarning={isRunLive}
+				viewOnly={viewOnly}
 			/>
 
 			<div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(280px,2fr)_minmax(0,3fr)]">
@@ -1091,7 +1105,7 @@ export function InspectorPage() {
 					feedMode={feedMode}
 					liveControl={liveControl}
 					onLiveControlChange={handleLiveControlChange}
-					disabled={!connected || running}
+					disabled={!connected || running || viewOnly}
 					snippetContext={snippetContext}
 					onSelect={setSelection}
 					onSelectWithPoint={handleSelectWithPoint}
@@ -1108,7 +1122,11 @@ export function InspectorPage() {
 				/>
 
 				<div className="flex flex-col gap-3">
-					<CommandBar disabled={running} onAddSwipe={handleAddSwipe} onAddWait={handleAddWait} />
+					<CommandBar
+						disabled={running || viewOnly}
+						onAddSwipe={handleAddSwipe}
+						onAddWait={handleAddWait}
+					/>
 					<ScriptEditor
 						value={script}
 						onChange={setScript}
@@ -1117,7 +1135,7 @@ export function InspectorPage() {
 					/>
 					<RunPanel
 						running={running}
-						canRun={connected && !running && scriptHasBody(script)}
+						canRun={connected && !running && !viewOnly && scriptHasBody(script)}
 						canSaveAsCase={canSaveAsCase}
 						canExportReport={sessionReport != null}
 						exportingReport={exportingReport}

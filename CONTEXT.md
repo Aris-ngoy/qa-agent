@@ -11,8 +11,8 @@ A live connection to one device (or simulator/emulator) through Appium, includin
 _Avoid_: Active session handle alone, WebDriver session (implementation detail), runner session
 
 **Active Session**:
-The single interactive Device Session currently held for connector / inspector use (at most one).
-_Avoid_: Run session (a Run may open its own Device Session)
+The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes; it stays live until the user disconnects or connects another device.
+_Avoid_: Run session (a Run adopts the Active Session), per-mode session
 
 **Dead Session**:
 A Device Session the runner still thinks is open but Appium has already dropped (invalid/missing session id).

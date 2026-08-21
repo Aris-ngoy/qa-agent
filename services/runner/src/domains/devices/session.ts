@@ -22,14 +22,6 @@ const MJPEG_SETTINGS_BASE = {
 /** At most one Device Session per device id (Active Session or Run). */
 const openByDeviceId = new Map<string, DeviceSession>();
 
-/** Notified when exclusivity releases a prior session for a device id. */
-let exclusiveReleaseListener: ((deviceId: string) => void) | null = null;
-
-/** Active Session registry uses this to clear its singleton when a Run (or other create) takes the device. */
-export function onDeviceSessionExclusiveRelease(listener: (deviceId: string) => void): void {
-	exclusiveReleaseListener = listener;
-}
-
 const DEAD_SESSION_RE =
 	/session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i;
 
@@ -135,7 +127,6 @@ async function releaseExistingSession(deviceId: string): Promise<void> {
 	const existing = openByDeviceId.get(deviceId);
 	if (!existing) return;
 	openByDeviceId.delete(deviceId);
-	exclusiveReleaseListener?.(deviceId);
 	try {
 		await existing.quit();
 	} catch (error) {

@@ -1,3 +1,5 @@
 # Device Session lives under `devices/`, exclusive per device
 
+> **Update (shared sessions):** Runs now *adopt* the Active Session when it already targets the requested device instead of contending with it. The per-device exclusivity rule stands (at most one Device Session per device id), but a run-held session stays live after the run finishes, and interactive connect/disconnect is rejected (`409`) while a run holds it. See `docs/plans/shared-device-session.md`.
+
 Appium session logic had grown under `runs/` while interactive connect lived in a thin `devices/active-session` registry. We decided the **Device Session** module owns create/attach, gestures, Dead Session errors, and the Active Session registry as a second entry point — all under `domains/devices/`. **Appium Server** process lifecycle stays in `domains/appium/` (`ensureServer`); Device Session only attaches. At most one Device Session may exist per device id (Run and Active Session contend; starting one releases the other on that device). Rejected: burying server lifecycle inside the session module, a runner-wide single session, and leaving dead-session regexes in HTTP/UI.

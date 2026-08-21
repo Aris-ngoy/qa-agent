@@ -11,10 +11,12 @@ import {
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
 import {
+	SessionBusyError,
 	abandonActiveSession,
 	connectDevice,
 	disconnectDevice,
 	getActiveSessionInfo,
+	isActiveSessionHeldByRun,
 	isMissingAppiumSessionError,
 	requireActiveSession,
 } from "../../domains/devices/active-session";
@@ -28,6 +30,12 @@ import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 
 function sessionErrorResponse(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error);
+	if (error instanceof SessionBusyError) {
+		return {
+			status: 409 as const,
+			body: { error: error.message },
+		};
+	}
 	if (isMissingAppiumSessionError(error)) {
 		abandonActiveSession();
 		return {
@@ -59,6 +67,8 @@ export function createSessionRoutes() {
 			const info = await connectDevice(parsed.data);
 			return c.json(activeDeviceResponseSchema.parse(info));
 		} catch (error) {
+			const mapped = sessionErrorResponse(error);
+			if (mapped) return c.json(mapped.body, mapped.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Failed to connect device", detail: message }, 500);
 		}
@@ -73,11 +83,18 @@ export function createSessionRoutes() {
 	});
 
 	app.post("/devices/disconnect", async (c) => {
-		const info = await disconnectDevice();
-		if (!info) {
-			return c.json({ error: "No active device session" }, 404);
+		try {
+			const info = await disconnectDevice();
+			if (!info) {
+				return c.json({ error: "No active device session" }, 404);
+			}
+			return c.json(activeDeviceResponseSchema.parse(info));
+		} catch (error) {
+			const mapped = sessionErrorResponse(error);
+			if (mapped) return c.json(mapped.body, mapped.status);
+			const message = error instanceof Error ? error.message : String(error);
+			return c.json({ error: "Failed to disconnect device", detail: message }, 500);
 		}
-		return c.json(activeDeviceResponseSchema.parse(info));
 	});
 
 	app.get("/screen", async (c) => {
@@ -208,6 +225,14 @@ export function createSessionRoutes() {
 		}
 		try {
 			const { session } = requireActiveSession();
+			if (isActiveSessionHeldByRun()) {
+				return c.json(
+					{
+						error: "A run is using this device session. Cancel the run to interact manually.",
+					},
+					409,
+				);
+			}
 			const result = await performAction(session, parsed.data);
 			return c.json(actionResponseSchema.parse(result));
 		} catch (error) {
