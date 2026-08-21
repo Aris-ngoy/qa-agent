@@ -58,13 +58,27 @@ fi
 
 adb -s "$SERIAL" shell am start -W -n ai.yoqa.demo/.MainActivity >/dev/null || true
 echo "Waiting briefly for ai.yoqa.demo (Yoqa assert will wait if the dump is empty)…"
-for _ in $(seq 1 20); do
+for _ in $(seq 1 30); do
 	focus="$(adb -s "$SERIAL" shell dumpsys window 2>/dev/null | awk -F= '/mCurrentFocus/{print $2; exit}' || true)"
 	adb -s "$SERIAL" shell uiautomator dump /sdcard/yoqa-dump.xml >/dev/null 2>&1 || true
-	if adb -s "$SERIAL" shell cat /sdcard/yoqa-dump.xml 2>/dev/null | grep -q "Yoqa Demo"; then
+	dump="$(adb -s "$SERIAL" shell cat /sdcard/yoqa-dump.xml 2>/dev/null || true)"
+	if printf '%s' "$dump" | grep -q "Yoqa Demo"; then
 		echo "Found Yoqa Demo (focus: ${focus})"
 		break
 	fi
+	case "$dump" in
+	*"isn't responding"*)
+		echo "Dismissing ANR dialog"
+		bounds="$(
+			printf '%s' "$dump" | tr '>' '\n' | grep 'aerr_wait' |
+				sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p'
+		)"
+		if [ -n "$bounds" ]; then
+			set -- $bounds
+			adb -s "$SERIAL" shell input tap $((($1 + $3) / 2)) $((($2 + $4) / 2))
+		fi
+		;;
+	esac
 	sleep 2
 done
 
