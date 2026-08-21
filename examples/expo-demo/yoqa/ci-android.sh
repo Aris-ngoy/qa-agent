@@ -42,10 +42,19 @@ capture_failure() {
 
 trap capture_failure ERR
 
-(
-	cd examples/expo-demo
-	npx expo run:android --variant release --no-bundler --device "$AVD_NAME"
-)
+if [ -n "${YOQA_DEMO_APK:-}" ]; then
+	if [ ! -f "$YOQA_DEMO_APK" ]; then
+		echo "Cached APK not found: ${YOQA_DEMO_APK}" >&2
+		exit 1
+	fi
+	echo "Installing prebuilt APK ${YOQA_DEMO_APK}"
+	adb -s "$SERIAL" install -r "$YOQA_DEMO_APK"
+else
+	(
+		cd examples/expo-demo
+		npx expo run:android --variant release --no-bundler --device "$AVD_NAME"
+	)
+fi
 
 adb -s "$SERIAL" shell am start -W -n ai.yoqa.demo/.MainActivity >/dev/null || true
 echo "Waiting briefly for ai.yoqa.demo (Yoqa assert will wait if the dump is empty)…"

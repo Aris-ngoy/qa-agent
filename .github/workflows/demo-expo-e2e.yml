@@ -91,7 +91,15 @@ jobs:
           key: yoqa-runtime-${{ runner.os }}-${{ hashFiles('services/runner/package.json') }}
           restore-keys: yoqa-runtime-${{ runner.os }}-
 
+      - name: Restore cached iOS .app
+        id: demo-app
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: examples/expo-demo/build-cache
+          key: expo-demo-ios-${{ hashFiles('examples/expo-demo/App.tsx', 'examples/expo-demo/index.ts', 'examples/expo-demo/app.json', 'examples/expo-demo/package.json', 'examples/expo-demo/package-lock.json', 'examples/expo-demo/assets/**') }}
+
       - name: Install Expo demo dependencies
+        if: steps.demo-app.outputs.cache-hit != 'true'
         working-directory: examples/expo-demo
         run: npm ci
 
@@ -132,22 +140,41 @@ jobs:
               fh.write(f"udid={udid}\n")
           PY
 
-      - name: Prebuild iOS (Expo CLI)
+      - name: Build iOS .app (cache miss)
+        if: steps.demo-app.outputs.cache-hit != 'true'
         working-directory: examples/expo-demo
         env:
-          LANG: en_US.UTF-8
-        run: npx expo prebuild --platform ios
-
-      - name: Build, install, and launch iOS (Expo CLI)
-        working-directory: examples/expo-demo
-        env:
-          RCT_NO_LAUNCH_PACKAGER: "1"
           LANG: en_US.UTF-8
         run: |
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
-          npx expo run:ios --configuration Release --device "${{ steps.sim.outputs.udid }}" --no-bundler
+          npx expo prebuild --platform ios
+          xcodebuild \
+            -workspace ios/YoqaDemo.xcworkspace \
+            -scheme YoqaDemo \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          mkdir -p build-cache
+          ditto -c -k --keepParent \
+            ios/build/Build/Products/Release-iphonesimulator/YoqaDemo.app \
+            build-cache/YoqaDemo.app.zip
+
+      - name: Install and launch cached .app
+        run: |
+          APP_ZIP="examples/expo-demo/build-cache/YoqaDemo.app.zip"
+          if [ ! -f "$APP_ZIP" ]; then
+            echo "Missing $APP_ZIP" >&2
+            exit 1
+          fi
+          rm -rf "$RUNNER_TEMP/YoqaDemo.app"
+          ditto -x -k "$APP_ZIP" "$RUNNER_TEMP"
+          xcrun simctl install "${{ steps.sim.outputs.udid }}" "$RUNNER_TEMP/YoqaDemo.app"
+          xcrun simctl launch "${{ steps.sim.outputs.udid }}" ai.yoqa.demo
 
       - name: Connect Yoqa and smoke
         id: smoke
@@ -237,7 +264,15 @@ jobs:
           key: yoqa-runtime-${{ runner.os }}-${{ hashFiles('services/runner/package.json') }}
           restore-keys: yoqa-runtime-${{ runner.os }}-
 
+      - name: Restore cached Android .apk
+        id: demo-apk
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: examples/expo-demo/build-cache
+          key: expo-demo-android-${{ hashFiles('examples/expo-demo/App.tsx', 'examples/expo-demo/index.ts', 'examples/expo-demo/app.json', 'examples/expo-demo/package.json', 'examples/expo-demo/package-lock.json', 'examples/expo-demo/assets/**') }}
+
       - name: Install Expo demo dependencies
+        if: steps.demo-apk.outputs.cache-hit != 'true'
         working-directory: examples/expo-demo
         run: npm ci
 
@@ -246,13 +281,20 @@ jobs:
           yoqa health
           yoqa runtime ensure
 
-      - name: Prebuild Android (Expo CLI)
+      - name: Build Android .apk (cache miss)
+        if: steps.demo-apk.outputs.cache-hit != 'true'
         working-directory: examples/expo-demo
-        run: npx expo prebuild --platform android
+        run: |
+          npx expo prebuild --platform android
+          android/gradlew -p android assembleRelease
+          mkdir -p build-cache
+          cp android/app/build/outputs/apk/release/app-release.apk build-cache/app-release.apk
 
       - name: Build, install, and smoke on emulator
         id: smoke
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          YOQA_DEMO_APK: ${{ github.workspace }}/examples/expo-demo/build-cache/app-release.apk
         with:
           api-level: 34
           arch: x86_64
