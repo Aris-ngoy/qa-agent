@@ -97,6 +97,8 @@ jobs:
         with:
           path: examples/expo-demo/build-cache
           key: expo-demo-ios-${{ hashFiles('examples/expo-demo/App.tsx', 'examples/expo-demo/index.ts', 'examples/expo-demo/app.json', 'examples/expo-demo/package.json', 'examples/expo-demo/package-lock.json', 'examples/expo-demo/assets/**') }}
+          # Keep the binary even when the smoke step fails, so retries skip the build.
+          save-always: true
 
       - name: Install Expo demo dependencies
         if: steps.demo-app.outputs.cache-hit != 'true'
@@ -270,6 +272,8 @@ jobs:
         with:
           path: examples/expo-demo/build-cache
           key: expo-demo-android-${{ hashFiles('examples/expo-demo/App.tsx', 'examples/expo-demo/index.ts', 'examples/expo-demo/app.json', 'examples/expo-demo/package.json', 'examples/expo-demo/package-lock.json', 'examples/expo-demo/assets/**') }}
+          # Keep the binary even when the smoke step fails, so retries skip the build.
+          save-always: true
 
       - name: Install Expo demo dependencies
         if: steps.demo-apk.outputs.cache-hit != 'true'
