@@ -2,8 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { z } from "zod";
-import { extractAgentJsonObject } from "../agent-json";
+import { extractAgentJsonObject, parseVisionObject } from "../agent-json";
 import {
 	AgentProviderError,
 	completeWithAiSdk,
@@ -75,12 +74,13 @@ async function completeWithAgyCli<T>(
 			);
 		}
 
-		return input.schema.parse(extractAgentJsonObject(result.stdout || combined, "Antigravity CLI"));
+		return parseVisionObject(
+			input.schema,
+			extractAgentJsonObject(result.stdout || combined, "Antigravity CLI"),
+			"Antigravity CLI",
+		);
 	} catch (error) {
 		if (error instanceof AgentProviderError) throw error;
-		if (error instanceof z.ZodError) {
-			throw new AgentProviderError(`Antigravity JSON was not a valid action: ${error.message}`);
-		}
 		if (error instanceof SyntaxError) {
 			throw new AgentProviderError(`Antigravity CLI returned invalid JSON: ${error.message}`);
 		}

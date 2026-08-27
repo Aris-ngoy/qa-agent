@@ -1,111 +1,52 @@
+import { z } from "zod";
+import { coerceLooseJson, normalizeVisionJson, salvageAgentJsonText } from "./json-salvage";
 import { AgentProviderError } from "./vision-model";
 
+export {
+	clampNormCoord,
+	closeTruncatedJson,
+	coerceLooseJson,
+	normalizeVisionJson,
+	salvageAgentJsonText,
+} from "./json-salvage";
+
 /**
- * Pull the outermost `{...}` from agent CLI stdout (optionally fenced) and parse it.
- * Tolerates common LLM looseness: single-quoted strings and trailing commas.
+ * Pull a JSON object from agent CLI / model text (fenced, loose, or truncated) and parse it.
  */
 export function extractAgentJsonObject(text: string, providerLabel: string): unknown {
-	const trimmed = text.trim();
-	const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-	const candidate = fenced?.[1]?.trim() ?? trimmed;
-	const start = candidate.indexOf("{");
-	const end = candidate.lastIndexOf("}");
-	if (start < 0 || end <= start) {
-		throw new AgentProviderError(
-			`${providerLabel} did not return JSON (got: ${trimmed.replace(/\s+/g, " ").slice(0, 160)})`,
-		);
-	}
-	const slice = candidate.slice(start, end + 1);
+	const snippet = text.trim().replace(/\s+/g, " ").slice(0, 160);
+	const fail = (): never => {
+		throw new AgentProviderError(`${providerLabel} did not return JSON (got: ${snippet})`);
+	};
+
+	const salvaged = salvageAgentJsonText(text);
+	let parsed: unknown;
 	try {
-		return JSON.parse(slice) as unknown;
-	} catch (strictError) {
+		parsed = JSON.parse(salvaged) as unknown;
+	} catch {
 		try {
-			return JSON.parse(coerceLooseJson(slice)) as unknown;
+			parsed = JSON.parse(coerceLooseJson(salvaged)) as unknown;
 		} catch {
-			throw strictError;
+			fail();
 		}
 	}
-}
-
-function charAt(raw: string, index: number): string | undefined {
-	return raw[index];
-}
-
-/**
- * Convert single-quoted string literals (and drop trailing commas) into strict JSON text.
- * Double-quoted regions are copied unchanged so apostrophes inside them stay intact.
- */
-export function coerceLooseJson(raw: string): string {
-	let out = "";
-	let i = 0;
-	while (i < raw.length) {
-		const c = charAt(raw, i);
-		if (c === undefined) break;
-
-		if (c === '"') {
-			out += c;
-			i += 1;
-			while (i < raw.length) {
-				const d = charAt(raw, i);
-				if (d === undefined) break;
-				out += d;
-				i += 1;
-				if (d === "\\") {
-					const escaped = charAt(raw, i);
-					if (escaped !== undefined) {
-						out += escaped;
-						i += 1;
-					}
-					continue;
-				}
-				if (d === '"') break;
-			}
-			continue;
-		}
-
-		if (c === "'") {
-			i += 1;
-			let content = "";
-			while (i < raw.length) {
-				const d = charAt(raw, i);
-				if (d === undefined) break;
-				if (d === "\\" && i + 1 < raw.length) {
-					const next = charAt(raw, i + 1);
-					if (next === undefined) break;
-					if (next === "n") content += "\n";
-					else if (next === "t") content += "\t";
-					else if (next === "r") content += "\r";
-					else content += next;
-					i += 2;
-					continue;
-				}
-				if (d === "'") {
-					i += 1;
-					break;
-				}
-				content += d;
-				i += 1;
-			}
-			out += JSON.stringify(content);
-			continue;
-		}
-
-		if (c === ",") {
-			let j = i + 1;
-			while (j < raw.length) {
-				const ws = charAt(raw, j);
-				if (ws === undefined || !/\s/.test(ws)) break;
-				j += 1;
-			}
-			const closer = charAt(raw, j);
-			if (closer === "}" || closer === "]") {
-				i += 1;
-				continue;
-			}
-		}
-
-		out += c;
-		i += 1;
+	if (parsed === undefined || parsed === null || typeof parsed !== "object") {
+		fail();
 	}
-	return out;
+	return parsed;
+}
+
+export function parseVisionObject<T>(schema: z.ZodType<T>, raw: unknown, providerLabel: string): T {
+	try {
+		return schema.parse(normalizeVisionJson(raw));
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			const first = error.issues[0];
+			const detail = first
+				? `${first.path.length > 0 ? `${first.path.join(".")}: ` : ""}${first.message}`
+				: error.message;
+			throw new AgentProviderError(`${providerLabel} JSON was not a valid action: ${detail}`);
+		}
+		throw error;
+	}
 }

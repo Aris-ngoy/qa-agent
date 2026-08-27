@@ -5,7 +5,9 @@ import { join } from "node:path";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
 import { APICallError, NoObjectGeneratedError, generateObject } from "ai";
 import type { LanguageModel } from "ai";
+import { z } from "zod";
 import type { VisionAuth, VisionCompleteInput, VisionPort } from "./drivers/types";
+import { normalizeVisionJson, salvageAgentJsonText } from "./json-salvage";
 
 export class AgentProviderError extends Error {
 	constructor(message: string) {
@@ -149,21 +151,42 @@ function mapProviderError(label: string, error: unknown): never {
 		);
 	}
 
+	if (error instanceof z.ZodError) {
+		const first = error.issues[0];
+		const detail = first
+			? `${first.path.length > 0 ? `${first.path.join(".")}: ` : ""}${first.message}`
+			: error.message;
+		throw new AgentProviderError(`${label} JSON was not a valid action: ${detail}`);
+	}
+
 	if (error instanceof Error) {
 		throw new AgentProviderError(error.message);
 	}
 	throw new AgentProviderError(String(error));
 }
 
-/** Unwrap markdown ```json fences so generateObject can parse LiteLLM/Bedrock replies. */
+/** Unwrap fences, close truncated objects, and coerce loose JSON for generateObject repair. */
 export function repairModelJsonText(text: string): string {
-	const trimmed = text.trim();
-	const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-	const candidate = fenced?.[1]?.trim() ?? trimmed;
-	const start = candidate.indexOf("{");
-	const end = candidate.lastIndexOf("}");
-	if (start < 0 || end <= start) return trimmed;
-	return candidate.slice(start, end + 1);
+	return salvageAgentJsonText(text);
+}
+
+function parseVisionSchema<T>(
+	schema: VisionCompleteInput<T>["schema"],
+	raw: unknown,
+	label: string,
+): T {
+	try {
+		return schema.parse(normalizeVisionJson(raw));
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			const first = error.issues[0];
+			const detail = first
+				? `${first.path.length > 0 ? `${first.path.join(".")}: ` : ""}${first.message}`
+				: error.message;
+			throw new AgentProviderError(`${label} JSON was not a valid action: ${detail}`);
+		}
+		throw error;
+	}
 }
 
 export async function completeWithAiSdk<T>(input: {
@@ -181,7 +204,7 @@ export async function completeWithAiSdk<T>(input: {
 				schema: input.schema,
 				system: input.system,
 				maxOutputTokens: VISION_MAX_TOKENS,
-				experimental_repairText: async ({ text }) => repairModelJsonText(text),
+				experimental_repairText: async ({ text }) => salvageAgentJsonText(text),
 				messages: [
 					{
 						role: "user",
@@ -196,12 +219,15 @@ export async function completeWithAiSdk<T>(input: {
 					},
 				],
 			});
-			return object;
+			return parseVisionSchema(input.schema, object, input.label);
 		} catch (error) {
+			if (error instanceof AgentProviderError) throw error;
 			if (NoObjectGeneratedError.isInstance(error) && error.text?.trim()) {
 				try {
-					return input.schema.parse(JSON.parse(repairModelJsonText(error.text)));
-				} catch {
+					const salvaged = salvageAgentJsonText(error.text);
+					return parseVisionSchema(input.schema, JSON.parse(salvaged), input.label);
+				} catch (salvageError) {
+					if (salvageError instanceof AgentProviderError) throw salvageError;
 					// Fall through to the mapped provider error.
 				}
 			}
