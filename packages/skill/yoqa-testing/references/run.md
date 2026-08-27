@@ -1,43 +1,74 @@
 # Run Tests
 
-Starts a test run with the Yoqa agent on the active device. Requires a paid account with credits.
+Starts a test run with the Yoqa agent on the active device. Requires a configured AI provider
+(`yoqa status` shows `provider: …`).
 
-The first argument is always the **app prefix**, followed by the cases to run — either saved case numbers or an inline JSON array of ad-hoc cases.
+Case numbers go in the **required `--cases` flag** as a comma-separated list — not as positional
+arguments. The app prefix is the positional argument.
 
 ```bash
-yoqa runs create APP 1 2 5 --build-id <build-id>               # run saved cases against a build from the registry
-yoqa runs create APP 1 2 5 --build-path /path/to/app.ipa        # run saved cases, install a build from an absolute path
-yoqa runs create APP 1 2 5                                      # run saved cases using the app already on the device
-yoqa runs create APP 1,2,5                                      # case numbers may also be comma-separated
-yoqa runs create APP '[{"name": "Login", "flows": [{"instructions": "tap login", "result": "home screen shows"}]}]'  # run ad-hoc cases directly from flows, no saved case needed
-yoqa runs list APP                                              # list recent runs (ID, STATUS, TESTS, SOURCE, CREATED)
-yoqa runs get APP <run-id>                                      # show all tests in a run with pass/fail and check counts
-yoqa runs get APP <run-id> <test-id>                            # show test details: flows, expected results, steps
-yoqa runs report <run-id>                                       # export HTML report with screenshots (default)
-yoqa runs report <run-id> --format md -o ./report.md             # export Markdown report to a path
-yoqa runs delete APP <run-id>                                   # delete a run and its results (irreversible)
+yoqa runs create APP --cases 1,2,5                              # use the app already on the device
+yoqa runs create APP --cases 1,2,5 --build-id <build-id>        # install a registered build first
+yoqa runs create APP --cases 1,2,5 --build-path /abs/path/App.ipa
+yoqa runs create APP --cases 1 --wait                           # block until the run finishes
+yoqa runs create APP --cases 1 --wait --timeout 3600            # wait timeout in seconds (default 1800)
 ```
 
-> **`runs delete` is destructive and irreversible — always get explicit user approval first.** Name the exact run (id) you intend to delete and wait for confirmation before running. Never delete a run the user didn't ask you to remove.
+```bash
+yoqa runs list APP                          # recent runs: id, status, platform, device
+yoqa runs get <run-id>                      # run status + per-test pass/fail (no app argument)
+yoqa runs get <run-id> --json               # full detail: flows, expected results, steps
+yoqa runs wait <run-id>                     # block until an already-started run finishes
+yoqa runs wait <run-id> --timeout 3600
+yoqa runs delete <run-id>                   # delete a run and its results (irreversible)
+```
 
-- Saved cases are referenced by their **number** (the ID column from `yoqa cases list APP`), not `PREFIX-N`
-- Ad-hoc cases are a JSON array; each case is `{"name", "flows": [{"instructions", "result"?}]}` — `name` is required
-- **Build is optional** — omit both build flags when the app is already installed on the device (e.g. React Native debug build launched via Metro / `npx react-native run-ios`). Note: omitting the build means **no clean reinstall** — the app keeps whatever state is already on the device (login, onboarding, leftover data), which bleeds across cases. Fine for a quick check; for a regression suite pass a build so each run starts clean. Otherwise pass **one** of:
-  - `--build-id <build-id>` — reference a build already registered with `yoqa builds create`. See [Builds](builds.md).
-  - `--build-path <abs-path>` — an **absolute path** to a `.ipa`/`.app`/`.apk` (e.g. `/Users/me/build/App.ipa`, not `build/App.ipa`); parsed on the fly for version, bundle ID, and platform.
+> **`runs delete` is destructive and irreversible — always get explicit user approval first.** Name the
+> exact run (id) you intend to delete and wait for confirmation before running. Never delete a run the
+> user didn't ask you to remove.
+
+## Notes
+
+- Saved cases are referenced by their **number** (from `yoqa cases list APP`), not `PREFIX-N`
+- All case numbers must belong to the app whose prefix you pass
+- The active device is used automatically — connect one first with
+  `yoqa devices connect <id> --platform <ios|android>`. Override with `--device <id>` and
+  `--platform <ios|android>` (pass both).
+- **A build is optional.** Omit both build flags when the app is already installed (e.g. a React Native
+  debug build launched via Metro). Note that without a build there is **no clean reinstall** — the app
+  keeps whatever state is on the device (login, onboarding, leftover data), which bleeds across cases.
+  Fine for a quick check; for a regression suite pass a build so each run starts clean. Otherwise pass
+  **one** of:
+  - `--build-id <build-id>` — a build already registered with `yoqa builds create`. See [Builds](builds.md).
+  - `--build-path <abs-path>` — an **absolute** path to a `.ipa`/`.app`/`.apk` (e.g. `/Users/me/build/App.ipa`,
+    not `build/App.ipa`); parsed on the fly for version, bundle ID, and platform.
 - `--build-id` and `--build-path` are mutually exclusive
-- The active device is picked up automatically — connect one first with `yoqa devices connect <id>`
-- Returns a `run_id`; inspect results (pass/fail, screenshots) with `yoqa runs get APP <run-id>`
+- Supported build formats: `.ipa` (iOS device), `.app` (iOS simulator), `.apk` (Android)
+- `runs create` returns a `run_id`. Prefer `--wait` over polling; `--wait` exits non-zero if the run errored.
 - Optional `--mode auto|script|agent` — prefer a saved script, force AI, or auto (default)
-- **`runs report`** exports a self-contained HTML or Markdown file with step details and embedded screenshots. Run must be finished (`passed` / `errored` / `cancelled`). Default output: `yoqa-run-<id>-<status>.html`.
+- In CI, `--github-output` writes `run_id` and `status` to `$GITHUB_OUTPUT`
+
+## Reports
+
+```bash
+yoqa runs report <run-id>                          # self-contained HTML (default)
+yoqa runs report <run-id> --format md -o ./report.md
+yoqa report --latest APP                           # newest run for an app
+yoqa report <run-id> --wait                        # wait for the run, then export
+```
+
+Both spellings work (`yoqa report` and `yoqa runs report`). The export embeds step details and
+screenshots. `--fail-on errored` makes the command exit non-zero for a failed run; `--github-summary`
+appends a compact summary to `$GITHUB_STEP_SUMMARY`.
 
 ## Exported scripts (no agent)
 
-After a successful agent run, the desktop app can export a CaseScript JSON file. Replay it without calling the model:
+After a successful agent run, the desktop app can export a CaseScript JSON file. Replay it without
+calling the model:
 
 ```bash
-yoqa devices connect <device-id>
+yoqa devices connect <device-id> --platform ios
 yoqa script run ./login.yoqa.json
 ```
 
-Shell exports (`.sh`) call `yoqa action tap|input` and `sleep` instead — useful for copy/paste debugging.
+A CaseScript replays taps (by `--label`/`--id`/coordinates), text input, waits, and assertions.

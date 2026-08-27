@@ -13,7 +13,7 @@ This is the single most important thing to internalise. **Each run installs or l
 
 So to test a screen deep inside the app, the run first has to *get there* — through onboarding, login, and any first-launch permission prompts. Three ways to handle that prefix:
 
-- **Reusable flow** (default) — wrap onboarding/login in a reusable flow and reference it by `id` from every case that needs it. Written once, shared everywhere.
+- **Reusable flow** (default) — wrap onboarding/login in a reusable flow and reference it by `flowId` from every case that needs it. Written once, shared everywhere.
 - **Deeplink** — if the app has a URL scheme handler (check the codebase), open a deeplink to jump straight to the target screen and skip the navigation.
 - **Test build / flag** — a build with onboarding disabled, a feature flag, or pre-seeded data.
 
@@ -64,11 +64,11 @@ A single-action flow stays a single line — don't number a list of one:
 
 ## Instructions vs expected result — keep them separate
 
-`instructions` are the **actions to perform**. The expected `result` is **what should be visible on screen afterwards**. Don't hide assertions inside instructions, and don't put actions inside the result.
+`instructions` are the **actions to perform**. The `expectedResult` is **what should be visible on screen afterwards**. Don't hide assertions inside instructions, and don't put actions inside the result.
 
 ❌ instructions mixing the check in: `Change the name and make sure it saved.`
 ✅ instructions (action only): `Change the display name to "John Test" and tap Save.`
-✅ result (observation only): `The Profile screen shows "John Test" as the display name.`
+✅ `expectedResult` (observation only): `The Profile screen shows "John Test" as the display name.`
 
 ### Expected result
 
@@ -83,29 +83,37 @@ Describe what should be visible on screen after the flow. The more concrete, the
 
 A well-formed case: one goal per flow, a numbered list where a flow has several actions, and a concrete result on each.
 
-```json
-{
-  "title": "Edit display name from Profile",
-  "tags": ["smoke", "profile"],
-  "flows": [
-    {
-      "instructions": "Sign in with test@example.com / Test1234.",
-      "result": "The Home screen is visible with the search bar and the recent-items list."
-    },
-    {
-      "instructions": "1. Open the Profile screen from the bottom tab bar.\n2. Tap Edit.\n3. Change the display name to \"John Test\".\n4. Tap Save.",
-      "result": "The Profile screen shows \"John Test\" as the display name and a \"Saved\" confirmation."
-    }
-  ]
-}
+The flows go in a JSON file passed to `--flows-file`; the title and tags are flags:
+
+```bash
+yoqa cases create APP --title "Edit display name from Profile" \
+  --tag smoke --tag profile --flows-file ./flows.json
 ```
 
-Note: the sign-in step is a separate flow because it's reused across cases — in practice reference it as a reusable flow by `id` instead of inlining it (see the [workflow](../workflows/test-cases.md)).
+```json
+[
+  {
+    "instructions": "Sign in with test@example.com / Test1234.",
+    "expectedResult": "The Home screen is visible with the search bar and the recent-items list."
+  },
+  {
+    "instructions": "1. Open the Profile screen from the bottom tab bar.\n2. Tap Edit.\n3. Change the display name to \"John Test\".\n4. Tap Save.",
+    "expectedResult": "The Profile screen shows \"John Test\" as the display name and a \"Saved\" confirmation."
+  }
+]
+```
+
+The field is `expectedResult`, not `result` — an unknown key is rejected outright, so a typo fails loudly
+instead of silently saving a step with no expected result.
+
+Note: the sign-in step is a separate flow because it's reused across cases — in practice reference it as a
+reusable flow by `{"flowId": "..."}` instead of inlining it (see the [workflow](../workflows/test-cases.md)).
 
 ## Tags
 
-Pass tag names as strings in `cases create` or `cases update` — created automatically if they don't exist.
+Pass each tag with a repeatable `--tag` flag on `cases create` or `cases update` — created automatically
+if they don't exist. On `update`, `--tag` replaces the whole set.
 
 Conventions: `auth`, `payments`, `smoke`, `regression`, `ios-only`, `android-only`
 
-To see existing tags, use the tags command in [Apps, Cases & Flows](../references/apps-cases-and-flows.md).
+To see existing tags: `yoqa tags APP` — see [Apps, Cases & Flows](../references/apps-cases-and-flows.md).

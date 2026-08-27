@@ -120,30 +120,39 @@ Prefer `yoqa screen` in agent loops — fewer tokens than a screenshot or `--ful
 
 ## Actions
 
-Prefer **description grounding** (`-d` / `--description`) when an [AI provider](/docs/providers) is configured. Fall back to relative coordinates (`0–1000`) from `yoqa screen`.
+`tap` and `input` can find their target for you: `--id` and `--label` match the cleaned screen tree
+(deterministic, no provider needed), and `-d` / `--description` uses vision grounding when an
+[AI provider](/docs/providers) is configured. `swipe` and `drag` are coordinate-only.
 
 ```bash
-# By description (recommended)
-yoqa action tap -d "Login button"
-yoqa action tap -d "Login button" --double
-yoqa action tap -d "Login button" --duration 2
-yoqa action swipe -d "photo carousel, swipe left"
-yoqa action drag -d "card onto the drop zone"
-yoqa action input -d "email field" --text "hi@yoqa.ai"
+# By id / label (preferred — no AI provider required)
+yoqa action tap --id login_button
+yoqa action tap --label "Login"
+yoqa action tap --label "Login" --double
+yoqa action tap --label "Inbox" --duration 3000     # long-press; duration is MILLISECONDS
+yoqa action input --label "Email" --text "hi@yoqa.ai"
 
-# By coordinates (fallback)
+# By description (vision grounding; tap and input only)
+yoqa action tap -d "blue 'Login' button at bottom center"
+yoqa action input -d "email field with placeholder 'Email'" --text "hi@yoqa.ai"
+
+# By coordinates (relative 0–1000; the only option for swipe and drag)
 yoqa action tap --x 500 --y 320
-yoqa action swipe --x1 500 --y1 800 --x2 500 --y2 200
-yoqa action drag --x1 300 --y1 500 --x2 700 --y2 500
+yoqa action swipe --x 500 --y 800 --x2 500 --y2 200
+yoqa action drag --x 300 --y 500 --x2 700 --y2 500
 yoqa action input --x 500 --y 640 --text "hi@yoqa.ai"
+
+# Assertions
+yoqa assert visible -t "Welcome back"
+yoqa assert not-visible -t "Loading" --timeout 10
 
 # App & system
 yoqa action open-url --url "myapp://profile"
-yoqa action alert --action accept
-yoqa action alert --action dismiss
-yoqa action activate-app --bundle-id com.example.app
-yoqa action terminate-app --bundle-id com.example.app
-yoqa action restart-app --bundle-id com.example.app
+yoqa action alert                                    # accept
+yoqa action alert --dismiss
+yoqa action activate-app --app-id com.example.app
+yoqa action terminate-app --app-id com.example.app
+yoqa action restart-app --app-id com.example.app
 yoqa action background-app
 ```
 
@@ -153,18 +162,21 @@ Catalog commands take the app **prefix** as `APP` (`yoqa apps list`).
 
 ```bash
 yoqa apps list
-yoqa apps get APP
-yoqa apps update APP '{"name": "...", "app_context": "..."}'
+yoqa apps get APP --json
+yoqa apps create --name "My App"
+yoqa apps update APP --context "..."          # overwrites; send the full replacement
 
 yoqa cases list APP
-yoqa cases list APP --tag smoke
-yoqa cases get APP 42
-yoqa cases create APP '{"title": "Login", "tags": ["smoke"], "flows": [{"instructions": "...", "result": "..."}]}'
-yoqa cases update APP 42 '{"title": "New title"}'
+yoqa cases list APP --tag smoke --tag auth    # repeatable; a case must carry every tag
+yoqa cases get APP 42 --json
+yoqa cases create APP --title "Login" --tag smoke --flows-file ./flows.json
+yoqa cases update APP 42 --title "New title"
+yoqa cases update APP 42 --flows-file ./flows.json    # replaces all flows
 yoqa cases delete APP 42
 
 yoqa flows list APP
-yoqa flows create APP '{"name": "Onboarding", "instructions": "...", "result": "..."}'
+yoqa flows create APP --name "Onboarding" --instructions "..." --result "..."
+yoqa flows update APP <flow-id> --result "..."
 yoqa tags APP
 ```
 
@@ -172,7 +184,7 @@ yoqa tags APP
 
 ```bash
 yoqa builds list APP
-yoqa builds create APP --path ./MyApp.app
+yoqa builds create /abs/path/MyApp.app --app APP     # path is positional and first
 
 yoqa runs list APP
 yoqa runs get <run-id>

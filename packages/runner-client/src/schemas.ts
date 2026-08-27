@@ -410,6 +410,22 @@ export const updateCaseRequestSchema = z.object({
 
 export type UpdateCaseRequest = z.infer<typeof updateCaseRequestSchema>;
 
+/**
+ * Flow steps as accepted by `cases create` / `cases update` — derived from the
+ * request schemas so a `--flows-file` payload cannot drift from the API shape.
+ * Strict: an unknown key (e.g. `result` instead of `expectedResult`) is an error,
+ * not a silently dropped field.
+ */
+export const createCaseFlowsSchema = z.array(
+	createCaseRequestSchema.shape.flows.unwrap().element.strict(),
+);
+export type CreateCaseFlows = z.infer<typeof createCaseFlowsSchema>;
+
+export const updateCaseFlowsSchema = z.array(
+	updateCaseRequestSchema.shape.flows.unwrap().element.strict(),
+);
+export type UpdateCaseFlows = z.infer<typeof updateCaseFlowsSchema>;
+
 export const catalogFlowSchema = z.object({
 	id: z.string().min(1),
 	appId: z.string().min(1),

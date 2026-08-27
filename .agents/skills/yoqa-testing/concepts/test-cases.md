@@ -12,20 +12,22 @@ A test case is a single scenario to verify. It has:
 - **Title** — short human-readable name
 - **Flows** — one or more steps the agent executes in order
 - **Tags** (optional) — for filtering and organizing (e.g. `auth`, `smoke`, `ios-only`)
+- **Capabilities** (optional) — key/value facts the runner carries alongside the case; set from the desktop app
 
 ## Flow
 
 A flow is one step inside a test case:
-- **Instructions** — what the agent should do, in natural language
-- **Expected result** (optional) — what should be visible on screen after. If omitted, the agent only checks that the step completed without errors.
+- **`instructions`** — what the agent should do, in natural language
+- **`expectedResult`** (optional) — what should be visible on screen after. If omitted, the agent only checks that the step completed without errors.
 
-A flow is either **inline** (unique to this case) or a **reusable flow reference** (shared across cases).
+A flow is either **inline** (`{"instructions": …, "expectedResult": …}`, unique to this case) or a
+**reusable flow reference** (`{"flowId": …}`, shared across cases).
 
 ## Reusable flows
 
 A reusable flow is a named flow shared across multiple test cases. When you update it, all test cases that reference it are updated automatically.
 
-Use reusable flows for steps that appear in many cases: login, onboarding, account setup, or any prerequisite state. Reference by `id` when creating or updating a case.
+Use reusable flows for steps that appear in many cases: login, onboarding, account setup, or any prerequisite state. Reference it by `flowId` when creating or updating a case; get ids from `yoqa flows list APP`.
 
 ## App context
 
