@@ -25,6 +25,33 @@ describe("buildScriptFromDecisions", () => {
 		]);
 	});
 
+	test("keeps label taps and alert accept", () => {
+		const script = buildScriptFromDecisions(
+			[
+				{
+					type: "tap",
+					label: "Allow",
+					x: 269,
+					y: 951,
+					reason: "Grant notifications",
+					thoughts: "Dialog",
+				},
+				{
+					type: "alert",
+					alertAction: "accept",
+					reason: "Accept leftover",
+					thoughts: "Still up",
+				},
+				{ type: "done", reason: "Finished", thoughts: "Done" },
+			],
+			"run_alert",
+		);
+		expect(script?.actions).toEqual([
+			{ type: "tap", label: "Allow", reason: "Grant notifications" },
+			{ type: "alert", alertAction: "accept", reason: "Accept leftover" },
+		]);
+	});
+
 	test("returns null when no replayable actions remain", () => {
 		expect(
 			buildScriptFromDecisions(

@@ -48,6 +48,16 @@ describe("formatCaseScriptShell", () => {
 		expect(out).toContain("yoqa assert visible --text 'Yoqa Demo' --timeout 60");
 		expect(out).toContain("yoqa action tap --label 'Increment'");
 	});
+
+	test("emits accept alert", () => {
+		const out = formatCaseScriptShell({
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "alert", alertAction: "accept" }],
+		});
+		expect(out).toContain("yoqa action alert");
+		expect(out).not.toContain("--dismiss");
+	});
 });
 
 describe("suggestedScriptBasename", () => {

@@ -32,6 +32,9 @@ function actionToShellLine(action: CaseScriptAction): string {
 		}
 		return parts.join(" ");
 	}
+	if (action.type === "alert") {
+		return action.alertAction === "dismiss" ? "yoqa action alert --dismiss" : "yoqa action alert";
+	}
 	const seconds = Math.max(0.1, action.ms / 1000);
 	return `sleep ${seconds}`;
 }

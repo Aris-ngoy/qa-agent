@@ -1692,6 +1692,20 @@ scriptCmd
 					continue;
 				}
 
+				if (action.type === "alert") {
+					const body = await c.performAction({
+						kind: "alert",
+						alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
+					});
+					if (options.json) {
+						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
+					} else {
+						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
+					}
+					await sleep(800);
+					continue;
+				}
+
 				const tapBody: ActionRequest = { kind: "tap" };
 				if (action.type === "tap") {
 					if (action.label) tapBody.label = action.label;

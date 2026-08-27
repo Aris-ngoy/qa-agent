@@ -195,6 +195,18 @@ sleep 15
 		expect(result.script?.actions).toEqual([{ type: "tap", id: "get_bonus" }]);
 	});
 
+	test("converts alert accept/dismiss", () => {
+		const result = shellToCaseScript(
+			`yoqa action alert
+yoqa action alert --dismiss`,
+			{ savedAt: 1 },
+		);
+		expect(result.script?.actions).toEqual([
+			{ type: "alert", alertAction: "accept" },
+			{ type: "alert", alertAction: "dismiss" },
+		]);
+	});
+
 	test("converts assert-only scripts", () => {
 		const result = shellToCaseScript(`yoqa assert visible --text 'Nope'`, { savedAt: 1 });
 		expect(result.script?.actions).toEqual([

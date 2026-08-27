@@ -122,6 +122,34 @@ describe("executeScriptCase", () => {
 		expect(actions).toEqual([{ kind: "tap", label: "Increment" }]);
 	});
 
+	it("replays accept-alert", async () => {
+		const actions: ActionRequest[] = [];
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "alert", alertAction: "accept" }],
+		};
+
+		const status = await executeScriptCase({
+			script,
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			performAction: async (_session, body) => {
+				actions.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1000,
+			},
+			settleMs: 0,
+		});
+
+		expect(status).toBe("passed");
+		expect(actions).toEqual([{ kind: "alert", alertAction: "accept" }]);
+	});
+
 	it("cancels mid-loop when aborted", async () => {
 		let shots = 0;
 		const script: CaseScript = {
@@ -200,6 +228,61 @@ describe("executeAgentCase", () => {
 		expect(result.decisions).toHaveLength(2);
 		decisions.push(...result.decisions);
 		expect(decisions[1]?.type).toBe("done");
+	});
+
+	it("taps by label and accepts alerts without guessed coordinates", async () => {
+		const performed: ActionRequest[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						label: "Allow",
+						x: 269,
+						y: 951,
+						reason: "Grant notifications",
+						thoughts: "Permission dialog visible",
+					};
+				}
+				if (calls === 2) {
+					return {
+						type: "alert",
+						alertAction: "accept",
+						reason: "Accept leftover alert",
+						thoughts: "Still a system prompt",
+					};
+				}
+				return {
+					type: "done",
+					reason: "done",
+					thoughts: "home visible",
+				};
+			},
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(performed).toEqual([
+			{ kind: "tap", label: "Allow" },
+			{ kind: "alert", alertAction: "accept" },
+		]);
 	});
 
 	it("cancels when aborted during agent loop", async () => {

@@ -190,6 +190,25 @@ export async function executeScriptCase(
 					latencyMs,
 					detail: action.reason ?? `${assertion}: ${action.text}`,
 				});
+			} else if (action.type === "alert") {
+				await perform(deps.session, {
+					kind: "alert",
+					alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
+				});
+				await clock.sleep(settleMs);
+				await deps.appendStep({
+					idx: stepIdx,
+					action: {
+						type: "alert",
+						alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
+						reason: action.reason ?? "Replayed saved script alert",
+						thoughts: "Replaying the saved script without calling the AI agent.",
+					},
+					screenshotUri: shot.path,
+					ok: true,
+					latencyMs,
+					detail: action.reason ?? action.alertAction ?? "accept",
+				});
 			} else {
 				const waitMs = Math.min(3000, Math.max(500, action.ms));
 				await clock.sleep(waitMs);
@@ -343,9 +362,28 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				recordedDecisions.push(decision);
 
 				if (decision.type === "tap") {
-					const x = decision.x ?? 500;
-					const y = decision.y ?? 500;
-					await perform(deps.session, { kind: "tap", x, y });
+					const tapBody: ActionRequest = { kind: "tap" };
+					if (decision.label) tapBody.label = decision.label;
+					if (decision.id) tapBody.id = decision.id;
+					if (!tapBody.label && !tapBody.id) {
+						tapBody.x = decision.x ?? 500;
+						tapBody.y = decision.y ?? 500;
+					}
+					await perform(deps.session, tapBody);
+					await clock.sleep(settleMs);
+					await deps.appendStep({
+						idx: stepIdx,
+						action: decision,
+						screenshotUri: shot.path,
+						ok: true,
+						latencyMs,
+						detail: decision.reason ?? null,
+					});
+				} else if (decision.type === "alert") {
+					await perform(deps.session, {
+						kind: "alert",
+						alertAction: decision.alertAction === "dismiss" ? "dismiss" : "accept",
+					});
 					await clock.sleep(settleMs);
 					await deps.appendStep({
 						idx: stepIdx,

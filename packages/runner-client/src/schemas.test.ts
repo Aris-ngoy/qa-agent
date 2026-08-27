@@ -16,6 +16,14 @@ describe("caseScriptActionSchema", () => {
 			type: "wait",
 			ms: 10_000,
 		});
+		expect(caseScriptActionSchema.parse({ type: "alert" })).toMatchObject({
+			type: "alert",
+			alertAction: "accept",
+		});
+		expect(caseScriptActionSchema.parse({ type: "alert", alertAction: "dismiss" })).toMatchObject({
+			type: "alert",
+			alertAction: "dismiss",
+		});
 	});
 
 	test("rejects out-of-range coordinates and waits", () => {

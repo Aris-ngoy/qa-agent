@@ -83,6 +83,9 @@ export function actionSummary(action: unknown): string {
 	}
 	if (type === "type") return `Type${typeof record.text === "string" ? `: ${record.text}` : ""}`;
 	if (type === "wait") return "Wait";
+	if (type === "alert") {
+		return record.alertAction === "dismiss" ? "Dismiss alert" : "Accept alert";
+	}
 	if (type === "assert") {
 		const assertion = typeof record.assertion === "string" ? record.assertion : "visible";
 		const text = typeof record.text === "string" ? record.text : "";

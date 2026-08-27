@@ -608,7 +608,7 @@ function resolveTapPoint(
 
 /**
  * Convert an inspector / yoqa shell script into a CaseScript for catalog replay.
- * Supports tap (x/y, id, or label), input→type (+ focus tap when coords known), sleep→wait, assert.
+ * Supports tap (x/y, id, or label), input→type, sleep→wait, assert, alert.
  * Skips swipe, drag, double/long-press nuances, and unresolved coordinate-only selectors.
  */
 export function shellToCaseScript(
@@ -689,6 +689,14 @@ export function shellToCaseScript(
 				warnings.push(`L${step.lineNumber}: input focus id/label unresolved — typing without tap`);
 			}
 			actions.push({ type: "type", text: textValue });
+			continue;
+		}
+
+		if (action.kind === "alert") {
+			actions.push({
+				type: "alert",
+				alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
+			});
 			continue;
 		}
 
