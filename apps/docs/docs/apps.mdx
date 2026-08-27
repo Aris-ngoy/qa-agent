@@ -26,9 +26,12 @@ At least one platform identifier (bundle or package) is needed to launch and tar
 Configure it in the app settings in the desktop UI, or via:
 
 ```bash
-yoqa apps get APP
-yoqa apps update APP '{"app_context": "..."}'
+yoqa apps get APP --json
+yoqa apps update APP --context "..."
 ```
+
+`--context` overwrites rather than appends — read the current value with `yoqa apps get APP --json`
+first, then send the old text plus your additions.
 
 See [Writing good test cases](/guide/writing-test-cases) for what belongs in context vs instructions.
 

@@ -1,12 +1,58 @@
-# Actions by Description (automatic grounding)
+# Targeting Elements (`--id`, `--label`, `--description`)
 
-**The primary way to act — prefer this.** Describe the target element in plain language with `--description`/`-d` and Yoqa resolves its on-screen location for you (vision grounding) — you never compute coordinates. Requires a configured AI provider in Settings → Provider (`yoqa status` shows `provider: …`). If grounding keeps mislocating a target, fall back to [Actions by coordinates](actions-coordinates.md).
+`yoqa action tap` and `yoqa action input` can find their target for you, three ways. They are tried in
+this order and the first one you pass wins:
 
-**Always `yoqa screen` first** to confirm the target is on screen, then describe it. Base the description **only on what is currently visible** — see [Inspect & App Control](inspect-and-app-control.md).
+| Flag | How it resolves | Needs an AI provider | Use when |
+|---|---|---|---|
+| `--id <id>` | exact match on the element's identifier in the cleaned tree, then a `…/id` suffix match | no | the element has a resource-id / accessibility id |
+| `--label <text>` | exact label match, else substring; smallest matching element wins | no | the element has visible text or an accessibility label |
+| `-d`, `--description <text>` | a vision model locates it in a screenshot (grounding) | **yes** | nothing stable to match on — custom-drawn UI, icons, images |
 
-## Writing a good element description
+**Prefer `--id`, then `--label`.** They read the same tree you just inspected, are deterministic, cost
+nothing, and need no provider. Reach for `--description` when neither is available, or when `--id` /
+`--label` match the wrong element and you can't narrow them.
 
-The quality of grounding depends entirely on the description. Follow these rules:
+> **`swipe` and `drag` do not accept `--id`, `--label`, or `--description`.** Only `tap` and `input`
+> resolve a target. Swipe and drag are coordinate-only — see
+> [Actions by coordinates](actions-coordinates.md).
+
+**Always `yoqa screen` first** to confirm the target is on screen — and to read the exact label or id
+you are about to pass. See [Inspect & App Control](inspect-and-app-control.md). `--id` values come from
+`yoqa screen --json`; the default output does not print them.
+
+## Tap
+
+```bash
+yoqa action tap --id <id> [--double] [--duration <ms>]
+yoqa action tap --label <text> [--double] [--duration <ms>]
+yoqa action tap -d "<description>" [--double] [--duration <ms>]
+```
+
+```bash
+yoqa action tap --id login_button
+yoqa action tap --id com.example.app:id/login_button   # fully-qualified also works
+yoqa action tap --label "Login"
+yoqa action tap --label "Sign in" --double
+yoqa action tap --label "Inbox" --duration 3000         # long-press: duration is MILLISECONDS
+```
+
+`--duration` is in **milliseconds**. `--duration 3` is a 3 ms tap, not a 3-second press.
+
+## Input text
+
+`input` taps the resolved target first (to focus it), then types. Omit all targeting flags to type into
+whatever is already focused.
+
+```bash
+yoqa action input --text "john@example.com" --label "Email"
+yoqa action input --text "john@example.com" --id email_field
+yoqa action input --text "hello"                         # types into the focused field
+```
+
+## Writing a good `--description`
+
+Only relevant for the grounding path. Quality of grounding depends entirely on the description:
 
 - **Be specific** — include color, size, icons, and distinctive features (labels, placeholders).
 - **Include exact visible text in quotes** — e.g. `"'Continue' button"`, not `"continue button"`.
@@ -14,49 +60,20 @@ The quality of grounding depends entirely on the description. Follow these rules
 - **Describe exactly ONE element** — never use "or", "any", or "similar".
   - ❌ `"'Play as Guest' button or similar option"`
   - ✅ `"green 'Play as Guest' button below the login form"`
-- **Make it locatable by a vision model** — clear enough to pick the element out of the screenshot.
 - **Describe only what is visible**, not assumptions about the app's UI.
 
-### Tap
-Specific element with exact visible text in quotes, color, and position.
 ```bash
-yoqa action tap --description "<description>" [--double] [--duration <seconds>]
-```
-`-d` is a shortcut for `--description`; the examples below use it after the first.
-```bash
-yoqa action tap --description "blue 'Login' button at bottom center"
-yoqa action tap -d "message item in the conversation list" --duration 3
+yoqa action tap -d "blue 'Login' button at bottom center"
 yoqa action tap -d "map area in the center of the screen" --double
+yoqa action input --text "shoes" -d "search field with placeholder 'Search'"
 ```
 
-### Swipe
-Describe direction + area + expected outcome.
+Grounding requires a configured AI provider (`yoqa status` shows `provider: …`). If it isn't
+configured, or grounding keeps mislocating the target, use `--id` / `--label` / coordinates instead.
 
-**Swipe direction is the finger's movement, which is the opposite of the scroll direction.** To scroll **down** the page (reveal content below), swipe **up**; to scroll **up** (reveal content above), swipe **down**. Same for horizontal: to move content left, swipe right, and vice versa. Phrase the description by the finger movement.
-```bash
-yoqa action swipe -d "<description>"
-```
-```bash
-# scroll down to see more items -> finger swipes up
-yoqa action swipe -d "swipe up on the product list to reveal more items below"
-# scroll back to top -> finger swipes down
-yoqa action swipe -d "swipe down on the product list to return to the top"
-```
+## When a target isn't found
 
-### Drag
-Describe the source element and the target location.
-```bash
-yoqa action drag -d "<description>"
-```
-```bash
-yoqa action drag -d "drag list item 'Groceries' above 'Work' to reorder"
-```
-
-### Input text
-Describe the field by its label or placeholder.
-```bash
-yoqa action input --text <text> -d "<description>"
-```
-```bash
-yoqa action input --text "john@example.com" -d "email input field with placeholder 'Email'"
-```
+`--id` and `--label` fail fast with `No element matching id: …` / `No element matching label: …`. That
+means the element is not in the cleaned tree — re-run `yoqa screen`, and check whether it is offscreen
+(scroll to it first), unlabeled (use `--id` or coordinates), or on a screen you haven't reached yet.
+Do not retry the same selector twice; re-inspect instead.

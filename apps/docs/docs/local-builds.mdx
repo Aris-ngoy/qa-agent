@@ -20,8 +20,8 @@ In the desktop app, attach a build to an app, or use the CLI:
 
 ```bash
 yoqa builds list APP
-yoqa builds create APP --path ./MyApp.app
-yoqa builds delete APP <build-id>
+yoqa builds create /abs/path/MyApp.app --app APP     # path is positional and first
+yoqa builds delete <build-id>
 ```
 
 When you start a run, pass `buildId` (or a direct `buildPath` in advanced flows) so Yoqa installs the artifact on the selected device.
