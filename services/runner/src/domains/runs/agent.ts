@@ -10,15 +10,21 @@ const agentDecisionSchema = z.object({
 		z.literal("tap"),
 		z.literal("type"),
 		z.literal("wait"),
+		z.literal("alert"),
 		z.literal("verify"),
 		z.literal("done"),
 		z.literal("fail"),
 	]),
 	x: z.number().optional(),
 	y: z.number().optional(),
+	/** Accessibility / visible label — prefer this over x,y for system buttons like Allow. */
+	label: z.string().min(1).optional(),
+	/** Android resource-id / iOS accessibility name. */
+	id: z.string().min(1).optional(),
 	text: z.string().optional(),
 	/** For wait: milliseconds to pause before the next screenshot (clamped server-side). */
 	ms: z.number().optional(),
+	alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).optional(),
 	/** One-sentence summary of the chosen action (shown collapsed in the run UI). */
 	reason: z.string().min(1),
 	/** 2–4 sentences: what is visible and why this action follows (expandable in the run UI). */
@@ -40,17 +46,21 @@ Every action MUST include:
 - "thoughts": 2–4 sentences describing what you see on screen and how that led to this action
 
 Valid shapes:
+{"type":"tap","label":"Allow","reason":"...","thoughts":"..."}
+{"type":"tap","id":"permission_allow_button","reason":"...","thoughts":"..."}
 {"type":"tap","x":0-1000,"y":0-1000,"reason":"...","thoughts":"..."}
+{"type":"alert","alertAction":"accept","reason":"...","thoughts":"..."}
 {"type":"type","text":"...","reason":"...","thoughts":"..."}
 {"type":"wait","ms":500-3000,"reason":"...","thoughts":"..."}
 {"type":"verify","reason":"...","thoughts":"..."}
 {"type":"done","reason":"...","thoughts":"..."}
 {"type":"fail","reason":"...","thoughts":"..."}
 
-Coordinates use a 0–1000 normalized grid (0,0 top-left).
+Coordinates use a 0–1000 normalized grid (0,0 top-left). Prefer label or id over coordinates whenever the control has visible text or a resource-id.
 
 Rules:
 - Look at the attached screenshot before deciding. Base taps on what is visible now.
+- System permission / notification dialogs (Allow, Don't allow, While using the app): use {"type":"tap","label":"Allow"} or {"type":"alert","alertAction":"accept"}. Never guess coordinates for these buttons — coordinate taps often miss.
 - If the expected result (or the goal of the instructions) is already visible, return verify or done — do not keep tapping the same control.
 - Splash / loading / blank screens: return wait (do not tap imaginary tabs).
 - Do not repeat the same tap target from Recent actions unless the screenshot still shows you are on the wrong screen.
@@ -63,7 +73,16 @@ function formatRecentActions(actions: AgentDecision[]): string {
 		.map((action, i) => {
 			const n = actions.length - Math.min(actions.length, 6) + i + 1;
 			if (action.type === "tap") {
+				if (action.label) {
+					return `${n}. tap label "${action.label}" — ${action.reason ?? ""}`;
+				}
+				if (action.id) {
+					return `${n}. tap id "${action.id}" — ${action.reason ?? ""}`;
+				}
 				return `${n}. tap (${action.x ?? "?"},${action.y ?? "?"}) — ${action.reason ?? ""}`;
+			}
+			if (action.type === "alert") {
+				return `${n}. alert ${action.alertAction ?? "accept"} — ${action.reason ?? ""}`;
 			}
 			if (action.type === "type") {
 				return `${n}. type "${action.text ?? ""}" — ${action.reason ?? ""}`;

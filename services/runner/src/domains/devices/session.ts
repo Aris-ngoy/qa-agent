@@ -6,6 +6,15 @@ import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 import { type Browser, remote } from "webdriverio";
 import { APPIUM_HOST, ensureAppiumServer } from "../appium/server";
 import { loadDevicePrep } from "../ios/application";
+import { resolveNativeAlert } from "./android-alerts";
+import {
+	type PointerSize,
+	injectSwipe,
+	injectTap,
+	pngSizeFromBase64,
+	preferPointerSize,
+	toPx,
+} from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
 
 const YOQA_ROOT = join(homedir(), ".yoqa");
@@ -481,51 +490,14 @@ class ActionGate {
 		try {
 			if (distance < tapSlopPx || gesture.double) {
 				const holdMs = Math.min(200, elapsedMs);
-				const tapOnce = async () => {
-					await browser.performActions([
-						{
-							type: "pointer",
-							id: "finger1",
-							parameters: { pointerType: "touch" },
-							actions: [
-								{ type: "pointerMove", duration: 0, x: startX, y: startY },
-								{ type: "pointerDown", button: 0 },
-								{ type: "pause", duration: holdMs },
-								{ type: "pointerUp", button: 0 },
-							],
-						},
-					]);
-					try {
-						await browser.releaseActions();
-					} catch {
-						// ignore
-					}
-				};
-				await tapOnce();
+				await injectTap(browser, startX, startY, holdMs);
 				if (gesture.double) {
 					await Bun.sleep(50);
-					await tapOnce();
+					await injectTap(browser, startX, startY, holdMs);
 				}
 			} else {
 				const duration = Math.min(2000, Math.max(80, elapsedMs));
-				await browser.performActions([
-					{
-						type: "pointer",
-						id: "finger1",
-						parameters: { pointerType: "touch" },
-						actions: [
-							{ type: "pointerMove", duration: 0, x: startX, y: startY },
-							{ type: "pointerDown", button: 0 },
-							{ type: "pointerMove", duration, x: endX, y: endY },
-							{ type: "pointerUp", button: 0 },
-						],
-					},
-				]);
-				try {
-					await browser.releaseActions();
-				} catch {
-					// ignore
-				}
+				await injectSwipe(browser, startX, startY, endX, endY, duration);
 			}
 		} finally {
 			this.locked = false;
@@ -639,9 +611,11 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	};
 
 	const getWindowSize = async () => guard(() => browser.getWindowSize());
-
-	const toPx = (norm: number, size: number) =>
-		Math.round((Math.min(1000, Math.max(0, norm)) / 1000) * size);
+	let lastShotSize: PointerSize | null = null;
+	const getPointerSize = async (): Promise<PointerSize> => {
+		const window = await getWindowSize();
+		return preferPointerSize(window, lastShotSize);
+	};
 
 	const owned: { current: DeviceSession | null } = { current: null };
 
@@ -652,7 +626,11 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		// Only flush an in-flight live gesture — never block quit on a dead WDA.
 		if (gate.isPointerActive() && !sessionDeadNotified) {
 			try {
-				await withTimeout(gate.forceEnd(browser, toPx, getWindowSize), 3_000, "live gesture flush");
+				await withTimeout(
+					gate.forceEnd(browser, toPx, getPointerSize),
+					3_000,
+					"live gesture flush",
+				);
 			} catch (error) {
 				console.warn(
 					"[yoqa-runner] gesture flush on quit:",
@@ -680,6 +658,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const captureFrame = async (): Promise<CapturedFrame> =>
 		guard(async () => {
 			const base64 = await browser.takeScreenshot();
+			lastShotSize = pngSizeFromBase64(base64) ?? lastShotSize;
 			// Appium returns PNG base64 for takeScreenshot even when MJPEG is JPEG upstream.
 			return { base64, mime: "image/png" as const };
 		});
@@ -697,24 +676,11 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const tap = async (xNorm: number, yNorm: number, tapOptions?: { durationMs?: number }) => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				const size = await getWindowSize();
+				const size = await getPointerSize();
 				const x = toPx(xNorm, size.width);
 				const y = toPx(yNorm, size.height);
 				const holdMs = Math.max(50, tapOptions?.durationMs ?? 50);
-				await browser.performActions([
-					{
-						type: "pointer",
-						id: "finger1",
-						parameters: { pointerType: "touch" },
-						actions: [
-							{ type: "pointerMove", duration: 0, x, y },
-							{ type: "pointerDown", button: 0 },
-							{ type: "pause", duration: holdMs },
-							{ type: "pointerUp", button: 0 },
-						],
-					},
-				]);
-				await browser.releaseActions();
+				await injectTap(browser, x, y, holdMs);
 			});
 		});
 	};
@@ -722,31 +688,15 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const swipe = async (x1: number, y1: number, x2: number, y2: number, durationMs = 400) => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				const size = await getWindowSize();
-				await browser.performActions([
-					{
-						type: "pointer",
-						id: "finger1",
-						parameters: { pointerType: "touch" },
-						actions: [
-							{
-								type: "pointerMove",
-								duration: 0,
-								x: toPx(x1, size.width),
-								y: toPx(y1, size.height),
-							},
-							{ type: "pointerDown", button: 0 },
-							{
-								type: "pointerMove",
-								duration: durationMs,
-								x: toPx(x2, size.width),
-								y: toPx(y2, size.height),
-							},
-							{ type: "pointerUp", button: 0 },
-						],
-					},
-				]);
-				await browser.releaseActions();
+				const size = await getPointerSize();
+				await injectSwipe(
+					browser,
+					toPx(x1, size.width),
+					toPx(y1, size.height),
+					toPx(x2, size.width),
+					toPx(y2, size.height),
+					durationMs,
+				);
 			});
 		});
 	};
@@ -798,7 +748,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const acceptAlert = async () => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				await browser.acceptAlert();
+				await resolveNativeAlert(browser, "accept");
 			});
 		});
 	};
@@ -806,14 +756,14 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const dismissAlert = async () => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				await browser.dismissAlert();
+				await resolveNativeAlert(browser, "dismiss");
 			});
 		});
 	};
 
 	const pointerEvent = async (phase: PointerPhase, xNorm: number, yNorm: number, seq: number) => {
 		await guard(async () => {
-			await gate.handlePointer(browser, toPx, getWindowSize, phase, xNorm, yNorm, seq);
+			await gate.handlePointer(browser, toPx, getPointerSize, phase, xNorm, yNorm, seq);
 		});
 	};
 

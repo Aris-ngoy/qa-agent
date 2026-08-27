@@ -27,4 +27,31 @@ describe("parseAgentDecision", () => {
 		expect(decision.y).toBe(1000);
 		expect(decision.thoughts.startsWith("The screen shows an onboarding")).toBe(true);
 	});
+
+	test("parses a label tap and an accept-alert action", () => {
+		expect(
+			parseAgentDecision(
+				extractAgentJsonObject(
+					'{"type":"tap","label":"Allow","reason":"Grant notifications","thoughts":"Permission dialog is visible with Allow"}',
+					"Model",
+				),
+			),
+		).toMatchObject({
+			type: "tap",
+			label: "Allow",
+			reason: "Grant notifications",
+		});
+
+		expect(
+			parseAgentDecision(
+				extractAgentJsonObject(
+					'{"type":"alert","alertAction":"accept","reason":"Accept the permission","thoughts":"System Allow dialog is on screen"}',
+					"Model",
+				),
+			),
+		).toMatchObject({
+			type: "alert",
+			alertAction: "accept",
+		});
+	});
 });

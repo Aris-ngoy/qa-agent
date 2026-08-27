@@ -657,6 +657,9 @@ function scriptActionSummary(action: CaseScriptAction): string {
 	if (action.type === "assert") {
 		return `Assert ${action.assertion}: “${action.text}”`;
 	}
+	if (action.type === "alert") {
+		return action.alertAction === "dismiss" ? "Dismiss alert" : "Accept alert";
+	}
 	return `Wait ${action.ms}ms`;
 }
 
@@ -719,8 +722,8 @@ function ScriptPanel({
 			<div className={`${configCardClass} max-w-2xl`}>
 				<h2 className="mb-1.5 text-headline-md text-on-surface">Saved script</h2>
 				<p className="text-body-md text-on-surface-variant">
-					No script yet. After a successful AI agent run, Yoqa saves the tap, type, and wait actions
-					here so you can replay the case without calling the model.
+					No script yet. After a successful AI agent run, Yoqa saves the tap, type, wait, and alert
+					actions here so you can replay the case without calling the model.
 				</p>
 			</div>
 		);

@@ -14,6 +14,8 @@ describe("actionSummary", () => {
 		expect(actionSummary({ type: "tap", id: "submit" })).toBe("Tap #submit");
 		expect(actionSummary({ type: "type", text: "hi" })).toBe("Type: hi");
 		expect(actionSummary({ type: "wait" })).toBe("Wait");
+		expect(actionSummary({ type: "alert" })).toBe("Accept alert");
+		expect(actionSummary({ type: "alert", alertAction: "dismiss" })).toBe("Dismiss alert");
 		expect(actionSummary({ type: "assert", assertion: "visible", text: "Yoqa Demo" })).toBe(
 			"Assert visible: Yoqa Demo",
 		);

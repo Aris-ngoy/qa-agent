@@ -335,6 +335,11 @@ export const caseScriptActionSchema = z.union([
 		timeoutMs: z.number().min(0).max(120_000).optional(),
 		reason: z.string().optional(),
 	}),
+	z.object({
+		type: z.literal("alert"),
+		alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).default("accept"),
+		reason: z.string().optional(),
+	}),
 ]);
 
 export type CaseScriptAction = z.infer<typeof caseScriptActionSchema>;

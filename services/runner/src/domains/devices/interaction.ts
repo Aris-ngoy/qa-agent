@@ -63,11 +63,7 @@ export async function performAction(
 	let x = body.x;
 	let y = body.y;
 
-	if (
-		(body.id || body.label) &&
-		(body.kind === "tap" || body.kind === "input") &&
-		(x == null || y == null)
-	) {
+	if ((body.id || body.label) && (body.kind === "tap" || body.kind === "input")) {
 		const screen = await getScreen(session, { full: false });
 		const elements = screen.elements ?? [];
 		const match = body.id

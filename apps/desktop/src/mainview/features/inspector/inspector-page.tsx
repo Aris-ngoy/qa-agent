@@ -980,7 +980,7 @@ export function InspectorPage() {
 			showErrorToast(
 				new Error(
 					casePreview.warnings[0] ??
-						"Only tap, type, and wait convert to a saved script. Prefer tap (x,y) or re-record after this fix.",
+						"Only tap, type, wait, and alert convert to a saved script. Prefer tap --label/--id or re-record after this fix.",
 				),
 				"Nothing convertible",
 			);

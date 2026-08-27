@@ -1,7 +1,7 @@
 import { type CaseScript, type CaseScriptAction, caseScriptSchema } from "@yoqa/runner-client";
 import type { AgentDecision } from "./agent";
 
-/** Build a replayable script from successful agent decisions (tap/type/wait only). */
+/** Build a replayable script from successful agent decisions (tap/type/wait/alert). */
 export function buildScriptFromDecisions(
 	decisions: AgentDecision[],
 	sourceRunId: string,
@@ -9,12 +9,26 @@ export function buildScriptFromDecisions(
 	const actions: CaseScriptAction[] = [];
 	for (const decision of decisions) {
 		if (decision.type === "tap") {
-			actions.push({
-				type: "tap",
-				x: decision.x ?? 500,
-				y: decision.y ?? 500,
-				reason: decision.reason,
-			});
+			if (decision.label) {
+				actions.push({
+					type: "tap",
+					label: decision.label,
+					reason: decision.reason,
+				});
+			} else if (decision.id) {
+				actions.push({
+					type: "tap",
+					id: decision.id,
+					reason: decision.reason,
+				});
+			} else {
+				actions.push({
+					type: "tap",
+					x: decision.x ?? 500,
+					y: decision.y ?? 500,
+					reason: decision.reason,
+				});
+			}
 		} else if (decision.type === "type") {
 			actions.push({
 				type: "type",
@@ -25,6 +39,12 @@ export function buildScriptFromDecisions(
 			actions.push({
 				type: "wait",
 				ms: Math.min(3000, Math.max(500, decision.ms ?? 1500)),
+				reason: decision.reason,
+			});
+		} else if (decision.type === "alert") {
+			actions.push({
+				type: "alert",
+				alertAction: decision.alertAction === "dismiss" ? "dismiss" : "accept",
 				reason: decision.reason,
 			});
 		}
