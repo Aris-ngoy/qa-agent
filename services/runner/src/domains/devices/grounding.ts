@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseVisionObject } from "../providers/agent-json";
 import { resolveActiveProviderAuth } from "../providers/application";
 import { assertVisionCapableProvider, completeVision } from "../providers/vision";
 import { AgentProviderError } from "../providers/vision-model";
@@ -6,9 +7,13 @@ import { cleanPageSource } from "./screen";
 import type { DeviceSession } from "./session";
 
 const groundResultSchema = z.object({
-	x: z.number().min(0).max(1000),
-	y: z.number().min(0).max(1000),
+	x: z.number(),
+	y: z.number(),
 });
+
+export function parseGroundResult(raw: unknown): { x: number; y: number } {
+	return parseVisionObject(groundResultSchema, raw, "Model");
+}
 
 const GROUND_SYSTEM = `You locate UI elements on a mobile screen.
 Respond with ONLY JSON: {"x":0-1000,"y":0-1000} for the center of the best match.

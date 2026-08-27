@@ -1,8 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { z } from "zod";
-import { extractAgentJsonObject } from "../agent-json";
+import { extractAgentJsonObject, parseVisionObject } from "../agent-json";
 import { AgentProviderError, isJsonRepairableError, prepareVisionImage } from "../vision-model";
 import { resolveBinary, runCommand } from "./probe";
 import type { VisionAuth, VisionCompleteInput, VisionPort } from "./types";
@@ -114,12 +113,13 @@ async function completeOnce<T>(input: VisionCompleteInput<T>, repairHint?: strin
 			imageBase64: image.base64,
 			mediaType: image.mediaType,
 		});
-		return input.schema.parse(extractAgentJsonObject(stdout, "Cursor Agent CLI"));
+		return parseVisionObject(
+			input.schema,
+			extractAgentJsonObject(stdout, "Cursor Agent CLI"),
+			"Cursor Agent CLI",
+		);
 	} catch (error) {
 		if (error instanceof AgentProviderError) throw error;
-		if (error instanceof z.ZodError) {
-			throw new AgentProviderError(`Cursor JSON was not a valid action: ${error.message}`);
-		}
 		if (error instanceof SyntaxError) {
 			throw new AgentProviderError(`Cursor Agent CLI returned invalid JSON: ${error.message}`);
 		}

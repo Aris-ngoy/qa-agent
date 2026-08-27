@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseVisionObject } from "../providers/agent-json";
 import type { ActiveProviderAuth } from "../providers/application";
 import { completeVision } from "../providers/vision";
 
@@ -13,11 +14,11 @@ const agentDecisionSchema = z.object({
 		z.literal("done"),
 		z.literal("fail"),
 	]),
-	x: z.number().min(0).max(1000).optional(),
-	y: z.number().min(0).max(1000).optional(),
+	x: z.number().optional(),
+	y: z.number().optional(),
 	text: z.string().optional(),
 	/** For wait: milliseconds to pause before the next screenshot (clamped server-side). */
-	ms: z.number().min(0).max(10_000).optional(),
+	ms: z.number().optional(),
 	/** One-sentence summary of the chosen action (shown collapsed in the run UI). */
 	reason: z.string().min(1),
 	/** 2–4 sentences: what is visible and why this action follows (expandable in the run UI). */
@@ -25,6 +26,10 @@ const agentDecisionSchema = z.object({
 });
 
 export type AgentDecision = z.infer<typeof agentDecisionSchema>;
+
+export function parseAgentDecision(raw: unknown): AgentDecision {
+	return parseVisionObject(agentDecisionSchema, raw, "Model");
+}
 
 const SYSTEM_PROMPT = `You are a mobile QA agent controlling an app via screenshots.
 A screenshot of the current device screen is ALWAYS attached to the user message as an image. You can see it. Never claim that no screenshot was provided, missing, blank, or unavailable.
