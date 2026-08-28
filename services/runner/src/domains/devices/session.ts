@@ -11,8 +11,10 @@ import {
 	type PointerSize,
 	injectSwipe,
 	injectTap,
+	isAndroidDriver,
 	pngSizeFromBase64,
 	preferPointerSize,
+	screenshotPointerSize,
 	toPx,
 } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
@@ -195,7 +197,11 @@ export type DeviceSession = {
 	screenshot: () => Promise<{ path: string; base64: string }>;
 	pageSource: () => Promise<string>;
 	getWindowSize: () => Promise<{ width: number; height: number }>;
-	tap: (xNorm: number, yNorm: number, options?: { durationMs?: number }) => Promise<void>;
+	tap: (
+		xNorm: number,
+		yNorm: number,
+		options?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
+	) => Promise<void>;
 	swipe: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	type: (text: string) => Promise<void>;
@@ -663,6 +669,18 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 			return { base64, mime: "image/png" as const };
 		});
 
+	const getScreenshotCoordSize = async (): Promise<PointerSize> => {
+		if (!lastShotSize) {
+			await captureFrame();
+		}
+		const window = await getWindowSize();
+		return screenshotPointerSize(
+			window,
+			lastShotSize,
+			isAndroidDriver(browser) ? "android" : "ios",
+		);
+	};
+
 	const screenshot = async () => {
 		await mkdir(SCREENSHOT_DIR, { recursive: true });
 		const frame = await captureFrame();
@@ -673,10 +691,17 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 
 	const pageSource = async () => guard(() => browser.getPageSource());
 
-	const tap = async (xNorm: number, yNorm: number, tapOptions?: { durationMs?: number }) => {
+	const tap = async (
+		xNorm: number,
+		yNorm: number,
+		tapOptions?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
+	) => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				const size = await getPointerSize();
+				const size =
+					tapOptions?.coordSpace === "screenshot"
+						? await getScreenshotCoordSize()
+						: await getPointerSize();
 				const x = toPx(xNorm, size.width);
 				const y = toPx(yNorm, size.height);
 				const holdMs = Math.max(50, tapOptions?.durationMs ?? 50);

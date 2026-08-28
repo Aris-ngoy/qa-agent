@@ -36,7 +36,7 @@ Rejected: scaling all taps to screenshot pixels when they differ from `getWindow
 
 - Optional app/case capability `autoGrantPermissions` to skip dialogs entirely.
 - If vision still guesses coordinates, consider snapping a nearby tree node before injecting.
-- Screenshot vs window mismatch on some Samsung devices when the agent *must* tap by raw x,y.
+- Screenshot vs window mismatch on some Samsung devices when the agent *must* tap by raw x,y — **addressed:** coordinate-only taps now scale with the screenshot on Android (`coordSpace: "screenshot"`). Locator taps still use the window.
 
 ## Related
 

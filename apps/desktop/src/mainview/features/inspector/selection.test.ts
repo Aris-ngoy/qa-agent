@@ -5,6 +5,7 @@ import {
 	candidatesAtPoint,
 	cycleChangeSelector,
 	hitTestElements,
+	pointOnlySelection,
 	selectionFromPoint,
 } from "./selection";
 
@@ -217,5 +218,18 @@ describe("selectionFromPoint", () => {
 		expect(sel.pointX).toBe(120);
 		expect(sel.pointY).toBe(120);
 		expect(activeSelectorCaption(sel)).toBe("id: continue_btn");
+	});
+});
+
+describe("pointOnlySelection", () => {
+	test("uses the click point, not a nearby element center", () => {
+		const point = { x: 412, y: 887 };
+		const sel = pointOnlySelection(point);
+		expect(sel.element).toBeNull();
+		expect(sel.x).toBe(412);
+		expect(sel.y).toBe(887);
+		expect(sel.pointX).toBe(412);
+		expect(sel.pointY).toBe(887);
+		expect(activeSelectorCaption(sel)).toBeNull();
 	});
 });

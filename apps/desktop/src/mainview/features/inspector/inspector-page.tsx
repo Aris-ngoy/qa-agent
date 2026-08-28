@@ -350,6 +350,8 @@ export function InspectorPage() {
 				if (!tree) return;
 				const current = selectionRef.current;
 				if (!current) return;
+				// Control-pick / coords-only: never snap back onto a tree node.
+				if (!next.element || !current.element) return;
 				// Only update if this is still the same click point the user just made.
 				if (current.pointX !== next.pointX || current.pointY !== next.pointY) return;
 				const refreshed = selectionFromPoint(tree, {

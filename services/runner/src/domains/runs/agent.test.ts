@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { extractAgentJsonObject } from "../providers/agent-json";
-import { parseAgentDecision } from "./agent";
+import { isSystemPermissionLabel, parseAgentDecision, prefersScreenshotTap } from "./agent";
 
 describe("parseAgentDecision", () => {
 	test("clamps a tap whose y overshoots the 0–1000 grid", () => {
@@ -53,5 +53,19 @@ describe("parseAgentDecision", () => {
 			type: "alert",
 			alertAction: "accept",
 		});
+	});
+});
+
+describe("prefersScreenshotTap", () => {
+	test("in-app coords win even when a label is also present", () => {
+		expect(prefersScreenshotTap({ x: 120, y: 340, label: "Login" })).toBe(true);
+		expect(prefersScreenshotTap({ x: 120, y: 340 })).toBe(true);
+	});
+
+	test("permission labels keep locator taps", () => {
+		expect(isSystemPermissionLabel("Allow")).toBe(true);
+		expect(isSystemPermissionLabel("Don't allow")).toBe(true);
+		expect(prefersScreenshotTap({ x: 269, y: 951, label: "Allow" })).toBe(false);
+		expect(prefersScreenshotTap({ label: "Allow" })).toBe(false);
 	});
 });

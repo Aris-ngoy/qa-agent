@@ -6,6 +6,7 @@ import {
 	isAndroidDriver,
 	pngSizeFromBase64,
 	preferPointerSize,
+	screenshotPointerSize,
 	toPx,
 } from "./android-gestures";
 
@@ -48,6 +49,19 @@ describe("pngSizeFromBase64 / preferPointerSize", () => {
 		});
 		expect(preferPointerSize(window, { width: 1080, height: 2340 })).toEqual(window);
 		expect(preferPointerSize(window, null)).toEqual(window);
+	});
+
+	test("Android screenshot coords use shot size even when it differs from the window", () => {
+		const window = { width: 1080, height: 2200 };
+		const shot = { width: 1080, height: 2340 };
+		expect(screenshotPointerSize(window, shot, "android")).toEqual(shot);
+		expect(screenshotPointerSize(window, null, "android")).toEqual(window);
+	});
+
+	test("iOS screenshot coords stay on window points", () => {
+		const window = { width: 390, height: 844 };
+		const shot = { width: 1170, height: 2532 };
+		expect(screenshotPointerSize(window, shot, "ios")).toEqual(window);
 	});
 });
 
