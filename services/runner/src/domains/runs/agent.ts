@@ -17,7 +17,7 @@ const agentDecisionSchema = z.object({
 	]),
 	x: z.number().optional(),
 	y: z.number().optional(),
-	/** Accessibility / visible label — prefer this over x,y for system buttons like Allow. */
+	/** Accessibility / visible label — use for system buttons like Allow, not in-app taps. */
 	label: z.string().min(1).optional(),
 	/** Android resource-id / iOS accessibility name. */
 	id: z.string().min(1).optional(),
@@ -32,6 +32,35 @@ const agentDecisionSchema = z.object({
 });
 
 export type AgentDecision = z.infer<typeof agentDecisionSchema>;
+
+const SYSTEM_PERMISSION_LABELS = new Set([
+	"allow",
+	"don't allow",
+	"don’t allow",
+	"deny",
+	"while using the app",
+	"while using this app",
+	"allow all the time",
+	"allow only while using the app",
+	"only this time",
+	"no thanks",
+]);
+
+/** True for system permission / notification sheet buttons — keep label taps, not screenshot coords. */
+export function isSystemPermissionLabel(label: string | undefined): boolean {
+	const trimmed = label?.trim().toLowerCase() ?? "";
+	if (!trimmed) return false;
+	return SYSTEM_PERMISSION_LABELS.has(trimmed);
+}
+
+/** In-app taps should use screenshot x,y even when the model also guessed a label/id. */
+export function prefersScreenshotTap(decision: {
+	x?: number;
+	y?: number;
+	label?: string;
+}): decision is { x: number; y: number; label?: string } {
+	return decision.x != null && decision.y != null && !isSystemPermissionLabel(decision.label);
+}
 
 export function parseAgentDecision(raw: unknown): AgentDecision {
 	return parseVisionObject(agentDecisionSchema, raw, "Model");
@@ -56,10 +85,11 @@ Valid shapes:
 {"type":"done","reason":"...","thoughts":"..."}
 {"type":"fail","reason":"...","thoughts":"..."}
 
-Coordinates use a 0–1000 normalized grid (0,0 top-left). Prefer label or id over coordinates whenever the control has visible text or a resource-id.
+Coordinates use a 0–1000 normalized grid (0,0 top-left of the attached screenshot). For in-app controls, tap using screenshot x,y from what you see — do not prefer label or id over those coordinates.
 
 Rules:
 - Look at the attached screenshot before deciding. Base taps on what is visible now.
+- For ordinary app UI, emit {"type":"tap","x":…,"y":…} using the screenshot grid. Include label or id only for system permission / notification dialogs.
 - System permission / notification dialogs (Allow, Don't allow, While using the app): use {"type":"tap","label":"Allow"} or {"type":"alert","alertAction":"accept"}. Never guess coordinates for these buttons — coordinate taps often miss.
 - If the expected result (or the goal of the instructions) is already visible, return verify or done — do not keep tapping the same control.
 - Splash / loading / blank screens: return wait (do not tap imaginary tabs).

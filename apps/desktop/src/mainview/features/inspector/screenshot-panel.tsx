@@ -1,9 +1,11 @@
 import type { SnippetContext } from "@/features/inspector/command-snippets";
 import { ElementActionMenu } from "@/features/inspector/element-action-menu";
+import { coordsFromImageRect, isPickPointModifier } from "@/features/inspector/inspect-pointer";
 import {
 	type InspectorSelection,
 	activeSelectorCaption,
 	hitTestElements,
+	pointOnlySelection,
 	selectionFromPoint,
 } from "@/features/inspector/selection";
 import type { ScreenElement } from "@yoqa/runner-client";
@@ -96,25 +98,76 @@ export function ScreenshotPanel({
 }: ScreenshotPanelProps) {
 	const imgRef = useRef<HTMLImageElement | null>(null);
 	const pointerActiveRef = useRef(false);
+	/** Ignore click/contextmenu that follow a Control-pick pointerdown (macOS). */
+	const pickAtMsRef = useRef(0);
 	const [hoverElement, setHoverElement] = useState<ScreenElement | null>(null);
+	const [pickPointHeld, setPickPointHeld] = useState(false);
+	const [pickHover, setPickHover] = useState<{ x: number; y: number } | null>(null);
 
 	useEffect(() => {
-		if (liveControl) setHoverElement(null);
+		if (liveControl) {
+			setHoverElement(null);
+			setPickHover(null);
+		}
 	}, [liveControl]);
+
+	useEffect(() => {
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key !== "Control") return;
+			setPickPointHeld(event.type === "keydown");
+			if (event.type === "keyup") setPickHover(null);
+		};
+		const onBlur = () => {
+			setPickPointHeld(false);
+			setPickHover(null);
+		};
+		window.addEventListener("keydown", onKey);
+		window.addEventListener("keyup", onKey);
+		window.addEventListener("blur", onBlur);
+		return () => {
+			window.removeEventListener("keydown", onKey);
+			window.removeEventListener("keyup", onKey);
+			window.removeEventListener("blur", onBlur);
+		};
+	}, []);
+
+	const canInspect = !disabled && !liveControl;
+	const pickingPoint = canInspect && pickPointHeld;
 
 	const coordsAtEvent = useCallback(
 		(event: { clientX: number; clientY: number }): { x: number; y: number } | null => {
 			if (!imgRef.current) return null;
 			const rect = imgRef.current.getBoundingClientRect();
-			if (rect.width <= 0 || rect.height <= 0) return null;
-			const x = Math.round(((event.clientX - rect.left) / rect.width) * 1000);
-			const y = Math.round(((event.clientY - rect.top) / rect.height) * 1000);
-			return {
-				x: Math.min(1000, Math.max(0, x)),
-				y: Math.min(1000, Math.max(0, y)),
-			};
+			return coordsFromImageRect(rect, event.clientX, event.clientY);
 		},
 		[],
+	);
+
+	const applySelection = useCallback(
+		(next: InspectorSelection, options: { refreshTree?: boolean } = {}) => {
+			if (selection && isSameSelection(selection, next)) {
+				onClearSelection();
+				return;
+			}
+			setHoverElement(null);
+			onSelect(next);
+			if (options.refreshTree !== false) onSelectWithPoint?.(next);
+		},
+		[onClearSelection, onSelect, onSelectWithPoint, selection],
+	);
+
+	const recentlyPicked = useCallback(() => Date.now() - pickAtMsRef.current < 400, []);
+
+	const pickPointAtEvent = useCallback(
+		(event: { clientX: number; clientY: number; ctrlKey: boolean }): boolean => {
+			if (!canInspect || !isPickPointModifier(event)) return false;
+			const point = coordsAtEvent(event);
+			if (!point) return false;
+			pickAtMsRef.current = Date.now();
+			applySelection(pointOnlySelection(point), { refreshTree: false });
+			return true;
+		},
+		[applySelection, canInspect, coordsAtEvent],
 	);
 
 	const selectAtEvent = useCallback(
@@ -122,6 +175,7 @@ export function ScreenshotPanel({
 			if (disabled || !imgRef.current) return null;
 			const point = coordsAtEvent(event);
 			if (!point) return null;
+			if (isPickPointModifier(event)) return pointOnlySelection(point);
 			return selectionFromPoint(elements, point);
 		},
 		[coordsAtEvent, disabled, elements],
@@ -130,23 +184,31 @@ export function ScreenshotPanel({
 	const handleClick = useCallback(
 		(event: MouseEvent<HTMLElement>) => {
 			if (liveControl) return;
-			const next = selectAtEvent(event);
-			if (!next) return;
-			// Clicking the current selection again dismisses the action menu.
-			if (selection && isSameSelection(selection, next)) {
-				onClearSelection();
+			if (recentlyPicked()) return;
+			if (isPickPointModifier(event)) {
+				pickPointAtEvent(event);
 				return;
 			}
-			setHoverElement(null);
-			onSelect(next);
-			onSelectWithPoint?.(next);
+			const next = selectAtEvent(event);
+			if (!next) return;
+			applySelection(next);
 		},
-		[liveControl, onClearSelection, onSelect, onSelectWithPoint, selectAtEvent, selection],
+		[applySelection, liveControl, pickPointAtEvent, recentlyPicked, selectAtEvent],
+	);
+
+	const handleContextMenu = useCallback(
+		(event: MouseEvent<HTMLElement>) => {
+			if (!isPickPointModifier(event) || liveControl) return;
+			event.preventDefault();
+			if (recentlyPicked()) return;
+			pickPointAtEvent(event);
+		},
+		[liveControl, pickPointAtEvent, recentlyPicked],
 	);
 
 	const handleDoubleClick = useCallback(
 		(event: MouseEvent<HTMLElement>) => {
-			if (liveControl) return;
+			if (liveControl || isPickPointModifier(event)) return;
 			const next = selectAtEvent(event);
 			if (next) onDoubleTap(next);
 		},
@@ -156,6 +218,13 @@ export function ScreenshotPanel({
 	const handleHoverMove = useCallback(
 		(event: PointerEvent<HTMLElement>) => {
 			if (liveControl || disabled || pointerActiveRef.current) return;
+			const picking = isPickPointModifier(event) || pickPointHeld;
+			if (picking) {
+				setHoverElement(null);
+				setPickHover(coordsAtEvent(event));
+				return;
+			}
+			setPickHover(null);
 			if (elements.length === 0) {
 				setHoverElement(null);
 				return;
@@ -168,16 +237,23 @@ export function ScreenshotPanel({
 			const hit = hitTestElements(elements, point.x, point.y);
 			setHoverElement(hit);
 		},
-		[coordsAtEvent, disabled, elements, liveControl],
+		[coordsAtEvent, disabled, elements, liveControl, pickPointHeld],
 	);
 
 	const handlePointerLeave = useCallback(() => {
 		setHoverElement(null);
+		setPickHover(null);
 	}, []);
 
 	const handlePointerDown = useCallback(
 		(event: PointerEvent<HTMLElement>) => {
-			if (!liveControl || disabled) return;
+			if (disabled) return;
+			if (canInspect && isPickPointModifier(event) && event.button === 0) {
+				event.preventDefault();
+				pickPointAtEvent(event);
+				return;
+			}
+			if (!liveControl) return;
 			event.preventDefault();
 			event.currentTarget.setPointerCapture(event.pointerId);
 			const point = coordsAtEvent(event);
@@ -186,7 +262,15 @@ export function ScreenshotPanel({
 			onClearSelection();
 			onPointer("begin", point.x, point.y);
 		},
-		[coordsAtEvent, disabled, liveControl, onClearSelection, onPointer],
+		[
+			canInspect,
+			coordsAtEvent,
+			disabled,
+			liveControl,
+			onClearSelection,
+			onPointer,
+			pickPointAtEvent,
+		],
 	);
 
 	const handlePointerMove = useCallback(
@@ -229,6 +313,7 @@ export function ScreenshotPanel({
 	const hoverBox =
 		hoverElement &&
 		!liveControl &&
+		!pickingPoint &&
 		!(
 			selection?.element &&
 			hoverElement.x === selection.element.x &&
@@ -243,8 +328,10 @@ export function ScreenshotPanel({
 		feedMode === "poll" ? "Poll" : feedMode === "mjpeg" ? "Stream" : live ? "Live" : null;
 
 	const caption = selection ? activeSelectorCaption(selection) : null;
-	const canInspect = !disabled && !liveControl;
 	const showRefreshing = treeRefreshing && elements.length === 0;
+	const inspectHint = pickingPoint
+		? "Picking x,y · click to set point"
+		: "Hover to preview · click to select · Hold Control to pick x,y";
 
 	return (
 		<div className="flex flex-col gap-2">
@@ -290,6 +377,8 @@ export function ScreenshotPanel({
 					</span>
 				) : showRefreshing ? (
 					<span className="text-helper text-on-surface-variant">Refreshing…</span>
+				) : pickingPoint ? (
+					<span className="text-helper text-on-surface-variant">{inspectHint}</span>
 				) : selection && caption ? (
 					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
 						{caption} · {selection.x},{selection.y}
@@ -299,9 +388,7 @@ export function ScreenshotPanel({
 						{selection.x},{selection.y}
 					</span>
 				) : (
-					<span className="text-helper text-on-surface-variant">
-						Hover to preview · click to select · double-click to insert tap
-					</span>
+					<span className="text-helper text-on-surface-variant">{inspectHint}</span>
 				)}
 			</div>
 
@@ -323,7 +410,9 @@ export function ScreenshotPanel({
 							aria-label={
 								liveControl
 									? "Live device screen — tap, drag, or double-click to double-tap"
-									: "Live device screen — hover to preview, click to select actions, double-click to add tap"
+									: pickingPoint
+										? "Live device screen — Control held, click to pick x,y"
+										: "Live device screen — hover to preview, click to select actions, hold Control to pick x,y"
 							}
 							className={[
 								"relative block w-fit max-w-full touch-none",
@@ -334,6 +423,7 @@ export function ScreenshotPanel({
 										: "cursor-crosshair",
 							].join(" ")}
 							onClick={disabled ? undefined : handleClick}
+							onContextMenu={disabled ? undefined : handleContextMenu}
 							onDoubleClick={disabled ? undefined : handleDoubleClick}
 							onPointerDown={disabled ? undefined : handlePointerDown}
 							onPointerMove={disabled ? undefined : handlePointerMove}
@@ -360,6 +450,31 @@ export function ScreenshotPanel({
 									}}
 								/>
 							) : null}
+							{pickHover && pickingPoint ? (
+								<>
+									<span
+										aria-hidden="true"
+										className="pointer-events-none absolute left-0 h-px w-full bg-secondary/80"
+										style={{ top: `${pickHover.y / 10}%` }}
+									/>
+									<span
+										aria-hidden="true"
+										className="pointer-events-none absolute top-0 h-full w-px bg-secondary/80"
+										style={{ left: `${pickHover.x / 10}%` }}
+									/>
+									<span
+										aria-hidden="true"
+										className="pointer-events-none absolute z-20 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[10px] text-white"
+										style={{
+											left: `${pickHover.x / 10}%`,
+											top: `${pickHover.y / 10}%`,
+											transform: "translate(8px, 8px)",
+										}}
+									>
+										{pickHover.x},{pickHover.y}
+									</span>
+								</>
+							) : null}
 							{selection && selectionAnchor && !liveControl ? (
 								<span
 									aria-hidden="true"
@@ -385,7 +500,17 @@ export function ScreenshotPanel({
 									>
 										{caption}
 									</div>
-								) : null}
+								) : (
+									<div
+										className="pointer-events-none absolute z-10 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white"
+										style={{
+											left: `${selectionAnchor.left}%`,
+											top: `calc(${selectionAnchor.top + selectionAnchor.height}% + 4px)`,
+										}}
+									>
+										{selection.x},{selection.y}
+									</div>
+								)}
 								<ElementActionMenu
 									key={`${selection.x},${selection.y},${selection.candidateIndex},${selection.preferredLocator},${selection.element?.id ?? ""},${selection.element?.label ?? ""}`}
 									selection={selection}

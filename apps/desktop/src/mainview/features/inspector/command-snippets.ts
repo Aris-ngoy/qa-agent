@@ -356,6 +356,23 @@ export function suggestedCommands(selection: InspectorSelection): CommandSnippet
 	}
 	taps.push(tapPoint);
 
+	const doubleTap: CommandSnippet = {
+		id: "doubleTap",
+		label: "doubleTap",
+		previewLines: previewTapPoint(selection, { double: true }),
+		needsPrompt: null,
+	};
+	const longPress: CommandSnippet = {
+		id: "longPress",
+		label: "longPress",
+		previewLines: previewTapPoint(selection, { durationMs: LONG_PRESS_MS }),
+		needsPrompt: null,
+	};
+
+	if (!id && !label) {
+		return [tapPoint, doubleTap, longPress, inputText];
+	}
+
 	if (editable) {
 		return [inputText, ...taps, assertVisible];
 	}
@@ -477,13 +494,17 @@ export function selectorCommands(
 		{
 			id: "doubleTap",
 			label: "doubleTap",
-			previewLines: previewTap(selection, { double: true }, preferred),
+			previewLines: stable
+				? previewTap(selection, { double: true }, preferred)
+				: previewTapPoint(selection, { double: true }),
 			needsPrompt: null,
 		},
 		{
 			id: "longPress",
 			label: "longPress",
-			previewLines: previewTap(selection, { durationMs: LONG_PRESS_MS }, preferred),
+			previewLines: stable
+				? previewTap(selection, { durationMs: LONG_PRESS_MS }, preferred)
+				: previewTapPoint(selection, { durationMs: LONG_PRESS_MS }),
 			needsPrompt: null,
 		},
 		{
@@ -520,9 +541,13 @@ export function buildCommandLines(
 		case "tapPoint":
 			return tapPointLinesForSelection(selection);
 		case "doubleTap":
-			return tapLinesForSelection(selection, { double: true }, preferred);
+			return selection.element
+				? tapLinesForSelection(selection, { double: true }, preferred)
+				: tapPointLinesForSelection(selection, { double: true });
 		case "longPress":
-			return tapLinesForSelection(selection, { durationMs: LONG_PRESS_MS }, preferred);
+			return selection.element
+				? tapLinesForSelection(selection, { durationMs: LONG_PRESS_MS }, preferred)
+				: tapPointLinesForSelection(selection, { durationMs: LONG_PRESS_MS });
 		case "assertVisible": {
 			const lines = assertLinesForSelection(selection, "visible", promptValue);
 			return lines ?? [];

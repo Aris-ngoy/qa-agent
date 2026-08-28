@@ -52,6 +52,23 @@ describe("buildScriptFromDecisions", () => {
 		]);
 	});
 
+	test("in-app taps persist screenshot x,y even when a label is present", () => {
+		const script = buildScriptFromDecisions(
+			[
+				{
+					type: "tap",
+					label: "Login",
+					x: 120,
+					y: 340,
+					reason: "Tap login",
+					thoughts: "Login button visible",
+				},
+			],
+			"run_xy",
+		);
+		expect(script?.actions).toEqual([{ type: "tap", x: 120, y: 340, reason: "Tap login" }]);
+	});
+
 	test("returns null when no replayable actions remain", () => {
 		expect(
 			buildScriptFromDecisions(

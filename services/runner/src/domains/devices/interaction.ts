@@ -60,10 +60,13 @@ export async function performAction(
 	session: DeviceSession,
 	body: ActionRequest,
 ): Promise<ActionResponse> {
+	const locatorTap = Boolean(
+		(body.id || body.label) && (body.kind === "tap" || body.kind === "input"),
+	);
 	let x = body.x;
 	let y = body.y;
 
-	if ((body.id || body.label) && (body.kind === "tap" || body.kind === "input")) {
+	if (locatorTap) {
 		const screen = await getScreen(session, { full: false });
 		const elements = screen.elements ?? [];
 		const match = body.id
@@ -83,14 +86,19 @@ export async function performAction(
 		y = grounded.y;
 	}
 
+	const tapOptions = {
+		durationMs: body.durationMs,
+		coordSpace: locatorTap ? ("window" as const) : ("screenshot" as const),
+	};
+
 	switch (body.kind) {
 		case "tap": {
 			if (x == null || y == null) {
 				throw new ActionValidationError("tap requires x,y or --id or --label or description");
 			}
-			await session.tap(x, y, { durationMs: body.durationMs });
+			await session.tap(x, y, tapOptions);
 			if (body.double) {
-				await session.tap(x, y);
+				await session.tap(x, y, { coordSpace: tapOptions.coordSpace });
 			}
 			break;
 		}
@@ -108,7 +116,7 @@ export async function performAction(
 		}
 		case "input": {
 			if (x != null && y != null) {
-				await session.tap(x, y);
+				await session.tap(x, y, { coordSpace: tapOptions.coordSpace });
 			}
 			if (!body.text) {
 				throw new ActionValidationError("input requires text");

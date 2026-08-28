@@ -1,5 +1,5 @@
 import { type CaseScript, type CaseScriptAction, caseScriptSchema } from "@yoqa/runner-client";
-import type { AgentDecision } from "./agent";
+import { type AgentDecision, prefersScreenshotTap } from "./agent";
 
 /** Build a replayable script from successful agent decisions (tap/type/wait/alert). */
 export function buildScriptFromDecisions(
@@ -9,7 +9,14 @@ export function buildScriptFromDecisions(
 	const actions: CaseScriptAction[] = [];
 	for (const decision of decisions) {
 		if (decision.type === "tap") {
-			if (decision.label) {
+			if (prefersScreenshotTap(decision)) {
+				actions.push({
+					type: "tap",
+					x: decision.x,
+					y: decision.y,
+					reason: decision.reason,
+				});
+			} else if (decision.label) {
 				actions.push({
 					type: "tap",
 					label: decision.label,

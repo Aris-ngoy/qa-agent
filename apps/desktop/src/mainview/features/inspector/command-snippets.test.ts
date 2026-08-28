@@ -4,6 +4,7 @@ import {
 	buildCommandLines,
 	inputLinesForSelection,
 	isUsableSelectorValue,
+	selectorCommands,
 	suggestedCommands,
 	tapLinesForSelection,
 	usableId,
@@ -117,14 +118,16 @@ describe("command snippets selector quality", () => {
 		]);
 
 		const suggested = suggestedCommands(scrollView);
-		const assertCmd = suggested.find((c) => c.id === "assertVisible");
-		expect(assertCmd?.needsPrompt).toBe("text");
-		expect(assertCmd?.previewLines.join("\n")).toContain("--text '…'");
-		expect(assertCmd?.previewLines.join("\n")).not.toContain("XCUIElementTypeScrollView");
-
 		const tapCmd = suggested.find((c) => c.id === "tap" || c.id === "tapPoint");
 		expect(tapCmd?.previewLines.join("\n")).not.toContain("--id");
 		expect(tapCmd?.previewLines.join("\n")).not.toContain("--label");
+
+		const assertCmd = selectorCommands(scrollView, { defaultAppId: "" }).find(
+			(c) => c.id === "assertVisible",
+		);
+		expect(assertCmd?.needsPrompt).toBe("text");
+		expect(assertCmd?.previewLines.join("\n")).toContain("--text '…'");
+		expect(assertCmd?.previewLines.join("\n")).not.toContain("XCUIElementTypeScrollView");
 	});
 
 	test("stable id/label prefer id chip first; tap uses preferred locator only", () => {
@@ -176,5 +179,34 @@ describe("command snippets selector quality", () => {
 		const suggested = suggestedCommands(button);
 		expect(suggested[0]?.previewLines.join("\n")).toContain("--label 'Continue'");
 		expect(suggested[1]?.previewLines.join("\n")).toContain("--id 'continue_btn'");
+	});
+
+	test("point-only selection leads with tap (x,y) and coords-only gestures", () => {
+		const point = selection({
+			x: 412,
+			y: 887,
+			element: null,
+		});
+		const suggested = suggestedCommands(point);
+		expect(suggested.map((c) => c.id)).toEqual(["tapPoint", "doubleTap", "longPress", "inputText"]);
+		expect(suggested[0]?.previewLines.join("\n")).toContain("--x 412");
+		expect(suggested[0]?.previewLines.join("\n")).toContain("--y 887");
+		expect(suggested[0]?.previewLines.join("\n")).not.toContain("--id");
+		expect(suggested[0]?.previewLines.join("\n")).not.toContain("--label");
+
+		const tap = buildCommandLines(point, "tapPoint").join("\n");
+		expect(tap).toContain("yoqa action tap --x 412 --y 887");
+		expect(tap).not.toContain("--id");
+		expect(tap).not.toContain("--label");
+
+		const doubleTap = buildCommandLines(point, "doubleTap").join("\n");
+		expect(doubleTap).toContain("--double");
+		expect(doubleTap).toContain("--x 412");
+		expect(doubleTap).not.toContain("--id");
+
+		const longPress = buildCommandLines(point, "longPress").join("\n");
+		expect(longPress).toContain("--duration 2000");
+		expect(longPress).toContain("--y 887");
+		expect(longPress).not.toContain("--label");
 	});
 });

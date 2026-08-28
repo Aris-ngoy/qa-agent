@@ -9,19 +9,19 @@ const ALLOW_XML = `
 </hierarchy>
 `;
 
-function sessionStub(taps: Array<{ x: number; y: number }>): DeviceSession {
+function sessionStub(taps: Array<{ x: number; y: number; coordSpace?: string }>): DeviceSession {
 	return {
 		pageSource: async () => ALLOW_XML,
 		getWindowSize: async () => ({ width: 1000, height: 2000 }),
-		tap: async (x: number, y: number) => {
-			taps.push({ x, y });
+		tap: async (x: number, y: number, options?: { coordSpace?: "window" | "screenshot" }) => {
+			taps.push({ x, y, coordSpace: options?.coordSpace });
 		},
 	} as unknown as DeviceSession;
 }
 
 describe("performAction tap locators", () => {
 	test("prefers --label over guessed x,y so Allow hits the tree center", async () => {
-		const taps: Array<{ x: number; y: number }> = [];
+		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
 		const body: ActionRequest = {
 			kind: "tap",
 			label: "Allow",
@@ -29,19 +29,19 @@ describe("performAction tap locators", () => {
 			y: 951,
 		};
 		const result = await performAction(sessionStub(taps), body);
-		expect(taps).toEqual([{ x: 600, y: 925 }]);
+		expect(taps).toEqual([{ x: 600, y: 925, coordSpace: "window" }]);
 		expect(result.resolved).toEqual({ x: 600, y: 925 });
 	});
 
 	test("prefers --id over guessed x,y", async () => {
-		const taps: Array<{ x: number; y: number }> = [];
+		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
 		await performAction(sessionStub(taps), {
 			kind: "tap",
 			id: "permission_allow_button",
 			x: 1,
 			y: 1,
 		});
-		expect(taps).toEqual([{ x: 600, y: 925 }]);
+		expect(taps).toEqual([{ x: 600, y: 925, coordSpace: "window" }]);
 	});
 
 	test("resolves --label Help & Info against page source with &amp;", async () => {
@@ -66,5 +66,11 @@ describe("performAction tap locators", () => {
 		});
 		expect(taps).toEqual([{ x: 600, y: 925 }]);
 		expect(result.resolved).toEqual({ x: 600, y: 925 });
+	});
+
+	test("coordinate-only taps use screenshot space", async () => {
+		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
+		await performAction(sessionStub(taps), { kind: "tap", x: 120, y: 340 });
+		expect(taps).toEqual([{ x: 120, y: 340, coordSpace: "screenshot" }]);
 	});
 });

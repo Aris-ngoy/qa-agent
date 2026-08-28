@@ -13,6 +13,7 @@ import {
 	type AgentDecision,
 	decideNextAction as defaultDecideNextAction,
 	isAbsurdNoScreenshotFail,
+	prefersScreenshotTap,
 } from "./agent";
 
 export const MAX_STEPS_PER_CASE = 25;
@@ -363,9 +364,15 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 
 				if (decision.type === "tap") {
 					const tapBody: ActionRequest = { kind: "tap" };
-					if (decision.label) tapBody.label = decision.label;
-					if (decision.id) tapBody.id = decision.id;
-					if (!tapBody.label && !tapBody.id) {
+					if (prefersScreenshotTap(decision)) {
+						tapBody.x = decision.x;
+						tapBody.y = decision.y;
+					} else if (decision.label) {
+						tapBody.label = decision.label;
+						if (decision.id) tapBody.id = decision.id;
+					} else if (decision.id) {
+						tapBody.id = decision.id;
+					} else {
 						tapBody.x = decision.x ?? 500;
 						tapBody.y = decision.y ?? 500;
 					}

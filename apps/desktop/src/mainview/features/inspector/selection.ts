@@ -59,7 +59,8 @@ function selectionForElement(
 	};
 }
 
-function pointOnlySelection(point: { x: number; y: number }): InspectorSelection {
+/** Screenshot-point selection — no accessibility-tree snap. Used for Control-pick. */
+export function pointOnlySelection(point: { x: number; y: number }): InspectorSelection {
 	return {
 		x: point.x,
 		y: point.y,

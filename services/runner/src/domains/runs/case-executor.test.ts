@@ -285,6 +285,50 @@ describe("executeAgentCase", () => {
 		]);
 	});
 
+	it("uses screenshot x,y for in-app taps even when a label is also present", async () => {
+		const performed: ActionRequest[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						label: "Login",
+						x: 120,
+						y: 340,
+						reason: "Tap login",
+						thoughts: "Login button on the screenshot",
+					};
+				}
+				return {
+					type: "done",
+					reason: "done",
+					thoughts: "home visible",
+				};
+			},
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(performed).toEqual([{ kind: "tap", x: 120, y: 340 }]);
+	});
+
 	it("cancels when aborted during agent loop", async () => {
 		let decideCalls = 0;
 		const result = await executeAgentCase({

@@ -55,6 +55,22 @@ export function preferPointerSize(
 	return window;
 }
 
+/**
+ * Scale 0–1000 coords that came from a screenshot (inspector click or vision).
+ * Android clickGesture uses display pixels — prefer the screenshot even when it
+ * differs from getWindowSize() (nav bar / cutout). iOS W3C actions use window
+ * points; passing screenshot pixels would overshoot off-screen.
+ */
+export function screenshotPointerSize(
+	window: PointerSize,
+	screenshot: PointerSize | null,
+	platform: "android" | "ios",
+): PointerSize {
+	if (platform !== "android") return window;
+	if (!screenshot || screenshot.width < 1 || screenshot.height < 1) return window;
+	return screenshot;
+}
+
 function w3cTapActions(x: number, y: number, holdMs: number): object[] {
 	return [
 		{
