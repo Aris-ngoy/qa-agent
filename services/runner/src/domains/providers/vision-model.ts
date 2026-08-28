@@ -210,9 +210,9 @@ export async function completeWithAiSdk<T>(input: {
 						role: "user",
 						content: [
 							{
-								type: "image",
-								image: input.image.base64,
+								type: "file",
 								mediaType: input.image.mediaType,
+								data: { type: "data", data: input.image.base64 },
 							},
 							{ type: "text", text: prompt },
 						],
