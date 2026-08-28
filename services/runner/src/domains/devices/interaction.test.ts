@@ -43,4 +43,28 @@ describe("performAction tap locators", () => {
 		});
 		expect(taps).toEqual([{ x: 600, y: 925 }]);
 	});
+
+	test("resolves --label Help & Info against page source with &amp;", async () => {
+		const taps: Array<{ x: number; y: number }> = [];
+		const xml = `
+<hierarchy>
+  <android.widget.TextView bounds="[400,1800][800,1900]" text="Help &amp; Info" enabled="true" />
+</hierarchy>
+`;
+		const session = {
+			pageSource: async () => xml,
+			getWindowSize: async () => ({ width: 1000, height: 2000 }),
+			tap: async (x: number, y: number) => {
+				taps.push({ x, y });
+			},
+		} as unknown as DeviceSession;
+		const result = await performAction(session, {
+			kind: "tap",
+			label: "Help & Info",
+			x: 500,
+			y: 456,
+		});
+		expect(taps).toEqual([{ x: 600, y: 925 }]);
+		expect(result.resolved).toEqual({ x: 600, y: 925 });
+	});
 });

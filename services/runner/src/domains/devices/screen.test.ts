@@ -93,4 +93,28 @@ describe("cleanPageSource", () => {
 		});
 		expect(cleaned.elements.every((el) => el.label !== el.type)).toBe(true);
 	});
+
+	test("decodes XML entities in Android text and iOS label", () => {
+		const android = cleanPageSource(
+			`
+<hierarchy>
+  <android.widget.TextView bounds="[100,200][400,280]" text="Help &amp; Info" enabled="true" />
+</hierarchy>
+`,
+			WINDOW,
+		);
+		expect(android.elements).toHaveLength(1);
+		expect(android.elements[0]?.label).toBe("Help & Info");
+
+		const ios = cleanPageSource(
+			`
+<XCUIElementTypeApplication x="0" y="0" width="390" height="844">
+  <XCUIElementTypeStaticText x="39" y="84.4" width="78" height="42.2" label="Help &amp; Info" visible="true" />
+</XCUIElementTypeApplication>
+`,
+			{ width: 390, height: 844 },
+		);
+		expect(ios.elements).toHaveLength(1);
+		expect(ios.elements[0]?.label).toBe("Help & Info");
+	});
 });

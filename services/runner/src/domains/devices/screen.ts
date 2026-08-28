@@ -3,6 +3,8 @@
  * Drops zero-size / offscreen / pure layout containers (ARCHITECTURE §4.2).
  */
 
+import { decodeXmlEntities } from "@yoqa/runner-client";
+
 export type ScreenElement = {
 	type: string;
 	label: string;
@@ -60,7 +62,7 @@ function attrsFromTag(tag: string): { name: string; attrs: Record<string, string
 		const key = m[1];
 		const value = m[2];
 		if (key !== undefined && value !== undefined) {
-			attrs[key] = value;
+			attrs[key] = decodeXmlEntities(value);
 		}
 	}
 	return { name, attrs };
