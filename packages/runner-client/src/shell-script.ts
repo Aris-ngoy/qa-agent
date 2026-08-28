@@ -10,6 +10,7 @@ import type {
 	ScreenshotResponse,
 } from "./schemas";
 import { actionKindSchema } from "./schemas";
+import { decodeXmlEntities } from "./xml-entities";
 
 export type ShellScriptSleepStep = {
 	kind: "sleep";
@@ -422,11 +423,17 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
+function normalizedLabel(value: string | undefined): string {
+	return decodeXmlEntities(value ?? "")
+		.trim()
+		.toLowerCase();
+}
+
 export function screenHasText(elements: ScreenElement[] | undefined, text: string): boolean {
-	const needle = text.trim().toLowerCase();
+	const needle = normalizedLabel(text);
 	if (!needle) return false;
 	return (elements ?? []).some((el) => {
-		const label = el.label?.toLowerCase() ?? "";
+		const label = normalizedLabel(el.label);
 		const type = el.type?.toLowerCase() ?? "";
 		return label.includes(needle) || type.includes(needle);
 	});
@@ -437,14 +444,12 @@ export function findElementByLabel(
 	elements: ScreenElement[] | undefined,
 	label: string,
 ): ScreenElement | null {
-	const needle = label.trim().toLowerCase();
+	const needle = normalizedLabel(label);
 	if (!needle) return null;
 	const list = elements ?? [];
-	const exact = list.filter((el) => (el.label?.trim().toLowerCase() ?? "") === needle);
+	const exact = list.filter((el) => normalizedLabel(el.label) === needle);
 	const pool =
-		exact.length > 0
-			? exact
-			: list.filter((el) => (el.label?.toLowerCase() ?? "").includes(needle));
+		exact.length > 0 ? exact : list.filter((el) => normalizedLabel(el.label).includes(needle));
 	if (pool.length === 0) return null;
 	pool.sort((a, b) => a.width * a.height - b.width * b.height);
 	return pool[0] ?? null;

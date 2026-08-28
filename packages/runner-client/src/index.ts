@@ -402,6 +402,8 @@ export {
 	type ShellToCaseScriptResult,
 } from "./shell-script";
 
+export { decodeXmlEntities } from "./xml-entities";
+
 export type RunnerClientOptions = {
 	baseUrl?: string;
 	fetchImpl?: typeof fetch;

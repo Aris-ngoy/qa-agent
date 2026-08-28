@@ -148,6 +148,22 @@ describe("element helpers", () => {
 		expect(findElementByLabel([button], "")).toBeNull();
 	});
 
+	test("findElementByLabel and screenHasText decode XML entities on both sides", () => {
+		const help: ScreenElement = {
+			type: "TextView",
+			label: "Help & Info",
+			x: 100,
+			y: 200,
+			width: 200,
+			height: 40,
+		};
+		const encoded: ScreenElement = { ...help, label: "Help &amp; Info" };
+		expect(findElementByLabel([help], "Help &amp; Info")).toEqual(help);
+		expect(findElementByLabel([encoded], "Help & Info")).toEqual(encoded);
+		expect(screenHasText([help], "Help &amp; Info")).toBe(true);
+		expect(screenHasText([encoded], "Help & Info")).toBe(true);
+	});
+
 	test("findElementById supports suffix matching", () => {
 		expect(findElementById([button], "com.app:id/get_bonus")).toEqual(button);
 		expect(findElementById([button], "get_bonus")).toEqual(button);
