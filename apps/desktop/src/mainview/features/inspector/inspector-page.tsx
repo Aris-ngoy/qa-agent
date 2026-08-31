@@ -56,6 +56,7 @@ type InspectorReportStep = {
 	ok: boolean;
 	latencyMs: number | null;
 	detail: string | null;
+	command: string | null;
 	screenshotBase64: string | null;
 };
 
@@ -855,6 +856,7 @@ export function InspectorPage() {
 						ok,
 						latencyMs: Math.max(0, Date.now() - stepStartedAt),
 						detail: ok ? null : (error ?? "failed"),
+						command: step.raw,
 						screenshotBase64,
 					});
 					if (ok) {

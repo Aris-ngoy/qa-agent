@@ -180,6 +180,45 @@ describe("executeScriptCase", () => {
 
 		expect(status).toBe("cancelled");
 	});
+
+	it("publishes the command before performAction and clears it after appendStep", async () => {
+		const timeline: string[] = [];
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "tap", x: 100, y: 200, reason: "tap login" }],
+		};
+
+		const status = await executeScriptCase({
+			script,
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				timeline.push(`append:${step.command ?? "null"}`);
+			},
+			setCurrentCommand: async (command) => {
+				timeline.push(command ?? "null");
+			},
+			performAction: async (_session, body) => {
+				timeline.push(`perform:${body.kind}`);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1000,
+			},
+			settleMs: 0,
+		});
+
+		expect(status).toBe("passed");
+		expect(timeline).toEqual([
+			"yoqa action tap --x 100 --y 200",
+			"perform:tap",
+			"append:yoqa action tap --x 100 --y 200",
+			"null",
+			"append:null",
+		]);
+	});
 });
 
 describe("executeAgentCase", () => {
@@ -228,6 +267,59 @@ describe("executeAgentCase", () => {
 		expect(result.decisions).toHaveLength(2);
 		decisions.push(...result.decisions);
 		expect(decisions[1]?.type).toBe("done");
+	});
+
+	it("publishes the tap command before performAction", async () => {
+		const timeline: string[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				timeline.push(`append:${step.command ?? "null"}`);
+			},
+			setCurrentCommand: async (command) => {
+				timeline.push(command ?? "null");
+			},
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						label: "Allow",
+						reason: "Grant notifications",
+						thoughts: "Permission dialog",
+					};
+				}
+				return {
+					type: "done",
+					reason: "done",
+					thoughts: "home visible",
+				};
+			},
+			performAction: async (_session, body) => {
+				timeline.push(`perform:${body.kind}`);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(timeline).toEqual([
+			"yoqa action tap --label 'Allow'",
+			"perform:tap",
+			"append:yoqa action tap --label 'Allow'",
+			"null",
+			"append:null",
+		]);
 	});
 
 	it("taps by label and accepts alerts without guessed coordinates", async () => {

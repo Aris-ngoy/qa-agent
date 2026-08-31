@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { caseScriptActionSchema, caseScriptSchema } from "./schemas";
+import { caseScriptActionSchema, caseScriptSchema, runStepSchema, runTestSchema } from "./schemas";
 
 describe("caseScriptActionSchema", () => {
 	test("accepts tap/type/wait in range", () => {
@@ -57,5 +57,56 @@ describe("caseScriptSchema", () => {
 				actions: [],
 			}).success,
 		).toBe(false);
+	});
+});
+
+describe("runStepSchema", () => {
+	const baseStep = {
+		id: "rstep_1",
+		runTestId: "rtest_1",
+		idx: 0,
+		action: { type: "tap" },
+		screenshotUri: null,
+		ok: true,
+		latencyMs: 12,
+		detail: null,
+		createdAt: 1,
+	};
+
+	test("parses payloads without command", () => {
+		expect(runStepSchema.parse(baseStep).command).toBeUndefined();
+	});
+
+	test("parses null and string command", () => {
+		expect(runStepSchema.parse({ ...baseStep, command: null }).command).toBeNull();
+		expect(
+			runStepSchema.parse({ ...baseStep, command: "yoqa action tap --label 'Allow'" }).command,
+		).toBe("yoqa action tap --label 'Allow'");
+	});
+});
+
+describe("runTestSchema", () => {
+	const baseTest = {
+		id: "rtest_1",
+		runId: "run_1",
+		caseId: "case_1",
+		status: "running" as const,
+		error: null,
+		startedAt: 1,
+		finishedAt: null,
+	};
+
+	test("parses payloads without currentCommand", () => {
+		expect(runTestSchema.parse(baseTest).currentCommand).toBeUndefined();
+	});
+
+	test("parses null and string currentCommand", () => {
+		expect(runTestSchema.parse({ ...baseTest, currentCommand: null }).currentCommand).toBeNull();
+		expect(
+			runTestSchema.parse({
+				...baseTest,
+				currentCommand: "yoqa action tap --x 50 --y 60",
+			}).currentCommand,
+		).toBe("yoqa action tap --x 50 --y 60");
 	});
 });

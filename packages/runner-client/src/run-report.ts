@@ -1,4 +1,5 @@
-import type { Run, RunStatus, RunStep, RunTestStatus } from "./schemas";
+import type { ActionRequest, Run, RunStatus, RunStep, RunTestStatus } from "./schemas";
+import { formatActionShellLine, formatAssertShellLine, formatSleepShellLine } from "./shell-script";
 
 export type RunReportStatus = "passed" | "errored" | "cancelled";
 
@@ -12,6 +13,8 @@ export type RunReportStep = {
 	detail: string | null;
 	reason: string | null;
 	thoughts: string | null;
+	/** Exact yoqa / sleep command for this step, when it hit the device. */
+	command: string | null;
 	/** Raw PNG bytes as base64 (no data-URI prefix). */
 	screenshotBase64: string | null;
 };
@@ -68,6 +71,7 @@ export type InspectorRunReportInput = {
 		ok: boolean;
 		latencyMs?: number | null;
 		detail?: string | null;
+		command?: string | null;
 		screenshotBase64?: string | null;
 	}>;
 };
@@ -99,6 +103,77 @@ export function actionSummary(action: unknown): string {
 		return `Input${typeof record.text === "string" ? `: ${record.text}` : ""}`;
 	}
 	return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function optionalTrimmedString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function optionalFiniteNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * Derive the yoqa shell command for a persisted step action (fallback for rows saved before `command`).
+ */
+export function formatStepCommand(action: unknown): string | null {
+	if (!action || typeof action !== "object") return null;
+	const record = action as Record<string, unknown>;
+	const type = typeof record.type === "string" ? record.type : null;
+	if (type == null || type === "verify" || type === "done" || type === "fail") return null;
+
+	if (type === "wait") {
+		const ms = optionalFiniteNumber(record.ms) ?? 0;
+		return formatSleepShellLine(ms / 1000);
+	}
+
+	if (type === "assert") {
+		const text = optionalTrimmedString(record.text);
+		if (!text) return null;
+		const assertion = record.assertion === "not-visible" ? "not-visible" : "visible";
+		const timeoutMs = optionalFiniteNumber(record.timeoutMs);
+		return formatAssertShellLine({
+			assertion,
+			text,
+			...(timeoutMs != null ? { timeoutSeconds: timeoutMs / 1000 } : {}),
+		});
+	}
+
+	let request: ActionRequest | null = null;
+	if (type === "tap") {
+		request = { kind: "tap" };
+		const label = optionalTrimmedString(record.label);
+		const id = optionalTrimmedString(record.id);
+		const x = optionalFiniteNumber(record.x);
+		const y = optionalFiniteNumber(record.y);
+		if (label) request.label = label;
+		if (id) request.id = id;
+		if (x != null) request.x = x;
+		if (y != null) request.y = y;
+	} else if (type === "swipe") {
+		request = { kind: "swipe" };
+		const x = optionalFiniteNumber(record.x);
+		const y = optionalFiniteNumber(record.y);
+		const x2 = optionalFiniteNumber(record.x2);
+		const y2 = optionalFiniteNumber(record.y2);
+		const durationMs = optionalFiniteNumber(record.durationMs);
+		if (x != null) request.x = x;
+		if (y != null) request.y = y;
+		if (x2 != null) request.x2 = x2;
+		if (y2 != null) request.y2 = y2;
+		if (durationMs != null) request.durationMs = durationMs;
+	} else if (type === "type" || type === "input") {
+		request = { kind: "input" };
+		const text = optionalTrimmedString(record.text);
+		if (text) request.text = text;
+	} else if (type === "alert") {
+		request = {
+			kind: "alert",
+			alertAction: record.alertAction === "dismiss" ? "dismiss" : "accept",
+		};
+	}
+
+	return request ? formatActionShellLine(request) : null;
 }
 
 export function stepReasoning(step: {
@@ -134,6 +209,7 @@ function mapCatalogStep(step: RunStep, screenshotsByStepId: Record<string, strin
 		detail: step.detail,
 		reason,
 		thoughts,
+		command: step.command ?? formatStepCommand(step.action),
 		screenshotBase64: screenshotsByStepId[step.id] ?? null,
 	};
 }
@@ -193,6 +269,7 @@ export function buildRunReportFromInspectorSession(
 		detail: step.detail ?? null,
 		reason: step.detail ?? null,
 		thoughts: null,
+		command: step.command ?? step.summary,
 		screenshotBase64: step.screenshotBase64 ?? null,
 	}));
 
@@ -313,6 +390,9 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 						: `<p class="muted">No screenshot</p>`;
 					const latency =
 						step.latencyMs != null ? `<span class="muted">${step.latencyMs}ms</span>` : "";
+					const commandBlock = step.command
+						? `<pre class="command"><code>${escapeHtml(step.command)}</code></pre>`
+						: "";
 					return `
 <article class="step ${step.ok ? "ok" : "fail"}">
   <header>
@@ -322,6 +402,7 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
       <p class="step-status" style="color:${stepColor}">${stepStatus} ${latency}</p>
     </div>
   </header>
+  ${commandBlock}
   ${reasonBlock}
   ${detailBlock}
   ${thoughtsBlock}
@@ -377,6 +458,8 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
   .step.fail .idx { background: #fecaca; color: #991b1b; }
   .step h3 { margin: 0; font-size: 1rem; }
   .step-status { margin: 0.15rem 0 0; font-size: 0.8rem; font-weight: 600; }
+  .command { margin: 0.5rem 0 0; padding: 0.4rem 0.65rem; background: #f1f5f9; border-radius: 0.4rem; font-size: 0.8rem; overflow-x: auto; }
+  .command code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
   .reason, .detail { margin: 0.5rem 0 0; color: #475569; font-size: 0.9rem; }
   .thoughts { margin-top: 0.5rem; font-size: 0.85rem; color: #64748b; }
   .thoughts p { margin: 0.35rem 0 0; white-space: pre-wrap; }
@@ -454,6 +537,7 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 			lines.push(`### Step ${step.index}: ${step.summary}`);
 			lines.push("");
 			lines.push(`- Result: **${step.ok ? "Passed" : "Failed"}**`);
+			if (step.command) lines.push(`- Command: \`${step.command.replace(/`/g, "'")}\``);
 			if (step.latencyMs != null) lines.push(`- Latency: ${step.latencyMs}ms`);
 			if (step.reason) lines.push(`- Reason: ${step.reason}`);
 			if (step.detail && step.detail !== step.reason) lines.push(`- Detail: ${step.detail}`);
@@ -534,6 +618,7 @@ export function formatRunReportGithubSummary(doc: RunReportDocument): string {
 		lines.push("### Failed steps", "");
 		for (const { test, step } of failedSteps) {
 			lines.push(`- **${escapeMd(test.title)}** · step ${step.index}: ${escapeMd(step.summary)}`);
+			if (step.command) lines.push(`  - Command: \`${escapeMd(step.command)}\``);
 			if (step.reason) lines.push(`  - Reason: ${escapeMd(step.reason)}`);
 			if (step.detail && step.detail !== step.reason) {
 				lines.push(`  - Detail: ${escapeMd(step.detail)}`);

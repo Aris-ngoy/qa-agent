@@ -123,7 +123,8 @@ function ensureSchema(sqlite: Database): void {
 			execution_mode TEXT,
 			error TEXT,
 			started_at INTEGER,
-			finished_at INTEGER
+			finished_at INTEGER,
+			current_command TEXT
 		);
 
 		CREATE TABLE IF NOT EXISTS run_steps (
@@ -135,6 +136,7 @@ function ensureSchema(sqlite: Database): void {
 			ok INTEGER NOT NULL DEFAULT 0,
 			latency_ms INTEGER NOT NULL DEFAULT 0,
 			detail TEXT,
+			command TEXT,
 			created_at INTEGER NOT NULL
 		);
 
@@ -154,6 +156,7 @@ function ensureSchema(sqlite: Database): void {
 	migrateAppsPrefix(sqlite);
 	migrateCaseScripts(sqlite);
 	migrateRunExecutionMode(sqlite);
+	migrateRunCommands(sqlite);
 }
 
 function tableColumns(sqlite: Database, table: string): Set<string> {
@@ -194,6 +197,17 @@ function migrateRunExecutionMode(sqlite: Database): void {
 	const testCols = tableColumns(sqlite, "run_tests");
 	if (testCols.size > 0) {
 		addColumnIfMissing(sqlite, "run_tests", "execution_mode", "execution_mode TEXT", testCols);
+	}
+}
+
+function migrateRunCommands(sqlite: Database): void {
+	const testCols = tableColumns(sqlite, "run_tests");
+	if (testCols.size > 0) {
+		addColumnIfMissing(sqlite, "run_tests", "current_command", "current_command TEXT", testCols);
+	}
+	const stepCols = tableColumns(sqlite, "run_steps");
+	if (stepCols.size > 0) {
+		addColumnIfMissing(sqlite, "run_steps", "command", "command TEXT", stepCols);
 	}
 }
 

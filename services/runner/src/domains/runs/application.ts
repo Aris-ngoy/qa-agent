@@ -119,6 +119,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 			ok: step.ok === 1,
 			latencyMs: step.latencyMs,
 			detail: step.detail,
+			command: step.command ?? null,
 			createdAt: step.createdAt,
 		}));
 		const caseMode =
@@ -132,6 +133,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 			error: test.error,
 			startedAt: test.startedAt,
 			finishedAt: test.finishedAt,
+			currentCommand: test.currentCommand ?? null,
 			steps,
 		});
 	}
@@ -160,6 +162,7 @@ async function appendStep(input: {
 	ok: boolean;
 	latencyMs: number;
 	detail: string | null;
+	command: string | null;
 }): Promise<void> {
 	const db = getCatalogDb();
 	await db.insert(runSteps).values({
@@ -171,8 +174,14 @@ async function appendStep(input: {
 		ok: input.ok ? 1 : 0,
 		latencyMs: Math.max(0, Math.round(input.latencyMs)),
 		detail: input.detail,
+		command: input.command,
 		createdAt: Date.now(),
 	});
+}
+
+async function setCurrentCommand(runTestId: string, command: string | null): Promise<void> {
+	const db = getCatalogDb();
+	await db.update(runTests).set({ currentCommand: command }).where(eq(runTests.id, runTestId));
 }
 
 async function updateCaseLastRun(
@@ -212,6 +221,7 @@ async function persistCancelled(runId: string): Promise<void> {
 					status: "cancelled",
 					error: "Cancelled by user",
 					finishedAt,
+					currentCommand: null,
 				})
 				.where(eq(runTests.id, test.id));
 		}
@@ -238,6 +248,9 @@ async function executeScriptCase(input: {
 				runTestId: input.runTestId,
 				...step,
 			});
+		},
+		setCurrentCommand: async (command) => {
+			await setCurrentCommand(input.runTestId, command);
 		},
 		clock: { sleep, now: () => Date.now() },
 	});
@@ -272,6 +285,9 @@ async function executeAgentCase(input: {
 				...step,
 			});
 		},
+		setCurrentCommand: async (command) => {
+			await setCurrentCommand(input.runTestId, command);
+		},
 		decide: decideNextAction,
 		clock: { sleep, now: () => Date.now() },
 	});
@@ -300,6 +316,7 @@ async function executeCase(input: {
 			startedAt,
 			error: null,
 			executionMode: input.caseMode,
+			currentCommand: null,
 		})
 		.where(eq(runTests.id, input.runTestId));
 
@@ -347,6 +364,7 @@ async function executeCase(input: {
 			status: caseStatus,
 			error: caseError,
 			finishedAt,
+			currentCommand: null,
 		})
 		.where(eq(runTests.id, input.runTestId));
 	await updateCaseLastRun(input.caseId, caseStatus, finishedAt);

@@ -18,6 +18,7 @@ import {
 	buildRunReportFromCatalogRun,
 	formatRunReportHtml,
 	formatRunReportMarkdown,
+	formatStepCommand,
 	actionSummary as reportActionSummary,
 	stepReasoning as reportStepReasoning,
 	suggestedRunReportBasename,
@@ -101,6 +102,19 @@ function RunStatusPill({ status }: { status: RunStatus }) {
 
 function actionSummary(action: unknown): string {
 	return reportActionSummary(action);
+}
+
+function stepCommandText(step: RunStep): string | null {
+	return step.command ?? formatStepCommand(step.action);
+}
+
+function StepCommand({ command }: { command: string | null }) {
+	if (!command) return null;
+	return (
+		<p className="mt-1 truncate font-mono text-helper text-on-surface-variant" title={command}>
+			{command}
+		</p>
+	);
 }
 
 function stepReasoning(step: RunStep): { reason: string | null; thoughts: string | null } {
@@ -250,7 +264,7 @@ function StepIndicator({
 	);
 }
 
-type StepStatusKind = "completed" | "failed" | "passed" | "in_progress";
+type StepStatusKind = "completed" | "failed" | "passed" | "in_progress" | "executing";
 
 function StepStatusLabel({
 	status,
@@ -266,7 +280,9 @@ function StepStatusLabel({
 				? "Failed"
 				: status === "passed"
 					? "Passed"
-					: "In progress…";
+					: status === "executing"
+						? "Executing…"
+						: "In progress…";
 	const colorClass =
 		status === "completed" || status === "passed"
 			? "text-secondary"
@@ -275,19 +291,35 @@ function StepStatusLabel({
 				: "text-on-surface-variant";
 	return (
 		<p className={[className ?? "mt-1", "text-helper font-medium", colorClass].join(" ")}>
-			{label}
+			{status === "executing" ? (
+				<span className="inline-flex items-center gap-1.5">
+					<span className="motion-live-dot size-1.5 rounded-full bg-primary" />
+					{label}
+				</span>
+			) : (
+				label
+			)}
 		</p>
 	);
 }
 
-function InProgressStepRow() {
+function InProgressStepRow({ command }: { command?: string | null }) {
 	return (
 		<li className="relative flex items-start gap-3">
 			<span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-container text-helper font-semibold text-on-surface-variant">
 				…
 			</span>
 			<div className="min-w-0 flex-1">
-				<StepStatusLabel className="mt-0.5" status="in_progress" />
+				{command ? (
+					<>
+						<p className="truncate font-mono text-body-md text-on-surface" title={command}>
+							{command}
+						</p>
+						<StepStatusLabel status="executing" />
+					</>
+				) : (
+					<StepStatusLabel className="mt-0.5" status="in_progress" />
+				)}
 			</div>
 		</li>
 	);
@@ -638,6 +670,7 @@ export function RunDetailPage() {
 																>
 																	{actionSummary(step.action)}
 																</p>
+																<StepCommand command={stepCommandText(step)} />
 																<StepStatusLabel status={step.ok ? "passed" : "failed"} />
 															</div>
 														</button>
@@ -656,6 +689,7 @@ export function RunDetailPage() {
 													<p className="text-body-md font-medium text-on-surface">
 														{actionSummary(step.action)}
 													</p>
+													<StepCommand command={stepCommandText(step)} />
 													<StepStatusLabel status={step.ok ? "completed" : "failed"} />
 													<StepAiThoughts reason={reason} thoughts={thoughts} />
 												</div>
@@ -663,7 +697,7 @@ export function RunDetailPage() {
 										);
 									})}
 									{test.status === "queued" || test.status === "running" ? (
-										<InProgressStepRow />
+										<InProgressStepRow command={test.currentCommand} />
 									) : testSteps.length === 0 ? (
 										<li className="relative flex items-start gap-3">
 											<span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-container text-helper font-semibold text-on-surface-variant">

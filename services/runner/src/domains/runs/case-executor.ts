@@ -4,6 +4,9 @@ import {
 	type CaseScript,
 	type CatalogCase,
 	type ScreenElement,
+	formatActionShellLine,
+	formatAssertShellLine,
+	formatSleepShellLine,
 	screenHasText,
 } from "@yoqa/runner-client";
 import { performAction as defaultPerformAction, getScreen } from "../devices/interaction";
@@ -27,7 +30,10 @@ export type AppendCaseStep = (input: {
 	ok: boolean;
 	latencyMs: number;
 	detail: string | null;
+	command: string | null;
 }) => Promise<void>;
+
+export type SetCurrentCommand = (command: string | null) => Promise<void>;
 
 export type CaseDecideFn = (input: {
 	auth: ActiveProviderAuth;
@@ -55,6 +61,7 @@ export type ScriptCaseDeps = {
 	session: DeviceSession;
 	isAborted: () => boolean;
 	appendStep: AppendCaseStep;
+	setCurrentCommand?: SetCurrentCommand;
 	performAction?: PerformActionFn;
 	readScreen?: (session: DeviceSession) => Promise<{ elements?: ScreenElement[] }>;
 	clock?: CaseExecutorClock;
@@ -68,6 +75,7 @@ export type AgentCaseDeps = {
 	session: DeviceSession;
 	isAborted: () => boolean;
 	appendStep: AppendCaseStep;
+	setCurrentCommand?: SetCurrentCommand;
 	decide?: CaseDecideFn;
 	performAction?: PerformActionFn;
 	clock?: CaseExecutorClock;
@@ -79,6 +87,21 @@ const defaultClock: CaseExecutorClock = {
 	sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 	now: () => Date.now(),
 };
+
+const noopSetCurrentCommand: SetCurrentCommand = async () => {};
+
+async function withCurrentCommand(
+	setCurrentCommand: SetCurrentCommand,
+	command: string | null,
+	work: () => Promise<void>,
+): Promise<void> {
+	await setCurrentCommand(command);
+	try {
+		await work();
+	} finally {
+		await setCurrentCommand(null);
+	}
+}
 
 /**
  * Replay a saved Case Script against an injected Device Session.
@@ -96,6 +119,7 @@ export async function executeScriptCase(
 		});
 	const clock = deps.clock ?? defaultClock;
 	const settleMs = deps.settleMs ?? POST_ACTION_SETTLE_MS;
+	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
 
 	let stepIdx = 0;
 	let lastScreenshotUri: string | null = null;
@@ -121,110 +145,142 @@ export async function executeScriptCase(
 				if (action.id) tapBody.id = action.id;
 				if (action.x != null) tapBody.x = action.x;
 				if (action.y != null) tapBody.y = action.y;
-				await perform(deps.session, tapBody);
-				await clock.sleep(settleMs);
-				await deps.appendStep({
-					idx: stepIdx,
-					action: {
-						type: "tap",
-						x: action.x,
-						y: action.y,
-						label: action.label,
-						id: action.id,
-						reason: action.reason ?? "Replayed saved script tap",
-						thoughts: "Replaying the saved script without calling the AI agent.",
-					},
-					screenshotUri: shot.path,
-					ok: true,
-					latencyMs,
-					detail: action.reason ?? action.label ?? action.id ?? null,
+				const command = formatActionShellLine(tapBody);
+				await withCurrentCommand(setCurrentCommand, command, async () => {
+					await perform(deps.session, tapBody);
+					await clock.sleep(settleMs);
+					await deps.appendStep({
+						idx: stepIdx,
+						action: {
+							type: "tap",
+							x: action.x,
+							y: action.y,
+							label: action.label,
+							id: action.id,
+							reason: action.reason ?? "Replayed saved script tap",
+							thoughts: "Replaying the saved script without calling the AI agent.",
+						},
+						screenshotUri: shot.path,
+						ok: true,
+						latencyMs,
+						detail: action.reason ?? action.label ?? action.id ?? null,
+						command,
+					});
 				});
 			} else if (action.type === "type") {
-				await perform(deps.session, { kind: "input", text: action.text });
-				await clock.sleep(settleMs);
-				await deps.appendStep({
-					idx: stepIdx,
-					action: {
-						type: "type",
-						text: action.text,
-						reason: action.reason ?? "Replayed saved script type",
-						thoughts: "Replaying the saved script without calling the AI agent.",
-					},
-					screenshotUri: shot.path,
-					ok: true,
-					latencyMs,
-					detail: action.reason ?? null,
+				const typeBody: ActionRequest = { kind: "input", text: action.text };
+				const command = formatActionShellLine(typeBody);
+				await withCurrentCommand(setCurrentCommand, command, async () => {
+					await perform(deps.session, typeBody);
+					await clock.sleep(settleMs);
+					await deps.appendStep({
+						idx: stepIdx,
+						action: {
+							type: "type",
+							text: action.text,
+							reason: action.reason ?? "Replayed saved script type",
+							thoughts: "Replaying the saved script without calling the AI agent.",
+						},
+						screenshotUri: shot.path,
+						ok: true,
+						latencyMs,
+						detail: action.reason ?? null,
+						command,
+					});
 				});
 			} else if (action.type === "assert") {
 				const timeoutMs = action.timeoutMs ?? 5_000;
 				const assertion = action.assertion;
-				const deadline = clock.now() + timeoutMs;
-				for (;;) {
-					if (deps.isAborted()) {
-						return "cancelled";
-					}
-					const screen = await readScreen(deps.session);
-					const found = screenHasText(screen.elements, action.text);
-					if (assertion === "visible" && found) break;
-					if (assertion === "not-visible" && !found) break;
-					if (clock.now() >= deadline) {
-						throw new Error(
-							assertion === "visible"
-								? `Expected visible text not found within ${Math.round(timeoutMs / 1000)}s: ${action.text}`
-								: `Unexpected text still visible after ${Math.round(timeoutMs / 1000)}s: ${action.text}`,
-						);
-					}
-					await clock.sleep(400);
-				}
-				await deps.appendStep({
-					idx: stepIdx,
-					action: {
-						type: "assert",
-						assertion,
-						text: action.text,
-						timeoutMs,
-						reason: action.reason ?? `Assert ${assertion}: ${action.text}`,
-						thoughts: "Replaying the saved script without calling the AI agent.",
-					},
-					screenshotUri: shot.path,
-					ok: true,
-					latencyMs,
-					detail: action.reason ?? `${assertion}: ${action.text}`,
+				const command = formatAssertShellLine({
+					assertion,
+					text: action.text,
+					timeoutSeconds: timeoutMs / 1000,
 				});
+				await withCurrentCommand(setCurrentCommand, command, async () => {
+					const deadline = clock.now() + timeoutMs;
+					for (;;) {
+						if (deps.isAborted()) {
+							return;
+						}
+						const screen = await readScreen(deps.session);
+						const found = screenHasText(screen.elements, action.text);
+						if (assertion === "visible" && found) break;
+						if (assertion === "not-visible" && !found) break;
+						if (clock.now() >= deadline) {
+							throw new Error(
+								assertion === "visible"
+									? `Expected visible text not found within ${Math.round(timeoutMs / 1000)}s: ${action.text}`
+									: `Unexpected text still visible after ${Math.round(timeoutMs / 1000)}s: ${action.text}`,
+							);
+						}
+						await clock.sleep(400);
+					}
+					if (deps.isAborted()) {
+						return;
+					}
+					await deps.appendStep({
+						idx: stepIdx,
+						action: {
+							type: "assert",
+							assertion,
+							text: action.text,
+							timeoutMs,
+							reason: action.reason ?? `Assert ${assertion}: ${action.text}`,
+							thoughts: "Replaying the saved script without calling the AI agent.",
+						},
+						screenshotUri: shot.path,
+						ok: true,
+						latencyMs,
+						detail: action.reason ?? `${assertion}: ${action.text}`,
+						command,
+					});
+				});
+				if (deps.isAborted()) {
+					return "cancelled";
+				}
 			} else if (action.type === "alert") {
-				await perform(deps.session, {
+				const alertBody: ActionRequest = {
 					kind: "alert",
 					alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
-				});
-				await clock.sleep(settleMs);
-				await deps.appendStep({
-					idx: stepIdx,
-					action: {
-						type: "alert",
-						alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
-						reason: action.reason ?? "Replayed saved script alert",
-						thoughts: "Replaying the saved script without calling the AI agent.",
-					},
-					screenshotUri: shot.path,
-					ok: true,
-					latencyMs,
-					detail: action.reason ?? action.alertAction ?? "accept",
+				};
+				const command = formatActionShellLine(alertBody);
+				await withCurrentCommand(setCurrentCommand, command, async () => {
+					await perform(deps.session, alertBody);
+					await clock.sleep(settleMs);
+					await deps.appendStep({
+						idx: stepIdx,
+						action: {
+							type: "alert",
+							alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
+							reason: action.reason ?? "Replayed saved script alert",
+							thoughts: "Replaying the saved script without calling the AI agent.",
+						},
+						screenshotUri: shot.path,
+						ok: true,
+						latencyMs,
+						detail: action.reason ?? action.alertAction ?? "accept",
+						command,
+					});
 				});
 			} else {
 				const waitMs = Math.min(3000, Math.max(500, action.ms));
-				await clock.sleep(waitMs);
-				await deps.appendStep({
-					idx: stepIdx,
-					action: {
-						type: "wait",
-						ms: waitMs,
-						reason: action.reason ?? `wait ${waitMs}ms`,
-						thoughts: "Replaying the saved script without calling the AI agent.",
-					},
-					screenshotUri: shot.path,
-					ok: true,
-					latencyMs,
-					detail: action.reason ?? `wait ${waitMs}ms`,
+				const command = formatSleepShellLine(waitMs / 1000);
+				await withCurrentCommand(setCurrentCommand, command, async () => {
+					await clock.sleep(waitMs);
+					await deps.appendStep({
+						idx: stepIdx,
+						action: {
+							type: "wait",
+							ms: waitMs,
+							reason: action.reason ?? `wait ${waitMs}ms`,
+							thoughts: "Replaying the saved script without calling the AI agent.",
+						},
+						screenshotUri: shot.path,
+						ok: true,
+						latencyMs,
+						detail: action.reason ?? `wait ${waitMs}ms`,
+						command,
+					});
 				});
 			}
 
@@ -242,6 +298,7 @@ export async function executeScriptCase(
 			ok: true,
 			latencyMs: 0,
 			detail: "Saved script completed",
+			command: null,
 		});
 
 		return "passed";
@@ -261,6 +318,7 @@ export async function executeScriptCase(
 			ok: false,
 			latencyMs: 0,
 			detail: message,
+			command: null,
 		});
 		return "errored";
 	}
@@ -279,6 +337,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	const clock = deps.clock ?? defaultClock;
 	const settleMs = deps.settleMs ?? POST_ACTION_SETTLE_MS;
 	const maxSteps = deps.maxStepsPerCase ?? MAX_STEPS_PER_CASE;
+	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
 
 	let stepIdx = 0;
 	let caseStatus: "passed" | "errored" | "cancelled" = "passed";
@@ -376,51 +435,69 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 						tapBody.x = decision.x ?? 500;
 						tapBody.y = decision.y ?? 500;
 					}
-					await perform(deps.session, tapBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: decision.reason ?? null,
+					const command = formatActionShellLine(tapBody);
+					await withCurrentCommand(setCurrentCommand, command, async () => {
+						await perform(deps.session, tapBody);
+						await clock.sleep(settleMs);
+						await deps.appendStep({
+							idx: stepIdx,
+							action: decision,
+							screenshotUri: shot.path,
+							ok: true,
+							latencyMs,
+							detail: decision.reason ?? null,
+							command,
+						});
 					});
 				} else if (decision.type === "alert") {
-					await perform(deps.session, {
+					const alertBody: ActionRequest = {
 						kind: "alert",
 						alertAction: decision.alertAction === "dismiss" ? "dismiss" : "accept",
-					});
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: decision.reason ?? null,
+					};
+					const command = formatActionShellLine(alertBody);
+					await withCurrentCommand(setCurrentCommand, command, async () => {
+						await perform(deps.session, alertBody);
+						await clock.sleep(settleMs);
+						await deps.appendStep({
+							idx: stepIdx,
+							action: decision,
+							screenshotUri: shot.path,
+							ok: true,
+							latencyMs,
+							detail: decision.reason ?? null,
+							command,
+						});
 					});
 				} else if (decision.type === "type") {
-					await perform(deps.session, { kind: "input", text: decision.text ?? "" });
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: decision.reason ?? null,
+					const typeBody: ActionRequest = { kind: "input", text: decision.text ?? "" };
+					const command = formatActionShellLine(typeBody);
+					await withCurrentCommand(setCurrentCommand, command, async () => {
+						await perform(deps.session, typeBody);
+						await clock.sleep(settleMs);
+						await deps.appendStep({
+							idx: stepIdx,
+							action: decision,
+							screenshotUri: shot.path,
+							ok: true,
+							latencyMs,
+							detail: decision.reason ?? null,
+							command,
+						});
 					});
 				} else if (decision.type === "wait") {
 					const waitMs = Math.min(3000, Math.max(500, decision.ms ?? 1500));
-					await clock.sleep(waitMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: decision.reason ?? `wait ${waitMs}ms`,
+					const command = formatSleepShellLine(waitMs / 1000);
+					await withCurrentCommand(setCurrentCommand, command, async () => {
+						await clock.sleep(waitMs);
+						await deps.appendStep({
+							idx: stepIdx,
+							action: decision,
+							screenshotUri: shot.path,
+							ok: true,
+							latencyMs,
+							detail: decision.reason ?? `wait ${waitMs}ms`,
+							command,
+						});
 					});
 				} else if (decision.type === "verify" || decision.type === "done") {
 					await deps.appendStep({
@@ -430,6 +507,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 						ok: true,
 						latencyMs,
 						detail: decision.reason ?? null,
+						command: null,
 					});
 					flowDone = true;
 				} else {
@@ -440,6 +518,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 						ok: false,
 						latencyMs,
 						detail: decision.reason ?? "Agent failed the step",
+						command: null,
 					});
 					caseStatus = "errored";
 					caseError = decision.reason ?? "Agent marked the flow as failed";
@@ -473,6 +552,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				ok: false,
 				latencyMs: 0,
 				detail: caseError,
+				command: null,
 			});
 		}
 	}
