@@ -726,6 +726,7 @@ export const runStepSchema = z.object({
 	ok: z.boolean(),
 	latencyMs: z.number().nonnegative(),
 	detail: z.string().nullable(),
+	command: z.string().nullable().optional(),
 	createdAt: z.number().int().nonnegative(),
 });
 export type RunStep = z.infer<typeof runStepSchema>;
@@ -742,6 +743,7 @@ export const runTestSchema = z.object({
 	error: z.string().nullable(),
 	startedAt: z.number().int().nonnegative().nullable(),
 	finishedAt: z.number().int().nonnegative().nullable(),
+	currentCommand: z.string().nullable().optional(),
 	steps: z.array(runStepSchema).optional(),
 });
 export type RunTest = z.infer<typeof runTestSchema>;

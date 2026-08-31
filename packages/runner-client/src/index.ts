@@ -353,6 +353,7 @@ export {
 	formatRunReportGithubSummary,
 	formatRunReportHtml,
 	formatRunReportMarkdown,
+	formatStepCommand,
 	stepReasoning,
 	suggestedRunReportBasename,
 	type CatalogRunReportMeta,

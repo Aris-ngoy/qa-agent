@@ -32,6 +32,8 @@ export const runTests = sqliteTable("run_tests", {
 	error: text("error"),
 	startedAt: integer("started_at"),
 	finishedAt: integer("finished_at"),
+	/** Shell command currently in flight (cleared when the step finishes). */
+	currentCommand: text("current_command"),
 });
 
 export const runSteps = sqliteTable("run_steps", {
@@ -45,5 +47,7 @@ export const runSteps = sqliteTable("run_steps", {
 	ok: integer("ok").notNull().default(0),
 	latencyMs: integer("latency_ms").notNull().default(0),
 	detail: text("detail"),
+	/** Exact yoqa / sleep command executed for this step. */
+	command: text("command"),
 	createdAt: integer("created_at").notNull(),
 });

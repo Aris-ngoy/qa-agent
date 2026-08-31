@@ -3,6 +3,9 @@ import {
 	type RunReportDocument,
 	actionSummary,
 	formatRunReportGithubSummary,
+	formatRunReportHtml,
+	formatRunReportMarkdown,
+	formatStepCommand,
 	stepReasoning,
 	suggestedRunReportBasename,
 } from "./run-report";
@@ -26,6 +29,39 @@ describe("actionSummary", () => {
 	test("falls back for unknown or invalid payloads", () => {
 		expect(actionSummary(null)).toBe("Step");
 		expect(actionSummary({ type: "custom" })).toBe("Custom");
+	});
+});
+
+describe("formatStepCommand", () => {
+	test("maps device actions to yoqa shell lines", () => {
+		expect(formatStepCommand({ type: "tap", label: "Allow" })).toBe(
+			"yoqa action tap --label 'Allow'",
+		);
+		expect(formatStepCommand({ type: "tap", id: "submit" })).toBe("yoqa action tap --id 'submit'");
+		expect(formatStepCommand({ type: "tap", x: 100, y: 200 })).toBe(
+			"yoqa action tap --x 100 --y 200",
+		);
+		expect(
+			formatStepCommand({ type: "swipe", x: 500, y: 800, x2: 500, y2: 200, durationMs: 400 }),
+		).toBe("yoqa action swipe --x 500 --y 800 --x2 500 --y2 200 --duration 400");
+		expect(formatStepCommand({ type: "type", text: "hello" })).toBe(
+			"yoqa action input --text 'hello'",
+		);
+		expect(formatStepCommand({ type: "wait", ms: 1500 })).toBe("sleep 1.5");
+		expect(formatStepCommand({ type: "assert", assertion: "visible", text: "Yoqa Demo" })).toBe(
+			"yoqa assert visible --text 'Yoqa Demo'",
+		);
+		expect(formatStepCommand({ type: "alert" })).toBe("yoqa action alert");
+		expect(formatStepCommand({ type: "alert", alertAction: "dismiss" })).toBe(
+			"yoqa action alert --dismiss",
+		);
+	});
+
+	test("returns null for terminal or unknown actions", () => {
+		expect(formatStepCommand({ type: "done" })).toBeNull();
+		expect(formatStepCommand({ type: "verify" })).toBeNull();
+		expect(formatStepCommand({ type: "fail" })).toBeNull();
+		expect(formatStepCommand(null)).toBeNull();
 	});
 });
 
@@ -106,6 +142,7 @@ function sampleDoc(overrides: Partial<RunReportDocument> = {}): RunReportDocumen
 						detail: null,
 						reason: null,
 						thoughts: null,
+						command: "yoqa action tap --label 'Allow'",
 						screenshotBase64: "AAAABBBB",
 					},
 					{
@@ -117,6 +154,7 @@ function sampleDoc(overrides: Partial<RunReportDocument> = {}): RunReportDocumen
 						detail: "No matching element",
 						reason: "Login button not found",
 						thoughts: "Looking around",
+						command: "yoqa action tap --label 'Login'",
 						screenshotBase64: "iVBORw0KGgo=",
 					},
 				],
@@ -139,6 +177,7 @@ function sampleDoc(overrides: Partial<RunReportDocument> = {}): RunReportDocumen
 						detail: null,
 						reason: null,
 						thoughts: null,
+						command: "sleep 1",
 						screenshotBase64: "CCCC",
 					},
 				],
@@ -155,6 +194,7 @@ describe("formatRunReportGithubSummary", () => {
 		expect(markdown).toContain("| #1 Login | Failed | 2 |");
 		expect(markdown).toContain("| #2 Home | Passed | 1 |");
 		expect(markdown).toContain("step 2: Tap login");
+		expect(markdown).toContain("Command: `yoqa action tap --label 'Login'`");
 		expect(markdown).toContain("Reason: Login button not found");
 		expect(markdown).toContain("Download the `yoqa-report` artifact");
 		expect(markdown).not.toContain("data:image");
@@ -186,6 +226,7 @@ describe("formatRunReportGithubSummary", () => {
 								detail: null,
 								reason: null,
 								thoughts: null,
+								command: null,
 								screenshotBase64: "AAA",
 							},
 						],
@@ -220,5 +261,18 @@ describe("formatRunReportGithubSummary", () => {
 		expect(markdown).toContain("**Cancelled**");
 		expect(markdown).toContain("| #1 Login | Cancelled | 0 |");
 		expect(markdown).not.toContain("data:image");
+	});
+});
+
+describe("formatRunReportHtml and Markdown", () => {
+	test("render the step command", () => {
+		const doc = sampleDoc();
+		const html = formatRunReportHtml(doc);
+		expect(html).toContain("<code>yoqa action tap --label &#39;Allow&#39;</code>");
+		expect(html).toContain("<code>yoqa action tap --label &#39;Login&#39;</code>");
+
+		const markdown = formatRunReportMarkdown(doc);
+		expect(markdown).toContain("- Command: `yoqa action tap --label 'Allow'`");
+		expect(markdown).toContain("- Command: `yoqa action tap --label 'Login'`");
 	});
 });
