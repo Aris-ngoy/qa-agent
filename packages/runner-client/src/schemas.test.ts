@@ -24,12 +24,36 @@ describe("caseScriptActionSchema", () => {
 			type: "alert",
 			alertAction: "dismiss",
 		});
+		expect(
+			caseScriptActionSchema.parse({ type: "swipe", x: 500, y: 800, x2: 500, y2: 200 }),
+		).toMatchObject({
+			type: "swipe",
+			x: 500,
+			y: 800,
+			x2: 500,
+			y2: 200,
+		});
+		expect(
+			caseScriptActionSchema.parse({
+				type: "drag",
+				x: 10,
+				y: 20,
+				x2: 30,
+				y2: 40,
+			}),
+		).toMatchObject({ type: "drag", x: 10, y: 20, x2: 30, y2: 40 });
+		expect(
+			caseScriptActionSchema.parse({ type: "restart-app", appId: "com.example.app" }),
+		).toMatchObject({ type: "restart-app", appId: "com.example.app" });
 	});
 
 	test("rejects out-of-range coordinates and waits", () => {
 		expect(caseScriptActionSchema.safeParse({ type: "tap", x: -1, y: 0 }).success).toBe(false);
 		expect(caseScriptActionSchema.safeParse({ type: "tap", x: 0, y: 1001 }).success).toBe(false);
 		expect(caseScriptActionSchema.safeParse({ type: "wait", ms: 10_001 }).success).toBe(false);
+		expect(
+			caseScriptActionSchema.safeParse({ type: "swipe", x: 0, y: 0, x2: 0, y2: 1001 }).success,
+		).toBe(false);
 	});
 });
 

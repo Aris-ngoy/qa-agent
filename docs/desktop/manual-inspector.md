@@ -21,6 +21,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 - Page-source cleaning skips URL-like iOS `name` values as ids/labels, drops unlabeled ScrollView/CollectionView/Table/WebView containers, and never falls back to the XML type as a label
 - Coordinate-only taps (`--x/--y`, no `--id`/`--label`) inject in **screenshot space**: Android uses screenshot pixels even when they differ from `getWindowSize()`; iOS keeps window points (W3C). Locator taps stay window/tree-aligned.
 - Agent in-app taps persist and replay screenshot `x,y`. Permission labels (`Allow`, `Don't allow`, …) still prefer `--label` / `alert`.
+- Agent and CaseScript **swipe** use the same 0–1000 screenshot grid. Inspector command-bar swipes convert to CaseScript instead of being skipped.
 
 **Client (`@yoqa/runner-client`)**
 - `ActionRequest.double`; shell format/parse for `--double`
@@ -59,7 +60,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 
 - All Commands catalog + View Docs links
 - `scrollUntilVisible`, `copyTextFrom`, `extendedWaitUntil`
-- CaseScript support for swipe / double / long-press / activate-app / open-url / screenshot
+- CaseScript support for double / long-press / activate-app / open-url / screenshot
 - Foreground-app awareness for `activateApp` prefill (catalog app vs visible process after deeplink)
 - Maestro-style relational matching (`above` / `below` / `childOf`) and optional `--index` on `yoqa action`
 

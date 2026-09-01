@@ -69,6 +69,90 @@ describe("buildScriptFromDecisions", () => {
 		expect(script?.actions).toEqual([{ type: "tap", x: 120, y: 340, reason: "Tap login" }]);
 	});
 
+	test("expands directional swipe to screenshot endpoints", () => {
+		const script = buildScriptFromDecisions(
+			[
+				{
+					type: "swipe",
+					direction: "up",
+					reason: "Scroll to the bottom",
+					thoughts: "Feed continues below",
+				},
+				{
+					type: "swipe",
+					x: 500,
+					y: 200,
+					x2: 500,
+					y2: 800,
+					reason: "Scroll back up",
+					thoughts: "Need content above",
+				},
+			],
+			"run_swipe",
+		);
+		expect(script?.actions).toEqual([
+			{ type: "swipe", x: 500, y: 800, x2: 500, y2: 200, reason: "Scroll to the bottom" },
+			{ type: "swipe", x: 500, y: 200, x2: 500, y2: 800, reason: "Scroll back up" },
+		]);
+	});
+
+	test("persists drag, app lifecycle, open-url, assert, and input", () => {
+		const script = buildScriptFromDecisions(
+			[
+				{
+					type: "drag",
+					x: 100,
+					y: 500,
+					x2: 800,
+					y2: 500,
+					reason: "Slide",
+					thoughts: "Handle",
+				},
+				{
+					type: "input",
+					text: "hello",
+					reason: "Fill email",
+					thoughts: "Field focused",
+				},
+				{
+					type: "restart-app",
+					appId: "com.example.app",
+					reason: "Cold start",
+					thoughts: "Need a fresh launch",
+				},
+				{
+					type: "open-url",
+					url: "myapp://home",
+					reason: "Deeplink",
+					thoughts: "Skip onboarding",
+				},
+				{
+					type: "assert",
+					assertion: "visible",
+					text: "Welcome",
+					timeoutMs: 8_000,
+					reason: "Check title",
+					thoughts: "Home loaded",
+				},
+				{ type: "done", reason: "Finished", thoughts: "Done" },
+			],
+			"run_cli",
+		);
+		expect(script?.actions).toEqual([
+			{ type: "drag", x: 100, y: 500, x2: 800, y2: 500, reason: "Slide" },
+			{ type: "type", text: "hello", reason: "Fill email" },
+			{ type: "restart-app", appId: "com.example.app", reason: "Cold start" },
+			{ type: "open-url", url: "myapp://home", reason: "Deeplink" },
+			{
+				type: "assert",
+				assertion: "visible",
+				text: "Welcome",
+				timeoutMs: 8_000,
+				reason: "Check title",
+			},
+		]);
+	});
+
 	test("returns null when no replayable actions remain", () => {
 		expect(
 			buildScriptFromDecisions(

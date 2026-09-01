@@ -150,6 +150,34 @@ describe("executeScriptCase", () => {
 		expect(actions).toEqual([{ kind: "alert", alertAction: "accept" }]);
 	});
 
+	it("replays swipe coordinates via performAction", async () => {
+		const actions: ActionRequest[] = [];
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "swipe", x: 500, y: 800, x2: 500, y2: 200, reason: "scroll down" }],
+		};
+
+		const status = await executeScriptCase({
+			script,
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			performAction: async (_session, body) => {
+				actions.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1000,
+			},
+			settleMs: 0,
+		});
+
+		expect(status).toBe("passed");
+		expect(actions).toEqual([{ kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 }]);
+	});
+
 	it("cancels mid-loop when aborted", async () => {
 		let shots = 0;
 		const script: CaseScript = {
@@ -421,6 +449,118 @@ describe("executeAgentCase", () => {
 		expect(performed).toEqual([{ kind: "tap", x: 120, y: 340 }]);
 	});
 
+	it("performs directional swipe as screenshot coordinates", async () => {
+		const performed: ActionRequest[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "swipe",
+						direction: "up",
+						reason: "Scroll to the bottom",
+						thoughts: "Feed continues below",
+					};
+				}
+				return {
+					type: "done",
+					reason: "done",
+					thoughts: "bottom visible",
+				};
+			},
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(performed).toEqual([{ kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 }]);
+	});
+
+	it("coerces scroll-intent taps into swipes and will not pass until a swipe stops moving the screen", async () => {
+		const performed: ActionRequest[] = [];
+		const steps: Array<{ type?: string }> = [];
+		let calls = 0;
+		let shot = 0;
+		const session = {
+			screenshot: async () => {
+				shot += 1;
+				const base64 = shot === 1 ? "moving-1" : "stable";
+				return { path: `/tmp/shot-${shot}.png`, base64 };
+			},
+		} as unknown as DeviceSession;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase({
+				name: "#7 Scroll up And Down",
+				flows: [
+					{
+						id: "flow_1",
+						instructions: "Scroll down until you can not scroll anymore",
+						expectedResult:
+							"should scroll right at the bottom where it should not be able to scroll again",
+						flowId: null,
+					},
+				],
+			}),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session,
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push(step.action as { type?: string });
+			},
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						x: 270,
+						y: 900,
+						reason: "Scroll down to reach the bottom of the page",
+						thoughts: "I see Discover and need to scroll down further.",
+					};
+				}
+				return {
+					type: "verify",
+					reason: "The screen has remained unchanged after multiple scroll attempts",
+					thoughts: "Same four games are visible, so this must be the bottom.",
+				};
+			},
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(performed).toEqual([
+			{ kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 },
+			{ kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 },
+		]);
+		expect(steps.map((step) => step.type)).toEqual(["swipe", "swipe", "verify"]);
+		expect(result.decisions.map((decision) => decision.type)).toEqual(["swipe", "swipe", "verify"]);
+	});
+
 	it("cancels when aborted during agent loop", async () => {
 		let decideCalls = 0;
 		const result = await executeAgentCase({
@@ -449,5 +589,316 @@ describe("executeAgentCase", () => {
 		});
 
 		expect(result.status).toBe("cancelled");
+	});
+
+	it("passes the screen snapshot into decide and retries after ActionNotFoundError", async () => {
+		const { ActionNotFoundError } = await import("../devices/interaction");
+		const snapshots: string[] = [];
+		const errors: Array<string | undefined> = [];
+		const performed: ActionRequest[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => ({
+				elements: [
+					{
+						type: "Button",
+						label: "Login",
+						id: "login_btn",
+						x: 100,
+						y: 200,
+						width: 120,
+						height: 40,
+					},
+				],
+			}),
+			decide: async (input) => {
+				snapshots.push(input.screenSnapshot ?? "");
+				errors.push(input.lastError);
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						id: "missing_id",
+						reason: "Tap login",
+						thoughts: "Guessed a stale id",
+					};
+				}
+				if (calls === 2) {
+					return {
+						type: "tap",
+						id: "login_btn",
+						reason: "Tap login from tree",
+						thoughts: "Used the snapshot id after the miss",
+					};
+				}
+				return { type: "done", reason: "done", thoughts: "ok" };
+			},
+			performAction: async (_session, body) => {
+				if (body.id === "missing_id") {
+					throw new ActionNotFoundError("No element matching id: missing_id");
+				}
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(snapshots[0]).toContain("id=login_btn");
+		expect(errors[1]).toContain("missing_id");
+		expect(performed).toEqual([{ kind: "tap", id: "login_btn" }]);
+		expect(result.decisions[0]?.id).toBe("login_btn");
+		expect(result.decisions.map((decision) => decision.type)).toContain("done");
+	});
+
+	it("falls back to screenshot x,y when a tree id tap misses", async () => {
+		const { ActionNotFoundError } = await import("../devices/interaction");
+		const performed: ActionRequest[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						id: "stale_id",
+						x: 120,
+						y: 340,
+						reason: "Tap login",
+						thoughts: "Id from an older tree",
+					};
+				}
+				return { type: "done", reason: "done", thoughts: "ok" };
+			},
+			performAction: async (_session, body) => {
+				if (body.id === "stale_id") {
+					throw new ActionNotFoundError("No element matching id: stale_id");
+				}
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(calls).toBe(2);
+		expect(performed).toEqual([{ kind: "tap", x: 120, y: 340 }]);
+	});
+
+	it("performs drag and activate-app through performAction", async () => {
+		const performed: ActionRequest[] = [];
+		let calls = 0;
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			defaultAppId: "com.example.app",
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "drag",
+						x: 100,
+						y: 500,
+						x2: 800,
+						y2: 500,
+						reason: "Slide",
+						thoughts: "Slider",
+					};
+				}
+				if (calls === 2) {
+					return {
+						type: "activate-app",
+						reason: "Foreground",
+						thoughts: "App backgrounded",
+					};
+				}
+				return { type: "done", reason: "done", thoughts: "ok" };
+			},
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(performed).toEqual([
+			{ kind: "drag", x: 100, y: 500, x2: 800, y2: 500 },
+			{ kind: "activate-app", appId: "com.example.app" },
+		]);
+	});
+
+	it("runs numbered instructions one at a time and does not finish the case on the first verify", async () => {
+		const seen: Array<{
+			instructions: string;
+			expectedResult: string;
+			completed?: string[];
+			ordinal?: number;
+			count?: number;
+		}> = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase({
+				name: "Payout",
+				number: 8,
+				flows: [
+					{
+						id: "flow_1",
+						instructions:
+							"1. Navigate to Rewards\n2. Tap on paypal pick any amount\n3. Tap on confirm",
+						expectedResult: "should complete the payout and see the Payout Success text",
+						flowId: null,
+					},
+				],
+			}),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async (input) => {
+				calls += 1;
+				seen.push({
+					instructions: input.instructions,
+					expectedResult: input.expectedResult,
+					completed: [...(input.completedInstructions ?? [])],
+					ordinal: input.instructionOrdinal,
+					count: input.instructionCount,
+				});
+				if (calls % 2 === 1) {
+					return {
+						type: "tap",
+						x: 100,
+						y: 200,
+						reason: `do ${input.instructions}`,
+						thoughts: "visible",
+					};
+				}
+				return {
+					type: "verify",
+					reason: `done ${input.instructions}`,
+					thoughts: "expected visible",
+				};
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(calls).toBe(6);
+		expect(seen.map((item) => item.instructions)).toEqual([
+			"Navigate to Rewards",
+			"Navigate to Rewards",
+			"Tap on paypal pick any amount",
+			"Tap on paypal pick any amount",
+			"Tap on confirm",
+			"Tap on confirm",
+		]);
+		expect(seen[0]?.expectedResult).toBe("");
+		expect(seen[2]?.expectedResult).toBe("");
+		expect(seen[4]?.expectedResult).toContain("Payout Success");
+		expect(seen[0]?.completed).toEqual([]);
+		expect(seen[2]?.completed).toEqual(["Navigate to Rewards"]);
+		expect(seen[4]?.completed).toEqual(["Navigate to Rewards", "Tap on paypal pick any amount"]);
+		expect(seen.every((item) => item.count === 3)).toBe(true);
+		expect(seen[0]?.ordinal).toBe(1);
+		expect(seen[2]?.ordinal).toBe(2);
+		expect(seen[4]?.ordinal).toBe(3);
+		expect(seen.some((item) => item.instructions.includes("1. Navigate"))).toBe(false);
+	});
+
+	it("does not put later catalog-flow instructions into the current decide call", async () => {
+		const seen: string[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase({
+				name: "Payout",
+				number: 8,
+				flows: [
+					{
+						id: "flow_1",
+						instructions: "Navigate to Rewards",
+						expectedResult: "should see the list of payout options",
+						flowId: null,
+					},
+					{
+						id: "flow_2",
+						instructions: "Tap on paypal pick any amount",
+						expectedResult: "should see the payout detail screen",
+						flowId: null,
+					},
+					{
+						id: "flow_3",
+						instructions: "Tap on Hello Fresh",
+						expectedResult: "should see the payout detail screen",
+						flowId: null,
+					},
+				],
+			}),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async (input) => {
+				calls += 1;
+				seen.push(input.instructions);
+				return {
+					type: "verify",
+					reason: "this instruction is done",
+					thoughts: "matches expected",
+				};
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(calls).toBe(3);
+		expect(seen).toEqual([
+			"Navigate to Rewards",
+			"Tap on paypal pick any amount",
+			"Tap on Hello Fresh",
+		]);
 	});
 });

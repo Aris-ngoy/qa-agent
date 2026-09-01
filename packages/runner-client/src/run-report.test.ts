@@ -23,7 +23,15 @@ describe("actionSummary", () => {
 			"Assert visible: Yoqa Demo",
 		);
 		expect(actionSummary({ type: "fail" })).toBe("Failed");
+		expect(actionSummary({ type: "swipe", direction: "up" })).toBe("Swipe up");
+		expect(actionSummary({ type: "swipe", x: 500, y: 800, x2: 500, y2: 200 })).toBe("Swipe up");
+		expect(actionSummary({ type: "swipe", x: 500, y: 200, x2: 500, y2: 800 })).toBe("Swipe down");
 		expect(actionSummary({ type: "input", text: "x" })).toBe("Input: x");
+		expect(actionSummary({ type: "drag" })).toBe("Drag");
+		expect(actionSummary({ type: "open-url", url: "https://example.com" })).toBe(
+			"Open URL: https://example.com",
+		);
+		expect(actionSummary({ type: "restart-app" })).toBe("Restart app");
 	});
 
 	test("falls back for unknown or invalid payloads", () => {
@@ -54,6 +62,27 @@ describe("formatStepCommand", () => {
 		expect(formatStepCommand({ type: "alert" })).toBe("yoqa action alert");
 		expect(formatStepCommand({ type: "alert", alertAction: "dismiss" })).toBe(
 			"yoqa action alert --dismiss",
+		);
+		expect(
+			formatStepCommand({ type: "drag", x: 10, y: 20, x2: 30, y2: 40, durationMs: 250 }),
+		).toBe("yoqa action drag --x 10 --y 20 --x2 30 --y2 40 --duration 250");
+		expect(formatStepCommand({ type: "activate-app", appId: "com.example.app" })).toBe(
+			"yoqa action activate-app --app-id 'com.example.app'",
+		);
+		expect(formatStepCommand({ type: "terminate-app", appId: "com.example.app" })).toBe(
+			"yoqa action terminate-app --app-id 'com.example.app'",
+		);
+		expect(formatStepCommand({ type: "restart-app", appId: "com.example.app" })).toBe(
+			"yoqa action restart-app --app-id 'com.example.app'",
+		);
+		expect(formatStepCommand({ type: "background-app", seconds: 3 })).toBe(
+			"yoqa action background-app --seconds 3",
+		);
+		expect(formatStepCommand({ type: "open-url", url: "https://example.com" })).toBe(
+			"yoqa action open-url --url 'https://example.com'",
+		);
+		expect(formatStepCommand({ type: "tap", x: 10, y: 20, double: true })).toBe(
+			"yoqa action tap --x 10 --y 20 --double",
 		);
 	});
 

@@ -3,9 +3,13 @@ import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
 import type { DevicePlatform, SelectedDevice } from "@/features/devices/select-device-modal";
-import { useActiveDeviceSession } from "@/features/devices/use-active-device-session";
+import {
+	activeDeviceSessionQueryKey,
+	useActiveDeviceSession,
+} from "@/features/devices/use-active-device-session";
 import { CommandBar } from "@/features/inspector/command-bar";
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
+import { isDeviceSessionGone } from "@/features/inspector/inspect-session";
 import { type RunLogEntry, RunPanel } from "@/features/inspector/run-panel";
 import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
@@ -126,13 +130,6 @@ function defaultCaseNameFromScript(script: string): string {
 function bytesToImageBlob(bytes: Uint8Array, mime = "image/png"): Blob {
 	const copy = Uint8Array.from(bytes);
 	return new Blob([copy.buffer], { type: mime });
-}
-
-function isDeviceSessionGone(error: unknown): boolean {
-	const message = error instanceof Error ? error.message : String(error);
-	return /device session ended|session does not exist|invalid session id|no such session|HTTP 410/i.test(
-		message,
-	);
 }
 
 function miniScriptFromLines(lines: string[]): string {
@@ -258,6 +255,7 @@ export function InspectorPage() {
 		setLiveControl(false);
 		controlWsRef.current?.close();
 		controlWsRef.current = null;
+		adoptedDeviceIdRef.current = null;
 		revokeImage();
 	}, [revokeImage]);
 
@@ -278,9 +276,10 @@ export function InspectorPage() {
 		}
 		sessionEpochRef.current += 1;
 		clearSessionUi();
+		queryClient.setQueryData(activeDeviceSessionQueryKey, null);
 		invalidateActiveDeviceSession();
 		notify("Device session ended — use Restart session to reconnect");
-	}, [clearSessionUi, invalidateActiveDeviceSession]);
+	}, [clearSessionUi, invalidateActiveDeviceSession, queryClient]);
 
 	const refreshTree = useCallback(
 		async (options: { silent?: boolean } = {}): Promise<ScreenElement[] | null> => {
@@ -304,6 +303,16 @@ export function InspectorPage() {
 			} catch (error) {
 				if (sessionEpochRef.current !== epoch) return null;
 				if (isDeviceSessionGone(error)) {
+					// Background tree warm must not tear down a live stream. Confirm
+					// the runner actually dropped the session before prompting Restart.
+					if (silent) return null;
+					const stillActive = await getRunnerClient()
+						.then((client) => client.getActiveDevice())
+						.catch(() => null);
+					if (stillActive && stillActive.deviceId === activeRef.current?.deviceId) {
+						showErrorToast(error, "Failed to refresh screen tree");
+						return null;
+					}
 					handleSessionGone();
 					return null;
 				}
@@ -408,6 +417,14 @@ export function InspectorPage() {
 			} catch (error) {
 				if (sessionEpochRef.current !== epoch) return;
 				if (isDeviceSessionGone(error)) {
+					if (silent) return;
+					const stillActive = await getRunnerClient()
+						.then((client) => client.getActiveDevice())
+						.catch(() => null);
+					if (stillActive && stillActive.deviceId === activeRef.current?.deviceId) {
+						showErrorToast(error, "Failed to refresh screen");
+						return;
+					}
 					handleSessionGone();
 					return;
 				}
@@ -488,8 +505,15 @@ export function InspectorPage() {
 	// Adopt the shared Active Session (connected from any mode — play bar, CLI,
 	// another inspector visit) and mirror external disconnects into local UI.
 	useEffect(() => {
+		if (connecting) return;
 		if (!activeSession) {
-			if (activeRef.current) {
+			// Query is still null after a local connect (refetch in flight). Don't
+			// wipe the feed unless this session was adopted from the shared query.
+			if (
+				activeRef.current &&
+				adoptedDeviceIdRef.current != null &&
+				adoptedDeviceIdRef.current === activeRef.current.deviceId
+			) {
 				sessionEpochRef.current += 1;
 				clearSessionUi();
 			}
@@ -504,7 +528,7 @@ export function InspectorPage() {
 		setActive(activeSession);
 		setPlatform(activeSession.platform);
 		void startLiveFeedRef.current(activeSession);
-	}, [activeSession, clearSessionUi]);
+	}, [activeSession, clearSessionUi, connecting]);
 
 	useEffect(() => {
 		return () => {
@@ -544,7 +568,7 @@ export function InspectorPage() {
 		const timer = window.setTimeout(() => {
 			if (!activeRef.current || treeUpdatedAtRef.current > 0) return;
 			warmTree();
-		}, 700);
+		}, 1500);
 		return () => {
 			window.clearTimeout(timer);
 		};
@@ -697,14 +721,9 @@ export function InspectorPage() {
 		try {
 			const client = await getRunnerClient();
 			await client.disconnectDevice();
-			setActive(null);
-			setSelection(null);
-			setElements([]);
-			setFeedMode(null);
-			setLiveControl(false);
-			controlWsRef.current?.close();
-			controlWsRef.current = null;
-			revokeImage();
+			sessionEpochRef.current += 1;
+			clearSessionUi();
+			queryClient.setQueryData(activeDeviceSessionQueryKey, null);
 			invalidateActiveDeviceSession();
 			notify("Disconnected");
 		} catch (error) {
@@ -712,7 +731,7 @@ export function InspectorPage() {
 		} finally {
 			setConnecting(false);
 		}
-	}, [invalidateActiveDeviceSession, revokeImage, script]);
+	}, [clearSessionUi, invalidateActiveDeviceSession, queryClient, script]);
 
 	const appendLines = useCallback((lines: string[]) => {
 		setScript((prev) => appendScriptLines(prev, lines));

@@ -49,6 +49,34 @@ describe("formatCaseScriptShell", () => {
 		expect(out).toContain("yoqa action tap --label 'Increment'");
 	});
 
+	test("emits swipe coordinates", () => {
+		const out = formatCaseScriptShell({
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "swipe", x: 500, y: 800, x2: 500, y2: 200, durationMs: 400 }],
+		});
+		expect(out).toContain("yoqa action swipe --x 500 --y 800 --x2 500 --y2 200 --duration 400");
+	});
+
+	test("emits drag, app lifecycle, open-url, and double-tap", () => {
+		const out = formatCaseScriptShell({
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{ type: "tap", x: 10, y: 20, double: true },
+				{ type: "drag", x: 100, y: 500, x2: 800, y2: 500, durationMs: 300 },
+				{ type: "restart-app", appId: "com.example.app" },
+				{ type: "background-app", seconds: 2 },
+				{ type: "open-url", url: "https://example.com" },
+			],
+		});
+		expect(out).toContain("yoqa action tap --x 10 --y 20 --double");
+		expect(out).toContain("yoqa action drag --x 100 --y 500 --x2 800 --y2 500 --duration 300");
+		expect(out).toContain("yoqa action restart-app --app-id 'com.example.app'");
+		expect(out).toContain("yoqa action background-app --seconds 2");
+		expect(out).toContain("yoqa action open-url --url 'https://example.com'");
+	});
+
 	test("emits accept alert", () => {
 		const out = formatCaseScriptShell({
 			version: 1,

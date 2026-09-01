@@ -12,13 +12,60 @@ function shellSingleQuote(value: string): string {
 
 function actionToShellLine(action: CaseScriptAction): string {
 	if (action.type === "tap") {
+		const parts = ["yoqa", "action", "tap"];
 		if (action.label) {
-			return `yoqa action tap --label ${shellSingleQuote(action.label)}`;
+			parts.push("--label", shellSingleQuote(action.label));
+		} else if (action.id) {
+			parts.push("--id", shellSingleQuote(action.id));
+		} else {
+			parts.push(
+				"--x",
+				String(Math.round(action.x ?? 0)),
+				"--y",
+				String(Math.round(action.y ?? 0)),
+			);
 		}
-		if (action.id) {
-			return `yoqa action tap --id ${shellSingleQuote(action.id)}`;
+		if (action.double) parts.push("--double");
+		if (action.durationMs != null) parts.push("--duration", String(Math.round(action.durationMs)));
+		return parts.join(" ");
+	}
+	if (action.type === "swipe") {
+		const parts = [
+			"yoqa",
+			"action",
+			"swipe",
+			"--x",
+			String(Math.round(action.x)),
+			"--y",
+			String(Math.round(action.y)),
+			"--x2",
+			String(Math.round(action.x2)),
+			"--y2",
+			String(Math.round(action.y2)),
+		];
+		if (action.durationMs != null) {
+			parts.push("--duration", String(Math.round(action.durationMs)));
 		}
-		return `yoqa action tap --x ${Math.round(action.x ?? 0)} --y ${Math.round(action.y ?? 0)}`;
+		return parts.join(" ");
+	}
+	if (action.type === "drag") {
+		const parts = [
+			"yoqa",
+			"action",
+			"drag",
+			"--x",
+			String(Math.round(action.x)),
+			"--y",
+			String(Math.round(action.y)),
+			"--x2",
+			String(Math.round(action.x2)),
+			"--y2",
+			String(Math.round(action.y2)),
+		];
+		if (action.durationMs != null) {
+			parts.push("--duration", String(Math.round(action.durationMs)));
+		}
+		return parts.join(" ");
 	}
 	if (action.type === "type") {
 		return `yoqa action input --text ${shellSingleQuote(action.text)}`;
@@ -34,6 +81,21 @@ function actionToShellLine(action: CaseScriptAction): string {
 	}
 	if (action.type === "alert") {
 		return action.alertAction === "dismiss" ? "yoqa action alert --dismiss" : "yoqa action alert";
+	}
+	if (
+		action.type === "activate-app" ||
+		action.type === "terminate-app" ||
+		action.type === "restart-app"
+	) {
+		return `yoqa action ${action.type} --app-id ${shellSingleQuote(action.appId)}`;
+	}
+	if (action.type === "background-app") {
+		return action.seconds != null
+			? `yoqa action background-app --seconds ${action.seconds}`
+			: "yoqa action background-app";
+	}
+	if (action.type === "open-url") {
+		return `yoqa action open-url --url ${shellSingleQuote(action.url)}`;
 	}
 	const seconds = Math.max(0.1, action.ms / 1000);
 	return `sleep ${seconds}`;

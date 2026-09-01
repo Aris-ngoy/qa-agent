@@ -1706,17 +1706,83 @@ scriptCmd
 					continue;
 				}
 
-				const tapBody: ActionRequest = { kind: "tap" };
-				if (action.type === "tap") {
-					if (action.label) tapBody.label = action.label;
-					if (action.id) tapBody.id = action.id;
-					if (action.x != null) tapBody.x = action.x;
-					if (action.y != null) tapBody.y = action.y;
+				if (action.type === "swipe" || action.type === "drag") {
+					const body = await c.performAction({
+						kind: action.type,
+						x: action.x,
+						y: action.y,
+						x2: action.x2,
+						y2: action.y2,
+						durationMs: action.durationMs,
+					});
+					if (options.json) {
+						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
+					} else {
+						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
+					}
+					await sleep(800);
+					continue;
 				}
-				const body =
-					action.type === "tap"
-						? await c.performAction(tapBody)
-						: await c.performAction({ kind: "input", text: action.text });
+
+				if (
+					action.type === "activate-app" ||
+					action.type === "terminate-app" ||
+					action.type === "restart-app"
+				) {
+					const body = await c.performAction({ kind: action.type, appId: action.appId });
+					if (options.json) {
+						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
+					} else {
+						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
+					}
+					await sleep(800);
+					continue;
+				}
+
+				if (action.type === "background-app") {
+					const body = await c.performAction({
+						kind: "background-app",
+						seconds: action.seconds,
+					});
+					if (options.json) {
+						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
+					} else {
+						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
+					}
+					await sleep(800);
+					continue;
+				}
+
+				if (action.type === "open-url") {
+					const body = await c.performAction({ kind: "open-url", url: action.url });
+					if (options.json) {
+						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
+					} else {
+						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
+					}
+					await sleep(800);
+					continue;
+				}
+
+				if (action.type === "type") {
+					const body = await c.performAction({ kind: "input", text: action.text });
+					if (options.json) {
+						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
+					} else {
+						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
+					}
+					await sleep(800);
+					continue;
+				}
+
+				const tapBody: ActionRequest = { kind: "tap" };
+				if (action.label) tapBody.label = action.label;
+				if (action.id) tapBody.id = action.id;
+				if (action.x != null) tapBody.x = action.x;
+				if (action.y != null) tapBody.y = action.y;
+				if (action.double) tapBody.double = true;
+				if (action.durationMs != null) tapBody.durationMs = action.durationMs;
+				const body = await c.performAction(tapBody);
 
 				if (options.json) {
 					console.log(JSON.stringify({ ...body, step: idx }, null, 2));

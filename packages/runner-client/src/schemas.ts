@@ -304,6 +304,8 @@ const caseScriptTapSchema = z
 		label: z.string().min(1).optional(),
 		/** Match Android resource-id / iOS accessibility name. */
 		id: z.string().min(1).optional(),
+		double: z.boolean().optional(),
+		durationMs: z.number().min(50).max(5_000).optional(),
 		reason: z.string().optional(),
 	})
 	.superRefine((value, ctx) => {
@@ -316,8 +318,48 @@ const caseScriptTapSchema = z
 		}
 	});
 
+const caseScriptSwipeSchema = z.object({
+	type: z.literal("swipe"),
+	x: z.number().min(0).max(1000),
+	y: z.number().min(0).max(1000),
+	x2: z.number().min(0).max(1000),
+	y2: z.number().min(0).max(1000),
+	durationMs: z.number().min(50).max(5_000).optional(),
+	reason: z.string().optional(),
+});
+
+const caseScriptDragSchema = z.object({
+	type: z.literal("drag"),
+	x: z.number().min(0).max(1000),
+	y: z.number().min(0).max(1000),
+	x2: z.number().min(0).max(1000),
+	y2: z.number().min(0).max(1000),
+	durationMs: z.number().min(50).max(5_000).optional(),
+	reason: z.string().optional(),
+});
+
+const caseScriptAppIdSchema = z.union([
+	z.object({
+		type: z.literal("activate-app"),
+		appId: z.string().min(1),
+		reason: z.string().optional(),
+	}),
+	z.object({
+		type: z.literal("terminate-app"),
+		appId: z.string().min(1),
+		reason: z.string().optional(),
+	}),
+	z.object({
+		type: z.literal("restart-app"),
+		appId: z.string().min(1),
+		reason: z.string().optional(),
+	}),
+]);
+
 export const caseScriptActionSchema = z.union([
 	caseScriptTapSchema,
+	caseScriptSwipeSchema,
+	caseScriptDragSchema,
 	z.object({
 		type: z.literal("type"),
 		text: z.string(),
@@ -338,6 +380,17 @@ export const caseScriptActionSchema = z.union([
 	z.object({
 		type: z.literal("alert"),
 		alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).default("accept"),
+		reason: z.string().optional(),
+	}),
+	caseScriptAppIdSchema,
+	z.object({
+		type: z.literal("background-app"),
+		seconds: z.number().min(0).max(120).optional(),
+		reason: z.string().optional(),
+	}),
+	z.object({
+		type: z.literal("open-url"),
+		url: z.string().min(1),
 		reason: z.string().optional(),
 	}),
 ]);
