@@ -51,6 +51,8 @@ export function isDeadSessionError(error: unknown): boolean {
 	return DEAD_SESSION_RE.test(message);
 }
 
+const DEAD_SESSION_RETRY_MS = 200;
+
 /** Simulators can sustain 60; real devices need a much gentler encode load. */
 function mjpegSettingsForDevice(options: {
 	platform: DevicePlatform;
@@ -202,7 +204,14 @@ export type DeviceSession = {
 		yNorm: number,
 		options?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
 	) => Promise<void>;
-	swipe: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
+	swipe: (
+		x1: number,
+		y1: number,
+		x2: number,
+		y2: number,
+		durationMs?: number,
+		options?: { coordSpace?: "window" | "screenshot" },
+	) => Promise<void>;
 	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	type: (text: string) => Promise<void>;
 	activateApp: (appId: string) => Promise<void>;
@@ -609,10 +618,18 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		try {
 			return await fn();
 		} catch (error) {
-			if (isDeadSessionError(error)) {
-				notifySessionDead();
+			if (!isDeadSessionError(error)) throw error;
+			// Aborting MJPEG then immediately calling pageSource often yields a
+			// one-shot "invalid session id" even though WDA is still alive.
+			await Bun.sleep(DEAD_SESSION_RETRY_MS);
+			try {
+				return await fn();
+			} catch (retryError) {
+				if (isDeadSessionError(retryError)) {
+					notifySessionDead();
+				}
+				throw retryError;
 			}
-			throw error;
 		}
 	};
 
@@ -710,10 +727,20 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		});
 	};
 
-	const swipe = async (x1: number, y1: number, x2: number, y2: number, durationMs = 400) => {
+	const swipe = async (
+		x1: number,
+		y1: number,
+		x2: number,
+		y2: number,
+		durationMs = 400,
+		swipeOptions?: { coordSpace?: "window" | "screenshot" },
+	) => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				const size = await getPointerSize();
+				const size =
+					swipeOptions?.coordSpace === "screenshot"
+						? await getScreenshotCoordSize()
+						: await getPointerSize();
 				await injectSwipe(
 					browser,
 					toPx(x1, size.width),

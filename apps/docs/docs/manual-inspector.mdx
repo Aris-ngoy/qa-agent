@@ -44,7 +44,7 @@ The live mirror never writes to disk. Explicit screenshots and script reports st
 
 ### Recovering a dropped session
 
-Real iOS sessions can occasionally drop under WDA load (for example, during long Inspector sessions with the live mirror running). When that happens, Inspector clears the feed and prompts you to reconnect manually — it does not attempt to reconnect on its own.
+Real iOS sessions can occasionally drop under WDA load (for example, during long Inspector sessions with the live mirror running). When that happens, Inspector clears the feed and prompts you to reconnect manually — it does not attempt to reconnect on its own. A failed background tree refresh no longer treats a still-live session as ended.
 
 - **Restart session** — the toolbar button above the mirror disconnects, reconnects, and remounts the live stream. Use it when Inspector shows the Restart prompt, or any time the mirror looks stuck.
 - **Connect** — pick the device again in the device selector to start a fresh session.
@@ -53,7 +53,7 @@ Real iOS sessions can occasionally drop under WDA load (for example, during long
 
 The command bar sits above the script and adds steps that don't need an element selection. It has two controls:
 
-- **Swipe up / down / left / right** — appends a directional swipe on the current screen.
+- **Swipe up / down / left / right** — appends a directional swipe on the current screen. Saving the inspector script as a catalog case now keeps swipe steps (screenshot `x,y` → `x2,y2`).
 - **Wait** — enter seconds and click **Add wait** to pause the script (useful between an app launch and an assertion).
 
 Everything else — tap, assert, input, and app control — lives on the **Selector Commands** menu that opens when you select an element on the screenshot.

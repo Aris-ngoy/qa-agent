@@ -263,6 +263,7 @@ async function executeAgentCase(input: {
 	appContext: string;
 	session: DeviceSession;
 	auth: ActiveProviderAuth;
+	defaultAppId?: string;
 }): Promise<{
 	status: "passed" | "errored" | "cancelled";
 	decisions: AgentDecision[];
@@ -290,6 +291,7 @@ async function executeAgentCase(input: {
 		},
 		decide: decideNextAction,
 		clock: { sleep, now: () => Date.now() },
+		defaultAppId: input.defaultAppId,
 	});
 }
 
@@ -301,6 +303,7 @@ async function executeCase(input: {
 	session: DeviceSession;
 	auth: ActiveProviderAuth | null;
 	caseMode: "script" | "agent";
+	defaultAppId?: string;
 }): Promise<"passed" | "errored" | "cancelled"> {
 	const db = getCatalogDb();
 
@@ -347,6 +350,7 @@ async function executeCase(input: {
 			appContext: input.appContext,
 			session: input.session,
 			auth: input.auth,
+			defaultAppId: input.defaultAppId,
 		});
 		caseStatus = result.status;
 		decisions = result.decisions;
@@ -491,6 +495,10 @@ export async function executeRun(runId: string): Promise<void> {
 				session,
 				auth,
 				caseMode,
+				defaultAppId:
+					run.platform === "ios"
+						? app.iosBundleId || undefined
+						: app.androidApplicationId || undefined,
 			});
 			if (status === "cancelled" || isAborted(runId)) {
 				await persistCancelled(runId);

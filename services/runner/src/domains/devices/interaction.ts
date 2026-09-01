@@ -14,17 +14,19 @@ import type { DeviceSession } from "./session";
 export type GetScreenOptions = {
 	/** When true, return raw Appium page source instead of the cleaned 0–1000 tree. */
 	full?: boolean;
+	/**
+	 * Abort live `/stream.mjpeg` proxies before pageSource (iOS WDA cannot dual-load).
+	 * Default true. Inspector remounts the stream after the call.
+	 */
+	pauseMjpeg?: boolean;
 };
 
-/**
- * Read the device Screen. Always pauses MJPEG proxies first so iOS WDA is not
- * dual-loaded (stream + pageSource).
- */
-export async function getScreen(
+const MJPEG_PAUSE_SETTLE_MS = 150;
+
+async function readScreen(
 	session: DeviceSession,
-	options: GetScreenOptions = {},
+	options: GetScreenOptions,
 ): Promise<ScreenResponse> {
-	abortAllMjpegProxies();
 	const raw = await session.pageSource();
 	const window = await session.getWindowSize();
 	if (options.full) {
@@ -36,6 +38,21 @@ export async function getScreen(
 		window: cleaned.window,
 		elements: cleaned.elements,
 	};
+}
+
+/**
+ * Read the device Screen. Pauses MJPEG proxies first so iOS WDA is not
+ * dual-loaded (stream + pageSource); Inspector remounts the stream afterward.
+ */
+export async function getScreen(
+	session: DeviceSession,
+	options: GetScreenOptions = {},
+): Promise<ScreenResponse> {
+	if (options.pauseMjpeg !== false) {
+		const paused = abortAllMjpegProxies();
+		if (paused) await Bun.sleep(MJPEG_PAUSE_SETTLE_MS);
+	}
+	return await readScreen(session, options);
 }
 
 export class ActionValidationError extends Error {
@@ -108,7 +125,9 @@ export async function performAction(
 				throw new ActionValidationError(`${body.kind} requires x,y,x2,y2`);
 			}
 			if (body.kind === "swipe") {
-				await session.swipe(x, y, body.x2, body.y2, body.durationMs);
+				await session.swipe(x, y, body.x2, body.y2, body.durationMs, {
+					coordSpace: "screenshot",
+				});
 			} else {
 				await session.drag(x, y, body.x2, body.y2, body.durationMs);
 			}

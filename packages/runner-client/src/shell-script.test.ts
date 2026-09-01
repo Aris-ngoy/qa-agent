@@ -270,4 +270,35 @@ yoqa screenshot '/tmp/x.png'
 		expect(line).toContain("--y");
 		expect(result.script?.actions).toEqual([{ type: "tap", label: "All iCloud" }]);
 	});
+
+	test("converts drag, app lifecycle, and open-url", () => {
+		const result = shellToCaseScript(
+			`
+yoqa action drag --x 100 --y 500 --x2 800 --y2 500 --duration 300
+yoqa action restart-app --app-id com.example.app
+yoqa action background-app --seconds 2
+yoqa action open-url --url 'https://example.com'
+`,
+			{ savedAt: 1 },
+		);
+		expect(result.errors).toEqual([]);
+		expect(result.script?.actions).toEqual([
+			{ type: "drag", x: 100, y: 500, x2: 800, y2: 500, durationMs: 300 },
+			{ type: "restart-app", appId: "com.example.app" },
+			{ type: "background-app", seconds: 2 },
+			{ type: "open-url", url: "https://example.com" },
+		]);
+	});
+
+	test("converts swipe coordinates", () => {
+		const result = shellToCaseScript(
+			"yoqa action swipe --x 500 --y 800 --x2 500 --y2 200 --duration 400",
+			{ savedAt: 1 },
+		);
+		expect(result.errors).toEqual([]);
+		expect(result.warnings).toEqual([]);
+		expect(result.script?.actions).toEqual([
+			{ type: "swipe", x: 500, y: 800, x2: 500, y2: 200, durationMs: 400 },
+		]);
+	});
 });

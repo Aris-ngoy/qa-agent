@@ -15,8 +15,9 @@ export function trackMjpegProxy(): AbortController {
 	return controller;
 }
 
-/** Cancel every open `/stream.mjpeg` upstream so WDA can exit. */
-export function abortAllMjpegProxies(): void {
+/** Cancel every open `/stream.mjpeg` upstream so WDA can exit. Returns true if any proxy was open. */
+export function abortAllMjpegProxies(): boolean {
+	const had = proxies.size > 0;
 	for (const controller of [...proxies]) {
 		try {
 			controller.abort();
@@ -25,4 +26,5 @@ export function abortAllMjpegProxies(): void {
 		}
 	}
 	proxies.clear();
+	return had;
 }

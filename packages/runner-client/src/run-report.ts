@@ -98,9 +98,39 @@ export function actionSummary(action: unknown): string {
 	if (type === "verify") return "Verify";
 	if (type === "done") return "Done";
 	if (type === "fail") return "Failed";
-	if (type === "swipe") return "Swipe";
+	if (type === "swipe") {
+		if (typeof record.direction === "string" && record.direction.trim()) {
+			return `Swipe ${record.direction}`;
+		}
+		const x = typeof record.x === "number" ? record.x : null;
+		const y = typeof record.y === "number" ? record.y : null;
+		const x2 = typeof record.x2 === "number" ? record.x2 : null;
+		const y2 = typeof record.y2 === "number" ? record.y2 : null;
+		if (y != null && y2 != null && x != null && x2 != null) {
+			const dy = y2 - y;
+			const dx = x2 - x;
+			if (Math.abs(dy) >= Math.abs(dx)) {
+				if (dy < -50) return "Swipe up";
+				if (dy > 50) return "Swipe down";
+			} else {
+				if (dx < -50) return "Swipe left";
+				if (dx > 50) return "Swipe right";
+			}
+		}
+		return "Swipe";
+	}
 	if (type === "input") {
 		return `Input${typeof record.text === "string" ? `: ${record.text}` : ""}`;
+	}
+	if (type === "drag") return "Drag";
+	if (type === "activate-app") return "Activate app";
+	if (type === "terminate-app") return "Terminate app";
+	if (type === "restart-app") return "Restart app";
+	if (type === "background-app") return "Background app";
+	if (type === "open-url") {
+		return typeof record.url === "string" && record.url.trim()
+			? `Open URL: ${record.url}`
+			: "Open URL";
 	}
 	return type.charAt(0).toUpperCase() + type.slice(1);
 }
@@ -146,12 +176,15 @@ export function formatStepCommand(action: unknown): string | null {
 		const id = optionalTrimmedString(record.id);
 		const x = optionalFiniteNumber(record.x);
 		const y = optionalFiniteNumber(record.y);
+		const durationMs = optionalFiniteNumber(record.durationMs);
 		if (label) request.label = label;
 		if (id) request.id = id;
 		if (x != null) request.x = x;
 		if (y != null) request.y = y;
-	} else if (type === "swipe") {
-		request = { kind: "swipe" };
+		if (record.double === true) request.double = true;
+		if (durationMs != null) request.durationMs = durationMs;
+	} else if (type === "swipe" || type === "drag") {
+		request = { kind: type };
 		const x = optionalFiniteNumber(record.x);
 		const y = optionalFiniteNumber(record.y);
 		const x2 = optionalFiniteNumber(record.x2);
@@ -171,6 +204,18 @@ export function formatStepCommand(action: unknown): string | null {
 			kind: "alert",
 			alertAction: record.alertAction === "dismiss" ? "dismiss" : "accept",
 		};
+	} else if (type === "activate-app" || type === "terminate-app" || type === "restart-app") {
+		request = { kind: type };
+		const appId = optionalTrimmedString(record.appId);
+		if (appId) request.appId = appId;
+	} else if (type === "background-app") {
+		request = { kind: "background-app" };
+		const seconds = optionalFiniteNumber(record.seconds);
+		if (seconds != null) request.seconds = seconds;
+	} else if (type === "open-url") {
+		request = { kind: "open-url" };
+		const url = optionalTrimmedString(record.url);
+		if (url) request.url = url;
 	}
 
 	return request ? formatActionShellLine(request) : null;

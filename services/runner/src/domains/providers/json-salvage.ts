@@ -174,7 +174,7 @@ export function clampNormCoord(n: number): number {
 }
 
 /**
- * Clamp vision x/y (and wait ms) and copy reason↔thoughts when one is missing.
+ * Clamp vision x/y/x2/y2 (and wait ms / durationMs) and copy reason↔thoughts when one is missing.
  * Safe to run on grounding `{x,y}` objects (extra fields are ignored).
  */
 export function normalizeVisionJson(value: unknown): unknown {
@@ -183,8 +183,13 @@ export function normalizeVisionJson(value: unknown): unknown {
 
 	if (typeof out.x === "number") out.x = clampNormCoord(out.x);
 	if (typeof out.y === "number") out.y = clampNormCoord(out.y);
+	if (typeof out.x2 === "number") out.x2 = clampNormCoord(out.x2);
+	if (typeof out.y2 === "number") out.y2 = clampNormCoord(out.y2);
 	if (typeof out.ms === "number" && Number.isFinite(out.ms)) {
 		out.ms = Math.min(10_000, Math.max(0, out.ms));
+	}
+	if (typeof out.durationMs === "number" && Number.isFinite(out.durationMs)) {
+		out.durationMs = Math.min(5_000, Math.max(50, Math.round(out.durationMs)));
 	}
 
 	const reason = typeof out.reason === "string" ? out.reason.trim() : "";

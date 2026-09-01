@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ActionRequest } from "@yoqa/runner-client";
-import { performAction } from "./interaction";
+import { getScreen, performAction } from "./interaction";
 import type { DeviceSession } from "./session";
 
 const ALLOW_XML = `
@@ -72,5 +72,45 @@ describe("performAction tap locators", () => {
 		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
 		await performAction(sessionStub(taps), { kind: "tap", x: 120, y: 340 });
 		expect(taps).toEqual([{ x: 120, y: 340, coordSpace: "screenshot" }]);
+	});
+});
+
+describe("performAction swipe", () => {
+	test("swipes in screenshot space", async () => {
+		const swipes: Array<{
+			x: number;
+			y: number;
+			x2: number;
+			y2: number;
+			coordSpace?: string;
+		}> = [];
+		const session = {
+			pageSource: async () => "<hierarchy/>",
+			getWindowSize: async () => ({ width: 1000, height: 2000 }),
+			swipe: async (
+				x: number,
+				y: number,
+				x2: number,
+				y2: number,
+				_durationMs?: number,
+				options?: { coordSpace?: "window" | "screenshot" },
+			) => {
+				swipes.push({ x, y, x2, y2, coordSpace: options?.coordSpace });
+			},
+		} as unknown as DeviceSession;
+		await performAction(session, { kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 });
+		expect(swipes).toEqual([{ x: 500, y: 800, x2: 500, y2: 200, coordSpace: "screenshot" }]);
+	});
+});
+
+describe("getScreen", () => {
+	test("reads the cleaned tree without pausing when pauseMjpeg is false", async () => {
+		const session = {
+			pageSource: async () => ALLOW_XML,
+			getWindowSize: async () => ({ width: 1000, height: 2000 }),
+		} as unknown as DeviceSession;
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		expect(screen.full).toBe(false);
+		expect(screen.elements?.[0]).toMatchObject({ label: "Allow" });
 	});
 });

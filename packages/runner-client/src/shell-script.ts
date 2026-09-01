@@ -579,7 +579,7 @@ export type ShellToCaseScriptOptions = {
 
 export type ShellToCaseScriptResult = {
 	script: CaseScript | null;
-	/** Steps that could not be represented in CaseScript (swipe, unresolved coords, …). */
+	/** Steps that could not be represented in CaseScript (drag, unresolved coords, …). */
 	warnings: string[];
 	/** Parse errors from the shell script. */
 	errors: Array<{ lineNumber: number; raw: string; message: string }>;
@@ -613,8 +613,7 @@ function resolveTapPoint(
 
 /**
  * Convert an inspector / yoqa shell script into a CaseScript for catalog replay.
- * Supports tap (x/y, id, or label), input→type, sleep→wait, assert, alert.
- * Skips swipe, drag, double/long-press nuances, and unresolved coordinate-only selectors.
+ * Supports tap, swipe, drag, input→type, app lifecycle, sleep→wait, assert, alert.
  */
 export function shellToCaseScript(
 	text: string,
@@ -656,18 +655,18 @@ export function shellToCaseScript(
 
 		const { action } = step;
 		if (action.kind === "tap") {
-			if (action.double) {
-				warnings.push(`L${step.lineNumber}: double-tap saved as a single tap`);
-			}
-			if (action.durationMs != null && action.durationMs > 50) {
-				warnings.push(`L${step.lineNumber}: long-press saved as a normal tap`);
-			}
+			const extras = {
+				...(action.double ? { double: true as const } : {}),
+				...(action.durationMs != null && action.durationMs > 50
+					? { durationMs: action.durationMs }
+					: {}),
+			};
 			if (action.label) {
-				actions.push({ type: "tap", label: action.label });
+				actions.push({ type: "tap", label: action.label, ...extras });
 				continue;
 			}
 			if (action.id) {
-				actions.push({ type: "tap", id: action.id });
+				actions.push({ type: "tap", id: action.id, ...extras });
 				continue;
 			}
 			const point = resolveTapPoint(action, elements);
@@ -677,7 +676,23 @@ export function shellToCaseScript(
 				);
 				continue;
 			}
-			actions.push({ type: "tap", x: point.x, y: point.y });
+			actions.push({ type: "tap", x: point.x, y: point.y, ...extras });
+			continue;
+		}
+
+		if (action.kind === "swipe") {
+			if (action.x == null || action.y == null || action.x2 == null || action.y2 == null) {
+				warnings.push(`L${step.lineNumber}: swipe needs --x/--y/--x2/--y2 — skipped`);
+				continue;
+			}
+			actions.push({
+				type: "swipe",
+				x: action.x,
+				y: action.y,
+				x2: action.x2,
+				y2: action.y2,
+				...(action.durationMs != null ? { durationMs: action.durationMs } : {}),
+			});
 			continue;
 		}
 
@@ -702,6 +717,52 @@ export function shellToCaseScript(
 				type: "alert",
 				alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
 			});
+			continue;
+		}
+
+		if (action.kind === "drag") {
+			if (action.x == null || action.y == null || action.x2 == null || action.y2 == null) {
+				warnings.push(`L${step.lineNumber}: drag needs --x/--y/--x2/--y2 — skipped`);
+				continue;
+			}
+			actions.push({
+				type: "drag",
+				x: action.x,
+				y: action.y,
+				x2: action.x2,
+				y2: action.y2,
+				...(action.durationMs != null ? { durationMs: action.durationMs } : {}),
+			});
+			continue;
+		}
+
+		if (
+			action.kind === "activate-app" ||
+			action.kind === "terminate-app" ||
+			action.kind === "restart-app"
+		) {
+			if (!action.appId) {
+				warnings.push(`L${step.lineNumber}: ${action.kind} needs --app-id — skipped`);
+				continue;
+			}
+			actions.push({ type: action.kind, appId: action.appId });
+			continue;
+		}
+
+		if (action.kind === "background-app") {
+			actions.push({
+				type: "background-app",
+				...(action.seconds != null ? { seconds: action.seconds } : {}),
+			});
+			continue;
+		}
+
+		if (action.kind === "open-url") {
+			if (!action.url) {
+				warnings.push(`L${step.lineNumber}: open-url needs --url — skipped`);
+				continue;
+			}
+			actions.push({ type: "open-url", url: action.url });
 			continue;
 		}
 

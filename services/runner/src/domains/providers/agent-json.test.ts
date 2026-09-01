@@ -98,6 +98,12 @@ describe("extractAgentJsonObject", () => {
 describe("normalizeVisionJson", () => {
 	test("clamps coordinates onto the 0–1000 grid", () => {
 		expect(normalizeVisionJson({ x: -5, y: 1006 })).toEqual({ x: 0, y: 1000 });
+		expect(normalizeVisionJson({ x: 500, y: 800, x2: -1, y2: 1006 })).toEqual({
+			x: 500,
+			y: 800,
+			x2: 0,
+			y2: 1000,
+		});
 	});
 
 	test("fills missing thoughts from reason", () => {

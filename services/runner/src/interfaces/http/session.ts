@@ -101,7 +101,9 @@ export function createSessionRoutes() {
 		try {
 			const { session } = requireActiveSession();
 			const full = c.req.query("full") === "1" || c.req.query("full") === "true";
-			const result = await getScreen(session, { full });
+			const pauseQuery = c.req.query("pauseMjpeg");
+			const pauseMjpeg = pauseQuery !== "0" && pauseQuery !== "false";
+			const result = await getScreen(session, { full, pauseMjpeg });
 			return c.json(screenResponseSchema.parse(result));
 		} catch (error) {
 			const gone = sessionErrorResponse(error);

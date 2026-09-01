@@ -33,7 +33,7 @@ These rules have the biggest effect on quality. Apply them every time.
 
 **1. One flow = one goal.** Split a scenario into flows by goal (sign in / edit profile / verify result). Don't cram a whole scenario into one flow, and don't shatter a single goal into many one-tap flows.
 
-**2. Multi-step instructions = a numbered list, one action per line.** Any flow with more than one action must be written as a numbered list with each action on its own line. Never run actions together in a paragraph — the agent loses track of order and skips steps.
+**2. Multi-step instructions = a numbered list, one action per line.** Any flow with more than one action must be written as a numbered list with each action on its own line. Never run actions together in a paragraph — the agent loses track of order and skips steps. The runner feeds **one numbered line (or one catalog flow) at a time** and hides later instructions, so a long case like a 20-step payout does not get dumped into a single prompt.
 
 ❌ actions run together in prose:
 ```
