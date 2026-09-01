@@ -63,7 +63,7 @@
       "name": "@yoqa/runner-client",
       "version": "0.0.0",
       "dependencies": {
-        "zod": "^3.25.67",
+        "zod": "^4.5.2",
       },
       "devDependencies": {
         "@yoqa/typescript-config": "workspace:*",
@@ -115,7 +115,7 @@
         "hono": "^4.13.0",
         "webdriver": "^9.16.2",
         "webdriverio": "^9.16.2",
-        "zod": "^3.25.67",
+        "zod": "^4.5.2",
       },
       "devDependencies": {
         "@types/bun": "^1.2.18",
@@ -1154,7 +1154,7 @@
 
     "zip-stream": ["zip-stream@6.0.1", "", { "dependencies": { "archiver-utils": "^5.0.0", "compress-commons": "^6.0.2", "readable-stream": "^4.0.0" } }, "sha512-zK7YHHz4ZXpW89AHXUPbQVGKI7uvkd3hzusTdotCg1UxyaVtg0zFJSTfW/Dq5f7OBBVnq6cZIaC8Ti4hb6dtCA=="],
 
-    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+    "zod": ["zod@4.5.2", "", {}, "sha512-XkYXCol10+ba/6F/cueWV+TezUeOqXW0hdeJt5CdXjTYeAgAQg5N03RQdJ80mhfFE72+pblvYMW4wy2Qp4Qbrg=="],
 
     "@ai-sdk/gateway/@ai-sdk/provider": ["@ai-sdk/provider@4.0.3", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-e0CpNWJUY7OxAFAnCZkw+ri9QOHWwTs1tXP42782KFGCU07qt8NiXCrCVowyCB5dP2r5/Uls+g2oPd8kOJn9dw=="],
 
