@@ -46,6 +46,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See `.cursor/rules/document-plan
 | [runs/vision-no-screenshot-fail.md](./runs/vision-no-screenshot-fail.md) | Harden agent against “no screenshot” hallucinations |
 | [runs/android-permission-alerts.md](./runs/android-permission-alerts.md) | Android Allow / permission dialog taps and agent alerts |
 | [devices/xml-entity-labels.md](./devices/xml-entity-labels.md) | Decode `&amp;` in screen labels so tap-by-label matches |
+| [devices/text-input.md](./devices/text-input.md) | WDA-safe typing via `mobile: type` + paired keyDown/keyUp |
 | [runs/saved-scripts.md](./runs/saved-scripts.md) | Save script after pass; script vs AI run prompt |
 | [runs/report-export.md](./runs/report-export.md) | HTML/Markdown E2E report export (runs + inspector) |
 | [ios/wda-reuse-on-select.md](./ios/wda-reuse-on-select.md) | Skip/rebuild WebDriverAgent on physical iOS select |
