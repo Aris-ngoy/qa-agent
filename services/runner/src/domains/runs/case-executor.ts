@@ -109,14 +109,14 @@ const defaultClock: CaseExecutorClock = {
 
 const noopSetCurrentCommand: SetCurrentCommand = async () => {};
 
-async function withCurrentCommand(
+async function withCurrentCommand<T>(
 	setCurrentCommand: SetCurrentCommand,
 	command: string | null,
-	work: () => Promise<void>,
-): Promise<void> {
+	work: () => Promise<T>,
+): Promise<T> {
 	await setCurrentCommand(command);
 	try {
-		await work();
+		return await work();
 	} finally {
 		await setCurrentCommand(null);
 	}
@@ -756,10 +756,9 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					break;
 				}
 
-				let outcome: "continue" | "done" | "fail" = "continue";
-				const applyWithRetry = async () => {
+				const applyWithRetry = async (): Promise<"continue" | "done" | "fail"> => {
 					try {
-						outcome = await applyDecision(decision);
+						return await applyDecision(decision);
 					} catch (error) {
 						if (!isRetriableActionError(error) || deps.isAborted()) throw error;
 						const failed = decision;
@@ -770,11 +769,14 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 						});
 						const retryCommand = commandForDecision(decision, deps.defaultAppId);
 						await setCurrentCommand(retryCommand);
-						outcome = await applyDecision(decision);
+						return await applyDecision(decision);
 					}
 				};
 
-				const recordStep = async (command: string | null) => {
+				const recordStep = async (
+					command: string | null,
+					outcome: "continue" | "done" | "fail",
+				) => {
 					recentActions.push(decision);
 					recordedDecisions.push(decision);
 					await deps.appendStep({
@@ -793,15 +795,17 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				};
 
 				const initialCommand = commandForDecision(decision, deps.defaultAppId);
-				if (initialCommand) {
-					await withCurrentCommand(setCurrentCommand, initialCommand, async () => {
-						await applyWithRetry();
-						await recordStep(commandForDecision(decision, deps.defaultAppId));
-					});
-				} else {
-					await applyWithRetry();
-					await recordStep(null);
-				}
+				const outcome = initialCommand
+					? await withCurrentCommand(setCurrentCommand, initialCommand, async () => {
+							const result = await applyWithRetry();
+							await recordStep(commandForDecision(decision, deps.defaultAppId), result);
+							return result;
+						})
+					: await (async () => {
+							const result = await applyWithRetry();
+							await recordStep(null, result);
+							return result;
+						})();
 
 				if (outcome === "done") {
 					instructionDone = true;
