@@ -18,6 +18,7 @@ import {
 	toPx,
 } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
+import { typeText } from "./keyboard";
 
 const YOQA_ROOT = join(homedir(), ".yoqa");
 const DEFAULT_MJPEG_PORT = Number(process.env.YOQA_MJPEG_PORT ?? "9100");
@@ -760,7 +761,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const type = async (text: string) => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				await browser.keys(text.split(""));
+				await typeText(browser, text);
 			});
 		});
 	};
