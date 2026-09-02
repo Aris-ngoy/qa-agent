@@ -63,9 +63,9 @@ describe("formatStepCommand", () => {
 		expect(formatStepCommand({ type: "alert", alertAction: "dismiss" })).toBe(
 			"yoqa action alert --dismiss",
 		);
-		expect(
-			formatStepCommand({ type: "drag", x: 10, y: 20, x2: 30, y2: 40, durationMs: 250 }),
-		).toBe("yoqa action drag --x 10 --y 20 --x2 30 --y2 40 --duration 250");
+		expect(formatStepCommand({ type: "drag", x: 10, y: 20, x2: 30, y2: 40, durationMs: 250 })).toBe(
+			"yoqa action drag --x 10 --y 20 --x2 30 --y2 40 --duration 250",
+		);
 		expect(formatStepCommand({ type: "activate-app", appId: "com.example.app" })).toBe(
 			"yoqa action activate-app --app-id 'com.example.app'",
 		);
