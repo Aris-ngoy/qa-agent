@@ -1,6 +1,6 @@
 {
 	"name": "@yoqa/runner",
-	"version": "0.3.25",
+	"version": "0.3.26",
 	"description": "Yoqa local runner — Appium + catalog HTTP API (Bun). Start with yoqa serve or the yoqa-runner bin.",
 	"license": "UNLICENSED",
 	"type": "module",
