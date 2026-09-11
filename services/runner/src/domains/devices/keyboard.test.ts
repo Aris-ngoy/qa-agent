@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { type KeyboardBrowser, isUnsupportedCommandError, typeText } from "./keyboard";
+import {
+	type KeyboardBrowser,
+	W3C_RETURN_KEY,
+	isUnsupportedCommandError,
+	typeText,
+	w3cKeyActions,
+} from "./keyboard";
 
 function fakeBrowser(overrides: Partial<KeyboardBrowser> = {}): KeyboardBrowser & {
 	executed: Array<{ command: string; params?: object }>;
@@ -111,5 +117,45 @@ describe("typeText", () => {
 		});
 		await expect(typeText(browser, "x")).rejects.toThrow("element is not visible");
 		expect(browser.performed).toEqual([]);
+	});
+
+	test("maps newline and carriage return to W3C Return key in W3C key actions", async () => {
+		expect(w3cKeyActions("hi\n")).toEqual([
+			{
+				type: "key",
+				id: "keyboard",
+				actions: [
+					{ type: "keyDown", value: "h" },
+					{ type: "keyUp", value: "h" },
+					{ type: "keyDown", value: "i" },
+					{ type: "keyUp", value: "i" },
+					{ type: "keyDown", value: W3C_RETURN_KEY },
+					{ type: "keyUp", value: W3C_RETURN_KEY },
+				],
+			},
+		]);
+
+		const browser = fakeBrowser({
+			execute: async () => {
+				throw new Error("unknown command: mobile: type");
+			},
+		});
+		await typeText(browser, "ok\r\n");
+		expect(browser.performed[0]).toEqual([
+			{
+				type: "key",
+				id: "keyboard",
+				actions: [
+					{ type: "keyDown", value: "o" },
+					{ type: "keyUp", value: "o" },
+					{ type: "keyDown", value: "k" },
+					{ type: "keyUp", value: "k" },
+					{ type: "keyDown", value: W3C_RETURN_KEY },
+					{ type: "keyUp", value: W3C_RETURN_KEY },
+					{ type: "keyDown", value: W3C_RETURN_KEY },
+					{ type: "keyUp", value: W3C_RETURN_KEY },
+				],
+			},
+		]);
 	});
 });

@@ -19,12 +19,15 @@ export function isUnsupportedCommandError(error: unknown): boolean {
 	);
 }
 
+export const W3C_RETURN_KEY = "\uE007";
+
 type KeyStroke = { type: "keyDown" | "keyUp"; value: string };
 
-function w3cKeyActions(text: string): object[] {
+export function w3cKeyActions(text: string): object[] {
 	const actions: KeyStroke[] = [];
 	for (const ch of text) {
-		actions.push({ type: "keyDown", value: ch }, { type: "keyUp", value: ch });
+		const value = ch === "\n" || ch === "\r" ? W3C_RETURN_KEY : ch;
+		actions.push({ type: "keyDown", value }, { type: "keyUp", value });
 	}
 	return [{ type: "key", id: "keyboard", actions }];
 }
