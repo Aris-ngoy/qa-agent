@@ -346,7 +346,7 @@ export function parseAgentDecision(raw: unknown): AgentDecision {
 	return parseVisionObject(agentDecisionSchema, raw, "Model");
 }
 
-const SYSTEM_PROMPT = `You are a mobile QA agent controlling an app via screenshots.
+export const SYSTEM_PROMPT = `You are a mobile QA agent controlling an app using BOTH visual screenshots and screen snapshots (accessibility tree).
 A screenshot of the current device screen is ALWAYS attached to the user message as an image. You can see it. Never claim that no screenshot was provided, missing, blank, or unavailable.
 
 Your entire reply MUST be a single strict JSON object (double quotes only — never single quotes) and nothing else — no markdown fences, no commentary before or after.
@@ -381,11 +381,20 @@ Valid shapes:
 Coordinates use a 0–1000 normalized grid (0,0 top-left of the attached screenshot). The user message also includes a screen snapshot (cleaned accessibility tree) with the same grid — x,y is each element's TOP-LEFT, not centre. Centre = x + width/2, y + height/2.
 
 Use BOTH the screenshot and the screen snapshot:
-- Prefer snapshot "id=…" when present (same as yoqa action tap --id).
+- Visual context (screenshot): Observe visual layout, colors, icons, canvas controls, modal overlays, and soft keyboard visibility.
+- Structural context (screen snapshot): Inspect accessibility ids ("id=..."), element boundaries, and text labels.
+- Decide whether to target by "id" or "x,y":
+  * Use "id" when the snapshot provides a clean, unique, and unambiguous identifier for the element.
+  * Use "x,y" coordinates (centre of the control on the screenshot grid) when controls lack IDs, are custom-drawn icons/canvas, or when coordinates are more direct and reliable than broad container IDs.
 - System permission / notification dialogs: {"type":"tap","label":"Allow"} or {"type":"alert","alertAction":"accept"}. Never guess coordinates for these.
-- For other in-app controls, tap screenshot x,y of the visible control if there is no id.
-- If the snapshot is empty or the control is only drawn (no label/id), use the screenshot.
 - If a previous action failed (see Last action error), pick a different target from the snapshot + screenshot — do not repeat the same id/label/point.
+
+Textfield input and keyboard handling:
+- Typing into a textfield brings up the virtual soft keyboard on the bottom of the screen (typically covering y ~ 550–1000), which may obscure buttons (like Submit, Login, Next) or lower inputs.
+- When typing inside a textfield or when the keyboard is open:
+  1. Dismiss keyboard by tapping away: Emit a tap on an empty, neutral background area outside textfields and above the keyboard (e.g. tap neutral header space or empty background) to dismiss the keyboard.
+  2. Nextline / Return on keyboard: Tap the Return / Done / Next / Search key on the virtual keyboard itself (using its x,y coordinates or label/id if present), or append "\\n" to your input text.
+  3. Dismiss then use app buttons: If an app button you need is obscured or covered by the soft keyboard, dismiss the keyboard first (by tapping away or pressing Return) so the button is revealed, then tap the app button on the subsequent step.
 
 Swipe direction is the FINGER movement (same as Inspector):
 - "down" (finger down, y 200→800): scroll UP — reveal content above
@@ -572,7 +581,7 @@ export function formatDecidePrompt(input: {
 		`Last action error: ${input.lastError || "(none)"}`,
 		"Screen snapshot (cleaned accessibility tree, 0–1000 grid, x,y is top-left):",
 		input.screenSnapshot || "(unavailable)",
-		"Look at the attached screenshot image AND the screen snapshot and decide the next action. A screenshot is attached.",
+		"Look at the attached screenshot image AND the screen snapshot and decide the next action. Decide whether to use x,y coordinates or an id based on both sources. A screenshot is attached.",
 		'Reply with ONLY the JSON action object, including non-empty "reason" and "thoughts".',
 	].join("\n");
 }

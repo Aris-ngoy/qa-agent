@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { extractAgentJsonObject } from "../providers/agent-json";
 import {
+	SYSTEM_PROMPT,
 	coerceScrollIntentToSwipe,
 	continueScrollingInsteadOfComplete,
 	decisionToActionRequest,
@@ -426,5 +427,59 @@ describe("formatDecidePrompt", () => {
 		expect(prompt).toContain("Later instructions exist (18) but are hidden");
 		expect(prompt).not.toContain("Tap on confirm");
 		expect(prompt).not.toContain("Hello Fresh");
+		expect(prompt).toContain(
+			"Decide whether to use x,y coordinates or an id based on both sources.",
+		);
+	});
+});
+
+describe("SYSTEM_PROMPT dual-context and keyboard guidance", () => {
+	test("instructs the agent on visual and structural context and choosing x,y vs id", () => {
+		expect(SYSTEM_PROMPT).toContain("BOTH visual screenshots and screen snapshots");
+		expect(SYSTEM_PROMPT).toContain("Visual context (screenshot)");
+		expect(SYSTEM_PROMPT).toContain("Structural context (screen snapshot)");
+		expect(SYSTEM_PROMPT).toContain('Decide whether to target by "id" or "x,y"');
+	});
+
+	test("instructs the agent on textfield keyboard dismissal, return key, and obscured buttons", () => {
+		expect(SYSTEM_PROMPT).toContain("Textfield input and keyboard handling");
+		expect(SYSTEM_PROMPT).toContain("Dismiss keyboard by tapping away");
+		expect(SYSTEM_PROMPT).toContain("Nextline / Return on keyboard");
+		expect(SYSTEM_PROMPT).toContain("Dismiss then use app buttons");
+	});
+});
+
+describe("decisionToActionRequest for keyboard and field actions", () => {
+	test("maps tap away coordinates to tap action request", () => {
+		const req = decisionToActionRequest({
+			type: "tap",
+			x: 500,
+			y: 250,
+			reason: "Tap away on neutral background area to dismiss keyboard",
+			thoughts: "Soft keyboard is obscuring the bottom, tapping blank space above it",
+		});
+		expect(req).toEqual({ kind: "tap", x: 500, y: 250 });
+	});
+
+	test("maps return key tap on keyboard by coordinates", () => {
+		const req = decisionToActionRequest({
+			type: "tap",
+			x: 920,
+			y: 950,
+			reason: "Tap Return key on virtual keyboard",
+			thoughts: "Pressing Return on the keyboard to submit the input",
+		});
+		expect(req).toEqual({ kind: "tap", x: 920, y: 950 });
+	});
+
+	test("maps input with newline to input action request", () => {
+		const req = decisionToActionRequest({
+			type: "type",
+			id: "search_input",
+			text: "my query\n",
+			reason: "Type search query with newline to trigger submit",
+			thoughts: "Entering query and pressing enter via newline",
+		});
+		expect(req).toEqual({ kind: "input", id: "search_input", text: "my query\n" });
 	});
 });

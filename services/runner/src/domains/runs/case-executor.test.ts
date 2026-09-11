@@ -901,4 +901,146 @@ describe("executeAgentCase", () => {
 			"Tap on Hello Fresh",
 		]);
 	});
+
+	it("executes typing into a textfield, tapping away to dismiss keyboard, and tapping revealed app button", async () => {
+		const performed: ActionRequest[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase({
+				flows: [
+					{
+						id: "flow_1",
+						instructions: "Type into search, dismiss keyboard, and submit",
+						expectedResult: "should see search results",
+						flowId: null,
+					},
+				],
+			}),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => ({
+				elements: [
+					{
+						type: "TextField",
+						label: "Search",
+						id: "search_input",
+						x: 50,
+						y: 100,
+						width: 400,
+						height: 50,
+					},
+					{
+						type: "Button",
+						label: "Submit",
+						id: "submit_btn",
+						x: 50,
+						y: 800,
+						width: 200,
+						height: 60,
+					},
+				],
+			}),
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					// 1. Type into textfield
+					return {
+						type: "type",
+						id: "search_input",
+						text: "react native",
+						reason: "Type search query into search input",
+						thoughts: "Found search input field on screen, entering query text",
+					};
+				}
+				if (calls === 2) {
+					// 2. Keyboard is now open, tap away on neutral area to dismiss
+					return {
+						type: "tap",
+						x: 500,
+						y: 200,
+						reason: "Tap away on background to dismiss soft keyboard",
+						thoughts: "Keyboard is covering bottom screen, tapping neutral space to dismiss",
+					};
+				}
+				if (calls === 3) {
+					// 3. Tap the revealed submit button
+					return {
+						type: "tap",
+						id: "submit_btn",
+						reason: "Tap submit button now visible",
+						thoughts: "Keyboard is dismissed, submit button is now visible to tap",
+					};
+				}
+				return {
+					type: "verify",
+					reason: "Search submitted and results visible",
+					thoughts: "Results screen is displayed",
+				};
+			},
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(calls).toBe(4);
+		expect(performed).toEqual([
+			{ kind: "input", id: "search_input", text: "react native" },
+			{ kind: "tap", x: 500, y: 200 },
+			{ kind: "tap", id: "submit_btn" },
+		]);
+	});
+
+	it("executes input with newline to advance or submit via keyboard", async () => {
+		const performed: ActionRequest[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "type",
+						id: "search_input",
+						text: "my query\n",
+						reason: "Type search query with return key",
+						thoughts: "Entering text and pressing enter via newline",
+					};
+				}
+				return {
+					type: "verify",
+					reason: "Search results visible",
+					thoughts: "Search completed",
+				};
+			},
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(performed).toEqual([{ kind: "input", id: "search_input", text: "my query\n" }]);
+	});
 });
