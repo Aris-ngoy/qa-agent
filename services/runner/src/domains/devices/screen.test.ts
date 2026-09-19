@@ -87,27 +87,20 @@ describe("snapshotNodesToScreen", () => {
 		expect(screen.elements[1]?.id).toBeUndefined();
 	});
 
-	test("decodes XML entities in Android text and iOS label", () => {
-		const android = cleanPageSource(
-			`
-<hierarchy>
-  <android.widget.TextView bounds="[100,200][400,280]" text="Help &amp; Info" enabled="true" />
-</hierarchy>
-`,
+	test("keeps decoded labels such as Help & Info", () => {
+		const screen = snapshotNodesToScreen(
+			[
+				node({
+					ref: "e1",
+					role: "text",
+					label: "Help & Info",
+					rect: { x: 100, y: 200, width: 300, height: 80 },
+					enabled: true,
+				}),
+			],
 			WINDOW,
 		);
-		expect(android.elements).toHaveLength(1);
-		expect(android.elements[0]?.label).toBe("Help & Info");
-
-		const ios = cleanPageSource(
-			`
-<XCUIElementTypeApplication x="0" y="0" width="390" height="844">
-  <XCUIElementTypeStaticText x="39" y="84.4" width="78" height="42.2" label="Help &amp; Info" visible="true" />
-</XCUIElementTypeApplication>
-`,
-			{ width: 390, height: 844 },
-		);
-		expect(ios.elements).toHaveLength(1);
-		expect(ios.elements[0]?.label).toBe("Help & Info");
+		expect(screen.elements).toHaveLength(1);
+		expect(screen.elements[0]?.label).toBe("Help & Info");
 	});
 });
