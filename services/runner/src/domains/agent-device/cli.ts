@@ -39,6 +39,47 @@ export function isDeadAgentDeviceSessionError(error: unknown): boolean {
 	return /no active session|session not found|session.+expired|device.+lost/i.test(message);
 }
 
+const SAME_DAEMON_IN_USE_RE = /already in use by session "([^"]+)"/i;
+const WORKSPACE_OWNED_IN_USE_RE = /owned by session .+ in workspace/i;
+
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/** True when this daemon already holds the device under another session address. */
+export function isSameDaemonDeviceInUse(error: unknown): boolean {
+	const message = errorText(error);
+	if (WORKSPACE_OWNED_IN_USE_RE.test(message)) return false;
+	if (error instanceof AgentDeviceError && error.code === "DEVICE_IN_USE") {
+		return SAME_DAEMON_IN_USE_RE.test(message);
+	}
+	return SAME_DAEMON_IN_USE_RE.test(message);
+}
+
+/** Session address to close for same-daemon DEVICE_IN_USE, or null if not stealable. */
+export function conflictingSessionAddress(error: unknown): string | null {
+	if (!isSameDaemonDeviceInUse(error)) return null;
+	if (error instanceof AgentDeviceError && error.detail) {
+		try {
+			const parsed: unknown = JSON.parse(error.detail);
+			if (
+				parsed &&
+				typeof parsed === "object" &&
+				"session" in parsed &&
+				typeof parsed.session === "string"
+			) {
+				const session = parsed.session.trim();
+				if (session) return session;
+			}
+		} catch {
+			// Fall through to the message.
+		}
+	}
+	const match = SAME_DAEMON_IN_USE_RE.exec(errorText(error));
+	const fromMessage = match?.[1]?.trim();
+	return fromMessage || null;
+}
+
 /** Deterministic agent-device session name for one Yoqa device id. */
 export function agentDeviceSessionName(deviceId: string): string {
 	const slug =

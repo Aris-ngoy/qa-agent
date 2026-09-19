@@ -4,7 +4,9 @@ import {
 	AgentDeviceError,
 	agentDeviceErrorFromEnvelope,
 	agentDeviceSessionName,
+	conflictingSessionAddress,
 	isDeadAgentDeviceSessionError,
+	isSameDaemonDeviceInUse,
 	isSupportedAgentDeviceVersion,
 } from "./cli";
 
@@ -75,5 +77,45 @@ describe("dead session detection", () => {
 		);
 		expect(isDeadSessionError(new Error("invalid session id"))).toBe(true);
 		expect(isDeadSessionError(new Error("DEVICE_IN_USE by another session"))).toBe(false);
+	});
+});
+
+describe("same-daemon DEVICE_IN_USE", () => {
+	const leftover = 'Device is already in use by session "cwd:fcfcd77c2e6b136e:ios".';
+	const owned =
+		'Device is owned by session "cwd:abc:ios" in workspace /tmp/other — never retriable.';
+
+	test("reads the session from envelope detail JSON", () => {
+		const error = new AgentDeviceError(
+			leftover,
+			"DEVICE_IN_USE",
+			undefined,
+			JSON.stringify({ session: "cwd:fcfcd77c2e6b136e:ios", deviceId: "udid" }),
+		);
+		expect(isSameDaemonDeviceInUse(error)).toBe(true);
+		expect(conflictingSessionAddress(error)).toBe("cwd:fcfcd77c2e6b136e:ios");
+	});
+
+	test("falls back to the message when detail is missing", () => {
+		const error = new AgentDeviceError(leftover, "DEVICE_IN_USE");
+		expect(conflictingSessionAddress(error)).toBe("cwd:fcfcd77c2e6b136e:ios");
+	});
+
+	test("parses a plain Error message", () => {
+		expect(isSameDaemonDeviceInUse(new Error(leftover))).toBe(true);
+		expect(conflictingSessionAddress(new Error(leftover))).toBe("cwd:fcfcd77c2e6b136e:ios");
+	});
+
+	test("does not steal a workspace-owned claim", () => {
+		const error = new AgentDeviceError(owned, "DEVICE_IN_USE");
+		expect(isSameDaemonDeviceInUse(error)).toBe(false);
+		expect(conflictingSessionAddress(error)).toBeNull();
+	});
+
+	test("ignores unrelated errors", () => {
+		expect(
+			isSameDaemonDeviceInUse(new AgentDeviceError("No active session", "SESSION_NOT_FOUND")),
+		).toBe(false);
+		expect(conflictingSessionAddress(new Error("open failed"))).toBeNull();
 	});
 });

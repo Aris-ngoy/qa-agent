@@ -5,6 +5,7 @@ import type { DevicePlatform } from "@yoqa/runner-client";
 import {
 	AgentDeviceError,
 	agentDeviceSessionName,
+	conflictingSessionAddress,
 	isDeadAgentDeviceSessionError,
 	runAgentDevice,
 } from "../agent-device/cli";
@@ -149,30 +150,50 @@ function isUnknownDeviceError(error: unknown): boolean {
 	);
 }
 
+/** Close a leftover same-daemon session and retry once. */
+export async function withDeviceInUseTakeover<T>(
+	run: () => Promise<T>,
+	closeSession: (address: string) => Promise<void> = async (address) => {
+		await runAgentDevice(["close", "--session", address], { timeoutMs: 30_000 });
+	},
+): Promise<T> {
+	try {
+		return await run();
+	} catch (error) {
+		const address = conflictingSessionAddress(error);
+		if (!address) throw error;
+		console.warn(`[yoqa-runner] device in use by ${address} — closing it`);
+		await closeSession(address).catch(() => undefined);
+		return await run();
+	}
+}
+
 async function openAgentDeviceApp(
 	sessionName: string,
 	options: SessionOptions,
 	target: string,
 ): Promise<void> {
 	const base = ["open", target, "--platform", options.platform, "--session", sessionName];
-	try {
-		await runAgentDevice([...base, ...deviceSelectorArgs(options)], {
-			timeoutMs: OPEN_TIMEOUT_MS,
-		});
-		return;
-	} catch (error) {
-		if (!isUnknownDeviceError(error)) throw error;
-	}
-	// Android ids may be AVD names rather than adb serials — retry by name.
-	if (options.platform === "android") {
-		await runAgentDevice([...base, "--device", options.deviceId], {
-			timeoutMs: OPEN_TIMEOUT_MS,
-		});
-		return;
-	}
-	throw new Error(
-		`Device not found: ${options.deviceId}. List devices with: yoqa devices ${options.platform}`,
-	);
+	await withDeviceInUseTakeover(async () => {
+		try {
+			await runAgentDevice([...base, ...deviceSelectorArgs(options)], {
+				timeoutMs: OPEN_TIMEOUT_MS,
+			});
+			return;
+		} catch (error) {
+			if (!isUnknownDeviceError(error)) throw error;
+		}
+		// Android ids may be AVD names rather than adb serials — retry by name.
+		if (options.platform === "android") {
+			await runAgentDevice([...base, "--device", options.deviceId], {
+				timeoutMs: OPEN_TIMEOUT_MS,
+			});
+			return;
+		}
+		throw new Error(
+			`Device not found: ${options.deviceId}. List devices with: yoqa devices ${options.platform}`,
+		);
+	});
 }
 
 class ActionGate {
