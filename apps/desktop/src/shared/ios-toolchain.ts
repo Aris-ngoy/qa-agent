@@ -23,6 +23,10 @@ export type SigningIdentity = {
 export type IosToolchainPreferences = {
 	xcodeDeveloperDir: string | null;
 	signingIdentityHash: string | null;
+	/** Team ID resolved from the selected signing identity (denormalized so the runner can sign without Keychain access). */
+	teamId: string | null;
+	/** Reverse-DNS bundle id for the agent-device XCTest runner (AGENT_DEVICE_IOS_BUNDLE_ID). */
+	agentDeviceBundleId: string | null;
 };
 
 export type IosToolchainSnapshot = {

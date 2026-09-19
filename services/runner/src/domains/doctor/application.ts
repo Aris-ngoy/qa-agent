@@ -106,24 +106,28 @@ async function probeAgentDeviceDoctor(): Promise<DoctorCheck[]> {
 			summary?: string;
 		};
 		const checks = Array.isArray(data.checks) ? data.checks : [];
-		return checks.slice(0, 12).map((check) => {
-			// Remote-connection scope is informational for local-first use —
-			// no remote daemon configured is not a failure.
-			const rawStatus =
-				check.id === "remote-connection" && check.status === "fail" ? "warn" : check.status;
-			return {
-				id: `agent-device-${check.id ?? "check"}`,
-				label: `agent-device: ${check.id ?? "check"}`,
-				status:
-					rawStatus === "fail"
-						? ("fail" as const)
-						: rawStatus === "warn"
-							? ("warn" as const)
-							: ("pass" as const),
-				detail: check.summary,
-				fixHint: check.hint,
-			};
-		});
+		// Yoqa is local-first: `doctor --remote` is used as a light probe that
+		// skips local device inventory. `remote-connection` fail ("no remote
+		// daemon configured") and `session` info are expected, not health
+		// signals, so drop them instead of surfacing them in Diagnostics.
+		return checks
+			.filter((check) => check.id !== "remote-connection" && check.status !== "info")
+			.slice(0, 12)
+			.map((check) => {
+				const rawStatus = check.status;
+				return {
+					id: `agent-device-${check.id ?? "check"}`,
+					label: `agent-device: ${check.id ?? "check"}`,
+					status:
+						rawStatus === "fail"
+							? ("fail" as const)
+							: rawStatus === "warn"
+								? ("warn" as const)
+								: ("pass" as const),
+					detail: check.summary,
+					fixHint: check.hint,
+				};
+			});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return [

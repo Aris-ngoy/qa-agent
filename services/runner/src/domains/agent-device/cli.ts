@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { androidProcessEnv } from "./android-sdk";
+import { withDesktopIosSigningEnv } from "./desktop-settings";
 import {
 	DEVELOPER_MODE_DISABLED_CODE,
 	developerModeRepairHint,
@@ -147,7 +148,7 @@ export async function runAgentDevice(
 ): Promise<unknown> {
 	ensureHostToolPath();
 	const bin = await resolveAgentDeviceBin();
-	const env = androidProcessEnv(process.env);
+	const env = await withDesktopIosSigningEnv(androidProcessEnv(process.env));
 	const proc = Bun.spawn([bin, ...args, "--json"], {
 		env,
 		stdout: "pipe",
