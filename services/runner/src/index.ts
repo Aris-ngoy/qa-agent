@@ -1,7 +1,6 @@
 import { ensureAndroidSdkEnv } from "./domains/agent-device/android-sdk";
 import { ensureHostToolPath } from "./domains/agent-device/host-path";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
-import { installAppiumSessionBridge } from "./domains/servers/application";
 import { createApp } from "./interfaces/http/app";
 import {
 	type ControlWsData,
@@ -14,7 +13,6 @@ import { loadSettings } from "./settings";
 ensureHostToolPath();
 // GUI apps also omit ANDROID_HOME; UiAutomator2 requires it even when adb is on PATH.
 ensureAndroidSdkEnv();
-installAppiumSessionBridge();
 
 const settings = loadSettings();
 const startedAt = Date.now();

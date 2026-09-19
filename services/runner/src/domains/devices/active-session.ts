@@ -29,7 +29,7 @@ export class SessionBusyError extends Error {
 }
 
 /** Compat alias — prefer `isDeadSessionError` from `./session`. */
-export const isMissingAppiumSessionError = isDeadSessionError;
+export const isMissingSessionError = isDeadSessionError;
 
 function toInfo(current: ActiveSession): ActiveSessionInfo {
 	return {

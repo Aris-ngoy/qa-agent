@@ -613,8 +613,8 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				Paths Appium uses for local Android tests. Detected from your system; override only if you
-				need a different SDK or JDK.
+				Paths agent-device uses for local Android tests. Detected from your system; override only if
+				you need a different SDK or JDK.
 			</p>
 
 			{toolchainQuery.isLoading ? (
@@ -670,7 +670,7 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 				</Button>
 				{dirty ? (
 					<p className="text-body-sm text-on-surface-variant">
-						Saving restarts the local runner so Appium picks up the new paths.
+						Saving restarts the local runner so agent-device picks up the new paths.
 					</p>
 				) : null}
 			</div>
@@ -943,7 +943,7 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				System checks for Node, Appium, drivers, host tools, and leftover processes. Same report as{" "}
+				System checks for Node, agent-device, host tools, and leftover processes. Same report as{" "}
 				<code className="font-mono text-helper">yoqa doctor</code>.
 			</p>
 

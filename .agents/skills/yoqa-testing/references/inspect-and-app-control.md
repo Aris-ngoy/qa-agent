@@ -9,7 +9,7 @@ relative coordinates — see [Actions by coordinates](actions-coordinates.md).
 ```bash
 yoqa screen                        # cleaned element list (primary way to read the screen)
 yoqa screen --json                 # same list as JSON — includes each element's id, type, enabled, visible
-yoqa screen --full                 # raw Appium page source (JSON-wrapped, very long)
+yoqa screen --full                 # raw accessibility tree (JSON-wrapped, very long)
 yoqa screenshot /tmp/screen.png    # save a screenshot to file, to visually verify
 ```
 

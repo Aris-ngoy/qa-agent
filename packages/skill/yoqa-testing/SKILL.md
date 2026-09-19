@@ -91,7 +91,7 @@ Not implemented yet — in development.
   a wedged connect):
   1. `yoqa doctor --fix` — applies the safe repairs and re-reports
   2. `yoqa status` to confirm what's still wrong
-  3. `yoqa runtime ensure` if the Appium runtime or drivers are missing
+  3. `yoqa runtime ensure` if the agent-device runtime is missing
   4. If a session is still stuck: `yoqa devices disconnect`, then reconnect
   5. Do not invent other start commands; if it still fails, ask the user to start the runner/desktop
      (`yoqa serve`, or `bun run desktop` from this repo)
