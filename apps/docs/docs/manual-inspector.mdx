@@ -9,7 +9,7 @@ The Manual Inspector is a desktop surface for **exploring** a connected device t
 
 <Steps>
   <Step title="Connect a device">
-    Select an iOS or Android device/simulator so an Appium session is active.
+    Select an iOS or Android device/simulator so a device session is active.
   </Step>
 
   <Step title="Inspect">
@@ -27,10 +27,9 @@ The Manual Inspector is a desktop surface for **exploring** a connected device t
 
 ## Live mirror and control
 
-Inspector shows the device screen as a live MJPEG feed on iOS Simulator, real iOS, and Android. A badge on the mirror tells you which transport is active:
+Inspector mirrors the device screen via screenshot polling on iOS Simulator, real iOS, and Android. A badge on the mirror tells you which transport is active:
 
-- **Stream** — MJPEG feed from the Appium driver. This is the default when the stream is reachable.
-- **Poll** — fallback that refreshes a screenshot every ~250 ms. Inspector shows this if the MJPEG probe fails after connect.
+- **Poll** — refreshes a screenshot every ~250 ms.
 
 Toggle **Live control** above the mirror to drag directly on the device:
 
@@ -44,9 +43,9 @@ The live mirror never writes to disk. Explicit screenshots and script reports st
 
 ### Recovering a dropped session
 
-Real iOS sessions can occasionally drop under WDA load (for example, during long Inspector sessions with the live mirror running). When that happens, Inspector clears the feed and prompts you to reconnect manually — it does not attempt to reconnect on its own. A failed background tree refresh no longer treats a still-live session as ended.
+Real iOS sessions can occasionally drop under load (for example, during long Inspector sessions with the live mirror running). When that happens, Inspector clears the feed and prompts you to reconnect manually — it does not attempt to reconnect on its own. A failed background tree refresh no longer treats a still-live session as ended.
 
-- **Restart session** — the toolbar button above the mirror disconnects, reconnects, and remounts the live stream. Use it when Inspector shows the Restart prompt, or any time the mirror looks stuck.
+- **Restart session** — the toolbar button above the mirror disconnects, reconnects, and remounts the live view. Use it when Inspector shows the Restart prompt, or any time the mirror looks stuck.
 - **Connect** — pick the device again in the device selector to start a fresh session.
 
 ## Command bar

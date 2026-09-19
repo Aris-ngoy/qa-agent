@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
 	DoctorCheck,
@@ -8,22 +7,19 @@ import type {
 	DoctorStep,
 } from "@yoqa/runner-client";
 import { loadSettings } from "../../settings";
-import { ensureRuntime, getRuntimeStatus, resolveAppium } from "../appium/application";
-import { ensureHostToolPath } from "../appium/host-path";
-import type { ResolvedAppium } from "../appium/models";
-import { listForeignAppium, stopAllForeignAppium } from "../appium/server";
+import { runAgentDevice } from "../agent-device/cli";
+import { enableDeveloperMode } from "../agent-device/developer-mode";
+import { ensureHostToolPath } from "../agent-device/host-path";
+import { ensureAgentDeviceRuntime, getAgentDeviceRuntimeStatus } from "../agent-device/runtime";
 import { disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
 import { listServers } from "../servers/application";
 
 async function runCommand(
 	command: string[],
-	options?: { env?: Record<string, string>; cwd?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
 	ensureHostToolPath();
 	try {
 		const proc = Bun.spawn(command, {
-			cwd: options?.cwd,
-			env: options?.env ? { ...process.env, ...options.env } : process.env,
 			stdout: "pipe",
 			stderr: "pipe",
 		});
@@ -43,67 +39,6 @@ async function which(bin: string): Promise<string | null> {
 	if (exitCode !== 0) return null;
 	const path = stdout.trim().split("\n")[0]?.trim();
 	return path || null;
-}
-
-function appiumArgs(appium: ResolvedAppium, args: string[]): string[] {
-	if (appium.invokeViaNode) {
-		return [appium.nodeBin ?? "node", appium.bin, ...args];
-	}
-	return [appium.bin, ...args];
-}
-
-function parseDoctorRequiredFixes(output: string): number | null {
-	const match = output.match(/(\d+)\s+required\s+fixes?\s+needed/i);
-	if (!match) return null;
-	return Number(match[1]);
-}
-
-async function runDriverDoctor(
-	appium: ResolvedAppium,
-	driver: "xcuitest" | "uiautomator2",
-): Promise<DoctorCheck> {
-	const { stdout, stderr, exitCode } = await runCommand(
-		appiumArgs(appium, ["driver", "doctor", driver]),
-		{ env: appium.env, cwd: appium.cwd },
-	);
-	const combined = `${stdout}\n${stderr}`;
-	if (/unknown command|not support|does not support/i.test(combined)) {
-		return {
-			id: `doctor-${driver}`,
-			label: `${driver} Appium doctor`,
-			status: "warn",
-			detail: "Doctor not supported for this driver build",
-			fixHint: "Upgrade the driver or rely on install + smoke checks",
-		};
-	}
-
-	const required = parseDoctorRequiredFixes(combined);
-	if (required === null && exitCode !== 0) {
-		return {
-			id: `doctor-${driver}`,
-			label: `${driver} Appium doctor`,
-			status: "warn",
-			detail: combined.trim().slice(0, 240) || `exit ${exitCode}`,
-			fixHint: `Run: appium driver doctor ${driver}`,
-		};
-	}
-
-	if (required !== null && required > 0) {
-		return {
-			id: `doctor-${driver}`,
-			label: `${driver} Appium doctor`,
-			status: "fail",
-			detail: `${required} required fix(es) needed`,
-			fixHint: `Run: appium driver doctor ${driver} and resolve required fixes`,
-		};
-	}
-
-	return {
-		id: `doctor-${driver}`,
-		label: `${driver} Appium doctor`,
-		status: "pass",
-		detail: required === 0 ? "0 required fixes needed" : "Doctor completed",
-	};
 }
 
 async function probeJava(): Promise<DoctorCheck> {
@@ -145,42 +80,6 @@ async function probeXcodeSelect(): Promise<DoctorCheck> {
 	};
 }
 
-async function probeAdbDevices(): Promise<DoctorCheck> {
-	const adb = (await which("adb")) ?? join(homedir(), "Library/Android/sdk/platform-tools/adb");
-	if (!(await Bun.file(adb).exists()) && !(await which("adb"))) {
-		return {
-			id: "adb-devices",
-			label: "ADB devices",
-			status: "warn",
-			detail: "adb not found",
-			fixHint: "Install Android platform-tools",
-		};
-	}
-	const { stdout, exitCode } = await runCommand([adb, "devices", "-l"]);
-	if (exitCode !== 0) {
-		return {
-			id: "adb-devices",
-			label: "ADB devices",
-			status: "warn",
-			detail: "adb devices failed",
-		};
-	}
-	const lines = stdout
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((line) => line && !line.startsWith("List of devices"));
-	const deviceLines = lines.filter((line) => !line.includes("offline"));
-	return {
-		id: "adb-devices",
-		label: "ADB devices",
-		status: "pass",
-		detail:
-			deviceLines.length > 0
-				? `${deviceLines.length} device(s)/emulator(s) listed`
-				: "No devices attached (OK if you only use iOS)",
-	};
-}
-
 async function probeSessionHealth(): Promise<DoctorCheck> {
 	const active = getActiveSessionInfo();
 	if (!active) {
@@ -194,20 +93,56 @@ async function probeSessionHealth(): Promise<DoctorCheck> {
 	return {
 		id: "device-session",
 		label: "Active device session",
-		status: active.streamReady ? "pass" : "warn",
-		detail: `${active.platform} ${active.deviceId}${active.streamReady ? "" : " (stream not ready)"}`,
-		fixHint: active.streamReady
-			? undefined
-			: "Disconnect and reconnect the device session if the inspector stream is stuck",
+		status: active.heldByRun ? "warn" : "pass",
+		detail: `${active.platform} ${active.deviceId}${active.heldByRun ? " (in use by a run)" : ""}`,
+		fixHint: active.heldByRun ? "Cancel the run before disconnecting" : undefined,
 	};
+}
+
+async function probeAgentDeviceDoctor(): Promise<DoctorCheck[]> {
+	try {
+		const data = (await runAgentDevice(["doctor", "--remote"], { timeoutMs: 30_000 })) as {
+			checks?: Array<{ id?: string; status?: string; summary?: string; hint?: string }>;
+			summary?: string;
+		};
+		const checks = Array.isArray(data.checks) ? data.checks : [];
+		return checks.slice(0, 12).map((check) => {
+			// Remote-connection scope is informational for local-first use —
+			// no remote daemon configured is not a failure.
+			const rawStatus =
+				check.id === "remote-connection" && check.status === "fail" ? "warn" : check.status;
+			return {
+				id: `agent-device-${check.id ?? "check"}`,
+				label: `agent-device: ${check.id ?? "check"}`,
+				status:
+					rawStatus === "fail"
+						? ("fail" as const)
+						: rawStatus === "warn"
+							? ("warn" as const)
+							: ("pass" as const),
+				detail: check.summary,
+				fixHint: check.hint,
+			};
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return [
+			{
+				id: "agent-device-doctor",
+				label: "agent-device doctor",
+				status: "warn",
+				detail: message.slice(0, 240),
+				fixHint: "Run: agent-device doctor",
+			},
+		];
+	}
 }
 
 export async function getDoctorReport(): Promise<DoctorReport> {
 	ensureHostToolPath();
 	const settings = loadSettings();
-	const runtime = await getRuntimeStatus();
+	const runtime = await getAgentDeviceRuntimeStatus();
 	const servers = await listServers();
-	const foreign = await listForeignAppium();
 	const checks: DoctorCheck[] = [];
 
 	checks.push({
@@ -227,46 +162,16 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 				? undefined
 				: check.required
 					? "Run: yoqa runtime ensure (or Repair in Diagnostics)"
-					: undefined,
+					: check.id === "developer-mode"
+						? "Run: yoqa doctor --fix (prompts for your password to enable Developer Mode)"
+						: undefined,
 		});
 	}
 
 	checks.push(await probeJava());
 	checks.push(await probeXcodeSelect());
-	checks.push(await probeAdbDevices());
 	checks.push(await probeSessionHealth());
-
-	if (foreign.length > 0) {
-		checks.push({
-			id: "foreign-appium",
-			label: "Foreign Appium processes",
-			status: "warn",
-			detail: `${foreign.length} foreign listener(s) on Appium ports`,
-			fixHint: "Stop foreign Appium from the Servers panel or: yoqa doctor --fix",
-		});
-	} else {
-		checks.push({
-			id: "foreign-appium",
-			label: "Foreign Appium processes",
-			status: "pass",
-			detail: "None detected on ports 4723–4743",
-		});
-	}
-
-	try {
-		const appium = await resolveAppium();
-		checks.push(await runDriverDoctor(appium, "xcuitest"));
-		checks.push(await runDriverDoctor(appium, "uiautomator2"));
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		checks.push({
-			id: "doctor-drivers",
-			label: "Appium driver doctor",
-			status: "fail",
-			detail: message,
-			fixHint: "Install Appium first: yoqa runtime ensure",
-		});
-	}
+	checks.push(...(await probeAgentDeviceDoctor()));
 
 	const steps: DoctorStep[] = [];
 	for (const check of checks) {
@@ -276,12 +181,7 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 				title: check.label,
 				detail: check.fixHint ?? check.detail ?? "Fix this check",
 				repair:
-					check.id === "node" ||
-					check.id === "npm" ||
-					check.id === "appium" ||
-					check.id === "xcuitest" ||
-					check.id === "uiautomator2" ||
-					check.id === "doctor-drivers"
+					check.id === "node" || check.id === "agent-device" || check.id === "agent-device-doctor"
 						? "ensure-runtime"
 						: undefined,
 			});
@@ -291,10 +191,10 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 				title: check.label,
 				detail: check.fixHint,
 				repair:
-					check.id === "foreign-appium"
-						? "stop-foreign-appium"
-						: check.id === "device-session"
-							? "disconnect-session"
+					check.id === "device-session"
+						? "disconnect-session"
+						: check.id === "developer-mode"
+							? "enable-developer-tools"
 							: undefined,
 			});
 		}
@@ -315,18 +215,15 @@ export async function repairDoctor(repairs: DoctorRepairId[]): Promise<DoctorRep
 
 	for (const repair of unique) {
 		if (repair === "ensure-runtime") {
-			const result = await ensureRuntime();
+			const result = await ensureAgentDeviceRuntime();
 			parts.push(result.message);
-		} else if (repair === "stop-foreign-appium") {
-			const count = await stopAllForeignAppium();
-			parts.push(
-				count > 0 ? `Stopped ${count} foreign Appium process(es)` : "No foreign Appium to stop",
-			);
 		} else if (repair === "disconnect-session") {
 			const info = await disconnectDevice();
 			parts.push(
 				info ? `Disconnected ${info.platform} ${info.deviceId}` : "No active device session",
 			);
+		} else if (repair === "enable-developer-tools") {
+			parts.push(await enableDeveloperMode());
 		}
 	}
 

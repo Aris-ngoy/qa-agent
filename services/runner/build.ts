@@ -1,6 +1,7 @@
 /**
  * Bundle the runner for npm: Bun-compatible ESM with inlined workspace deps.
- * webdriver / webdriverio stay external (dynamic import, same as the desktop compile).
+ * Device automation shells out to the `agent-device` CLI (resolved at runtime
+ * from node_modules/.bin, then PATH) — no native driver to bundle.
  */
 const result = await Bun.build({
 	entrypoints: ["./src/index.ts"],
@@ -10,7 +11,7 @@ const result = await Bun.build({
 	minify: false,
 	sourcemap: "none",
 	packages: "bundle",
-	external: ["webdriver", "webdriverio"],
+	external: ["agent-device"],
 });
 
 if (!result.success) {

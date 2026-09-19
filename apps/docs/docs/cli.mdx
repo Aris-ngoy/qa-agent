@@ -54,7 +54,7 @@ The `yoqa` CLI talks to the **local runner**. If nothing is listening on `http:/
 
 ## CI / CD
 
-Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later steps reuse it. Host **Node/npm** must be on `PATH` so managed Appium can install under `~/.yoqa/runtime`.
+Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later steps reuse it. Host **Node/npm** must be on `PATH`, plus the agent-device CLI (`npm install -g agent-device@latest`).
 
 ```yaml
 - uses: oven-sh/setup-bun@v2
@@ -79,7 +79,7 @@ yoqa serve --stop          # SIGTERM a runner this CLI started (~/.yoqa/runner.p
 
 Override the runner URL with `YOQA_RUNNER_HOST` / `YOQA_RUNNER_PORT` / `YOQA_RUNNER_URL`. Pin a binary with `YOQA_RUNNER_BIN`.
 
-Device runs need a simulator or emulator and Appium drivers (`yoqa doctor --fix` / `yoqa runtime ensure`). Description grounding and agent runs also need provider secrets. GitHub-hosted iOS needs `macos-*` + Xcode. This is not a cloud device farm — cache `~/.yoqa/runtime` between jobs to skip reinstalling Appium.
+Device runs need a simulator or emulator and agent-device (`yoqa doctor --fix` / `yoqa runtime ensure`). Description grounding and agent runs also need provider secrets. GitHub-hosted iOS needs `macos-*` + Xcode. This is not a cloud device farm — cache `~/.agent-device` between jobs to skip rebuilding the iOS runner.
 
 ## Doctor & servers
 
@@ -88,13 +88,13 @@ yoqa doctor                                  # color bullets: green pass / red f
 yoqa doctor --fix                              # apply safe repairs only
 yoqa doctor --json
 
-yoqa servers                                 # list Appium / runner / device session
-yoqa servers stop-all                        # stop Appium + disconnect session (not the runner)
+yoqa servers                                 # list runner / device session
+yoqa servers stop-all                        # disconnect session (not the runner)
 yoqa servers stop <id>
 yoqa servers restart <id>
 ```
 
-`yoqa runtime status` / `ensure` remain the thin install-readiness commands. Prefer `yoqa doctor` when something is broken or foreign Appium processes are stuck.
+`yoqa runtime status` / `ensure` remain the thin install-readiness commands. Prefer `yoqa doctor` when something is broken.
 
 In the desktop app: **Servers** button next to Play, and **Settings → Diagnostics**.
 
@@ -112,7 +112,7 @@ yoqa devices disconnect
 
 ```bash
 yoqa screen                                  # cleaned element tree + relative coords (0–1000)
-yoqa screen --full                           # raw Appium accessibility tree
+yoqa screen --full                           # raw agent-device snapshot JSON
 yoqa screenshot ./shot.png                   # save a PNG
 ```
 

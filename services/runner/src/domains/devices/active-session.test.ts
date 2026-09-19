@@ -8,13 +8,11 @@ function fakeSession(deviceId: string): unknown {
 		deviceId,
 		quitCalls: 0,
 		healthy: true,
-		mjpegPort: 9100,
-		streamReady: true,
 		getWindowSize: async () => {
 			if (!session.healthy) {
-				throw new Error("invalid session id");
+				throw new Error("SESSION_NOT_FOUND: No active session");
 			}
-			return { width: 100, height: 200 };
+			return { width: 402, height: 874 };
 		},
 		quit: async () => {
 			session.quitCalls += 1;
@@ -26,8 +24,7 @@ function fakeSession(deviceId: string): unknown {
 let createdCount = 0;
 let createdFakeSessions: FakeSession[] = [];
 
-// Keep every real export (session.test.ts relies on them) and only stub
-// session creation so no Appium server is needed.
+// Stub session creation so no agent-device binary is needed.
 mock.module("./session", () => ({
 	...actualSession,
 	createDeviceSession: async (options: { deviceId: string }) => {
@@ -38,10 +35,6 @@ mock.module("./session", () => ({
 		createdFakeSessions.push(session as unknown as FakeSession);
 		return session;
 	},
-}));
-
-mock.module("./mjpeg-proxy", () => ({
-	abortAllMjpegProxies: () => {},
 }));
 
 const {

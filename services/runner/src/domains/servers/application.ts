@@ -1,29 +1,12 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
 import { loadSettings } from "../../settings";
-import {
-	type ForeignAppiumInfo,
-	type ManagedAppiumInfo,
-	getManagedAppiumInfo,
-	listAppiumServers,
-	listForeignAppium,
-	restartAppiumById,
-	setOnAppiumStopped,
-	stopAllForeignAppium,
-	stopAppiumById,
-	stopAppiumServer,
-} from "../appium/server";
-import {
-	abandonActiveSession,
-	connectDevice,
-	disconnectDevice,
-	getActiveSessionInfo,
-} from "../devices/active-session";
+import { connectDevice, disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
 
 export type ServerAction = "stop" | "restart";
 
 export type ServerEntry = {
 	id: string;
-	kind: "appium" | "runner" | "device-session";
+	kind: "agent-device" | "runner" | "device-session";
 	ownership: "managed" | "foreign" | "self";
 	label: string;
 	status: string;
@@ -44,25 +27,6 @@ export type ServerMutationResponse = {
 	message: string;
 	servers: ServerEntry[];
 };
-
-function appiumLabel(info: ManagedAppiumInfo | ForeignAppiumInfo): string {
-	const ownership = info.ownership === "managed" ? "Yoqa" : "Foreign";
-	return `${ownership} Appium :${info.port}`;
-}
-
-function toAppiumEntry(info: ManagedAppiumInfo | ForeignAppiumInfo): ServerEntry {
-	return {
-		id: info.id,
-		kind: "appium",
-		ownership: info.ownership,
-		label: appiumLabel(info),
-		status: info.status,
-		pid: info.pid,
-		port: info.port,
-		startedAt: "startedAt" in info ? info.startedAt : undefined,
-		actions: ["stop", "restart"],
-	};
-}
 
 function runnerEntry(): ServerEntry {
 	const settings = loadSettings();
@@ -86,8 +50,7 @@ function sessionEntry(): ServerEntry | null {
 		kind: "device-session",
 		ownership: "managed",
 		label: `Device session ${active.platform} ${active.deviceId}`,
-		status: active.streamReady ? "connected" : "connecting",
-		port: active.mjpegPort,
+		status: active.heldByRun ? "in-use" : "connected",
 		deviceId: active.deviceId,
 		platform: active.platform,
 		startedAt: active.connectedAt,
@@ -95,16 +58,11 @@ function sessionEntry(): ServerEntry | null {
 	};
 }
 
-/** Wire Appium death → abandon zombie device session (idempotent). */
-export function installAppiumSessionBridge(): void {
-	setOnAppiumStopped(() => {
-		abandonActiveSession();
-	});
-}
+/** No-op bridge kept for boot ordering (agent-device needs no local server process). */
+export function installAppiumSessionBridge(): void {}
 
 export async function listServers(): Promise<ListServersResponse> {
-	const appium = await listAppiumServers();
-	const servers: ServerEntry[] = [runnerEntry(), ...appium.map(toAppiumEntry)];
+	const servers: ServerEntry[] = [runnerEntry()];
 	const session = sessionEntry();
 	if (session) servers.push(session);
 	return { servers };
@@ -112,16 +70,12 @@ export async function listServers(): Promise<ListServersResponse> {
 
 export async function stopAllServers(): Promise<ServerMutationResponse> {
 	const disconnected = await disconnectDevice();
-	const stoppedManaged = await stopAppiumServer();
-	const foreignCount = await stopAllForeignAppium();
-	const parts: string[] = [];
-	if (disconnected) parts.push("disconnected device session");
-	if (stoppedManaged) parts.push("stopped managed Appium");
-	if (foreignCount > 0) parts.push(`stopped ${foreignCount} foreign Appium`);
 	const list = await listServers();
 	return {
 		ok: true,
-		message: parts.length > 0 ? parts.join("; ") : "Nothing to stop",
+		message: disconnected
+			? `Disconnected device session ${disconnected.platform} ${disconnected.deviceId}`
+			: "Nothing to stop",
 		servers: list.servers,
 	};
 }
@@ -143,16 +97,7 @@ export async function stopServer(id: string): Promise<ServerMutationResponse> {
 		};
 	}
 
-	const stopped = await stopAppiumById(id);
-	if (!stopped) {
-		throw new Error(`Unknown server: ${id}`);
-	}
-	const list = await listServers();
-	return {
-		ok: true,
-		message: `Stopped ${id}`,
-		servers: list.servers,
-	};
+	throw new Error(`Unknown server: ${id}`);
 }
 
 export async function restartServer(id: string): Promise<ServerMutationResponse> {
@@ -180,18 +125,5 @@ export async function restartServer(id: string): Promise<ServerMutationResponse>
 		};
 	}
 
-	const managed = getManagedAppiumInfo();
-	const foreign = await listForeignAppium();
-	const known = managed?.id === id || foreign.some((item) => item.id === id);
-	if (!known) {
-		throw new Error(`Unknown server: ${id}`);
-	}
-
-	const port = await restartAppiumById(id);
-	const list = await listServers();
-	return {
-		ok: true,
-		message: `Restarted Appium on port ${port}`,
-		servers: list.servers,
-	};
+	throw new Error(`Unknown server: ${id}`);
 }

@@ -1,15 +1,10 @@
-import type { Capability, DevicePlatform } from "@yoqa/runner-client";
-import { abortAllMjpegProxies } from "./mjpeg-proxy";
+import type { DevicePlatform } from "@yoqa/runner-client";
 import { type DeviceSession, createDeviceSession, isDeadSessionError } from "./session";
 
 export type ActiveSessionInfo = {
 	deviceId: string;
 	platform: DevicePlatform;
 	connectedAt: number;
-	mjpegPort: number;
-	streamReady: boolean;
-	/** Relative path on the runner for the MJPEG proxy. */
-	streamUrl: string;
 	/** A Run currently owns this session for test execution (interactive actions are view-only). */
 	heldByRun: boolean;
 };
@@ -18,10 +13,6 @@ type ActiveSession = {
 	deviceId: string;
 	platform: DevicePlatform;
 	connectedAt: number;
-	mjpegPort: number;
-	streamReady: boolean;
-	/** Relative path on the runner for the MJPEG proxy. */
-	streamUrl: string;
 	session: DeviceSession;
 	/** Run id currently executing on this session, when a Run owns it. */
 	heldByRunId: string | null;
@@ -45,9 +36,6 @@ function toInfo(current: ActiveSession): ActiveSessionInfo {
 		deviceId: current.deviceId,
 		platform: current.platform,
 		connectedAt: current.connectedAt,
-		mjpegPort: current.mjpegPort,
-		streamReady: current.streamReady,
-		streamUrl: current.streamUrl,
 		heldByRun: current.heldByRunId != null,
 	};
 }
@@ -74,16 +62,15 @@ export function isActiveSessionHeldByRun(): boolean {
 }
 
 /**
- * Drop the in-memory active session without calling deleteSession
+ * Drop the in-memory active session without calling close
  * (the remote session is already gone).
  */
 export function abandonActiveSession(): ActiveSessionInfo | null {
 	if (!active) return null;
 	const info = getActiveSessionInfo();
 	active = null;
-	abortAllMjpegProxies();
 	console.warn(
-		`[yoqa-runner] abandoned dead Appium session for ${info?.platform} ${info?.deviceId}`,
+		`[yoqa-runner] abandoned dead device session for ${info?.platform} ${info?.deviceId}`,
 	);
 	return info;
 }
@@ -91,8 +78,6 @@ export function abandonActiveSession(): ActiveSessionInfo | null {
 async function createAndRegister(options: {
 	deviceId: string;
 	platform: DevicePlatform;
-	appCaps?: Capability[];
-	caseCaps?: Capability[];
 	bundleId?: string;
 	appPackage?: string;
 	heldByRunId: string | null;
@@ -100,8 +85,6 @@ async function createAndRegister(options: {
 	const session = await createDeviceSession({
 		platform: options.platform,
 		deviceId: options.deviceId,
-		appCaps: options.appCaps ?? [],
-		caseCaps: options.caseCaps ?? [],
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
 		onSessionDead: () => {
@@ -113,9 +96,6 @@ async function createAndRegister(options: {
 		deviceId: options.deviceId,
 		platform: options.platform,
 		connectedAt: Date.now(),
-		mjpegPort: session.mjpegPort,
-		streamReady: session.streamReady,
-		streamUrl: "/stream.mjpeg",
 		session,
 		heldByRunId: options.heldByRunId,
 	};
@@ -158,10 +138,7 @@ export async function disconnectDevice(): Promise<ActiveSessionInfo | null> {
 	}
 	const info = getActiveSessionInfo();
 	const session = active.session;
-	// Drop the handle first so new stream proxies refuse; then cut upstream
-	// MJPEG so WebDriverAgentRunner can actually terminate on deleteSession.
 	active = null;
-	abortAllMjpegProxies();
 	try {
 		await session.quit();
 	} catch {
@@ -174,7 +151,7 @@ export async function disconnectDevice(): Promise<ActiveSessionInfo | null> {
  * Run-side acquisition of the shared Device Session.
  *
  * - Adopts the Active Session when it already targets the requested device
- *   (no reconnect, no WDA relaunch) and marks it held by this run.
+ *   (no reconnect) and marks it held by this run.
  * - Replaces an unheld Active Session pointing at another device (device change).
  * - When another run owns the shared session, creates a detached session that
  *   is not registered as Active and is quit again at release.
@@ -183,8 +160,6 @@ export async function acquireSessionForRun(options: {
 	runId: string;
 	deviceId: string;
 	platform: DevicePlatform;
-	appCaps?: Capability[];
-	caseCaps?: Capability[];
 	bundleId?: string;
 	appPackage?: string;
 }): Promise<{ session: DeviceSession; shared: boolean }> {
@@ -194,8 +169,6 @@ export async function acquireSessionForRun(options: {
 		const session = await createDeviceSession({
 			platform: options.platform,
 			deviceId: options.deviceId,
-			appCaps: options.appCaps ?? [],
-			caseCaps: options.caseCaps ?? [],
 			bundleId: options.bundleId,
 			appPackage: options.appPackage,
 			onSessionDead: () => undefined,
@@ -205,7 +178,7 @@ export async function acquireSessionForRun(options: {
 
 	if (current && current.deviceId === options.deviceId) {
 		// Health-check before adopting: a stale session (device restarted,
-		// Appium dropped it) must not fail the whole run.
+		// agent-device dropped it) must not fail the whole run.
 		const healthy = await current.session
 			.getWindowSize()
 			.then(() => true)
@@ -227,8 +200,6 @@ export async function acquireSessionForRun(options: {
 	const session = await createAndRegister({
 		deviceId: options.deviceId,
 		platform: options.platform,
-		appCaps: options.appCaps,
-		caseCaps: options.caseCaps,
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
 		heldByRunId: options.runId,

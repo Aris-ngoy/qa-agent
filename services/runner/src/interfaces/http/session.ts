@@ -26,7 +26,6 @@ import {
 	getScreen,
 	performAction,
 } from "../../domains/devices/interaction";
-import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 
 function sessionErrorResponse(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error);
@@ -163,55 +162,13 @@ export function createSessionRoutes() {
 	});
 
 	app.get("/stream.mjpeg", async (c) => {
-		try {
-			const active = requireActiveSession();
-			if (!active.streamReady || !active.mjpegPort) {
-				return c.json(
-					{
-						error: "MJPEG stream not available",
-						detail: "Device connected without a reachable Appium MJPEG broadcaster",
-					},
-					503,
-				);
-			}
-			const proxyAbort = trackMjpegProxy();
-			let upstream: Response;
-			try {
-				upstream = await fetch(`http://127.0.0.1:${active.mjpegPort}/`, {
-					signal: proxyAbort.signal,
-					headers: { Accept: "multipart/x-mixed-replace,image/jpeg,*/*" },
-				});
-			} catch (error) {
-				if (proxyAbort.signal.aborted) {
-					return c.json({ error: "MJPEG proxy aborted" }, 503);
-				}
-				throw error;
-			}
-			if (!upstream.ok || !upstream.body) {
-				proxyAbort.abort();
-				return c.json(
-					{
-						error: "Upstream MJPEG unavailable",
-						detail: `HTTP ${upstream.status} from mjpeg port ${active.mjpegPort}`,
-					},
-					502,
-				);
-			}
-			const contentType =
-				upstream.headers.get("Content-Type") ??
-				"multipart/x-mixed-replace; boundary=--BoundaryLine--";
-			return new Response(upstream.body, {
-				status: 200,
-				headers: {
-					"Content-Type": contentType,
-					"Cache-Control": "no-store",
-					Connection: "close",
-				},
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return c.json({ error: "Failed to proxy MJPEG stream", detail: message }, 500);
-		}
+		return c.json(
+			{
+				error: "Live MJPEG stream was removed with the Appium backend",
+				detail: "Poll GET /screenshot/image instead; agent-device owns streaming via record",
+			},
+			410,
+		);
 	});
 
 	app.post("/action", async (c) => {

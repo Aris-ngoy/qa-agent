@@ -3,7 +3,7 @@ import { parseVisionObject } from "../providers/agent-json";
 import { resolveActiveProviderAuth } from "../providers/application";
 import { assertVisionCapableProvider, completeVision } from "../providers/vision";
 import { AgentProviderError } from "../providers/vision-model";
-import { cleanPageSource } from "./screen";
+import { snapshotNodesToScreen } from "./screen";
 import type { DeviceSession } from "./session";
 
 const groundResultSchema = z.object({
@@ -37,9 +37,8 @@ export async function groundDescription(
 	);
 
 	const shot = await session.captureFrame();
-	const window = await session.getWindowSize();
-	const raw = await session.pageSource();
-	const cleaned = cleanPageSource(raw, window);
+	const { nodes, window } = await session.snapshotNodes();
+	const cleaned = snapshotNodesToScreen(nodes, window);
 	const treeSummary = cleaned.elements
 		.slice(0, 80)
 		.map((el) => `${el.label || el.type} @(${el.x},${el.y}) ${el.width}x${el.height}`)

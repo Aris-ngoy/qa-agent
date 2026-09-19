@@ -1,13 +1,16 @@
 import { ensureRuntimeResponseSchema, runtimeStatusSchema } from "@yoqa/runner-client";
 import { Hono } from "hono";
-import { ensureRuntime, getRuntimeStatus } from "../../domains/appium/application";
+import {
+	ensureAgentDeviceRuntime,
+	getAgentDeviceRuntimeStatus,
+} from "../../domains/agent-device/runtime";
 
 export function createRuntimeRoutes() {
 	const app = new Hono();
 
 	app.get("/runtime", async (c) => {
 		try {
-			const status = await getRuntimeStatus();
+			const status = await getAgentDeviceRuntimeStatus();
 			return c.json(runtimeStatusSchema.parse(status));
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -17,13 +20,13 @@ export function createRuntimeRoutes() {
 
 	app.post("/runtime/ensure", async (c) => {
 		try {
-			const result = await ensureRuntime();
+			const result = await ensureAgentDeviceRuntime();
 			return c.json(ensureRuntimeResponseSchema.parse(result));
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json(
 				{
-					error: "Failed to ensure Appium runtime",
+					error: "Failed to ensure agent-device runtime",
 					detail: message,
 				},
 				500,

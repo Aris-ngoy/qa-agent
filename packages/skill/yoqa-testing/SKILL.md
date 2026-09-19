@@ -13,9 +13,9 @@ commands in `references/`.
 
 ## Before you start
 
-1. **Check readiness** — `yoqa status` reports the runner, Appium runtime, AI provider, and active device
+1. **Check readiness** — `yoqa status` reports the runner, agent-device runtime, AI provider, and active device
    in one shot. Any command other than `yoqa serve` starts the local runner automatically, so you rarely
-   need to start it by hand.
+   need to start it by hand. The device backend needs the agent-device CLI (`npm install -g agent-device@latest`).
 2. **Find the app & its prefix** — run `yoqa apps list` and note the `PREFIX`. Most catalog commands take
    the prefix as their first argument. See [Apps, Cases & Flows](references/apps-cases-and-flows.md).
 3. **Configure a provider only if you need one** — `--description` grounding and agent runs require an AI

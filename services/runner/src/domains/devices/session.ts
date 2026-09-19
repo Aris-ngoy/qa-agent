@@ -1,43 +1,22 @@
-import { mkdir } from "node:fs/promises";
-import { createServer } from "node:net";
-import { homedir } from "node:os";
+import { mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Capability, DevicePlatform } from "@yoqa/runner-client";
-import { type Browser, remote } from "webdriverio";
-import { APPIUM_HOST, ensureAppiumServer } from "../appium/server";
-import { loadDevicePrep } from "../ios/application";
-import { resolveNativeAlert } from "./android-alerts";
+import type { DevicePlatform } from "@yoqa/runner-client";
 import {
-	type PointerSize,
-	injectSwipe,
-	injectTap,
-	isAndroidDriver,
-	pngSizeFromBase64,
-	preferPointerSize,
-	screenshotPointerSize,
-	toPx,
-} from "./android-gestures";
-import { resolveAndroidAppiumIdentity } from "./application";
-import { typeText } from "./keyboard";
+	AgentDeviceError,
+	agentDeviceSessionName,
+	isDeadAgentDeviceSessionError,
+	runAgentDevice,
+} from "../agent-device/cli";
 
-const YOQA_ROOT = join(homedir(), ".yoqa");
-const DEFAULT_MJPEG_PORT = Number(process.env.YOQA_MJPEG_PORT ?? "9100");
+const YOQA_ROOT = join(process.env.HOME ?? tmpdir(), ".yoqa");
 const SCREENSHOT_DIR = join(YOQA_ROOT, "runs", "screenshots");
-
-const MJPEG_SETTINGS_BASE = {
-	/** Lower quality keeps high FPS workable over the proxy. */
-	mjpegServerScreenshotQuality: 35,
-	/** Half-res frames cut encode + bandwidth cost for the Inspector. */
-	mjpegScalingFactor: 50,
-} as const;
+const OPEN_TIMEOUT_MS = 300_000;
 
 /** At most one Device Session per device id (Active Session or Run). */
 const openByDeviceId = new Map<string, DeviceSession>();
 
-const DEAD_SESSION_RE =
-	/session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i;
-
-/** Stable error for a Device Session Appium has already dropped. */
+/** Stable error for a Device Session agent-device has already dropped. */
 export class DeadSessionError extends Error {
 	constructor(message = "Device session ended") {
 		super(message);
@@ -45,96 +24,92 @@ export class DeadSessionError extends Error {
 	}
 }
 
-/** True when Appium reports the WebDriver session is gone (Dead Session). */
+/** True when agent-device reports the session is gone (Dead Session). */
 export function isDeadSessionError(error: unknown): boolean {
 	if (error instanceof DeadSessionError) return true;
+	if (isDeadAgentDeviceSessionError(error)) return true;
 	const message = error instanceof Error ? error.message : String(error);
-	return DEAD_SESSION_RE.test(message);
-}
-
-const DEAD_SESSION_RETRY_MS = 200;
-
-/** Simulators can sustain 60; real devices need a much gentler encode load. */
-function mjpegSettingsForDevice(options: {
-	platform: DevicePlatform;
-	deviceId: string;
-}): Record<string, number> {
-	const physicalIos = options.platform === "ios" && looksLikePhysicalIosUdid(options.deviceId);
-	if (physicalIos) {
-		return {
-			mjpegServerFramerate: 15,
-			mjpegServerScreenshotQuality: 25,
-			mjpegScalingFactor: 40,
-		};
-	}
-	return {
-		...MJPEG_SETTINGS_BASE,
-		mjpegServerFramerate: 60,
-	};
-}
-
-function isPortFree(port: number): Promise<boolean> {
-	return new Promise((resolve) => {
-		const server = createServer();
-		server.unref();
-		server.once("error", () => resolve(false));
-		server.listen(port, APPIUM_HOST, () => {
-			server.close(() => resolve(true));
-		});
-	});
-}
-
-async function pickMjpegPort(): Promise<number> {
-	if (await isPortFree(DEFAULT_MJPEG_PORT)) return DEFAULT_MJPEG_PORT;
-	for (let offset = 1; offset <= 40; offset++) {
-		const candidate = DEFAULT_MJPEG_PORT + offset;
-		if (await isPortFree(candidate)) return candidate;
-	}
-	throw new Error(
-		`No free MJPEG port near ${DEFAULT_MJPEG_PORT}. Quit other streams or set YOQA_MJPEG_PORT.`,
+	return /session does not exist|invalid session|no such session|no active session|session.+not found|terminated or not started|session is either terminated/i.test(
+		message,
 	);
 }
 
-export function mjpegUpstreamUrl(mjpegPort: number): string {
-	return `http://127.0.0.1:${mjpegPort}/`;
+export type SessionOptions = {
+	platform: DevicePlatform;
+	deviceId: string;
+	bundleId?: string;
+	appPackage?: string;
+	/** Called once when agent-device reports the session is gone. */
+	onSessionDead?: () => void;
+};
+
+export type CapturedFrame = {
+	base64: string;
+	mime: "image/png" | "image/jpeg";
+};
+
+export type PointerPhase = "begin" | "move" | "end";
+
+export type SnapshotNode = {
+	ref: string;
+	type?: string;
+	role?: string;
+	label?: string;
+	value?: string;
+	identifier?: string;
+	rect?: { x: number; y: number; width: number; height: number };
+	enabled?: boolean;
+};
+
+export type DeviceSession = {
+	quit: () => Promise<void>;
+	/** In-memory frame for live feed / grounding — never persists under runs/. */
+	captureFrame: () => Promise<CapturedFrame>;
+	/** Persist a screenshot under ~/.yoqa/runs/screenshots/. */
+	screenshot: () => Promise<{ path: string; base64: string }>;
+	snapshotNodes: () => Promise<{
+		nodes: SnapshotNode[];
+		window: { width: number; height: number };
+	}>;
+	getWindowSize: () => Promise<{ width: number; height: number }>;
+	tap: (xNorm: number, yNorm: number, options?: { durationMs?: number }) => Promise<void>;
+	swipe: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
+	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
+	type: (text: string) => Promise<void>;
+	activateApp: (appId: string) => Promise<void>;
+	terminateApp: (appId: string) => Promise<void>;
+	backgroundApp: (seconds?: number) => Promise<void>;
+	openUrl: (url: string) => Promise<void>;
+	acceptAlert: () => Promise<void>;
+	dismissAlert: () => Promise<void>;
+	/** Run an exclusive device action (blocks live pointer + other actions). */
+	withActionLock: <T>(fn: () => Promise<T>) => Promise<T>;
+	pointerEvent: (phase: PointerPhase, xNorm: number, yNorm: number, seq: number) => Promise<void>;
+	isPointerActive: () => boolean;
+};
+
+function defaultWindowFor(platform: DevicePlatform): { width: number; height: number } {
+	return platform === "ios" ? { width: 402, height: 874 } : { width: 412, height: 915 };
 }
 
-async function probeMjpegStream(mjpegPort: number, timeoutMs = 4000): Promise<boolean> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		const controller = new AbortController();
-		const timer = setTimeout(() => controller.abort(), 800);
-		try {
-			const response = await fetch(mjpegUpstreamUrl(mjpegPort), {
-				signal: controller.signal,
-				headers: { Accept: "multipart/x-mixed-replace,image/jpeg,*/*" },
-			});
-			if (response.ok) {
-				controller.abort();
-				return true;
-			}
-		} catch {
-			// not ready yet
-		} finally {
-			clearTimeout(timer);
-		}
-		await Bun.sleep(250);
+function windowFromNodes(
+	nodes: SnapshotNode[],
+	platform: DevicePlatform,
+): { width: number; height: number } {
+	let maxX = 0;
+	let maxY = 0;
+	for (const node of nodes) {
+		const rect = node.rect;
+		if (!rect) continue;
+		if (rect.x + rect.width > maxX) maxX = rect.x + rect.width;
+		if (rect.y + rect.height > maxY) maxY = rect.y + rect.height;
 	}
-	return false;
+	if (maxX < 50 || maxY < 50) return defaultWindowFor(platform);
+	return { width: Math.round(maxX), height: Math.round(maxY) };
 }
 
-async function applyMjpegSettings(
-	browser: Browser,
-	options: { platform: DevicePlatform; deviceId: string },
-): Promise<void> {
-	try {
-		await browser.updateSettings(mjpegSettingsForDevice(options));
-	} catch (error) {
-		console.warn(
-			"[yoqa-runner] MJPEG settings update failed:",
-			error instanceof Error ? error.message : error,
-		);
-	}
+function toPx(norm: number, size: number): number {
+	return Math.round((Math.min(1000, Math.max(0, norm)) / 1000) * size);
 }
 
 async function releaseExistingSession(deviceId: string): Promise<void> {
@@ -151,216 +126,66 @@ async function releaseExistingSession(deviceId: string): Promise<void> {
 	}
 }
 
-function capabilitiesToRecord(caps: Capability[]): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const cap of caps) {
-		const key = cap.key.trim();
-		if (!key) continue;
-		out[key] = cap.value;
-	}
-	return out;
+function defaultAppFor(platform: DevicePlatform): string {
+	return platform === "ios" ? "com.apple.Preferences" : "com.android.settings";
 }
 
-export function mergeCapabilities(
-	appCaps: Capability[],
-	caseCaps: Capability[],
-): Record<string, string> {
-	return {
-		...capabilitiesToRecord(appCaps),
-		...capabilitiesToRecord(caseCaps),
-	};
+function openTarget(options: SessionOptions): string {
+	if (options.platform === "ios") return options.bundleId?.trim() || defaultAppFor("ios");
+	return options.appPackage?.trim() || defaultAppFor("android");
 }
 
-export type SessionOptions = {
-	platform: DevicePlatform;
-	deviceId: string;
-	appCaps: Capability[];
-	caseCaps: Capability[];
-	bundleId?: string;
-	appPackage?: string;
-	/** Called once when Appium reports the session is gone. */
-	onSessionDead?: () => void;
-};
-
-export type CapturedFrame = {
-	base64: string;
-	mime: "image/png" | "image/jpeg";
-};
-
-export type PointerPhase = "begin" | "move" | "end";
-
-export type DeviceSession = {
-	browser: Browser;
-	mjpegPort: number;
-	streamReady: boolean;
-	quit: () => Promise<void>;
-	/** In-memory frame for live feed / grounding — never writes disk. */
-	captureFrame: () => Promise<CapturedFrame>;
-	/** Persist a screenshot under ~/.yoqa/runs/screenshots/. */
-	screenshot: () => Promise<{ path: string; base64: string }>;
-	pageSource: () => Promise<string>;
-	getWindowSize: () => Promise<{ width: number; height: number }>;
-	tap: (
-		xNorm: number,
-		yNorm: number,
-		options?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
-	) => Promise<void>;
-	swipe: (
-		x1: number,
-		y1: number,
-		x2: number,
-		y2: number,
-		durationMs?: number,
-		options?: { coordSpace?: "window" | "screenshot" },
-	) => Promise<void>;
-	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
-	type: (text: string) => Promise<void>;
-	activateApp: (appId: string) => Promise<void>;
-	terminateApp: (appId: string) => Promise<void>;
-	backgroundApp: (seconds?: number) => Promise<void>;
-	openUrl: (url: string) => Promise<void>;
-	acceptAlert: () => Promise<void>;
-	dismissAlert: () => Promise<void>;
-	/** Run an exclusive device action (blocks live pointer + other actions). */
-	withActionLock: <T>(fn: () => Promise<T>) => Promise<T>;
-	pointerEvent: (phase: PointerPhase, xNorm: number, yNorm: number, seq: number) => Promise<void>;
-	isPointerActive: () => boolean;
-};
-
-/** Apple physical UDIDs look like `00008120-000E6D813E2A601E` (not a standard UUID). */
-function looksLikePhysicalIosUdid(udid: string): boolean {
-	return /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}$/.test(udid.trim());
+function deviceSelectorArgs(options: SessionOptions): string[] {
+	if (options.platform === "ios") return ["--udid", options.deviceId];
+	return ["--serial", options.deviceId];
 }
 
-/** First simulator connect compiles WebDriverAgent; physical devices reuse a preinstalled WDA. */
-export const PHYSICAL_IOS_SESSION_TIMEOUT_MS = 60_000;
-export const SIMULATOR_WDA_SESSION_TIMEOUT_MS = 600_000;
-const SIMULATOR_WDA_DERIVED_DATA = join(YOQA_ROOT, "wda-sim");
-
-export function iosSessionCreateTimeoutMs(deviceId: string): number {
-	return looksLikePhysicalIosUdid(deviceId)
-		? PHYSICAL_IOS_SESSION_TIMEOUT_MS
-		: SIMULATOR_WDA_SESSION_TIMEOUT_MS;
+function isUnknownDeviceError(error: unknown): boolean {
+	const code = error instanceof AgentDeviceError ? error.code : "";
+	if (code === "DEVICE_NOT_FOUND" || code === "UNKNOWN_DEVICE") return true;
+	const message = error instanceof Error ? error.message : String(error);
+	return /no such device|device not found|unknown device|could not find device|ambiguous_match|ambiguous match/i.test(
+		message,
+	);
 }
 
-async function buildW3cCapabilities(
+async function openAgentDeviceApp(
+	sessionName: string,
 	options: SessionOptions,
-	mjpegPort: number,
-): Promise<Record<string, unknown>> {
-	const merged = mergeCapabilities(options.appCaps, options.caseCaps);
-	const platformName = options.platform === "ios" ? "iOS" : "Android";
-	const automationName = options.platform === "ios" ? "XCUITest" : "UiAutomator2";
-
-	const caps: Record<string, unknown> = {
-		platformName,
-		"appium:automationName": automationName,
-		"appium:newCommandTimeout": 3600,
-		// Expose WDA/UIA2 MJPEG for our /stream.mjpeg proxy. Do NOT set
-		// mjpegScreenshotUrl — that requires the optional `mjpeg-consumer`
-		// Appium package and we capture one-shots via takeScreenshot instead.
-		"appium:mjpegServerPort": mjpegPort,
-		...Object.fromEntries(
-			Object.entries(merged).map(([key, value]) =>
-				key.includes(":") ? [key, value] : [`appium:${key}`, value],
-			),
-		),
-	};
-
-	if (options.platform === "ios") {
-		if (caps["appium:udid"] === undefined) {
-			caps["appium:udid"] = options.deviceId;
-		}
-		if (options.bundleId && !caps["appium:bundleId"]) {
-			caps["appium:bundleId"] = options.bundleId;
-		}
-		const physical = looksLikePhysicalIosUdid(options.deviceId);
-		if (physical) {
-			const prep = await loadDevicePrep(options.deviceId);
-			if (!prep) {
-				throw new Error(
-					`iOS device ${options.deviceId} is not prepared. Run device setup so WebDriverAgent is installed before starting a run.`,
-				);
-			}
-			// Reuse the Yoqa-built/signed WDA instead of Appium's unsigned xcodebuild (code 65).
-			if (caps["appium:usePreinstalledWDA"] === undefined) {
-				caps["appium:usePreinstalledWDA"] = true;
-			}
-			if (!caps["appium:updatedWDABundleId"]) {
-				caps["appium:updatedWDABundleId"] = prep.bundleId;
-			}
-			if (!caps["appium:xcodeOrgId"]) {
-				caps["appium:xcodeOrgId"] = prep.developmentTeam;
-			}
-			if (!caps["appium:xcodeSigningId"]) {
-				caps["appium:xcodeSigningId"] = "Apple Development";
-			}
-		}
-		// Simulator first-connect compiles WDA (often several minutes on a cold CI runner).
-		const wdaTimeoutMs = iosSessionCreateTimeoutMs(options.deviceId);
-		if (caps["appium:wdaLaunchTimeout"] === undefined) {
-			caps["appium:wdaLaunchTimeout"] = wdaTimeoutMs;
-		}
-		if (caps["appium:wdaConnectionTimeout"] === undefined) {
-			caps["appium:wdaConnectionTimeout"] = wdaTimeoutMs;
-		}
-		if (caps["appium:waitForIdleTimeout"] === undefined) {
-			caps["appium:waitForIdleTimeout"] = 0;
-		}
-		if (!physical && caps["appium:derivedDataPath"] === undefined) {
-			await mkdir(SIMULATOR_WDA_DERIVED_DATA, { recursive: true });
-			caps["appium:derivedDataPath"] = SIMULATOR_WDA_DERIVED_DATA;
-		}
+	target: string,
+): Promise<void> {
+	const base = ["open", target, "--platform", options.platform, "--session", sessionName];
+	try {
+		await runAgentDevice([...base, ...deviceSelectorArgs(options)], {
+			timeoutMs: OPEN_TIMEOUT_MS,
+		});
+		return;
+	} catch (error) {
+		if (!isUnknownDeviceError(error)) throw error;
 	}
-
+	// Android ids may be AVD names rather than adb serials — retry by name.
 	if (options.platform === "android") {
-		const requested = String(caps["appium:udid"] ?? options.deviceId);
-		const identity = await resolveAndroidAppiumIdentity(requested);
-		if (identity.udid) {
-			caps["appium:udid"] = identity.udid;
-		}
-		if (identity.avd && caps["appium:avd"] === undefined) {
-			caps["appium:avd"] = identity.avd;
-		}
-		if (options.appPackage && !caps["appium:appPackage"]) {
-			caps["appium:appPackage"] = options.appPackage;
-		}
+		await runAgentDevice([...base, "--device", options.deviceId], {
+			timeoutMs: OPEN_TIMEOUT_MS,
+		});
+		return;
 	}
-
-	return caps;
+	throw new Error(
+		`Device not found: ${options.deviceId}. List devices with: yoqa devices ${options.platform}`,
+	);
 }
 
 class ActionGate {
 	private locked = false;
-	/** Buffered live gesture — Appium only sees one complete tap/drag on end. */
-	private gesture: {
-		startXNorm: number;
-		startYNorm: number;
-		endXNorm: number;
-		endYNorm: number;
-		startedAt: number;
-		lastSeq: number;
-		double: boolean;
-	} | null = null;
-	/** Single tap waiting to see if a second tap arrives (double-click). */
-	private deferredTap: {
-		gesture: NonNullable<ActionGate["gesture"]>;
-		browser: Browser;
-		toPx: (norm: number, size: number) => number;
-		getWindowSize: () => Promise<{ width: number; height: number }>;
-		timer: ReturnType<typeof setTimeout>;
-	} | null = null;
+	private pointer: { startX: number; startY: number; endX: number; endY: number } | null = null;
 
 	isPointerActive(): boolean {
-		return this.gesture != null || this.deferredTap != null;
+		return this.pointer != null;
 	}
 
 	async withLock<T>(fn: () => Promise<T>): Promise<T> {
-		if (this.gesture || this.deferredTap) {
-			throw new Error("Device is busy with live pointer control");
-		}
-		if (this.locked) {
-			throw new Error("Device is busy with another action");
-		}
+		if (this.pointer) throw new Error("Device is busy with live pointer control");
+		if (this.locked) throw new Error("Device is busy with another action");
 		this.locked = true;
 		try {
 			return await fn();
@@ -369,246 +194,46 @@ class ActionGate {
 		}
 	}
 
-	async handlePointer(
-		browser: Browser,
-		toPx: (norm: number, size: number) => number,
-		getWindowSize: () => Promise<{ width: number; height: number }>,
-		phase: PointerPhase,
-		xNorm: number,
-		yNorm: number,
-		seq: number,
-	): Promise<void> {
-		if (this.locked && !this.gesture && !this.deferredTap) {
-			throw new Error("Device is busy with another action");
-		}
-
-		const x = Math.min(1000, Math.max(0, xNorm));
-		const y = Math.min(1000, Math.max(0, yNorm));
-		/** Normalized grid distance for double-click pairing (~5% of screen). */
-		const doubleSlopNorm = 50;
-		const doubleTapMs = 320;
-
-		if (phase === "begin") {
-			if (this.deferredTap) {
-				const pending = this.deferredTap;
-				const near =
-					Math.hypot(x - pending.gesture.startXNorm, y - pending.gesture.startYNorm) <
-					doubleSlopNorm;
-				clearTimeout(pending.timer);
-				this.deferredTap = null;
-				if (near) {
-					this.locked = true;
-					this.gesture = {
-						startXNorm: pending.gesture.startXNorm,
-						startYNorm: pending.gesture.startYNorm,
-						endXNorm: x,
-						endYNorm: y,
-						startedAt: Date.now(),
-						lastSeq: seq,
-						double: true,
-					};
-					return;
-				}
-				await this.flushGesture(
-					pending.gesture,
-					pending.browser,
-					pending.toPx,
-					pending.getWindowSize,
-				);
-			}
-
-			if (this.gesture) {
-				await this.flushGesture(this.gesture, browser, toPx, getWindowSize);
-				this.gesture = null;
-			}
-			this.locked = true;
-			this.gesture = {
-				startXNorm: x,
-				startYNorm: y,
-				endXNorm: x,
-				endYNorm: y,
-				startedAt: Date.now(),
-				lastSeq: seq,
-				double: false,
-			};
-			return;
-		}
-
-		if (!this.gesture) {
-			throw new Error("No active pointer — send begin before move/end");
-		}
-
-		if (phase === "move") {
-			if (seq < this.gesture.lastSeq) return;
-			this.gesture.lastSeq = seq;
-			this.gesture.endXNorm = x;
-			this.gesture.endYNorm = y;
-			return;
-		}
-
-		this.gesture.endXNorm = x;
-		this.gesture.endYNorm = y;
-
-		const size = await getWindowSize();
-		const startX = toPx(this.gesture.startXNorm, size.width);
-		const startY = toPx(this.gesture.startYNorm, size.height);
-		const endX = toPx(this.gesture.endXNorm, size.width);
-		const endY = toPx(this.gesture.endYNorm, size.height);
-		const distance = Math.hypot(endX - startX, endY - startY);
-		const tapSlopPx = 12;
-
-		if (distance >= tapSlopPx || this.gesture.double) {
-			const gesture = this.gesture;
-			this.gesture = null;
-			await this.flushGesture(gesture, browser, toPx, getWindowSize);
-			return;
-		}
-
-		// Defer single tap so a quick second click can become a double-tap.
-		const gesture = this.gesture;
-		this.gesture = null;
-		const timer = setTimeout(() => {
-			if (this.deferredTap?.timer !== timer) return;
-			const pending = this.deferredTap;
-			this.deferredTap = null;
-			void this.flushGesture(
-				pending.gesture,
-				pending.browser,
-				pending.toPx,
-				pending.getWindowSize,
-			).catch((error) => {
-				console.warn(
-					"[yoqa-runner] deferred tap failed:",
-					error instanceof Error ? error.message : error,
-				);
-				this.locked = false;
-			});
-		}, doubleTapMs);
-		this.deferredTap = { gesture, browser, toPx, getWindowSize, timer };
+	begin(x: number, y: number): void {
+		if (this.locked) throw new Error("Device is busy with another action");
+		this.pointer = { startX: x, startY: y, endX: x, endY: y };
 	}
 
-	/** Flush buffered begin→move→end as a single WDA-safe performActions chain. */
-	private async flushGesture(
-		gesture: NonNullable<ActionGate["gesture"]>,
-		browser: Browser,
-		toPx: (norm: number, size: number) => number,
-		getWindowSize: () => Promise<{ width: number; height: number }>,
-	): Promise<void> {
-		const size = await getWindowSize();
-		const startX = toPx(gesture.startXNorm, size.width);
-		const startY = toPx(gesture.startYNorm, size.height);
-		const endX = toPx(gesture.endXNorm, size.width);
-		const endY = toPx(gesture.endYNorm, size.height);
-		const distance = Math.hypot(endX - startX, endY - startY);
-		const elapsedMs = Math.max(50, Date.now() - gesture.startedAt);
-		const tapSlopPx = 12;
-
-		try {
-			if (distance < tapSlopPx || gesture.double) {
-				const holdMs = Math.min(200, elapsedMs);
-				await injectTap(browser, startX, startY, holdMs);
-				if (gesture.double) {
-					await Bun.sleep(50);
-					await injectTap(browser, startX, startY, holdMs);
-				}
-			} else {
-				const duration = Math.min(2000, Math.max(80, elapsedMs));
-				await injectSwipe(browser, startX, startY, endX, endY, duration);
-			}
-		} finally {
-			this.locked = false;
-		}
+	move(x: number, y: number): void {
+		if (!this.pointer) throw new Error("No active pointer — send begin before move/end");
+		this.pointer.endX = x;
+		this.pointer.endY = y;
 	}
 
-	async forceEnd(
-		browser: Browser,
-		toPx?: (norm: number, size: number) => number,
-		getWindowSize?: () => Promise<{ width: number; height: number }>,
-	): Promise<void> {
-		if (this.deferredTap) {
-			clearTimeout(this.deferredTap.timer);
-			const pending = this.deferredTap;
-			this.deferredTap = null;
-			if (toPx && getWindowSize) {
-				try {
-					await this.flushGesture(pending.gesture, pending.browser, toPx, getWindowSize);
-				} catch {
-					this.locked = false;
-				}
-			} else {
-				this.locked = false;
-			}
-			return;
-		}
-		if (!this.gesture) {
-			this.locked = false;
-			return;
-		}
-		if (!toPx || !getWindowSize) {
-			this.gesture = null;
-			this.locked = false;
-			return;
-		}
-		const gesture = this.gesture;
-		this.gesture = null;
-		try {
-			await this.flushGesture(gesture, browser, toPx, getWindowSize);
-		} catch {
-			this.locked = false;
-		}
+	take(): { startX: number; startY: number; endX: number; endY: number } | null {
+		const current = this.pointer;
+		this.pointer = null;
+		return current;
 	}
-}
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	try {
-		return await Promise.race([
-			promise,
-			new Promise<T>((_, reject) => {
-				timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-			}),
-		]);
-	} finally {
-		if (timer) clearTimeout(timer);
+	cancel(): void {
+		this.pointer = null;
 	}
 }
 
 export async function createDeviceSession(options: SessionOptions): Promise<DeviceSession> {
 	await releaseExistingSession(options.deviceId);
 
-	const port = await ensureAppiumServer();
-	const mjpegPort = await pickMjpegPort();
-	const capabilities = await buildW3cCapabilities(options, mjpegPort);
-
-	const simulatorIos = options.platform === "ios" && !looksLikePhysicalIosUdid(options.deviceId);
-	const sessionCreateTimeoutMs = simulatorIos
-		? iosSessionCreateTimeoutMs(options.deviceId)
-		: 60_000;
-
-	const browser = await remote({
-		hostname: APPIUM_HOST,
-		port,
-		path: "/",
-		capabilities,
-		logLevel: "silent",
-		// Do not retry a still-running WDA compile — a second POST /session races the first.
-		connectionRetryCount: simulatorIos ? 0 : 2,
-		connectionRetryTimeout: sessionCreateTimeoutMs,
-	});
-
-	await applyMjpegSettings(browser, {
-		platform: options.platform,
-		deviceId: options.deviceId,
-	});
-	const streamReady = await probeMjpegStream(mjpegPort);
-	if (!streamReady) {
-		console.warn(
-			`[yoqa-runner] MJPEG stream not reachable on port ${mjpegPort}; Inspector will fall back to screenshot polling`,
-		);
+	const sessionName = agentDeviceSessionName(options.deviceId);
+	// A previous runner process may have left the named session open — close it first.
+	try {
+		await runAgentDevice(["close", "--session", sessionName], { timeoutMs: 30_000 });
+	} catch {
+		// No stale session — continue to open.
 	}
+
+	await openAgentDeviceApp(sessionName, options, openTarget(options));
 
 	const gate = new ActionGate();
 	let sessionDeadNotified = false;
+	let cachedWindow: { width: number; height: number } | null = null;
+	let lastApp: string | null = openTarget(options);
+
 	const notifySessionDead = () => {
 		if (sessionDeadNotified) return;
 		sessionDeadNotified = true;
@@ -619,26 +244,54 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		try {
 			return await fn();
 		} catch (error) {
-			if (!isDeadSessionError(error)) throw error;
-			// Aborting MJPEG then immediately calling pageSource often yields a
-			// one-shot "invalid session id" even though WDA is still alive.
-			await Bun.sleep(DEAD_SESSION_RETRY_MS);
-			try {
-				return await fn();
-			} catch (retryError) {
-				if (isDeadSessionError(retryError)) {
-					notifySessionDead();
+			if (isDeadSessionError(error)) {
+				notifySessionDead();
+				if (!(error instanceof DeadSessionError)) {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new DeadSessionError(message);
 				}
-				throw retryError;
 			}
+			throw error;
 		}
 	};
 
-	const getWindowSize = async () => guard(() => browser.getWindowSize());
-	let lastShotSize: PointerSize | null = null;
-	const getPointerSize = async (): Promise<PointerSize> => {
-		const window = await getWindowSize();
-		return preferPointerSize(window, lastShotSize);
+	const sessionArgs = (extra: string[]): string[] => [...extra, "--session", sessionName];
+
+	const snapshotNodes = async (): Promise<{
+		nodes: SnapshotNode[];
+		window: { width: number; height: number };
+	}> =>
+		guard(async () => {
+			const data = (await runAgentDevice(sessionArgs(["snapshot", "-i"]), {
+				timeoutMs: 60_000,
+			})) as { nodes?: SnapshotNode[] };
+			const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+			const window = windowFromNodes(nodes, options.platform);
+			cachedWindow = window;
+			return { nodes, window };
+		});
+
+	const getWindowSize = async (): Promise<{ width: number; height: number }> => {
+		if (cachedWindow) {
+			// Validate the session is still alive with a cheap snapshot.
+			try {
+				const fresh = await snapshotNodes();
+				return fresh.window;
+			} catch (error) {
+				if (isDeadSessionError(error)) throw error;
+				return cachedWindow;
+			}
+		}
+		const fresh = await snapshotNodes();
+		return fresh.window;
+	};
+
+	const runAction = async (args: string[], timeoutMs = 60_000): Promise<void> => {
+		await gate.withLock(async () => {
+			await guard(async () => {
+				await runAgentDevice(sessionArgs(args), { timeoutMs });
+			});
+		});
 	};
 
 	const owned: { current: DeviceSession | null } = { current: null };
@@ -647,30 +300,14 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		if (openByDeviceId.get(options.deviceId) === owned.current) {
 			openByDeviceId.delete(options.deviceId);
 		}
-		// Only flush an in-flight live gesture — never block quit on a dead WDA.
-		if (gate.isPointerActive() && !sessionDeadNotified) {
-			try {
-				await withTimeout(
-					gate.forceEnd(browser, toPx, getPointerSize),
-					3_000,
-					"live gesture flush",
-				);
-			} catch (error) {
-				console.warn(
-					"[yoqa-runner] gesture flush on quit:",
-					error instanceof Error ? error.message : error,
-				);
-			}
-		}
+		gate.cancel();
 		if (sessionDeadNotified) return;
 		try {
-			// WDA often hangs on DELETE while MJPEG clients are still attached;
-			// callers abort proxies first, and we still bound deleteSession.
-			await withTimeout(browser.deleteSession(), 8_000, "deleteSession");
+			await runAgentDevice(["close", "--session", sessionName], { timeoutMs: 30_000 });
 		} catch (error) {
 			if (!isDeadSessionError(error)) {
 				console.warn(
-					"[yoqa-runner] deleteSession failed:",
+					"[yoqa-runner] close agent-device session failed:",
 					error instanceof Error ? error.message : error,
 				);
 			}
@@ -681,153 +318,190 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 
 	const captureFrame = async (): Promise<CapturedFrame> =>
 		guard(async () => {
-			const base64 = await browser.takeScreenshot();
-			lastShotSize = pngSizeFromBase64(base64) ?? lastShotSize;
-			// Appium returns PNG base64 for takeScreenshot even when MJPEG is JPEG upstream.
-			return { base64, mime: "image/png" as const };
+			const path = join(tmpdir(), `yoqa-frame-${Date.now()}-${crypto.randomUUID()}.png`);
+			const data = (await runAgentDevice(sessionArgs(["screenshot", path]), {
+				timeoutMs: 60_000,
+			})) as { path?: string; width?: number; height?: number };
+			const filePath = typeof data.path === "string" && data.path ? data.path : path;
+			if (typeof data.width === "number" && typeof data.height === "number") {
+				cachedWindow = { width: data.width, height: data.height };
+			}
+			const bytes = await Bun.file(filePath).arrayBuffer();
+			await rm(filePath, { force: true }).catch(() => undefined);
+			return { base64: Buffer.from(bytes).toString("base64"), mime: "image/png" as const };
 		});
 
-	const getScreenshotCoordSize = async (): Promise<PointerSize> => {
-		if (!lastShotSize) {
-			await captureFrame();
-		}
-		const window = await getWindowSize();
-		return screenshotPointerSize(
-			window,
-			lastShotSize,
-			isAndroidDriver(browser) ? "android" : "ios",
-		);
-	};
-
-	const screenshot = async () => {
+	const screenshot = async (): Promise<{ path: string; base64: string }> => {
 		await mkdir(SCREENSHOT_DIR, { recursive: true });
-		const frame = await captureFrame();
 		const path = join(SCREENSHOT_DIR, `shot_${Date.now()}_${crypto.randomUUID()}.png`);
-		await Bun.write(path, Uint8Array.from(Buffer.from(frame.base64, "base64")));
-		return { path, base64: frame.base64 };
+		const data = await guard(async () => {
+			const result = (await runAgentDevice(sessionArgs(["screenshot", path]), {
+				timeoutMs: 60_000,
+			})) as { path?: string; width?: number; height?: number };
+			return result;
+		});
+		if (typeof data.width === "number" && typeof data.height === "number") {
+			cachedWindow = { width: data.width, height: data.height };
+		}
+		const bytes = await Bun.file(path).arrayBuffer();
+		return { path, base64: Buffer.from(bytes).toString("base64") };
 	};
 
-	const pageSource = async () => guard(() => browser.getPageSource());
-
-	const tap = async (
-		xNorm: number,
-		yNorm: number,
-		tapOptions?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
-	) => {
-		await gate.withLock(async () => {
-			await guard(async () => {
-				const size =
-					tapOptions?.coordSpace === "screenshot"
-						? await getScreenshotCoordSize()
-						: await getPointerSize();
-				const x = toPx(xNorm, size.width);
-				const y = toPx(yNorm, size.height);
-				const holdMs = Math.max(50, tapOptions?.durationMs ?? 50);
-				await injectTap(browser, x, y, holdMs);
-			});
-		});
+	const tap = async (xNorm: number, yNorm: number, tapOptions?: { durationMs?: number }) => {
+		const window = cachedWindow ?? (await getWindowSize());
+		const x = toPx(xNorm, window.width);
+		const y = toPx(yNorm, window.height);
+		const holdMs = tapOptions?.durationMs;
+		if (holdMs != null && holdMs >= 400) {
+			await runAction(["longpress", String(x), String(y), String(Math.min(5000, holdMs))]);
+			return;
+		}
+		const args =
+			holdMs != null && holdMs > 50
+				? ["press", String(x), String(y), "--hold-ms", String(Math.min(2000, holdMs))]
+				: ["press", String(x), String(y)];
+		await runAction(args);
 	};
 
-	const swipe = async (
-		x1: number,
-		y1: number,
-		x2: number,
-		y2: number,
-		durationMs = 400,
-		swipeOptions?: { coordSpace?: "window" | "screenshot" },
-	) => {
-		await gate.withLock(async () => {
-			await guard(async () => {
-				const size =
-					swipeOptions?.coordSpace === "screenshot"
-						? await getScreenshotCoordSize()
-						: await getPointerSize();
-				await injectSwipe(
-					browser,
-					toPx(x1, size.width),
-					toPx(y1, size.height),
-					toPx(x2, size.width),
-					toPx(y2, size.height),
-					durationMs,
-				);
-			});
-		});
+	const swipe = async (x1: number, y1: number, x2: number, y2: number, _durationMs = 400) => {
+		const window = cachedWindow ?? (await getWindowSize());
+		await runAction([
+			"swipe",
+			String(toPx(x1, window.width)),
+			String(toPx(y1, window.height)),
+			String(toPx(x2, window.width)),
+			String(toPx(y2, window.height)),
+		]);
 	};
 
 	const drag = async (x1: number, y1: number, x2: number, y2: number, durationMs = 800) => {
-		await swipe(x1, y1, x2, y2, durationMs);
+		const window = cachedWindow ?? (await getWindowSize());
+		const startX = toPx(x1, window.width);
+		const startY = toPx(y1, window.height);
+		const dx = toPx(x2, window.width) - startX;
+		const dy = toPx(y2, window.height) - startY;
+		try {
+			await runAction([
+				"gesture",
+				"pan",
+				String(startX),
+				String(startY),
+				String(dx),
+				String(dy),
+				String(Math.min(5000, Math.max(100, durationMs))),
+			]);
+		} catch {
+			await runAction([
+				"swipe",
+				String(startX),
+				String(startY),
+				String(startX + dx),
+				String(startY + dy),
+			]);
+		}
 	};
 
 	const type = async (text: string) => {
-		await gate.withLock(async () => {
-			await guard(async () => {
-				await typeText(browser, text);
-			});
-		});
+		await runAction(["type", text]);
 	};
 
 	const activateApp = async (appId: string) => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				await browser.execute("mobile: activateApp", { bundleId: appId, appId });
+				await openAgentDeviceApp(sessionName, options, appId);
+				lastApp = appId;
 			});
 		});
 	};
 
 	const terminateApp = async (appId: string) => {
-		await gate.withLock(async () => {
-			await guard(async () => {
-				await browser.execute("mobile: terminateApp", { bundleId: appId, appId });
-			});
-		});
+		await runAction(["close", appId]);
 	};
 
 	const backgroundApp = async (seconds = 3) => {
-		await gate.withLock(async () => {
-			await guard(async () => {
-				await browser.execute("mobile: backgroundApp", { seconds });
-			});
-		});
+		await runAction(["home"]);
+		await Bun.sleep(Math.min(30_000, Math.max(0, seconds * 1000)));
+		if (lastApp) {
+			try {
+				await guard(async () => {
+					await openAgentDeviceApp(sessionName, options, lastApp as string);
+				});
+			} catch (error) {
+				console.warn(
+					"[yoqa-runner] re-foreground after background failed:",
+					error instanceof Error ? error.message : error,
+				);
+			}
+		}
 	};
 
 	const openUrl = async (url: string) => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				await browser.url(url);
+				await runAgentDevice(
+					["open", url, "--platform", options.platform, "--session", sessionName],
+					{ timeoutMs: OPEN_TIMEOUT_MS },
+				);
 			});
 		});
 	};
 
 	const acceptAlert = async () => {
-		await gate.withLock(async () => {
-			await guard(async () => {
-				await resolveNativeAlert(browser, "accept");
-			});
-		});
+		await runAction(["alert", "accept"]);
 	};
 
 	const dismissAlert = async () => {
-		await gate.withLock(async () => {
-			await guard(async () => {
-				await resolveNativeAlert(browser, "dismiss");
-			});
-		});
+		await runAction(["alert", "dismiss"]);
 	};
 
-	const pointerEvent = async (phase: PointerPhase, xNorm: number, yNorm: number, seq: number) => {
+	const pointerEvent = async (
+		phase: PointerPhase,
+		xNorm: number,
+		yNorm: number,
+		seq: number,
+	): Promise<void> => {
+		void seq;
+		const window = cachedWindow ?? defaultWindowFor(options.platform);
+		const x = toPx(xNorm, window.width);
+		const y = toPx(yNorm, window.height);
+		if (phase === "begin") {
+			gate.begin(x, y);
+			return;
+		}
+		if (phase === "move") {
+			gate.move(x, y);
+			return;
+		}
+		const gesture = gate.take();
+		if (!gesture) throw new Error("No active pointer — send begin before move/end");
+		const distance = Math.hypot(gesture.endX - x, gesture.endY - y);
+		void distance;
+		const total = Math.hypot(x - gesture.startX, y - gesture.startY);
 		await guard(async () => {
-			await gate.handlePointer(browser, toPx, getPointerSize, phase, xNorm, yNorm, seq);
+			if (total < 12) {
+				await runAgentDevice(sessionArgs(["press", String(x), String(y)]), {
+					timeoutMs: 60_000,
+				});
+			} else {
+				await runAgentDevice(
+					sessionArgs([
+						"swipe",
+						String(gesture.startX),
+						String(gesture.startY),
+						String(x),
+						String(y),
+					]),
+					{ timeoutMs: 60_000 },
+				);
+			}
 		});
 	};
 
 	const session: DeviceSession = {
-		browser,
-		mjpegPort,
-		streamReady,
 		quit,
 		captureFrame,
 		screenshot,
-		pageSource,
+		snapshotNodes,
 		getWindowSize,
 		tap,
 		swipe,
@@ -844,6 +518,13 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		isPointerActive: () => gate.isPointerActive(),
 	};
 	owned.current = session;
+
+	// Warm the window cache so first taps don't pay for a snapshot.
+	try {
+		await snapshotNodes();
+	} catch {
+		// Session is open; snapshot failures surface on first use.
+	}
 
 	openByDeviceId.set(options.deviceId, session);
 	return session;

@@ -442,15 +442,12 @@ export async function executeRun(runId: string): Promise<void> {
 			}
 		}
 
-		const firstCase = run.tests[0] ? await getCase(run.tests[0].caseId) : null;
 		// Adopt the shared Active Session when it already targets this device;
 		// otherwise connect (replacing any unheld session) and keep it live after.
 		const acquired = await acquireSessionForRun({
 			runId,
 			deviceId: run.deviceId,
 			platform: run.platform,
-			appCaps: app.capabilities,
-			caseCaps: firstCase?.capabilities ?? [],
 			bundleId: app.iosBundleId || undefined,
 			appPackage: app.androidApplicationId || undefined,
 		});

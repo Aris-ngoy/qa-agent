@@ -41,29 +41,10 @@ export const listDevicesResponseSchema = z.object({
 
 export type ListDevicesResponse = z.infer<typeof listDevicesResponseSchema>;
 
-export const appiumDriverSchema = z.union([z.literal("xcuitest"), z.literal("uiautomator2")]);
-export type AppiumDriver = z.infer<typeof appiumDriverSchema>;
-
-export const iosWdaActionSchema = z.union([
-	z.literal("reused"),
-	z.literal("reinstalled"),
-	z.literal("built"),
-]);
-
-export type IosWdaAction = z.infer<typeof iosWdaActionSchema>;
-
 export const setupPlatformRequestSchema = z.object({
 	platform: devicePlatformSchema,
 	deviceId: z.string().min(1).optional(),
 	kind: deviceKindSchema.optional(),
-	/** Absolute path to Xcode Contents/Developer (iOS physical) */
-	xcodeDeveloperDir: z.string().min(1).optional(),
-	/** Apple Development team ID (iOS physical) */
-	developmentTeam: z.string().min(1).optional(),
-	/** Full codesigning identity name, e.g. "Apple Development: …" (iOS physical) */
-	codeSignIdentity: z.string().min(1).optional(),
-	/** Force a full WebDriverAgent rebuild/install even when prep is reusable */
-	force: z.boolean().optional(),
 });
 
 export type SetupPlatformRequest = z.infer<typeof setupPlatformRequestSchema>;
@@ -71,17 +52,9 @@ export type SetupPlatformRequest = z.infer<typeof setupPlatformRequestSchema>;
 export const setupPlatformResponseSchema = z.object({
 	ok: z.literal(true),
 	platform: devicePlatformSchema,
-	driver: appiumDriverSchema,
-	appiumVersion: z.string().min(1),
-	driverVersion: z.string().optional(),
+	agentDeviceVersion: z.string().min(1),
 	alreadyInstalled: z.boolean(),
 	message: z.string().min(1),
-	/** True when WebDriverAgent was ensured on a physical iOS device (any action) */
-	wdaInstalled: z.boolean().optional(),
-	/** Bundle ID of the installed WebDriverAgent runner */
-	wdaBundleId: z.string().min(1).optional(),
-	/** Whether WDA was reused, reinstalled from cache, or freshly built */
-	wdaAction: iosWdaActionSchema.optional(),
 });
 
 export type SetupPlatformResponse = z.infer<typeof setupPlatformResponseSchema>;
@@ -96,11 +69,10 @@ export type SetupPlatformError = z.infer<typeof setupPlatformErrorSchema>;
 export const runtimeCheckIdSchema = z.union([
 	z.literal("node"),
 	z.literal("npm"),
-	z.literal("appium"),
-	z.literal("xcuitest"),
-	z.literal("uiautomator2"),
+	z.literal("agent-device"),
 	z.literal("xcode"),
 	z.literal("adb"),
+	z.literal("developer-mode"),
 ]);
 
 export type RuntimeCheckId = z.infer<typeof runtimeCheckIdSchema>;
@@ -117,8 +89,7 @@ export type RuntimeCheck = z.infer<typeof runtimeCheckSchema>;
 
 export const runtimeStatusSchema = z.object({
 	ready: z.boolean(),
-	appiumVersion: z.string().optional(),
-	appiumSource: z.union([z.literal("system"), z.literal("managed")]).optional(),
+	agentDeviceVersion: z.string().optional(),
 	checks: z.array(runtimeCheckSchema),
 });
 
@@ -128,7 +99,6 @@ export const ensureRuntimeResponseSchema = z.object({
 	ok: z.literal(true),
 	ready: z.boolean(),
 	status: runtimeStatusSchema,
-	installed: z.array(setupPlatformResponseSchema),
 	message: z.string().min(1),
 });
 
@@ -137,7 +107,7 @@ export type EnsureRuntimeResponse = z.infer<typeof ensureRuntimeResponseSchema>;
 // --- Servers lifecycle ---
 
 export const serverKindSchema = z.union([
-	z.literal("appium"),
+	z.literal("agent-device"),
 	z.literal("runner"),
 	z.literal("device-session"),
 ]);
@@ -191,8 +161,8 @@ export type DoctorCheckStatus = z.infer<typeof doctorCheckStatusSchema>;
 
 export const doctorRepairIdSchema = z.union([
 	z.literal("ensure-runtime"),
-	z.literal("stop-foreign-appium"),
 	z.literal("disconnect-session"),
+	z.literal("enable-developer-tools"),
 ]);
 export type DoctorRepairId = z.infer<typeof doctorRepairIdSchema>;
 
@@ -235,6 +205,11 @@ export type DoctorRepairResponse = z.infer<typeof doctorRepairResponseSchema>;
 
 // --- Catalog: apps / cases / flows / tags ---
 
+/**
+ * @deprecated Custom driver capabilities were an Appium concept and are no
+ * longer read by the runner (agent-device backend). Kept for wire compat —
+ * servers always return `[]` and request fields are ignored.
+ */
 export const capabilitySchema = z.object({
 	id: z.string().min(1),
 	key: z.string(),
@@ -272,7 +247,6 @@ export const updateAppRequestSchema = z.object({
 	iosBundleId: z.string().optional(),
 	iosAppStoreId: z.string().optional(),
 	androidApplicationId: z.string().optional(),
-	capabilities: z.array(capabilitySchema).optional(),
 });
 
 export type UpdateAppRequest = z.infer<typeof updateAppRequestSchema>;
@@ -443,7 +417,6 @@ export const createCaseRequestSchema = z.object({
 			}),
 		)
 		.optional(),
-	capabilities: z.array(capabilitySchema).optional(),
 });
 
 export type CreateCaseRequest = z.infer<typeof createCaseRequestSchema>;
@@ -461,7 +434,6 @@ export const updateCaseRequestSchema = z.object({
 			}),
 		)
 		.optional(),
-	capabilities: z.array(capabilitySchema).optional(),
 	/** Set to replace the saved script; `null` clears it. */
 	script: caseScriptSchema.nullable().optional(),
 });

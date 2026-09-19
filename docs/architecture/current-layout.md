@@ -6,9 +6,9 @@ Target layout after the architecture grill (2026-08). See `CONTEXT.md` for vocab
 
 | Domain | Owns |
 |--------|------|
-| `devices/` | Device listing/prep, **Device Session** (create + Active Session), Screen (`getScreen`), Action (`performAction` + Grounding), MJPEG proxy |
-| `appium/` | Appium Runtime install + **Appium Server** `ensureServer` |
-| `ios/` | WDA / signing prep used when creating sessions |
+| `devices/` | Device listing, **Device Session** (create + Active Session), Screen (`getScreen`), Action (`performAction` + Grounding) |
+| `agent-device/` | agent-device CLI adapter (sessions, snapshots, actions, installs), device listing, runtime readiness |
+| `ios/` | Legacy WDA / signing prep (unused since the agent-device backend; kept for reference) |
 | `providers/` | Provider adapters (settings + optional `vision.completeObject`), secrets, catalog for UI |
 | `runs/` | Run orchestration, **Case executor**, agent prompts/schema, Case Script parse consumers |
 | `catalog/` | Apps, cases, flows, tags |
@@ -21,6 +21,6 @@ Thin adapters: parse Zod, call domain, map status (incl. Dead Session → 410). 
 ## Dual config (interim)
 
 - Desktop: `~/Library/Application Support/yoqa/settings.json` (toolchain prefs via Electrobun RPC)
-- Runner: `~/.yoqa/` (db, Appium Runtime, WDA, providers, screenshots)
+- Runner: `~/.yoqa/` (db, providers, screenshots). Device automation lives in the agent-device daemon state dir (`~/.agent-device/`).
 
-Long-term: runner is authority for prefs Appium/WDA need; desktop syncs into that store.
+Long-term: runner is authority for provider/auth prefs; desktop syncs into that store.

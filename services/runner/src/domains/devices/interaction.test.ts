@@ -1,27 +1,36 @@
 import { describe, expect, test } from "bun:test";
 import type { ActionRequest } from "@yoqa/runner-client";
 import { getScreen, performAction } from "./interaction";
-import type { DeviceSession } from "./session";
+import type { DeviceSession, SnapshotNode } from "./session";
 
-const ALLOW_XML = `
-<hierarchy>
-  <android.widget.Button bounds="[400,1800][800,1900]" text="Allow" resource-id="com.android.permissioncontroller:id/permission_allow_button" enabled="true" />
-</hierarchy>
-`;
+const ALLOW_NODES: SnapshotNode[] = [
+	{
+		ref: "e1",
+		type: "android.widget.Button",
+		role: "button",
+		label: "Allow",
+		identifier: "com.android.permissioncontroller:id/permission_allow_button",
+		rect: { x: 400, y: 1800, width: 400, height: 100 },
+		enabled: true,
+	},
+];
 
-function sessionStub(taps: Array<{ x: number; y: number; coordSpace?: string }>): DeviceSession {
+function sessionStub(
+	taps: Array<{ x: number; y: number }>,
+	nodes: SnapshotNode[] = ALLOW_NODES,
+): DeviceSession {
 	return {
-		pageSource: async () => ALLOW_XML,
+		snapshotNodes: async () => ({ nodes, window: { width: 1000, height: 2000 } }),
 		getWindowSize: async () => ({ width: 1000, height: 2000 }),
-		tap: async (x: number, y: number, options?: { coordSpace?: "window" | "screenshot" }) => {
-			taps.push({ x, y, coordSpace: options?.coordSpace });
+		tap: async (x: number, y: number) => {
+			taps.push({ x, y });
 		},
 	} as unknown as DeviceSession;
 }
 
 describe("performAction tap locators", () => {
 	test("prefers --label over guessed x,y so Allow hits the tree center", async () => {
-		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
+		const taps: Array<{ x: number; y: number }> = [];
 		const body: ActionRequest = {
 			kind: "tap",
 			label: "Allow",
@@ -29,36 +38,34 @@ describe("performAction tap locators", () => {
 			y: 951,
 		};
 		const result = await performAction(sessionStub(taps), body);
-		expect(taps).toEqual([{ x: 600, y: 925, coordSpace: "window" }]);
+		expect(taps).toEqual([{ x: 600, y: 925 }]);
 		expect(result.resolved).toEqual({ x: 600, y: 925 });
 	});
 
 	test("prefers --id over guessed x,y", async () => {
-		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
+		const taps: Array<{ x: number; y: number }> = [];
 		await performAction(sessionStub(taps), {
 			kind: "tap",
 			id: "permission_allow_button",
 			x: 1,
 			y: 1,
 		});
-		expect(taps).toEqual([{ x: 600, y: 925, coordSpace: "window" }]);
+		expect(taps).toEqual([{ x: 600, y: 925 }]);
 	});
 
-	test("resolves --label Help & Info against page source with &amp;", async () => {
+	test("resolves --label Help & Info", async () => {
 		const taps: Array<{ x: number; y: number }> = [];
-		const xml = `
-<hierarchy>
-  <android.widget.TextView bounds="[400,1800][800,1900]" text="Help &amp; Info" enabled="true" />
-</hierarchy>
-`;
-		const session = {
-			pageSource: async () => xml,
-			getWindowSize: async () => ({ width: 1000, height: 2000 }),
-			tap: async (x: number, y: number) => {
-				taps.push({ x, y });
+		const nodes: SnapshotNode[] = [
+			{
+				ref: "e2",
+				type: "android.widget.TextView",
+				role: "text",
+				label: "Help & Info",
+				rect: { x: 400, y: 1800, width: 400, height: 100 },
+				enabled: true,
 			},
-		} as unknown as DeviceSession;
-		const result = await performAction(session, {
+		];
+		const result = await performAction(sessionStub(taps, nodes), {
 			kind: "tap",
 			label: "Help & Info",
 			x: 500,
@@ -68,45 +75,40 @@ describe("performAction tap locators", () => {
 		expect(result.resolved).toEqual({ x: 600, y: 925 });
 	});
 
-	test("coordinate-only taps use screenshot space", async () => {
-		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
+	test("coordinate-only taps use the given 0–1000 point", async () => {
+		const taps: Array<{ x: number; y: number }> = [];
 		await performAction(sessionStub(taps), { kind: "tap", x: 120, y: 340 });
-		expect(taps).toEqual([{ x: 120, y: 340, coordSpace: "screenshot" }]);
+		expect(taps).toEqual([{ x: 120, y: 340 }]);
 	});
 });
 
 describe("performAction swipe", () => {
-	test("swipes in screenshot space", async () => {
+	test("swipes with the given 0–1000 points", async () => {
 		const swipes: Array<{
 			x: number;
 			y: number;
 			x2: number;
 			y2: number;
-			coordSpace?: string;
 		}> = [];
 		const session = {
-			pageSource: async () => "<hierarchy/>",
+			snapshotNodes: async () => ({ nodes: [], window: { width: 1000, height: 2000 } }),
 			getWindowSize: async () => ({ width: 1000, height: 2000 }),
-			swipe: async (
-				x: number,
-				y: number,
-				x2: number,
-				y2: number,
-				_durationMs?: number,
-				options?: { coordSpace?: "window" | "screenshot" },
-			) => {
-				swipes.push({ x, y, x2, y2, coordSpace: options?.coordSpace });
+			swipe: async (x: number, y: number, x2: number, y2: number) => {
+				swipes.push({ x, y, x2, y2 });
 			},
 		} as unknown as DeviceSession;
 		await performAction(session, { kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 });
-		expect(swipes).toEqual([{ x: 500, y: 800, x2: 500, y2: 200, coordSpace: "screenshot" }]);
+		expect(swipes).toEqual([{ x: 500, y: 800, x2: 500, y2: 200 }]);
 	});
 });
 
 describe("getScreen", () => {
-	test("reads the cleaned tree without pausing when pauseMjpeg is false", async () => {
+	test("reads the cleaned tree from snapshot nodes", async () => {
 		const session = {
-			pageSource: async () => ALLOW_XML,
+			snapshotNodes: async () => ({
+				nodes: ALLOW_NODES,
+				window: { width: 1000, height: 2000 },
+			}),
 			getWindowSize: async () => ({ width: 1000, height: 2000 }),
 		} as unknown as DeviceSession;
 		const screen = await getScreen(session, { pauseMjpeg: false });

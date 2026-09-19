@@ -120,7 +120,7 @@ describe("androidSdkEnvPatch", () => {
 });
 
 describe("androidProcessEnv", () => {
-	test("merges SDK and JDK fallbacks onto a GUI-like env for Appium spawn", () => {
+	test("merges SDK and JDK fallbacks onto a GUI-like env for device tooling spawn", () => {
 		const sdk = "/Users/demo/Library/Android/sdk";
 		const jbr = defaultJavaHomeCandidates("/Users/demo", "darwin")[0];
 		expect(jbr).toBeDefined();
