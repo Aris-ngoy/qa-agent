@@ -3,7 +3,7 @@ title: GitHub Actions
 description: Run yoqa in CI and publish the same HTML report as the desktop app.
 ---
 
-`yoqa` talks to a **local runner** on the GitHub-hosted (or self-hosted) machine. This is not a cloud device farm: you still need a simulator or emulator, Appium (`yoqa doctor --fix` / `yoqa runtime ensure`), and a catalog (apps/cases) on that host.
+`yoqa` talks to a **local runner** on the GitHub-hosted (or self-hosted) machine. This is not a cloud device farm: you still need a simulator or emulator, agent-device (`npm install -g agent-device@latest`, then `yoqa doctor --fix` / `yoqa runtime ensure`), and a catalog (apps/cases) on that host.
 
 The HTML file is the same self-contained report as desktop **Export HTML** (inline CSS + step screenshots). GitHub Job Summaries cannot hold those images (1MB cap), so CI also writes a compact text summary and uploads the HTML as an artifact.
 
@@ -34,7 +34,7 @@ Equivalent without the composite action:
 - run: yoqa health
 ```
 
-Cache `~/.yoqa/runtime` between jobs so managed Appium is not reinstalled every run. Host **Node/npm** must stay on `PATH`.
+Cache `~/.agent-device` between jobs so the iOS runner is not rebuilt every run. Host **Node/npm** must stay on `PATH`.
 
 ## Create a run, then publish the report
 

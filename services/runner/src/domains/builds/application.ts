@@ -1,8 +1,8 @@
 import { basename, extname } from "node:path";
 import type { Build, CreateBuildRequest } from "@yoqa/runner-client";
 import { desc, eq } from "drizzle-orm";
+import { AgentDeviceError, runAgentDevice } from "../agent-device/cli";
 import { getCatalogDb } from "../catalog/db";
-import { resolveAndroidAppiumIdentity } from "../devices/application";
 import { builds } from "./schema";
 
 export class BuildNotFoundError extends Error {
@@ -129,51 +129,33 @@ export async function installBuildOnDevice(options: {
 	platform: "ios" | "android";
 }): Promise<void> {
 	const { build, deviceId, platform } = options;
-	if (platform === "ios") {
-		if (build.path.endsWith(".app") || build.path.includes(".app")) {
-			const proc = Bun.spawn(["xcrun", "simctl", "install", deviceId, build.path], {
-				stdout: "pipe",
-				stderr: "pipe",
+	const deviceArgs = platform === "ios" ? ["--udid", deviceId] : ["--serial", deviceId];
+	try {
+		await runAgentDevice(["install", build.path, "--platform", platform, ...deviceArgs], {
+			timeoutMs: 300_000,
+		});
+		return;
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		// Already installed → reinstall in place.
+		if (/already installed|already exists/i.test(message)) {
+			await runAgentDevice(["reinstall", build.path, "--platform", platform, ...deviceArgs], {
+				timeoutMs: 300_000,
 			});
-			const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-			if (code !== 0) {
-				throw new Error(`simctl install failed: ${stderr.trim() || `exit ${code}`}`);
-			}
 			return;
 		}
-		// .ipa on physical — try ideviceinstaller or tip
-		const which = Bun.which("ideviceinstaller");
-		if (which && build.path.endsWith(".ipa")) {
-			const proc = Bun.spawn([which, "-u", deviceId, "-i", build.path], {
-				stdout: "pipe",
-				stderr: "pipe",
+		// Android ids may be AVD names rather than adb serials — retry by name.
+		if (
+			platform === "android" &&
+			(error instanceof AgentDeviceError
+				? ["DEVICE_NOT_FOUND", "UNKNOWN_DEVICE"].includes(error.code)
+				: /no such device|device not found|unknown device/i.test(message))
+		) {
+			await runAgentDevice(["install", build.path, "--platform", platform, "--device", deviceId], {
+				timeoutMs: 300_000,
 			});
-			const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-			if (code !== 0) {
-				throw new Error(`ideviceinstaller failed: ${stderr.trim() || `exit ${code}`}`);
-			}
 			return;
 		}
-		throw new Error(
-			`Cannot install iOS build at ${build.path}. Use a .app on simulator or install .ipa via ideviceinstaller.`,
-		);
-	}
-
-	const identity = await resolveAndroidAppiumIdentity(deviceId);
-	const serial = identity.udid;
-	if (!serial) {
-		throw new Error(
-			`Android emulator ${deviceId} is not running. Boot it, then retry the install.`,
-		);
-	}
-
-	const adb = Bun.which("adb") ?? "adb";
-	const proc = Bun.spawn([adb, "-s", serial, "install", "-r", build.path], {
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-	if (code !== 0) {
-		throw new Error(`adb install failed: ${stderr.trim() || `exit ${code}`}`);
+		throw new Error(`agent-device install failed for ${build.path}: ${message.slice(0, 300)}`);
 	}
 }

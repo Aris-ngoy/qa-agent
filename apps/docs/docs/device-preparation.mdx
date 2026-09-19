@@ -3,13 +3,13 @@ title: Device Preparation
 description: Prepare iOS and Android devices for local testing with Yoqa.
 ---
 
-Yoqa drives devices through **Appium** (XCUITest / UiAutomator2). Get the toolchain healthy once, then connect from the desktop UI or CLI.
+Yoqa drives devices through **agent-device**. Install it once (`npm install -g agent-device@latest`), get the toolchain healthy (`yoqa doctor`), then connect from the desktop UI or CLI.
 
 ## Checklist
 
 ```bash
-yoqa setup ios       # when available — guides Xcode / WDA readiness
-yoqa setup android   # when available — guides adb / emulator readiness
+yoqa setup ios       # verifies agent-device iOS readiness
+yoqa setup android   # verifies agent-device Android readiness
 yoqa status          # runner, runtime, provider, active device
 yoqa devices ios
 yoqa devices android
@@ -19,7 +19,7 @@ yoqa devices android
 
 1. Install **Xcode** and accept the license; install additional platforms if prompted.
 2. Boot an **iOS Simulator**, or connect a physical device with Developer Mode enabled.
-3. For **physical devices**, WebDriverAgent (WDA) must be built/signed for your team. In the desktop app you can **Skip** (reuse) or **Rebuild** WDA when selecting a device or starting a run.
+3. For **physical devices**, enable Developer Mode and trust the host. agent-device manages its own runner signing — for personal Apple IDs set `AGENT_DEVICE_IOS_BUNDLE_ID` to a unique reverse-DNS value (see [agent-device installation](https://oss.callstack.com/agent-device/docs/installation)).
 4. Confirm the device appears in `yoqa devices ios`.
 
 ## Android
@@ -38,7 +38,7 @@ yoqa devices active
 The desktop app performs the same connect when you select a device for a run or Manual Inspector.
 
 <Tip>
-  If runs fail before the first step, re-check `yoqa status` and WDA/adb — most local issues are toolchain, not test wording.
+  If runs fail before the first step, re-check `yoqa status` and `agent-device doctor` — most local issues are toolchain, not test wording.
 </Tip>
 
 <CardGroup cols={2}>

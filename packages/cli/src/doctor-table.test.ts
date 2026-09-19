@@ -7,23 +7,23 @@ const report: DoctorReport = {
 	checks: [
 		{ id: "node", label: "Node.js", status: "pass", detail: "v22.14.0" },
 		{
-			id: "appium",
-			label: "Appium",
+			id: "agent-device",
+			label: "agent-device",
 			status: "fail",
 			detail: "not installed",
 			fixHint: "yoqa runtime ensure",
 		},
-		{ id: "foreign", label: "Foreign Appium", status: "warn", detail: "pid 4321 on :4723" },
+		{ id: "session", label: "Active device session", status: "warn", detail: "No active session" },
 	],
 	servers: [],
 	steps: [
 		{
 			severity: "error",
-			title: "Install Appium",
+			title: "Install agent-device",
 			detail: "Run yoqa runtime ensure",
 			repair: "ensure-runtime",
 		},
-		{ severity: "warn", title: "Stop leftover Appium", detail: "yoqa doctor --fix" },
+		{ severity: "warn", title: "No active session", detail: "yoqa devices connect <id>" },
 	],
 };
 
@@ -47,10 +47,10 @@ describe("formatDoctorReport", () => {
 		const text = formatDoctorReport(report, false);
 		expect(text).toContain("doctor  issues found");
 		expect(text).toContain("• Node.js — v22.14.0");
-		expect(text).toContain("• Appium — not installed · yoqa runtime ensure");
-		expect(text).toContain("• Foreign Appium — pid 4321 on :4723");
+		expect(text).toContain("• agent-device — not installed · yoqa runtime ensure");
+		expect(text).toContain("• Active device session — No active session");
 		expect(text).toContain("next");
-		expect(text).toContain("• Install Appium — Run yoqa runtime ensure");
+		expect(text).toContain("• Install agent-device — Run yoqa runtime ensure");
 		expect(text).not.toContain("STATUS");
 		expect(text.includes("\u001b")).toBe(false);
 	});
@@ -62,7 +62,7 @@ describe("formatDoctorReport", () => {
 		expect(text).toContain("\u001b[33m");
 		expect(text).toContain("•");
 		expect(text).toContain("Node.js");
-		expect(text).toContain("Appium");
+		expect(text).toContain("agent-device");
 	});
 
 	test("ok reports use a green summary and skip empty steps", () => {

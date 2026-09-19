@@ -1,40 +1,17 @@
 ---
-title: Appium Capabilities
-description: Pass custom Appium capabilities to control how the app starts.
+title: Device Capabilities
+description: Custom driver capabilities were removed — the agent-device backend needs none.
 ---
 
-Under the hood, Yoqa drives your app through Appium. Defaults work for most tests. When you need finer control, set custom **capabilities**.
+Under the hood, Yoqa drives your app through **agent-device**. There are no custom driver capabilities to set: sessions open the app's bundle id / package directly, and gestures run through snapshots with refs.
 
-## Where to set them
+## What changed
 
-- **Per app** — defaults for every case.
-- **Per test case** — overrides app-level keys for that case only.
+Custom **Appium capabilities** (app-level and case-level, e.g. `appium:autoLaunch`, `appium:appActivity`) were removed with the Appium backend. If you are migrating:
 
-Each capability is a key/value pair (e.g. `appium:autoLaunch` = `false`).
-
-<Tip>
-  Only add capabilities when you need them.
-</Tip>
-
-## Start without launching the app
-
-Set `appium:autoLaunch` to `false` when the journey should begin on the home screen or in a browser:
-
-| Capability | Value |
-| ---------- | ----- |
-| `appium:autoLaunch` | `false` |
-
-Then describe the real start in instructions ("Open example.com and sign in…").
-
-## Android: multiple entry points
-
-Name the launch activity with `appium:appActivity`. If a splash hands off, also set `appium:appWaitActivity` (wildcards like `*.MainActivity` are allowed):
-
-| Capability | Value |
-| ---------- | ----- |
-| `appium:appActivity` | `.debug.DebugEntryActivity` |
-| `appium:appWaitActivity` | `.main.MainActivity` |
+- **Start without launching the app** — connect to the device, then describe the real start in the case instructions ("Open example.com and sign in…"). `yoqa devices connect` opens a session on a sensible default app; `action open-url` navigates from there.
+- **Android entry points** — install the build (`yoqa builds create`), then launch by application id. Deep links work via `action open-url`.
 
 ## Local note
 
-Capabilities apply to local Appium sessions started by the Yoqa runner. Cloud-specific caps will be documented when cloud runs ship.
+This applies to local sessions started by the Yoqa runner. Cloud-specific options will be documented when cloud runs ship.

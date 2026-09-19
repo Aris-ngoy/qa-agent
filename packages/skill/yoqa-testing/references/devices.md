@@ -39,7 +39,7 @@ yoqa devices connect <device_id> --platform android --app-package com.example.ap
 ## Disconnect
 
 ```bash
-yoqa devices disconnect            # close the active Appium session
+yoqa devices disconnect            # close the active agent-device session
 ```
 
 **Only one session exists at a time.** Check `yoqa devices active` before connecting; connecting again
@@ -49,4 +49,4 @@ replaces the current session. Disconnect when you're done so another run can tak
 
 - Prefer a booted simulator over a physical device for speed
 - If `yoqa devices connect` fails, run `yoqa doctor --fix` — see [Environment](environment.md)
-- An iOS physical device needs WebDriverAgent installed first: `yoqa setup ios --device <udid> --kind physical`
+- If agent-device is missing, run `yoqa runtime ensure` or `npm install -g agent-device@latest`

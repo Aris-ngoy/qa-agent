@@ -30,7 +30,7 @@ function ServerIcon({ className = "size-5", ...props }: SVGProps<SVGSVGElement>)
 }
 
 function kindBadge(kind: ServerEntry["kind"]): string {
-	if (kind === "appium") return "Appium";
+	if (kind === "agent-device") return "agent-device";
 	if (kind === "runner") return "Runner";
 	return "Session";
 }
@@ -222,7 +222,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 								</Button>
 							</div>
 							<p className="mb-2 text-helper text-on-surface-variant">
-								Stop all ends Appium + the device session. Runner is separate.
+								Stop all ends the device session. Runner is separate.
 							</p>
 							<ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
 								{servers.map((entry) => {
@@ -420,7 +420,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 							) : (
 								<div className="flex flex-col gap-3">
 									<p className="text-body-sm text-on-surface-variant">
-										Run doctor to check Node, Appium, drivers, and leftover processes.
+										Run doctor to check Node, agent-device, and leftover processes.
 									</p>
 									<Button onPress={runDoctor} size="sm" variant="primary">
 										Run doctor

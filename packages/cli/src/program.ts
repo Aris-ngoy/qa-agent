@@ -280,7 +280,7 @@ for (const platform of ["ios", "android"] as const) {
 
 devices
 	.command("connect")
-	.description("Open an Appium session on a device")
+	.description("Open an agent-device session on a device")
 	.argument("<deviceId>", "Device UDID / serial")
 	.requiredOption("--platform <platform>", "ios | android")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
@@ -345,7 +345,7 @@ devices
 
 devices
 	.command("disconnect")
-	.description("Close the active Appium session")
+	.description("Close the active agent-device session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -367,7 +367,7 @@ program
 	.command("screen")
 	.description("Inspect the active device screen (cleaned tree by default)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--full", "Return raw Appium page source")
+	.option("--full", "Return raw agent-device snapshot JSON")
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; full?: boolean; json?: boolean }) => {
 		try {
@@ -496,62 +496,30 @@ addActionOptions(
 
 const setup = program
 	.command("setup")
-	.description("Install Appium and the platform driver (xcuitest / uiautomator2)");
+	.description("Verify the agent-device backend for a platform (no drivers to install)");
 
 setup
 	.command("ios")
-	.description("Ensure Appium + xcuitest; optionally build and install WDA on a physical device")
+	.description("Verify agent-device iOS readiness")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.option("--device <udid>", "Physical device UDID to install WebDriverAgent on")
-	.option("--kind <kind>", "Device kind: physical | simulator", "physical")
-	.option("--xcode <path>", "Xcode Contents/Developer path (DEVELOPER_DIR)")
-	.option("--team <teamId>", "Apple Development team ID")
-	.option("--identity <name>", 'Codesigning identity name, e.g. "Apple Development: …"')
-	.option("--force", "Force a full WebDriverAgent rebuild even when prep is reusable")
-	.action(
-		async (options: {
-			baseUrl: string;
-			json?: boolean;
-			device?: string;
-			kind?: string;
-			xcode?: string;
-			team?: string;
-			identity?: string;
-			force?: boolean;
-		}) => {
-			try {
-				const kind =
-					options.kind === "simulator" || options.kind === "physical" ? options.kind : undefined;
-				const body = await client(options.baseUrl).setupPlatform({
-					platform: "ios",
-					deviceId: options.device,
-					kind,
-					xcodeDeveloperDir: options.xcode,
-					developmentTeam: options.team,
-					codeSignIdentity: options.identity,
-					force: options.force === true,
-				});
-				if (options.json) {
-					console.log(JSON.stringify(body, null, 2));
-					return;
-				}
-				console.log(body.message);
-				console.log(`driver: ${body.driver}${body.driverVersion ? ` ${body.driverVersion}` : ""}`);
-				console.log(`appium: ${body.appiumVersion}`);
-				if (body.wdaInstalled) {
-					const action = body.wdaAction ?? "built";
-					console.log(`wda: ${action} (${body.wdaBundleId ?? "unknown bundle"})`);
-				}
-			} catch (error) {
-				fail("setup ios", error);
+	.action(async (options: { baseUrl: string; json?: boolean }) => {
+		try {
+			const body = await client(options.baseUrl).setupPlatform({ platform: "ios" });
+			if (options.json) {
+				console.log(JSON.stringify(body, null, 2));
+				return;
 			}
-		},
-	);
+			console.log(body.message);
+			console.log(`agent-device: ${body.agentDeviceVersion}`);
+		} catch (error) {
+			fail("setup ios", error);
+		}
+	});
 
 setup
 	.command("android")
-	.description("Ensure Appium + uiautomator2 driver are installed")
+	.description("Verify agent-device Android readiness")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -562,8 +530,7 @@ setup
 				return;
 			}
 			console.log(body.message);
-			console.log(`driver: ${body.driver}${body.driverVersion ? ` ${body.driverVersion}` : ""}`);
-			console.log(`appium: ${body.appiumVersion}`);
+			console.log(`agent-device: ${body.agentDeviceVersion}`);
 		} catch (error) {
 			fail("setup android", error);
 		}
@@ -571,11 +538,11 @@ setup
 
 const runtime = program
 	.command("runtime")
-	.description("Check or ensure the local Appium runtime (drivers + host tools)");
+	.description("Check or ensure the local agent-device runtime (CLI + host tools)");
 
 runtime
 	.command("status")
-	.description("Show readiness of Appium, drivers, and host tools")
+	.description("Show readiness of agent-device and host tools")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -598,7 +565,7 @@ runtime
 
 runtime
 	.command("ensure")
-	.description("Install Appium + both platform drivers if missing")
+	.description("Verify agent-device and host tools are ready")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -622,7 +589,7 @@ runtime
 
 const servers = program
 	.command("servers")
-	.description("List or control local Appium, runner, and device sessions")
+	.description("List or control the runner and device sessions")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -690,7 +657,7 @@ servers
 
 servers
 	.command("stop-all")
-	.description("Stop Appium processes and disconnect the device session (does not stop the runner)")
+	.description("Disconnect the device session (does not stop the runner)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -756,10 +723,10 @@ servers
 
 program
 	.command("doctor")
-	.description("Diagnose local tooling, drivers, and leftover Appium processes")
+	.description("Diagnose local tooling, agent-device, and the device session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.option("--fix", "Apply safe repairs (ensure runtime, stop foreign Appium, disconnect session)")
+	.option("--fix", "Apply safe repairs (ensure runtime, disconnect session)")
 	.action(async (options: { baseUrl: string; json?: boolean; fix?: boolean }) => {
 		try {
 			const c = client(options.baseUrl);

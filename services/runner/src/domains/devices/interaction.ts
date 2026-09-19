@@ -7,52 +7,31 @@ import {
 	findElementByLabel,
 } from "@yoqa/runner-client";
 import { groundDescription } from "./grounding";
-import { abortAllMjpegProxies } from "./mjpeg-proxy";
-import { cleanPageSource } from "./screen";
+import { snapshotNodesToScreen } from "./screen";
 import type { DeviceSession } from "./session";
 
 export type GetScreenOptions = {
-	/** When true, return raw Appium page source instead of the cleaned 0–1000 tree. */
+	/** When true, return raw agent-device snapshot JSON instead of the cleaned 0–1000 tree. */
 	full?: boolean;
-	/**
-	 * Abort live `/stream.mjpeg` proxies before pageSource (iOS WDA cannot dual-load).
-	 * Default true. Inspector remounts the stream after the call.
-	 */
+	/** Accepted for Inspector compatibility; agent-device has no MJPEG proxy to pause. */
 	pauseMjpeg?: boolean;
 };
 
-const MJPEG_PAUSE_SETTLE_MS = 150;
-
-async function readScreen(
+/** Read the device Screen from the agent-device snapshot backend. */
+export async function getScreen(
 	session: DeviceSession,
-	options: GetScreenOptions,
+	options: GetScreenOptions = {},
 ): Promise<ScreenResponse> {
-	const raw = await session.pageSource();
-	const window = await session.getWindowSize();
+	const { nodes, window } = await session.snapshotNodes();
 	if (options.full) {
-		return { full: true, window, raw };
+		return { full: true, window, raw: JSON.stringify(nodes) };
 	}
-	const cleaned = cleanPageSource(raw, window);
+	const cleaned = snapshotNodesToScreen(nodes, window);
 	return {
 		full: false,
 		window: cleaned.window,
 		elements: cleaned.elements,
 	};
-}
-
-/**
- * Read the device Screen. Pauses MJPEG proxies first so iOS WDA is not
- * dual-loaded (stream + pageSource); Inspector remounts the stream afterward.
- */
-export async function getScreen(
-	session: DeviceSession,
-	options: GetScreenOptions = {},
-): Promise<ScreenResponse> {
-	if (options.pauseMjpeg !== false) {
-		const paused = abortAllMjpegProxies();
-		if (paused) await Bun.sleep(MJPEG_PAUSE_SETTLE_MS);
-	}
-	return await readScreen(session, options);
 }
 
 export class ActionValidationError extends Error {
@@ -70,8 +49,9 @@ export class ActionNotFoundError extends Error {
 }
 
 /**
- * Perform one Action on a Device Session. Resolves id/label against the cleaned
- * tree, or Grounding from description, then runs the gesture / lifecycle command.
+ * Perform one Action on a Device Session. Resolves id/label against the
+ * snapshot tree, or Grounding from description, then runs the gesture /
+ * lifecycle command via agent-device.
  */
 export async function performAction(
 	session: DeviceSession,
@@ -103,19 +83,14 @@ export async function performAction(
 		y = grounded.y;
 	}
 
-	const tapOptions = {
-		durationMs: body.durationMs,
-		coordSpace: locatorTap ? ("window" as const) : ("screenshot" as const),
-	};
-
 	switch (body.kind) {
 		case "tap": {
 			if (x == null || y == null) {
 				throw new ActionValidationError("tap requires x,y or --id or --label or description");
 			}
-			await session.tap(x, y, tapOptions);
+			await session.tap(x, y, { durationMs: body.durationMs });
 			if (body.double) {
-				await session.tap(x, y, { coordSpace: tapOptions.coordSpace });
+				await session.tap(x, y);
 			}
 			break;
 		}
@@ -125,9 +100,7 @@ export async function performAction(
 				throw new ActionValidationError(`${body.kind} requires x,y,x2,y2`);
 			}
 			if (body.kind === "swipe") {
-				await session.swipe(x, y, body.x2, body.y2, body.durationMs, {
-					coordSpace: "screenshot",
-				});
+				await session.swipe(x, y, body.x2, body.y2, body.durationMs);
 			} else {
 				await session.drag(x, y, body.x2, body.y2, body.durationMs);
 			}
@@ -135,7 +108,7 @@ export async function performAction(
 		}
 		case "input": {
 			if (x != null && y != null) {
-				await session.tap(x, y, { coordSpace: tapOptions.coordSpace });
+				await session.tap(x, y);
 			}
 			if (!body.text) {
 				throw new ActionValidationError("input requires text");

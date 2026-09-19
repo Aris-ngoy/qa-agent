@@ -4,7 +4,7 @@ import {
 	yoqaStatusResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
-import { getRuntimeStatus } from "../../domains/appium/application";
+import { getAgentDeviceRuntimeStatus } from "../../domains/agent-device/runtime";
 import { getActiveSessionInfo } from "../../domains/devices/active-session";
 import { listProviders, resolveActiveProviderAuth } from "../../domains/providers/application";
 import type { RunnerSettings } from "../../settings";
@@ -14,7 +14,7 @@ export function createStatusRoutes(settings: RunnerSettings) {
 
 	app.get("/status", async (c) => {
 		try {
-			const runtime = await getRuntimeStatus();
+			const runtime = await getAgentDeviceRuntimeStatus();
 			const auth = await resolveActiveProviderAuth();
 			const providers = await listProviders();
 			const activeProvider = auth ? (providers.find((p) => p.id === auth.id) ?? null) : null;

@@ -1,0 +1,79 @@
+import { describe, expect, test } from "bun:test";
+import { isDeadSessionError } from "../devices/session";
+import {
+	AgentDeviceError,
+	agentDeviceErrorFromEnvelope,
+	agentDeviceSessionName,
+	isDeadAgentDeviceSessionError,
+	isSupportedAgentDeviceVersion,
+} from "./cli";
+
+describe("agentDeviceSessionName", () => {
+	test("slugifies a UDID into a stable session name", () => {
+		expect(agentDeviceSessionName("9C96DB25-8319-4E62-9808-8626EC6250F0")).toBe(
+			"yoqa-9c96db25-8319-4e62-9808-8626ec6250f0",
+		);
+	});
+
+	test("slugifies an adb serial", () => {
+		expect(agentDeviceSessionName("emulator-5554")).toBe("yoqa-emulator-5554");
+	});
+
+	test("falls back for blank ids", () => {
+		expect(agentDeviceSessionName("  ")).toBe("yoqa-device");
+	});
+});
+
+describe("isSupportedAgentDeviceVersion", () => {
+	test("accepts current and newer releases", () => {
+		expect(isSupportedAgentDeviceVersion("0.21.6")).toBe(true);
+		expect(isSupportedAgentDeviceVersion("0.22.0")).toBe(true);
+		expect(isSupportedAgentDeviceVersion("1.0.0")).toBe(true);
+	});
+
+	test("rejects older releases and garbage", () => {
+		expect(isSupportedAgentDeviceVersion("0.7.6")).toBe(false);
+		expect(isSupportedAgentDeviceVersion("0.20.9")).toBe(false);
+		expect(isSupportedAgentDeviceVersion("not-a-version")).toBe(false);
+	});
+});
+
+describe("agentDeviceErrorFromEnvelope", () => {
+	test("re-codes the Developer Mode gate and appends the repair path", () => {
+		const error = agentDeviceErrorFromEnvelope({
+			code: "COMMAND_FAILED",
+			message: "Developer mode is disabled for Apple development tools",
+			hint: "Run `sudo DevToolsSecurity -enable`, then retry the iOS runner.",
+		});
+		expect(error).toBeInstanceOf(AgentDeviceError);
+		expect(error.code).toBe("DEVELOPER_MODE_DISABLED");
+		expect(error.message).toBe("Developer mode is disabled for Apple development tools");
+		expect(error.hint).toContain("sudo DevToolsSecurity -enable");
+		expect(error.hint).toContain("yoqa doctor --fix");
+	});
+
+	test("leaves other COMMAND_FAILED errors untouched", () => {
+		const error = agentDeviceErrorFromEnvelope({
+			code: "COMMAND_FAILED",
+			message: "No active session. Run open first.",
+		});
+		expect(error.code).toBe("COMMAND_FAILED");
+		expect(error.hint).toBeUndefined();
+	});
+});
+
+describe("dead session detection", () => {
+	test("SESSION_NOT_FOUND is a dead session", () => {
+		expect(
+			isDeadAgentDeviceSessionError(new AgentDeviceError("No active session", "SESSION_NOT_FOUND")),
+		).toBe(true);
+	});
+
+	test("isDeadSessionError covers agent-device errors and legacy messages", () => {
+		expect(isDeadSessionError(new AgentDeviceError("No active session", "SESSION_NOT_FOUND"))).toBe(
+			true,
+		);
+		expect(isDeadSessionError(new Error("invalid session id"))).toBe(true);
+		expect(isDeadSessionError(new Error("DEVICE_IN_USE by another session"))).toBe(false);
+	});
+});

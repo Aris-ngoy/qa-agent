@@ -2,7 +2,7 @@
 
 **Product:** Yoqa (`yoqa.ai`) · **Code name:** `qa-agent`
 
-This document is the product design and build architecture for Yoqa: desktop + local runner + Appium + agent skill, with optional cloud later.
+This document is the product design and build architecture for Yoqa: desktop + local runner + agent-device + agent skill, with optional cloud later.
 
 Related: public docs in [`apps/docs/`](apps/docs/) (Mintlify) and engineering notes under [`docs/`](docs/).
 
@@ -10,7 +10,7 @@ Related: public docs in [`apps/docs/`](apps/docs/) (Mintlify) and engineering no
 
 ## 1. Product thesis
 
-**Visual, natural-language mobile QA.** An agent tests iOS/Android apps and games from screenshots (and optional cleaned accessibility trees for coding agents), without locator scripts. Device control is **Appium under the hood** ([Appium capabilities](https://docs.yoqa.ai/guide/best-practices-appium-capabilities)): XCUITest (iOS) / UiAutomator2 (Android).
+**Visual, natural-language mobile QA.** An agent tests iOS/Android apps and games from screenshots (and optional cleaned accessibility trees for coding agents), without locator scripts. Device control is **agent-device under the hood** (snapshots with refs, semantic selectors, gestures): the runner shells out to the `agent-device` CLI.
 
 Two complementary modes:
 
@@ -25,33 +25,30 @@ Two complementary modes:
 
 ### 2.1 Desktop app (macOS)
 
-- Local host for Appium + device sessions
+- Local host for agent-device sessions
 - Account sign-in (cloud features, grounding, test management)
 - Settings → Tools: **Install CLI**, **Install skill** (`yoqa-testing`)
 - Local device / simulator browsing and connection
 - Dashboard-like UX for apps, cases, runs, builds (also mirrored in web)
 - Auto-update (Electrobun updater via CDN)
 
-### 2.2 Device layer (Appium)
+### 2.2 Device layer (agent-device)
 
-- Discover iOS devices & simulators / Android devices & emulators
-- Connect session to a device id
+- Discover iOS devices & simulators / Android devices & emulators (`agent-device devices`)
+- Connect session to a device id (`agent-device open` per device, one named session each)
 - Install / launch apps from local builds (`.ipa`, `.app`, `.apk`)
 - Screenshot capture
-- Raw accessibility tree (`screen --full`)
+- Raw snapshot JSON (`screen --full`)
 - Gestures: tap / double / long-press, swipe, drag, text input
 - App lifecycle: activate, terminate, restart, background
 - System: open URL/deeplink, accept/dismiss alerts
-- **Custom Appium capabilities** (app-level + case-level; case overrides app):
-  - e.g. `appium:autoLaunch=false`
-  - Android: `appium:appActivity`, `appium:appWaitActivity` (wildcards)
 
 ### 2.3 Screen reading (for coding agents)
 
 | API | Purpose | Cost (docs) |
 |-----|---------|-------------|
 | `screen` | Cleaned element tree + relative coords 0–1000 | ~1× tokens |
-| `screen --full` | Raw Appium tree | ~7× |
+| `screen --full` | Raw agent-device snapshot JSON | ~7× |
 | `screenshot` | PNG for vision | ~2× |
 
 ### 2.4 Automatic grounding
@@ -74,13 +71,13 @@ Perception → Decision → Action loop from **screenshots** ([how it works](htt
 App
 ├── identifiers: name, bundle_id / package_name, store ids
 ├── app_context (shared rules, credentials, screen names)
-├── appium_capabilities (defaults)
+├── launch target (bundle id / package, no custom caps)
 ├── Tags
 ├── Reusable Flows (name, instructions, result)
 ├── Test Cases
 │   ├── title, tags[]
 │   ├── flows[] → inline {instructions, result} OR {id: reusableFlowId}
-│   └── case-level appium_capabilities (override)
+│   └── flows[] (no per-case driver caps)
 └── Builds (.ipa/.app/.apk, metadata)
 Runs
 └── cases[] → per-test pass/fail, steps, screenshots/video
@@ -136,7 +133,7 @@ Product must support:
 
 ## 3. Reference architecture (how we build it)
 
-Desktop + local runner + Appium + optional cloud, implemented in **TypeScript throughout** — Electrobun desktop, Bun runner.
+Desktop + local runner + agent-device + optional cloud, implemented in **TypeScript throughout** — Electrobun desktop, Bun runner.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -151,13 +148,13 @@ Desktop + local runner + Appium + optional cloud, implemented in **TypeScript th
 │  /devices /screen /action   │        │ Builds · Runs · Billing  │
 │  /apps /cases /runs (proxy) │───────►│ Grounding · Agent LLM    │
 │ Domain services             │        │ Cloud device farm        │
-│ Appium adapter (WebDriverIO)│        │ Object storage (S3)      │
+│ agent-device CLI adapter    │        │ Object storage (S3)      │
 └─────────────┬───────────────┘        └────────────┬─────────────┘
-              │ WebDriver                             │
+              │ CLI subprocess (`--json`)             │
               ▼                                       ▼
 ┌─────────────────────────────┐        ┌──────────────────────────┐
-│ Bundled Node + Appium       │        │ Remote Appium / devices  │
-│ XCUITest │ UiAutomator2     │        │ Video/screenshot ingest  │
+│ agent-device (npm/global)   │        │ Remote devices           │
+│ iOS sim/devices │ Android   │        │ Video/screenshot ingest  │
 └─────────────────────────────┘        └──────────────────────────┘
 ```
 
@@ -171,8 +168,8 @@ Desktop + local runner + Appium + optional cloud, implemented in **TypeScript th
 | Styling / lint | **Tailwind CSS v4 + Biome** | Shared UI + fast lint/format |
 | Local runner | **Bun + Hono + Zod + Drizzle/SQLite** | Same language as desktop/CLI; local catalog in `~/.yoqa/yoqa.db` |
 | CLI | **commander** in `packages/cli` (`yoqa` on npm) → HTTP | Thin Node/npx client over localhost runner |
-| Device control | **Appium 2** + WebDriverIO | Documented under the hood |
-| Runtime bundle | Ship **Node 22 + Appium** per arch | Zero global install for users |
+| Device control | **agent-device CLI** (`npm i -g agent-device`) | Snapshots with refs, gestures, installs; no driver management |
+| Runtime bundle | Host Node 22+ + agent-device on PATH | User installs one npm package; runner shells out |
 | Local catalog | **SQLite via Drizzle** in runner | Apps, cases, flows, tags, AI providers (Phase 3+); devices stay live-discovered |
 | Cloud API | Later (TanStack Start web + API of choice) | Cases/runs/billing sync — out of Phase 1 |
 | Auth / user data | Later | Phase 1 is local-only, no login |
@@ -183,7 +180,7 @@ Desktop + local runner + Appium + optional cloud, implemented in **TypeScript th
 ### 3.2 Process model (local)
 
 1. User launches desktop app → Electrobun starts **runner sidecar** (`@yoqa/runner`).
-2. Runner starts or reuses **Appium server** from `bundled-runtime`.
+2. Runner shells out to the **agent-device CLI** (workspace `node_modules/.bin`, then `PATH`).
 3. CLI / UI call `http://127.0.0.1:<port>/…` via `@yoqa/runner-client`.
 4. Cloud calls (auth, grounding, cases sync, agent run orchestration) go to `api.*` with user token (post–Phase 1).
 5. For `runs create`, runner resolves AI auth via `resolveActiveProviderAuth()` (local BYO provider instances from Settings → Provider: Anthropic/OpenAI API keys, Claude/Codex CLI, OpenCode, GitHub Copilot) or later streams screenshots to a cloud agent with a user token.
@@ -196,14 +193,15 @@ Modular layout under the runner:
 
 ```
 services/runner/src/
-  index.ts                # Hono app, lifespan (start Appium)
+  index.ts                # Hono app (no managed device server; agent-device owns sessions)
   settings.ts
   domains/
+    agent-device/         # CLI adapter (`--json` envelope), device listing, runtime readiness
     devices/              # list, connect, session registry
     testing/              # screen tree cleanup, actions, local runs
     builds/               # register ipa/apk, parse metadata
     apps/                 # local cache of app metadata
-    ios/                  # WDA, signing, Xcode helpers
+    ios/                  # legacy WDA / signing prep (unused by the agent-device backend)
     providers/            # Multi-instance AI drivers (API keys / CLI / tokens; encrypted at rest)
     auth/                 # token storage, refresh (post–Phase 1)
     environment/          # CLI symlink, skill install
@@ -212,43 +210,31 @@ services/runner/src/
     cli/                  # `yoqa` entrypoint (commander)
   shared/
     adapters/
-      appium.ts           # WebDriverIO session, caps merge
       agent.ts            # cloud agent client (later)
       api.ts              # cloud REST client (later)
 ```
 
-### 4.1 Appium session service (critical path)
+### 4.1 Device session service (critical path)
 
 ```text
 connect(device_id):
-  resolve platform + udid
-  merge capabilities:
-    defaults
-    + app-level caps
-    + case-level caps (on run)
-  create Appium session (XCUITest | UiAutomator2)
+  open agent-device app on the target (--udid/--serial selector, one named session)
   store session in ActiveSession registry
 
 action(cmd):
   if description: coords = await grounding(screenshot|tree, description)
   else: coords = normalize_0_1000_to_pixels(x,y)
-  dispatch WebDriver gesture / mobile: command
+  dispatch agent-device gesture (press / swipe / fill / alert …)
 
 screen(cleaned=True):
-  source = driver.page_source / get_page_source
+  source = agent-device snapshot -i
   if cleaned: filter noise, emit {label, type, bounds_rel_0_1000}[]
-  else: return raw
-```
-
-**Capability merge** (see [Appium capabilities](https://docs.yoqa.ai/guide/best-practices-appium-capabilities)):
-
-```
-effective = defaults ∪ app.caps ∪ case.caps   # later keys win
+  else: return raw snapshot JSON
 ```
 
 ### 4.2 Cleaned element tree
 
-Goals: cut token cost vs raw Appium tree while keeping actionable nodes + exact relative boxes.
+Goals: cut token cost vs the raw agent-device snapshot while keeping actionable nodes + exact relative boxes.
 
 Heuristics (implement iteratively):
 
@@ -301,7 +287,7 @@ Minimal screens to ship MVP:
 
 1. **Sign in**
 2. **Devices** — list/connect iOS & Android
-3. **Apps** — CRUD, app context, default Appium caps
+3. **Apps** — CRUD, app context, launch bundle id / package
 4. **Test cases** — editor (flows, tags, case caps)
 5. **Reusable flows**
 6. **Builds** — register local path / upload cloud
@@ -318,11 +304,11 @@ CLI is a first-class peer of the UI (same local API).
 
 - Monorepo: `apps/desktop` (Electrobun+Vite+React), `services/runner` (Bun/Hono), `packages/skill`
 - Runner health endpoint; Electrobun spawns sidecar
-- Bundle/detect system Appium first (defer full Node bundle)
+- Resolve agent-device CLI first (`node_modules/.bin`, then `PATH`)
 
 ### Phase 1 — Device connector MVP (core value)
 
-- Appium session connect (sim + 1 real device each platform)
+- agent-device session connect (sim + 1 real device each platform)
 - `screenshot`, raw `page_source`, cleaned `screen`
 - Coordinate-based `tap/swipe/drag/input` + app lifecycle + alerts
 - `yoqa` CLI parity for device/inspect/action
@@ -341,7 +327,7 @@ CLI is a first-class peer of the UI (same local API).
 - Apps / cases / flows / tags CRUD (**local SQLite via Drizzle in the runner** → cloud sync later)
 - Desktop UI talks to runner HTTP (`/apps`, `/cases`, `/flows`, `/tags`); DB file: `~/.yoqa/yoqa.db`
 - AI provider connections (`/providers`) for multi-instance drivers — Anthropic, OpenAI, Claude, Codex, OpenCode, GitHub Copilot — with API key / token / CLI probe auth (AES-GCM encrypted secrets; Settings → Provider list + Driver→Identity→Config wizard)
-- Appium caps at app + case level with merge rules
+- Launch targets at app level (bundle id / package); no custom driver caps
 - Builds register from absolute paths; parse bundle id/version
 - Devices remain live-discovered (not stored in SQLite)
 
@@ -361,9 +347,9 @@ CLI is a first-class peer of the UI (same local API).
 
 ### Phase 6 — Packaging polish
 
-- Vendored Node+Appium dual-arch
+- agent-device npm dependency + global-install guidance
 - Electrobun build + DMG + updater CDN
-- iOS WDA/signing helpers, Android SDK checks
+- agent-device readiness checks (`doctor`), Android SDK checks
 
 ---
 
@@ -375,11 +361,11 @@ users(id, email, …)
 memberships(user_id, workspace_id, role)
 
 apps(id, workspace_id, name, prefix, bundle_id, package_name,
-     app_store_id, play_store_id, app_context, appium_caps jsonb)
+     app_store_id, play_store_id, app_context)
 
 tags(id, app_id, name)
 flows(id, app_id, name, instructions, result)          -- reusable
-cases(id, app_id, title, appium_caps jsonb)
+cases(id, app_id, title)
 case_tags(case_id, tag_id)
 case_flows(case_id, position, instructions, result, flow_id nullable)
 
@@ -394,8 +380,8 @@ run_steps(id, run_test_id, idx, action jsonb, screenshot_uri, ok, latency_ms)
 ## 8. Security & safety boundaries
 
 - Local runner binds **localhost only**
-- Cloud API never accepts raw Appium control of user’s laptop without auth
-- Capability allowlist (block dangerous Appium flags if needed)
+- Cloud API never accepts raw device control of user’s laptop without auth
+- No custom driver flags (agent-device CLI surface only)
 - Secrets (test passwords) in app_context → encrypt at rest
 - Sandbox IAP only; document store account requirements
 - Quarantine unsigned builds; clear Gatekeeper xattrs on install helpers
@@ -407,17 +393,17 @@ run_steps(id, run_test_id, idx, action jsonb, screenshot_uri, ok, latency_ms)
 Yoqa owns its stack end-to-end:
 
 - Vision / agent prompts and provider wiring (`resolveActiveProviderAuth()`, Settings → Provider)
-- Cleaned accessibility-tree heuristics measured against real Appium trees
+- Cleaned snapshot-tree heuristics measured against real agent-device snapshots
 - Branding and bundle ids (`ai.yoqa.app`, `io.yoqa.WebDriverAgentRunner`, `@yoqa/*`)
 
-Product surface we ship: Appium execution, `yoqa` CLI contract, case/flow model, dual agent modes, Electrobun packaging, and Mintlify docs + `yoqa-testing` skill.
+Product surface we ship: agent-device execution, `yoqa` CLI contract, case/flow model, dual agent modes, Electrobun packaging, and Mintlify docs + `yoqa-testing` skill.
 
 ---
 
 ## 10. Immediate next engineering tasks
 
 1. Scaffold monorepo (`desktop` + `runner` + `skill`) — Bun + Turborepo.
-2. Implement `DeviceSession` + Appium adapter with capability merge.
+2. Implement `DeviceSession` + agent-device CLI adapter.
 3. Implement cleaned `screen` + coordinate actions.
 4. Wire `yoqa` CLI → local Hono runner.
 5. Add Electrobun window that shows connection status and Install CLI.
@@ -426,22 +412,22 @@ Product surface we ship: Appium execution, `yoqa` CLI contract, case/flow model,
 
 ## 11. Sequence diagrams (core paths)
 
-### 11.1 Appium session connect
+### 11.1 agent-device session connect
 
 ```mermaid
 sequenceDiagram
   participant CLI as CLI / Desktop
   participant R as Local Runner
-  participant A as Appium Server
+  participant A as agent-device CLI
   participant D as Device / Sim
 
   CLI->>R: POST /devices/connect {device_id, caps?}
   R->>R: resolve platform + udid
   R->>R: merge defaults ∪ app.caps
-  R->>A: createSession(capabilities)
-  A->>D: XCUITest / UiAutomator2
+  R->>A: open app on device (named session)
+  A->>D: platform automation
   D-->>A: session ready
-  A-->>R: session_id
+  A-->>R: session
   R->>R: ActiveSession.set(session)
   R-->>CLI: {device_id, platform, session_id}
 ```
@@ -453,10 +439,10 @@ sequenceDiagram
   participant CLI as CLI
   participant R as Local Runner
   participant G as Cloud Grounding
-  participant A as Appium
+  participant A as agent-device
 
   CLI->>R: POST /action/tap {description}
-  R->>A: screenshot (or cleaned tree)
+  R->>A: screenshot / snapshot
   A-->>R: image / tree
   R->>G: POST /v1/grounding {desc, image}
   G-->>R: {x,y} in 0–1000
@@ -473,7 +459,7 @@ sequenceDiagram
   participant CLI as CLI / UI
   participant R as Local Runner
   participant C as Cloud Agent API
-  participant A as Appium
+  participant A as agent-device
 
   CLI->>R: POST /runs {case_ids, build?}
   R->>R: install build if needed + merge case caps
@@ -484,7 +470,7 @@ sequenceDiagram
     R->>C: decide(step, shot, app_context, memory)
     C-->>R: action | verify | fail
     alt action
-      R->>A: execute gesture / lifecycle
+      R->>A: execute gesture / lifecycle (press/fill/alert …)
     else verify
       R->>C: check expected_result vs shot
     end
@@ -512,9 +498,9 @@ repo/
 │       └── src/
 │           ├── settings.ts           # listen host/port/version (not product prefs)
 │           ├── domains/
-│           │   ├── devices/          # Device Session, Screen, Action, Active Session, MJPEG
-│           │   ├── appium/           # Appium Runtime + Appium Server ensureServer
-│           │   ├── ios/              # WDA / signing prep
+│           │   ├── devices/          # Device Session, Screen, Action, Active Session
+│           │   ├── agent-device/     # agent-device CLI adapter + runtime readiness
+│           │   ├── ios/              # legacy WDA / signing prep (unused)
 │           │   ├── providers/        # Provider adapters + vision completion
 │           │   ├── runs/             # Run orchestration + Case executor + agent prompts
 │           │   ├── catalog/          # apps, cases, flows
@@ -533,8 +519,8 @@ repo/
 | Module | Owns |
 |--------|------|
 | `devices/` Device Session | create/attach, gestures, screenshots, Dead Session errors; Active Session registry |
-| `devices/` Screen & Action | `getScreen`, `performAction` (incl. Grounding); MJPEG pause on Screen read |
-| `appium/` | Runtime install + listening Appium Server |
+| `devices/` Screen & Action | `getScreen`, `performAction` (incl. Grounding) |
+| `agent-device/` | CLI subprocess adapter (sessions, snapshots, actions, installs) + runtime readiness |
 | `providers/` | probe/validate/listModels + optional decide/ground; catalog for Settings UI |
 | `runs/` Case executor | one case with injected session/decide/clock/abort; uses Screen & Action |
 | `packages/cli` | thin HTTP client to local runner |
@@ -554,14 +540,14 @@ Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done
 | [Device preparation](https://docs.yoqa.ai/docs/device-preparation) | Xcode/adb readiness checks | [ ] |
 | [Local builds](https://docs.yoqa.ai/docs/local-builds) | `.ipa/.app/.apk` register & install | [ ] |
 | [Apps](https://docs.yoqa.ai/docs/apps) | name, bundle/package, store ids, context | [ ] |
-| [Test cases](https://docs.yoqa.ai/docs/test-cases) | flows, tags, case Appium caps | [ ] |
+| [Test cases](https://docs.yoqa.ai/docs/test-cases) | flows, tags | [ ] |
 | [CLI](https://docs.yoqa.ai/docs/cli) | devices/screen/action/apps/cases/flows/builds/runs | [~] |
 | [CLI for agents](https://docs.yoqa.ai/guide/cli-for-agents) | skill + inspect→act→verify | [~] |
 | [How agent works](https://docs.yoqa.ai/guide/how-yoqa-agent-works) | perception loop, memory, limits | [ ] |
 | [Writing test cases](https://docs.yoqa.ai/guide/writing-test-cases) | app_context, reusable flows | [ ] |
 | Local vs cloud | capability matrix | [ ] |
 | Cloud / Cloud builds / CI/CD | farm, upload, pipeline | [ ] |
-| [Appium capabilities](https://docs.yoqa.ai/guide/best-practices-appium-capabilities) | merge + autoLaunch/activity | [~] |
+| Device capabilities (removed) | ~~merge + autoLaunch/activity~~ — custom driver caps were an Appium concept; the agent-device backend needs none | [x] |
 | Best practices: [state](https://docs.yoqa.ai/guide/best-practices-app-state), [cross-app](https://docs.yoqa.ai/guide/best-practices-cross-app), [cross-platform](https://docs.yoqa.ai/guide/best-practices-cross-platform), [games](https://docs.yoqa.ai/guide/best-practices-games), [IAP](https://docs.yoqa.ai/guide/best-practices-iap), [non-native](https://docs.yoqa.ai/guide/best-practices-non-native-ui) | product behaviors / guides | [ ] |
 
 ### Public API (planned)
@@ -578,7 +564,6 @@ Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done
 
 ## References
 
-- [Appium Capabilities](https://docs.yoqa.ai/guide/best-practices-appium-capabilities)
 - [How Yoqa agent works](https://docs.yoqa.ai/guide/how-yoqa-agent-works)
 - [CLI](https://docs.yoqa.ai/docs/cli)
 - [CLI for agents](https://docs.yoqa.ai/guide/cli-for-agents)

@@ -1275,9 +1275,6 @@ export function TestCaseDetailPage() {
 						expectedResult: flow.expectedResult,
 						flowId: flow.flowId ?? null,
 					})),
-					capabilities: next.capabilities
-						.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
-						.filter((cap) => cap.key.length > 0),
 				}),
 			);
 		},
@@ -1314,9 +1311,6 @@ export function TestCaseDetailPage() {
 						instructions: flow.instructions,
 						expectedResult: flow.expectedResult,
 					})),
-					capabilities: form.capabilities
-						.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
-						.filter((cap) => cap.key.length > 0),
 				}),
 			);
 		},

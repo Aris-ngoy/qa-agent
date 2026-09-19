@@ -6,7 +6,7 @@ import {
 	setupPlatformResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
-import { setupPlatform } from "../../domains/appium/application";
+import { setupAgentDevicePlatform } from "../../domains/agent-device/runtime";
 import { listDevices } from "../../domains/devices/application";
 
 export function createDevicesRoutes() {
@@ -53,7 +53,7 @@ export function createDevicesRoutes() {
 		}
 
 		try {
-			const result = await setupPlatform(parsed.data);
+			const result = await setupAgentDevicePlatform(parsed.data);
 			const body = setupPlatformResponseSchema.parse(result);
 			return c.json(body);
 		} catch (error) {

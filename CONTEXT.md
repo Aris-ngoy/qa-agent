@@ -1,13 +1,13 @@
 # Yoqa
 
-Local-first agentic mobile QA: devices under Appium, runs driven by scripts or the Yoqa agent, BYO providers for vision and decide.
+Local-first agentic mobile QA: devices under agent-device, runs driven by scripts or the Yoqa agent, BYO providers for vision and decide.
 
 ## Language
 
 ### Device layer
 
 **Device Session**:
-A live connection to one device (or simulator/emulator) through Appium, including gestures, screenshots, and app lifecycle control. At most one Device Session may exist per device id at a time.
+A live connection to one device (or simulator/emulator) through agent-device, including gestures, screenshots, and app lifecycle control. At most one Device Session may exist per device id at a time.
 _Avoid_: Active session handle alone, WebDriver session (implementation detail), runner session
 
 **Active Session**:
@@ -15,16 +15,12 @@ The single Device Session shared across modes (connector / inspector / runs). A 
 _Avoid_: Run session (a Run adopts the Active Session), per-mode session
 
 **Dead Session**:
-A Device Session the runner still thinks is open but Appium has already dropped (invalid/missing session id).
+A Device Session the runner still thinks is open but agent-device has already dropped (missing/closed session).
 _Avoid_: disconnected (user-initiated), abandoned (implementation verb only)
 
-**Appium Runtime**:
-The installed Appium binary and drivers Yoqa manages under its home directory.
-_Avoid_: Appium server (the listening process), Device Session
-
-**Appium Server**:
-The listening Appium process Device Sessions attach to.
-_Avoid_: Appium Runtime, WebDriver hub (generic)
+**agent-device CLI**:
+The installed `agent-device` binary the runner shells out to for device control (sessions, snapshots, gestures, installs). Resolved from `node_modules/.bin`, then `PATH` (`npm install -g agent-device@latest`).
+_Avoid_: Appium server (removed backend), Device Session
 
 ### Screen & action
 

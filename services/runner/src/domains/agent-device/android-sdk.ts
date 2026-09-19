@@ -86,8 +86,8 @@ export function pathWithAndroidSdk(currentPath: string, sdkRoot: string): string
 }
 
 /**
- * Env vars Appium UiAutomator2 needs. Empty when the SDK directory is missing
- * so we do not export a bogus ANDROID_HOME.
+ * Env vars adb / agent-device Android backend needs. Empty when the SDK directory
+ * is missing so we do not export a bogus ANDROID_HOME.
  */
 export function androidSdkEnvPatch(
 	env: AndroidSdkEnv,
@@ -134,7 +134,7 @@ function applyPatch(env: Record<string, string>, patch: AndroidSdkPatch): Record
 	return env;
 }
 
-/** Full env for Appium / adb child processes, with GUI SDK and JDK fallbacks. */
+/** Full env for adb / agent-device child processes, with GUI SDK and JDK fallbacks. */
 export function androidProcessEnv(
 	env: NodeJS.ProcessEnv = process.env,
 	options?: {
