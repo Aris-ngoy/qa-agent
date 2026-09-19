@@ -17,7 +17,7 @@ import {
 	disconnectDevice,
 	getActiveSessionInfo,
 	isActiveSessionHeldByRun,
-	isMissingAppiumSessionError,
+	isMissingSessionError,
 	requireActiveSession,
 } from "../../domains/devices/active-session";
 import {
@@ -35,7 +35,7 @@ function sessionErrorResponse(error: unknown) {
 			body: { error: error.message },
 		};
 	}
-	if (isMissingAppiumSessionError(error)) {
+	if (isMissingSessionError(error)) {
 		abandonActiveSession();
 		return {
 			status: 410 as const,
@@ -164,8 +164,8 @@ export function createSessionRoutes() {
 	app.get("/stream.mjpeg", async (c) => {
 		return c.json(
 			{
-				error: "Live MJPEG stream was removed with the Appium backend",
-				detail: "Poll GET /screenshot/image instead; agent-device owns streaming via record",
+				error: "Live MJPEG stream is not available",
+				detail: "Poll GET /screenshot/image instead; agent-device owns recording via record",
 			},
 			410,
 		);

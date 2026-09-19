@@ -1,6 +1,6 @@
 /**
  * Map agent-device snapshot nodes to Yoqa's compact element list with
- * relative 0–1000 boxes (replaces the Appium page-source parser).
+ * relative 0–1000 boxes.
  */
 
 import type { SnapshotNode } from "./session";

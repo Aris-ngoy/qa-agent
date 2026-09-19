@@ -52,8 +52,8 @@ export function AddApplicationModal({ open, onClose, onAdd }: AddApplicationModa
 						<Form className="contents" onSubmit={handleSubmit(onSubmit)}>
 							<Modal.Body className="gap-4">
 								<p className="text-body-md text-on-surface-variant">
-									Add the mobile app you want to test. You can configure bundle IDs and Appium
-									capabilities after it is created.
+									Add the mobile app you want to test. You can configure bundle IDs after it is
+									created.
 								</p>
 								<RhfTextField
 									autoFocus

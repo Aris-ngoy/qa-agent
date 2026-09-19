@@ -82,7 +82,7 @@ export async function setAndroidToolchainSelection(params: {
 	return getAndroidToolchainSnapshot();
 }
 
-/** Env injected into the runner sidecar so Appium sees SDK / JDK paths. */
+/** Env injected into the runner sidecar so agent-device sees SDK / JDK paths. */
 export async function androidToolchainProcessEnv(): Promise<Record<string, string>> {
 	const snapshot = await getAndroidToolchainSnapshot();
 	const env: Record<string, string> = {};

@@ -1,8 +1,8 @@
 import { RhfTextField, requiredTrimmed } from "@/app/forms";
-import { type AppiumCapability, useApps } from "@/features/apps/context";
+import { useApps } from "@/features/apps/context";
 import { AlertDialog, Button, Form } from "@heroui/react";
 import { type SVGProps, useEffect, useState } from "react";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 
 type FormValues = {
 	name: string;
@@ -10,7 +10,6 @@ type FormValues = {
 	iosBundleId: string;
 	iosAppStoreId: string;
 	androidApplicationId: string;
-	capabilities: AppiumCapability[];
 };
 
 function TrashIcon(props: SVGProps<SVGSVGElement>) {
@@ -42,7 +41,6 @@ function formFromApp(app: {
 	iosBundleId: string;
 	iosAppStoreId: string;
 	androidApplicationId: string;
-	capabilities: AppiumCapability[];
 }): FormValues {
 	return {
 		name: app.name,
@@ -50,7 +48,6 @@ function formFromApp(app: {
 		iosBundleId: app.iosBundleId,
 		iosAppStoreId: app.iosAppStoreId,
 		androidApplicationId: app.androidApplicationId,
-		capabilities: app.capabilities.map((cap) => ({ ...cap })),
 	};
 }
 
@@ -71,15 +68,8 @@ export function ConfigurationPage() {
 			iosBundleId: "",
 			iosAppStoreId: "",
 			androidApplicationId: "",
-			capabilities: [],
 		},
 		mode: "onChange",
-	});
-
-	const { fields, append, remove } = useFieldArray({
-		control,
-		name: "capabilities",
-		keyName: "fieldId",
 	});
 
 	const nameValue = useWatch({ control, name: "name" });
@@ -106,13 +96,6 @@ export function ConfigurationPage() {
 			iosBundleId: values.iosBundleId.trim(),
 			iosAppStoreId: values.iosAppStoreId.trim(),
 			androidApplicationId: values.androidApplicationId.trim(),
-			capabilities: values.capabilities
-				.map((cap) => ({
-					...cap,
-					key: cap.key.trim(),
-					value: cap.value.trim(),
-				}))
-				.filter((cap) => cap.key.length > 0),
 		});
 	};
 
@@ -248,61 +231,6 @@ export function ConfigurationPage() {
 							/>
 						</div>
 					</div>
-				</section>
-
-				<section className="rounded-2xl border border-outline-variant/80 bg-surface-container-lowest p-6 shadow-card">
-					<div className="mb-5">
-						<h2 className="mb-2 text-headline-md text-on-surface">Custom Appium Capabilities</h2>
-						<p className="text-body-md text-on-surface-variant">
-							Add custom Appium capabilities that will be passed to the driver when running tests.
-							These are merged with system capabilities.
-						</p>
-					</div>
-
-					{fields.length > 0 ? (
-						<ul className="mb-4 flex flex-col gap-3">
-							{fields.map((field, index) => (
-								<li className="flex items-start gap-2" key={field.fieldId}>
-									<RhfTextField
-										aria-label="Capability key"
-										className="min-w-0 flex-1"
-										control={control}
-										inputClassName={fieldInputClass}
-										name={`capabilities.${index}.key`}
-										placeholder="appium:autoLaunch"
-									/>
-									<RhfTextField
-										aria-label="Capability value"
-										className="min-w-0 flex-1"
-										control={control}
-										inputClassName={fieldInputClass}
-										name={`capabilities.${index}.value`}
-										placeholder="false"
-									/>
-									<Button
-										aria-label="Remove capability"
-										className="size-10 min-w-10 shrink-0 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
-										onPress={() => remove(index)}
-										type="button"
-										variant="ghost"
-									>
-										<TrashIcon />
-									</Button>
-								</li>
-							))}
-						</ul>
-					) : null}
-
-					<button
-						className="inline-flex items-center gap-2 rounded-lg bg-surface-container px-4 py-2 text-body-md font-medium text-on-surface transition-colors hover:bg-surface-container-high"
-						onClick={() => append({ id: `cap_${crypto.randomUUID()}`, key: "", value: "" })}
-						type="button"
-					>
-						<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 20 20">
-							<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
-						</svg>
-						Add capability
-					</button>
 				</section>
 			</Form>
 		</div>

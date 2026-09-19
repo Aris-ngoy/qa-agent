@@ -7,7 +7,7 @@ inputs:
     required: false
     default: "1.2.23"
   node-version:
-    description: Node.js version for the CLI and managed Appium
+    description: Node.js version for the CLI and agent-device
     required: false
     default: "22"
   cli-version:
