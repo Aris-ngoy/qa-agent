@@ -1,5 +1,5 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
-import { Button, ListBox, Modal, Select } from "@heroui/react";
+import { Button, Description, Input, ListBox, Modal, Select, TextField } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, type SVGProps, useEffect, useMemo, useState } from "react";
 import type { CliEnvironmentSnapshot } from "../../../shared/cli-environment";
@@ -163,6 +163,8 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	const [tierFilter, setTierFilter] = useState<IdentityFilter>("all");
 	const [xcodeId, setXcodeId] = useState<string | null>(null);
 	const [signingId, setSigningId] = useState<string | null>(null);
+	const [bundleId, setBundleId] = useState("");
+	const [bundleFocused, setBundleFocused] = useState(false);
 
 	const toolchainQuery = useQuery({
 		queryKey: IOS_TOOLCHAIN_QUERY_KEY,
@@ -175,7 +177,10 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 		if (!toolchainQuery.data) return;
 		setXcodeId(toolchainQuery.data.preferences.xcodeDeveloperDir);
 		setSigningId(toolchainQuery.data.preferences.signingIdentityHash);
-	}, [toolchainQuery.data]);
+		if (!bundleFocused) {
+			setBundleId(toolchainQuery.data.preferences.agentDeviceBundleId ?? "");
+		}
+	}, [toolchainQuery.data, bundleFocused]);
 
 	const xcodes = toolchainQuery.data?.xcodes ?? [];
 	const identities = toolchainQuery.data?.identities ?? [];
@@ -203,6 +208,7 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	const persistSelection = async (next: {
 		xcodeDeveloperDir?: string | null;
 		signingIdentityHash?: string | null;
+		agentDeviceBundleId?: string | null;
 	}) => {
 		const preferences = await getDesktopRpc().request.setIosToolchainSelection(next);
 		queryClient.setQueryData<IosToolchainSnapshot>(IOS_TOOLCHAIN_QUERY_KEY, (current) => {
@@ -221,6 +227,17 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 		if (key == null) return;
 		setSigningId(key);
 		void persistSelection({ signingIdentityHash: key });
+	};
+
+	const teamId = selectedSigning?.teamId ?? toolchainQuery.data?.preferences.teamId ?? null;
+
+	const handleBundleBlur = () => {
+		setBundleFocused(false);
+		const trimmed = bundleId.trim();
+		const saved = toolchainQuery.data?.preferences.agentDeviceBundleId ?? "";
+		if (trimmed !== saved) {
+			void persistSelection({ agentDeviceBundleId: trimmed || null });
+		}
 	};
 
 	return (
@@ -388,6 +405,39 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 						</li>
 					</ul>
 				</div>
+			</section>
+
+			<section>
+				<h3 className="text-subheading font-semibold text-on-surface">
+					agent-device Runner Signing
+				</h3>
+				<p className="mt-1 mb-3 text-body-md text-on-surface-variant">
+					Team and bundle id used to sign the agent-device test runner on physical devices. The
+					runner reads them from these Settings — no shell env needed.
+				</p>
+				<p className="mb-3 text-body-md text-on-surface-variant">
+					Team ID:{" "}
+					<span className="font-mono text-body-sm text-on-surface">
+						{teamId ?? "select a signing identity above"}
+					</span>
+				</p>
+				<TextField
+					aria-label="Runner bundle id"
+					className="w-full"
+					onChange={setBundleId}
+					value={bundleId}
+				>
+					<Input
+						className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3.5 font-mono text-body-sm shadow-none"
+						onBlur={handleBundleBlur}
+						onFocus={() => setBundleFocused(true)}
+						placeholder="com.yourname.agentdevice.runner"
+					/>
+					<Description className="mt-1.5 text-helper text-on-surface-variant">
+						Unique reverse-DNS id for the test runner. Applies to the next physical-device build —
+						reconnect the device after changing signing.
+					</Description>
+				</TextField>
 			</section>
 		</div>
 	);

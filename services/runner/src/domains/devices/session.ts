@@ -220,9 +220,10 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	await releaseExistingSession(options.deviceId);
 
 	const sessionName = agentDeviceSessionName(options.deviceId);
+	const closeSessionArgs = ["close", "--session", sessionName, ...deviceSelectorArgs(options)];
 	// A previous runner process may have left the named session open — close it first.
 	try {
-		await runAgentDevice(["close", "--session", sessionName], { timeoutMs: 30_000 });
+		await runAgentDevice(closeSessionArgs, { timeoutMs: 30_000 });
 	} catch {
 		// No stale session — continue to open.
 	}
@@ -255,7 +256,12 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		}
 	};
 
-	const sessionArgs = (extra: string[]): string[] => [...extra, "--session", sessionName];
+	const sessionArgs = (extra: string[]): string[] => [
+		...extra,
+		"--session",
+		sessionName,
+		...deviceSelectorArgs(options),
+	];
 
 	const snapshotNodes = async (): Promise<{
 		nodes: SnapshotNode[];
@@ -303,7 +309,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		gate.cancel();
 		if (sessionDeadNotified) return;
 		try {
-			await runAgentDevice(["close", "--session", sessionName], { timeoutMs: 30_000 });
+			await runAgentDevice(closeSessionArgs, { timeoutMs: 30_000 });
 		} catch (error) {
 			if (!isDeadSessionError(error)) {
 				console.warn(
@@ -439,7 +445,15 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		await gate.withLock(async () => {
 			await guard(async () => {
 				await runAgentDevice(
-					["open", url, "--platform", options.platform, "--session", sessionName],
+					[
+						"open",
+						url,
+						"--platform",
+						options.platform,
+						"--session",
+						sessionName,
+						...deviceSelectorArgs(options),
+					],
 					{ timeoutMs: OPEN_TIMEOUT_MS },
 				);
 			});
