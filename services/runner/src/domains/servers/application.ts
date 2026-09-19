@@ -58,9 +58,6 @@ function sessionEntry(): ServerEntry | null {
 	};
 }
 
-/** No-op bridge kept for boot ordering (agent-device needs no local server process). */
-export function installAppiumSessionBridge(): void {}
-
 export async function listServers(): Promise<ListServersResponse> {
 	const servers: ServerEntry[] = [runnerEntry()];
 	const session = sessionEntry();

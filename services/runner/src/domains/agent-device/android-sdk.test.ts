@@ -125,7 +125,7 @@ describe("androidProcessEnv", () => {
 		const jbr = defaultJavaHomeCandidates("/Users/demo", "darwin")[0];
 		expect(jbr).toBeDefined();
 		const env = androidProcessEnv(
-			{ PATH: "/usr/bin", APPIUM_HOME: "/tmp/appium" },
+			{ PATH: "/usr/bin", CUSTOM_HOME: "/tmp/custom" },
 			{
 				home: "/Users/demo",
 				platform: "darwin",
@@ -135,7 +135,7 @@ describe("androidProcessEnv", () => {
 		expect(env.ANDROID_HOME).toBe(sdk);
 		expect(env.ANDROID_SDK_ROOT).toBe(sdk);
 		expect(env.JAVA_HOME).toBe(jbr);
-		expect(env.APPIUM_HOME).toBe("/tmp/appium");
+		expect(env.CUSTOM_HOME).toBe("/tmp/custom");
 		expect(env.PATH?.startsWith(`${sdk}/platform-tools:`)).toBe(true);
 	});
 });

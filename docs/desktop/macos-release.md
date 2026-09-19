@@ -69,4 +69,4 @@ open /Applications/yoqa.app
 - Apple codesign + notarize secrets
 - `macos-x64` matrix build
 - Set `release.baseUrl` to the GitHub Releases download URL for Electrobun auto-update
-- Optional: ship a Node/npm sidecar so Appium install works with zero host Node install
+- Optional: ship a Node/npm sidecar so agent-device install works with zero host Node install

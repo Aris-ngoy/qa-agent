@@ -1034,7 +1034,7 @@ export class RunnerClient {
 		return cacheBust != null ? `${url}?t=${cacheBust}` : url;
 	}
 
-	/** Proxied Appium MJPEG stream for the Inspector live feed. */
+	/** Legacy MJPEG stream URL — the runner returns 410; poll screenshots instead. */
 	getStreamMjpegUrl(): string {
 		return `${this.baseUrl}/stream.mjpeg`;
 	}

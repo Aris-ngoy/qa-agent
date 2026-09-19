@@ -49,7 +49,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** Accessibility tree refresh when using screenshot poll (not during MJPEG). */
 const TREE_REFRESH_MS = 8000;
-/** Fallback screenshot poll when Appium MJPEG is unavailable. */
+/** Fallback screenshot poll when a live MJPEG URL is unavailable. */
 const FALLBACK_SCREENSHOT_MS = 250;
 /** Background-refresh the cached tree if older than this on select. */
 const TREE_STALE_MS = 3000;
@@ -293,7 +293,7 @@ export function InspectorPage() {
 			try {
 				const client = await getRunnerClient();
 				// pauseMjpeg aborts live stream proxies on the runner before pageSource
-				// (Appium Inspector Element Mode — source without dual-loading WDA).
+				// Select mode: refresh the accessibility tree without dual-loading the session.
 				const screen = await client.getScreen({ pauseMjpeg });
 				if (sessionEpochRef.current !== epoch || !activeRef.current) return null;
 				const next = screen.elements ?? [];
