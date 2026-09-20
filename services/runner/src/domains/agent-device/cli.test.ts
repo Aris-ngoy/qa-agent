@@ -6,7 +6,9 @@ import {
 	agentDeviceErrorFromEnvelope,
 	agentDeviceSessionName,
 	conflictingSessionAddress,
+	deviceTrustInstructions,
 	isDeadAgentDeviceSessionError,
+	isDeviceTrustError,
 	isRunnerNotInstalledError,
 	isSameDaemonDeviceInUse,
 	isSupportedAgentDeviceVersion,
@@ -65,6 +67,28 @@ describe("agentDeviceErrorFromEnvelope", () => {
 		expect(error.hint).toBeUndefined();
 	});
 
+	test("appends trust instructions when only the full details carry the signature", () => {
+		const padding = "x".repeat(600);
+		const error = agentDeviceErrorFromEnvelope({
+			code: "COMMAND_FAILED",
+			message: "Runner did not accept connection (xcodebuild exited early)",
+			details: {
+				port: 58363,
+				xcodebuild: {
+					exitCode: 65,
+					stdout: `Command line invocation: ${padding}`,
+					stderr:
+						"Unable to launch com.yoqa.agentdevice.runner.uitests.xctrunner because it has an invalid code signature, inadequate entitlements or its profile has not been explicitly trusted by the user",
+				},
+			},
+		});
+		// Stored detail is truncated (signature cut off) …
+		expect(error.detail ?? "").not.toContain("explicitly trusted");
+		// … but detection ran on the full payload and the hint guides the fix.
+		expect(error.hint).toContain("VPN & Device Management");
+		expect(isDeviceTrustError(error)).toBe(true);
+	});
+
 	test("re-codes a missing-runner COMMAND_FAILED to IOS_RUNNER_NOT_INSTALLED", () => {
 		const error = agentDeviceErrorFromEnvelope({
 			code: "COMMAND_FAILED",
@@ -102,6 +126,39 @@ describe("runner-missing detection", () => {
 		);
 		expect(isRunnerNotInstalledError(new Error("already in use by session"))).toBe(false);
 		expect(isRunnerNotInstalledError(new Error("Device not found"))).toBe(false);
+	});
+});
+
+describe("device trust detection", () => {
+	test("matches the untrusted-certificate launch failure incl. envelope detail", () => {
+		const error = new AgentDeviceError(
+			"Runner did not accept connection (xcodebuild exited early)",
+			"COMMAND_FAILED",
+			undefined,
+			JSON.stringify({
+				xcodebuild: {
+					stderr:
+						"Unable to launch com.yoqa.agentdevice.runner.uitests.xctrunner because it has an invalid code signature, inadequate entitlements or its profile has not been explicitly trusted by the user",
+				},
+			}),
+		);
+		expect(isDeviceTrustError(error)).toBe(true);
+		expect(deviceTrustInstructions()).toContain("VPN & Device Management");
+	});
+
+	test("matches the plain trust hint", () => {
+		expect(
+			isDeviceTrustError(
+				new Error(
+					"The Developer App Certificate is not trusted. Verify that it is trusted on your device.",
+				),
+			),
+		).toBe(true);
+	});
+
+	test("ignores signing and session errors", () => {
+		expect(isDeviceTrustError(new Error("requires a development team"))).toBe(false);
+		expect(isDeviceTrustError(new AgentDeviceError("gone", "SESSION_NOT_FOUND"))).toBe(false);
 	});
 });
 

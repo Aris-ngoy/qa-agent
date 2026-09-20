@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import yoqaIconFile from "../../../assets/yoqa-ad-runner-icon.png" with { type: "file" };
-import { runAgentDevice } from "./cli";
+import { deviceTrustInstructions, isDeviceTrustError, runAgentDevice } from "./cli";
 import { readDesktopIosSigning } from "./desktop-settings";
 
 /**
@@ -645,6 +645,15 @@ async function prepareRunner(deviceId: string, clean = false): Promise<void> {
 	// Yoqa ios device ids are UDIDs (see deviceSelectorArgs in devices/session).
 	const selector = ["--udid", deviceId];
 	const run = () => runAgentDevice([...base, ...selector], { timeoutMs: 600_000 });
+	// A fresh bundle id / team installs fine but will not *launch* until the
+	// Developer App certificate is trusted on the device — surface the manual
+	// trust step instead of the raw xcodebuild failure.
+	const mapTrustError = (error: unknown): unknown => {
+		if (isDeviceTrustError(error)) {
+			return new Error(deviceTrustInstructions());
+		}
+		return error;
+	};
 	if (!clean) {
 		try {
 			await run();
@@ -652,10 +661,14 @@ async function prepareRunner(deviceId: string, clean = false): Promise<void> {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			if (/unknown|unrecognized|invalid.*(udid|device|selector|option|flag)/i.test(message)) {
-				await runAgentDevice(base, { timeoutMs: 600_000 });
+				try {
+					await runAgentDevice(base, { timeoutMs: 600_000 });
+				} catch (fallbackError) {
+					throw mapTrustError(fallbackError);
+				}
 				return;
 			}
-			throw error;
+			throw mapTrustError(error);
 		}
 	}
 	// Converge a stale cache (e.g. Settings bundle id changed since the last
@@ -663,7 +676,11 @@ async function prepareRunner(deviceId: string, clean = false): Promise<void> {
 	const previous = process.env.AGENT_DEVICE_IOS_CLEAN_DERIVED;
 	process.env.AGENT_DEVICE_IOS_CLEAN_DERIVED = "1";
 	try {
-		await run();
+		try {
+			await run();
+		} catch (error) {
+			throw mapTrustError(error);
+		}
 	} finally {
 		// Empty string is falsy like unset for agent-device's truthy check.
 		process.env.AGENT_DEVICE_IOS_CLEAN_DERIVED = previous ?? "";
