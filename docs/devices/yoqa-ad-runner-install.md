@@ -28,6 +28,8 @@ failing with a raw error — the same treatment WebDriverAgent got under Appium.
 - `services/runner/src/domains/agent-device/runner-install.ts` — status,
   install, branding, prep-record reuse (`~/.yoqa/devices/<udid>.json`),
   stale-copy uninstall so one runner stays on the device.
+  Both bundles are branded YoqaADRunner (host app + XCTest companion —
+  iOS requires both, so "one runner" means one family, not one app).
 - `POST /devices/ios-runner/install`, `GET /devices/ios-runner/status`;
   connect errors carry `code` (`services/runner/src/interfaces/http/`).
 - `packages/runner-client` — schemas, `installIosRunner` /

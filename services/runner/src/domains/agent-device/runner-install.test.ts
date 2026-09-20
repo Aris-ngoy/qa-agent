@@ -5,7 +5,9 @@ import { join } from "node:path";
 import {
 	DEFAULT_YOQA_RUNNER_BUNDLE_ID,
 	YOQA_RUNNER_DISPLAY_NAME,
+	brandRunnerApp,
 	loadRunnerPrep,
+	locateRunnerTestApp,
 	prepMatches,
 	readAppBundleId,
 	staleRunnerBundleIds,
@@ -34,6 +36,7 @@ describe("prepMatches", () => {
 		bundleId: "com.yoqa.agentdevice.runner",
 		teamId: "TEAM1234567",
 		appPath: "/tmp/AgentDeviceRunner.app",
+		testAppPath: null,
 		derivedDataPath: null,
 		branded: true,
 		installedAt: new Date().toISOString(),
@@ -106,5 +109,49 @@ describe("staleRunnerBundleIds", () => {
 				"com.yoqa.agentdevice.runner",
 			),
 		).toEqual([]);
+	});
+});
+
+describe("brandRunnerApp", () => {
+	let dirs: string[] = [];
+	afterEach(async () => {
+		await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
+		dirs = [];
+	});
+
+	async function fixtureApp(withDisplayName: boolean): Promise<string> {
+		const dir = await mkdtemp(join(tmpdir(), "yoqa-runner-brand-"));
+		dirs.push(dir);
+		const appPath = join(dir, "AgentDeviceRunnerUITests-Runner.app");
+		await Bun.spawn(["mkdir", "-p", appPath]).exited;
+		const display = withDisplayName ? "<key>CFBundleDisplayName</key><string>Old</string>" : "";
+		await writeFile(
+			join(appPath, "Info.plist"),
+			`<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.yoqa.agentdevice.runner.uitests.xctrunner</string><key>CFBundleName</key><string>AgentDeviceRunnerUITests-Runner</string>${display}</dict></plist>`,
+			"utf8",
+		);
+		return appPath;
+	}
+
+	test("inserts the display name when missing (macOS plist tooling)", async () => {
+		const appPath = await fixtureApp(false);
+		// Linux CI has no plutil/codesign: branding is skipped, never fatal.
+		await expect(brandRunnerApp(appPath)).resolves.toBe(process.platform === "darwin");
+		if (process.platform === "darwin") {
+			const text = await Bun.file(join(appPath, "Info.plist")).text();
+			expect(text).toContain("<string>YoqaADRunner</string>");
+		}
+	});
+
+	test("locates the companion next to the host build", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "yoqa-runner-locate-"));
+		dirs.push(dir);
+		const phone = join(dir, "Debug-iphoneos", "AgentDeviceRunnerUITests-Runner.app");
+		const sim = join(dir, "Debug-iphonesimulator", "AgentDeviceRunnerUITests-Runner.app");
+		await Bun.spawn(["mkdir", "-p", phone]).exited;
+		await Bun.spawn(["mkdir", "-p", sim]).exited;
+		await expect(locateRunnerTestApp(dir, "physical")).resolves.toBe(phone);
+		await expect(locateRunnerTestApp(dir, "simulator")).resolves.toBe(sim);
+		await expect(locateRunnerTestApp(join(dir, "missing"), "physical")).resolves.toBeNull();
 	});
 });
