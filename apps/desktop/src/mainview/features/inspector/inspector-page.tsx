@@ -50,10 +50,10 @@ import {
 } from "@yoqa/runner-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-/** Accessibility tree refresh when using screenshot poll (not during MJPEG). */
+/** Accessibility tree refresh when using screenshot poll. */
 const TREE_REFRESH_MS = 8000;
-/** Fallback screenshot poll when a live MJPEG URL is unavailable. */
-const FALLBACK_SCREENSHOT_MS = 250;
+/** Live-frame poll interval for the screenshot feed. */
+const FALLBACK_SCREENSHOT_MS = 180;
 /** Background-refresh the cached tree if older than this on select. */
 const TREE_STALE_MS = 3000;
 
@@ -152,7 +152,7 @@ export function InspectorPage() {
 	const [connecting, setConnecting] = useState(false);
 	const [bootLoading, setBootLoading] = useState(false);
 	const [imageUrl, setImageUrl] = useState<string | null>(null);
-	const [feedMode, setFeedMode] = useState<"mjpeg" | "poll" | null>(null);
+	const [feedMode, setFeedMode] = useState<"poll" | null>(null);
 	const [liveControl, setLiveControl] = useState(false);
 	const [elements, setElements] = useState<ScreenElement[]>([]);
 	const [treeRefreshing, setTreeRefreshing] = useState(false);
@@ -182,7 +182,9 @@ export function InspectorPage() {
 	const logIdRef = useRef(0);
 	const imageUrlRef = useRef<string | null>(null);
 	const imageIsBlobRef = useRef(false);
-	const inFlightRef = useRef(false);
+	/** Frame polls and tree refreshes fly independently so the live feed never blocks selection. */
+	const frameInFlightRef = useRef(false);
+	const treeInFlightRef = useRef(false);
 	const activeRef = useRef<ActiveDeviceResponse | null>(null);
 	const elementsRef = useRef<ScreenElement[]>([]);
 	const treeUpdatedAtRef = useRef(0);
@@ -193,10 +195,7 @@ export function InspectorPage() {
 	const sessionEpochRef = useRef(0);
 	/** Device id already adopted from the shared Active Session query. */
 	const adoptedDeviceIdRef = useRef<string | null>(null);
-	const feedModeRef = useRef<"mjpeg" | "poll" | null>(null);
-	const startLiveFeedRef = useRef<(deviceInfo: ActiveDeviceResponse) => Promise<void>>(
-		async () => {},
-	);
+	const startLiveFeedRef = useRef<() => Promise<void>>(async () => {});
 
 	useEffect(() => {
 		activeRef.current = active;
@@ -209,10 +208,6 @@ export function InspectorPage() {
 	useEffect(() => {
 		selectionRef.current = selection;
 	}, [selection]);
-
-	useEffect(() => {
-		feedModeRef.current = feedMode;
-	}, [feedMode]);
 
 	const pushLog = useCallback((text: string, tone: RunLogEntry["tone"] = "info") => {
 		logIdRef.current += 1;
@@ -229,15 +224,6 @@ export function InspectorPage() {
 		setImageUrl(null);
 	}, []);
 
-	const setStreamImage = useCallback((url: string) => {
-		if (imageUrlRef.current && imageIsBlobRef.current) {
-			URL.revokeObjectURL(imageUrlRef.current);
-		}
-		imageUrlRef.current = url;
-		imageIsBlobRef.current = false;
-		setImageUrl(url);
-	}, []);
-
 	const setBlobImage = useCallback((bytes: Uint8Array) => {
 		const blob = bytesToImageBlob(bytes);
 		const nextUrl = URL.createObjectURL(blob);
@@ -248,12 +234,6 @@ export function InspectorPage() {
 		imageIsBlobRef.current = true;
 		setImageUrl(nextUrl);
 	}, []);
-
-	const remountMjpegStream = useCallback(async () => {
-		if (feedModeRef.current !== "mjpeg" || !activeRef.current) return;
-		const client = await getRunnerClient();
-		setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
-	}, [setStreamImage]);
 
 	const clearSessionUi = useCallback(() => {
 		activeRef.current = null;
@@ -295,17 +275,15 @@ export function InspectorPage() {
 	const refreshTree = useCallback(
 		async (options: { silent?: boolean } = {}): Promise<ScreenElement[] | null> => {
 			const silent = options.silent ?? false;
-			if (inFlightRef.current) return null;
+			if (treeInFlightRef.current) return null;
 			if (!activeRef.current) return null;
 			const epoch = sessionEpochRef.current;
-			const pauseMjpeg = feedModeRef.current === "mjpeg";
-			inFlightRef.current = true;
+			treeInFlightRef.current = true;
 			setTreeRefreshing(true);
 			try {
 				const client = await getRunnerClient();
-				// pauseMjpeg aborts live stream proxies on the runner before pageSource
-				// Select mode: refresh the accessibility tree without dual-loading the session.
-				const screen = await client.getScreen({ pauseMjpeg });
+				// Select mode: refresh the accessibility tree on demand.
+				const screen = await client.getScreen();
 				if (sessionEpochRef.current !== epoch || !activeRef.current) return null;
 				const next = screen.elements ?? [];
 				setElements(next);
@@ -314,7 +292,7 @@ export function InspectorPage() {
 			} catch (error) {
 				if (sessionEpochRef.current !== epoch) return null;
 				if (isDeviceSessionGone(error)) {
-					// Background tree warm must not tear down a live stream. Confirm
+					// Background tree warm must not tear down a live feed. Confirm
 					// the runner actually dropped the session before prompting Restart.
 					if (silent) return null;
 					const stillActive = await getRunnerClient()
@@ -332,14 +310,11 @@ export function InspectorPage() {
 				}
 				return null;
 			} finally {
-				inFlightRef.current = false;
+				treeInFlightRef.current = false;
 				setTreeRefreshing(false);
-				if (pauseMjpeg && sessionEpochRef.current === epoch && activeRef.current) {
-					void remountMjpegStream();
-				}
 			}
 		},
-		[handleSessionGone, remountMjpegStream],
+		[handleSessionGone],
 	);
 
 	/**
@@ -409,10 +384,10 @@ export function InspectorPage() {
 		async (options: { includeTree?: boolean; silent?: boolean } = {}) => {
 			const includeTree = options.includeTree ?? true;
 			const silent = options.silent ?? false;
-			if (inFlightRef.current) return;
+			if (frameInFlightRef.current) return;
 			if (!activeRef.current) return;
 			const epoch = sessionEpochRef.current;
-			inFlightRef.current = true;
+			frameInFlightRef.current = true;
 			if (!silent && !imageUrlRef.current) setBootLoading(true);
 			try {
 				const client = await getRunnerClient();
@@ -443,38 +418,27 @@ export function InspectorPage() {
 					showErrorToast(error, "Failed to refresh screen");
 				}
 			} finally {
-				inFlightRef.current = false;
+				frameInFlightRef.current = false;
 				setBootLoading(false);
 			}
 		},
 		[handleSessionGone, setBlobImage],
 	);
 
-	const startLiveFeed = useCallback(
-		async (deviceInfo: ActiveDeviceResponse) => {
-			setBootLoading(true);
-			try {
-				const client = await getRunnerClient();
-				if (deviceInfo.streamReady !== false && (deviceInfo.streamUrl || deviceInfo.mjpegPort)) {
-					setFeedMode("mjpeg");
-					// Cache-bust so a stuck <img> MJPEG connection is remounted.
-					setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
-					// Do not page-source while MJPEG is starting — WDA dies a few seconds later.
-					// Tree is loaded after script/commands (and on poll feed).
-				} else {
-					setFeedMode("poll");
-					await refreshPollFrame({ includeTree: true, silent: false });
-				}
-			} catch (error) {
-				showErrorToast(error, "Failed to start live feed");
-				setFeedMode("poll");
-				await refreshPollFrame({ includeTree: true, silent: true });
-			} finally {
-				setBootLoading(false);
-			}
-		},
-		[refreshPollFrame, setStreamImage],
-	);
+	const startLiveFeed = useCallback(async () => {
+		// The agent-device backend has no MJPEG broadcaster: the live feed is
+		// a fast screenshot poll (server coalesces concurrent polls).
+		setBootLoading(true);
+		setFeedMode("poll");
+		try {
+			await refreshPollFrame({ includeTree: true, silent: false });
+		} catch (error) {
+			showErrorToast(error, "Failed to start live feed");
+			await refreshPollFrame({ includeTree: true, silent: true });
+		} finally {
+			setBootLoading(false);
+		}
+	}, [refreshPollFrame]);
 
 	startLiveFeedRef.current = startLiveFeed;
 
@@ -499,7 +463,7 @@ export function InspectorPage() {
 			setActive(info);
 			setSelection(null);
 			setLiveControl(false);
-			await startLiveFeed(info);
+			await startLiveFeed();
 			invalidateActiveDeviceSession();
 			return info;
 		},
@@ -539,7 +503,7 @@ export function InspectorPage() {
 		activeRef.current = activeSession;
 		setActive(activeSession);
 		setPlatform(activeSession.platform);
-		void startLiveFeedRef.current(activeSession);
+		void startLiveFeedRef.current();
 	}, [activeSession, clearSessionUi, connecting]);
 
 	useEffect(() => {
@@ -551,10 +515,9 @@ export function InspectorPage() {
 		};
 	}, [revokeImage]);
 
-	// Accessibility tree refresh — only on poll feed. MJPEG + pageSource on the
-	// same WDA session routinely kills the stream a few seconds after connect.
+	// Accessibility tree refresh — poll feed only, paused while a script runs.
 	useEffect(() => {
-		if (!active || !pageVisible || feedMode !== "poll") return;
+		if (!active || !pageVisible || feedMode !== "poll" || running) return;
 
 		let cancelled = false;
 		const tick = async () => {
@@ -571,24 +534,24 @@ export function InspectorPage() {
 			cancelled = true;
 			window.clearInterval(timer);
 		};
-	}, [active, feedMode, pageVisible, refreshTree]);
+	}, [active, feedMode, pageVisible, refreshTree, running]);
 
-	// Under Stream + Select mode, warm the tree once after connect (deferred so MJPEG can settle).
+	// Warm the cached tree once after connect so hover/click hit-test instantly.
 	useEffect(() => {
-		if (!active || !pageVisible || feedMode !== "mjpeg" || liveControl) return;
+		if (!active || !pageVisible || feedMode !== "poll" || liveControl || running) return;
 		if (treeUpdatedAtRef.current > 0) return;
 		const timer = window.setTimeout(() => {
 			if (!activeRef.current || treeUpdatedAtRef.current > 0) return;
 			warmTree();
-		}, 1500);
+		}, 500);
 		return () => {
 			window.clearTimeout(timer);
 		};
-	}, [active, feedMode, liveControl, pageVisible, warmTree]);
+	}, [active, feedMode, liveControl, pageVisible, running, warmTree]);
 
-	// Fallback PNG poll only when MJPEG is unavailable.
+	// Live-frame poll — paused while a script runs so gestures never interleave.
 	useEffect(() => {
-		if (!active || !pageVisible || feedMode !== "poll") return;
+		if (!active || !pageVisible || feedMode !== "poll" || running) return;
 
 		let cancelled = false;
 		const tick = async () => {
@@ -605,7 +568,7 @@ export function InspectorPage() {
 			cancelled = true;
 			window.clearInterval(timer);
 		};
-	}, [active, feedMode, pageVisible, refreshPollFrame]);
+	}, [active, feedMode, pageVisible, refreshPollFrame, running]);
 
 	// Live control WebSocket while the toggle is on.
 	useEffect(() => {
@@ -669,12 +632,8 @@ export function InspectorPage() {
 			try {
 				// Check-and-install runs inside connect on the runner: a missing
 				// iOS runner is installed automatically before the session opens.
-				const info = await connectWithDevice(target);
-				notify(
-					info.streamReady === false
-						? "Connected — screenshot poll (MJPEG unavailable)"
-						: "Connected — live stream on",
-				);
+				await connectWithDevice(target);
+				notify("Connected — live feed on");
 			} catch (error) {
 				if (target.platform === "ios" && isRunnerNotInstalledError(error)) {
 					const detail = error instanceof Error ? error.message : null;
@@ -725,12 +684,8 @@ export function InspectorPage() {
 				sessionEpochRef.current += 1;
 				clearSessionUi();
 				if (!device) setDevice(target);
-				const info = await connectWithDevice(target);
-				notify(
-					info.streamReady === false
-						? "Session restarted — screenshot poll"
-						: "Session restarted — live stream refreshed",
-				);
+				await connectWithDevice(target);
+				notify("Session restarted — live feed refreshed");
 			} catch (error) {
 				if (target.platform === "ios" && isRunnerNotInstalledError(error)) {
 					const detail = error instanceof Error ? error.message : null;
@@ -787,6 +742,28 @@ export function InspectorPage() {
 		},
 		[appendLines],
 	);
+
+	const handleAddScroll = useCallback(
+		(direction: "up" | "down" | "left" | "right") => {
+			appendLines([`# scroll ${direction}`, formatActionShellLine({ kind: "scroll", direction })]);
+		},
+		[appendLines],
+	);
+
+	const handleAddBack = useCallback(() => {
+		appendLines(["# back", formatActionShellLine({ kind: "back" })]);
+	}, [appendLines]);
+
+	const handleAddHome = useCallback(() => {
+		appendLines(["# home", formatActionShellLine({ kind: "home" })]);
+	}, [appendLines]);
+
+	const handleAddDismissKeyboard = useCallback(() => {
+		appendLines([
+			"# dismiss keyboard",
+			formatActionShellLine({ kind: "keyboard", keyboardAction: "dismiss" }),
+		]);
+	}, [appendLines]);
 
 	const handleAddWait = useCallback(
 		(seconds: number) => {
@@ -1184,6 +1161,10 @@ export function InspectorPage() {
 					<CommandBar
 						disabled={running || viewOnly}
 						onAddSwipe={handleAddSwipe}
+						onAddScroll={handleAddScroll}
+						onAddBack={handleAddBack}
+						onAddHome={handleAddHome}
+						onAddDismissKeyboard={handleAddDismissKeyboard}
 						onAddWait={handleAddWait}
 					/>
 					<ScriptEditor

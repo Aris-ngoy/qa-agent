@@ -87,6 +87,14 @@ export type DeviceSession = {
 	openUrl: (url: string) => Promise<void>;
 	acceptAlert: () => Promise<void>;
 	dismissAlert: () => Promise<void>;
+	/** System back navigation (agent-device `back`). */
+	back: () => Promise<void>;
+	/** Semantic scroll (agent-device `scroll <direction> [amount]`). */
+	scroll: (direction: "up" | "down" | "left" | "right", amount?: number) => Promise<void>;
+	/** Bare home-screen press (agent-device `home`; no sleep/reopen unlike backgroundApp). */
+	home: () => Promise<void>;
+	/** Device keyboard control (agent-device `keyboard dismiss|enter`). */
+	keyboard: (action: "dismiss" | "enter") => Promise<void>;
 	/** Run an exclusive device action (blocks live pointer + other actions). */
 	withActionLock: <T>(fn: () => Promise<T>) => Promise<T>;
 	pointerEvent: (phase: PointerPhase, xNorm: number, yNorm: number, seq: number) => Promise<void>;
@@ -281,6 +289,10 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const gate = new ActionGate();
 	let sessionDeadNotified = false;
 	let cachedWindow: { width: number; height: number } | null = null;
+	/** Live-feed frame cache: coalesces concurrent polls into one screenshot call. */
+	const FRAME_CACHE_TTL_MS = 150;
+	let frameCache: { at: number; frame: CapturedFrame } | null = null;
+	let frameInFlight: Promise<CapturedFrame> | null = null;
 	let lastApp: string | null = openTarget(options);
 
 	const notifySessionDead = () => {
@@ -372,17 +384,37 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 
 	const captureFrame = async (): Promise<CapturedFrame> =>
 		guard(async () => {
-			const path = join(tmpdir(), `yoqa-frame-${Date.now()}-${crypto.randomUUID()}.png`);
-			const data = (await runAgentDevice(sessionArgs(["screenshot", path]), {
-				timeoutMs: 60_000,
-			})) as { path?: string; width?: number; height?: number };
-			const filePath = typeof data.path === "string" && data.path ? data.path : path;
-			if (typeof data.width === "number" && typeof data.height === "number") {
-				cachedWindow = { width: data.width, height: data.height };
+			const now = Date.now();
+			// Coalesce concurrent live-feed polls within one TTL window so N
+			// viewers share a single agent-device screenshot call.
+			if (frameCache && now - frameCache.at < FRAME_CACHE_TTL_MS) {
+				return frameCache.frame;
 			}
-			const bytes = await Bun.file(filePath).arrayBuffer();
-			await rm(filePath, { force: true }).catch(() => undefined);
-			return { base64: Buffer.from(bytes).toString("base64"), mime: "image/png" as const };
+			if (frameInFlight) {
+				return frameInFlight;
+			}
+			frameInFlight = (async (): Promise<CapturedFrame> => {
+				// --no-stabilize skips Android demo-mode/status-bar settling for
+				// low-latency capture loops; persisted screenshots keep full quality.
+				const path = join(tmpdir(), `yoqa-frame-${Date.now()}-${crypto.randomUUID()}.png`);
+				const data = (await runAgentDevice(sessionArgs(["screenshot", path, "--no-stabilize"]), {
+					timeoutMs: 60_000,
+				})) as { path?: string; width?: number; height?: number };
+				const filePath = typeof data.path === "string" && data.path ? data.path : path;
+				if (typeof data.width === "number" && typeof data.height === "number") {
+					cachedWindow = { width: data.width, height: data.height };
+				}
+				const bytes = await Bun.file(filePath).arrayBuffer();
+				await rm(filePath, { force: true }).catch(() => undefined);
+				return { base64: Buffer.from(bytes).toString("base64"), mime: "image/png" as const };
+			})();
+			try {
+				const frame = await frameInFlight;
+				frameCache = { at: Date.now(), frame };
+				return frame;
+			} finally {
+				frameInFlight = null;
+			}
 		});
 
 	const screenshot = async (): Promise<{ path: string; base64: string }> => {
@@ -516,6 +548,26 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		await runAction(["alert", "dismiss"]);
 	};
 
+	const back = async () => {
+		await runAction(["back"]);
+	};
+
+	const scroll = async (direction: "up" | "down" | "left" | "right", amount?: number) => {
+		const args = ["scroll", direction];
+		if (amount != null && Number.isFinite(amount) && amount > 0) {
+			args.push(String(Math.min(0.8, amount)));
+		}
+		await runAction(args);
+	};
+
+	const home = async () => {
+		await runAction(["home"]);
+	};
+
+	const keyboard = async (action: "dismiss" | "enter") => {
+		await runAction(["keyboard", action]);
+	};
+
 	const pointerEvent = async (
 		phase: PointerPhase,
 		xNorm: number,
@@ -575,6 +627,10 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		openUrl,
 		acceptAlert,
 		dismissAlert,
+		back,
+		scroll,
+		home,
+		keyboard,
 		withActionLock: <T>(fn: () => Promise<T>) => gate.withLock(fn),
 		pointerEvent,
 		isPointerActive: () => gate.isPointerActive(),

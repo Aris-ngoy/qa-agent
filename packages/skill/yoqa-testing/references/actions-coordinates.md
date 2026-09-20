@@ -41,6 +41,15 @@ yoqa action swipe --x 500 --y 700 --x2 500 --y2 300      # scroll down (finger m
 yoqa action swipe --x 500 --y 300 --x2 500 --y2 700      # scroll back up
 ```
 
+### Scroll
+
+Semantic alternative to swipe when you just need content to move — no coordinates required
+(see [Inspect & App Control](inspect-and-app-control.md)). Keep swipe for exact finger paths.
+
+```bash
+yoqa action scroll --direction down                     # up|down|left|right
+```
+
 ### Drag
 
 ```bash

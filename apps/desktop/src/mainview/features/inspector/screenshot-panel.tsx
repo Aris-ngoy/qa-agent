@@ -54,7 +54,7 @@ type ScreenshotPanelProps = {
 	/** True while warming / refreshing the accessibility tree. */
 	treeRefreshing: boolean;
 	live: boolean;
-	feedMode: "mjpeg" | "poll" | null;
+	feedMode: "poll" | null;
 	liveControl: boolean;
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
@@ -324,8 +324,7 @@ export function ScreenshotPanel({
 			? elementBoxPercent(hoverElement)
 			: null;
 
-	const liveLabel =
-		feedMode === "poll" ? "Poll" : feedMode === "mjpeg" ? "Stream" : live ? "Live" : null;
+	const liveLabel = feedMode === "poll" ? "Poll" : live ? "Live" : null;
 
 	const caption = selection ? activeSelectorCaption(selection) : null;
 	const showRefreshing = treeRefreshing && elements.length === 0;

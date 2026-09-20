@@ -28,6 +28,49 @@ function selection(
 	};
 }
 
+describe("system command snippets", () => {
+	test("back/scroll/home/keyboard build runnable lines", () => {
+		const sel = selection({});
+		expect(buildCommandLines(sel, "back")).toEqual(["# back", "yoqa action back"]);
+		expect(buildCommandLines(sel, "scrollDown")).toEqual([
+			"# scroll down",
+			"yoqa action scroll --direction down",
+		]);
+		expect(buildCommandLines(sel, "home")).toEqual(["# home", "yoqa action home"]);
+		expect(buildCommandLines(sel, "keyboardDismiss")).toEqual([
+			"# dismiss keyboard",
+			"yoqa action keyboard --action dismiss",
+		]);
+		expect(buildCommandLines(sel, "backgroundApp", "2")).toEqual([
+			"# background app",
+			"yoqa action background-app --seconds 2",
+		]);
+	});
+
+	test("drag builds a press-move from the selection center", () => {
+		const sel = selection({ x: 500, y: 500 });
+		const lines = buildCommandLines(sel, "dragUp");
+		expect(lines[0]).toBe("# drag up");
+		expect(lines[1]).toContain("yoqa action drag --x 500 --y 500 --x2 500 --y2 200");
+	});
+
+	test("selectorCommands exposes the system group", () => {
+		const ids = selectorCommands(selection({}), { defaultAppId: "" }).map((c) => c.id);
+		for (const id of [
+			"backgroundApp",
+			"back",
+			"scrollUp",
+			"scrollDown",
+			"home",
+			"keyboardDismiss",
+			"keyboardEnter",
+			"dragUp",
+		] as const) {
+			expect(ids).toContain(id);
+		}
+	});
+});
+
 describe("usable selectors", () => {
 	test("rejects URL-like and type-name values", () => {
 		expect(isUsableSelectorValue("cashgiraffeSB://game-details/1")).toBe(false);

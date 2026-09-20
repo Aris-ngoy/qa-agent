@@ -481,7 +481,10 @@ function addActionOptions(cmd: Command) {
 		.option("--text <text>", "Text to type")
 		.option("--app-id <id>", "Bundle id / application id")
 		.option("--url <url>", "URL to open")
-		.option("--seconds <n>", "Background seconds", (v) => Number(v));
+		.option("--seconds <n>", "Background seconds", (v) => Number(v))
+		.option("--direction <dir>", "Scroll direction: up|down|left|right")
+		.option("--amount <n>", "Scroll finger-path fraction (max 0.8)", (v) => Number(v))
+		.option("--action <name>", "Keyboard action: dismiss|enter");
 }
 
 for (const kind of [
@@ -494,6 +497,10 @@ for (const kind of [
 	"restart-app",
 	"background-app",
 	"open-url",
+	"back",
+	"scroll",
+	"home",
+	"keyboard",
 ] as const) {
 	addActionOptions(action.command(kind).description(`Perform ${kind}`)).action(
 		async (options: Record<string, unknown>) => {
@@ -513,6 +520,13 @@ for (const kind of [
 					appId: options.appId as string | undefined,
 					url: options.url as string | undefined,
 					seconds: options.seconds as number | undefined,
+					direction: options.direction as "up" | "down" | "left" | "right" | undefined,
+					amount: options.amount as number | undefined,
+					keyboardAction:
+						typeof options.action === "string" &&
+						(options.action === "dismiss" || options.action === "enter")
+							? options.action
+							: undefined,
 				});
 				if (options.json) {
 					console.log(JSON.stringify(body, null, 2));
