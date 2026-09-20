@@ -16,7 +16,7 @@ export const openaiDriver: DriverDefinition = {
 	authModes: ["api_key"],
 	envHints: ["OPENAI_API_KEY"],
 	loginInstructions: null,
-	capabilities: { vision: true },
+	capabilities: { vision: true, judge: false },
 	vision: createSdkVisionPort({
 		label: "OpenAI",
 		defaultModel: "gpt-4o",

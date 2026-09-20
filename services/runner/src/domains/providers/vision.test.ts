@@ -25,6 +25,16 @@ describe("Provider vision port", () => {
 		}
 	});
 
+	test("capabilities.judge matches presence of confirmInstruction", () => {
+		for (const driver of listDrivers()) {
+			expect(Boolean(driver.judge?.confirmInstruction)).toBe(driver.capabilities.judge);
+		}
+	});
+
+	test("resolveVision throws for jev (judge-only)", () => {
+		expect(() => resolveVision(auth("jev"))).toThrow(AgentProviderError);
+	});
+
 	test("resolveVision returns the adapter port for a vision-capable kind", () => {
 		const port = resolveVision(auth("openai"));
 		expect(typeof port.completeObject).toBe("function");

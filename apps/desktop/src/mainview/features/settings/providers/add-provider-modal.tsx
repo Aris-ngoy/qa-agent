@@ -144,7 +144,13 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 			serverUrl: "",
 			baseUrl: "",
 			defaultModel:
-				kind === "opencode" ? "mimo-v2.5-free" : kind === "grok" ? "grok-2-vision-1212" : "",
+				kind === "opencode"
+					? "mimo-v2.5-free"
+					: kind === "grok"
+						? "grok-2-vision-1212"
+						: kind === "jev"
+							? "jev-latest"
+							: "",
 			envRows: driver.envHints.slice(0, 1).map((key) => newEnvRow(key)),
 		});
 		setProbe(null);
@@ -208,7 +214,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 			defaultModel: values.defaultModel.trim() || null,
 			apiKey: values.apiKey.trim() || undefined,
 			env: Object.keys(env).length > 0 ? env : undefined,
-			setAsDefault: true,
+			setAsDefault: meta.capabilities?.vision === true,
 		};
 		createMutation.mutate(request);
 	};
@@ -427,6 +433,22 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 										</div>
 									) : null}
 
+									{selectedKind === "jev" ? (
+										<div>
+											<RhfTextField
+												control={control}
+												inputClassName={fieldInputClass}
+												label="Base URL (optional)"
+												name="baseUrl"
+												placeholder="https://api.typesafe.ai"
+											/>
+											<p className="mt-1.5 text-helper text-on-surface-variant">
+												Leave blank for TypeSafe. Use https://ai-gateway.vercel.sh/typesafe for
+												Vercel AI Gateway.
+											</p>
+										</div>
+									) : null}
+
 									<div>
 										<div className="mb-2 flex items-center justify-between">
 											<p className="text-body-sm text-on-surface">Environment variables</p>
@@ -475,9 +497,11 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 													? "mimo-v2.5-free"
 													: selectedKind === "grok"
 														? "grok-2-vision-1212"
-														: selectedKind === "custom"
-															? "required for vision runs"
-															: "optional"
+														: selectedKind === "jev"
+															? "jev-latest"
+															: selectedKind === "custom"
+																? "required for vision runs"
+																: "optional"
 											}
 										/>
 										{selectedKind === "opencode" ? (

@@ -15,7 +15,7 @@ export const grokDriver: DriverDefinition = {
 	authModes: ["api_key"],
 	envHints: ["XAI_API_KEY"],
 	loginInstructions: null,
-	capabilities: { vision: true },
+	capabilities: { vision: true, judge: false },
 	vision: createSdkVisionPort({
 		label: "Grok",
 		defaultModel: GROK_DEFAULT_VISION_MODEL,

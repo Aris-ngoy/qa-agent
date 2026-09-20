@@ -1043,4 +1043,85 @@ describe("executeAgentCase", () => {
 		expect(result.status).toBe("passed");
 		expect(performed).toEqual([{ kind: "input", id: "search_input", text: "my query\n" }]);
 	});
+
+	it("keeps the instruction open when the judge continues a verify", async () => {
+		let calls = 0;
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			maxStepsPerCase: 5,
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "verify",
+						reason: "Looks done",
+						thoughts: "Home might be visible",
+					};
+				}
+				return {
+					type: "done",
+					reason: "Home is visible",
+					thoughts: "Expected result is on screen",
+				};
+			},
+			judge: async (input) => {
+				if (input.proposed === "verify") {
+					return {
+						outcome: "continue",
+						reason: "Jev rejected a premature verify.",
+						thoughts: "Login is still showing",
+					};
+				}
+				return {
+					outcome: "confirm",
+					reason: "Jev confirmed the instruction is complete.",
+					thoughts: "Home is visible",
+				};
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(result.decisions.map((decision) => decision.type)).toEqual(["wait", "done"]);
+	});
+
+	it("completes the instruction when the judge confirms verify", async () => {
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => ({
+				type: "verify",
+				reason: "Home visible",
+				thoughts: "Expected result is on screen",
+			}),
+			judge: async () => ({
+				outcome: "confirm",
+				reason: "Jev confirmed the instruction is complete.",
+				thoughts: "Home is visible",
+			}),
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(result.decisions.map((decision) => decision.type)).toEqual(["verify"]);
+	});
 });

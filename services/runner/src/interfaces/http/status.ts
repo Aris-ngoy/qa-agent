@@ -6,7 +6,11 @@ import {
 import { Hono } from "hono";
 import { getAgentDeviceRuntimeStatus } from "../../domains/agent-device/runtime";
 import { getActiveSessionInfo } from "../../domains/devices/active-session";
-import { listProviders, resolveActiveProviderAuth } from "../../domains/providers/application";
+import {
+	listProviders,
+	resolveJudgeProviderAuth,
+	resolveVisionProviderAuth,
+} from "../../domains/providers/application";
 import type { RunnerSettings } from "../../settings";
 
 export function createStatusRoutes(settings: RunnerSettings) {
@@ -15,9 +19,13 @@ export function createStatusRoutes(settings: RunnerSettings) {
 	app.get("/status", async (c) => {
 		try {
 			const runtime = await getAgentDeviceRuntimeStatus();
-			const auth = await resolveActiveProviderAuth();
+			const auth = await resolveVisionProviderAuth();
+			const judgeAuth = await resolveJudgeProviderAuth();
 			const providers = await listProviders();
 			const activeProvider = auth ? (providers.find((p) => p.id === auth.id) ?? null) : null;
+			const judgeProvider = judgeAuth
+				? (providers.find((p) => p.id === judgeAuth.id) ?? null)
+				: null;
 			const activeDevice = getActiveSessionInfo();
 
 			const body: YoqaStatusResponse = yoqaStatusResponseSchema.parse({
@@ -32,6 +40,11 @@ export function createStatusRoutes(settings: RunnerSettings) {
 					configured: auth != null,
 					kind: activeProvider?.kind ?? auth?.kind ?? null,
 					label: activeProvider?.label ?? null,
+				},
+				judge: {
+					configured: judgeAuth != null,
+					kind: judgeProvider?.kind ?? judgeAuth?.kind ?? null,
+					label: judgeProvider?.label ?? null,
 				},
 				activeDevice: activeDevice ? activeDeviceResponseSchema.parse(activeDevice) : null,
 			});

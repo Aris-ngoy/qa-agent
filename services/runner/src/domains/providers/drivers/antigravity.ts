@@ -30,7 +30,7 @@ export const antigravityDriver: DriverDefinition = {
 	envHints: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
 	loginInstructions:
 		"Install Antigravity CLI (`agy`). Sign in via the Antigravity app/IDE, or paste a Google AI Studio API key for vision if your account is not eligible for Antigravity.",
-	capabilities: { vision: true },
+	capabilities: { vision: true, judge: false },
 	vision: antigravityVision,
 	async probe(binaryPath) {
 		return probeCli({

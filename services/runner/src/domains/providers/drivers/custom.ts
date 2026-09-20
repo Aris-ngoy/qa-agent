@@ -19,7 +19,7 @@ export const customDriver: DriverDefinition = {
 	envHints: ["OPENAI_API_KEY"],
 	loginInstructions:
 		"Point Base URL at an OpenAI-compatible /v1 endpoint (Ollama, LM Studio, gateway). API key is optional for local hosts.",
-	capabilities: { vision: true },
+	capabilities: { vision: true, judge: false },
 	vision: createSdkVisionPort({
 		label: "Custom",
 		defaultModel: "",
