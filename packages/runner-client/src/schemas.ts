@@ -645,7 +645,7 @@ export type ListProvidersResponse = z.infer<typeof listProvidersResponseSchema>;
 
 export const providerDriverCapabilitiesSchema = z.object({
 	vision: z.boolean(),
-	judge: z.boolean(),
+	judge: z.boolean().optional().default(false),
 });
 
 export type ProviderDriverCapabilities = z.infer<typeof providerDriverCapabilitiesSchema>;
@@ -663,8 +663,15 @@ export const providerDriverCatalogEntrySchema = z.object({
 
 export type ProviderDriverCatalogEntry = z.infer<typeof providerDriverCatalogEntrySchema>;
 
+function parseCatalogDrivers(entries: unknown[]): ProviderDriverCatalogEntry[] {
+	return entries.flatMap((entry) => {
+		const parsed = providerDriverCatalogEntrySchema.safeParse(entry);
+		return parsed.success ? [parsed.data] : [];
+	});
+}
+
 export const listProviderCatalogResponseSchema = z.object({
-	drivers: z.array(providerDriverCatalogEntrySchema),
+	drivers: z.array(z.unknown()).transform(parseCatalogDrivers),
 });
 
 export type ListProviderCatalogResponse = z.infer<typeof listProviderCatalogResponseSchema>;

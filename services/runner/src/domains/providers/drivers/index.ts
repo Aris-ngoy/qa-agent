@@ -32,6 +32,10 @@ const DRIVERS: Record<ProviderKind, DriverDefinition> = {
 	jev: jevDriver,
 };
 
+export function isDriverKind(kind: string): kind is ProviderKind {
+	return Object.hasOwn(DRIVERS, kind);
+}
+
 export function getDriver(kind: ProviderKind): DriverDefinition {
 	return DRIVERS[kind];
 }

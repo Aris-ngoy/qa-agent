@@ -23,6 +23,9 @@ export default defineConfig({
 		outDir: "dist",
 		emptyOutDir: true,
 	},
+	optimizeDeps: {
+		exclude: ["@yoqa/runner-client"],
+	},
 	server: {
 		port: 5173,
 		strictPort: true,
