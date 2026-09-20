@@ -248,7 +248,7 @@ export const PROVIDER_CATALOG_QUERY_KEY = [...PROVIDERS_QUERY_KEY, "catalog"] as
 export function mergeCatalogWithLocal(
 	catalog: ProviderDriverCatalogEntry[] | null | undefined,
 ): DriverMeta[] {
-	if (!catalog?.length) return FALLBACK_ACTIVE_DRIVERS;
+	if (catalog == null) return FALLBACK_ACTIVE_DRIVERS;
 	return catalog.map((entry) => {
 		const local = FALLBACK_ACTIVE_DRIVERS.find((d) => d.kind === entry.kind);
 		return {
@@ -277,9 +277,11 @@ export function useProviderDriverCatalog(enabled = true) {
 	});
 }
 
-/** Active drivers with runner catalog preferred when available. */
+/** Active drivers advertised by the live runner catalog. Empty until that catalog loads. */
 export function useActiveDrivers(enabled = true): DriverMeta[] {
 	const catalogQuery = useProviderDriverCatalog(enabled);
+	if (catalogQuery.isPending) return [];
+	if (catalogQuery.isError || catalogQuery.data == null) return FALLBACK_ACTIVE_DRIVERS;
 	return mergeCatalogWithLocal(catalogQuery.data);
 }
 

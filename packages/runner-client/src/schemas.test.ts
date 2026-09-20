@@ -3,6 +3,8 @@ import {
 	caseScriptActionSchema,
 	caseScriptSchema,
 	connectDeviceRequestSchema,
+	createProviderRequestSchema,
+	listProviderCatalogResponseSchema,
 	runStepSchema,
 	runTestSchema,
 } from "./schemas";
@@ -150,5 +152,41 @@ describe("connectDeviceRequestSchema", () => {
 			connectDeviceRequestSchema.parse({ deviceId: "udid-1", platform: "ios", kind: "simulator" })
 				.kind,
 		).toBe("simulator");
+	});
+});
+
+describe("provider catalog schemas", () => {
+	const anthropicEntry = {
+		kind: "anthropic",
+		label: "Anthropic",
+		description: null,
+		authModes: ["api_key"],
+		defaultBinary: null,
+		envHints: [] as string[],
+		loginInstructions: null,
+		capabilities: { vision: true },
+	};
+
+	test("createProviderRequestSchema accepts jev", () => {
+		const parsed = createProviderRequestSchema.parse({
+			kind: "jev",
+			authMode: "api_key",
+			apiKey: "sk-test",
+			label: "Jev",
+			setAsDefault: false,
+		});
+		expect(parsed.kind).toBe("jev");
+	});
+
+	test("catalog capabilities.judge defaults to false", () => {
+		const parsed = listProviderCatalogResponseSchema.parse({ drivers: [anthropicEntry] });
+		expect(parsed.drivers[0]?.capabilities).toEqual({ vision: true, judge: false });
+	});
+
+	test("catalog skips unknown driver kinds instead of failing the list", () => {
+		const parsed = listProviderCatalogResponseSchema.parse({
+			drivers: [anthropicEntry, { ...anthropicEntry, kind: "not-a-driver" }],
+		});
+		expect(parsed.drivers.map((driver) => driver.kind)).toEqual(["anthropic"]);
 	});
 });

@@ -11,12 +11,11 @@ import {
 	type UpdateProviderRequest,
 	providerAccentColorSchema,
 	providerAuthModeSchema,
-	providerKindSchema,
 	providerStatusSchema,
 } from "@yoqa/runner-client";
 import { and, asc, eq } from "drizzle-orm";
 import { getCatalogDb } from "../catalog/db";
-import { getDriver } from "./drivers";
+import { getDriver, isDriverKind } from "./drivers";
 import { providers } from "./schema";
 import {
 	apiKeyLast4,
@@ -26,12 +25,6 @@ import {
 	encryptEnvMap,
 	envKeyNames,
 } from "./secrets";
-
-/** Legacy Settings rows used `gemini-cli` before Antigravity replaced it. */
-function parseProviderKind(raw: string): ProviderKind {
-	const normalized = raw === "gemini-cli" ? "antigravity" : raw;
-	return providerKindSchema.parse(normalized);
-}
 
 export class ProviderValidationError extends Error {
 	constructor(message: string) {
@@ -45,6 +38,13 @@ export class ProviderNotFoundError extends Error {
 		super(message);
 		this.name = "ProviderNotFoundError";
 	}
+}
+
+/** Legacy Settings rows used `gemini-cli` before Antigravity replaced it. */
+function parseProviderKind(raw: string): ProviderKind {
+	const normalized = raw === "gemini-cli" ? "antigravity" : raw;
+	if (isDriverKind(normalized)) return normalized;
+	throw new ProviderValidationError(`Unknown provider kind: ${normalized}`);
 }
 
 export type ActiveProviderAuth = {

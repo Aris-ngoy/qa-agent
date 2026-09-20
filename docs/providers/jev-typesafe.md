@@ -20,10 +20,11 @@ Add Jev (TypeSafe System One) as a Settings provider and use it as an optional s
 - `resolveVisionProviderAuth` / `resolveJudgeProviderAuth`; `yoqa status` reports `judge` when configured.
 - Agent loop: [`case-executor.ts`](../../services/runner/src/domains/runs/case-executor.ts) rewrites premature verify to `wait` when Jev continues.
 - Settings: Jev catalog card, no Set as default, optional Gateway base URL.
+- Create/probe validate `kind` against the runner driver registry (not only the cached Zod union). Settings offers Jev only after `GET /providers/catalog` includes it, so an older sidecar cannot be sent `kind: "jev"`.
 
 ## How to verify
 
-1. Settings → Providers → Add **Jev** → paste `TYPESAFE_API_KEY` → Validate. Models should include `jev-latest` (and `jev-1.13.0`).
+1. Settings → Providers → Add **Jev** → paste `TYPESAFE_API_KEY` → Validate. Models should include `jev-latest` (and `jev-1.13.0`). Create must succeed (no `Invalid create provider request` / `invalid_union` on `kind`).
 2. Keep Anthropic/OpenAI/etc. as the default vision provider. Jev should not become default.
 3. `yoqa status` shows `provider: …` (vision) and `judge: Jev` when Jev is enabled.
 4. Run an agent case. A premature `verify` should not finish the instruction when Jev disagrees (step becomes a short wait with Jev’s reason).
