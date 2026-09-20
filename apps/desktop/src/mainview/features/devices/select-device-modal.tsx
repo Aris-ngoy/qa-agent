@@ -1,8 +1,8 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
-import { Modal, Tabs } from "@heroui/react";
+import { Button, Modal, ProgressCircle, Tabs } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import { type Device, createRunnerClient } from "@yoqa/runner-client";
-import { type SVGProps, useEffect, useMemo, useState } from "react";
+import { type SVGProps, useEffect, useMemo, useRef, useState } from "react";
 
 export type DevicePlatform = "ios" | "android";
 
@@ -185,6 +185,13 @@ async function fetchPlatformDevices(platform: DevicePlatform): Promise<Device[]>
 export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectDeviceModalProps) {
 	const [tab, setTab] = useState<DeviceTab>("local");
 	const copy = PLATFORM_COPY[platform];
+	/** Check-and-install runs inside this dialog: picked device → installing → done. */
+	const [installView, setInstallView] = useState<{
+		device: DeviceRow;
+		phase: "installing" | "error";
+		message: string | null;
+	} | null>(null);
+	const installAbortRef = useRef<AbortController | null>(null);
 
 	const devicesQuery = useQuery({
 		queryKey: ["devices", platform],
@@ -198,8 +205,17 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 	useEffect(() => {
 		if (open) {
 			setTab("local");
+			installAbortRef.current?.abort();
+			installAbortRef.current = null;
+			setInstallView(null);
 		}
 	}, [open]);
+
+	useEffect(() => {
+		return () => {
+			installAbortRef.current?.abort();
+		};
+	}, []);
 
 	const { local, virtual } = useMemo(() => {
 		const devices = devicesQuery.data ?? [];
@@ -211,7 +227,10 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 		};
 	}, [devicesQuery.data]);
 
-	const handleSelect = (device: DeviceRow) => {
+	const finishSelect = (device: DeviceRow) => {
+		installAbortRef.current?.abort();
+		installAbortRef.current = null;
+		setInstallView(null);
 		onSelect({
 			id: device.id,
 			label: deviceLabel(device),
@@ -221,6 +240,62 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 			kind: device.kind,
 		});
 		onClose();
+	};
+
+	const runModalInstall = async (device: DeviceRow) => {
+		const controller = new AbortController();
+		installAbortRef.current = controller;
+		setInstallView({ device, phase: "installing", message: null });
+		try {
+			const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
+			const client = createRunnerClient({ baseUrl });
+			await client.installIosRunner(
+				{ deviceId: device.id, kind: device.kind },
+				{ signal: controller.signal },
+			);
+			if (controller.signal.aborted) return;
+			finishSelect(device);
+		} catch (error) {
+			if (controller.signal.aborted) return;
+			setInstallView({
+				device,
+				phase: "error",
+				message: error instanceof Error ? error.message : "Failed to install YoqaADRunner.",
+			});
+		} finally {
+			if (installAbortRef.current === controller) installAbortRef.current = null;
+		}
+	};
+
+	const cancelInstallView = () => {
+		installAbortRef.current?.abort();
+		installAbortRef.current = null;
+		setInstallView(null);
+	};
+
+	const handleSelect = (device: DeviceRow) => {
+		// Non-iOS needs no runner: select immediately.
+		if (platform !== "ios") {
+			finishSelect(device);
+			return;
+		}
+		void (async () => {
+			try {
+				const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
+				const client = createRunnerClient({ baseUrl });
+				const status = await client.getIosRunnerStatus(device.id, device.kind);
+				if (status.installed) {
+					finishSelect(device);
+					return;
+				}
+			} catch {
+				// Status is advisory: fall through to select and let connect
+				// (which installs automatically) be the ground truth.
+				finishSelect(device);
+				return;
+			}
+			await runModalInstall(device);
+		})();
 	};
 
 	const loading = devicesQuery.isLoading || devicesQuery.isFetching;
@@ -241,79 +316,151 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 		},
 	];
 
+	const handleClose = () => {
+		cancelInstallView();
+		onClose();
+	};
+
+	const installing = installView?.phase === "installing";
+	const installFailed = installView?.phase === "error";
+
 	return (
 		<Modal>
-			<Modal.Backdrop isOpen={open} onOpenChange={(next) => !next && onClose()} variant="opaque">
+			<Modal.Backdrop
+				isOpen={open}
+				onOpenChange={(next) => !next && handleClose()}
+				variant="opaque"
+			>
 				<Modal.Container placement="center" scroll="inside" size="lg">
 					<Modal.Dialog className="max-h-[min(40rem,90vh)] sm:max-w-2xl">
 						<Modal.CloseTrigger />
 						<Modal.Header>
 							<Modal.Heading className="text-headline-md text-on-surface">
-								{copy.title}
+								{installView ? `Install YoqaADRunner on ${installView.device.name}` : copy.title}
 							</Modal.Heading>
 						</Modal.Header>
 						<Modal.Body className="gap-5 px-6 pb-6 pt-1">
-							<Tabs
-								className="w-full"
-								onSelectionChange={(key) => setTab(String(key) as DeviceTab)}
-								selectedKey={tab}
-							>
-								<Tabs.ListContainer>
-									<Tabs.List
-										aria-label="Device source"
-										className="w-full gap-1 rounded-xl bg-surface-container p-1 *:flex-1 *:justify-center"
-									>
-										{tabs.map((item) => {
-											const Icon = item.icon;
-											return (
-												<Tabs.Tab
-													className="h-auto min-h-10 gap-2 rounded-lg px-3 py-2 text-body-sm font-medium text-on-surface-variant data-[selected=true]:bg-surface-container-lowest data-[selected=true]:text-on-surface data-[selected=true]:shadow-card"
-													id={item.id}
-													key={item.id}
-												>
-													<Icon />
-													<span className="truncate">{item.label}</span>
-													<span className="rounded-full bg-surface-container-high px-2 py-0.5 text-helper font-semibold text-on-surface-variant">
-														{item.count}
-													</span>
-													<Tabs.Indicator className="hidden" />
-												</Tabs.Tab>
-											);
-										})}
-									</Tabs.List>
-								</Tabs.ListContainer>
-
-								<Tabs.Panel className="pt-5" id="local">
-									<div className="mb-4 rounded-xl border border-outline-variant bg-surface-container-low/60 px-4 py-3.5">
-										<p className="mb-2 text-body-md font-semibold text-on-surface">
-											Before selecting a device, make sure:
+							{installView ? (
+								<div className="flex flex-col items-center gap-4 py-8 text-center">
+									{installing ? (
+										<ProgressCircle
+											aria-label="Installing YoqaADRunner"
+											className="text-on-surface-variant"
+											color="default"
+											isIndeterminate
+											size="lg"
+										>
+											<ProgressCircle.Track>
+												<ProgressCircle.TrackCircle className="stroke-outline-variant" />
+												<ProgressCircle.FillCircle className="stroke-on-surface-variant" />
+											</ProgressCircle.Track>
+										</ProgressCircle>
+									) : null}
+									<div className="flex max-w-md flex-col items-center gap-1.5">
+										<p className="text-body-md font-medium text-on-surface">
+											{installFailed
+												? "Couldn’t install YoqaADRunner"
+												: "Installing YoqaADRunner on your device..."}
 										</p>
-										<ul className="list-disc space-y-1 pl-5 text-body-sm text-on-surface">
-											{copy.localChecklist.map((item) => (
-												<li key={item}>{item}</li>
-											))}
-										</ul>
-										<p className="mt-3 text-body-sm text-on-surface-variant">
-											First-time setup takes 1–2 minutes
+										<p
+											className={`text-body-sm ${installFailed ? "text-danger" : "text-on-surface-variant"}`}
+										>
+											{installFailed
+												? (installView.message ??
+													"Something went wrong while installing the test runner.")
+												: "Building and signing the runner — first install takes 1–2 minutes."}
 										</p>
+										{installFailed ? null : (
+											<p className="mt-1 text-helper text-on-surface-variant">
+												Requires a signing identity in Settings → iOS.
+											</p>
+										)}
 									</div>
-									<DeviceList
-										devices={local}
-										error={error}
-										loading={loading}
-										onSelect={handleSelect}
-									/>
-								</Tabs.Panel>
+									<div className="mt-2 flex items-center gap-3">
+										{installFailed ? (
+											<>
+												<Button
+													onPress={() => {
+														if (installView) void runModalInstall(installView.device);
+													}}
+													variant="primary"
+												>
+													Retry install
+												</Button>
+												<Button onPress={cancelInstallView} variant="secondary">
+													Back to devices
+												</Button>
+											</>
+										) : (
+											<Button onPress={cancelInstallView} variant="secondary">
+												Cancel
+											</Button>
+										)}
+									</div>
+								</div>
+							) : (
+								<Tabs
+									className="w-full"
+									onSelectionChange={(key) => setTab(String(key) as DeviceTab)}
+									selectedKey={tab}
+								>
+									<Tabs.ListContainer>
+										<Tabs.List
+											aria-label="Device source"
+											className="w-full gap-1 rounded-xl bg-surface-container p-1 *:flex-1 *:justify-center"
+										>
+											{tabs.map((item) => {
+												const Icon = item.icon;
+												return (
+													<Tabs.Tab
+														className="h-auto min-h-10 gap-2 rounded-lg px-3 py-2 text-body-sm font-medium text-on-surface-variant data-[selected=true]:bg-surface-container-lowest data-[selected=true]:text-on-surface data-[selected=true]:shadow-card"
+														id={item.id}
+														key={item.id}
+													>
+														<Icon />
+														<span className="truncate">{item.label}</span>
+														<span className="rounded-full bg-surface-container-high px-2 py-0.5 text-helper font-semibold text-on-surface-variant">
+															{item.count}
+														</span>
+														<Tabs.Indicator className="hidden" />
+													</Tabs.Tab>
+												);
+											})}
+										</Tabs.List>
+									</Tabs.ListContainer>
 
-								<Tabs.Panel className="pt-5" id="simulators">
-									<DeviceList
-										devices={virtual}
-										error={error}
-										loading={loading}
-										onSelect={handleSelect}
-									/>
-								</Tabs.Panel>
-							</Tabs>
+									<Tabs.Panel className="pt-5" id="local">
+										<div className="mb-4 rounded-xl border border-outline-variant bg-surface-container-low/60 px-4 py-3.5">
+											<p className="mb-2 text-body-md font-semibold text-on-surface">
+												Before selecting a device, make sure:
+											</p>
+											<ul className="list-disc space-y-1 pl-5 text-body-sm text-on-surface">
+												{copy.localChecklist.map((item) => (
+													<li key={item}>{item}</li>
+												))}
+											</ul>
+											<p className="mt-3 text-body-sm text-on-surface-variant">
+												First-time setup takes 1–2 minutes
+											</p>
+										</div>
+										<DeviceList
+											devices={local}
+											error={error}
+											loading={loading}
+											onSelect={handleSelect}
+										/>
+									</Tabs.Panel>
+
+									<Tabs.Panel className="pt-5" id="simulators">
+										<DeviceList
+											devices={virtual}
+											error={error}
+											loading={loading}
+											onSelect={handleSelect}
+										/>
+									</Tabs.Panel>
+								</Tabs>
+							)}
 						</Modal.Body>
 					</Modal.Dialog>
 				</Modal.Container>
