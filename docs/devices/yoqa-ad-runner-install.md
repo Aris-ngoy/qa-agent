@@ -20,7 +20,8 @@ failing with a raw error — the same treatment WebDriverAgent got under Appium.
 ## What shipped
 
 - `services/runner/src/domains/agent-device/runner-install.ts` — status,
-  install, branding, prep-record reuse (`~/.yoqa/devices/<udid>.json`).
+  install, branding, prep-record reuse (`~/.yoqa/devices/<udid>.json`),
+  stale-copy uninstall so one runner stays on the device.
 - `POST /devices/ios-runner/install`, `GET /devices/ios-runner/status`;
   connect errors carry `code` (`services/runner/src/interfaces/http/`).
 - `packages/runner-client` — schemas, `installIosRunner` /

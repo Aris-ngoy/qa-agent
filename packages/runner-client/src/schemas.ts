@@ -103,6 +103,8 @@ export const iosRunnerInstallResponseSchema = z.object({
 	deviceId: z.string().min(1),
 	action: iosRunnerActionSchema,
 	branded: z.boolean(),
+	/** Stale runner copies removed so exactly one stays on the device. */
+	removedStale: z.array(z.string()),
 	/** Non-fatal note (e.g. built bundle id differs from Settings). */
 	warning: z.string().optional(),
 });

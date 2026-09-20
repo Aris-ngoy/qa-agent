@@ -45,6 +45,8 @@ export type IosRunnerInstallResult = {
 	action: IosRunnerAction;
 	/** True when branding was applied; false = installed unbranded (functional). */
 	branded: boolean;
+	/** Stale runner copies removed so exactly one stays on the device. */
+	removedStale: string[];
 	/** Non-fatal note (e.g. built bundle id differs from Settings). */
 	warning?: string;
 };
@@ -188,15 +190,26 @@ function isHostApp(appPath: string): boolean {
 /** CFBundleIdentifier of a built .app, or null when unreadable. */
 export async function readAppBundleId(appPath: string): Promise<string | null> {
 	const infoPlist = join(appPath, "Info.plist");
+	// plutil handles binary and XML plists (macOS only).
+	if (process.platform === "darwin") {
+		try {
+			const proc = Bun.spawn(["plutil", "-extract", "CFBundleIdentifier", "raw", infoPlist], {
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+			if (exitCode === 0 && stdout.trim()) return stdout.trim();
+		} catch {
+			// fall through to the XML fallback below
+		}
+	}
+	// Portable fallback for XML plists (covers CI/Linux and test fixtures).
 	try {
-		const proc = Bun.spawn(["plutil", "-extract", "CFBundleIdentifier", "raw", infoPlist], {
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-		if (exitCode !== 0) return null;
-		const value = stdout.trim();
-		return value || null;
+		const text = await Bun.file(infoPlist).text();
+		const match = text.match(
+			/<key>\s*CFBundleIdentifier\s*<\/key>\s*<string>\s*([^<]+?)\s*<\/string>/,
+		);
+		return match?.[1]?.trim() || null;
 	} catch {
 		return null;
 	}
@@ -299,12 +312,15 @@ export async function isRunnerInstalledOnDevice(
 
 /**
  * Bundle ids of runner-like apps actually on the device (unfiltered query).
- * Used only for diagnostics when the expected bundle id is not found.
+ * Used for diagnostics and stale-runner cleanup. Pass `runnerOnly: false` to
+ * get every installed bundle id.
  */
 async function listRunnerLikeAppsOnDevice(
 	deviceId: string,
 	kind: IosRunnerKind,
+	runnerOnly = true,
 ): Promise<string[]> {
+	const isRunnerLike = (id: string) => !runnerOnly || /runner|agentdevice|yoqa/i.test(id);
 	try {
 		if (kind === "physical") {
 			const tempDir = await mkdtemp(join(tmpdir(), "yoqa-runner-apps-all-"));
@@ -326,7 +342,7 @@ async function listRunnerLikeAppsOnDevice(
 				const ids = (parsed.result?.apps ?? [])
 					.map((app) => app.bundleIdentifier ?? "")
 					.filter(Boolean);
-				return [...new Set(ids)].filter((id) => /runner|agentdevice|yoqa/i.test(id)).slice(0, 10);
+				return [...new Set(ids)].filter(isRunnerLike).slice(0, 50);
 			} finally {
 				await rm(tempDir, { recursive: true, force: true });
 			}
@@ -336,10 +352,63 @@ async function listRunnerLikeAppsOnDevice(
 		const ids = [...stdout.matchAll(/"CFBundleIdentifier"\s*=\s*"([^"]+)"/g)].map(
 			(m) => m[1] ?? "",
 		);
-		return [...new Set(ids)].filter((id) => /runner|agentdevice|yoqa/i.test(id)).slice(0, 10);
+		return [...new Set(ids)].filter(isRunnerLike).slice(0, 50);
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * Bundle ids on the device that look like agent-device runners but are not
+ * the one we just installed. iOS keys apps by bundle id, so a Settings bundle
+ * change otherwise leaves two home-screen runners behind.
+ */
+export function staleRunnerBundleIds(allIds: string[], keepBundleId: string): string[] {
+	const seen = new Set<string>();
+	const stale: string[] = [];
+	for (const id of allIds) {
+		if (!id || id === keepBundleId || id.startsWith(`${keepBundleId}.`) || seen.has(id)) {
+			continue;
+		}
+		seen.add(id);
+		if (/agentdevice\.runner/i.test(id)) stale.push(id);
+	}
+	return stale;
+}
+
+/**
+ * Remove stale runner copies so exactly one runner stays on the device.
+ * Best-effort per bundle id — uninstall failures never fail the install.
+ */
+async function uninstallStaleRunners(
+	deviceId: string,
+	kind: IosRunnerKind,
+	keepBundleId: string,
+): Promise<string[]> {
+	const all = await listRunnerLikeAppsOnDevice(deviceId, kind, false);
+	const stale = staleRunnerBundleIds(all, keepBundleId);
+	const removed: string[] = [];
+	for (const bundleId of stale) {
+		try {
+			const result =
+				kind === "physical"
+					? await runCommand([
+							"xcrun",
+							"devicectl",
+							"device",
+							"uninstall",
+							"app",
+							"--device",
+							deviceId,
+							bundleId,
+						])
+					: await runCommand(["xcrun", "simctl", "uninstall", deviceId, bundleId]);
+			if (result.exitCode === 0) removed.push(bundleId);
+		} catch {
+			// ignore — stale cleanup must not fail the install
+		}
+	}
+	return removed;
 }
 
 async function installAppOnDevice(
@@ -658,6 +727,7 @@ export async function installYoqaRunnerOnDevice(
 				deviceId: params.deviceId,
 				action: "reused",
 				branded: existing.branded,
+				removedStale: [],
 			};
 		}
 		if (await pathExists(existing.appPath)) {
@@ -667,6 +737,7 @@ export async function installYoqaRunnerOnDevice(
 					`Install reported success but ${YOQA_RUNNER_DISPLAY_NAME} is not on the device. Reconnect and try again.`,
 				);
 			}
+			const removedStale = await uninstallStaleRunners(params.deviceId, kind, existing.bundleId);
 			await persistPrep({ ...existing, installedAt: new Date().toISOString() });
 			return {
 				ok: true,
@@ -677,6 +748,7 @@ export async function installYoqaRunnerOnDevice(
 				deviceId: params.deviceId,
 				action: "reinstalled",
 				branded: existing.branded,
+				removedStale,
 			};
 		}
 	}
@@ -728,6 +800,10 @@ export async function installYoqaRunnerOnDevice(
 		);
 	}
 
+	// Leave exactly one runner behind: drop stale copies from previous
+	// bundle ids (e.g. after a Settings bundle change).
+	const removedStale = await uninstallStaleRunners(params.deviceId, kind, verifyBundleId);
+
 	await persistPrep({
 		deviceId: params.deviceId,
 		platform: "ios",
@@ -748,6 +824,7 @@ export async function installYoqaRunnerOnDevice(
 		deviceId: params.deviceId,
 		action: "built",
 		branded,
+		removedStale,
 		...(warning ? { warning } : {}),
 	};
 }

@@ -312,6 +312,12 @@ devices
 				console.log(
 					`installed ${body.displayName} (${body.bundleId}) on ${body.deviceId} [${body.action}]`,
 				);
+				if (body.removedStale.length > 0) {
+					console.log(`removed old copies: ${body.removedStale.join(", ")}`);
+				}
+				if (body.warning) {
+					console.log(`warning: ${body.warning}`);
+				}
 			} catch (error) {
 				fail("devices install-runner", error);
 			}

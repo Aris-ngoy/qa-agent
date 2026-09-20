@@ -91,6 +91,9 @@ export function useRunnerInstall() {
 					result.action === "reused"
 						? "YoqaADRunner already installed — reconnecting…"
 						: "YoqaADRunner installed — reconnecting…",
+					result.removedStale.length > 0
+						? `Removed old copies: ${result.removedStale.join(", ")}.`
+						: null,
 					result.warning ?? null,
 				]
 					.filter(Boolean)
