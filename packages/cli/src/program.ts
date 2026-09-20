@@ -7,6 +7,7 @@ import {
 	createCaseFlowsSchema,
 	createRunnerClient,
 	formatAssertShellLine,
+	isRunnerNotInstalledError,
 	runYoqaShellScript,
 	screenHasText,
 	updateCaseFlowsSchema,
@@ -279,6 +280,45 @@ for (const platform of ["ios", "android"] as const) {
 }
 
 devices
+	.command("install-runner")
+	.description("Build and install YoqaADRunner on an iOS device (prompted on connect when missing)")
+	.argument("<deviceId>", "Device UDID")
+	.option("--kind <kind>", "physical | simulator", "physical")
+	.option("--force", "Rebuild even when the cached install is valid")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(
+		async (
+			deviceId: string,
+			options: {
+				baseUrl: string;
+				kind: string;
+				force?: boolean;
+				json?: boolean;
+			},
+		) => {
+			try {
+				const kind =
+					options.kind === "simulator" || options.kind === "emulator" ? options.kind : "physical";
+				const body = await client(options.baseUrl).installIosRunner({
+					deviceId,
+					kind,
+					force: options.force ? true : undefined,
+				});
+				if (options.json) {
+					console.log(JSON.stringify(body, null, 2));
+					return;
+				}
+				console.log(
+					`installed ${body.displayName} (${body.bundleId}) on ${body.deviceId} [${body.action}]`,
+				);
+			} catch (error) {
+				fail("devices install-runner", error);
+			}
+		},
+	);
+
+devices
 	.command("connect")
 	.description("Open an agent-device session on a device")
 	.argument("<deviceId>", "Device UDID / serial")
@@ -316,6 +356,11 @@ devices
 				console.log(`connected ${body.platform} ${body.deviceId}`);
 			} catch (error) {
 				fail("devices connect", error);
+				if (isRunnerNotInstalledError(error)) {
+					console.error(
+						"Install the runner first: yoqa devices install-runner <device-id> --platform ios",
+					);
+				}
 			}
 		},
 	);

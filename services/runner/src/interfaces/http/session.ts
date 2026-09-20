@@ -10,6 +10,7 @@ import {
 	screenshotResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
+import { AgentDeviceError } from "../../domains/agent-device/cli";
 import {
 	SessionBusyError,
 	abandonActiveSession,
@@ -69,7 +70,20 @@ export function createSessionRoutes() {
 			const mapped = sessionErrorResponse(error);
 			if (mapped) return c.json(mapped.body, mapped.status);
 			const message = error instanceof Error ? error.message : String(error);
-			return c.json({ error: "Failed to connect device", detail: message }, 500);
+			// Surface the machine-readable code (e.g. IOS_RUNNER_NOT_INSTALLED)
+			// so desktop can offer the guided YoqaADRunner install dialog.
+			const code = error instanceof AgentDeviceError ? error.code : undefined;
+			return c.json(
+				{
+					error:
+						code === "IOS_RUNNER_NOT_INSTALLED"
+							? "iOS runner not installed"
+							: "Failed to connect device",
+					...(code ? { code } : {}),
+					detail: message,
+				},
+				500,
+			);
 		}
 	});
 

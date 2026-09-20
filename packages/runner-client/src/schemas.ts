@@ -61,10 +61,59 @@ export type SetupPlatformResponse = z.infer<typeof setupPlatformResponseSchema>;
 
 export const setupPlatformErrorSchema = z.object({
 	error: z.string().min(1),
+	code: z.string().optional(),
 	detail: z.string().optional(),
 });
 
 export type SetupPlatformError = z.infer<typeof setupPlatformErrorSchema>;
+
+// --- iOS runner (YoqaADRunner) install ---
+
+/** Machine-readable code when the iOS runner must be installed first. */
+export const IOS_RUNNER_NOT_INSTALLED_CODE = "IOS_RUNNER_NOT_INSTALLED";
+
+export const iosRunnerKindSchema = z.union([
+	z.literal("physical"),
+	z.literal("simulator"),
+	z.literal("emulator"),
+]);
+export type IosRunnerKind = z.infer<typeof iosRunnerKindSchema>;
+
+export const iosRunnerInstallRequestSchema = z.object({
+	deviceId: z.string().min(1),
+	kind: iosRunnerKindSchema.optional(),
+	/** When true, rebuild even if prep/cache is valid */
+	force: z.boolean().optional(),
+});
+export type IosRunnerInstallRequest = z.infer<typeof iosRunnerInstallRequestSchema>;
+
+export const iosRunnerActionSchema = z.union([
+	z.literal("reused"),
+	z.literal("reinstalled"),
+	z.literal("built"),
+]);
+export type IosRunnerAction = z.infer<typeof iosRunnerActionSchema>;
+
+export const iosRunnerInstallResponseSchema = z.object({
+	ok: z.literal(true),
+	bundleId: z.string().min(1),
+	displayName: z.string().min(1),
+	appPath: z.string().min(1),
+	derivedDataPath: z.string().nullable(),
+	deviceId: z.string().min(1),
+	action: iosRunnerActionSchema,
+	branded: z.boolean(),
+	/** Non-fatal note (e.g. built bundle id differs from Settings). */
+	warning: z.string().optional(),
+});
+export type IosRunnerInstallResponse = z.infer<typeof iosRunnerInstallResponseSchema>;
+
+export const iosRunnerStatusResponseSchema = z.object({
+	installed: z.boolean(),
+	bundleId: z.string().min(1),
+	displayName: z.string().min(1),
+});
+export type IosRunnerStatusResponse = z.infer<typeof iosRunnerStatusResponseSchema>;
 
 export const runtimeCheckIdSchema = z.union([
 	z.literal("node"),
