@@ -52,6 +52,34 @@ export function isRunnerNotInstalledError(error: unknown): boolean {
 	return RUNNER_NOT_INSTALLED_PATTERNS.some((re) => re.test(message) || re.test(hint));
 }
 
+const DEVICE_TRUST_PATTERNS = [
+	/developer app certificate is not trusted/i,
+	/has not been explicitly trusted by the user/i,
+	/vpn & device management/i,
+	/verify .* trusted on your device/i,
+	/unable to launch .* invalid code signature, inadequate entitlements/i,
+];
+
+/**
+ * True when iOS refuses to launch the runner because the Developer App
+ * certificate is not trusted on the device (happens with a fresh bundle id
+ * or team). Fix is manual: Settings → General → VPN & Device Management →
+ * trust, then retry.
+ */
+export function isDeviceTrustError(error: unknown): boolean {
+	const parts = [error instanceof Error ? error.message : String(error)];
+	if (error instanceof AgentDeviceError) {
+		if (error.hint) parts.push(error.hint);
+		if (error.detail) parts.push(error.detail);
+	}
+	return DEVICE_TRUST_PATTERNS.some((re) => parts.some((text) => re.test(text)));
+}
+
+/** Manual trust instructions shown when {@link isDeviceTrustError} matches. */
+export function deviceTrustInstructions(): string {
+	return "Your iPhone doesn't trust the Developer App certificate yet. On the iPhone: Settings → General → VPN & Device Management → tap your Apple ID → Trust. Keep the phone unlocked, then Retry install.";
+}
+
 /** Error codes where the agent-device session is gone and the caller must reconnect. */
 const DEAD_SESSION_CODES = new Set([
 	"SESSION_NOT_FOUND",
@@ -194,7 +222,7 @@ export function agentDeviceErrorFromEnvelope(envelopeError: {
 	const rawCode = envelopeError.code?.trim() || "COMMAND_FAILED";
 	const detail =
 		envelopeError.details != null ? JSON.stringify(envelopeError.details).slice(0, 500) : undefined;
-	// The macOS Developer Mode gate arrives as COMMAND_FAILED — re-code it for
+	// The Developer Mode gate arrives as COMMAND_FAILED — re-code it for
 	// reliable matching downstream and append the Yoqa repair path.
 	if (
 		rawCode === "COMMAND_FAILED" &&
@@ -202,6 +230,23 @@ export function agentDeviceErrorFromEnvelope(envelopeError: {
 	) {
 		const hint = [envelopeError.hint?.trim(), developerModeRepairHint()].filter(Boolean).join(" ");
 		return new AgentDeviceError(message, DEVELOPER_MODE_DISABLED_CODE, hint, detail);
+	}
+	// An untrusted Developer App certificate also arrives as COMMAND_FAILED.
+	// Match against the FULL details payload (the stored `detail` is
+	// truncated and usually cuts the xcodebuild stderr signature off) and
+	// append the manual trust step so every surface explains the fix.
+	if (rawCode === "COMMAND_FAILED" || rawCode.startsWith("IOS_RUNNER")) {
+		const fullText = [
+			message,
+			envelopeError.hint ?? "",
+			envelopeError.details != null ? JSON.stringify(envelopeError.details) : "",
+		].join("\n");
+		if (DEVICE_TRUST_PATTERNS.some((re) => re.test(fullText))) {
+			const hint = [envelopeError.hint?.trim(), deviceTrustInstructions()]
+				.filter(Boolean)
+				.join(" ");
+			return new AgentDeviceError(message, rawCode, hint, detail);
+		}
 	}
 	// A missing/unsigned iOS runner also arrives as COMMAND_FAILED (or an
 	// IOS_RUNNER_* code) — re-code it so connect can offer the guided
