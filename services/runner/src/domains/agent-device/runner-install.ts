@@ -671,42 +671,9 @@ async function prepareRunner(deviceId: string, clean = false): Promise<void> {
 }
 
 /**
- * Best-effort per-device registration: open + close a benign app so Xcode's
- * automatic signing registers the device before the devicectl install.
- * Failures are swallowed — the install error below is authoritative.
- */
-async function warmDeviceRegistration(deviceId: string, kind: IosRunnerKind): Promise<void> {
-	if (kind !== "physical") return;
-	const session = "yoqa-runner-install";
-	try {
-		await runAgentDevice(
-			[
-				"open",
-				"com.apple.Preferences",
-				"--platform",
-				"ios",
-				"--session",
-				session,
-				"--udid",
-				deviceId,
-			],
-			{ timeoutMs: 300_000 },
-		);
-	} catch {
-		return;
-	}
-	try {
-		await runAgentDevice(["close", "--session", session, "--udid", deviceId], {
-			timeoutMs: 60_000,
-		});
-	} catch {
-		// ignore — session teardown must not fail the install
-	}
-}
-
-/**
  * Build (via agent-device), brand as YoqaADRunner, and install the iOS
- * runner on the target device. Reuses prep + cached artifacts when valid.
+ * runner on the target device. Nothing else: no app launches, no extra
+ * sessions — prepare builds, we brand, we install, we verify.
  */
 export async function installYoqaRunnerOnDevice(
 	params: IosRunnerInstallParams,
@@ -786,10 +753,10 @@ export async function installYoqaRunnerOnDevice(
 	try {
 		await installAppOnDevice(params.deviceId, located.appPath, kind);
 	} catch (error) {
-		// First install can fail when the device isn't registered with the
-		// team yet — let Xcode register it, then retry once.
-		await warmDeviceRegistration(params.deviceId, kind);
-		await installAppOnDevice(params.deviceId, located.appPath, kind);
+		const detail = error instanceof Error ? error.message : String(error);
+		throw new Error(
+			`${detail} Make sure the device is unlocked, trusted, and registered with your Apple team, then retry.`,
+		);
 	}
 
 	if (!(await isRunnerInstalledOnDevice(params.deviceId, verifyBundleId, kind))) {
