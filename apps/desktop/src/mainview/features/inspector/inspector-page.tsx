@@ -11,6 +11,7 @@ import {
 import { useRunnerInstall } from "@/features/devices/use-runner-install";
 import { CommandBar } from "@/features/inspector/command-bar";
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
+import { controlErrorText, parseControlPayload } from "@/features/inspector/control-channel";
 import { isDeviceSessionGone } from "@/features/inspector/inspect-session";
 import { type RunLogEntry, RunPanel } from "@/features/inspector/run-panel";
 import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
@@ -58,6 +59,8 @@ const FALLBACK_SCREENSHOT_MS = 500;
 const TREE_STALE_MS = 3000;
 /** Live-control socket reconnects before giving up. */
 const MAX_CONTROL_RETRIES = 3;
+/** Give up waiting for a pointer ack (tap dispatch can take seconds on device). */
+const CONTROL_ACK_TIMEOUT_MS = 30000;
 
 type InspectorReportStep = {
 	index: number;
@@ -196,6 +199,15 @@ export function InspectorPage() {
 	const controlRetryRef = useRef(0);
 	const liveControlRef = useRef(false);
 	const [controlEpoch, setControlEpoch] = useState(0);
+	/** True once the control socket is OPEN (gestures block until then). */
+	const [controlOpen, setControlOpen] = useState(false);
+	/** True after pointer-up until the server acks the tap/swipe. */
+	const [controlBusy, setControlBusy] = useState(false);
+	const pendingEndSeqRef = useRef<number | null>(null);
+	const controlBusyTimerRef = useRef<number | null>(null);
+	const lastPointerRef = useRef<{ x: number; y: number }>({ x: 500, y: 500 });
+	/** A begin was sent without its end (orphan risk on socket close). */
+	const pointerInFlightRef = useRef(false);
 	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
 	const sessionEpochRef = useRef(0);
 	/** Device id already adopted from the shared Active Session query. */
@@ -602,6 +614,37 @@ export function InspectorPage() {
 		};
 	}, [active, feedMode, pageVisible, refreshPollFrame, running]);
 
+	const clearControlBusy = useCallback(() => {
+		pendingEndSeqRef.current = null;
+		if (controlBusyTimerRef.current != null) {
+			window.clearTimeout(controlBusyTimerRef.current);
+			controlBusyTimerRef.current = null;
+		}
+		setControlBusy(false);
+	}, []);
+
+	const armControlBusy = useCallback((endSeq: number) => {
+		pendingEndSeqRef.current = endSeq;
+		setControlBusy(true);
+		if (controlBusyTimerRef.current != null) {
+			window.clearTimeout(controlBusyTimerRef.current);
+		}
+		controlBusyTimerRef.current = window.setTimeout(() => {
+			controlBusyTimerRef.current = null;
+			if (pendingEndSeqRef.current === endSeq) {
+				pendingEndSeqRef.current = null;
+				pointerInFlightRef.current = false;
+				setControlBusy(false);
+				showErrorToast(
+					new Error(
+						"Live control timed out waiting for the device — use Restart session if it stays stuck",
+					),
+					"Live control failed",
+				);
+			}
+		}, CONTROL_ACK_TIMEOUT_MS);
+	}, []);
+
 	// Live control WebSocket while the toggle is on. Server pointer errors
 	// surface as toasts (previously swallowed); dropped sockets reconnect
 	// with backoff before giving up and toggling live control off.
@@ -610,6 +653,9 @@ export function InspectorPage() {
 		if (!active || !liveControl || !pageVisible) {
 			controlWsRef.current?.close();
 			controlWsRef.current = null;
+			setControlOpen(false);
+			clearControlBusy();
+			pointerInFlightRef.current = false;
 			return;
 		}
 
@@ -623,31 +669,30 @@ export function InspectorPage() {
 				ws = new WebSocket(client.getControlWsUrl());
 				controlWsRef.current = ws;
 				controlRetryRef.current = 0;
+				ws.onopen = () => {
+					if (cancelled) return;
+					setControlOpen(true);
+				};
 				ws.onmessage = (event: MessageEvent) => {
 					if (typeof event.data !== "string") return;
-					try {
-						const msg = JSON.parse(event.data) as {
-							ok?: boolean;
-							error?: string;
-							detail?: string;
-							code?: string;
-						};
-						if (msg && msg.ok === false) {
-							const detail = msg.detail ? `: ${msg.detail}` : "";
-							const code = msg.code ? ` [${msg.code}]` : "";
-							showErrorToast(
-								new Error(`${msg.error ?? "Live control failed"}${detail}${code}`),
-								"Live control failed",
-							);
+					const parsed = parseControlPayload(event.data);
+					if (!parsed) return;
+					if (parsed.kind === "ack") {
+						if (parsed.phase === "end" && pendingEndSeqRef.current === parsed.seq) {
+							pointerInFlightRef.current = false;
+							clearControlBusy();
 						}
-					} catch {
-						// Non-JSON payloads (acks carry no error) — ignore.
+						return;
 					}
+					pointerInFlightRef.current = false;
+					clearControlBusy();
+					showErrorToast(new Error(controlErrorText(parsed)), "Live control failed");
 				};
 				ws.onclose = () => {
 					if (controlWsRef.current === ws) {
 						controlWsRef.current = null;
 					}
+					setControlOpen(false);
 					if (cancelled) return;
 					// Toggle still on and session still live — reconnect with backoff.
 					if (liveControlRef.current && activeRef.current) {
@@ -659,6 +704,8 @@ export function InspectorPage() {
 								if (!cancelled) setControlEpoch((epoch) => epoch + 1);
 							}, delayMs);
 						} else {
+							pointerInFlightRef.current = false;
+							clearControlBusy();
 							showErrorToast(
 								new Error("Live control disconnected — toggle it back on to retry"),
 								"Live control failed",
@@ -677,27 +724,56 @@ export function InspectorPage() {
 
 		return () => {
 			cancelled = true;
+			// Flush an in-flight gesture at the last known point so the server
+			// does not release it at an arbitrary fallback position.
+			const pending = pointerInFlightRef.current;
+			pointerInFlightRef.current = false;
+			if (pending && ws && ws.readyState === WebSocket.OPEN) {
+				pointerSeqRef.current += 1;
+				try {
+					ws.send(
+						JSON.stringify({
+							type: "pointer",
+							phase: "end",
+							x: lastPointerRef.current.x,
+							y: lastPointerRef.current.y,
+							seq: pointerSeqRef.current,
+						}),
+					);
+				} catch {
+					// Socket is going away — server releases the stale pointer.
+				}
+			}
 			ws?.close();
 			if (controlWsRef.current === ws) {
 				controlWsRef.current = null;
 			}
 		};
-	}, [active, controlEpoch, liveControl, pageVisible]);
+	}, [active, clearControlBusy, controlEpoch, liveControl, pageVisible]);
 
-	const sendPointer = useCallback((phase: "begin" | "move" | "end", x: number, y: number) => {
-		const ws = controlWsRef.current;
-		if (!ws || ws.readyState !== WebSocket.OPEN) return;
-		pointerSeqRef.current += 1;
-		ws.send(
-			JSON.stringify({
-				type: "pointer",
-				phase,
-				x,
-				y,
-				seq: pointerSeqRef.current,
-			}),
-		);
-	}, []);
+	const sendPointer = useCallback(
+		(phase: "begin" | "move" | "end", x: number, y: number) => {
+			const ws = controlWsRef.current;
+			if (!ws || ws.readyState !== WebSocket.OPEN) return;
+			lastPointerRef.current = { x, y };
+			pointerSeqRef.current += 1;
+			const seq = pointerSeqRef.current;
+			try {
+				ws.send(JSON.stringify({ type: "pointer", phase, x, y, seq }));
+			} catch (error) {
+				pointerInFlightRef.current = false;
+				clearControlBusy();
+				showErrorToast(error, "Live control failed");
+				return;
+			}
+			if (phase === "begin") {
+				pointerInFlightRef.current = true;
+			} else if (phase === "end") {
+				armControlBusy(seq);
+			}
+		},
+		[armControlBusy, clearControlBusy],
+	);
 
 	const handleConnect = useCallback(async () => {
 		if (!device) return;
@@ -1215,6 +1291,9 @@ export function InspectorPage() {
 					live={live}
 					feedMode={feedMode}
 					liveControl={liveControl}
+					controlReady={controlOpen}
+					controlBusy={controlBusy}
+					controlResetKey={controlEpoch}
 					onLiveControlChange={handleLiveControlChange}
 					disabled={!connected || running || viewOnly}
 					snippetContext={snippetContext}

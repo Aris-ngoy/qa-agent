@@ -39,7 +39,7 @@ The live mirror never writes to disk; explicit screenshots and script reports st
 
 Toggle **Live control** above the mirror to drag directly on the device:
 
-- **On** — pointer drags on the mirror map to touch events on the device (tap, drag, swipe). Element selection and the action menu are paused while you drag. If a gesture fails (for example the device connection dropped), a toast names the failure; a dropped control socket reconnects a few times before toggling off.
+- **On** — pointer drags on the mirror map to touch events on the device (tap, drag, swipe). Element selection and the action menu are paused while you drag. Gestures wait for the socket to connect first ("Connecting live control…"); after pointer-up you will see "Sending…" until the device confirms. If a gesture fails (for example the device connection dropped), a toast names the failure; a dropped control socket reconnects a few times before toggling off.
 - **Off** — clicking an element opens the action menu so you can insert or run a scripted step.
 - **Hold Control** (Select mode) — skip the accessibility-tree highlight and pick an exact `x,y` from the screenshot. A crosshair follows the cursor; click sets the point, then choose tap, double-tap, long-press, or input from the menu. Use this when hit-test cannot select a control. Coordinates are the same 0–1000 screenshot grid on iOS and Android.
 
