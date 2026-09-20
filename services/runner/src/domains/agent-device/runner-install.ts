@@ -57,6 +57,8 @@ export type IosRunnerPrepRecord = {
 	bundleId: string;
 	teamId: string;
 	appPath: string;
+	/** XCTest companion (`*-Runner.app`) when located; best-effort everywhere. */
+	testAppPath: string | null;
 	derivedDataPath: string | null;
 	branded: boolean;
 	installedAt: string;
@@ -260,6 +262,63 @@ export async function locateRunnerHostApp(
 	return { appPath: newest.appPath, derivedDataPath: newest.derivedDataPath };
 }
 
+/**
+ * The `cache-*` ancestor holding a built app, so the host and its XCTest
+ * companion always come from the same build (derivedDataPath is coarser and
+ * may span several caches).
+ */
+function cacheDirForApp(appPath: string, fallback: string): string {
+	const parts = appPath.split("/");
+	for (let i = parts.length - 1; i >= 0; i--) {
+		if (parts[i]?.startsWith("cache-")) return parts.slice(0, i + 1).join("/") || "/";
+	}
+	return fallback;
+}
+
+/**
+ * Brand host + companion before installing, in every path: caches may have
+ * been (re)built since the last branding pass, and branding is idempotent.
+ * Returns the companion path when one belongs to the same build.
+ */
+async function ensureArtifactsBranded(
+	appPath: string,
+	derivedDataPath: string | null,
+	kind: IosRunnerKind,
+): Promise<{ branded: boolean; testAppPath: string | null }> {
+	const branded = await brandRunnerApp(appPath);
+	const testAppPath = await locateRunnerTestApp(
+		cacheDirForApp(appPath, derivedDataPath ?? ""),
+		kind,
+	);
+	if (testAppPath) {
+		// Best-effort companion branding: Xcode reinstalls it on the next run anyway.
+		await brandRunnerApp(testAppPath);
+	}
+	return { branded, testAppPath };
+}
+
+/**
+ * Locate the XCTest companion (`*-Runner.app`) from the same build as an
+ * already-located host app. Returns null when absent — the companion is
+ * Xcode-managed and branding/installing it is best-effort.
+ */
+export async function locateRunnerTestApp(
+	derivedDataPath: string,
+	kind: IosRunnerKind,
+): Promise<string | null> {
+	const apps = await findAppsUnder(derivedDataPath);
+	const runners = apps.filter((app) => {
+		const base = app.split("/").pop() ?? "";
+		return base.endsWith("-Runner.app");
+	});
+	if (runners.length === 0) return null;
+	return (
+		(kind === "physical"
+			? (runners.find((app) => app.includes("iphoneos")) ?? runners[0])
+			: (runners.find((app) => app.includes("iphonesimulator")) ?? runners[0])) ?? null
+	);
+}
+
 type DevicectlAppsJson = {
 	result?: {
 		apps?: Array<{ bundleIdentifier?: string }>;
@@ -457,12 +516,35 @@ async function installAppOnDevice(
 }
 
 /**
- * Brand the built host app in place: display name → YoqaADRunner, Yoqa mark
+ * Set a plist key, creating it when absent (`-replace` fails on missing keys,
+ * e.g. the test runner has no CFBundleDisplayName until we add one).
+ */
+async function upsertPlistKey(
+	infoPlist: string,
+	args: { key: string; type: "string" | "json"; value: string },
+): Promise<boolean> {
+	const base = ["plutil", "-replace", args.key, `-${args.type}`, args.value, infoPlist];
+	const replaced = await runCommand(base);
+	if (replaced.exitCode === 0) return true;
+	const inserted = await runCommand([
+		"plutil",
+		"-insert",
+		args.key,
+		`-${args.type}`,
+		args.value,
+		infoPlist,
+	]);
+	return inserted.exitCode === 0;
+}
+
+/**
+ * Brand a built runner app in place: display name → YoqaADRunner, Yoqa mark
  * icons, then re-sign with the build's own identity so the embedded
  * provisioning profile still matches (same approach as the legacy WDA flow).
+ * Applies to the host app and the XCTest companion alike.
  * Returns true when branding applied, false when skipped (functional install).
  */
-async function brandRunnerHostApp(appPath: string): Promise<boolean> {
+export async function brandRunnerApp(appPath: string): Promise<boolean> {
 	try {
 		const iconSource = Bun.file(YOQA_ICON_PATH);
 		if (!(await iconSource.exists())) return false;
@@ -472,16 +554,16 @@ async function brandRunnerHostApp(appPath: string): Promise<boolean> {
 		const infoPlist = join(appPath, "Info.plist");
 		if (!(await pathExists(infoPlist))) return false;
 
-		// Display name shown on the home screen.
-		const display = await runCommand([
-			"plutil",
-			"-replace",
-			"CFBundleDisplayName",
-			"-string",
-			YOQA_RUNNER_DISPLAY_NAME,
-			infoPlist,
-		]);
-		if (display.exitCode !== 0) return false;
+		// Display name shown on the home screen / trust list.
+		if (
+			!(await upsertPlistKey(infoPlist, {
+				key: "CFBundleDisplayName",
+				type: "string",
+				value: YOQA_RUNNER_DISPLAY_NAME,
+			}))
+		) {
+			return false;
+		}
 
 		// Loose PNGs + CFBundleIcons entry (no asset catalog in this target).
 		const iconBase = "YoqaADRunnerIcon";
@@ -490,15 +572,11 @@ async function brandRunnerHostApp(appPath: string): Promise<boolean> {
 		const iconsJson = JSON.stringify({
 			CFBundlePrimaryIcon: { CFBundleIconFiles: [iconBase], UIPrerenderedIcon: false },
 		});
-		const icons = await runCommand([
-			"plutil",
-			"-replace",
-			"CFBundleIcons",
-			"-json",
-			iconsJson,
-			infoPlist,
-		]);
-		if (icons.exitCode !== 0) return false;
+		if (
+			!(await upsertPlistKey(infoPlist, { key: "CFBundleIcons", type: "json", value: iconsJson }))
+		) {
+			return false;
+		}
 
 		await resignApp(appPath);
 		return true;
@@ -715,14 +793,32 @@ export async function installYoqaRunnerOnDevice(
 			};
 		}
 		if (await pathExists(existing.appPath)) {
+			const ensured = await ensureArtifactsBranded(
+				existing.appPath,
+				existing.derivedDataPath,
+				kind,
+			);
 			await installAppOnDevice(params.deviceId, existing.appPath, kind);
 			if (!(await isRunnerInstalledOnDevice(params.deviceId, existing.bundleId, kind))) {
 				throw new Error(
 					`Install reported success but ${YOQA_RUNNER_DISPLAY_NAME} is not on the device. Reconnect and try again.`,
 				);
 			}
+			const companionPath = ensured.testAppPath ?? existing.testAppPath;
+			if (companionPath && (await pathExists(companionPath))) {
+				try {
+					await installAppOnDevice(params.deviceId, companionPath, kind);
+				} catch {
+					// Companion is best-effort: Xcode reinstalls it on the next run.
+				}
+			}
 			const removedStale = await uninstallStaleRunners(params.deviceId, kind, existing.bundleId);
-			await persistPrep({ ...existing, installedAt: new Date().toISOString() });
+			await persistPrep({
+				...existing,
+				branded: ensured.branded,
+				testAppPath: ensured.testAppPath,
+				installedAt: new Date().toISOString(),
+			});
 			return {
 				ok: true,
 				bundleId: existing.bundleId,
@@ -731,7 +827,7 @@ export async function installYoqaRunnerOnDevice(
 				derivedDataPath: existing.derivedDataPath,
 				deviceId: params.deviceId,
 				action: "reinstalled",
-				branded: existing.branded,
+				branded: ensured.branded,
 				removedStale,
 			};
 		}
@@ -757,7 +853,11 @@ export async function installYoqaRunnerOnDevice(
 		}
 	}
 
-	const branded = await brandRunnerHostApp(located.appPath);
+	const { branded, testAppPath } = await ensureArtifactsBranded(
+		located.appPath,
+		located.derivedDataPath,
+		kind,
+	);
 
 	// Verify against the bundle id that was actually built — the Settings
 	// value may have changed since the cache was built (or vice versa).
@@ -769,6 +869,13 @@ export async function installYoqaRunnerOnDevice(
 
 	try {
 		await installAppOnDevice(params.deviceId, located.appPath, kind);
+		if (testAppPath) {
+			try {
+				await installAppOnDevice(params.deviceId, testAppPath, kind);
+			} catch {
+				// Companion is best-effort: Xcode installs it on the next run.
+			}
+		}
 	} catch (error) {
 		const detail = error instanceof Error ? error.message : String(error);
 		throw new Error(
@@ -794,6 +901,7 @@ export async function installYoqaRunnerOnDevice(
 		bundleId: verifyBundleId,
 		teamId,
 		appPath: located.appPath,
+		testAppPath,
 		derivedDataPath: located.derivedDataPath,
 		branded,
 		installedAt: new Date().toISOString(),

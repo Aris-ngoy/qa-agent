@@ -2,6 +2,8 @@
 
 Thanks for contributing to Yoqa (`qa-agent`).
 
+Coding agents should follow [`AGENTS.md`](./AGENTS.md) (plan-and-build + merge/CI policy). Cursor, Claude Code, and Copilot load that file through thin adapters; do not treat `.cursor/rules` as Cursor-only.
+
 ## Pull requests
 
 1. Branch from an up-to-date `main` (`<area>/<short-slug>`). **Direct pushes to `main` are blocked.**
