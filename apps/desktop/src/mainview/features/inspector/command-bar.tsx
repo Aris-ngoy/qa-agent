@@ -4,11 +4,23 @@ import { useState } from "react";
 type CommandBarProps = {
 	disabled: boolean;
 	onAddSwipe: (direction: "up" | "down" | "left" | "right") => void;
+	onAddScroll: (direction: "up" | "down" | "left" | "right") => void;
+	onAddBack: () => void;
+	onAddHome: () => void;
+	onAddDismissKeyboard: () => void;
 	onAddWait: (seconds: number) => void;
 };
 
-/** Global (non-element) script helpers — swipe + wait. Element / app actions live on the screenshot menu. */
-export function CommandBar({ disabled, onAddSwipe, onAddWait }: CommandBarProps) {
+/** Global (non-element) script helpers — swipe/scroll/system + wait. Element / app actions live on the screenshot menu. */
+export function CommandBar({
+	disabled,
+	onAddSwipe,
+	onAddScroll,
+	onAddBack,
+	onAddHome,
+	onAddDismissKeyboard,
+	onAddWait,
+}: CommandBarProps) {
 	const [waitSeconds, setWaitSeconds] = useState("1");
 
 	return (
@@ -19,7 +31,7 @@ export function CommandBar({ disabled, onAddSwipe, onAddWait }: CommandBarProps)
 			<div className="flex flex-wrap items-end gap-2">
 				{(["up", "down", "left", "right"] as const).map((direction) => (
 					<Button
-						key={direction}
+						key={`swipe-${direction}`}
 						size="sm"
 						variant="secondary"
 						isDisabled={disabled}
@@ -46,6 +58,30 @@ export function CommandBar({ disabled, onAddSwipe, onAddWait }: CommandBarProps)
 					}}
 				>
 					Add wait
+				</Button>
+			</div>
+			<div className="flex flex-wrap items-center gap-2">
+				{(["up", "down", "left", "right"] as const).map((direction) => (
+					<Button
+						key={`scroll-${direction}`}
+						size="sm"
+						variant="tertiary"
+						isDisabled={disabled}
+						onPress={() => {
+							onAddScroll(direction);
+						}}
+					>
+						Scroll {direction}
+					</Button>
+				))}
+				<Button size="sm" variant="tertiary" isDisabled={disabled} onPress={onAddBack}>
+					Back
+				</Button>
+				<Button size="sm" variant="tertiary" isDisabled={disabled} onPress={onAddHome}>
+					Home
+				</Button>
+				<Button size="sm" variant="tertiary" isDisabled={disabled} onPress={onAddDismissKeyboard}>
+					Dismiss keyboard
 				</Button>
 			</div>
 		</div>

@@ -102,6 +102,58 @@ describe("performAction swipe", () => {
 	});
 });
 
+describe("performAction system actions", () => {
+	function systemStub(calls: string[]): DeviceSession {
+		return {
+			back: async () => {
+				calls.push("back");
+			},
+			scroll: async (direction: string, amount?: number) => {
+				calls.push(`scroll:${direction}:${amount ?? ""}`);
+			},
+			home: async () => {
+				calls.push("home");
+			},
+			keyboard: async (action: string) => {
+				calls.push(`keyboard:${action}`);
+			},
+		} as unknown as DeviceSession;
+	}
+
+	test("back delegates to the session", async () => {
+		const calls: string[] = [];
+		const result = await performAction(systemStub(calls), { kind: "back" });
+		expect(calls).toEqual(["back"]);
+		expect(result).toEqual({ ok: true, kind: "back" });
+	});
+
+	test("scroll passes direction and amount", async () => {
+		const calls: string[] = [];
+		await performAction(systemStub(calls), { kind: "scroll", direction: "down", amount: 0.5 });
+		expect(calls).toEqual(["scroll:down:0.5"]);
+	});
+
+	test("scroll without direction is a validation error", async () => {
+		const calls: string[] = [];
+		await expect(performAction(systemStub(calls), { kind: "scroll" })).rejects.toThrow(
+			"--direction",
+		);
+		expect(calls).toEqual([]);
+	});
+
+	test("home delegates to the session", async () => {
+		const calls: string[] = [];
+		await performAction(systemStub(calls), { kind: "home" });
+		expect(calls).toEqual(["home"]);
+	});
+
+	test("keyboard defaults to dismiss", async () => {
+		const calls: string[] = [];
+		await performAction(systemStub(calls), { kind: "keyboard" });
+		expect(calls).toEqual(["keyboard:dismiss"]);
+	});
+});
+
 describe("getScreen", () => {
 	test("reads the cleaned tree from snapshot nodes", async () => {
 		const session = {

@@ -208,6 +208,9 @@ function parseActionFromTokens(
 	const appId = flagString(flags, "--app-id", "--bundle-id");
 	const url = flagString(flags, "--url");
 	const seconds = flagNumber(flags, "--seconds");
+	const directionRaw = flagString(flags, "--direction");
+	const amount = flagNumber(flags, "--amount");
+	const keyboardRaw = flagString(flags, "--action", "--key-action");
 
 	if (x != null) action.x = x;
 	if (y != null) action.y = y;
@@ -218,6 +221,37 @@ function parseActionFromTokens(
 	if (appId != null) action.appId = appId;
 	if (url != null) action.url = url;
 	if (seconds != null) action.seconds = seconds;
+	if (directionRaw != null) {
+		if (kind !== "scroll") {
+			throw new Error("--direction is only valid for `scroll`");
+		}
+		if (
+			directionRaw === "up" ||
+			directionRaw === "down" ||
+			directionRaw === "left" ||
+			directionRaw === "right"
+		) {
+			action.direction = directionRaw;
+		} else {
+			throw new Error("scroll --direction must be up, down, left, or right");
+		}
+	}
+	if (amount != null) {
+		if (kind !== "scroll") {
+			throw new Error("--amount is only valid for `scroll`");
+		}
+		action.amount = amount;
+	}
+	if (keyboardRaw != null) {
+		if (kind !== "keyboard") {
+			throw new Error("--action dismiss|enter is only valid for `keyboard`");
+		}
+		if (keyboardRaw === "dismiss" || keyboardRaw === "enter") {
+			action.keyboardAction = keyboardRaw;
+		} else {
+			throw new Error("keyboard --action must be dismiss or enter");
+		}
+	}
 	if (flags.has("--double")) action.double = true;
 
 	if (flags.has("--dismiss")) {
@@ -364,6 +398,13 @@ export function formatActionShellLine(action: ActionRequest): string {
 	if (action.appId != null) parts.push("--app-id", shellSingleQuote(action.appId));
 	if (action.url != null) parts.push("--url", shellSingleQuote(action.url));
 	if (action.seconds != null) parts.push("--seconds", String(action.seconds));
+	if (action.direction != null) parts.push("--direction", action.direction);
+	if (action.amount != null) parts.push("--amount", String(action.amount));
+	if (action.kind === "keyboard") {
+		parts.push("--action", action.keyboardAction ?? "dismiss");
+	} else if (action.keyboardAction != null) {
+		parts.push("--key-action", action.keyboardAction);
+	}
 	if (action.kind === "alert") {
 		if (action.alertAction === "dismiss") parts.push("--dismiss");
 	}
@@ -614,6 +655,7 @@ function resolveTapPoint(
 /**
  * Convert an inspector / yoqa shell script into a CaseScript for catalog replay.
  * Supports tap, swipe, drag, input→type, app lifecycle, sleep→wait, assert, alert.
+ * back, scroll, home, and keyboard replay live but skip CaseScript with a warning.
  */
 export function shellToCaseScript(
 	text: string,

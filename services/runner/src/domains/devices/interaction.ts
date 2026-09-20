@@ -149,6 +149,25 @@ export async function performAction(
 			}
 			break;
 		}
+		case "back": {
+			await session.back();
+			break;
+		}
+		case "scroll": {
+			if (!body.direction) {
+				throw new ActionValidationError("scroll requires --direction up|down|left|right");
+			}
+			await session.scroll(body.direction, body.amount);
+			break;
+		}
+		case "home": {
+			await session.home();
+			break;
+		}
+		case "keyboard": {
+			await session.keyboard(body.keyboardAction ?? "dismiss");
+			break;
+		}
 	}
 
 	return {

@@ -94,6 +94,7 @@ screenshot <path>
 
 action tap|swipe|drag|input …   # -d / --x --y / flags
 action open-url|alert|activate-app|terminate-app|restart-app|background-app
+action back|scroll|home|keyboard  # --direction / --amount / --action
 
 apps list|get|update
 cases list|get|create|update|delete

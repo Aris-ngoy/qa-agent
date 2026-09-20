@@ -930,8 +930,23 @@ export const actionKindSchema = z.union([
 	z.literal("background-app"),
 	z.literal("open-url"),
 	z.literal("alert"),
+	z.literal("back"),
+	z.literal("scroll"),
+	z.literal("home"),
+	z.literal("keyboard"),
 ]);
 export type ActionKind = z.infer<typeof actionKindSchema>;
+
+export const scrollDirectionSchema = z.union([
+	z.literal("up"),
+	z.literal("down"),
+	z.literal("left"),
+	z.literal("right"),
+]);
+export type ScrollDirection = z.infer<typeof scrollDirectionSchema>;
+
+export const keyboardActionSchema = z.union([z.literal("dismiss"), z.literal("enter")]);
+export type KeyboardAction = z.infer<typeof keyboardActionSchema>;
 
 export const actionRequestSchema = z.object({
 	kind: actionKindSchema,
@@ -952,6 +967,12 @@ export const actionRequestSchema = z.object({
 	url: z.string().optional(),
 	alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).optional(),
 	seconds: z.number().optional(),
+	/** Scroll direction for `scroll` (agent-device `scroll <direction> [amount]`). */
+	direction: scrollDirectionSchema.optional(),
+	/** Finger-path fraction of the viewport axis for `scroll` (agent-device amount). */
+	amount: z.number().optional(),
+	/** Key action for `keyboard` (agent-device `keyboard dismiss|enter`). */
+	keyboardAction: keyboardActionSchema.optional(),
 });
 export type ActionRequest = z.infer<typeof actionRequestSchema>;
 

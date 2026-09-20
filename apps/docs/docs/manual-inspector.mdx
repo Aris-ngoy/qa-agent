@@ -27,9 +27,10 @@ The Manual Inspector is a desktop surface for **exploring** a connected device t
 
 ## Live mirror and control
 
-Inspector mirrors the device screen via screenshot polling on iOS Simulator, real iOS, and Android. A badge on the mirror tells you which transport is active:
-
-- **Poll** — refreshes a screenshot every ~250 ms.
+Inspector mirrors the device screen via a fast screenshot poll on iOS Simulator, real iOS, and
+Android (~180 ms per frame; the runner coalesces concurrent polls so the feed stays cheap). A
+**Poll** badge on the mirror tells you which transport is active. The live mirror never writes to
+disk; explicit screenshots and script reports still persist to `~/.yoqa/runs/screenshots/`.
 
 Toggle **Live control** above the mirror to drag directly on the device:
 
@@ -37,7 +38,7 @@ Toggle **Live control** above the mirror to drag directly on the device:
 - **Off** — clicking an element opens the action menu so you can insert or run a scripted step.
 - **Hold Control** (Select mode) — skip the accessibility-tree highlight and pick an exact `x,y` from the screenshot. A crosshair follows the cursor; click sets the point, then choose tap, double-tap, long-press, or input from the menu. Use this when hit-test cannot select a control. Coordinates are the same 0–1000 screenshot grid on iOS and Android.
 
-Live control is exclusive with running scripts. Inspector blocks pointer input while a script step is in flight so gestures do not interleave with the running script.
+Live control is exclusive with running scripts. The feed pauses while a script step is in flight so gestures do not interleave with the running script.
 
 The live mirror never writes to disk. Explicit screenshots and script reports still persist to `~/.yoqa/runs/screenshots/`.
 
@@ -50,12 +51,16 @@ Real iOS sessions can occasionally drop under load (for example, during long Ins
 
 ## Command bar
 
-The command bar sits above the script and adds steps that don't need an element selection. It has two controls:
+The command bar sits above the script and adds steps that don't need an element selection:
 
 - **Swipe up / down / left / right** — appends a directional swipe on the current screen. Saving the inspector script as a catalog case now keeps swipe steps (screenshot `x,y` → `x2,y2`).
+- **Scroll up / down / left / right** — appends a semantic scroll (`yoqa action scroll --direction …`). Prefer this over swipe when you just need content to move; use swipe for exact finger paths.
+- **Back** — system back navigation (`yoqa action back`).
+- **Home** — bare home-screen press (`yoqa action home`).
+- **Dismiss keyboard** — hides the software keyboard (`yoqa action keyboard`).
 - **Wait** — enter seconds and click **Add wait** to pause the script (useful between an app launch and an assertion).
 
-Everything else — tap, assert, input, and app control — lives on the **Selector Commands** menu that opens when you select an element on the screenshot.
+Everything else — tap, drag, assert, input, and app control — lives on the **Selector Commands** menu that opens when you select an element on the screenshot.
 
 ## Selector Commands
 
@@ -64,10 +69,18 @@ Select an element on the live screenshot to open its action menu. Alongside the 
 - **activateApp** — bring an app to the foreground (launches it if needed). Prefilled with the selected app's iOS bundle ID or Android package; override to target a different app (for example, `com.apple.mobilenotes` to jump into Notes).
 - **terminateApp** — kill the app with the given App ID.
 - **restartApp** — terminate then activate the same App ID.
+- **backgroundApp** — background the app for N seconds, then reopen it.
+- **back** — system back navigation.
+- **scroll up / down / left / right** — semantic scroll in place.
+- **home** — bare home-screen press.
+- **dismiss keyboard** / **press enter** — hide the keyboard or press return.
+- **drag up / down / left / right** — slow press-move from the selected point (for sliders, handles, drag-and-drop).
 - **openUrl** — open a URL through the OS. Works for custom schemes (`myapp://path`) and `https://` universal links.
 - **acceptAlert** / **dismissAlert** — respond to the next system alert (permissions, App Store prompts, "Open in MyApp?" deeplink confirmations, etc.).
 - **screenshot** — capture the current screen. Use **Insert & Run** to save an evidence PNG mid-flow (for example, right after a deeplink lands).
 - **screenshot (path)** — same as above, but prompts for a destination path (for example, `/tmp/yoqa-screenshot.png`) so multiple captures don't overwrite each other.
+
+System steps (`back`, `scroll`, `home`, keyboard) replay against the device but are skipped — with a warning — when saving as a catalog case, which today only converts tap / type / wait / swipe / drag / app-lifecycle / alert / assert.
 
 Prompts for App ID, URL, and screenshot path prefill from the current selection or last-used value, so scripting a cross-app hop is a few clicks per step.
 
