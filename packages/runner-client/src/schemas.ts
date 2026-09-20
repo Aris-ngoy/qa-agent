@@ -856,6 +856,8 @@ export type RunError = z.infer<typeof runErrorSchema>;
 export const connectDeviceRequestSchema = z.object({
 	deviceId: z.string().min(1),
 	platform: devicePlatformSchema,
+	/** Physical vs simulator — enables check-and-install of YoqaADRunner on connect. */
+	kind: deviceKindSchema.optional(),
 	bundleId: z.string().min(1).optional(),
 	appPackage: z.string().min(1).optional(),
 });

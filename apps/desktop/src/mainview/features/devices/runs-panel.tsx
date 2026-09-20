@@ -15,7 +15,7 @@ import {
 	createRunnerClient,
 	isRunnerNotInstalledError,
 } from "@yoqa/runner-client";
-import { type SVGProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type SVGProps, useEffect, useMemo, useRef, useState } from "react";
 import { DeviceSetupPanel, type DeviceSetupStatus } from "./device-setup-panel";
 import { RunnerInstallDialog } from "./runner-install-dialog";
 import { type DevicePlatform, SelectDeviceModal, type SelectedDevice } from "./select-device-modal";
@@ -184,11 +184,8 @@ export function RunsPanel() {
 		runnerInstallMessage,
 		openRunnerInstall,
 		closeRunnerInstall,
-		ensureRunnerInstalled,
 		startRunnerInstall,
 	} = useRunnerInstall();
-	/** True while the pre-run YoqaADRunner status check is in flight. */
-	const [runnerChecking, setRunnerChecking] = useState(false);
 	/** Execution mode to retry with after a YoqaADRunner install. */
 	const pendingModeRef = useRef<RunExecutionMode>("agent");
 	const setupAbortRef = useRef<AbortController | null>(null);
@@ -291,35 +288,6 @@ export function RunsPanel() {
 			showErrorToast(error, "Failed to start run");
 		},
 	});
-
-	/**
-	 * Play-button entry point: checks the iOS runner *before* creating the run.
-	 * When the runner is missing the install dialog opens instead and the run
-	 * retries automatically after a successful install.
-	 */
-	const startRun = useCallback(
-		(executionMode: RunExecutionMode) => {
-			pendingModeRef.current = executionMode;
-			setExecutionPromptOpen(false);
-			const target = device;
-			if (!target || !deviceReady || target.platform !== "ios" || runnerChecking) {
-				runMutation.mutate(executionMode);
-				return;
-			}
-			setRunnerChecking(true);
-			void (async () => {
-				try {
-					const ready = await ensureRunnerInstalled(target, () => {
-						runMutation.mutate(pendingModeRef.current);
-					});
-					if (ready) runMutation.mutate(executionMode);
-				} finally {
-					setRunnerChecking(false);
-				}
-			})();
-		},
-		[device, deviceReady, ensureRunnerInstalled, runMutation, runnerChecking],
-	);
 
 	const cancelMutation = useMutation({
 		mutationFn: async () => {
@@ -437,24 +405,21 @@ export function RunsPanel() {
 			deviceReady &&
 			selectedCaseIds.length > 0 &&
 			!runMutation.isPending &&
-			!runnerChecking &&
 			!isRunLive,
 	);
 	const runTitle = isRunLive
 		? "Cancel run"
 		: runMutation.isPending
 			? "Starting run…"
-			: runnerChecking
-				? "Checking test runner…"
-				: !selectedApp
-					? "Select an app to run"
-					: selectedCaseIds.length === 0
-						? "Select test cases to run"
-						: !device || !deviceReady
-							? setupDevice
-								? "Waiting for device setup to finish"
-								: "Select a device to run"
-							: `Run ${selectedCaseIds.length} test${selectedCaseIds.length === 1 ? "" : "s"}`;
+			: !selectedApp
+				? "Select an app to run"
+				: selectedCaseIds.length === 0
+					? "Select test cases to run"
+					: !device || !deviceReady
+						? setupDevice
+							? "Waiting for device setup to finish"
+							: "Select a device to run"
+						: `Run ${selectedCaseIds.length} test${selectedCaseIds.length === 1 ? "" : "s"}`;
 
 	const onPrimaryClick = () => {
 		if (isRunLive) {
@@ -465,8 +430,9 @@ export function RunsPanel() {
 			setExecutionPromptOpen(true);
 			return;
 		}
-		// No saved scripts → AI agent by default (runner pre-checked first).
-		startRun("agent");
+		// No saved scripts → AI agent by default. A missing iOS runner is
+		// installed automatically during run start; failures open the dialog.
+		runMutation.mutate("agent");
 	};
 
 	return (
@@ -633,15 +599,15 @@ export function RunsPanel() {
 									Cancel
 								</Button>
 								<Button
-									isDisabled={runMutation.isPending || runnerChecking}
-									onPress={() => startRun("agent")}
+									isDisabled={runMutation.isPending}
+									onPress={() => runMutation.mutate("agent")}
 									variant="secondary"
 								>
 									Use AI agent
 								</Button>
 								<Button
-									isDisabled={runMutation.isPending || runnerChecking}
-									onPress={() => startRun("script")}
+									isDisabled={runMutation.isPending}
+									onPress={() => runMutation.mutate("script")}
 									variant="primary"
 								>
 									Use saved scripts
