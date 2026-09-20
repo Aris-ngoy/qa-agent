@@ -8,6 +8,7 @@ import {
 	loadRunnerPrep,
 	prepMatches,
 	readAppBundleId,
+	staleRunnerBundleIds,
 } from "./runner-install";
 
 describe("YoqaADRunner branding", () => {
@@ -76,5 +77,34 @@ describe("readAppBundleId", () => {
 
 	test("returns null when the plist is missing", async () => {
 		await expect(readAppBundleId("/definitely/not/an-app")).resolves.toBeNull();
+	});
+});
+
+describe("staleRunnerBundleIds", () => {
+	test("flags old runner copies but keeps the installed one", () => {
+		expect(
+			staleRunnerBundleIds(
+				[
+					"com.yoqa.agentdevice.runner",
+					"com.yoqa.agentdevice.runner.uitests.xctrunner",
+					"com.arisngoy.agentdevice.runner",
+					"com.arisngoy.agentdevice.runner.uitests.xctrunner",
+					"com.apple.Preferences",
+				],
+				"com.yoqa.agentdevice.runner",
+			),
+		).toEqual([
+			"com.arisngoy.agentdevice.runner",
+			"com.arisngoy.agentdevice.runner.uitests.xctrunner",
+		]);
+	});
+
+	test("never touches unrelated apps", () => {
+		expect(
+			staleRunnerBundleIds(
+				["com.apple.Preferences", "ai.yoqa.demo"],
+				"com.yoqa.agentdevice.runner",
+			),
+		).toEqual([]);
 	});
 });
