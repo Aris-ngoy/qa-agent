@@ -3,7 +3,7 @@ import type { ActionRequest, CaseScript, CatalogCase } from "@yoqa/runner-client
 import type { DeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import type { AgentDecision } from "./agent";
-import { executeAgentCase, executeScriptCase } from "./case-executor";
+import { POST_ACTION_SETTLE_MS, executeAgentCase, executeScriptCase } from "./case-executor";
 
 function fakeSession(shotCount = { n: 0 }): DeviceSession {
 	return {
@@ -246,6 +246,109 @@ describe("executeScriptCase", () => {
 			"null",
 			"append:null",
 		]);
+	});
+
+	it("takes the report screenshot after the gesture, overlapping settle", async () => {
+		const timeline: string[] = [];
+		let releaseSleep!: () => void;
+		let releaseShot!: () => void;
+		const sleepGate = new Promise<void>((resolve) => {
+			releaseSleep = resolve;
+		});
+		const shotGate = new Promise<void>((resolve) => {
+			releaseShot = resolve;
+		});
+		let sleepStarted!: () => void;
+		let shotStarted!: () => void;
+		const bothStarted = Promise.all([
+			new Promise<void>((resolve) => {
+				sleepStarted = resolve;
+			}),
+			new Promise<void>((resolve) => {
+				shotStarted = resolve;
+			}),
+		]);
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "tap", x: 10, y: 20 }],
+		};
+
+		const run = executeScriptCase({
+			script,
+			session: {
+				screenshot: async () => {
+					shotStarted();
+					timeline.push("shot-start");
+					await shotGate;
+					timeline.push("shot-end");
+					return { path: "/tmp/shot-after.png", base64: "aaa" };
+				},
+			} as unknown as DeviceSession,
+			isAborted: () => false,
+			appendStep: async () => {},
+			performAction: async () => {
+				timeline.push("perform");
+				return { ok: true, kind: "tap" };
+			},
+			clock: {
+				sleep: async (ms) => {
+					if (ms !== 25) return;
+					sleepStarted();
+					timeline.push("sleep-start");
+					await sleepGate;
+					timeline.push("sleep-end");
+				},
+				now: () => 1,
+			},
+			settleMs: 25,
+		});
+
+		await bothStarted;
+		expect(timeline[0]).toBe("perform");
+		expect(timeline).toContain("sleep-start");
+		expect(timeline).toContain("shot-start");
+		expect(timeline).not.toContain("sleep-end");
+		expect(timeline).not.toContain("shot-end");
+		releaseSleep();
+		releaseShot();
+		expect(await run).toBe("passed");
+	});
+
+	it("passes a prefetched tree into performAction for label taps", async () => {
+		const received: Array<{ label?: string } | undefined> = [];
+		let reads = 0;
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "tap", label: "Increment" }],
+		};
+
+		const status = await executeScriptCase({
+			script,
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => {
+				reads += 1;
+				return {
+					elements: [{ label: "Increment", type: "Button", x: 10, y: 20, width: 30, height: 40 }],
+				};
+			},
+			performAction: async (_session, _body, options) => {
+				received.push(options?.elements?.[0]);
+				return { ok: true, kind: "tap" };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(status).toBe("passed");
+		expect(reads).toBe(1);
+		expect(received[0]?.label).toBe("Increment");
 	});
 });
 
@@ -1123,5 +1226,121 @@ describe("executeAgentCase", () => {
 
 		expect(result.status).toBe("passed");
 		expect(result.decisions.map((decision) => decision.type)).toEqual(["verify"]);
+	});
+
+	it("observes screenshot and screen tree concurrently", async () => {
+		const timeline: string[] = [];
+		let releaseShot!: () => void;
+		let releaseTree!: () => void;
+		const shotGate = new Promise<void>((resolve) => {
+			releaseShot = resolve;
+		});
+		const treeGate = new Promise<void>((resolve) => {
+			releaseTree = resolve;
+		});
+		let shotStarted!: () => void;
+		let treeStarted!: () => void;
+		const bothStarted = Promise.all([
+			new Promise<void>((resolve) => {
+				shotStarted = resolve;
+			}),
+			new Promise<void>((resolve) => {
+				treeStarted = resolve;
+			}),
+		]);
+
+		const run = executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: {
+				screenshot: async () => {
+					shotStarted();
+					timeline.push("shot-start");
+					await shotGate;
+					timeline.push("shot-end");
+					return { path: "/tmp/shot.png", base64: "aaa" };
+				},
+			} as unknown as DeviceSession,
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => {
+				treeStarted();
+				timeline.push("tree-start");
+				await treeGate;
+				timeline.push("tree-end");
+				return { elements: [] };
+			},
+			decide: async () => ({
+				type: "done",
+				reason: "done",
+				thoughts: "home visible",
+			}),
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		await bothStarted;
+		expect(timeline).toContain("shot-start");
+		expect(timeline).toContain("tree-start");
+		expect(timeline).not.toContain("shot-end");
+		expect(timeline).not.toContain("tree-end");
+		releaseShot();
+		releaseTree();
+		expect((await run).status).toBe("passed");
+	});
+
+	it("passes observed tree elements into performAction", async () => {
+		let passedLabel: string | undefined;
+		let calls = 0;
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => ({
+				elements: [{ label: "Allow", type: "Button", x: 1, y: 2, width: 3, height: 4 }],
+			}),
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						label: "Allow",
+						reason: "Grant",
+						thoughts: "dialog",
+					};
+				}
+				return {
+					type: "done",
+					reason: "done",
+					thoughts: "home visible",
+				};
+			},
+			performAction: async (_session, body, options) => {
+				passedLabel = options?.elements?.[0]?.label;
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(passedLabel).toBe("Allow");
+	});
+});
+
+describe("POST_ACTION_SETTLE_MS", () => {
+	it("defaults to 300ms", () => {
+		expect(POST_ACTION_SETTLE_MS).toBe(300);
 	});
 });

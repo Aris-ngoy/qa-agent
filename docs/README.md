@@ -48,6 +48,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [`AGENTS.md`](../AGENTS.md) 
 | [devices/xml-entity-labels.md](./devices/xml-entity-labels.md) | Decode `&amp;` in screen labels so tap-by-label matches |
 | [devices/text-input.md](./devices/text-input.md) | WDA-safe typing via `mobile: type` + paired keyDown/keyUp |
 | [runs/saved-scripts.md](./runs/saved-scripts.md) | Save script after pass; script vs AI run prompt |
+| [runs/faster-case-execution.md](./runs/faster-case-execution.md) | Overlap observe, cached locators, faster script replay |
 | [runs/report-export.md](./runs/report-export.md) | HTML/Markdown E2E report export (runs + inspector) |
 | [ios/wda-reuse-on-select.md](./ios/wda-reuse-on-select.md) | Skip/rebuild WebDriverAgent on physical iOS select |
 | [sessions/2026-07-24-yoqa-testing-skill.md](./sessions/2026-07-24-yoqa-testing-skill.md) | Copied/rebranded `yoqa-testing` agent skill |

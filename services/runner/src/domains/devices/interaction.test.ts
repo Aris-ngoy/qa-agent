@@ -154,6 +154,60 @@ describe("performAction system actions", () => {
 	});
 });
 
+describe("performAction cached elements", () => {
+	test("resolves --label from injected elements without snapshotting", async () => {
+		const taps: Array<{ x: number; y: number }> = [];
+		let snapshots = 0;
+		const session = {
+			snapshotNodes: async () => {
+				snapshots += 1;
+				return { nodes: [], window: { width: 1000, height: 2000 } };
+			},
+			tap: async (x: number, y: number) => {
+				taps.push({ x, y });
+			},
+		} as unknown as DeviceSession;
+		const result = await performAction(
+			session,
+			{ kind: "tap", label: "Allow" },
+			{
+				elements: [
+					{
+						type: "button",
+						label: "Allow",
+						id: "permission_allow_button",
+						x: 400,
+						y: 900,
+						width: 400,
+						height: 50,
+					},
+				],
+			},
+		);
+		expect(snapshots).toBe(0);
+		expect(taps).toEqual([{ x: 600, y: 925 }]);
+		expect(result.resolved).toEqual({ x: 600, y: 925 });
+	});
+
+	test("snapshots when no cached elements are provided", async () => {
+		const taps: Array<{ x: number; y: number }> = [];
+		let snapshots = 0;
+		const session = {
+			snapshotNodes: async () => {
+				snapshots += 1;
+				return { nodes: ALLOW_NODES, window: { width: 1000, height: 2000 } };
+			},
+			getWindowSize: async () => ({ width: 1000, height: 2000 }),
+			tap: async (x: number, y: number) => {
+				taps.push({ x, y });
+			},
+		} as unknown as DeviceSession;
+		await performAction(session, { kind: "tap", label: "Allow" });
+		expect(snapshots).toBe(1);
+		expect(taps).toEqual([{ x: 600, y: 925 }]);
+	});
+});
+
 describe("getScreen", () => {
 	test("reads the cleaned tree from snapshot nodes", async () => {
 		const session = {

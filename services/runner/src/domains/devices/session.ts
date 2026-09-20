@@ -399,8 +399,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 				return frameInFlight;
 			}
 			frameInFlight = (async (): Promise<CapturedFrame> => {
-				// --no-stabilize skips Android demo-mode/status-bar settling for
-				// low-latency capture loops; persisted screenshots keep full quality.
+				// --no-stabilize skips Android demo-mode/status-bar settling.
 				const path = join(tmpdir(), `yoqa-frame-${Date.now()}-${crypto.randomUUID()}.png`);
 				const data = (await runAgentDevice(sessionArgs(["screenshot", path, "--no-stabilize"]), {
 					timeoutMs: 60_000,
@@ -426,7 +425,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		await mkdir(SCREENSHOT_DIR, { recursive: true });
 		const path = join(SCREENSHOT_DIR, `shot_${Date.now()}_${crypto.randomUUID()}.png`);
 		const data = await guard(async () => {
-			const result = (await runAgentDevice(sessionArgs(["screenshot", path]), {
+			const result = (await runAgentDevice(sessionArgs(["screenshot", path, "--no-stabilize"]), {
 				timeoutMs: 60_000,
 			})) as { path?: string; width?: number; height?: number };
 			return result;

@@ -1,6 +1,7 @@
 import {
 	type ActionRequest,
 	type ActionResponse,
+	type ScreenElement,
 	type ScreenResponse,
 	elementCenterNorm,
 	findElementById,
@@ -48,6 +49,11 @@ export class ActionNotFoundError extends Error {
 	}
 }
 
+export type PerformActionOptions = {
+	/** Reuse this step's cleaned tree and skip a second `snapshot -i` for id/label. */
+	elements?: ScreenElement[];
+};
+
 /**
  * Perform one Action on a Device Session. Resolves id/label against the
  * snapshot tree, or Grounding from description, then runs the gesture /
@@ -56,6 +62,7 @@ export class ActionNotFoundError extends Error {
 export async function performAction(
 	session: DeviceSession,
 	body: ActionRequest,
+	options: PerformActionOptions = {},
 ): Promise<ActionResponse> {
 	const locatorTap = Boolean(
 		(body.id || body.label) && (body.kind === "tap" || body.kind === "input"),
@@ -64,8 +71,7 @@ export async function performAction(
 	let y = body.y;
 
 	if (locatorTap) {
-		const screen = await getScreen(session, { full: false });
-		const elements = screen.elements ?? [];
+		const elements = options.elements ?? (await getScreen(session, { full: false })).elements ?? [];
 		const match = body.id
 			? findElementById(elements, body.id)
 			: findElementByLabel(elements, body.label ?? "");

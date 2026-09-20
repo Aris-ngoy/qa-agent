@@ -14,7 +14,7 @@ Rejected: treating every `fail` as retryable; switching providers automatically 
 ## What shipped
 
 - [`agent.ts`](../../services/runner/src/domains/runs/agent.ts): stronger vision rules; `wait` action; `recentActions` in the prompt; `isAbsurdNoScreenshotFail()`.
-- [`application.ts`](../../services/runner/src/domains/runs/application.ts): pass history; one retry on absurd fail then clearer error; 800ms settle after tap/type; execute `wait` (500–3000ms).
+- [`application.ts`](../../services/runner/src/domains/runs/application.ts): pass history; one retry on absurd fail then clearer error; 300ms settle after tap/type (see [faster-case-execution.md](./faster-case-execution.md)); execute `wait` (500–3000ms).
 
 ## How to verify
 
