@@ -5,15 +5,47 @@ export type ControlWsData = {
 	kind: "control";
 };
 
+/** Machine-readable control-channel errors surfaced to the Inspector. */
+export type ControlWsErrorCode =
+	| "NO_SESSION"
+	| "HELD_BY_RUN"
+	| "INVALID_JSON"
+	| "INVALID_MESSAGE"
+	| "POINTER_FAILED";
+
 export function isControlUpgrade(pathname: string): boolean {
 	return pathname === "/ws/control";
+}
+
+function error(code: ControlWsErrorCode, detail?: string): string {
+	return JSON.stringify({
+		ok: false,
+		error: codeMessage(code),
+		code,
+		...(detail ? { detail } : {}),
+	});
+}
+
+function codeMessage(code: ControlWsErrorCode): string {
+	switch (code) {
+		case "NO_SESSION":
+			return "No active device session";
+		case "HELD_BY_RUN":
+			return "A run is using this device session. Cancel the run to interact manually.";
+		case "INVALID_JSON":
+			return "Invalid JSON";
+		case "INVALID_MESSAGE":
+			return "Invalid control message";
+		case "POINTER_FAILED":
+			return "Pointer event failed";
+	}
 }
 
 export const controlWebSocket = {
 	open(ws: { send: (data: string) => void }) {
 		const active = getActiveSession();
 		if (!active) {
-			ws.send(JSON.stringify({ ok: false, error: "No active device session" }));
+			ws.send(error("NO_SESSION"));
 			return;
 		}
 		ws.send(
@@ -32,7 +64,7 @@ export const controlWebSocket = {
 	) {
 		const active = getActiveSession();
 		if (!active) {
-			ws.send(JSON.stringify({ ok: false, error: "No active device session" }));
+			ws.send(error("NO_SESSION"));
 			return;
 		}
 
@@ -46,30 +78,19 @@ export const controlWebSocket = {
 						: new TextDecoder().decode(message);
 			parsed = JSON.parse(text);
 		} catch {
-			ws.send(JSON.stringify({ ok: false, error: "Invalid JSON" }));
+			ws.send(error("INVALID_JSON"));
 			return;
 		}
 
 		const result = controlMessageSchema.safeParse(parsed);
 		if (!result.success) {
-			ws.send(
-				JSON.stringify({
-					ok: false,
-					error: "Invalid control message",
-					detail: result.error.message,
-				}),
-			);
+			ws.send(error("INVALID_MESSAGE", result.error.message));
 			return;
 		}
 
 		const msg = result.data;
 		if (isActiveSessionHeldByRun()) {
-			ws.send(
-				JSON.stringify({
-					ok: false,
-					error: "A run is using this device session. Cancel the run to interact manually.",
-				}),
-			);
+			ws.send(error("HELD_BY_RUN"));
 			return;
 		}
 		try {
@@ -77,9 +98,9 @@ export const controlWebSocket = {
 			if (msg.phase === "end" || msg.phase === "begin") {
 				ws.send(JSON.stringify({ ok: true, type: "ack", phase: msg.phase, seq: msg.seq }));
 			}
-		} catch (error) {
-			const detail = error instanceof Error ? error.message : String(error);
-			ws.send(JSON.stringify({ ok: false, error: "Pointer event failed", detail }));
+		} catch (err) {
+			const detail = err instanceof Error ? err.message : String(err);
+			ws.send(error("POINTER_FAILED", detail));
 		}
 	},
 

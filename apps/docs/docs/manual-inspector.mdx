@@ -27,14 +27,19 @@ The Manual Inspector is a desktop surface for **exploring** a connected device t
 
 ## Live mirror and control
 
-Inspector mirrors the device screen via a fast screenshot poll on iOS Simulator, real iOS, and
-Android (~180 ms per frame; the runner coalesces concurrent polls so the feed stays cheap). A
-**Poll** badge on the mirror tells you which transport is active. The live mirror never writes to
-disk; explicit screenshots and script reports still persist to `~/.yoqa/runs/screenshots/`.
+Inspector mirrors the device screen with a live-frame stream on iOS Simulator, real iOS, and
+Android (multipart PNG frames, about one per second on Simulator — the screenshot-capture
+ceiling). The badge on the mirror tells you which transport is active:
+
+- **Live** — streaming frames straight from the runner.
+- **Poll** — degraded fallback (screenshot every ~500 ms) when the stream breaks.
+
+The live mirror never writes to disk; explicit screenshots and script reports still persist to
+`~/.yoqa/runs/screenshots/`.
 
 Toggle **Live control** above the mirror to drag directly on the device:
 
-- **On** — pointer drags on the mirror map to touch events on the device (tap, drag, swipe). Element selection and the action menu are paused while you drag.
+- **On** — pointer drags on the mirror map to touch events on the device (tap, drag, swipe). Element selection and the action menu are paused while you drag. If a gesture fails (for example the device connection dropped), a toast names the failure; a dropped control socket reconnects a few times before toggling off.
 - **Off** — clicking an element opens the action menu so you can insert or run a scripted step.
 - **Hold Control** (Select mode) — skip the accessibility-tree highlight and pick an exact `x,y` from the screenshot. A crosshair follows the cursor; click sets the point, then choose tap, double-tap, long-press, or input from the menu. Use this when hit-test cannot select a control. Coordinates are the same 0–1000 screenshot grid on iOS and Android.
 

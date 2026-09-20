@@ -32,7 +32,7 @@ export function isDeadSessionError(error: unknown): boolean {
 	if (error instanceof DeadSessionError) return true;
 	if (isDeadAgentDeviceSessionError(error)) return true;
 	const message = error instanceof Error ? error.message : String(error);
-	return /session does not exist|invalid session|no such session|no active session|session.+not found|terminated or not started|session is either terminated/i.test(
+	return /session does not exist|invalid session|no such session|no active device session|no active session|session.+not found|terminated or not started|session is either terminated/i.test(
 		message,
 	);
 }
@@ -68,8 +68,12 @@ export type SnapshotNode = {
 
 export type DeviceSession = {
 	quit: () => Promise<void>;
-	/** In-memory frame for live feed / grounding — never persists under runs/. */
-	captureFrame: () => Promise<CapturedFrame>;
+	/**
+	 * In-memory frame for live feed / grounding — never persists under runs/.
+	 * Within `FRAME_CACHE_TTL_MS` concurrent callers share one capture;
+	 * pass `{ fresh: true }` (stream pump) to always capture a new frame.
+	 */
+	captureFrame: (options?: { fresh?: boolean }) => Promise<CapturedFrame>;
 	/** Persist a screenshot under ~/.yoqa/runs/screenshots/. */
 	screenshot: () => Promise<{ path: string; base64: string }>;
 	snapshotNodes: () => Promise<{
@@ -382,12 +386,13 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		}
 	};
 
-	const captureFrame = async (): Promise<CapturedFrame> =>
+	const captureFrame = async (options?: { fresh?: boolean }): Promise<CapturedFrame> =>
 		guard(async () => {
 			const now = Date.now();
 			// Coalesce concurrent live-feed polls within one TTL window so N
-			// viewers share a single agent-device screenshot call.
-			if (frameCache && now - frameCache.at < FRAME_CACHE_TTL_MS) {
+			// viewers share a single agent-device screenshot call. Stream pumps
+			// pass { fresh: true } to pace on real captures instead.
+			if (!options?.fresh && frameCache && now - frameCache.at < FRAME_CACHE_TTL_MS) {
 				return frameCache.frame;
 			}
 			if (frameInFlight) {

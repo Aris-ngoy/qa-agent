@@ -21,6 +21,7 @@ import {
 	isMissingSessionError,
 	requireActiveSession,
 } from "../../domains/devices/active-session";
+import { FEED_BOUNDARY, pumpFeed } from "../../domains/devices/feed";
 import {
 	ActionNotFoundError,
 	ActionValidationError,
@@ -175,11 +176,70 @@ export function createSessionRoutes() {
 		}
 	});
 
+	app.get("/screenshot/stream", async (c) => {
+		try {
+			const { session } = requireActiveSession();
+			const signal = c.req.raw.signal;
+			const stream = new ReadableStream<Uint8Array>({
+				async start(controller) {
+					const onAbort = () => {
+						try {
+							controller.close();
+						} catch {
+							// already closed
+						}
+					};
+					if (signal.aborted) {
+						onAbort();
+						return;
+					}
+					signal.addEventListener("abort", onAbort, { once: true });
+					try {
+						await pumpFeed(
+							session,
+							{
+								write: (chunk) => {
+									if (signal.aborted) throw new Error("aborted");
+									controller.enqueue(chunk);
+								},
+							},
+							signal,
+						);
+					} finally {
+						signal.removeEventListener("abort", onAbort);
+						try {
+							controller.close();
+						} catch {
+							// already closed
+						}
+					}
+				},
+				cancel() {
+					// Client went away — pumpFeed observes signal abort and stops.
+				},
+			});
+			return new Response(stream, {
+				status: 200,
+				headers: {
+					"Content-Type": `multipart/x-mixed-replace; boundary=${FEED_BOUNDARY}`,
+					"Cache-Control": "no-store",
+					Connection: "keep-alive",
+				},
+			});
+		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
+			const message = error instanceof Error ? error.message : String(error);
+			return c.json({ error: "Failed to start screenshot stream", detail: message }, 500);
+		}
+	});
+
 	app.get("/stream.mjpeg", async (c) => {
 		return c.json(
 			{
 				error: "Live MJPEG stream is not available",
-				detail: "Poll GET /screenshot/image instead; agent-device owns recording via record",
+				detail:
+					"Use GET /screenshot/stream (multipart live feed) or poll GET /screenshot/image instead; agent-device owns recording via record",
 			},
 			410,
 		);
