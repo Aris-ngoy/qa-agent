@@ -34,6 +34,9 @@ failing with a raw error — the same treatment WebDriverAgent got under Appium.
   `getIosRunnerStatus`, `isRunnerNotInstalledError` matcher.
 - Desktop `RunnerInstallDialog` + `useRunnerInstall` hook, wired into
   Inspector connect/restart and run start (`apps/desktop/src/mainview/`).
+  Picking an iOS device in the Select Device dialog checks the runner and
+  installs it inside that same dialog; check-and-install also runs inside
+  connect on the runner, with the dialog as the recovery path.
 - CLI `yoqa devices install-runner` (`packages/cli/src/program.ts`).
 - Runner icon asset `services/runner/assets/yoqa-ad-runner-icon.png` (required
   for the Electrobun sidecar compile).
