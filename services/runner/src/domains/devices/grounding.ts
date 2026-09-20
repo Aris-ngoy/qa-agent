@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { parseVisionObject } from "../providers/agent-json";
-import { resolveActiveProviderAuth } from "../providers/application";
+import { resolveVisionProviderAuth } from "../providers/application";
 import { assertVisionCapableProvider, completeVision } from "../providers/vision";
 import { AgentProviderError } from "../providers/vision-model";
 import { snapshotNodesToScreen } from "./screen";
@@ -27,7 +27,7 @@ export async function groundDescription(
 	session: DeviceSession,
 	description: string,
 ): Promise<{ x: number; y: number }> {
-	const auth = await assertVisionCapableProvider(await resolveActiveProviderAuth()).catch(
+	const auth = await assertVisionCapableProvider(await resolveVisionProviderAuth()).catch(
 		(error: unknown) => {
 			if (error instanceof AgentProviderError) {
 				throw new Error(error.message);

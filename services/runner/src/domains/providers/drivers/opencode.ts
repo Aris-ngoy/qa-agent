@@ -235,7 +235,7 @@ export const opencodeDriver: DriverDefinition = {
 	],
 	loginInstructions:
 		"Paste a Zen API key from https://opencode.ai for Zen vision. LiteLLM uses ~/.config/opencode/opencode.json plus CLI auth or LITELLM_API_KEY. Local `opencode serve` is not OpenAI-compatible.",
-	capabilities: { vision: true },
+	capabilities: { vision: true, judge: false },
 	vision: createSdkVisionPort({
 		label: "OpenCode",
 		defaultModel: OPENCODE_DEFAULT_VISION_MODEL,

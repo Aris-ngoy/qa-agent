@@ -68,6 +68,32 @@ function defaultAuthMode(kind: ProviderKind): ProviderAuthMode {
 	return modes[0] ?? "api_key";
 }
 
+function isVisionKind(kind: ProviderKind): boolean {
+	return getDriver(kind).capabilities.vision;
+}
+
+function isJudgeKind(kind: ProviderKind): boolean {
+	return getDriver(kind).capabilities.judge;
+}
+
+async function authFromRow(row: typeof providers.$inferSelect): Promise<ActiveProviderAuth> {
+	const kind = parseProviderKind(row.kind);
+	const authMode = providerAuthModeSchema.parse(row.authMode ?? "api_key");
+	const apiKey = row.apiKeyCiphertext ? await decryptApiKey(row.apiKeyCiphertext) : null;
+	const env = await loadEnv(row);
+	return {
+		id: row.id,
+		kind,
+		authMode,
+		apiKey,
+		baseUrl: row.baseUrl,
+		serverUrl: row.serverUrl,
+		defaultModel: row.defaultModel,
+		binaryPath: row.binaryPath,
+		env,
+	};
+}
+
 async function loadEnv(row: typeof providers.$inferSelect): Promise<Record<string, string>> {
 	if (!row.envCiphertext) return {};
 	try {
@@ -188,7 +214,8 @@ export async function createProvider(request: CreateProviderRequest): Promise<Ai
 	const now = Date.now();
 	const id = newId();
 	const all = await db.select().from(providers);
-	const setAsDefault = request.setAsDefault === true || all.length === 0;
+	const setAsDefault =
+		driver.capabilities.vision && (request.setAsDefault === true || all.length === 0);
 	const accentColor: ProviderAccentColor = providerAccentColorSchema.parse(
 		request.accentColor ?? "blue",
 	);
@@ -300,6 +327,11 @@ export async function updateProvider(
 	}
 
 	if (request.setAsDefault === true) {
+		if (!getDriver(kind).capabilities.vision) {
+			throw new ProviderValidationError(
+				`${getDriver(kind).label} cannot be the default provider (no vision for agent runs)`,
+			);
+		}
 		await clearDefaultFlags(id);
 		patch.isDefault = 1;
 	}
@@ -316,8 +348,15 @@ export async function updateProvider(
 export async function setDefaultProvider(id: string): Promise<AiProvider> {
 	const db = getCatalogDb();
 	const rows = await db.select().from(providers).where(eq(providers.id, id)).limit(1);
-	if (!rows[0]) {
+	const row = rows[0];
+	if (!row) {
 		throw new ProviderNotFoundError(`Provider not found: ${id}`);
+	}
+	const kind = parseProviderKind(row.kind);
+	if (!isVisionKind(kind)) {
+		throw new ProviderValidationError(
+			`${getDriver(kind).label} cannot be the default provider (no vision for agent runs)`,
+		);
 	}
 	await clearDefaultFlags(id);
 	await db
@@ -338,8 +377,8 @@ export async function deleteProvider(id: string): Promise<void> {
 	await db.delete(providers).where(eq(providers.id, id));
 
 	if (wasDefault) {
-		const remaining = await db.select().from(providers).orderBy(asc(providers.createdAt)).limit(1);
-		const next = remaining[0];
+		const remaining = await db.select().from(providers).orderBy(asc(providers.createdAt));
+		const next = remaining.find((candidate) => isVisionKind(parseProviderKind(candidate.kind)));
 		if (next) {
 			await db
 				.update(providers)
@@ -416,8 +455,8 @@ export async function listProviderModels(id: string): Promise<ListProviderModels
 }
 
 /**
- * Resolve credentials for the default enabled provider.
- * Used by future `runs create` orchestration — not exposed over HTTP.
+ * Resolve credentials for the Settings default enabled provider.
+ * Prefer {@link resolveVisionProviderAuth} for agent runs.
  */
 export async function resolveActiveProviderAuth(): Promise<ActiveProviderAuth | null> {
 	const db = getCatalogDb();
@@ -441,19 +480,41 @@ export async function resolveActiveProviderAuth(): Promise<ActiveProviderAuth | 
 		return null;
 	}
 
-	const kind = parseProviderKind(row.kind);
-	const authMode = providerAuthModeSchema.parse(row.authMode ?? "api_key");
-	const apiKey = row.apiKeyCiphertext ? await decryptApiKey(row.apiKeyCiphertext) : null;
-	const env = await loadEnv(row);
-	return {
-		id: row.id,
-		kind,
-		authMode,
-		apiKey,
-		baseUrl: row.baseUrl,
-		serverUrl: row.serverUrl,
-		defaultModel: row.defaultModel,
-		binaryPath: row.binaryPath,
-		env,
-	};
+	return authFromRow(row);
+}
+
+/** Credentials for agent/grounding: default if vision-capable, else first enabled vision provider. */
+export async function resolveVisionProviderAuth(): Promise<ActiveProviderAuth | null> {
+	const db = getCatalogDb();
+	const rows = await db
+		.select()
+		.from(providers)
+		.where(eq(providers.enabled, 1))
+		.orderBy(asc(providers.createdAt));
+	const defaultRow = rows.find((row) => row.isDefault === 1);
+	const ordered = defaultRow
+		? [defaultRow, ...rows.filter((row) => row.id !== defaultRow.id)]
+		: rows;
+	for (const row of ordered) {
+		if (isVisionKind(parseProviderKind(row.kind))) {
+			return authFromRow(row);
+		}
+	}
+	return null;
+}
+
+/** First enabled judge-capable provider (independent of the vision default). */
+export async function resolveJudgeProviderAuth(): Promise<ActiveProviderAuth | null> {
+	const db = getCatalogDb();
+	const rows = await db
+		.select()
+		.from(providers)
+		.where(eq(providers.enabled, 1))
+		.orderBy(asc(providers.createdAt));
+	for (const row of rows) {
+		if (isJudgeKind(parseProviderKind(row.kind))) {
+			return authFromRow(row);
+		}
+	}
+	return null;
 }

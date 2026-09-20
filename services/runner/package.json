@@ -40,6 +40,7 @@
 		"@ai-sdk/groq": "^4.0.13",
 		"@ai-sdk/openai": "^4.0.30",
 		"@ai-sdk/xai": "^4",
+		"@typesafe-ai/sdk": "^0.6.0",
 		"agent-device": "^0.21.6",
 		"ai": "^7.0.37",
 		"drizzle-orm": "^0.45.2",

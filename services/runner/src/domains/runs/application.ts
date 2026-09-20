@@ -15,7 +15,8 @@ import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
 import { acquireSessionForRun, releaseSessionFromRun } from "../devices/active-session";
 import type { DeviceSession } from "../devices/session";
-import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
+import { type ActiveProviderAuth, resolveVisionProviderAuth } from "../providers/application";
+import { confirmInstruction } from "../providers/judge";
 import {
 	type AgentDecision,
 	AgentProviderError,
@@ -290,6 +291,7 @@ async function executeAgentCase(input: {
 			await setCurrentCommand(input.runTestId, command);
 		},
 		decide: decideNextAction,
+		judge: confirmInstruction,
 		clock: { sleep, now: () => Date.now() },
 		defaultAppId: input.defaultAppId,
 	});
@@ -428,7 +430,7 @@ export async function executeRun(runId: string): Promise<void> {
 
 		let auth: ActiveProviderAuth | null = null;
 		if (needsAgent) {
-			auth = await assertVisionCapableProvider(await resolveActiveProviderAuth());
+			auth = await assertVisionCapableProvider(await resolveVisionProviderAuth());
 		}
 
 		if (run.buildId) {
@@ -596,7 +598,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 
 	if (needsAgent) {
 		try {
-			await assertVisionCapableProvider(await resolveActiveProviderAuth());
+			await assertVisionCapableProvider(await resolveVisionProviderAuth());
 		} catch (error) {
 			if (error instanceof AgentProviderError) {
 				throw new RunValidationError(error.message);

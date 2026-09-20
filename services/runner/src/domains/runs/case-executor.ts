@@ -17,6 +17,8 @@ import {
 } from "../devices/interaction";
 import { type DeviceSession, isDeadSessionError } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
+import type { InstructionJudgeVerdict } from "../providers/drivers/types";
+import type { CaseJudgeInput } from "../providers/judge";
 import {
 	type AgentDecision,
 	coerceScrollIntentToSwipe,
@@ -63,6 +65,8 @@ export type CaseDecideFn = (input: {
 	instructionCount?: number;
 }) => Promise<AgentDecision>;
 
+export type CaseJudgeFn = (input: CaseJudgeInput) => Promise<InstructionJudgeVerdict | null>;
+
 export type PerformActionFn = (
 	session: DeviceSession,
 	body: ActionRequest,
@@ -94,6 +98,7 @@ export type AgentCaseDeps = {
 	appendStep: AppendCaseStep;
 	setCurrentCommand?: SetCurrentCommand;
 	decide?: CaseDecideFn;
+	judge?: CaseJudgeFn;
 	performAction?: PerformActionFn;
 	readScreen?: (session: DeviceSession) => Promise<{ elements?: ScreenElement[] }>;
 	clock?: CaseExecutorClock;
@@ -106,6 +111,61 @@ const defaultClock: CaseExecutorClock = {
 	sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 	now: () => Date.now(),
 };
+
+async function applyInstructionJudge(
+	decision: AgentDecision,
+	judge: CaseJudgeFn,
+	input: {
+		instructions: string;
+		expectedResult: string;
+		screenSnapshot: string;
+		recentActions: AgentDecision[];
+	},
+): Promise<AgentDecision> {
+	if (decision.type !== "verify" && decision.type !== "done" && decision.type !== "fail") {
+		return decision;
+	}
+	const verdict = await judge({
+		instruction: input.instructions,
+		expectedResult: input.expectedResult,
+		screenSnapshot: input.screenSnapshot,
+		recentActions: input.recentActions.map((action) => ({
+			type: action.type,
+			reason: action.reason,
+		})),
+		proposed: decision.type,
+		proposedReason: decision.reason,
+		proposedThoughts: decision.thoughts,
+	});
+	if (!verdict) return decision;
+	if (verdict.outcome === "continue") {
+		return {
+			type: "wait",
+			ms: 500,
+			reason: verdict.reason,
+			thoughts: verdict.thoughts,
+		};
+	}
+	if (verdict.outcome === "fail") {
+		return {
+			type: "fail",
+			reason: verdict.reason,
+			thoughts: verdict.thoughts,
+		};
+	}
+	if (decision.type === "fail") {
+		return {
+			type: "done",
+			reason: verdict.reason,
+			thoughts: verdict.thoughts,
+		};
+	}
+	return {
+		...decision,
+		reason: verdict.reason,
+		thoughts: verdict.thoughts,
+	};
+}
 
 const noopSetCurrentCommand: SetCurrentCommand = async () => {};
 
@@ -557,6 +617,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	error: string | null;
 }> {
 	const decide = deps.decide ?? defaultDecideNextAction;
+	const judge = deps.judge ?? (async () => null);
 	const perform = deps.performAction ?? defaultPerformAction;
 	const readScreen =
 		deps.readScreen ??
@@ -632,7 +693,12 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		) {
 			decision = { ...decision, appId: deps.defaultAppId };
 		}
-		return decision;
+		return applyInstructionJudge(decision, judge, {
+			instructions: input.flow.instructions,
+			expectedResult: input.flow.expectedResult,
+			screenSnapshot: input.screenSnapshot,
+			recentActions: input.recentActions,
+		});
 	};
 
 	const applyDecision = async (decision: AgentDecision): Promise<"continue" | "done" | "fail"> => {

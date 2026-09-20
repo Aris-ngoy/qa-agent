@@ -10,6 +10,7 @@ import { googleDriver } from "./google";
 import { googleVertexDriver } from "./google-vertex";
 import { grokDriver } from "./grok";
 import { groqDriver } from "./groq";
+import { jevDriver } from "./jev";
 import { openaiDriver } from "./openai";
 import { opencodeDriver } from "./opencode";
 import type { DriverCatalogEntry, DriverDefinition } from "./types";
@@ -28,6 +29,7 @@ const DRIVERS: Record<ProviderKind, DriverDefinition> = {
 	cursor: cursorDriver,
 	grok: grokDriver,
 	custom: customDriver,
+	jev: jevDriver,
 };
 
 export function getDriver(kind: ProviderKind): DriverDefinition {
@@ -62,4 +64,8 @@ export type {
 	VisionPort,
 	VisionAuth,
 	VisionCompleteInput,
+	JudgePort,
+	JudgeProposed,
+	InstructionJudgeInput,
+	InstructionJudgeVerdict,
 } from "./types";

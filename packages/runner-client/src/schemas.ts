@@ -584,6 +584,7 @@ export const providerKindSchema = z.union([
 	z.literal("cursor"),
 	z.literal("grok"),
 	z.literal("custom"),
+	z.literal("jev"),
 ]);
 export type ProviderKind = z.infer<typeof providerKindSchema>;
 
@@ -644,6 +645,7 @@ export type ListProvidersResponse = z.infer<typeof listProvidersResponseSchema>;
 
 export const providerDriverCapabilitiesSchema = z.object({
 	vision: z.boolean(),
+	judge: z.boolean(),
 });
 
 export type ProviderDriverCapabilities = z.infer<typeof providerDriverCapabilitiesSchema>;
@@ -1001,6 +1003,13 @@ export const yoqaStatusResponseSchema = z.object({
 		kind: z.string().nullable(),
 		label: z.string().nullable(),
 	}),
+	judge: z
+		.object({
+			configured: z.boolean(),
+			kind: z.string().nullable(),
+			label: z.string().nullable(),
+		})
+		.optional(),
 	activeDevice: activeDeviceResponseSchema.nullable(),
 });
 export type YoqaStatusResponse = z.infer<typeof yoqaStatusResponseSchema>;

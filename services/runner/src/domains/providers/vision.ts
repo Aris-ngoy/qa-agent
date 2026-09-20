@@ -9,7 +9,7 @@ export function resolveVision(auth: ActiveProviderAuth): VisionPort {
 	const vision = getDriver(auth.kind).vision;
 	if (!vision) {
 		throw new AgentProviderError(
-			`Provider kind "${auth.kind}" does not support vision runs yet. Configure Anthropic, OpenAI, OpenCode, Codex, Groq, Grok, Google, Vertex, Antigravity, Cursor, or Custom.`,
+			`Provider kind "${auth.kind}" does not support vision runs yet. Configure Anthropic, OpenAI, OpenCode, Codex, Groq, Grok, Google, Vertex, Antigravity, Cursor, or Custom. Jev is a text judge, not a vision runner.`,
 		);
 	}
 	return vision;

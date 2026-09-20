@@ -24,7 +24,7 @@ export const googleVertexDriver: DriverDefinition = {
 	],
 	loginInstructions:
 		"Paste a Vertex express-mode API key, or set GOOGLE_VERTEX_PROJECT + GOOGLE_VERTEX_LOCATION (and ADC / GOOGLE_APPLICATION_CREDENTIALS).",
-	capabilities: { vision: true },
+	capabilities: { vision: true, judge: false },
 	vision: createSdkVisionPort({
 		label: "Google Vertex",
 		defaultModel: "gemini-2.5-flash",

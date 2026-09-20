@@ -207,6 +207,9 @@ program
 						: "not configured"
 				}`,
 			);
+			if (body.judge?.configured) {
+				console.log(`judge: ${body.judge.label ?? body.judge.kind ?? "configured"}`);
+			}
 			if (body.activeDevice) {
 				console.log(`active device: ${body.activeDevice.platform} ${body.activeDevice.deviceId}`);
 			} else {
