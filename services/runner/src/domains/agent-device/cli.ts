@@ -25,6 +25,33 @@ export class AgentDeviceError extends Error {
 	}
 }
 
+/** Error code when the agent-device iOS runner (YoqaADRunner) is missing/unsigned. */
+export const IOS_RUNNER_NOT_INSTALLED_CODE = "IOS_RUNNER_NOT_INSTALLED";
+
+const RUNNER_NOT_INSTALLED_PATTERNS = [
+	/must be signed before commands can run/i,
+	/requires a development team/i,
+	/no profiles for/i,
+	/provisioning profile/i,
+	/code signing/i,
+	/IOS_RUNNER_DEVICE_NOT_PROVISIONED/i,
+	/IOS_RUNNER_NOT_INSTALLED/i,
+	/xcodebuild build-for-testing failed/i,
+	/runner prepare failed|ios runner prepare failed|prepare ios-runner/i,
+	/AGENT_DEVICE_IOS_TEAM_ID/i,
+];
+
+/** True when the error means the iOS runner must be built/installed first. */
+export function isRunnerNotInstalledError(error: unknown): boolean {
+	if (error instanceof AgentDeviceError) {
+		if (error.code === IOS_RUNNER_NOT_INSTALLED_CODE) return true;
+		if (error.code === "IOS_RUNNER_DEVICE_NOT_PROVISIONED") return true;
+	}
+	const message = error instanceof Error ? error.message : String(error);
+	const hint = error instanceof AgentDeviceError ? (error.hint ?? "") : "";
+	return RUNNER_NOT_INSTALLED_PATTERNS.some((re) => re.test(message) || re.test(hint));
+}
+
 /** Error codes where the agent-device session is gone and the caller must reconnect. */
 const DEAD_SESSION_CODES = new Set([
 	"SESSION_NOT_FOUND",
@@ -175,6 +202,21 @@ export function agentDeviceErrorFromEnvelope(envelopeError: {
 	) {
 		const hint = [envelopeError.hint?.trim(), developerModeRepairHint()].filter(Boolean).join(" ");
 		return new AgentDeviceError(message, DEVELOPER_MODE_DISABLED_CODE, hint, detail);
+	}
+	// A missing/unsigned iOS runner also arrives as COMMAND_FAILED (or an
+	// IOS_RUNNER_* code) — re-code it so connect can offer the guided
+	// YoqaADRunner install instead of a raw failure.
+	if (rawCode === "COMMAND_FAILED" || rawCode.startsWith("IOS_RUNNER")) {
+		const probe = new AgentDeviceError(message, rawCode, envelopeError.hint, detail);
+		if (isRunnerNotInstalledError(probe)) {
+			const hint = [
+				envelopeError.hint?.trim(),
+				"Install the YoqaADRunner on this device (desktop shows an Install prompt), or run: yoqa devices install-runner <device-id> --platform ios",
+			]
+				.filter(Boolean)
+				.join(" ");
+			return new AgentDeviceError(message, IOS_RUNNER_NOT_INSTALLED_CODE, hint, detail);
+		}
 	}
 	return new AgentDeviceError(message, rawCode, envelopeError.hint, detail);
 }

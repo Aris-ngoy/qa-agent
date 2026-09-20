@@ -2,11 +2,13 @@ import { useEnterOnce } from "@/app/motion/use-enter-once";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
+import { RunnerInstallDialog } from "@/features/devices/runner-install-dialog";
 import type { DevicePlatform, SelectedDevice } from "@/features/devices/select-device-modal";
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
 } from "@/features/devices/use-active-device-session";
+import { useRunnerInstall } from "@/features/devices/use-runner-install";
 import { CommandBar } from "@/features/inspector/command-bar";
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
 import { isDeviceSessionGone } from "@/features/inspector/inspect-session";
@@ -41,6 +43,7 @@ import {
 	formatRunReportHtml,
 	formatRunReportMarkdown,
 	formatSleepShellLine,
+	isRunnerNotInstalledError,
 	runYoqaShellScript,
 	shellToCaseScript,
 	suggestedRunReportBasename,
@@ -166,6 +169,14 @@ export function InspectorPage() {
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [sessionReport, setSessionReport] = useState<RunReportDocument | null>(null);
 	const [exportingReport, setExportingReport] = useState(false);
+	const {
+		runnerInstallTarget,
+		runnerInstallPhase,
+		runnerInstallMessage,
+		openRunnerInstall,
+		closeRunnerInstall,
+		startRunnerInstall,
+	} = useRunnerInstall();
 
 	const abortRef = useRef<AbortController | null>(null);
 	const logIdRef = useRef(0);
@@ -651,20 +662,31 @@ export function InspectorPage() {
 
 	const handleConnect = useCallback(async () => {
 		if (!device) return;
-		setConnecting(true);
-		try {
-			const info = await connectWithDevice(device);
-			notify(
-				info.streamReady === false
-					? "Connected — screenshot poll (MJPEG unavailable)"
-					: "Connected — live stream on",
-			);
-		} catch (error) {
-			showErrorToast(error, "Failed to connect device");
-		} finally {
-			setConnecting(false);
-		}
-	}, [connectWithDevice, device]);
+		const target = device;
+		const attempt = async (): Promise<void> => {
+			setConnecting(true);
+			try {
+				const info = await connectWithDevice(target);
+				notify(
+					info.streamReady === false
+						? "Connected — screenshot poll (MJPEG unavailable)"
+						: "Connected — live stream on",
+				);
+			} catch (error) {
+				if (target.platform === "ios" && isRunnerNotInstalledError(error)) {
+					const detail = error instanceof Error ? error.message : null;
+					openRunnerInstall(target, detail, () => {
+						void attempt();
+					});
+					return;
+				}
+				showErrorToast(error, "Failed to connect device");
+			} finally {
+				setConnecting(false);
+			}
+		};
+		await attempt();
+	}, [connectWithDevice, device, openRunnerInstall]);
 
 	const handleRestartSession = useCallback(async () => {
 		const target: SelectedDevice | null =
@@ -688,30 +710,41 @@ export function InspectorPage() {
 		setLiveControl(false);
 		controlWsRef.current?.close();
 		controlWsRef.current = null;
-		try {
-			const client = await getRunnerClient();
+		const attempt = async (): Promise<void> => {
+			setConnecting(true);
 			try {
-				await client.disconnectDevice();
-			} catch {
-				/* already dead / no session */
+				const client = await getRunnerClient();
+				try {
+					await client.disconnectDevice();
+				} catch {
+					/* already dead / no session */
+				}
+				sessionEpochRef.current += 1;
+				clearSessionUi();
+				if (!device) setDevice(target);
+				const info = await connectWithDevice(target);
+				notify(
+					info.streamReady === false
+						? "Session restarted — screenshot poll"
+						: "Session restarted — live stream refreshed",
+				);
+			} catch (error) {
+				if (target.platform === "ios" && isRunnerNotInstalledError(error)) {
+					const detail = error instanceof Error ? error.message : null;
+					openRunnerInstall(target, detail, () => {
+						void attempt();
+					});
+					return;
+				}
+				sessionEpochRef.current += 1;
+				clearSessionUi();
+				showErrorToast(error, "Failed to restart session");
+			} finally {
+				setConnecting(false);
 			}
-			sessionEpochRef.current += 1;
-			clearSessionUi();
-			if (!device) setDevice(target);
-			const info = await connectWithDevice(target);
-			notify(
-				info.streamReady === false
-					? "Session restarted — screenshot poll"
-					: "Session restarted — live stream refreshed",
-			);
-		} catch (error) {
-			sessionEpochRef.current += 1;
-			clearSessionUi();
-			showErrorToast(error, "Failed to restart session");
-		} finally {
-			setConnecting(false);
-		}
-	}, [active, clearSessionUi, connectWithDevice, device]);
+		};
+		await attempt();
+	}, [active, clearSessionUi, connectWithDevice, device, openRunnerInstall]);
 
 	const handleDisconnect = useCallback(async () => {
 		if (scriptHasBody(script) && !window.confirm("Disconnect and keep the current script?")) {
@@ -1201,6 +1234,22 @@ export function InspectorPage() {
 					void handleSaveAsCase(name);
 				}}
 			/>
+
+			{runnerInstallTarget ? (
+				<RunnerInstallDialog
+					device={runnerInstallTarget.device}
+					open
+					phase={runnerInstallPhase}
+					message={runnerInstallMessage}
+					onInstall={() => {
+						void startRunnerInstall();
+					}}
+					onRetry={() => {
+						void startRunnerInstall();
+					}}
+					onCancel={closeRunnerInstall}
+				/>
+			) : null}
 		</div>
 	);
 }

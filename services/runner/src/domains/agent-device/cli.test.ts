@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { isDeadSessionError } from "../devices/session";
 import {
 	AgentDeviceError,
+	IOS_RUNNER_NOT_INSTALLED_CODE,
 	agentDeviceErrorFromEnvelope,
 	agentDeviceSessionName,
 	conflictingSessionAddress,
 	isDeadAgentDeviceSessionError,
+	isRunnerNotInstalledError,
 	isSameDaemonDeviceInUse,
 	isSupportedAgentDeviceVersion,
 } from "./cli";
@@ -61,6 +63,45 @@ describe("agentDeviceErrorFromEnvelope", () => {
 		});
 		expect(error.code).toBe("COMMAND_FAILED");
 		expect(error.hint).toBeUndefined();
+	});
+
+	test("re-codes a missing-runner COMMAND_FAILED to IOS_RUNNER_NOT_INSTALLED", () => {
+		const error = agentDeviceErrorFromEnvelope({
+			code: "COMMAND_FAILED",
+			message: "The AgentDeviceRunner XCTest host must be signed before commands can run",
+			hint: "Start with Automatic Signing and only these env vars: AGENT_DEVICE_IOS_TEAM_ID=ABCDE12345",
+		});
+		expect(error.code).toBe(IOS_RUNNER_NOT_INSTALLED_CODE);
+		expect(error.hint).toContain("YoqaADRunner");
+	});
+});
+
+describe("runner-missing detection", () => {
+	test("matches the re-coded error and raw signing messages", () => {
+		expect(
+			isRunnerNotInstalledError(
+				new AgentDeviceError("must be signed", IOS_RUNNER_NOT_INSTALLED_CODE),
+			),
+		).toBe(true);
+		expect(
+			isRunnerNotInstalledError(new AgentDeviceError("boom", "IOS_RUNNER_DEVICE_NOT_PROVISIONED")),
+		).toBe(true);
+		expect(
+			isRunnerNotInstalledError(
+				new Error("xcodebuild build-for-testing failed: requires a development team"),
+			),
+		).toBe(true);
+		expect(
+			isRunnerNotInstalledError(new Error("set AGENT_DEVICE_IOS_TEAM_ID for physical runs")),
+		).toBe(true);
+	});
+
+	test("ignores dead sessions, in-use claims, and unknown devices", () => {
+		expect(isRunnerNotInstalledError(new AgentDeviceError("gone", "SESSION_NOT_FOUND"))).toBe(
+			false,
+		);
+		expect(isRunnerNotInstalledError(new Error("already in use by session"))).toBe(false);
+		expect(isRunnerNotInstalledError(new Error("Device not found"))).toBe(false);
 	});
 });
 
