@@ -12,11 +12,16 @@ without depending on a video broadcaster.
 
 ## Plan summary
 
-- **Frames:** `GET /screenshot/image` backed by `agent-device screenshot --no-stabilize`
-  (low-latency capture loop; persisted screenshots keep full quality). Server coalesces
-  concurrent polls within a 150ms TTL so N viewers share one `agent-device` call.
-- **Client:** polls at ~180ms; frame and tree requests fly on independent locks so the feed
-  never blocks selection. Polling pauses while a script runs; tree warms 500ms after connect.
+- **Frames:** `GET /screenshot/stream` — a `multipart/x-mixed-replace` stream of PNG
+  frames rendered straight into `<img>`, backed by `agent-device screenshot --no-stabilize`
+  (low-latency capture loop; persisted screenshots keep full quality). The server pumps
+  fresh captures back-to-back (~1 frame/s on sim — the `simctl` capture ceiling), so
+  delivery tracks the fastest the backend can capture with no per-frame HTTP overhead.
+- **Fallback:** if the stream errors, the Inspector degrades to `GET /screenshot/image`
+  poll at 500ms (server coalesces concurrent polls within a 150ms TTL). A **Poll** badge
+  marks degraded mode; **Live** marks the stream.
+- **Client:** frame delivery and tree refreshes are independent, so the feed never blocks
+  selection. Both pause while a script runs; tree warms 500ms after connect.
 - **Control:** Bun WebSocket `WS /ws/control` with JSON pointer `begin` / `move` / `end`
   (0–1000 coords). Live gestures buffer locally and flush as one tap/swipe on pointer-up.
 - **Persistence:** live frames are in-memory only and never write `~/.yoqa/runs/screenshots/`.
@@ -30,11 +35,14 @@ without depending on a video broadcaster.
 **Runner**
 
 - `captureFrame()` passes `--no-stabilize` and shares one in-flight screenshot across
-  concurrent callers within a 150ms TTL (`services/runner/src/domains/devices/session.ts`).
-- `GET /screenshot/image` stays the live-frame endpoint (`Cache-Control: no-store`).
-- `GET /stream.mjpeg` stays `410` with a pointer to poll + `record`.
-- `WS /ws/control` unchanged: buffered tap/swipe on pointer-up, action gate blocks
-  interleaving with scripts.
+  concurrent callers within a 150ms TTL (`services/runner/src/domains/devices/session.ts`);
+  stream pumps pass `{ fresh: true }` to pace on real captures.
+- `GET /screenshot/stream` pumps the multipart feed until abort or session death
+  (`domains/devices/feed.ts`); no session returns `410 Device session ended`.
+- `GET /screenshot/image` stays the one-shot endpoint (`Cache-Control: no-store`).
+- `GET /stream.mjpeg` stays `410` with a pointer to the stream + `record`.
+- `WS /ws/control` returns machine-readable error codes (`NO_SESSION`, `HELD_BY_RUN`,
+  `INVALID_JSON`, `INVALID_MESSAGE`, `POINTER_FAILED`) with the detail attached.
 
 **Client (`@yoqa/runner-client`)**
 
@@ -44,20 +52,27 @@ without depending on a video broadcaster.
 
 **Desktop Inspector**
 
-- Single **Poll** badge; frame poll ~180ms, tree refresh 8s, both paused while a script runs.
+- **Live** badge on the multipart stream, **Poll** badge on degraded poll; tree refresh 8s,
+  paused while a script runs.
 - **Cached Select Mode** unchanged: clicks/hover hit-test the cached cleaned tree locally.
-- **Live control** checkbox: pointer drag → WS; selection menu when off.
-- **Restart session** in the toolbar: disconnect + reconnect + resume poll.
+- **Live control** checkbox: pointer drag → WS; selection menu when off. Pointer failures
+  toast with the server detail (previously swallowed); dropped sockets reconnect with
+  backoff (3 tries) before toggling off.
+- **Restart session** in the toolbar: disconnect + reconnect + resume stream.
 
 ## How to verify
 
-1. Connect a device in Inspector → badge **Poll**; idle session does not grow
-   `~/.yoqa/runs/screenshots/`.
-2. Disable **Live control** → hover then click a control: highlight + menu without
+1. Connect a device in Inspector → badge **Live**; idle session does not grow
+   `~/.yoqa/runs/screenshots/`. Frames arrive ~1/s on sim (capture ceiling).
+2. Break the stream (disconnect the device) → badge flips to **Poll** and frames keep
+   coming at the degraded rate.
+3. Disable **Live control** → hover then click a control: highlight + menu without
    per-click “Reading screen…”.
-3. Enable **Live control** → drag on the mirror (no tree fetch); disable → select again.
-4. Run a script → feed pauses during the run, resumes after.
-5. If the session dies, Inspector prompts **Restart session** (no auto-reconnect).
+4. Enable **Live control** → drag on the mirror moves content (no tree fetch);
+   disable → select again. With the device unplugged mid-drag, a toast names the
+   failure instead of silence.
+5. Run a script → feed pauses during the run, resumes after.
+6. If the session dies, Inspector prompts **Restart session** (no auto-reconnect).
 
 ## Follow-ups
 

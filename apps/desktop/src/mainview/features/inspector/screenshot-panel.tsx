@@ -54,7 +54,9 @@ type ScreenshotPanelProps = {
 	/** True while warming / refreshing the accessibility tree. */
 	treeRefreshing: boolean;
 	live: boolean;
-	feedMode: "poll" | null;
+	feedMode: "stream" | "poll" | null;
+	/** Called when the multipart stream image errors (falls back to poll). */
+	onStreamError?: () => void;
 	liveControl: boolean;
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
@@ -86,6 +88,7 @@ export function ScreenshotPanel({
 	disabled,
 	snippetContext,
 	onSelectWithPoint,
+	onStreamError,
 	onSelect,
 	onChangeSelector,
 	onRefreshTree,
@@ -324,7 +327,8 @@ export function ScreenshotPanel({
 			? elementBoxPercent(hoverElement)
 			: null;
 
-	const liveLabel = feedMode === "poll" ? "Poll" : live ? "Live" : null;
+	const liveLabel =
+		feedMode === "stream" ? "Live" : feedMode === "poll" ? "Poll" : live ? "Live" : null;
 
 	const caption = selection ? activeSelectorCaption(selection) : null;
 	const showRefreshing = treeRefreshing && elements.length === 0;
@@ -436,6 +440,9 @@ export function ScreenshotPanel({
 								className="pointer-events-none block max-h-[min(72vh,760px)] w-auto max-w-full rounded-lg shadow-[0_12px_40px_-18px_rgba(0,0,0,0.45)] select-none"
 								draggable={false}
 								src={imageUrl}
+								onError={() => {
+									if (feedMode === "stream") onStreamError?.();
+								}}
 							/>
 							{hoverBox ? (
 								<span

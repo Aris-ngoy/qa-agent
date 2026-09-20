@@ -1120,6 +1120,12 @@ export class RunnerClient {
 		return cacheBust != null ? `${url}?t=${cacheBust}` : url;
 	}
 
+	/** Multipart live-frame stream for `<img src>` (replaces per-frame polling). */
+	getScreenshotStreamUrl(cacheBust?: number): string {
+		const url = `${this.baseUrl}/screenshot/stream`;
+		return cacheBust != null ? `${url}?t=${cacheBust}` : url;
+	}
+
 	/** Legacy MJPEG stream URL — the runner returns 410; poll screenshots instead. */
 	getStreamMjpegUrl(): string {
 		return `${this.baseUrl}/stream.mjpeg`;

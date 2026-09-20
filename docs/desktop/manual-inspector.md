@@ -8,7 +8,8 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 
 - **Script format:** Bash-style lines (`yoqa action …`, `yoqa assert …`, `sleep N`) — not Maestro YAML.
 - **Interaction model:** Cached Select Mode (warm accessibility tree when Live control is off) → hover preview + instant click hit-test → **hold Control** to pick a raw screenshot `x,y` when hit-test cannot select a control → floating action menu → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut (not while Control is held). Live control keeps the poll feed without tree fetches.
-- **Live feed:** fast screenshot poll (~180ms, server-coalesced) — no MJPEG broadcaster since the agent-device migration. See [live feed (poll transport)](./manual-inspector-mjpeg-stream.md).
+- **Live feed:** multipart live-frame stream (`GET /screenshot/stream`, ~1 frame/s on sim — the capture ceiling) with screenshot-poll fallback — no MJPEG broadcaster since the agent-device migration. See [live feed](./manual-inspector-mjpeg-stream.md).
+- **Live control:** drag on the mirror → WS pointer → tap/swipe on release. Pointer failures toast with the server detail; dropped sockets reconnect with backoff.
 - **Screenshot coords:** Inspector Control-pick, `tap (x,y)`, and agent in-app taps use the 0–1000 grid of the **screenshot image** on both iOS and Android. Locator taps (`--id` / `--label`) still resolve against the accessibility tree. System permission sheets still use label/alert, not guessed coords.
 - **Input text:** Menu action focuses the selected field (`--id` / `--label` / coords) then types; runner taps whenever coordinates are resolved.
 - **System controls:** every agent-device control used in manual QA maps to a `yoqa action` kind — `back`, `scroll --direction`, `home`, `keyboard`, plus the existing tap/swipe/drag/input/app-lifecycle/alert set (see matrix below). The command bar exposes swipe/scroll/back/home/keyboard without needing a selection.
@@ -23,7 +24,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 - `tap` supports `--double` and `--duration` (long-press hold)
 - New actions: `back` → `agent-device back`; `scroll --direction --amount` → `agent-device scroll`;
   `home` → `agent-device home`; `keyboard [--action dismiss|enter]` → `agent-device keyboard`
-- Live frames via `captureFrame()` with `--no-stabilize` + 150ms server-side coalescing
+- Live frames via `GET /screenshot/stream` (multipart, fresh captures back-to-back) with 500ms poll fallback; `captureFrame()` uses `--no-stabilize` + 150ms server-side coalescing
 - Page-source cleaning skips URL-like iOS `name` values as ids/labels, drops unlabeled ScrollView/CollectionView/Table/WebView containers, and never falls back to the XML type as a label
 - Coordinate-only taps (`--x/--y`, no `--id`/`--label`) inject in **screenshot space**: Android uses screenshot pixels even when they differ from `getWindowSize()`; iOS keeps window points (W3C). Locator taps stay window/tree-aligned.
 - Agent in-app taps persist and replay screenshot `x,y`. Permission labels (`Allow`, `Don't allow`, …) still prefer `--label` / `alert`.
@@ -73,7 +74,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 ## How to verify
 
 1. Open desktop → **Inspector** → Connect a device (select an app first). Live control off → tree warms within a second (or click **Refresh tree**).
-2. Feed badge shows **Poll**; frames update ~5×/s and pause while a script runs.
+2. Feed badge shows **Live** (multipart stream, ~1 frame/s on sim); it flips to **Poll** if the stream breaks. Feed pauses while a script runs.
 3. Hover a labeled control: soft dashed outline tracks without pauses. Click: highlight + menu appear **without** “Reading screen…”.
 4. With both id and label present: chips show `tap (id)` first, then `tap (label)`, then `tap (x,y)`. Caption shows `id: …`.
 5. **Change Selector:** first press flips caption/chips to `label`; next press expands to a parent/overlapping candidate when present.

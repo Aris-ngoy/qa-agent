@@ -52,10 +52,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** Accessibility tree refresh when using screenshot poll. */
 const TREE_REFRESH_MS = 8000;
-/** Live-frame poll interval for the screenshot feed. */
-const FALLBACK_SCREENSHOT_MS = 180;
+/** Degraded-mode poll interval when the live stream fails. */
+const FALLBACK_SCREENSHOT_MS = 500;
 /** Background-refresh the cached tree if older than this on select. */
 const TREE_STALE_MS = 3000;
+/** Live-control socket reconnects before giving up. */
+const MAX_CONTROL_RETRIES = 3;
 
 type InspectorReportStep = {
 	index: number;
@@ -152,7 +154,7 @@ export function InspectorPage() {
 	const [connecting, setConnecting] = useState(false);
 	const [bootLoading, setBootLoading] = useState(false);
 	const [imageUrl, setImageUrl] = useState<string | null>(null);
-	const [feedMode, setFeedMode] = useState<"poll" | null>(null);
+	const [feedMode, setFeedMode] = useState<"stream" | "poll" | null>(null);
 	const [liveControl, setLiveControl] = useState(false);
 	const [elements, setElements] = useState<ScreenElement[]>([]);
 	const [treeRefreshing, setTreeRefreshing] = useState(false);
@@ -191,6 +193,9 @@ export function InspectorPage() {
 	const selectionRef = useRef<InspectorSelection | null>(null);
 	const controlWsRef = useRef<WebSocket | null>(null);
 	const pointerSeqRef = useRef(0);
+	const controlRetryRef = useRef(0);
+	const liveControlRef = useRef(false);
+	const [controlEpoch, setControlEpoch] = useState(0);
 	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
 	const sessionEpochRef = useRef(0);
 	/** Device id already adopted from the shared Active Session query. */
@@ -208,6 +213,10 @@ export function InspectorPage() {
 	useEffect(() => {
 		selectionRef.current = selection;
 	}, [selection]);
+
+	useEffect(() => {
+		liveControlRef.current = liveControl;
+	}, [liveControl]);
 
 	const pushLog = useCallback((text: string, tone: RunLogEntry["tone"] = "info") => {
 		logIdRef.current += 1;
@@ -233,6 +242,15 @@ export function InspectorPage() {
 		imageUrlRef.current = nextUrl;
 		imageIsBlobRef.current = true;
 		setImageUrl(nextUrl);
+	}, []);
+
+	const setStreamImage = useCallback((url: string) => {
+		if (imageUrlRef.current && imageIsBlobRef.current) {
+			URL.revokeObjectURL(imageUrlRef.current);
+		}
+		imageUrlRef.current = url;
+		imageIsBlobRef.current = false;
+		setImageUrl(url);
 	}, []);
 
 	const clearSessionUi = useCallback(() => {
@@ -426,18 +444,31 @@ export function InspectorPage() {
 	);
 
 	const startLiveFeed = useCallback(async () => {
-		// The agent-device backend has no MJPEG broadcaster: the live feed is
-		// a fast screenshot poll (server coalesces concurrent polls).
+		// Primary feed: multipart live-frame stream rendered straight into <img>.
+		// If the stream errors, the screenshot panel falls back to screenshot poll.
 		setBootLoading(true);
-		setFeedMode("poll");
 		try {
-			await refreshPollFrame({ includeTree: true, silent: false });
+			const client = await getRunnerClient();
+			setFeedMode("stream");
+			// Cache-bust so a stuck stream connection is remounted.
+			setStreamImage(client.getScreenshotStreamUrl(Date.now()));
 		} catch (error) {
 			showErrorToast(error, "Failed to start live feed");
+			setFeedMode("poll");
 			await refreshPollFrame({ includeTree: true, silent: true });
 		} finally {
 			setBootLoading(false);
 		}
+	}, [refreshPollFrame, setStreamImage]);
+
+	/** The multipart stream broke mid-session — degrade to screenshot poll. */
+	const handleStreamError = useCallback(() => {
+		if (!activeRef.current) return;
+		setFeedMode((mode) => {
+			if (mode !== "stream") return mode;
+			void refreshPollFrame({ includeTree: false, silent: true });
+			return "poll";
+		});
 	}, [refreshPollFrame]);
 
 	startLiveFeedRef.current = startLiveFeed;
@@ -515,9 +546,9 @@ export function InspectorPage() {
 		};
 	}, [revokeImage]);
 
-	// Accessibility tree refresh — poll feed only, paused while a script runs.
+	// Accessibility tree refresh — any live feed, paused while a script runs.
 	useEffect(() => {
-		if (!active || !pageVisible || feedMode !== "poll" || running) return;
+		if (!active || !pageVisible || !feedMode || running) return;
 
 		let cancelled = false;
 		const tick = async () => {
@@ -538,7 +569,7 @@ export function InspectorPage() {
 
 	// Warm the cached tree once after connect so hover/click hit-test instantly.
 	useEffect(() => {
-		if (!active || !pageVisible || feedMode !== "poll" || liveControl || running) return;
+		if (!active || !pageVisible || !feedMode || liveControl || running) return;
 		if (treeUpdatedAtRef.current > 0) return;
 		const timer = window.setTimeout(() => {
 			if (!activeRef.current || treeUpdatedAtRef.current > 0) return;
@@ -549,7 +580,8 @@ export function InspectorPage() {
 		};
 	}, [active, feedMode, liveControl, pageVisible, running, warmTree]);
 
-	// Live-frame poll — paused while a script runs so gestures never interleave.
+	// Degraded screenshot poll — only when the live stream errored.
+	// Paused while a script runs so gestures never interleave.
 	useEffect(() => {
 		if (!active || !pageVisible || feedMode !== "poll" || running) return;
 
@@ -570,7 +602,10 @@ export function InspectorPage() {
 		};
 	}, [active, feedMode, pageVisible, refreshPollFrame, running]);
 
-	// Live control WebSocket while the toggle is on.
+	// Live control WebSocket while the toggle is on. Server pointer errors
+	// surface as toasts (previously swallowed); dropped sockets reconnect
+	// with backoff before giving up and toggling live control off.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: controlEpoch is the reconnect trigger
 	useEffect(() => {
 		if (!active || !liveControl || !pageVisible) {
 			controlWsRef.current?.close();
@@ -587,9 +622,49 @@ export function InspectorPage() {
 				if (cancelled) return;
 				ws = new WebSocket(client.getControlWsUrl());
 				controlWsRef.current = ws;
+				controlRetryRef.current = 0;
+				ws.onmessage = (event: MessageEvent) => {
+					if (typeof event.data !== "string") return;
+					try {
+						const msg = JSON.parse(event.data) as {
+							ok?: boolean;
+							error?: string;
+							detail?: string;
+							code?: string;
+						};
+						if (msg && msg.ok === false) {
+							const detail = msg.detail ? `: ${msg.detail}` : "";
+							const code = msg.code ? ` [${msg.code}]` : "";
+							showErrorToast(
+								new Error(`${msg.error ?? "Live control failed"}${detail}${code}`),
+								"Live control failed",
+							);
+						}
+					} catch {
+						// Non-JSON payloads (acks carry no error) — ignore.
+					}
+				};
 				ws.onclose = () => {
 					if (controlWsRef.current === ws) {
 						controlWsRef.current = null;
+					}
+					if (cancelled) return;
+					// Toggle still on and session still live — reconnect with backoff.
+					if (liveControlRef.current && activeRef.current) {
+						controlRetryRef.current += 1;
+						const attempt = controlRetryRef.current;
+						if (attempt <= MAX_CONTROL_RETRIES) {
+							const delayMs = 500 * 2 ** (attempt - 1);
+							window.setTimeout(() => {
+								if (!cancelled) setControlEpoch((epoch) => epoch + 1);
+							}, delayMs);
+						} else {
+							showErrorToast(
+								new Error("Live control disconnected — toggle it back on to retry"),
+								"Live control failed",
+							);
+							setLiveControl(false);
+						}
 					}
 				};
 			} catch (error) {
@@ -607,7 +682,7 @@ export function InspectorPage() {
 				controlWsRef.current = null;
 			}
 		};
-	}, [active, liveControl, pageVisible]);
+	}, [active, controlEpoch, liveControl, pageVisible]);
 
 	const sendPointer = useCallback((phase: "begin" | "move" | "end", x: number, y: number) => {
 		const ws = controlWsRef.current;
@@ -1145,6 +1220,7 @@ export function InspectorPage() {
 					snippetContext={snippetContext}
 					onSelect={setSelection}
 					onSelectWithPoint={handleSelectWithPoint}
+					onStreamError={handleStreamError}
 					onChangeSelector={handleChangeSelector}
 					onRefreshTree={handleRefreshTree}
 					onDoubleTap={handleDoubleTap}
