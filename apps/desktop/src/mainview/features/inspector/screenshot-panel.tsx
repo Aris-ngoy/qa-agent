@@ -58,6 +58,12 @@ type ScreenshotPanelProps = {
 	/** Called when the multipart stream image errors (falls back to poll). */
 	onStreamError?: () => void;
 	liveControl: boolean;
+	/** Control socket OPEN — gestures block until true (no silent drops). */
+	controlReady: boolean;
+	/** A pointer-up tap/swipe is still dispatching on the device. */
+	controlBusy: boolean;
+	/** Bumps on control reconnect — abandons any in-flight client gesture. */
+	controlResetKey: number;
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
 	snippetContext: SnippetContext;
@@ -84,6 +90,9 @@ export function ScreenshotPanel({
 	live,
 	feedMode,
 	liveControl,
+	controlReady,
+	controlBusy,
+	controlResetKey,
 	onLiveControlChange,
 	disabled,
 	snippetContext,
@@ -113,6 +122,13 @@ export function ScreenshotPanel({
 			setPickHover(null);
 		}
 	}, [liveControl]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: controlResetKey is the reconnect trigger
+	useEffect(() => {
+		// Control socket reconnected — the server gate is fresh, so any
+		// in-flight client gesture would error. Abandon it.
+		pointerActiveRef.current = false;
+	}, [controlResetKey]);
 
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
@@ -256,7 +272,7 @@ export function ScreenshotPanel({
 				pickPointAtEvent(event);
 				return;
 			}
-			if (!liveControl) return;
+			if (!liveControl || !controlReady) return;
 			event.preventDefault();
 			event.currentTarget.setPointerCapture(event.pointerId);
 			const point = coordsAtEvent(event);
@@ -267,6 +283,7 @@ export function ScreenshotPanel({
 		},
 		[
 			canInspect,
+			controlReady,
 			coordsAtEvent,
 			disabled,
 			liveControl,
@@ -279,6 +296,7 @@ export function ScreenshotPanel({
 	const handlePointerMove = useCallback(
 		(event: PointerEvent<HTMLElement>) => {
 			if (liveControl && pointerActiveRef.current) {
+				if (!controlReady) return;
 				const point = coordsAtEvent(event);
 				if (!point) return;
 				onPointer("move", point.x, point.y);
@@ -286,13 +304,14 @@ export function ScreenshotPanel({
 			}
 			handleHoverMove(event);
 		},
-		[coordsAtEvent, handleHoverMove, liveControl, onPointer],
+		[controlReady, coordsAtEvent, handleHoverMove, liveControl, onPointer],
 	);
 
 	const handlePointerUp = useCallback(
 		(event: PointerEvent<HTMLElement>) => {
 			if (!liveControl || !pointerActiveRef.current) return;
 			pointerActiveRef.current = false;
+			if (!controlReady) return;
 			const point = coordsAtEvent(event) ?? { x: 500, y: 500 };
 			onPointer("end", point.x, point.y);
 			try {
@@ -301,7 +320,7 @@ export function ScreenshotPanel({
 				/* already released */
 			}
 		},
-		[coordsAtEvent, liveControl, onPointer],
+		[controlReady, coordsAtEvent, liveControl, onPointer],
 	);
 
 	const selectionAnchor = selection
@@ -376,7 +395,11 @@ export function ScreenshotPanel({
 				</div>
 				{liveControl ? (
 					<span className="text-helper text-on-surface-variant">
-						Tap / drag to control · double-click to double-tap
+						{!controlReady
+							? "Connecting live control…"
+							: controlBusy
+								? "Sending…"
+								: "Tap / drag to control · double-click to double-tap"}
 					</span>
 				) : showRefreshing ? (
 					<span className="text-helper text-on-surface-variant">Refreshing…</span>
