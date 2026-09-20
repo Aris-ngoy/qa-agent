@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { caseScriptActionSchema, caseScriptSchema, runStepSchema, runTestSchema } from "./schemas";
+import {
+	caseScriptActionSchema,
+	caseScriptSchema,
+	connectDeviceRequestSchema,
+	runStepSchema,
+	runTestSchema,
+} from "./schemas";
 
 describe("caseScriptActionSchema", () => {
 	test("accepts tap/type/wait in range", () => {
@@ -132,5 +138,17 @@ describe("runTestSchema", () => {
 				currentCommand: "yoqa action tap --x 50 --y 60",
 			}).currentCommand,
 		).toBe("yoqa action tap --x 50 --y 60");
+	});
+});
+
+describe("connectDeviceRequestSchema", () => {
+	test("accepts an optional kind for check-and-install on connect", () => {
+		expect(connectDeviceRequestSchema.parse({ deviceId: "udid-1", platform: "ios" })).toMatchObject(
+			{ deviceId: "udid-1", platform: "ios" },
+		);
+		expect(
+			connectDeviceRequestSchema.parse({ deviceId: "udid-1", platform: "ios", kind: "simulator" })
+				.kind,
+		).toBe("simulator");
 	});
 });

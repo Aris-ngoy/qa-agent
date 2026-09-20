@@ -1,4 +1,4 @@
-import type { DevicePlatform } from "@yoqa/runner-client";
+import type { DeviceKind, DevicePlatform } from "@yoqa/runner-client";
 import { type DeviceSession, createDeviceSession, isDeadSessionError } from "./session";
 
 export type ActiveSessionInfo = {
@@ -78,6 +78,7 @@ export function abandonActiveSession(): ActiveSessionInfo | null {
 async function createAndRegister(options: {
 	deviceId: string;
 	platform: DevicePlatform;
+	kind?: DeviceKind;
 	bundleId?: string;
 	appPackage?: string;
 	heldByRunId: string | null;
@@ -85,6 +86,7 @@ async function createAndRegister(options: {
 	const session = await createDeviceSession({
 		platform: options.platform,
 		deviceId: options.deviceId,
+		kind: options.kind,
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
 		onSessionDead: () => {
@@ -110,6 +112,7 @@ async function createAndRegister(options: {
 export async function connectDevice(options: {
 	deviceId: string;
 	platform: DevicePlatform;
+	kind?: DeviceKind;
 	bundleId?: string;
 	appPackage?: string;
 }): Promise<ActiveSessionInfo> {

@@ -490,6 +490,7 @@ export function InspectorPage() {
 			const info = await client.connectDevice({
 				deviceId: target.id,
 				platform: target.platform,
+				kind: target.kind,
 				bundleId,
 				appPackage,
 			});
@@ -666,6 +667,8 @@ export function InspectorPage() {
 		const attempt = async (): Promise<void> => {
 			setConnecting(true);
 			try {
+				// Check-and-install runs inside connect on the runner: a missing
+				// iOS runner is installed automatically before the session opens.
 				const info = await connectWithDevice(target);
 				notify(
 					info.streamReady === false

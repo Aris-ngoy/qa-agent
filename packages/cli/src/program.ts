@@ -326,9 +326,12 @@ devices
 
 devices
 	.command("connect")
-	.description("Open an agent-device session on a device")
+	.description(
+		"Open an agent-device session on a device (installs YoqaADRunner first on iOS when missing)",
+	)
 	.argument("<deviceId>", "Device UDID / serial")
 	.requiredOption("--platform <platform>", "ios | android")
+	.option("--kind <kind>", "physical | simulator | emulator (iOS check-and-install)", "physical")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
@@ -339,6 +342,7 @@ devices
 			options: {
 				baseUrl: string;
 				platform: string;
+				kind: string;
 				bundleId?: string;
 				appPackage?: string;
 				json?: boolean;
@@ -349,9 +353,12 @@ devices
 				if (platform !== "ios" && platform !== "android") {
 					throw new Error("--platform must be ios or android");
 				}
+				const kind =
+					options.kind === "simulator" || options.kind === "emulator" ? options.kind : "physical";
 				const body = await client(options.baseUrl).connectDevice({
 					deviceId,
 					platform,
+					kind,
 					bundleId: options.bundleId,
 					appPackage: options.appPackage,
 				});

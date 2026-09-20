@@ -13,8 +13,9 @@ type RunnerInstallTarget = {
 };
 
 /**
- * Shared YoqaADRunner install flow: open the dialog on a runner-missing
- * connect failure, run the long install, then retry the original action.
+ * Shared YoqaADRunner install flow. Check-and-install runs inside connect on
+ * the runner; this dialog is the recovery path when that fails: prompt,
+ * run the long install, then retry the original action.
  */
 export function useRunnerInstall() {
 	const [target, setTarget] = useState<RunnerInstallTarget | null>(null);
@@ -41,36 +42,7 @@ export function useRunnerInstall() {
 		setMessage(null);
 	}, []);
 
-	/**
-	 * Proactive runner check for the play flow: returns true when the run may
-	 * proceed. When the iOS runner is missing it opens the install dialog and
-	 * returns false — the caller must not start the run; `onInstalled` retries it.
-	 * Status-check failures fall through (return true) so the existing
-	 * run-failure handling stays authoritative.
-	 */
-	const ensureRunnerInstalled = useCallback(
-		async (device: SelectedDevice, onInstalled: () => void): Promise<boolean> => {
-			if (device.platform !== "ios") return true;
-			try {
-				const client = await getRunnerClient();
-				const status = await client.getIosRunnerStatus(device.id, device.kind);
-				if (status.installed) return true;
-			} catch {
-				return true;
-			}
-			openRunnerInstall(
-				device,
-				"YoqaADRunner is not installed on this device yet. Install it first, then the run starts automatically.",
-				onInstalled,
-			);
-			return false;
-		},
-		[openRunnerInstall],
-	);
-
-	const startRunnerInstall = useCallback(async () => {
-		const current = target;
-		if (!current) return;
+	const runInstall = useCallback(async (current: RunnerInstallTarget) => {
 		const controller = new AbortController();
 		abortRef.current = controller;
 		setPhase("installing");
@@ -107,7 +79,13 @@ export function useRunnerInstall() {
 		} finally {
 			if (abortRef.current === controller) abortRef.current = null;
 		}
-	}, [target]);
+	}, []);
+
+	const startRunnerInstall = useCallback(async () => {
+		const current = target;
+		if (!current) return;
+		await runInstall(current);
+	}, [target, runInstall]);
 
 	return {
 		runnerInstallTarget: target,
@@ -115,7 +93,6 @@ export function useRunnerInstall() {
 		runnerInstallMessage: message,
 		openRunnerInstall,
 		closeRunnerInstall,
-		ensureRunnerInstalled,
 		startRunnerInstall,
 	};
 }

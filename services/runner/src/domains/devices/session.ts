@@ -1,14 +1,16 @@
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { DevicePlatform } from "@yoqa/runner-client";
+import type { DeviceKind, DevicePlatform } from "@yoqa/runner-client";
 import {
 	AgentDeviceError,
 	agentDeviceSessionName,
 	conflictingSessionAddress,
 	isDeadAgentDeviceSessionError,
+	isRunnerNotInstalledError,
 	runAgentDevice,
 } from "../agent-device/cli";
+import { installYoqaRunnerOnDevice } from "../agent-device/runner-install";
 
 const YOQA_ROOT = join(process.env.HOME ?? tmpdir(), ".yoqa");
 const SCREENSHOT_DIR = join(YOQA_ROOT, "runs", "screenshots");
@@ -38,6 +40,8 @@ export function isDeadSessionError(error: unknown): boolean {
 export type SessionOptions = {
 	platform: DevicePlatform;
 	deviceId: string;
+	/** Physical vs simulator — enables check-and-install of YoqaADRunner on connect. */
+	kind?: DeviceKind;
 	bundleId?: string;
 	appPackage?: string;
 	/** Called once when agent-device reports the session is gone. */
@@ -237,6 +241,20 @@ class ActionGate {
 	}
 }
 
+/**
+ * True when a failed open should trigger one check-and-install of
+ * YoqaADRunner before retrying. The install needs a device kind to target
+ * (devicectl vs simctl), so callers without one get the original error.
+ */
+export function shouldAutoInstallRunnerOnConnect(
+	platform: DevicePlatform,
+	kind: DeviceKind | undefined,
+	error: unknown,
+): boolean {
+	if (platform !== "ios" || !kind) return false;
+	return isRunnerNotInstalledError(error);
+}
+
 export async function createDeviceSession(options: SessionOptions): Promise<DeviceSession> {
 	await releaseExistingSession(options.deviceId);
 
@@ -249,7 +267,16 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 		// No stale session — continue to open.
 	}
 
-	await openAgentDeviceApp(sessionName, options, openTarget(options));
+	await openAgentDeviceApp(sessionName, options, openTarget(options)).catch(async (error) => {
+		// Check-and-install is part of connect: a missing iOS runner is built
+		// and installed once, then the open retries.
+		const kind = options.kind;
+		if (!kind || !shouldAutoInstallRunnerOnConnect(options.platform, kind, error)) {
+			throw error;
+		}
+		await installYoqaRunnerOnDevice({ deviceId: options.deviceId, kind });
+		await openAgentDeviceApp(sessionName, options, openTarget(options));
+	});
 
 	const gate = new ActionGate();
 	let sessionDeadNotified = false;

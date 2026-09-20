@@ -8,14 +8,20 @@ failing with a raw error — the same treatment WebDriverAgent got under Appium.
 
 ## Plan summary
 
-- **Decisions:** detect runner-missing via a stable `IOS_RUNNER_NOT_INSTALLED`
-  code re-coded from agent-device envelope errors; install = agent-device
-  `prepare ios-runner` + brand the built host app in derived data (display
-  name, icons, re-sign with the build's own identity) + devicectl/simctl
-  install; verify against the bundle id **actually built**, not just Settings.
-- **Rejected:** patching agent-device sources in `node_modules` (fragile across
-  upgrades); pre-patching derived caches (agent-device owns them); blocking the
-  install on branding success (branding is best-effort, install is not).
+- **Decisions:** check-and-install lives inside connect on the runner
+  (`createDeviceSession` retries once with `installYoqaRunnerOnDevice` when
+  `open` fails with `IOS_RUNNER_NOT_INSTALLED`); the desktop dialog is the
+  recovery path when that fails. Detection uses a stable
+  `IOS_RUNNER_NOT_INSTALLED` code re-coded from agent-device envelope errors.
+  Install = agent-device `prepare ios-runner` + brand the built host app in
+  derived data (display name, icons, re-sign with the build's own identity) +
+  devicectl/simctl install; verification reads the bundle id **actually
+  built**, not just Settings.
+- **Rejected:** UI status-gating before connect — an Xcode-managed runner can
+  launch fine while absent from `devicectl info apps`, so status `false`
+  would force needless installs; connect-first is ground truth. Also
+  rejected: patching agent-device sources in `node_modules`; blocking the
+  install on branding success (branding is best-effort).
 
 ## What shipped
 
