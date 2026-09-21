@@ -435,18 +435,19 @@ export type RunnerClientOptions = {
 const DEFAULT_BASE_URL = "http://127.0.0.1:7420";
 
 const RUNNER_NOT_INSTALLED_PATTERNS = [
-	/IOS_RUNNER_NOT_INSTALLED/,
-	/iOS runner not installed/,
+	/ARGENT_IOS_TEAM_ID/,
+	/ArgentRunner/,
+	/trust the developer/i,
+	/VPN & Device Management/i,
 	/must be signed before commands can run/,
 	/requires a development team/,
 	/no profiles for/,
 	/provisioning profile/,
-	/AGENT_DEVICE_IOS_TEAM_ID/,
 ];
 
 /**
- * True when a connect/run failure means the iOS runner (YoqaADRunner) must be
- * installed first — the UI should offer the install dialog instead of a toast.
+ * True when a connect/run failure means the iOS runner (ArgentRunner) must be
+ * built/trusted first — the UI should offer the guided dialog instead of a toast.
  */
 export function isRunnerNotInstalledErrorText(text: string): boolean {
 	return RUNNER_NOT_INSTALLED_PATTERNS.some((re) => re.test(text));

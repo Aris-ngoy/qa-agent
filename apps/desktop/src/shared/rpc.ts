@@ -43,7 +43,6 @@ export type DesktopRPC = {
 				params: {
 					xcodeDeveloperDir?: string | null;
 					signingIdentityHash?: string | null;
-					agentDeviceBundleId?: string | null;
 				};
 				response: IosToolchainPreferences;
 			};

@@ -6,7 +6,7 @@ export type ServerAction = "stop" | "restart";
 
 export type ServerEntry = {
 	id: string;
-	kind: "agent-device" | "runner" | "device-session";
+	kind: "argent" | "runner" | "device-session";
 	ownership: "managed" | "foreign" | "self";
 	label: string;
 	status: string;

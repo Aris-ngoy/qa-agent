@@ -1,6 +1,6 @@
-import { ensureAndroidSdkEnv } from "./domains/agent-device/android-sdk";
-import { ensureHostToolPath } from "./domains/agent-device/host-path";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
+import { ensureAndroidSdkEnv } from "./domains/host/android-sdk";
+import { ensureHostToolPath } from "./domains/host/host-path";
 import { createApp } from "./interfaces/http/app";
 import {
 	type ControlWsData,

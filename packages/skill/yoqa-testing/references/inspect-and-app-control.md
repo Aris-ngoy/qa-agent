@@ -9,7 +9,9 @@ relative coordinates — see [Actions by coordinates](actions-coordinates.md).
 ```bash
 yoqa screen                        # cleaned element list (primary way to read the screen)
 yoqa screen --json                 # same list as JSON — includes each element's id, type, enabled, visible
-yoqa screen --full                 # raw accessibility tree (JSON-wrapped, very long)
+yoqa screenshot /tmp/screen.png    # PRIMARY read — always start here (visual-first)
+yoqa screen                        # cleaned accessibility tree (secondary, on demand)
+yoqa screen --full                 # raw Argent describe JSON (very long, last resort)
 yoqa screenshot /tmp/screen.png    # save a screenshot to file, to visually verify
 ```
 
@@ -18,7 +20,7 @@ yoqa screenshot /tmp/screen.png    # save a screenshot to file, to visually veri
 **Prefer `yoqa screen` first — it is the primary way to read the screen.** The element list is far
 cheaper in tokens than an image and is enough to understand the UI in most cases. Only fall back to
 `yoqa screenshot` when the list is not enough: it comes back empty, it lacks the information you need,
-or you can't tell what's actually rendered (custom drawing, images, visual layout/overlap). Use the
+or you can't tell what's actually rendered (custom drawing, images, visual layout/overlap). Screenshots are the primary read — check one first, then use the
 screenshot to fill that gap, not as the default way to look at the screen.
 
 Call `yoqa screen` directly — do not pipe through `grep`, `awk`, or any other filter. Parse the raw
@@ -50,7 +52,7 @@ Elements with no accessible label show an empty label — those are only reachab
 
 Layout-only containers, zero-size nodes, offscreen nodes, and elements marked invisible are dropped
 from the cleaned list. If an element you expect is missing, it is one of those — check
-`yoqa screen --full` before concluding it isn't rendered.
+a screenshot before concluding it isn't rendered.
 
 ## App lifecycle
 
@@ -77,7 +79,7 @@ yoqa action alert --dismiss    # dismiss
 
 ## System navigation
 
-Semantic controls backed by `agent-device` (`back`, `scroll`, `home`, `keyboard`). `scroll` moves
+Semantic controls backed by Argent (`back`, `scroll`, `home`, `keyboard`). `scroll` moves
 content in place; use coordinate `swipe`/`drag` (see [Actions by coordinates](actions-coordinates.md))
 when you need an exact finger path.
 

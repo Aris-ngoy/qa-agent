@@ -1,18 +1,11 @@
 import {
 	type DevicePlatform,
 	devicePlatformSchema,
-	iosRunnerInstallRequestSchema,
-	iosRunnerInstallResponseSchema,
-	iosRunnerStatusResponseSchema,
 	listDevicesResponseSchema,
 	setupPlatformRequestSchema,
 	setupPlatformResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
-import {
-	getYoqaRunnerStatus,
-	installYoqaRunnerOnDevice,
-} from "../../domains/agent-device/runner-install";
 import { setupArgentPlatform } from "../../domains/argent/runtime";
 import { listDevices } from "../../domains/devices/application";
 
@@ -76,50 +69,25 @@ export function createDevicesRoutes() {
 	});
 
 	app.get("/devices/ios-runner/status", async (c) => {
-		const deviceId = c.req.query("deviceId")?.trim();
-		const kind = (c.req.query("kind")?.trim() || "physical") as
-			| "physical"
-			| "simulator"
-			| "emulator";
-		if (!deviceId) {
-			return c.json({ error: "Query param deviceId is required" }, 400);
-		}
-		if (kind !== "physical" && kind !== "simulator" && kind !== "emulator") {
-			return c.json({ error: "Query param kind must be physical, simulator, or emulator" }, 400);
-		}
-		try {
-			const status = await getYoqaRunnerStatus(deviceId, kind);
-			return c.json(iosRunnerStatusResponseSchema.parse(status));
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return c.json({ error: "Failed to read runner status", detail: message }, 500);
-		}
+		return c.json(
+			{
+				error: "Gone",
+				detail:
+					"Argent builds and signs its runner (ArgentRunner) automatically on first connect — no manual install step. Retry the connect; if the device asks, trust the developer under Settings → General → VPN & Device Management.",
+			},
+			410,
+		);
 	});
 
 	app.post("/devices/ios-runner/install", async (c) => {
-		let json: unknown;
-		try {
-			json = await c.req.json();
-		} catch {
-			return c.json({ error: "Request body must be JSON" }, 400);
-		}
-		const parsed = iosRunnerInstallRequestSchema.safeParse(json);
-		if (!parsed.success) {
-			return c.json({ error: "Body must include deviceId. Optional: kind, force" }, 400);
-		}
-		try {
-			const result = await installYoqaRunnerOnDevice(parsed.data);
-			return c.json(iosRunnerInstallResponseSchema.parse(result));
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return c.json(
-				{
-					error: "Failed to install the test runner on this device",
-					detail: message,
-				},
-				500,
-			);
-		}
+		return c.json(
+			{
+				error: "Gone",
+				detail:
+					"Argent builds and signs its runner (ArgentRunner) automatically on first connect — no manual install step. Retry the connect; if the device asks, trust the developer under Settings → General → VPN & Device Management.",
+			},
+			410,
+		);
 	});
 
 	return app;

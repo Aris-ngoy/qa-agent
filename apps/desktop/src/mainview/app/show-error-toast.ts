@@ -18,12 +18,14 @@ function truncateTitle(text: string): string {
 /** Map known long runner errors to short toast copy. */
 export function summarizeError(message: string): SummarizedError {
 	if (
-		message.includes("IOS_RUNNER_NOT_INSTALLED") ||
-		message.includes("iOS runner not installed")
+		message.includes("ARGENT_IOS_TEAM_ID") ||
+		message.includes("trust the developer") ||
+		message.includes("VPN & Device Management")
 	) {
 		return {
-			title: "YoqaADRunner not installed",
-			description: "Install the test runner on this device, then reconnect.",
+			title: "ArgentRunner needs setup",
+			description:
+				"Retry the connect — Argent builds ArgentRunner automatically, then trust the developer on the device.",
 		};
 	}
 	if (message.includes("No enabled AI provider configured")) {

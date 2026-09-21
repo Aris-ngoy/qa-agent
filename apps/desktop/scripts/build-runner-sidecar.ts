@@ -6,9 +6,10 @@
  *
  * Invoked via electrobun `scripts.preBuild` (cwd = apps/desktop).
  *
- * Device automation shells out to the `agent-device` CLI at runtime (resolved
+ * Device automation shells out to the `argent` CLI at runtime (resolved
  * from node_modules/.bin, then PATH), so the user must have it installed:
- * `npm install -g agent-device@latest`. Nothing driver-specific to bundle.
+ * `npm install -g @swmansion/argent` (desktop splash prompts for consent).
+ * Nothing driver-specific to bundle.
  * After compile, macOS binaries are adhoc-signed — Bun's bytecode append invalidates the
  * linker signature and Apple Silicon AMFI SIGKILLs the unsigned result (exit 137).
  */

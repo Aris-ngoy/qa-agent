@@ -33,14 +33,14 @@ export function RunnerInstallDialog({
 					<Modal.Dialog className="w-full max-w-md overflow-hidden rounded-2xl bg-surface-container-low shadow-float">
 						<Modal.Header className="flex items-center justify-between gap-4 border-none px-5 py-4">
 							<Modal.Heading className="text-headline-md font-semibold text-on-surface">
-								Install YoqaADRunner on {device.name}
+								Set up ArgentRunner on {device.name}
 							</Modal.Heading>
 							<Modal.CloseTrigger aria-label="Close runner install" />
 						</Modal.Header>
 						<Modal.Body className="flex flex-col items-center justify-center gap-4 px-5 pb-6 pt-0">
 							{installing ? (
 								<ProgressCircle
-									aria-label="Installing YoqaADRunner"
+									aria-label="Setting up ArgentRunner"
 									className="text-on-surface-variant"
 									color="default"
 									isIndeterminate
@@ -56,10 +56,10 @@ export function RunnerInstallDialog({
 							<div className="flex max-w-md flex-col items-center gap-1.5 text-center">
 								<p className="text-body-md font-medium text-on-surface">
 									{failed
-										? "Couldn’t install YoqaADRunner"
+										? "Couldn’t set up ArgentRunner"
 										: installing
-											? "Installing YoqaADRunner on your device..."
-											: "This device needs the Yoqa test runner"}
+											? "Setting up ArgentRunner on your device..."
+											: "This device needs the Argent test runner"}
 								</p>
 								<p className={`text-body-sm ${failed ? "text-danger" : "text-on-surface-variant"}`}>
 									{failed
@@ -67,7 +67,7 @@ export function RunnerInstallDialog({
 										: installing
 											? (message ??
 												"Building and signing the runner — first install takes 1–2 minutes.")
-											: "YoqaADRunner is a small helper app that lets Yoqa drive your device. It is signed with your Apple team and shows the Yoqa icon on the home screen."}
+											: "ArgentRunner is a small helper app that lets Yoqa drive your device. Argent builds and signs it automatically with your Apple team — first setup takes 1–2 minutes. If the device asks, trust the developer under Settings → General → VPN & Device Management."}
 								</p>
 								{!installing && message ? (
 									<p className="mt-1 max-w-md text-helper text-on-surface-variant/80">
@@ -76,7 +76,7 @@ export function RunnerInstallDialog({
 								) : null}
 								{!installing && !failed ? (
 									<p className="mt-1 text-helper text-on-surface-variant">
-										Requires a signing identity in Settings → iOS.
+										Requires a signing team in Settings → iOS (or ARGENT_IOS_TEAM_ID).
 									</p>
 								) : null}
 							</div>
@@ -85,7 +85,7 @@ export function RunnerInstallDialog({
 								{failed ? (
 									<>
 										<Button onPress={onRetry} variant="primary">
-											Retry install
+											Retry
 										</Button>
 										<Button onPress={onCancel} variant="secondary">
 											Cancel
@@ -98,7 +98,7 @@ export function RunnerInstallDialog({
 								) : (
 									<>
 										<Button onPress={onInstall} variant="primary">
-											Install YoqaADRunner
+											Retry connect
 										</Button>
 										<Button onPress={onCancel} variant="secondary">
 											Cancel

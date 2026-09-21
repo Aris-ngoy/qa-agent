@@ -24,7 +24,7 @@ function newId(prefix: string): string {
 	return `${prefix}_${crypto.randomUUID()}`;
 }
 
-/** Custom driver caps were an Appium concept; the agent-device backend ignores them. */
+/** Custom driver caps were an Appium concept; the Argent backend ignores them. */
 function emptyCapabilities(): Capability[] {
 	return [];
 }

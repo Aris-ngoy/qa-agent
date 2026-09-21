@@ -20,7 +20,6 @@ export type DesktopRpcClient = {
 		setIosToolchainSelection: (params: {
 			xcodeDeveloperDir?: string | null;
 			signingIdentityHash?: string | null;
-			agentDeviceBundleId?: string | null;
 		}) => Promise<IosToolchainPreferences>;
 		getAndroidToolchain: () => Promise<AndroidToolchainSnapshot>;
 		setAndroidToolchainSelection: (params: {

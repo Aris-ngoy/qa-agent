@@ -1,6 +1,6 @@
 import { integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-/** Legacy Appium capability rows (unused since the agent-device backend). Kept for existing DBs. */
+/** Legacy Appium capability rows (unused since the Argent backend). Kept for existing DBs. */
 export type CapabilityRow = {
 	id: string;
 	key: string;
@@ -17,7 +17,7 @@ export const apps = sqliteTable(
 		iosBundleId: text("ios_bundle_id").notNull().default(""),
 		iosAppStoreId: text("ios_app_store_id").notNull().default(""),
 		androidApplicationId: text("android_application_id").notNull().default(""),
-		/** Legacy JSON capability rows (unused since the agent-device backend) */
+		/** Legacy JSON capability rows (unused since the Argent backend) */
 		appiumCaps: text("appium_caps").notNull().default("[]"),
 		createdAt: integer("created_at").notNull(),
 		updatedAt: integer("updated_at").notNull(),
@@ -56,7 +56,7 @@ export const cases = sqliteTable("cases", {
 		.references(() => apps.id, { onDelete: "cascade" }),
 	number: integer("number").notNull(),
 	title: text("title").notNull(),
-	/** Legacy JSON capability rows (unused since the agent-device backend) */
+	/** Legacy JSON capability rows (unused since the Argent backend) */
 	appiumCaps: text("appium_caps").notNull().default("[]"),
 	/** JSON CaseScript — replayable actions from a successful agent run */
 	scriptJson: text("script_json"),

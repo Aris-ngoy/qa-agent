@@ -1,4 +1,3 @@
-import { getRunnerClient } from "@/app/runner-client";
 import type { SelectedDevice } from "@/features/devices/select-device-modal";
 import { toast } from "@heroui/react";
 import { useCallback, useRef, useState } from "react";
@@ -13,9 +12,9 @@ type RunnerInstallTarget = {
 };
 
 /**
- * Shared YoqaADRunner install flow. Check-and-install runs inside connect on
- * the runner; this dialog is the recovery path when that fails: prompt,
- * run the long install, then retry the original action.
+ * Shared ArgentRunner recovery flow. Argent builds and signs its runner
+ * automatically on first connect; this dialog is the recovery path when that
+ * fails (signing/trust): prompt, explain the trust step, then retry connect.
  */
 export function useRunnerInstall() {
 	const [target, setTarget] = useState<RunnerInstallTarget | null>(null);
@@ -46,36 +45,19 @@ export function useRunnerInstall() {
 		const controller = new AbortController();
 		abortRef.current = controller;
 		setPhase("installing");
-		setMessage("Building and signing YoqaADRunner — first install takes 1–2 minutes.");
+		setMessage("Building and signing ArgentRunner — first connect takes 1–2 minutes.");
 		try {
-			const client = await getRunnerClient();
-			const result = await client.installIosRunner(
-				{ deviceId: current.device.id, kind: current.device.kind },
-				{ signal: controller.signal },
-			);
 			if (controller.signal.aborted) return;
 			const done = current.onInstalled;
 			setTarget(null);
 			setPhase("prompt");
 			setMessage(null);
-			toast.success(
-				[
-					result.action === "reused"
-						? "YoqaADRunner already installed — reconnecting…"
-						: "YoqaADRunner installed — reconnecting…",
-					result.removedStale.length > 0
-						? `Removed old copies: ${result.removedStale.join(", ")}.`
-						: null,
-					result.warning ?? null,
-				]
-					.filter(Boolean)
-					.join(" "),
-			);
+			toast.success("Retrying connect — Argent builds ArgentRunner automatically…");
 			done();
 		} catch (error) {
 			if (controller.signal.aborted) return;
 			setPhase("error");
-			setMessage(error instanceof Error ? error.message : "Failed to install YoqaADRunner.");
+			setMessage(error instanceof Error ? error.message : "Failed to set up ArgentRunner.");
 		} finally {
 			if (abortRef.current === controller) abortRef.current = null;
 		}

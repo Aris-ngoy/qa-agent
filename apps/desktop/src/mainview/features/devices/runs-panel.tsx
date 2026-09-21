@@ -186,7 +186,7 @@ export function RunsPanel() {
 		closeRunnerInstall,
 		startRunnerInstall,
 	} = useRunnerInstall();
-	/** Execution mode to retry with after a YoqaADRunner install. */
+	/** Execution mode to retry with after an ArgentRunner setup. */
 	const pendingModeRef = useRef<RunExecutionMode>("agent");
 	const setupAbortRef = useRef<AbortController | null>(null);
 	/** Last device id seen on the runner's Active Session — drives preselection. */
@@ -357,8 +357,8 @@ export function RunsPanel() {
 			isIosPhysical
 				? "Preparing iOS device…"
 				: selected.platform === "ios"
-					? "Verifying agent-device iOS readiness…"
-					: "Verifying agent-device Android readiness…",
+					? "Verifying Argent iOS readiness…"
+					: "Verifying Argent Android readiness…",
 		);
 
 		void (async () => {

@@ -284,7 +284,9 @@ for (const platform of ["ios", "android"] as const) {
 
 devices
 	.command("install-runner")
-	.description("Build and install YoqaADRunner on an iOS device (prompted on connect when missing)")
+	.description(
+		"Deprecated: Argent builds ArgentRunner automatically on connect (removed with agent-device)",
+	)
 	.argument("<deviceId>", "Device UDID")
 	.option("--kind <kind>", "physical | simulator", "physical")
 	.option("--force", "Rebuild even when the cached install is valid")
@@ -300,41 +302,23 @@ devices
 				json?: boolean;
 			},
 		) => {
-			try {
-				const kind =
-					options.kind === "simulator" || options.kind === "emulator" ? options.kind : "physical";
-				const body = await client(options.baseUrl).installIosRunner({
-					deviceId,
-					kind,
-					force: options.force ? true : undefined,
-				});
-				if (options.json) {
-					console.log(JSON.stringify(body, null, 2));
-					return;
-				}
-				console.log(
-					`installed ${body.displayName} (${body.bundleId}) on ${body.deviceId} [${body.action}]`,
-				);
-				if (body.removedStale.length > 0) {
-					console.log(`removed old copies: ${body.removedStale.join(", ")}`);
-				}
-				if (body.warning) {
-					console.log(`warning: ${body.warning}`);
-				}
-			} catch (error) {
-				fail("devices install-runner", error);
-			}
+			void deviceId;
+			void options;
+			console.log(
+				"Gone: Argent builds and signs ArgentRunner automatically on first connect — just run: yoqa devices connect <id> --platform ios",
+			);
+			process.exitCode = 3;
 		},
 	);
 
 devices
 	.command("connect")
 	.description(
-		"Open an agent-device session on a device (installs YoqaADRunner first on iOS when missing)",
+		"Open a device session on a device (Argent builds ArgentRunner first on iOS when missing)",
 	)
 	.argument("<deviceId>", "Device UDID / serial")
 	.requiredOption("--platform <platform>", "ios | android")
-	.option("--kind <kind>", "physical | simulator | emulator (iOS check-and-install)", "physical")
+	.option("--kind <kind>", "physical | simulator | emulator", "physical")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
@@ -374,7 +358,7 @@ devices
 				fail("devices connect", error);
 				if (isRunnerNotInstalledError(error)) {
 					console.error(
-						"Install the runner first: yoqa devices install-runner <device-id> --platform ios",
+						"Retry the connect — Argent builds ArgentRunner automatically on first use.",
 					);
 				}
 			}
@@ -406,7 +390,7 @@ devices
 
 devices
 	.command("disconnect")
-	.description("Close the active agent-device session")
+	.description("Close the active device session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -428,7 +412,7 @@ program
 	.command("screen")
 	.description("Inspect the active device screen (cleaned tree by default)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--full", "Return raw agent-device snapshot JSON")
+	.option("--full", "Return raw Argent describe JSON")
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; full?: boolean; json?: boolean }) => {
 		try {
@@ -586,7 +570,7 @@ setup
 				return;
 			}
 			console.log(body.message);
-			console.log(`argent: ${body.argentVersion ?? body.agentDeviceVersion ?? "unknown"}`);
+			console.log(`argent: ${body.argentVersion ?? "unknown"}`);
 		} catch (error) {
 			fail("setup ios", error);
 		}
@@ -605,7 +589,7 @@ setup
 				return;
 			}
 			console.log(body.message);
-			console.log(`argent: ${body.argentVersion ?? body.agentDeviceVersion ?? "unknown"}`);
+			console.log(`argent: ${body.argentVersion ?? "unknown"}`);
 		} catch (error) {
 			fail("setup android", error);
 		}
@@ -798,7 +782,7 @@ servers
 
 program
 	.command("doctor")
-	.description("Diagnose local tooling, agent-device, and the device session")
+	.description("Diagnose local tooling, Argent, and the device session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.option("--fix", "Apply safe repairs (ensure runtime, disconnect session)")

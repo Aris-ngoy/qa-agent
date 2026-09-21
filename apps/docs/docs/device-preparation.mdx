@@ -3,13 +3,13 @@ title: Device Preparation
 description: Prepare iOS and Android devices for local testing with Yoqa.
 ---
 
-Yoqa drives devices through **agent-device**. Install it once (`npm install -g agent-device@latest`), get the toolchain healthy (`yoqa doctor`), then connect from the desktop UI or CLI.
+Yoqa drives devices through **Argent** (visual-first: screenshot first, accessibility tree second). Install it once (`npm install -g @swmansion/argent` — the desktop splash prompts for consent), get the toolchain healthy (`yoqa doctor`), then connect from the desktop UI or CLI.
 
 ## Checklist
 
 ```bash
-yoqa setup ios       # verifies agent-device iOS readiness
-yoqa setup android   # verifies agent-device Android readiness
+yoqa setup ios       # verifies Argent iOS readiness
+yoqa setup android   # verifies Argent Android readiness
 yoqa status          # runner, runtime, provider, active device
 yoqa devices ios
 yoqa devices android
@@ -19,7 +19,7 @@ yoqa devices android
 
 1. Install **Xcode** and accept the license; install additional platforms if prompted.
 2. Boot an **iOS Simulator**, or connect a physical device with Developer Mode enabled.
-3. For **physical devices**, enable Developer Mode and trust the host. agent-device manages its own runner signing — pick the signing identity and runner bundle id in desktop **Settings → iOS** (the runner reads them from there; `AGENT_DEVICE_IOS_TEAM_ID` / `AGENT_DEVICE_IOS_BUNDLE_ID` env vars work as a fallback for `yoqa` CLI runners — see [agent-device installation](https://oss.callstack.com/agent-device/docs/installation)).
+3. For **physical devices**, enable Developer Mode and trust the host. Argent builds and signs its runner (ArgentRunner) automatically on first connect — pick the signing team in desktop **Settings → iOS** (the runner reads it from there; the `ARGENT_IOS_TEAM_ID` env var works as a fallback for `yoqa` CLI runners). If the device asks, trust the developer under Settings → General → VPN & Device Management.
 4. Confirm the device appears in `yoqa devices ios`.
 
 ## Android
@@ -38,7 +38,7 @@ yoqa devices active
 The desktop app performs the same connect when you select a device for a run or Manual Inspector.
 
 <Tip>
-  If runs fail before the first step, re-check `yoqa status` and `agent-device doctor` — most local issues are toolchain, not test wording.
+  If runs fail before the first step, re-check `yoqa status` and `argent server status` — most local issues are toolchain, not test wording.
 </Tip>
 
 <CardGroup cols={2}>

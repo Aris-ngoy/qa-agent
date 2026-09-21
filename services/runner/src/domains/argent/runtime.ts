@@ -4,8 +4,8 @@ import type {
 	SetupPlatformRequest,
 	SetupPlatformResponse,
 } from "@yoqa/runner-client";
-import { probeDeveloperMode } from "../agent-device/developer-mode";
-import { ensureHostToolPath } from "../agent-device/host-path";
+import { probeDeveloperMode } from "../host/developer-mode";
+import { ensureHostToolPath } from "../host/host-path";
 import {
 	ARGENT_CONSENT_REQUIRED_CODE,
 	ArgentError,

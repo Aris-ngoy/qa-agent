@@ -1,5 +1,7 @@
 # YoqaADRunner guided install
 
+> Superseded by the Argent migration ([argent-migration](./argent-migration.md)). Kept as written history — Argent builds ArgentRunner automatically and has no named sessions.
+
 ## Goal
 
 When connecting an iOS device without a signed agent-device runner, show a

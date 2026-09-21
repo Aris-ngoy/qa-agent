@@ -24,7 +24,7 @@ function fakeSession(deviceId: string): unknown {
 let createdCount = 0;
 let createdFakeSessions: FakeSession[] = [];
 
-// Stub session creation so no agent-device binary is needed.
+// Stub session creation so no Argent binary is needed.
 mock.module("./session", () => ({
 	...actualSession,
 	createDeviceSession: async (options: { deviceId: string }) => {

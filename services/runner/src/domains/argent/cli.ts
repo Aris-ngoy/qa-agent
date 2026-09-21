@@ -1,7 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { androidProcessEnv } from "../agent-device/android-sdk";
-import { ensureHostToolPath } from "../agent-device/host-path";
+import { androidProcessEnv } from "../host/android-sdk";
+import { ensureHostToolPath } from "../host/host-path";
+import { withArgentIosSigningEnv } from "../host/ios-signing";
 
 /** Minimum Argent version Yoqa supports. */
 export const MIN_ARGENT_VERSION = "0.25.0";
@@ -118,7 +119,7 @@ export function resetArgentBinForTests(): void {
 
 /**
  * Run one Argent CLI command and return stdout.
- * Unlike agent-device there is no `{success, data}` envelope — callers parse.
+ * Unlike the old backend there is no `{success, data}` envelope — callers parse stdout JSON.
  */
 export async function runArgentRaw(
 	args: string[],
@@ -126,7 +127,7 @@ export async function runArgentRaw(
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
 	ensureHostToolPath();
 	const bin = await resolveArgentBin();
-	const env = androidProcessEnv(process.env);
+	const env = await withArgentIosSigningEnv(androidProcessEnv(process.env));
 	const proc = Bun.spawn([bin, ...args], {
 		env,
 		stdout: "pipe",
@@ -166,19 +167,29 @@ export async function runArgentRaw(
 
 /**
  * Invoke an Argent tool via `argent run <tool>` and parse JSON output.
- * Tries `--json` flag first; falls back to raw stdout JSON parse.
+ * Uses `--args '<json>'` (documented in `argent run --help`), falling back
+ * to explicit `--key value` flags when the tool rejects the envelope.
  */
 export async function runArgentTool<T = unknown>(
 	tool: string,
 	params: Record<string, unknown> = {},
 	options: { timeoutMs?: number } = {},
 ): Promise<T> {
-	const serialized = JSON.stringify(params);
-	const attempts: string[][] = [
-		["run", tool, "--json", serialized],
-		["run", tool, serialized],
-		["run", tool],
-	];
+	const attempts: string[][] = [];
+	if (Object.keys(params).length > 0) {
+		attempts.push(["run", tool, "--args", JSON.stringify(params)]);
+		attempts.push([
+			"run",
+			tool,
+			...Object.entries(params).flatMap(([key, value]) => {
+				if (typeof value === "boolean") return value ? [`--${key}`] : [`--no-${key}`];
+				if (value == null) return [];
+				return [`--${key}`, typeof value === "string" ? value : JSON.stringify(value)];
+			}),
+		]);
+	} else {
+		attempts.push(["run", tool]);
+	}
 	let lastError: unknown = null;
 	for (const args of attempts) {
 		try {
@@ -190,9 +201,21 @@ export async function runArgentTool<T = unknown>(
 					"COMMAND_FAILED",
 				);
 			}
+			if (!raw) return null as unknown as T;
 			try {
-				return JSON.parse(raw || "null") as T;
+				return JSON.parse(raw) as T;
 			} catch {
+				// Some tools print a human line before/after JSON — extract the
+				// largest {...} block before giving up.
+				const start = raw.indexOf("{");
+				const end = raw.lastIndexOf("}");
+				if (start >= 0 && end > start) {
+					try {
+						return JSON.parse(raw.slice(start, end + 1)) as T;
+					} catch {
+						// fall through to raw handling below
+					}
+				}
 				if (exitCode !== 0) {
 					throw new ArgentError(
 						`argent ${tool} failed (exit ${exitCode}): ${raw.slice(0, 500) || "unknown error"}`,

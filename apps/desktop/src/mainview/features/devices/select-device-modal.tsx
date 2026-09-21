@@ -243,28 +243,9 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 	};
 
 	const runModalInstall = async (device: DeviceRow) => {
-		const controller = new AbortController();
-		installAbortRef.current = controller;
-		setInstallView({ device, phase: "installing", message: null });
-		try {
-			const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
-			const client = createRunnerClient({ baseUrl });
-			await client.installIosRunner(
-				{ deviceId: device.id, kind: device.kind },
-				{ signal: controller.signal },
-			);
-			if (controller.signal.aborted) return;
-			finishSelect(device);
-		} catch (error) {
-			if (controller.signal.aborted) return;
-			setInstallView({
-				device,
-				phase: "error",
-				message: error instanceof Error ? error.message : "Failed to install YoqaADRunner.",
-			});
-		} finally {
-			if (installAbortRef.current === controller) installAbortRef.current = null;
-		}
+		// Argent builds and signs its runner automatically on connect — no
+		// separate install step. Proceed to select and let connect do it.
+		finishSelect(device);
 	};
 
 	const cancelInstallView = () => {
@@ -274,28 +255,9 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 	};
 
 	const handleSelect = (device: DeviceRow) => {
-		// Non-iOS needs no runner: select immediately.
-		if (platform !== "ios") {
-			finishSelect(device);
-			return;
-		}
-		void (async () => {
-			try {
-				const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
-				const client = createRunnerClient({ baseUrl });
-				const status = await client.getIosRunnerStatus(device.id, device.kind);
-				if (status.installed) {
-					finishSelect(device);
-					return;
-				}
-			} catch {
-				// Status is advisory: fall through to select and let connect
-				// (which installs automatically) be the ground truth.
-				finishSelect(device);
-				return;
-			}
-			await runModalInstall(device);
-		})();
+		// Argent builds its runner on connect — select immediately and let
+		// connect be the ground truth (trust prompt handled there).
+		finishSelect(device);
 	};
 
 	const loading = devicesQuery.isLoading || devicesQuery.isFetching;
@@ -336,7 +298,7 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 						<Modal.CloseTrigger />
 						<Modal.Header>
 							<Modal.Heading className="text-headline-md text-on-surface">
-								{installView ? `Install YoqaADRunner on ${installView.device.name}` : copy.title}
+								{installView ? `Set up ArgentRunner on ${installView.device.name}` : copy.title}
 							</Modal.Heading>
 						</Modal.Header>
 						<Modal.Body className="gap-5 px-6 pb-6 pt-1">
@@ -344,7 +306,7 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 								<div className="flex flex-col items-center gap-4 py-8 text-center">
 									{installing ? (
 										<ProgressCircle
-											aria-label="Installing YoqaADRunner"
+											aria-label="Setting up ArgentRunner"
 											className="text-on-surface-variant"
 											color="default"
 											isIndeterminate
@@ -359,8 +321,8 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 									<div className="flex max-w-md flex-col items-center gap-1.5">
 										<p className="text-body-md font-medium text-on-surface">
 											{installFailed
-												? "Couldn’t install YoqaADRunner"
-												: "Installing YoqaADRunner on your device..."}
+												? "Couldn’t set up ArgentRunner"
+												: "Setting up ArgentRunner on your device..."}
 										</p>
 										<p
 											className={`text-body-sm ${installFailed ? "text-danger" : "text-on-surface-variant"}`}

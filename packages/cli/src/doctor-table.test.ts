@@ -7,8 +7,8 @@ const report: DoctorReport = {
 	checks: [
 		{ id: "node", label: "Node.js", status: "pass", detail: "v22.14.0" },
 		{
-			id: "agent-device",
-			label: "agent-device",
+			id: "argent",
+			label: "Argent",
 			status: "fail",
 			detail: "not installed",
 			fixHint: "yoqa runtime ensure",
@@ -19,7 +19,7 @@ const report: DoctorReport = {
 	steps: [
 		{
 			severity: "error",
-			title: "Install agent-device",
+			title: "Install Argent",
 			detail: "Run yoqa runtime ensure",
 			repair: "ensure-runtime",
 		},
@@ -47,10 +47,10 @@ describe("formatDoctorReport", () => {
 		const text = formatDoctorReport(report, false);
 		expect(text).toContain("doctor  issues found");
 		expect(text).toContain("• Node.js — v22.14.0");
-		expect(text).toContain("• agent-device — not installed · yoqa runtime ensure");
+		expect(text).toContain("• Argent — not installed · yoqa runtime ensure");
 		expect(text).toContain("• Active device session — No active session");
 		expect(text).toContain("next");
-		expect(text).toContain("• Install agent-device — Run yoqa runtime ensure");
+		expect(text).toContain("• Install Argent — Run yoqa runtime ensure");
 		expect(text).not.toContain("STATUS");
 		expect(text.includes("\u001b")).toBe(false);
 	});
@@ -62,7 +62,7 @@ describe("formatDoctorReport", () => {
 		expect(text).toContain("\u001b[33m");
 		expect(text).toContain("•");
 		expect(text).toContain("Node.js");
-		expect(text).toContain("agent-device");
+		expect(text).toContain("Argent");
 	});
 
 	test("ok reports use a green summary and skip empty steps", () => {

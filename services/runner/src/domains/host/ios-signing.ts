@@ -4,16 +4,9 @@ import { join } from "node:path";
 
 export type DesktopIosSigning = {
 	teamId?: string;
-	bundleId?: string;
 };
 
-type CacheEntry = {
-	mtimeMs: number;
-	size: number;
-	value: DesktopIosSigning;
-};
-
-let cache: CacheEntry | null = null;
+let cache: { mtimeMs: number; size: number; value: DesktopIosSigning } | null = null;
 
 /** Test-only: drop the cached settings read. */
 export function resetDesktopIosSigningCacheForTests(): void {
@@ -30,10 +23,9 @@ function clean(value: unknown): string | undefined {
 }
 
 /**
- * Read iOS signing preferences from desktop Settings.
- * Returns `{}` when the file is missing — explicit `AGENT_DEVICE_IOS_*` env
- * always wins at the call site. Cached by file mtime so per-command reads
- * stay cheap; a torn read falls back to the last good value.
+ * Read iOS signing preferences from desktop Settings. Returns `{}` when the
+ * file is missing. Explicit `ARGENT_IOS_TEAM_ID` env always wins at the call
+ * site. Cached by file mtime so per-command reads stay cheap.
  */
 export async function readDesktopIosSigning(
 	file: string = desktopSettingsPath(),
@@ -52,15 +44,9 @@ export async function readDesktopIosSigning(
 	}
 	try {
 		const raw = await readFile(file, "utf8");
-		const parsed = JSON.parse(raw) as {
-			ios?: { teamId?: unknown; agentDeviceBundleId?: unknown };
-		};
+		const parsed = JSON.parse(raw) as { ios?: { teamId?: unknown } };
 		const teamId = clean(parsed.ios?.teamId);
-		const bundleId = clean(parsed.ios?.agentDeviceBundleId);
-		const value: DesktopIosSigning = {
-			...(teamId ? { teamId } : {}),
-			...(bundleId ? { bundleId } : {}),
-		};
+		const value: DesktopIosSigning = { ...(teamId ? { teamId } : {}) };
 		cache = { mtimeMs, size, value };
 		return value;
 	} catch {
@@ -69,22 +55,15 @@ export async function readDesktopIosSigning(
 }
 
 /**
- * Overlay desktop Settings signing into an agent-device child env.
- * Never overrides explicit `AGENT_DEVICE_IOS_*` values (shell/CI).
+ * Overlay desktop Settings signing into an Argent child env. Never overrides
+ * an explicit `ARGENT_IOS_TEAM_ID` value (shell/CI).
  */
-export async function withDesktopIosSigningEnv(
+export async function withArgentIosSigningEnv(
 	env: Record<string, string>,
 	file?: string,
 ): Promise<Record<string, string>> {
-	if (env.AGENT_DEVICE_IOS_TEAM_ID?.trim() && env.AGENT_DEVICE_IOS_BUNDLE_ID?.trim()) {
-		return env;
-	}
+	if (env.ARGENT_IOS_TEAM_ID?.trim()) return env;
 	const signing = await readDesktopIosSigning(file);
-	if (!env.AGENT_DEVICE_IOS_TEAM_ID?.trim() && signing.teamId) {
-		env.AGENT_DEVICE_IOS_TEAM_ID = signing.teamId;
-	}
-	if (!env.AGENT_DEVICE_IOS_BUNDLE_ID?.trim() && signing.bundleId) {
-		env.AGENT_DEVICE_IOS_BUNDLE_ID = signing.bundleId;
-	}
+	if (signing.teamId) env.ARGENT_IOS_TEAM_ID = signing.teamId;
 	return env;
 }

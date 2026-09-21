@@ -10,7 +10,7 @@ import {
 	screenshotResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
-import { AgentDeviceError } from "../../domains/agent-device/cli";
+import { ArgentError } from "../../domains/argent/cli";
 import {
 	SessionBusyError,
 	abandonActiveSession,
@@ -71,15 +71,12 @@ export function createSessionRoutes() {
 			const mapped = sessionErrorResponse(error);
 			if (mapped) return c.json(mapped.body, mapped.status);
 			const message = error instanceof Error ? error.message : String(error);
-			// Surface the machine-readable code (e.g. IOS_RUNNER_NOT_INSTALLED)
-			// so desktop can offer the guided YoqaADRunner install dialog.
-			const code = error instanceof AgentDeviceError ? error.code : undefined;
+			// Surface the machine-readable code so desktop can offer the
+			// guided runner-trust dialog.
+			const code = error instanceof ArgentError ? error.code : undefined;
 			return c.json(
 				{
-					error:
-						code === "IOS_RUNNER_NOT_INSTALLED"
-							? "iOS runner not installed"
-							: "Failed to connect device",
+					error: "Failed to connect device",
 					...(code ? { code } : {}),
 					detail: message,
 				},
@@ -239,7 +236,7 @@ export function createSessionRoutes() {
 			{
 				error: "Live MJPEG stream is not available",
 				detail:
-					"Use GET /screenshot/stream (multipart live feed) or poll GET /screenshot/image instead; agent-device owns recording via record",
+					"Use GET /screenshot/stream (multipart live feed) or poll GET /screenshot/image instead; Argent captures via screenshot",
 			},
 			410,
 		);

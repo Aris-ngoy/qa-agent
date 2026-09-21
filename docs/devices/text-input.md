@@ -2,15 +2,15 @@
 
 ## Goal
 
-Type into the focused field on iOS and Android through the agent-device session (`type` / `input`).
+Type into the focused field on iOS and Android through the Argent session (`keyboard` tool via `type` / `input`).
 
 ## Plan summary
 
-Typing used to go through WebdriverIO / Appium (`mobile: type` and W3C key chords). That path is gone. The runner shells out to `agent-device type`.
+Typing used to go through WebdriverIO / Appium (`mobile: type` and W3C key chords). That path is gone. The runner shells out to `argent run keyboard`.
 
 ## What shipped
 
-- [`session.ts`](../../services/runner/src/domains/devices/session.ts) — `session.type()` runs `agent-device type`.
+- [`session.ts`](../../services/runner/src/domains/argent/session.ts) — `session.type()` runs `argent run keyboard`.
 - [`interaction.ts`](../../services/runner/src/domains/devices/interaction.ts) — `input` still taps (when x/y or a locator is given) then `session.type`.
 
 ## How to verify

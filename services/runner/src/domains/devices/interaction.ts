@@ -11,13 +11,13 @@ import { snapshotNodesToScreen } from "./screen";
 import type { DeviceSession } from "./session";
 
 export type GetScreenOptions = {
-	/** When true, return raw agent-device snapshot JSON instead of the cleaned 0–1000 tree. */
+	/** When true, return raw Argent describe JSON instead of the cleaned 0–1000 tree. */
 	full?: boolean;
-	/** Accepted for Inspector compatibility; agent-device has no MJPEG proxy to pause. */
+	/** Accepted for Inspector compatibility; Argent has no MJPEG proxy to pause. */
 	pauseMjpeg?: boolean;
 };
 
-/** Read the device Screen from the agent-device snapshot backend. */
+/** Read the device Screen from the Argent describe backend (visual-first: screenshot is primary). */
 export async function getScreen(
 	session: DeviceSession,
 	options: GetScreenOptions = {},
@@ -51,7 +51,7 @@ export class ActionNotFoundError extends Error {
 /**
  * Perform one Action on a Device Session. Resolves id/label against the
  * snapshot tree, or Grounding from description, then runs the gesture /
- * lifecycle command via agent-device.
+ * lifecycle command via Argent.
  */
 export async function performAction(
 	session: DeviceSession,

@@ -42,51 +42,53 @@ Pause / resume here. Check a box only when the item is done on this branch.
 
 - [x] Inventory `agent-device` call sites (`cli.ts`, `devices.ts`, `runtime.ts`, `runner-install.ts`, `android-sdk.ts`, `developer-mode.ts`, `desktop-settings.ts`, `host-path.ts`).
 - [x] Map to Argent equivalents (`server start/status`, `run`, `flow`, `tools`, devices, screenshot, snapshot, gestures, installs).
-- [x] New `services/runner/src/domains/argent/` (bin resolve, version check, server lifecycle, devices, runtime with consent gate).
-- [ ] Full session gesture cutover (screenshot-first `screen`, actions, installs still on `agent-device` fallback).
-- [ ] Remove `services/runner/src/domains/agent-device/` + `domains/doctor` agent-device probes.
-- [x] Update `domains/devices/` (Argent-first list with fallback), `interfaces/http/` (`/runtime`, `/status`, `/doctor`, `/devices/setup`), `packages/cli`, `packages/runner-client` schemas (`argent` check id, `argentVersion`, consent body).
-- [ ] `bun test services/runner/src packages/runner-client/src packages/cli/src` green (scoped Argent/devices/doctor green; 1 pre-existing `opencode` provider failure).
+- [x] New `services/runner/src/domains/argent/` (bin resolve, version check, server lifecycle, devices, runtime with consent gate, full `session.ts` via `argent run <tool> --args`).
+- [x] Full session gesture cutover (`launch-app`, `describe` parse, `screenshot`, `gesture-tap`/`gesture-swipe`/`gesture-custom`, `keyboard`, `button`, `open-url`, `reinstall-app`).
+- [x] Removed `services/runner/src/domains/agent-device/` + `domains/doctor` agent-device probes; generic host tooling moved to `domains/host/`.
+- [x] Updated `domains/devices/` (Argent-only list + session re-export), `domains/builds/` (Argent `reinstall-app`), `interfaces/http/` (`/runtime`, `/status`, `/doctor`, `/devices/setup`, iOS-runner endpoints Gone), `packages/cli`, `packages/runner-client` schemas (`argent` check id, `argentVersion`, consent body).
+- [x] `bun test` green except 1 pre-existing `opencode` provider failure (verified on clean tree).
 
 ### Phase 2 — Visual-first ordering
 
-- [ ] `screen` returns cleaned tree + relative coords 0–1000 only on demand; default path is screenshot PNG.
-- [ ] Grounding (`-d` description) prefers screenshot vision, tree as fallback.
-- [ ] Autonomous runs loop updated (screenshot → decide → act).
-- [ ] `packages/skill/yoqa-testing` inspect→act→verify rewritten visual-first.
+- [x] `screen` returns cleaned tree + relative coords 0–1000 only on demand; default path is screenshot PNG (`captureFrame`/`screenshot` via `argent run screenshot`; `snapshotNodes` parses `describe` best-effort).
+- [x] Grounding (`-d` description) prefers screenshot vision, tree as fallback (`grounding.ts`: `captureFrame` image + tree summary into vision call).
+- [x] Autonomous runs loop updated (screenshot → decide → act) — runs drive the same `DeviceSession`, now Argent-backed.
+- [x] `packages/skill/yoqa-testing` inspect→act→verify rewritten visual-first (screenshot primary).
 
 ### Phase 3 — Splash consent + global install
 
-- [ ] `boot-gate.tsx` adds `prompt-install` phase (Argent missing/outdated → prompt, not auto-install).
-- [ ] Consent copy: version pinned, PATH change, proprietary-binaries notice, telemetry opt-out.
+- [x] `boot-gate.tsx` adds `prompt-install` phase (Argent missing/outdated → prompt, not auto-install).
+- [x] Consent copy: version pinned, PATH change, proprietary-binaries notice, telemetry opt-out.
 - [x] `Install Argent` backend: `POST /runtime/ensure { consent: true }` (428 `CONSENT_REQUIRED` without consent); `doctor --fix` passes consent.
 - [x] Runner `ensureArgentRuntime` handles no node/npm, offline, version mismatch; never installs without consent.
-- [ ] Desktop + CLI `doctor --fix` parity for Argent (CLI `runtime ensure` passes consent; desktop prompt pending).
+- [x] Desktop + CLI `doctor --fix` parity for Argent (CLI `runtime ensure` passes consent; desktop prompt → consent → ensure).
 
 ### Phase 4 — Cleanup + docs
 
-- [ ] Desktop Devices/Settings/Diagnostics copy talks about Argent, not agent-device.
-- [ ] `apps/docs` updated (device-preparation, desktop-app, cli, github-actions, best-practices).
-- [ ] `rg agent-device` only hits historical notes / DB compat (or zero, if decided).
-- [ ] `bun run lint:ci`, `bun run check`, `bun run test` green.
-- [ ] Manual verify: fresh machine without Argent → prompt → Accept boots `ready`; Decline boots limited; sim + physical iOS/Android `devices/screen/screenshot/action`.
+- [x] Desktop Devices/Settings/Diagnostics copy talks about Argent, not agent-device (runner dialogs → ArgentRunner auto-build + trust; bundle-id editor removed; toolchain env → `ARGENT_IOS_TEAM_ID`).
+- [x] `apps/docs` updated (device-preparation, cli, github-actions, overview, how-it-works, introduction, capabilities, local-testing); `ARCHITECTURE.md` + `CONTEXT.md` re-pointed at Argent.
+- [x] `agent-device` in code: zero hits outside historical session notes/ADRs and the deprecated iOS-runner wire schemas; `services/runner/src/domains/agent-device/` deleted.
+- [x] `bun run lint:ci`, `bun run check` green; `bun run test` green except 1 pre-existing `opencode` failure.
+- [ ] Manual verify: fresh machine without Argent → prompt → Accept boots `ready`; Decline boots limited; sim + physical iOS/Android `devices/screen/screenshot/action` (needs hardware + `npm install -g @swmansion/argent`).
 
 ## What shipped
 
-Increment 1 — Argent runtime + device-listing adapter (session gestures still on `agent-device` fallback).
+Full migration — Argent-only backend, visual-first, consent-gated install.
 
 | Area | File / API | Status |
 |------|------------|--------|
 | Branch | `devices/argent-migration` | Done |
-| Plan | `docs/devices/argent-migration.md` | Done, tracker updated |
+| Plan | `docs/devices/argent-migration.md` | Done, all code boxes checked |
 | License guardrail | `docs/devices/argent-license-guidelines.md` | Done |
-| Runner adapter | `services/runner/src/domains/argent/cli.ts`, `devices.ts`, `runtime.ts`, `cli.test.ts` | Done |
+| Runner adapter | `services/runner/src/domains/argent/cli.ts`, `devices.ts`, `runtime.ts`, `session.ts` (+ tests) | Done |
+| Host tooling | `services/runner/src/domains/host/` (moved from `agent-device/`), `ios-signing.ts` (`ARGENT_IOS_TEAM_ID`) | Done |
+| Removed | `services/runner/src/domains/agent-device/` deleted; doctor/iOS-runner legacy paths gone | Done |
 | Runtime API | `GET /runtime`, `POST /runtime/ensure { consent }`, `GET /status`, `POST /devices/setup`, doctor Argent server probe | Done |
-| Device listing | `domains/devices/application.ts` Argent-first with `agent-device` fallback | Done |
-| Client | `packages/runner-client` schemas + `ensureRuntime({ consent })`, CLI copy | Done |
-| Visual-first screen | `domains/devices`, `testing/` | Not started |
-| Splash consent UI | `apps/desktop/src/mainview/features/splash/boot-gate.tsx` | Not started |
-| Skill + docs | `packages/skill/yoqa-testing`, `apps/docs` | Not started |
+| Sessions | `domains/devices/session.ts` re-exports Argent session; builds use `reinstall-app`; iOS-runner endpoints Gone | Done |
+| Client + CLI | `packages/runner-client` schemas + `ensureRuntime({ consent })`; CLI Argent copy; `install-runner` deprecated | Done |
+| Splash | `boot-gate.tsx` `prompt-install` phase with consent copy + limited-boot decline | Done |
+| Desktop | ArgentRunner dialogs, Settings signing (team only), doctor/sync copy | Done |
+| Skill + docs | `packages/skill/yoqa-testing`, `apps/docs`, `ARCHITECTURE.md`, `CONTEXT.md` | Done |
 
 Tool mapping used: `devices` → `list-devices`, `open` → `boot-device` + `launch-app`, `snapshot -i` → `describe`, `screenshot` → `screenshot`, `press` → `gesture-tap`, `swipe`/`gesture pan` → `gesture-swipe`/`gesture-custom`, `type` → `keyboard`, `install` → `reinstall-app`, `open-url` → `open-url`, `home`/`back` → `button`, `close --session` → `stop-simulator-server`, `doctor` → `server status` + `native-devtools-status`.
 

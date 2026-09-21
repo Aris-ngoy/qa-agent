@@ -211,8 +211,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	const [tierFilter, setTierFilter] = useState<IdentityFilter>("all");
 	const [xcodeId, setXcodeId] = useState<string | null>(null);
 	const [signingId, setSigningId] = useState<string | null>(null);
-	const [bundleId, setBundleId] = useState("");
-	const [bundleFocused, setBundleFocused] = useState(false);
 
 	const toolchainQuery = useQuery({
 		queryKey: IOS_TOOLCHAIN_QUERY_KEY,
@@ -225,10 +223,7 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 		if (!toolchainQuery.data) return;
 		setXcodeId(toolchainQuery.data.preferences.xcodeDeveloperDir);
 		setSigningId(toolchainQuery.data.preferences.signingIdentityHash);
-		if (!bundleFocused) {
-			setBundleId(toolchainQuery.data.preferences.agentDeviceBundleId ?? "");
-		}
-	}, [toolchainQuery.data, bundleFocused]);
+	}, [toolchainQuery.data]);
 
 	const xcodes = toolchainQuery.data?.xcodes ?? [];
 	const identities = toolchainQuery.data?.identities ?? [];
@@ -256,7 +251,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	const persistSelection = async (next: {
 		xcodeDeveloperDir?: string | null;
 		signingIdentityHash?: string | null;
-		agentDeviceBundleId?: string | null;
 	}) => {
 		const preferences = await getDesktopRpc().request.setIosToolchainSelection(next);
 		queryClient.setQueryData<IosToolchainSnapshot>(IOS_TOOLCHAIN_QUERY_KEY, (current) => {
@@ -278,15 +272,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	};
 
 	const teamId = selectedSigning?.teamId ?? toolchainQuery.data?.preferences.teamId ?? null;
-
-	const handleBundleBlur = () => {
-		setBundleFocused(false);
-		const trimmed = bundleId.trim();
-		const saved = toolchainQuery.data?.preferences.agentDeviceBundleId ?? "";
-		if (trimmed !== saved) {
-			void persistSelection({ agentDeviceBundleId: trimmed || null });
-		}
-	};
 
 	return (
 		<div className="flex flex-col gap-6">
@@ -451,12 +436,10 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 			</SectionCard>
 
 			<SectionCard>
-				<h3 className="text-subheading font-semibold text-on-surface">
-					agent-device Runner Signing
-				</h3>
+				<h3 className="text-subheading font-semibold text-on-surface">Argent Runner Signing</h3>
 				<p className="mt-1 mb-3 text-body-md text-on-surface-variant">
-					Team and bundle id used to sign the agent-device test runner on physical devices. The
-					runner reads them from these Settings — no shell env needed.
+					Apple Development team used to sign the Argent test runner on physical devices. The runner
+					reads it from these Settings — no shell env needed (or set ARGENT_IOS_TEAM_ID).
 				</p>
 				<p className="mb-3 text-body-md text-on-surface-variant">
 					Team ID:{" "}
@@ -464,23 +447,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 						{teamId ?? "select a signing identity above"}
 					</span>
 				</p>
-				<TextField
-					aria-label="Runner bundle id"
-					className="w-full"
-					onChange={setBundleId}
-					value={bundleId}
-				>
-					<Input
-						className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container px-3.5 font-mono text-body-sm shadow-none"
-						onBlur={handleBundleBlur}
-						onFocus={() => setBundleFocused(true)}
-						placeholder="com.yourname.agentdevice.runner"
-					/>
-					<Description className="mt-1.5 text-helper text-on-surface-variant">
-						Unique reverse-DNS id for the test runner. Applies to the next physical-device build —
-						reconnect the device after changing signing.
-					</Description>
-				</TextField>
 			</SectionCard>
 		</div>
 	);
@@ -613,8 +579,8 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				Paths agent-device uses for local Android tests. Detected from your system; override only if
-				you need a different SDK or JDK.
+				Paths Argent uses for local Android tests. Detected from your system; override only if you
+				need a different SDK or JDK.
 			</p>
 
 			{toolchainQuery.isLoading ? (
@@ -670,7 +636,7 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 				</Button>
 				{dirty ? (
 					<p className="text-body-sm text-on-surface-variant">
-						Saving restarts the local runner so agent-device picks up the new paths.
+						Saving restarts the local runner so Argent picks up the new paths.
 					</p>
 				) : null}
 			</div>
@@ -943,7 +909,7 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				System checks for Node, agent-device, host tools, and leftover processes. Same report as{" "}
+				System checks for Node, Argent, host tools, and leftover processes. Same report as{" "}
 				<code className="font-mono text-helper">yoqa doctor</code>.
 			</p>
 

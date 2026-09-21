@@ -3,7 +3,7 @@ import { ensureHostToolPath } from "./host-path";
 /**
  * macOS Developer Mode gate for the physical-iOS runner.
  *
- * agent-device runs `DevToolsSecurity -status` before starting its XCTest
+ * Argent runs `DevToolsSecurity -status` before starting its XCTest
  * runner on a physical device and fails with "Developer mode is disabled for
  * Apple development tools" when it is off. Simulators are unaffected.
  * Enabling requires an admin password, so the runner never flips it silently —
@@ -11,7 +11,7 @@ import { ensureHostToolPath } from "./host-path";
  * explicit password prompt instead.
  */
 
-/** agent-device's exact macOS gate message. */
+/** macOS gate message surfaced by device backends. */
 export const DEVELOPER_MODE_DISABLED_MESSAGE =
 	"Developer mode is disabled for Apple development tools";
 

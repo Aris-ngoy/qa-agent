@@ -7,8 +7,8 @@ Target layout after the architecture grill (2026-08). See `CONTEXT.md` for vocab
 | Domain | Owns |
 |--------|------|
 | `devices/` | Device listing, **Device Session** (create + Active Session), Screen (`getScreen`), Action (`performAction` + Grounding) |
-| `agent-device/` | agent-device CLI adapter (sessions, snapshots, actions, installs), device listing, runtime readiness |
-| `ios/` | Legacy WDA / signing prep (unused since the agent-device backend; kept for reference) |
+| `argent/` | Argent CLI tool adapter (transport, screenshots, describe, actions, installs), device listing, runtime readiness |
+| `ios/` | Legacy WDA / signing prep (unused since the Argent backend; kept for reference) |
 | `providers/` | Provider adapters (settings + optional `vision.completeObject`), secrets, catalog for UI |
 | `runs/` | Run orchestration, **Case executor**, agent prompts/schema, Case Script parse consumers |
 | `catalog/` | Apps, cases, flows, tags |
@@ -21,6 +21,6 @@ Thin adapters: parse Zod, call domain, map status (incl. Dead Session → 410). 
 ## Dual config (interim)
 
 - Desktop: `~/Library/Application Support/yoqa/settings.json` (toolchain prefs via Electrobun RPC)
-- Runner: `~/.yoqa/` (db, providers, screenshots). Device automation lives in the agent-device daemon state dir (`~/.agent-device/`).
+- Runner: `~/.yoqa/` (db, providers, screenshots). Device automation lives in the Argent tool-server state.
 
 Long-term: runner is authority for provider/auth prefs; desktop syncs into that store.

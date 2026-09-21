@@ -7,13 +7,11 @@ import type {
 	DoctorStep,
 } from "@yoqa/runner-client";
 import { loadSettings } from "../../settings";
-import { runAgentDevice } from "../agent-device/cli";
-import { enableDeveloperMode } from "../agent-device/developer-mode";
-import { ensureHostToolPath } from "../agent-device/host-path";
-import { getAgentDeviceRuntimeStatus } from "../agent-device/runtime";
 import { runArgentRaw } from "../argent/cli";
 import { getArgentRuntimeStatus } from "../argent/runtime";
 import { disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
+import { enableDeveloperMode } from "../host/developer-mode";
+import { ensureHostToolPath } from "../host/host-path";
 import { listServers } from "../servers/application";
 
 async function runCommand(
@@ -127,54 +125,10 @@ async function probeArgentServer(): Promise<DoctorCheck[]> {
 	}
 }
 
-async function probeAgentDeviceDoctor(): Promise<DoctorCheck[]> {
-	try {
-		const data = (await runAgentDevice(["doctor", "--remote"], { timeoutMs: 30_000 })) as {
-			checks?: Array<{ id?: string; status?: string; summary?: string; hint?: string }>;
-			summary?: string;
-		};
-		const checks = Array.isArray(data.checks) ? data.checks : [];
-		// Yoqa is local-first: `doctor --remote` is used as a light probe that
-		// skips local device inventory. `remote-connection` fail ("no remote
-		// daemon configured") and `session` info are expected, not health
-		// signals, so drop them instead of surfacing them in Diagnostics.
-		return checks
-			.filter((check) => check.id !== "remote-connection" && check.status !== "info")
-			.slice(0, 12)
-			.map((check) => {
-				const rawStatus = check.status;
-				return {
-					id: `agent-device-${check.id ?? "check"}`,
-					label: `agent-device: ${check.id ?? "check"}`,
-					status:
-						rawStatus === "fail"
-							? ("fail" as const)
-							: rawStatus === "warn"
-								? ("warn" as const)
-								: ("pass" as const),
-					detail: check.summary,
-					fixHint: check.hint,
-				};
-			});
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		return [
-			{
-				id: "agent-device-doctor",
-				label: "agent-device doctor",
-				status: "warn",
-				detail: message.slice(0, 240),
-				fixHint: "Run: agent-device doctor",
-			},
-		];
-	}
-}
-
 export async function getDoctorReport(): Promise<DoctorReport> {
 	ensureHostToolPath();
 	const settings = loadSettings();
 	const runtime = await getArgentRuntimeStatus();
-	const legacy = await getAgentDeviceRuntimeStatus().catch(() => null);
 	const servers = await listServers();
 	const checks: DoctorCheck[] = [];
 
@@ -205,15 +159,6 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 	checks.push(await probeXcodeSelect());
 	checks.push(await probeSessionHealth());
 	checks.push(...(await probeArgentServer()));
-	if (legacy && !legacy.ready) {
-		checks.push({
-			id: "agent-device-legacy",
-			label: "agent-device (legacy fallback)",
-			status: "warn",
-			detail: "Legacy backend not ready — Argent is primary during migration",
-		});
-	}
-	checks.push(...(await probeAgentDeviceDoctor()));
 
 	const steps: DoctorStep[] = [];
 	for (const check of checks) {
@@ -223,11 +168,7 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 				title: check.label,
 				detail: check.fixHint ?? check.detail ?? "Fix this check",
 				repair:
-					check.id === "node" ||
-					check.id === "argent" ||
-					check.id === "agent-device" ||
-					check.id === "argent-server" ||
-					check.id === "agent-device-doctor"
+					check.id === "node" || check.id === "argent" || check.id === "argent-server"
 						? "ensure-runtime"
 						: undefined,
 			});

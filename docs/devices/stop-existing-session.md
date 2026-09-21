@@ -1,5 +1,7 @@
 # Stop leftover agent-device sessions on connect
 
+> Superseded by the Argent migration ([argent-migration](./argent-migration.md)). Kept as written history — Argent builds ArgentRunner automatically and has no named sessions.
+
 ## Goal
 
 Connecting a device from Yoqa desktop (Inspector, Restart, or a run) should succeed when the device is already claimed by a leftover same-daemon agent-device session such as `cwd:fcfcd77c2e6b136e:ios`, instead of failing with `DEVICE_IN_USE`.

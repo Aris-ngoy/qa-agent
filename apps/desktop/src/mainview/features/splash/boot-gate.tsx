@@ -5,7 +5,7 @@ import { createRunnerClient } from "@yoqa/runner-client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { YoqaMark } from "./yoqa-mark";
 
-type BootPhase = "starting" | "checking" | "installing" | "ready" | "error";
+type BootPhase = "starting" | "checking" | "prompt" | "installing" | "ready" | "error";
 
 const CROSSFADE_MS = 400;
 
@@ -22,8 +22,10 @@ function splashForPhase(
 			return { progress: 30, statusText: "Starting local services..." };
 		case "checking":
 			return { progress: 55, statusText: "Checking test runtime..." };
+		case "prompt":
+			return { progress: 65, statusText: "Argent is not installed" };
 		case "installing":
-			return { progress: 80, statusText: "Installing missing drivers..." };
+			return { progress: 80, statusText: "Installing Argent..." };
 		case "ready":
 			return { progress: 100, statusText: "Ready" };
 		case "error":
@@ -35,11 +37,14 @@ type SplashScreenProps = {
 	phase: BootPhase;
 	message: string | null;
 	onRetry: () => void;
+	onInstall: () => void;
+	onDecline: () => void;
 };
 
-function SplashScreen({ phase, message, onRetry }: SplashScreenProps) {
+function SplashScreen({ phase, message, onRetry, onInstall, onDecline }: SplashScreenProps) {
 	const { progress, statusText } = splashForPhase(phase, message);
 	const isError = phase === "error";
+	const isPrompt = phase === "prompt";
 
 	return (
 		<div className="electrobun-webkit-app-region-drag flex h-full min-h-0 flex-col bg-[#14131c] px-8 pt-12 pb-8 text-white">
@@ -70,6 +75,29 @@ function SplashScreen({ phase, message, onRetry }: SplashScreenProps) {
 							{statusText}
 						</p>
 					</div>
+
+					{isPrompt ? (
+						<div className="electrobun-webkit-app-region-no-drag mt-6 flex w-full max-w-[280px] flex-col items-center gap-3">
+							<p className="text-center text-body-sm text-[#8a8792]">
+								{message ??
+									"Yoqa drives devices through Argent. Install it globally? (npm install -g @swmansion/argent, then argent init --global)"}
+							</p>
+							<p className="text-center text-helper text-[#5c5865]">
+								Includes Argent's proprietary device binaries (use-only, no redistribution).
+								Telemetry is opt-out: argent telemetry disable.
+							</p>
+							<Button
+								className="rounded-full bg-[#e3dbf7] text-[#14131c]"
+								onPress={onInstall}
+								variant="primary"
+							>
+								Install Argent
+							</Button>
+							<Button onPress={onDecline} variant="secondary">
+								Not now
+							</Button>
+						</div>
+					) : null}
 
 					{isError ? (
 						<div className="electrobun-webkit-app-region-no-drag mt-6 flex flex-col items-center">
@@ -104,9 +132,11 @@ export function BootGate({ children }: BootGateProps) {
 	const [splashExiting, setSplashExiting] = useState(false);
 	const [appVisible, setAppVisible] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
+	const consentRef = useRef(false);
 
 	const retry = () => {
 		abortRef.current?.abort();
+		consentRef.current = false;
 		setReady(false);
 		setSplashMounted(true);
 		setSplashExiting(false);
@@ -114,6 +144,23 @@ export function BootGate({ children }: BootGateProps) {
 		setPhase("starting");
 		setMessage(null);
 		setAttempt((n) => n + 1);
+	};
+
+	const install = () => {
+		// Explicit consent for the global install — the boot effect picks it
+		// up and calls ensure with { consent: true }.
+		consentRef.current = true;
+		setPhase("installing");
+		setMessage(null);
+		setAttempt((n) => n + 1);
+	};
+
+	const decline = () => {
+		// Limited boot: app opens, device features gate on runtime status
+		// (Devices screens + Settings offer retry).
+		setPhase("ready");
+		setMessage("Argent not installed — device features are unavailable.");
+		setReady(true);
 	};
 
 	useEffect(() => {
@@ -155,9 +202,24 @@ export function BootGate({ children }: BootGateProps) {
 				if (controller.signal.aborted) return;
 
 				if (!status.ready) {
+					const argentMissing = status.checks.some(
+						(check) => check.id === "argent" && check.required && !check.ok,
+					);
+					if (argentMissing && !consentRef.current) {
+						// Never install globally without consent — prompt first.
+						setPhase("prompt");
+						setMessage(
+							status.checks.find((check) => check.id === "argent")?.detail ??
+								"Argent is not installed.",
+						);
+						return;
+					}
 					setPhase("installing");
 
-					const ensured = await client.ensureRuntime({ signal: controller.signal });
+					const ensured = await client.ensureRuntime({
+						signal: controller.signal,
+						consent: consentRef.current,
+					});
 					if (controller.signal.aborted) return;
 					status = ensured.status;
 				}
@@ -220,7 +282,15 @@ export function BootGate({ children }: BootGateProps) {
 	}, [ready, reducedMotion]);
 
 	if (!ready) {
-		return <SplashScreen message={message} onRetry={retry} phase={phase} />;
+		return (
+			<SplashScreen
+				message={message}
+				onDecline={decline}
+				onInstall={install}
+				onRetry={retry}
+				phase={phase}
+			/>
+		);
 	}
 
 	return (
@@ -230,7 +300,13 @@ export function BootGate({ children }: BootGateProps) {
 			</div>
 			{splashMounted ? (
 				<div className={`boot-splash-layer${splashExiting ? " is-exiting" : ""}`}>
-					<SplashScreen message={message} onRetry={retry} phase={phase} />
+					<SplashScreen
+						message={message}
+						onDecline={decline}
+						onInstall={install}
+						onRetry={retry}
+						phase={phase}
+					/>
 				</div>
 			) : null}
 		</div>

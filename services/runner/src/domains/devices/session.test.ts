@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AgentDeviceError } from "../agent-device/cli";
+import { ArgentError } from "../argent/cli";
 import { DeadSessionError, isDeadSessionError, shouldAutoInstallRunnerOnConnect } from "./session";
 
 describe("isDeadSessionError", () => {
@@ -8,39 +8,13 @@ describe("isDeadSessionError", () => {
 			isDeadSessionError(new Error("No active device session. Run: yoqa devices connect <id>")),
 		).toBe(true);
 		expect(isDeadSessionError(new DeadSessionError())).toBe(true);
+		expect(isDeadSessionError(new ArgentError("transport not wired", "DEVICE_LOST"))).toBe(true);
 		expect(isDeadSessionError(new Error("Device is busy with another action"))).toBe(false);
 	});
 });
 
 describe("shouldAutoInstallRunnerOnConnect", () => {
-	const signingError = new AgentDeviceError(
-		"The AgentDeviceRunner XCTest host must be signed before commands can run",
-		"IOS_RUNNER_NOT_INSTALLED",
-	);
-
-	test("installs once for an iOS runner-missing failure with a known kind", () => {
-		expect(shouldAutoInstallRunnerOnConnect("ios", "physical", signingError)).toBe(true);
-		expect(shouldAutoInstallRunnerOnConnect("ios", "simulator", signingError)).toBe(true);
-	});
-
-	test("skips when the kind is unknown (cannot target the install)", () => {
-		expect(shouldAutoInstallRunnerOnConnect("ios", undefined, signingError)).toBe(false);
-	});
-
-	test("skips non-iOS platforms", () => {
-		expect(shouldAutoInstallRunnerOnConnect("android", "physical", signingError)).toBe(false);
-	});
-
-	test("skips unrelated failures (device gone, busy, unknown device)", () => {
-		expect(
-			shouldAutoInstallRunnerOnConnect(
-				"ios",
-				"physical",
-				new AgentDeviceError("gone", "SESSION_NOT_FOUND"),
-			),
-		).toBe(false);
-		expect(shouldAutoInstallRunnerOnConnect("ios", "physical", new Error("Device not found"))).toBe(
-			false,
-		);
+	test("is never needed — Argent builds/signs its runner on first interaction", () => {
+		expect(shouldAutoInstallRunnerOnConnect()).toBe(false);
 	});
 });

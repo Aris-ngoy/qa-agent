@@ -1,6 +1,6 @@
 /**
  * Bundle the runner for npm: Bun-compatible ESM with inlined workspace deps.
- * Device automation shells out to the `agent-device` CLI (resolved at runtime
+ * Device automation shells out to the `argent` CLI (resolved at runtime
  * from node_modules/.bin, then PATH) — no native driver to bundle.
  */
 const result = await Bun.build({
@@ -11,7 +11,7 @@ const result = await Bun.build({
 	minify: false,
 	sourcemap: "none",
 	packages: "bundle",
-	external: ["agent-device"],
+	external: ["@swmansion/argent"],
 });
 
 if (!result.success) {

@@ -52,7 +52,6 @@ export type SetupPlatformRequest = z.infer<typeof setupPlatformRequestSchema>;
 export const setupPlatformResponseSchema = z.object({
 	ok: z.literal(true),
 	platform: devicePlatformSchema,
-	agentDeviceVersion: z.string().min(1).optional(),
 	argentVersion: z.string().min(1).optional(),
 	alreadyInstalled: z.boolean(),
 	message: z.string().min(1),
@@ -68,7 +67,7 @@ export const setupPlatformErrorSchema = z.object({
 
 export type SetupPlatformError = z.infer<typeof setupPlatformErrorSchema>;
 
-// --- iOS runner (YoqaADRunner) install ---
+// --- iOS runner install (deprecated: Argent auto-builds; schemas kept for wire compat) ---
 
 /** Machine-readable code when the iOS runner must be installed first. */
 export const IOS_RUNNER_NOT_INSTALLED_CODE = "IOS_RUNNER_NOT_INSTALLED";
@@ -121,7 +120,6 @@ export type IosRunnerStatusResponse = z.infer<typeof iosRunnerStatusResponseSche
 export const runtimeCheckIdSchema = z.union([
 	z.literal("node"),
 	z.literal("npm"),
-	z.literal("agent-device"),
 	z.literal("argent"),
 	z.literal("xcode"),
 	z.literal("adb"),
@@ -142,7 +140,6 @@ export type RuntimeCheck = z.infer<typeof runtimeCheckSchema>;
 
 export const runtimeStatusSchema = z.object({
 	ready: z.boolean(),
-	agentDeviceVersion: z.string().optional(),
 	argentVersion: z.string().optional(),
 	checks: z.array(runtimeCheckSchema),
 });
@@ -161,7 +158,6 @@ export type EnsureRuntimeResponse = z.infer<typeof ensureRuntimeResponseSchema>;
 // --- Servers lifecycle ---
 
 export const serverKindSchema = z.union([
-	z.literal("agent-device"),
 	z.literal("argent"),
 	z.literal("runner"),
 	z.literal("device-session"),
@@ -262,7 +258,7 @@ export type DoctorRepairResponse = z.infer<typeof doctorRepairResponseSchema>;
 
 /**
  * @deprecated Custom driver capabilities were an Appium concept and are no
- * longer read by the runner (agent-device backend). Kept for wire compat —
+ * longer read by the runner (Argent backend). Kept for wire compat —
  * servers always return `[]` and request fields are ignored.
  */
 export const capabilitySchema = z.object({
@@ -869,7 +865,7 @@ export type RunError = z.infer<typeof runErrorSchema>;
 export const connectDeviceRequestSchema = z.object({
 	deviceId: z.string().min(1),
 	platform: devicePlatformSchema,
-	/** Physical vs simulator — enables check-and-install of YoqaADRunner on connect. */
+	/** Physical vs simulator. */
 	kind: deviceKindSchema.optional(),
 	bundleId: z.string().min(1).optional(),
 	appPackage: z.string().min(1).optional(),
@@ -980,11 +976,11 @@ export const actionRequestSchema = z.object({
 	url: z.string().optional(),
 	alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).optional(),
 	seconds: z.number().optional(),
-	/** Scroll direction for `scroll` (agent-device `scroll <direction> [amount]`). */
+	/** Scroll direction for `scroll` (`scroll <direction> [amount]`). */
 	direction: scrollDirectionSchema.optional(),
-	/** Finger-path fraction of the viewport axis for `scroll` (agent-device amount). */
+	/** Finger-path fraction of the viewport axis for `scroll`. */
 	amount: z.number().optional(),
-	/** Key action for `keyboard` (agent-device `keyboard dismiss|enter`). */
+	/** Key action for `keyboard` (`keyboard dismiss|enter`). */
 	keyboardAction: keyboardActionSchema.optional(),
 });
 export type ActionRequest = z.infer<typeof actionRequestSchema>;

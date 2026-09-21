@@ -1,7 +1,7 @@
 import { basename, extname } from "node:path";
 import type { Build, CreateBuildRequest } from "@yoqa/runner-client";
 import { desc, eq } from "drizzle-orm";
-import { AgentDeviceError, runAgentDevice } from "../agent-device/cli";
+import { ArgentError, runArgentTool } from "../argent/cli";
 import { getCatalogDb } from "../catalog/db";
 import { builds } from "./schema";
 
@@ -129,33 +129,33 @@ export async function installBuildOnDevice(options: {
 	platform: "ios" | "android";
 }): Promise<void> {
 	const { build, deviceId, platform } = options;
-	const deviceArgs = platform === "ios" ? ["--udid", deviceId] : ["--serial", deviceId];
+	const bundleId = build.bundleId?.trim();
+	if (!bundleId) {
+		throw new Error(
+			`Cannot install ${build.path}: unknown bundle id. Register the build with its bundle id first.`,
+		);
+	}
 	try {
-		await runAgentDevice(["install", build.path, "--platform", platform, ...deviceArgs], {
-			timeoutMs: 300_000,
-		});
+		await runArgentTool(
+			"reinstall-app",
+			{ udid: deviceId, bundleId, appPath: build.path },
+			{ timeoutMs: 300_000 },
+		);
 		return;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		// Already installed → reinstall in place.
-		if (/already installed|already exists/i.test(message)) {
-			await runAgentDevice(["reinstall", build.path, "--platform", platform, ...deviceArgs], {
-				timeoutMs: 300_000,
-			});
-			return;
-		}
-		// Android ids may be AVD names rather than adb serials — retry by name.
+		// Android ids may be AVD names rather than adb serials — surface the
+		// Argent guidance directly; boot-device by AVD name is the retry path.
 		if (
 			platform === "android" &&
-			(error instanceof AgentDeviceError
+			(error instanceof ArgentError
 				? ["DEVICE_NOT_FOUND", "UNKNOWN_DEVICE"].includes(error.code)
 				: /no such device|device not found|unknown device/i.test(message))
 		) {
-			await runAgentDevice(["install", build.path, "--platform", platform, "--device", deviceId], {
-				timeoutMs: 300_000,
-			});
-			return;
+			throw new Error(
+				`Argent install failed for ${build.path} (unknown device ${deviceId}). Boot the AVD first with boot-device, then retry. ${message.slice(0, 200)}`,
+			);
 		}
-		throw new Error(`agent-device install failed for ${build.path}: ${message.slice(0, 300)}`);
+		throw new Error(`Argent install failed for ${build.path}: ${message.slice(0, 300)}`);
 	}
 }
