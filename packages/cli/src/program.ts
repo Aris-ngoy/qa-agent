@@ -571,11 +571,11 @@ addActionOptions(
 
 const setup = program
 	.command("setup")
-	.description("Verify the agent-device backend for a platform (no drivers to install)");
+	.description("Verify the Argent backend for a platform (no drivers to install)");
 
 setup
 	.command("ios")
-	.description("Verify agent-device iOS readiness")
+	.description("Verify Argent iOS readiness")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -586,7 +586,7 @@ setup
 				return;
 			}
 			console.log(body.message);
-			console.log(`agent-device: ${body.agentDeviceVersion}`);
+			console.log(`argent: ${body.argentVersion ?? body.agentDeviceVersion ?? "unknown"}`);
 		} catch (error) {
 			fail("setup ios", error);
 		}
@@ -594,7 +594,7 @@ setup
 
 setup
 	.command("android")
-	.description("Verify agent-device Android readiness")
+	.description("Verify Argent Android readiness")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -605,7 +605,7 @@ setup
 				return;
 			}
 			console.log(body.message);
-			console.log(`agent-device: ${body.agentDeviceVersion}`);
+			console.log(`argent: ${body.argentVersion ?? body.agentDeviceVersion ?? "unknown"}`);
 		} catch (error) {
 			fail("setup android", error);
 		}
@@ -613,11 +613,11 @@ setup
 
 const runtime = program
 	.command("runtime")
-	.description("Check or ensure the local agent-device runtime (CLI + host tools)");
+	.description("Check or ensure the local Argent runtime (CLI + host tools)");
 
 runtime
 	.command("status")
-	.description("Show readiness of agent-device and host tools")
+	.description("Show readiness of Argent and host tools")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -640,12 +640,12 @@ runtime
 
 runtime
 	.command("ensure")
-	.description("Verify agent-device and host tools are ready")
+	.description("Verify Argent and host tools are ready (passes install consent)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
 		try {
-			const body = await client(options.baseUrl).ensureRuntime();
+			const body = await client(options.baseUrl).ensureRuntime({ consent: true });
 			if (options.json) {
 				console.log(JSON.stringify(body, null, 2));
 				return;

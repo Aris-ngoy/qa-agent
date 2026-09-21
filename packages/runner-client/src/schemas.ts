@@ -52,7 +52,8 @@ export type SetupPlatformRequest = z.infer<typeof setupPlatformRequestSchema>;
 export const setupPlatformResponseSchema = z.object({
 	ok: z.literal(true),
 	platform: devicePlatformSchema,
-	agentDeviceVersion: z.string().min(1),
+	agentDeviceVersion: z.string().min(1).optional(),
+	argentVersion: z.string().min(1).optional(),
 	alreadyInstalled: z.boolean(),
 	message: z.string().min(1),
 });
@@ -121,6 +122,7 @@ export const runtimeCheckIdSchema = z.union([
 	z.literal("node"),
 	z.literal("npm"),
 	z.literal("agent-device"),
+	z.literal("argent"),
 	z.literal("xcode"),
 	z.literal("adb"),
 	z.literal("developer-mode"),
@@ -141,6 +143,7 @@ export type RuntimeCheck = z.infer<typeof runtimeCheckSchema>;
 export const runtimeStatusSchema = z.object({
 	ready: z.boolean(),
 	agentDeviceVersion: z.string().optional(),
+	argentVersion: z.string().optional(),
 	checks: z.array(runtimeCheckSchema),
 });
 
@@ -159,6 +162,7 @@ export type EnsureRuntimeResponse = z.infer<typeof ensureRuntimeResponseSchema>;
 
 export const serverKindSchema = z.union([
 	z.literal("agent-device"),
+	z.literal("argent"),
 	z.literal("runner"),
 	z.literal("device-session"),
 ]);

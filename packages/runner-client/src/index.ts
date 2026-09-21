@@ -580,9 +580,13 @@ export class RunnerClient {
 		return runtimeStatusSchema.parse(json);
 	}
 
-	async ensureRuntime(options: { signal?: AbortSignal } = {}): Promise<EnsureRuntimeResponse> {
+	async ensureRuntime(
+		options: { signal?: AbortSignal; consent?: boolean } = {},
+	): Promise<EnsureRuntimeResponse> {
 		const response = await this.fetchImpl(`${this.baseUrl}/runtime/ensure`, {
 			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ consent: options.consent ?? false }),
 			signal: options.signal,
 		});
 		const json: unknown = await response.json().catch(() => null);

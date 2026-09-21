@@ -10,7 +10,9 @@ import { loadSettings } from "../../settings";
 import { runAgentDevice } from "../agent-device/cli";
 import { enableDeveloperMode } from "../agent-device/developer-mode";
 import { ensureHostToolPath } from "../agent-device/host-path";
-import { ensureAgentDeviceRuntime, getAgentDeviceRuntimeStatus } from "../agent-device/runtime";
+import { getAgentDeviceRuntimeStatus } from "../agent-device/runtime";
+import { runArgentRaw } from "../argent/cli";
+import { getArgentRuntimeStatus } from "../argent/runtime";
 import { disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
 import { listServers } from "../servers/application";
 
@@ -99,6 +101,32 @@ async function probeSessionHealth(): Promise<DoctorCheck> {
 	};
 }
 
+async function probeArgentServer(): Promise<DoctorCheck[]> {
+	try {
+		const { stdout } = await runArgentRaw(["server", "status"], { timeoutMs: 15_000 });
+		const detail = stdout.trim().split("\n")[0]?.trim().slice(0, 240) || "Argent server running";
+		return [
+			{
+				id: "argent-server",
+				label: "Argent server",
+				status: "pass",
+				detail,
+			},
+		];
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return [
+			{
+				id: "argent-server",
+				label: "Argent server",
+				status: "warn",
+				detail: message.slice(0, 240),
+				fixHint: "Run: argent server start",
+			},
+		];
+	}
+}
+
 async function probeAgentDeviceDoctor(): Promise<DoctorCheck[]> {
 	try {
 		const data = (await runAgentDevice(["doctor", "--remote"], { timeoutMs: 30_000 })) as {
@@ -145,7 +173,8 @@ async function probeAgentDeviceDoctor(): Promise<DoctorCheck[]> {
 export async function getDoctorReport(): Promise<DoctorReport> {
 	ensureHostToolPath();
 	const settings = loadSettings();
-	const runtime = await getAgentDeviceRuntimeStatus();
+	const runtime = await getArgentRuntimeStatus();
+	const legacy = await getAgentDeviceRuntimeStatus().catch(() => null);
 	const servers = await listServers();
 	const checks: DoctorCheck[] = [];
 
@@ -175,6 +204,15 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 	checks.push(await probeJava());
 	checks.push(await probeXcodeSelect());
 	checks.push(await probeSessionHealth());
+	checks.push(...(await probeArgentServer()));
+	if (legacy && !legacy.ready) {
+		checks.push({
+			id: "agent-device-legacy",
+			label: "agent-device (legacy fallback)",
+			status: "warn",
+			detail: "Legacy backend not ready — Argent is primary during migration",
+		});
+	}
 	checks.push(...(await probeAgentDeviceDoctor()));
 
 	const steps: DoctorStep[] = [];
@@ -185,7 +223,11 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 				title: check.label,
 				detail: check.fixHint ?? check.detail ?? "Fix this check",
 				repair:
-					check.id === "node" || check.id === "agent-device" || check.id === "agent-device-doctor"
+					check.id === "node" ||
+					check.id === "argent" ||
+					check.id === "agent-device" ||
+					check.id === "argent-server" ||
+					check.id === "agent-device-doctor"
 						? "ensure-runtime"
 						: undefined,
 			});
@@ -219,7 +261,9 @@ export async function repairDoctor(repairs: DoctorRepairId[]): Promise<DoctorRep
 
 	for (const repair of unique) {
 		if (repair === "ensure-runtime") {
-			const result = await ensureAgentDeviceRuntime();
+			// doctor --fix is explicit user consent for the global install.
+			const { ensureArgentRuntime } = await import("../argent/runtime");
+			const result = await ensureArgentRuntime({ consent: true });
 			parts.push(result.message);
 		} else if (repair === "disconnect-session") {
 			const info = await disconnectDevice();

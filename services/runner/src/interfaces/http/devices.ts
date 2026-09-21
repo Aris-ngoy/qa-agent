@@ -13,7 +13,7 @@ import {
 	getYoqaRunnerStatus,
 	installYoqaRunnerOnDevice,
 } from "../../domains/agent-device/runner-install";
-import { setupAgentDevicePlatform } from "../../domains/agent-device/runtime";
+import { setupArgentPlatform } from "../../domains/argent/runtime";
 import { listDevices } from "../../domains/devices/application";
 
 export function createDevicesRoutes() {
@@ -60,7 +60,7 @@ export function createDevicesRoutes() {
 		}
 
 		try {
-			const result = await setupAgentDevicePlatform(parsed.data);
+			const result = await setupArgentPlatform(parsed.data);
 			const body = setupPlatformResponseSchema.parse(result);
 			return c.json(body);
 		} catch (error) {

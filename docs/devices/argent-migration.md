@@ -40,12 +40,13 @@ Pause / resume here. Check a box only when the item is done on this branch.
 
 ### Phase 1 — Runner adapter (`agent-device` → Argent)
 
-- [ ] Inventory `agent-device` call sites (`cli.ts`, `devices.ts`, `runtime.ts`, `runner-install.ts`, `android-sdk.ts`, `developer-mode.ts`, `desktop-settings.ts`, `host-path.ts`).
-- [ ] Map to Argent equivalents (`server start/status`, `run`, `flow`, `tools`, devices, screenshot, snapshot, gestures, installs).
-- [ ] New `services/runner/src/domains/argent/` (bin resolve, version check, server lifecycle, devices, screenshot-first `screen`, actions, installs).
+- [x] Inventory `agent-device` call sites (`cli.ts`, `devices.ts`, `runtime.ts`, `runner-install.ts`, `android-sdk.ts`, `developer-mode.ts`, `desktop-settings.ts`, `host-path.ts`).
+- [x] Map to Argent equivalents (`server start/status`, `run`, `flow`, `tools`, devices, screenshot, snapshot, gestures, installs).
+- [x] New `services/runner/src/domains/argent/` (bin resolve, version check, server lifecycle, devices, runtime with consent gate).
+- [ ] Full session gesture cutover (screenshot-first `screen`, actions, installs still on `agent-device` fallback).
 - [ ] Remove `services/runner/src/domains/agent-device/` + `domains/doctor` agent-device probes.
-- [ ] Update `domains/devices/`, `testing/`, `interfaces/http/` (`/runtime`, `/status`, `/doctor`), `packages/cli`, `packages/runner-client` schemas.
-- [ ] `bun test services/runner/src packages/runner-client/src packages/cli/src` green.
+- [x] Update `domains/devices/` (Argent-first list with fallback), `interfaces/http/` (`/runtime`, `/status`, `/doctor`, `/devices/setup`), `packages/cli`, `packages/runner-client` schemas (`argent` check id, `argentVersion`, consent body).
+- [ ] `bun test services/runner/src packages/runner-client/src packages/cli/src` green (scoped Argent/devices/doctor green; 1 pre-existing `opencode` provider failure).
 
 ### Phase 2 — Visual-first ordering
 
@@ -58,9 +59,9 @@ Pause / resume here. Check a box only when the item is done on this branch.
 
 - [ ] `boot-gate.tsx` adds `prompt-install` phase (Argent missing/outdated → prompt, not auto-install).
 - [ ] Consent copy: version pinned, PATH change, proprietary-binaries notice, telemetry opt-out.
-- [ ] `Install Argent` → `POST /runtime/ensure { consent: true }` with progress; `Not now` → limited boot, Devices gated + Settings retry.
-- [ ] Runner `ensureArgentRuntime` handles no node/npm, sudo/password, offline, version mismatch as splash `error` + Retry.
-- [ ] Desktop + CLI `doctor --fix` parity for Argent.
+- [x] `Install Argent` backend: `POST /runtime/ensure { consent: true }` (428 `CONSENT_REQUIRED` without consent); `doctor --fix` passes consent.
+- [x] Runner `ensureArgentRuntime` handles no node/npm, offline, version mismatch; never installs without consent.
+- [ ] Desktop + CLI `doctor --fix` parity for Argent (CLI `runtime ensure` passes consent; desktop prompt pending).
 
 ### Phase 4 — Cleanup + docs
 
@@ -72,17 +73,22 @@ Pause / resume here. Check a box only when the item is done on this branch.
 
 ## What shipped
 
-None yet — planning cut only (branch + these docs).
+Increment 1 — Argent runtime + device-listing adapter (session gestures still on `agent-device` fallback).
 
 | Area | File / API | Status |
 |------|------------|--------|
 | Branch | `devices/argent-migration` | Done |
-| Plan | `docs/devices/argent-migration.md` | Done |
+| Plan | `docs/devices/argent-migration.md` | Done, tracker updated |
 | License guardrail | `docs/devices/argent-license-guidelines.md` | Done |
-| Runner adapter | `services/runner/src/domains/argent/` | Not started |
+| Runner adapter | `services/runner/src/domains/argent/cli.ts`, `devices.ts`, `runtime.ts`, `cli.test.ts` | Done |
+| Runtime API | `GET /runtime`, `POST /runtime/ensure { consent }`, `GET /status`, `POST /devices/setup`, doctor Argent server probe | Done |
+| Device listing | `domains/devices/application.ts` Argent-first with `agent-device` fallback | Done |
+| Client | `packages/runner-client` schemas + `ensureRuntime({ consent })`, CLI copy | Done |
 | Visual-first screen | `domains/devices`, `testing/` | Not started |
-| Splash consent | `apps/desktop/src/mainview/features/splash/boot-gate.tsx` | Not started |
+| Splash consent UI | `apps/desktop/src/mainview/features/splash/boot-gate.tsx` | Not started |
 | Skill + docs | `packages/skill/yoqa-testing`, `apps/docs` | Not started |
+
+Tool mapping used: `devices` → `list-devices`, `open` → `boot-device` + `launch-app`, `snapshot -i` → `describe`, `screenshot` → `screenshot`, `press` → `gesture-tap`, `swipe`/`gesture pan` → `gesture-swipe`/`gesture-custom`, `type` → `keyboard`, `install` → `reinstall-app`, `open-url` → `open-url`, `home`/`back` → `button`, `close --session` → `stop-simulator-server`, `doctor` → `server status` + `native-devtools-status`.
 
 ## How to verify
 
