@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make the Manual Inspector live feed as fast as `agent-device` allows on **all platforms**
+Make the Manual Inspector live feed as fast as Argent allows on **all platforms**
 (iOS sim, real iOS, Android), with optional **live device control** (drag on the mirror) —
 without depending on a video broadcaster.
 
@@ -13,8 +13,8 @@ without depending on a video broadcaster.
 ## Plan summary
 
 - **Frames:** `GET /screenshot/stream` — a `multipart/x-mixed-replace` stream of PNG
-  frames rendered straight into `<img>`, backed by `agent-device screenshot --no-stabilize`
-  (low-latency capture loop; persisted screenshots keep full quality). The server pumps
+  frames rendered straight into `<img>`, backed by low-scale `argent run screenshot`
+  captures (low-latency loop; persisted screenshots keep full quality). The server pumps
   fresh captures back-to-back (~1 frame/s on sim — the `simctl` capture ceiling), so
   delivery tracks the fastest the backend can capture with no per-frame HTTP overhead.
 - **Fallback:** if the stream errors, the Inspector degrades to `GET /screenshot/image`
@@ -27,15 +27,15 @@ without depending on a video broadcaster.
 - **Persistence:** live frames are in-memory only and never write `~/.yoqa/runs/screenshots/`.
 - **Fallback/degraded:** none needed — poll is the only transport. If the session drops,
   Inspector clears the feed and prompts **Restart session** (no auto-reconnect).
-- Rejected: re-adding an MJPEG/H.264 broadcaster (agent-device owns recording via `record`);
+- Rejected: re-adding an MJPEG/H.264 broadcaster (Argent owns recording via `screen-recording-start`);
   per-frame JPEG downscale (kept PNG so the 0–1000 grid maps 1:1; revisit if 180ms proves slow).
 
 ## What shipped
 
 **Runner**
 
-- `captureFrame()` passes `--no-stabilize` and shares one in-flight screenshot across
-  concurrent callers within a 150ms TTL (`services/runner/src/domains/devices/session.ts`);
+- `captureFrame()` captures at low scale and shares one in-flight screenshot across
+  concurrent callers within a 150ms TTL (`services/runner/src/domains/argent/session.ts`);
   stream pumps pass `{ fresh: true }` to pace on real captures.
 - `GET /screenshot/stream` pumps the multipart feed until abort or session death
   (`domains/devices/feed.ts`); no session returns `410 Device session ended`.

@@ -1,5 +1,7 @@
 # Remove Appium in favor of agent-device
 
+> Superseded by the Argent migration ([argent-migration](./argent-migration.md)), which also removed the agent-device backend described below. Kept as written history.
+
 ## Goal
 
 Yoqa should not install, run, configure, or expose Appium. Device control is agent-device only.

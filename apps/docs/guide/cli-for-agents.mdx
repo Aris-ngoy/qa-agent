@@ -30,9 +30,9 @@ No cloud sign-in for these Phase 1 workflows.
 1. **Connect** — `yoqa devices connect <device-id>`.
 2. **Ensure the app is on device** — install a [build](/docs/local-builds) or launch an already-installed app.
 3. **Loop one step at a time:**
-   - **Inspect** — `yoqa screen` (prefer over screenshot / `--full`).
+   - **Inspect** — `yoqa screenshot` (primary visual read; visual-first).
    - **Act** — one `yoqa action …`, preferably `-d "…"`.
-   - **Verify** — `yoqa screen` again (or `yoqa screenshot` for a visual check).
+   - **Verify** — `yoqa screenshot` again (or `yoqa screen` for a cheap tree check).
 
 Never fire an action blind.
 
@@ -40,9 +40,9 @@ Never fire an action blind.
 
 | Approach | Relative cost | Use when |
 | -------- | ------------- | -------- |
-| `yoqa screen` | ~1× | Default — cleaned tree + coords |
-| Screenshot | ~2× | Tree empty / visual-only UI |
-| `yoqa screen --full` | ~7× | Rare — need raw snapshot dump |
+| Screenshot | ~2× | Default — primary visual read, always reflects what's rendered |
+| `yoqa screen` | ~1× | Cheap follow-up — cleaned tree + coords for locators/grounding |
+| `yoqa screen --full` | ~7× | Rare — need raw describe dump |
 
 ## Hand off to the Yoqa agent
 

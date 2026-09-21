@@ -111,13 +111,12 @@ yoqa devices disconnect
 ## Inspect the screen
 
 ```bash
-yoqa screen                                  # cleaned element tree + relative coords (0–1000)
-yoqa screenshot /tmp/screen.png                # PRIMARY read (visual-first)
-yoqa screen --full                           # raw Argent describe JSON
-yoqa screenshot ./shot.png                   # save a PNG
+yoqa screenshot /tmp/screen.png              # PRIMARY read (visual-first) — save a PNG
+yoqa screen                                # cleaned element tree + relative coords (0–1000)
+yoqa screen --full                         # raw Argent describe JSON
 ```
 
-Prefer `yoqa screen` in agent loops — fewer tokens than a screenshot or `--full`. Details: [CLI for agents](/guide/cli-for-agents).
+Start with `yoqa screenshot` (visual-first) — it always shows what's rendered. Use `yoqa screen` for cheap tree checks and `--id`/`--label` locators. Details: [CLI for agents](/guide/cli-for-agents).
 
 ## Actions
 
