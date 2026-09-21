@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { DeadSessionError, isDeadSessionError, parseDescribeToNodes } from "./session";
+import {
+	DeadSessionError,
+	isDeadSessionError,
+	parseDescribeToNodes,
+	screenshotPathFromResult,
+} from "./session";
 
 const WINDOW = { width: 400, height: 800 };
 
@@ -41,6 +46,17 @@ describe("parseDescribeToNodes", () => {
 
 	test("empty describe yields no nodes (screenshot-first still works)", () => {
 		expect(parseDescribeToNodes({ description: "" }, WINDOW)).toEqual([]);
+	});
+});
+
+describe("screenshotPathFromResult", () => {
+	test("extracts Argent's self-chosen capture path", () => {
+		expect(
+			screenshotPathFromResult("Saved screenshot: /var/folders/x/T/simserver-Ab/media/1-2.png"),
+		).toBe("/var/folders/x/T/simserver-Ab/media/1-2.png");
+		expect(screenshotPathFromResult({ path: "/tmp/a.png" })).toBe("/tmp/a.png");
+		expect(screenshotPathFromResult({ image: "abc" })).toBeNull();
+		expect(screenshotPathFromResult("unexpected output")).toBeNull();
 	});
 });
 

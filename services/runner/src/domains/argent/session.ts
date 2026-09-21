@@ -283,6 +283,22 @@ async function readImageFile(path: string): Promise<{ base64: string; bytes: Uin
 	return { base64: Buffer.from(bytes).toString("base64"), bytes };
 }
 
+/**
+ * Resolve the capture file from an `argent run screenshot` response.
+ * The tool saves to its own media dir and reports `Saved screenshot: <path>`.
+ */
+export function screenshotPathFromResult(
+	result: { image?: string; path?: string } | string,
+): string | null {
+	if (typeof result === "object" && result) {
+		if (typeof result.image === "string") return null;
+		if (result.path) return String(result.path);
+		return null;
+	}
+	const match = /Saved screenshot:\s*(\S+)/.exec(result ?? "");
+	return match?.[1] ?? null;
+}
+
 class ActionGate {
 	private locked = false;
 	private pointer: { startX: number; startY: number; endX: number; endY: number } | null = null;
@@ -395,30 +411,30 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 
 	/** Visual-first: screenshot is the primary read; the tree is secondary. */
 	const runScreenshot = async (scale?: number): Promise<{ base64: string }> => {
-		const path = join(tmpdir(), `yoqa-shot-${Date.now()}-${crypto.randomUUID()}.png`);
-		const params: Record<string, unknown> = { udid, out: path };
+		// Argent saves the capture to its own path and reports
+		// "Saved screenshot: <path>" — there is no caller-chosen `out`.
+		const params: Record<string, unknown> = { udid };
 		if (scale != null) params.scale = scale;
-		try {
-			const result = (await runArgentTool("screenshot", params, {
-				timeoutMs: 60_000,
-			})) as { image?: string; path?: string } | string;
-			if (typeof result === "object" && result && typeof result.image === "string") {
-				const bytes = Buffer.from(result.image, "base64");
-				const dims = pngDimensions(new Uint8Array(bytes));
-				if (dims) cachedWindow = dims;
-				await rm(path, { force: true }).catch(() => undefined);
-				return { base64: result.image };
-			}
-			const filePath = typeof result === "object" && result?.path ? String(result.path) : path;
-			const { base64, bytes } = await readImageFile(filePath);
-			const dims = pngDimensions(bytes);
+		const result = (await runArgentTool("screenshot", params, {
+			timeoutMs: 60_000,
+		})) as { image?: string; path?: string } | string;
+		if (typeof result === "object" && result && typeof result.image === "string") {
+			const bytes = Buffer.from(result.image, "base64");
+			const dims = pngDimensions(new Uint8Array(bytes));
 			if (dims) cachedWindow = dims;
-			if (filePath === path) await rm(path, { force: true }).catch(() => undefined);
-			return { base64 };
-		} catch (error) {
-			await rm(path, { force: true }).catch(() => undefined);
-			throw error;
+			return { base64: result.image };
 		}
+		const text = typeof result === "string" ? result : (result?.path ?? "");
+		const filePath = screenshotPathFromResult(result);
+		if (!filePath) {
+			throw new Error(`Argent screenshot returned an unrecognized response: ${text.slice(0, 200)}`);
+		}
+		const { base64, bytes } = await readImageFile(filePath);
+		const dims = pngDimensions(bytes);
+		if (dims) cachedWindow = dims;
+		// Argent writes under its own media dir per capture — clean up ours.
+		await rm(filePath, { force: true }).catch(() => undefined);
+		return { base64 };
 	};
 
 	const snapshotNodes = async (): Promise<{
