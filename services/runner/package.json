@@ -1,7 +1,7 @@
 {
 	"name": "@yoqa/runner",
 	"version": "0.3.27",
-	"description": "Yoqa local runner — agent-device + catalog HTTP API (Bun). Start with yoqa serve or the yoqa-runner bin.",
+	"description": "Yoqa local runner — Argent + catalog HTTP API (Bun). Start with yoqa serve or the yoqa-runner bin.",
 	"license": "UNLICENSED",
 	"type": "module",
 	"bin": {
@@ -24,7 +24,7 @@
 	"bugs": {
 		"url": "https://github.com/Aris-ngoy/qa-agent/issues"
 	},
-	"keywords": ["yoqa", "runner", "agent-device", "mobile", "qa"],
+	"keywords": ["yoqa", "runner", "argent", "mobile", "qa"],
 	"scripts": {
 		"start": "bun run src/index.ts",
 		"dev": "bun run --watch src/index.ts",
@@ -41,7 +41,7 @@
 		"@ai-sdk/openai": "^4.0.30",
 		"@ai-sdk/xai": "^4",
 		"@typesafe-ai/sdk": "^0.6.0",
-		"agent-device": "^0.21.6",
+		"@swmansion/argent": "^0.25.2",
 		"ai": "^7.0.37",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.13.0",

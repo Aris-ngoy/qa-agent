@@ -69,6 +69,7 @@ Pause / resume here. Check a box only when the item is done on this branch.
 - [x] `apps/docs` updated (device-preparation, cli, github-actions, overview, how-it-works, introduction, capabilities, local-testing); `ARCHITECTURE.md` + `CONTEXT.md` re-pointed at Argent.
 - [x] `agent-device` in code: zero hits outside historical session notes/ADRs and the deprecated iOS-runner wire schemas; `services/runner/src/domains/agent-device/` deleted.
 - [x] `bun run lint:ci`, `bun run check` green; `bun run test` green except 1 pre-existing `opencode` failure.
+- [x] Runner declares `@swmansion/argent` dependency (workspace `bun install` provides `node_modules/.bin/argent`, so CI `yoqa runtime ensure` works without a global install); verified live: `argentVersion 0.25.2`, runtime ready, `list-devices` → 24 iOS mapped, consent paths OK.
 - [ ] Manual verify: fresh machine without Argent → prompt → Accept boots `ready`; Decline boots limited; sim + physical iOS/Android `devices/screen/screenshot/action` (needs hardware + `npm install -g @swmansion/argent`).
 
 ## What shipped
