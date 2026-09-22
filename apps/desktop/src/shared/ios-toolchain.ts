@@ -25,7 +25,11 @@ export type IosToolchainPreferences = {
 	signingIdentityHash: string | null;
 	/** Team ID resolved from the selected signing identity (denormalized so the runner can sign without Keychain access). */
 	teamId: string | null;
-	/** Reverse-DNS bundle id for the agent-device XCTest runner (AGENT_DEVICE_IOS_BUNDLE_ID). */
+	/**
+	 * Removed: reverse-DNS bundle id for the old agent-device XCTest runner
+	 * (AGENT_DEVICE_IOS_BUNDLE_ID). Argent manages its own runner — kept only
+	 * so stored preferences still parse.
+	 */
 	agentDeviceBundleId: string | null;
 };
 

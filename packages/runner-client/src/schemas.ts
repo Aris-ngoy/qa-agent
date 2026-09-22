@@ -120,6 +120,8 @@ export type IosRunnerStatusResponse = z.infer<typeof iosRunnerStatusResponseSche
 export const runtimeCheckIdSchema = z.union([
 	z.literal("node"),
 	z.literal("npm"),
+	z.literal("argent"),
+	/** Pre-cutover id for the removed agent-device backend — kept so old payloads still parse. */
 	z.literal("agent-device"),
 	z.literal("xcode"),
 	z.literal("adb"),

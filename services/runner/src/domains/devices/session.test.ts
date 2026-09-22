@@ -1,6 +1,24 @@
-import { describe, expect, test } from "bun:test";
-import { AgentDeviceError } from "../agent-device/cli";
-import { DeadSessionError, isDeadSessionError, shouldAutoInstallRunnerOnConnect } from "./session";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ArgentError, isDeadArgentSessionError } from "../argent/cli";
+
+let delegateCalls: Array<Record<string, unknown>> = [];
+const fakeSession = { __fake: "argent-session" };
+
+// Stub the Argent adapter so no `argent` binary is needed. `isDeadSessionError`
+// uses the real classifier from `argent/cli` (cycle-free).
+mock.module("../argent/session", () => ({
+	createArgentDeviceSession: async (options: Record<string, unknown>) => {
+		delegateCalls.push({ ...options });
+		return fakeSession;
+	},
+	isDeadArgentSessionError,
+}));
+
+const { DeadSessionError, createDeviceSession, isDeadSessionError } = await import("./session");
+
+beforeEach(() => {
+	delegateCalls = [];
+});
 
 describe("isDeadSessionError", () => {
 	test("matches the missing-session message from requireActiveSession", () => {
@@ -10,37 +28,52 @@ describe("isDeadSessionError", () => {
 		expect(isDeadSessionError(new DeadSessionError())).toBe(true);
 		expect(isDeadSessionError(new Error("Device is busy with another action"))).toBe(false);
 	});
+
+	test("treats dead Argent targets as dead sessions", () => {
+		expect(isDeadSessionError(new ArgentError("device disconnected", "DEVICE_DISCONNECTED"))).toBe(
+			true,
+		);
+		expect(isDeadSessionError(new ArgentError("tool-server down", "SERVER_UNREACHABLE"))).toBe(
+			true,
+		);
+		expect(isDeadSessionError(new ArgentError("timed out", "TIMEOUT"))).toBe(false);
+	});
 });
 
-describe("shouldAutoInstallRunnerOnConnect", () => {
-	const signingError = new AgentDeviceError(
-		"The AgentDeviceRunner XCTest host must be signed before commands can run",
-		"IOS_RUNNER_NOT_INSTALLED",
-	);
-
-	test("installs once for an iOS runner-missing failure with a known kind", () => {
-		expect(shouldAutoInstallRunnerOnConnect("ios", "physical", signingError)).toBe(true);
-		expect(shouldAutoInstallRunnerOnConnect("ios", "simulator", signingError)).toBe(true);
+describe("createDeviceSession", () => {
+	test("delegates to the Argent adapter and returns its session", async () => {
+		const session = await createDeviceSession({ platform: "ios", deviceId: "sim-1" });
+		expect(session).toBe(fakeSession as never);
+		expect(delegateCalls).toEqual([
+			{
+				platform: "ios",
+				deviceId: "sim-1",
+				kind: undefined,
+				bundleId: undefined,
+				appPackage: undefined,
+				activity: undefined,
+				onSessionDead: undefined,
+			},
+		]);
 	});
 
-	test("skips when the kind is unknown (cannot target the install)", () => {
-		expect(shouldAutoInstallRunnerOnConnect("ios", undefined, signingError)).toBe(false);
-	});
-
-	test("skips non-iOS platforms", () => {
-		expect(shouldAutoInstallRunnerOnConnect("android", "physical", signingError)).toBe(false);
-	});
-
-	test("skips unrelated failures (device gone, busy, unknown device)", () => {
-		expect(
-			shouldAutoInstallRunnerOnConnect(
-				"ios",
-				"physical",
-				new AgentDeviceError("gone", "SESSION_NOT_FOUND"),
-			),
-		).toBe(false);
-		expect(shouldAutoInstallRunnerOnConnect("ios", "physical", new Error("Device not found"))).toBe(
-			false,
-		);
+	test("passes kind/bundle/activity through to Argent", async () => {
+		const onSessionDead = mock(() => undefined);
+		await createDeviceSession({
+			platform: "android",
+			deviceId: "emu-1",
+			kind: "emulator",
+			appPackage: "com.example.app",
+			activity: ".MainActivity",
+			onSessionDead,
+		});
+		expect(delegateCalls[0]).toMatchObject({
+			platform: "android",
+			deviceId: "emu-1",
+			kind: "emulator",
+			appPackage: "com.example.app",
+			activity: ".MainActivity",
+		});
+		expect(delegateCalls[0]?.onSessionDead).toBe(onSessionDead);
 	});
 });

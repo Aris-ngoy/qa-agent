@@ -284,7 +284,7 @@ for (const platform of ["ios", "android"] as const) {
 
 devices
 	.command("install-runner")
-	.description("Build and install YoqaADRunner on an iOS device (prompted on connect when missing)")
+	.description("Removed with the agent-device backend — Argent manages its own runner")
 	.argument("<deviceId>", "Device UDID")
 	.option("--kind <kind>", "physical | simulator", "physical")
 	.option("--force", "Rebuild even when the cached install is valid")
@@ -329,12 +329,10 @@ devices
 
 devices
 	.command("connect")
-	.description(
-		"Open an agent-device session on a device (installs YoqaADRunner first on iOS when missing)",
-	)
+	.description("Open a device session on a device (Argent backend)")
 	.argument("<deviceId>", "Device UDID / serial")
 	.requiredOption("--platform <platform>", "ios | android")
-	.option("--kind <kind>", "physical | simulator | emulator (iOS check-and-install)", "physical")
+	.option("--kind <kind>", "physical | simulator | emulator", "physical")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
@@ -406,7 +404,7 @@ devices
 
 devices
 	.command("disconnect")
-	.description("Close the active agent-device session")
+	.description("Close the active device session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -428,7 +426,7 @@ program
 	.command("screen")
 	.description("Inspect the active device screen (cleaned tree by default)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--full", "Return raw agent-device snapshot JSON")
+	.option("--full", "Return raw snapshot JSON")
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; full?: boolean; json?: boolean }) => {
 		try {
@@ -571,11 +569,11 @@ addActionOptions(
 
 const setup = program
 	.command("setup")
-	.description("Verify the agent-device backend for a platform (no drivers to install)");
+	.description("Verify the Argent backend for a platform (no drivers to install)");
 
 setup
 	.command("ios")
-	.description("Verify agent-device iOS readiness")
+	.description("Verify Argent iOS readiness")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -586,7 +584,7 @@ setup
 				return;
 			}
 			console.log(body.message);
-			console.log(`agent-device: ${body.agentDeviceVersion}`);
+			console.log(`argent: ${body.agentDeviceVersion}`);
 		} catch (error) {
 			fail("setup ios", error);
 		}
@@ -594,7 +592,7 @@ setup
 
 setup
 	.command("android")
-	.description("Verify agent-device Android readiness")
+	.description("Verify Argent Android readiness")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -605,7 +603,7 @@ setup
 				return;
 			}
 			console.log(body.message);
-			console.log(`agent-device: ${body.agentDeviceVersion}`);
+			console.log(`argent: ${body.agentDeviceVersion}`);
 		} catch (error) {
 			fail("setup android", error);
 		}
@@ -613,11 +611,11 @@ setup
 
 const runtime = program
 	.command("runtime")
-	.description("Check or ensure the local agent-device runtime (CLI + host tools)");
+	.description("Check or ensure the local Argent runtime (CLI + host tools)");
 
 runtime
 	.command("status")
-	.description("Show readiness of agent-device and host tools")
+	.description("Show readiness of Argent and host tools")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -640,7 +638,7 @@ runtime
 
 runtime
 	.command("ensure")
-	.description("Verify agent-device and host tools are ready")
+	.description("Verify Argent and host tools are ready")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -798,7 +796,7 @@ servers
 
 program
 	.command("doctor")
-	.description("Diagnose local tooling, agent-device, and the device session")
+	.description("Diagnose local tooling, Argent, and the device session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.option("--fix", "Apply safe repairs (ensure runtime, disconnect session)")

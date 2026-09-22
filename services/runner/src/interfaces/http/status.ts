@@ -4,7 +4,7 @@ import {
 	yoqaStatusResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
-import { getAgentDeviceRuntimeStatus } from "../../domains/agent-device/runtime";
+import { getArgentRuntimeStatus } from "../../domains/argent/runtime";
 import { getActiveSessionInfo } from "../../domains/devices/active-session";
 import {
 	listProviders,
@@ -18,7 +18,7 @@ export function createStatusRoutes(settings: RunnerSettings) {
 
 	app.get("/status", async (c) => {
 		try {
-			const runtime = await getAgentDeviceRuntimeStatus();
+			const runtime = await getArgentRuntimeStatus();
 			const auth = await resolveVisionProviderAuth();
 			const judgeAuth = await resolveJudgeProviderAuth();
 			const providers = await listProviders();

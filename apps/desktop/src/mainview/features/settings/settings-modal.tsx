@@ -408,12 +408,10 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 			</section>
 
 			<section>
-				<h3 className="text-subheading font-semibold text-on-surface">
-					agent-device Runner Signing
-				</h3>
+				<h3 className="text-subheading font-semibold text-on-surface">Runner Signing (removed)</h3>
 				<p className="mt-1 mb-3 text-body-md text-on-surface-variant">
-					Team and bundle id used to sign the agent-device test runner on physical devices. The
-					runner reads them from these Settings — no shell env needed.
+					Argent manages its own runner since the backend cutover, so these signing settings are no
+					longer used and will be removed.
 				</p>
 				<p className="mb-3 text-body-md text-on-surface-variant">
 					Team ID:{" "}
@@ -434,8 +432,7 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 						placeholder="com.yourname.agentdevice.runner"
 					/>
 					<Description className="mt-1.5 text-helper text-on-surface-variant">
-						Unique reverse-DNS id for the test runner. Applies to the next physical-device build —
-						reconnect the device after changing signing.
+						No longer used — Argent manages its own runner.
 					</Description>
 				</TextField>
 			</section>

@@ -328,7 +328,7 @@ export async function setIosToolchainSelection(params: {
 	return next;
 }
 
-/** Env injected into the runner sidecar so agent-device signs physical-device builds with the Settings identity. */
+/** Unused since the Argent cutover — no backend consumes this env (Argent manages its own runner). */
 export async function iosToolchainProcessEnv(): Promise<Record<string, string>> {
 	const snapshot = await getIosToolchainSnapshot();
 	const env: Record<string, string> = {};

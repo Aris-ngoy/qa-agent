@@ -451,12 +451,10 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 			</SectionCard>
 
 			<SectionCard>
-				<h3 className="text-subheading font-semibold text-on-surface">
-					agent-device Runner Signing
-				</h3>
+				<h3 className="text-subheading font-semibold text-on-surface">Runner Signing (removed)</h3>
 				<p className="mt-1 mb-3 text-body-md text-on-surface-variant">
-					Team and bundle id used to sign the agent-device test runner on physical devices. The
-					runner reads them from these Settings — no shell env needed.
+					Argent manages its own runner since the backend cutover, so these signing settings are no
+					longer used and will be removed.
 				</p>
 				<p className="mb-3 text-body-md text-on-surface-variant">
 					Team ID:{" "}
@@ -477,8 +475,7 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 						placeholder="com.yourname.agentdevice.runner"
 					/>
 					<Description className="mt-1.5 text-helper text-on-surface-variant">
-						Unique reverse-DNS id for the test runner. Applies to the next physical-device build —
-						reconnect the device after changing signing.
+						No longer used — Argent manages its own runner.
 					</Description>
 				</TextField>
 			</SectionCard>
@@ -613,8 +610,8 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				Paths agent-device uses for local Android tests. Detected from your system; override only if
-				you need a different SDK or JDK.
+				Paths Argent uses for local Android tests. Detected from your system; override only if you
+				need a different SDK or JDK.
 			</p>
 
 			{toolchainQuery.isLoading ? (
@@ -670,7 +667,7 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 				</Button>
 				{dirty ? (
 					<p className="text-body-sm text-on-surface-variant">
-						Saving restarts the local runner so agent-device picks up the new paths.
+						Saving restarts the local runner so Argent picks up the new paths.
 					</p>
 				) : null}
 			</div>
@@ -943,8 +940,9 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				System checks for Node, agent-device, host tools, and leftover processes. Same report as{" "}
-				<code className="font-mono text-helper">yoqa doctor</code>.
+				System checks for Node, Argent, host tools, and leftover processes. Same report as{" "}
+				<code className="font-mono text-helper">yoqa doctor</code>. Argent telemetry is opt-out: run{" "}
+				<code className="font-mono text-helper">argent telemetry disable</code> to disable it.
 			</p>
 
 			<SectionCard>

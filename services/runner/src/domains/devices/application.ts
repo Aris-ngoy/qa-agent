@@ -1,18 +1,18 @@
 import type { Device } from "@yoqa/runner-client";
-import { listAgentDevices } from "../agent-device/devices";
+import { listArgentDevices } from "../argent/devices";
 import type { ListDevicesOptions } from "./models";
 
 export async function listIosDevices(options: ListDevicesOptions = {}): Promise<Device[]> {
-	return listAgentDevices("ios", options);
+	return listArgentDevices("ios", options);
 }
 
 export async function listAndroidDevices(options: ListDevicesOptions = {}): Promise<Device[]> {
-	return listAgentDevices("android", options);
+	return listArgentDevices("android", options);
 }
 
 export async function listDevices(
 	platform: "ios" | "android",
 	options: ListDevicesOptions = {},
 ): Promise<Device[]> {
-	return listAgentDevices(platform, options);
+	return listArgentDevices(platform, options);
 }

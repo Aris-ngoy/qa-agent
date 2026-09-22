@@ -1,7 +1,7 @@
 import { basename, extname } from "node:path";
 import type { Build, CreateBuildRequest } from "@yoqa/runner-client";
 import { desc, eq } from "drizzle-orm";
-import { AgentDeviceError, runAgentDevice } from "../agent-device/cli";
+import { runArgentTool } from "../argent/cli";
 import { getCatalogDb } from "../catalog/db";
 import { builds } from "./schema";
 
@@ -127,35 +127,27 @@ export async function installBuildOnDevice(options: {
 	build: Build;
 	deviceId: string;
 	platform: "ios" | "android";
+	/**
+	 * Bundle id / application id to (re)install under. Falls back to the
+	 * build record; Argent `reinstall-app` requires one.
+	 */
+	bundleId?: string;
 }): Promise<void> {
-	const { build, deviceId, platform } = options;
-	const deviceArgs = platform === "ios" ? ["--udid", deviceId] : ["--serial", deviceId];
+	const { build, deviceId } = options;
+	const bundleId = options.bundleId?.trim() || build.bundleId?.trim();
+	if (!bundleId) {
+		throw new Error(
+			`Cannot install ${build.path}: no bundle id is known. Set the app's iOS bundle id / Android application id first.`,
+		);
+	}
 	try {
-		await runAgentDevice(["install", build.path, "--platform", platform, ...deviceArgs], {
-			timeoutMs: 300_000,
-		});
-		return;
+		await runArgentTool(
+			"reinstall-app",
+			["--udid", deviceId, "--bundleId", bundleId, "--appPath", build.path],
+			{ timeoutMs: 300_000 },
+		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		// Already installed → reinstall in place.
-		if (/already installed|already exists/i.test(message)) {
-			await runAgentDevice(["reinstall", build.path, "--platform", platform, ...deviceArgs], {
-				timeoutMs: 300_000,
-			});
-			return;
-		}
-		// Android ids may be AVD names rather than adb serials — retry by name.
-		if (
-			platform === "android" &&
-			(error instanceof AgentDeviceError
-				? ["DEVICE_NOT_FOUND", "UNKNOWN_DEVICE"].includes(error.code)
-				: /no such device|device not found|unknown device/i.test(message))
-		) {
-			await runAgentDevice(["install", build.path, "--platform", platform, "--device", deviceId], {
-				timeoutMs: 300_000,
-			});
-			return;
-		}
-		throw new Error(`agent-device install failed for ${build.path}: ${message.slice(0, 300)}`);
+		throw new Error(`argent reinstall-app failed for ${build.path}: ${message.slice(0, 300)}`);
 	}
 }
