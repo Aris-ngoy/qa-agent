@@ -181,7 +181,7 @@ export async function acquireSessionForRun(options: {
 
 	if (current && current.deviceId === options.deviceId) {
 		// Health-check before adopting: a stale session (device restarted,
-		// agent-device dropped it) must not fail the whole run.
+		// backend dropped it) must not fail the whole run.
 		const healthy = await current.session
 			.getWindowSize()
 			.then(() => true)

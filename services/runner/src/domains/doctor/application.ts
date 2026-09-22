@@ -7,11 +7,10 @@ import type {
 	DoctorStep,
 } from "@yoqa/runner-client";
 import { loadSettings } from "../../settings";
-import { runAgentDevice } from "../agent-device/cli";
-import { enableDeveloperMode } from "../agent-device/developer-mode";
-import { ensureHostToolPath } from "../agent-device/host-path";
-import { ensureAgentDeviceRuntime, getAgentDeviceRuntimeStatus } from "../agent-device/runtime";
+import { argentServerStatus } from "../argent/cli";
+import { ensureArgentBackend, getArgentRuntimeStatus } from "../argent/runtime";
 import { disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
+import { ensureHostToolPath } from "../host/host-path";
 import { listServers } from "../servers/application";
 
 async function runCommand(
@@ -99,53 +98,34 @@ async function probeSessionHealth(): Promise<DoctorCheck> {
 	};
 }
 
-async function probeAgentDeviceDoctor(): Promise<DoctorCheck[]> {
+async function probeArgentServer(): Promise<DoctorCheck> {
 	try {
-		const data = (await runAgentDevice(["doctor", "--remote"], { timeoutMs: 30_000 })) as {
-			checks?: Array<{ id?: string; status?: string; summary?: string; hint?: string }>;
-			summary?: string;
+		const status = await argentServerStatus({ timeoutMs: 15_000 });
+		return {
+			id: "argent-server",
+			label: "Argent tool-server",
+			status: status.running ? "pass" : "warn",
+			detail: status.running
+				? `running${status.port ? ` (port ${status.port})` : ""}`
+				: "stopped — run `argent server start`",
+			fixHint: status.running ? undefined : "Run: argent server start",
 		};
-		const checks = Array.isArray(data.checks) ? data.checks : [];
-		// Yoqa is local-first: `doctor --remote` is used as a light probe that
-		// skips local device inventory. `remote-connection` fail ("no remote
-		// daemon configured") and `session` info are expected, not health
-		// signals, so drop them instead of surfacing them in Diagnostics.
-		return checks
-			.filter((check) => check.id !== "remote-connection" && check.status !== "info")
-			.slice(0, 12)
-			.map((check) => {
-				const rawStatus = check.status;
-				return {
-					id: `agent-device-${check.id ?? "check"}`,
-					label: `agent-device: ${check.id ?? "check"}`,
-					status:
-						rawStatus === "fail"
-							? ("fail" as const)
-							: rawStatus === "warn"
-								? ("warn" as const)
-								: ("pass" as const),
-					detail: check.summary,
-					fixHint: check.hint,
-				};
-			});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		return [
-			{
-				id: "agent-device-doctor",
-				label: "agent-device doctor",
-				status: "warn",
-				detail: message.slice(0, 240),
-				fixHint: "Run: agent-device doctor",
-			},
-		];
+		return {
+			id: "argent-server",
+			label: "Argent tool-server",
+			status: "warn",
+			detail: message.slice(0, 240),
+			fixHint: "Run: argent server start",
+		};
 	}
 }
 
 export async function getDoctorReport(): Promise<DoctorReport> {
 	ensureHostToolPath();
 	const settings = loadSettings();
-	const runtime = await getAgentDeviceRuntimeStatus();
+	const runtime = await getArgentRuntimeStatus();
 	const servers = await listServers();
 	const checks: DoctorCheck[] = [];
 
@@ -166,16 +146,14 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 				? undefined
 				: check.required
 					? "Run: yoqa runtime ensure (or Repair in Diagnostics)"
-					: check.id === "developer-mode"
-						? "Run: yoqa doctor --fix (prompts for your password to enable Developer Mode)"
-						: undefined,
+					: undefined,
 		});
 	}
 
 	checks.push(await probeJava());
 	checks.push(await probeXcodeSelect());
 	checks.push(await probeSessionHealth());
-	checks.push(...(await probeAgentDeviceDoctor()));
+	checks.push(await probeArgentServer());
 
 	const steps: DoctorStep[] = [];
 	for (const check of checks) {
@@ -184,22 +162,14 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 				severity: "error",
 				title: check.label,
 				detail: check.fixHint ?? check.detail ?? "Fix this check",
-				repair:
-					check.id === "node" || check.id === "agent-device" || check.id === "agent-device-doctor"
-						? "ensure-runtime"
-						: undefined,
+				repair: check.id === "node" || check.id === "argent" ? "ensure-runtime" : undefined,
 			});
 		} else if (check.status === "warn" && check.fixHint) {
 			steps.push({
 				severity: "warn",
 				title: check.label,
 				detail: check.fixHint,
-				repair:
-					check.id === "device-session"
-						? "disconnect-session"
-						: check.id === "developer-mode"
-							? "enable-developer-tools"
-							: undefined,
+				repair: check.id === "device-session" ? "disconnect-session" : undefined,
 			});
 		}
 	}
@@ -219,7 +189,7 @@ export async function repairDoctor(repairs: DoctorRepairId[]): Promise<DoctorRep
 
 	for (const repair of unique) {
 		if (repair === "ensure-runtime") {
-			const result = await ensureAgentDeviceRuntime();
+			const result = await ensureArgentBackend();
 			parts.push(result.message);
 		} else if (repair === "disconnect-session") {
 			const info = await disconnectDevice();
@@ -227,7 +197,9 @@ export async function repairDoctor(repairs: DoctorRepairId[]): Promise<DoctorRep
 				info ? `Disconnected ${info.platform} ${info.deviceId}` : "No active device session",
 			);
 		} else if (repair === "enable-developer-tools") {
-			parts.push(await enableDeveloperMode());
+			// The Developer Mode gate left with the agent-device backend —
+			// Argent manages its own runner, so there is nothing to enable.
+			parts.push("Developer Mode repair is not needed with the Argent backend");
 		}
 	}
 

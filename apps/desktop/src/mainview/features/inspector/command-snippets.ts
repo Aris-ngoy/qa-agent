@@ -290,7 +290,7 @@ function backgroundAppLines(seconds: number): string[] {
 	return ["# background app", formatActionShellLine({ kind: "background-app", seconds: safe })];
 }
 
-/** Slow press-move from the selection center toward a screen edge (agent-device drag). */
+/** Slow press-move from the selection center toward a screen edge (Argent drag). */
 function dragLines(selection: InspectorSelection, direction: ScrollDirection): string[] {
 	const offset = 300;
 	const end = {

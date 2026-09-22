@@ -154,6 +154,54 @@ describe("performAction system actions", () => {
 	});
 });
 
+describe("performAction app lifecycle", () => {
+	test("restart-app prefers session.restartApp when present", async () => {
+		const calls: string[] = [];
+		const session = {
+			terminateApp: async (appId: string) => {
+				calls.push(`terminate:${appId}`);
+			},
+			activateApp: async (appId: string) => {
+				calls.push(`activate:${appId}`);
+			},
+			restartApp: async (appId: string) => {
+				calls.push(`restart:${appId}`);
+			},
+		} as unknown as DeviceSession;
+		const result = await performAction(session, { kind: "restart-app", appId: "com.example.app" });
+		expect(calls).toEqual(["restart:com.example.app"]);
+		expect(result).toEqual({ ok: true, kind: "restart-app" });
+	});
+
+	test("restart-app falls back to terminate+activate without restartApp", async () => {
+		const calls: string[] = [];
+		const session = {
+			terminateApp: async (appId: string) => {
+				calls.push(`terminate:${appId}`);
+			},
+			activateApp: async (appId: string) => {
+				calls.push(`activate:${appId}`);
+			},
+		} as unknown as DeviceSession;
+		await performAction(session, { kind: "restart-app", appId: "com.example.app" });
+		expect(calls).toEqual(["terminate:com.example.app", "activate:com.example.app"]);
+	});
+
+	test("terminate-app surfaces the backend unsupported error", async () => {
+		const backendError = new Error(
+			"terminateApp is not supported by Argent 0.25.2 (no bare terminate tool)",
+		);
+		const session = {
+			terminateApp: async () => {
+				throw backendError;
+			},
+		} as unknown as DeviceSession;
+		await expect(
+			performAction(session, { kind: "terminate-app", appId: "com.example.app" }),
+		).rejects.toBe(backendError);
+	});
+});
+
 describe("getScreen", () => {
 	test("reads the cleaned tree from snapshot nodes", async () => {
 		const session = {

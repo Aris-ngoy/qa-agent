@@ -1,5 +1,5 @@
 /**
- * Map agent-device snapshot nodes to Yoqa's compact element list with
+ * Map backend snapshot nodes to Yoqa's compact element list with
  * relative 0–1000 boxes.
  */
 

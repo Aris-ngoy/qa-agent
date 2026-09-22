@@ -440,6 +440,10 @@ export async function executeRun(runId: string): Promise<void> {
 					build,
 					deviceId: run.deviceId,
 					platform: run.platform,
+					bundleId:
+						run.platform === "ios"
+							? app.iosBundleId || undefined
+							: app.androidApplicationId || undefined,
 				});
 			}
 		}

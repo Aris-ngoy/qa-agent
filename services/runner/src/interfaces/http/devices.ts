@@ -2,19 +2,26 @@ import {
 	type DevicePlatform,
 	devicePlatformSchema,
 	iosRunnerInstallRequestSchema,
-	iosRunnerInstallResponseSchema,
-	iosRunnerStatusResponseSchema,
 	listDevicesResponseSchema,
 	setupPlatformRequestSchema,
 	setupPlatformResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
-import {
-	getYoqaRunnerStatus,
-	installYoqaRunnerOnDevice,
-} from "../../domains/agent-device/runner-install";
-import { setupAgentDevicePlatform } from "../../domains/agent-device/runtime";
+import { setupArgentPlatform } from "../../domains/argent/runtime";
 import { listDevices } from "../../domains/devices/application";
+
+/**
+ * The YoqaADRunner install flow left with the agent-device backend — Argent
+ * manages its own runner, so these endpoints stay only as explicit 410s (same
+ * paths, so old clients get an actionable message instead of a 404).
+ */
+const RUNNER_REMOVED = {
+	error: "iOS runner install was removed with the agent-device backend",
+	detail:
+		"Argent manages its own runner — nothing to install. " +
+		"Install Argent globally with: npm install -g @swmansion/argent " +
+		"(Argent telemetry is opt-out: run `argent telemetry disable` to disable it).",
+};
 
 export function createDevicesRoutes() {
 	const app = new Hono();
@@ -60,7 +67,7 @@ export function createDevicesRoutes() {
 		}
 
 		try {
-			const result = await setupAgentDevicePlatform(parsed.data);
+			const result = await setupArgentPlatform(parsed.data);
 			const body = setupPlatformResponseSchema.parse(result);
 			return c.json(body);
 		} catch (error) {
@@ -87,13 +94,7 @@ export function createDevicesRoutes() {
 		if (kind !== "physical" && kind !== "simulator" && kind !== "emulator") {
 			return c.json({ error: "Query param kind must be physical, simulator, or emulator" }, 400);
 		}
-		try {
-			const status = await getYoqaRunnerStatus(deviceId, kind);
-			return c.json(iosRunnerStatusResponseSchema.parse(status));
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return c.json({ error: "Failed to read runner status", detail: message }, 500);
-		}
+		return c.json(RUNNER_REMOVED, 410);
 	});
 
 	app.post("/devices/ios-runner/install", async (c) => {
@@ -107,19 +108,7 @@ export function createDevicesRoutes() {
 		if (!parsed.success) {
 			return c.json({ error: "Body must include deviceId. Optional: kind, force" }, 400);
 		}
-		try {
-			const result = await installYoqaRunnerOnDevice(parsed.data);
-			return c.json(iosRunnerInstallResponseSchema.parse(result));
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return c.json(
-				{
-					error: "Failed to install the test runner on this device",
-					detail: message,
-				},
-				500,
-			);
-		}
+		return c.json(RUNNER_REMOVED, 410);
 	});
 
 	return app;

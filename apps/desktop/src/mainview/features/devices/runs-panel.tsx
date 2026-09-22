@@ -357,8 +357,8 @@ export function RunsPanel() {
 			isIosPhysical
 				? "Preparing iOS device…"
 				: selected.platform === "ios"
-					? "Verifying agent-device iOS readiness…"
-					: "Verifying agent-device Android readiness…",
+					? "Verifying Argent iOS readiness…"
+					: "Verifying Argent Android readiness…",
 		);
 
 		void (async () => {

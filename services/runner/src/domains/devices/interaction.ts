@@ -11,13 +11,13 @@ import { snapshotNodesToScreen } from "./screen";
 import type { DeviceSession } from "./session";
 
 export type GetScreenOptions = {
-	/** When true, return raw agent-device snapshot JSON instead of the cleaned 0–1000 tree. */
+	/** When true, return raw snapshot JSON instead of the cleaned 0–1000 tree. */
 	full?: boolean;
-	/** Accepted for Inspector compatibility; agent-device has no MJPEG proxy to pause. */
+	/** Accepted for Inspector compatibility; there is no MJPEG proxy to pause. */
 	pauseMjpeg?: boolean;
 };
 
-/** Read the device Screen from the agent-device snapshot backend. */
+/** Read the device Screen from the Argent snapshot backend. */
 export async function getScreen(
 	session: DeviceSession,
 	options: GetScreenOptions = {},
@@ -51,7 +51,7 @@ export class ActionNotFoundError extends Error {
 /**
  * Perform one Action on a Device Session. Resolves id/label against the
  * snapshot tree, or Grounding from description, then runs the gesture /
- * lifecycle command via agent-device.
+ * lifecycle command via Argent.
  */
 export async function performAction(
 	session: DeviceSession,
@@ -123,13 +123,21 @@ export async function performAction(
 		}
 		case "terminate-app": {
 			if (!body.appId) throw new ActionValidationError("terminate-app requires appId");
+			// Argent has no bare terminate tool — the backend throws an explicit
+			// unsupported error here. Surface it, never a silent success.
 			await session.terminateApp(body.appId);
 			break;
 		}
 		case "restart-app": {
 			if (!body.appId) throw new ActionValidationError("restart-app requires appId");
-			await session.terminateApp(body.appId);
-			await session.activateApp(body.appId);
+			// Prefer the backend's clean relaunch when it offers one
+			// (Argent `restart-app`); otherwise fall back to terminate+activate.
+			if (typeof session.restartApp === "function") {
+				await session.restartApp(body.appId);
+			} else {
+				await session.terminateApp(body.appId);
+				await session.activateApp(body.appId);
+			}
 			break;
 		}
 		case "background-app": {
