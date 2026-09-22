@@ -6,7 +6,8 @@ export type ServerAction = "stop" | "restart";
 
 export type ServerEntry = {
 	id: string;
-	kind: "agent-device" | "runner" | "device-session";
+	/** `argent` is the current backend; `agent-device` is pre-cutover wire compat. */
+	kind: "argent" | "agent-device" | "runner" | "device-session";
 	ownership: "managed" | "foreign" | "self";
 	label: string;
 	status: string;

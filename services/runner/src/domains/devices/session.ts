@@ -1,6 +1,5 @@
 import type { DeviceKind, DevicePlatform } from "@yoqa/runner-client";
-import { type ArgentSessionOptions, createArgentDeviceSession } from "../argent/session";
-import { isDeadArgentSessionError } from "../argent/session";
+import { createArgentDeviceSession, isDeadArgentSessionError } from "../argent/session";
 
 /** Stable error for a Device Session the backend has already dropped. */
 export class DeadSessionError extends Error {
@@ -15,7 +14,9 @@ export function isDeadSessionError(error: unknown): boolean {
 	if (error instanceof DeadSessionError) return true;
 	if (isDeadArgentSessionError(error)) return true;
 	const message = error instanceof Error ? error.message : String(error);
-	return /session does not exist|invalid session|no such session|no active device session|no active session|session.+not found|terminated or not started|session is either terminated/i.test(
+	// `session.+not found` is intentionally absent: SESSION_GONE_PATTERN in
+	// domains/argent/cli.ts already covers it via isDeadArgentSessionError above.
+	return /session does not exist|invalid session|no such session|no active device session|no active session|terminated or not started|session is either terminated/i.test(
 		message,
 	);
 }
@@ -73,10 +74,16 @@ export type DeviceSession = {
 	activateApp: (appId: string) => Promise<void>;
 	terminateApp: (appId: string) => Promise<void>;
 	/**
-	 * Clean terminate+relaunch. Present on Argent-backed sessions
-	 * (`restart-app`); callers must feature-check before use.
+	 * Clean terminate+relaunch (`restart-app`). Required on every
+	 * Argent-backed session.
 	 */
-	restartApp?: (appId: string) => Promise<void>;
+	restartApp: (appId: string) => Promise<void>;
+	/**
+	 * Block until the screen stops changing (`await-screen-idle`) — the case
+	 * executor's post-action settle. Falls back to a fixed sleep when the
+	 * backend rejects the call.
+	 */
+	awaitScreenIdle: (timeoutMs: number) => Promise<void>;
 	backgroundApp: (seconds?: number) => Promise<void>;
 	openUrl: (url: string) => Promise<void>;
 	acceptAlert: () => Promise<void>;
@@ -95,25 +102,13 @@ export type DeviceSession = {
 	isPointerActive: () => boolean;
 };
 
-function toArgentOptions(options: SessionOptions): ArgentSessionOptions {
-	return {
-		platform: options.platform,
-		deviceId: options.deviceId,
-		kind: options.kind,
-		bundleId: options.bundleId,
-		appPackage: options.appPackage,
-		activity: options.activity,
-		onSessionDead: options.onSessionDead,
-	};
-}
-
 /**
  * Create a Device Session via the Argent backend (the only device backend).
- * Argent manages its own runner and tool-server: no named sessions, no
- * same-daemon steal path, no check-and-install — the per-device registry
- * lives in the Argent adapter.
+ * `SessionOptions` and `ArgentSessionOptions` are structurally identical, so
+ * the options pass straight through. Argent manages its own runner and
+ * tool-server: no named sessions, no same-daemon steal path, no
+ * check-and-install — the per-device registry lives in the Argent adapter.
  */
 export async function createDeviceSession(options: SessionOptions): Promise<DeviceSession> {
-	const session = await createArgentDeviceSession(toArgentOptions(options));
-	return session as unknown as DeviceSession;
+	return createArgentDeviceSession(options);
 }

@@ -1,5 +1,7 @@
 # Remove Appium in favor of agent-device
 
+> **Historical:** written for the pre-Argent backends (Appium, then `agent-device`). Both are gone — the Argent backend replaced `agent-device` (see `docs/adr/0004-argent-backend.md`). Kept for history; commands and paths below may no longer exist.
+
 ## Goal
 
 Yoqa should not install, run, configure, or expose Appium. Device control is agent-device only.

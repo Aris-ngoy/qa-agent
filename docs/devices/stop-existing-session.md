@@ -1,5 +1,7 @@
 # Stop leftover agent-device sessions on connect
 
+> **Historical:** written for the pre-Argent backends (Appium, then `agent-device`). Both are gone — the Argent backend replaced `agent-device` (see `docs/adr/0004-argent-backend.md`). Kept for history; commands and paths below may no longer exist (the `domains/agent-device/` paths linked below no longer exist).
+
 ## Goal
 
 Connecting a device from Yoqa desktop (Inspector, Restart, or a run) should succeed when the device is already claimed by a leftover same-daemon agent-device session such as `cwd:fcfcd77c2e6b136e:ios`, instead of failing with `DEVICE_IN_USE`.

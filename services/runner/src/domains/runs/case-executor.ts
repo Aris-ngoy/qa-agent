@@ -112,6 +112,26 @@ const defaultClock: CaseExecutorClock = {
 	now: () => Date.now(),
 };
 
+/**
+ * Post-action settle (spec: "+ await-screen-idle in case executor"): block
+ * until the screen stops changing for up to `settleMs`, then always hold the
+ * fixed settle sleep so deterministic test clocks keep their timing. Sessions
+ * without `awaitScreenIdle` (partial test fakes) or a rejected idle wait fall
+ * through to the sleep alone — the settle never throws.
+ */
+async function settleAfterIdle(
+	session: DeviceSession,
+	clock: CaseExecutorClock,
+	settleMs: number,
+): Promise<void> {
+	try {
+		await session.awaitScreenIdle(settleMs);
+	} catch {
+		// idle wait unavailable — the fixed sleep below still applies
+	}
+	await clock.sleep(settleMs);
+}
+
 async function applyInstructionJudge(
 	decision: AgentDecision,
 	judge: CaseJudgeFn,
@@ -269,6 +289,14 @@ export async function executeScriptCase(
 	const settleMs = deps.settleMs ?? POST_ACTION_SETTLE_MS;
 	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
 
+	/**
+	 * Spec settle: block until the screen is idle (`await-screen-idle`) for up
+	 * to `settleMs`, then always hold the fixed settle sleep so timing stays
+	 * deterministic. Missing/failing idle waits (partial test fakes, backend
+	 * rejects) just fall through to the sleep.
+	 */
+	const settle = () => settleAfterIdle(deps.session, clock, settleMs);
+
 	let stepIdx = 0;
 	let lastScreenshotUri: string | null = null;
 
@@ -298,7 +326,7 @@ export async function executeScriptCase(
 				const command = formatActionShellLine(tapBody);
 				await withCurrentCommand(setCurrentCommand, command, async () => {
 					await perform(deps.session, tapBody);
-					await clock.sleep(settleMs);
+					await settle();
 					await deps.appendStep({
 						idx: stepIdx,
 						action: {
@@ -329,7 +357,7 @@ export async function executeScriptCase(
 				const command = formatActionShellLine(swipeBody);
 				await withCurrentCommand(setCurrentCommand, command, async () => {
 					await perform(deps.session, swipeBody);
-					await clock.sleep(settleMs);
+					await settle();
 					await deps.appendStep({
 						idx: stepIdx,
 						action: {
@@ -361,7 +389,7 @@ export async function executeScriptCase(
 				const command = formatActionShellLine(dragBody);
 				await withCurrentCommand(setCurrentCommand, command, async () => {
 					await perform(deps.session, dragBody);
-					await clock.sleep(settleMs);
+					await settle();
 					await deps.appendStep({
 						idx: stepIdx,
 						action: {
@@ -390,7 +418,7 @@ export async function executeScriptCase(
 				const command = formatActionShellLine(appBody);
 				await withCurrentCommand(setCurrentCommand, command, async () => {
 					await perform(deps.session, appBody);
-					await clock.sleep(settleMs);
+					await settle();
 					await deps.appendStep({
 						idx: stepIdx,
 						action: {
@@ -414,7 +442,7 @@ export async function executeScriptCase(
 				const command = formatActionShellLine(backgroundBody);
 				await withCurrentCommand(setCurrentCommand, command, async () => {
 					await perform(deps.session, backgroundBody);
-					await clock.sleep(settleMs);
+					await settle();
 					await deps.appendStep({
 						idx: stepIdx,
 						action: {
@@ -435,7 +463,7 @@ export async function executeScriptCase(
 				const command = formatActionShellLine(urlBody);
 				await withCurrentCommand(setCurrentCommand, command, async () => {
 					await perform(deps.session, urlBody);
-					await clock.sleep(settleMs);
+					await settle();
 					await deps.appendStep({
 						idx: stepIdx,
 						action: {
@@ -456,7 +484,7 @@ export async function executeScriptCase(
 				const command = formatActionShellLine(typeBody);
 				await withCurrentCommand(setCurrentCommand, command, async () => {
 					await perform(deps.session, typeBody);
-					await clock.sleep(settleMs);
+					await settle();
 					await deps.appendStep({
 						idx: stepIdx,
 						action: {
@@ -530,7 +558,7 @@ export async function executeScriptCase(
 				const command = formatActionShellLine(alertBody);
 				await withCurrentCommand(setCurrentCommand, command, async () => {
 					await perform(deps.session, alertBody);
-					await clock.sleep(settleMs);
+					await settle();
 					await deps.appendStep({
 						idx: stepIdx,
 						action: {
@@ -629,6 +657,9 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	const settleMs = deps.settleMs ?? POST_ACTION_SETTLE_MS;
 	const maxSteps = deps.maxStepsPerCase ?? MAX_STEPS_PER_CASE;
 	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
+
+	/** Same settle contract as `executeScriptCase` (idle wait + fixed sleep). */
+	const settle = () => settleAfterIdle(deps.session, clock, settleMs);
 
 	let stepIdx = 0;
 	let caseStatus: "passed" | "errored" | "cancelled" = "passed";
@@ -752,7 +783,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				throw error;
 			}
 		}
-		await clock.sleep(settleMs);
+		await settle();
 		return "continue";
 	};
 

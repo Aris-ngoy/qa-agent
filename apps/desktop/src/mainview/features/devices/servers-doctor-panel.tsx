@@ -29,8 +29,12 @@ function ServerIcon({ className = "size-5", ...props }: SVGProps<SVGSVGElement>)
 	);
 }
 
-function kindBadge(kind: ServerEntry["kind"]): string {
-	if (kind === "agent-device") return "Argent";
+/**
+ * Display label for a server row's `kind`. `agent-device` is the pre-cutover
+ * kind (legacy payloads only) — both it and `argent` label as "Argent".
+ */
+function serverKindLabel(kind: ServerEntry["kind"]): string {
+	if (kind === "argent" || kind === "agent-device") return "Argent";
 	if (kind === "runner") return "Runner";
 	return "Session";
 }
@@ -242,7 +246,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 												<span className="flex items-center justify-between gap-2">
 													<span className="truncate text-body-sm font-medium">{entry.label}</span>
 													<span className="shrink-0 text-helper text-on-surface-variant">
-														{kindBadge(entry.kind)} · {ownershipHint(entry)}
+														{serverKindLabel(entry.kind)} · {ownershipHint(entry)}
 													</span>
 												</span>
 												<span className="text-helper text-on-surface-variant">

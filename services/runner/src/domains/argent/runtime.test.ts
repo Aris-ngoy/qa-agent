@@ -14,6 +14,9 @@ describe("getArgentRuntimeStatus", () => {
 		expect(backend?.required).toBe(true);
 		expect(backend?.label).toBe("Argent");
 		expect(backend?.detail?.length).toBeGreaterThan(0);
+		expect(status.checks.some((check) => check.id === "argent")).toBe(true);
+		// Pre-cutover check ids must not come back — the legacy literal is
+		// wire-compat only (old payloads), never emitted.
 		expect(status.checks.some((check) => check.id === "agent-device")).toBe(false);
 	});
 

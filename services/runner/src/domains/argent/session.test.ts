@@ -446,6 +446,56 @@ describe("argent gestures", () => {
 		await session.quit();
 	});
 
+	test("type + newline is one run-sequence: text step then key enter", async () => {
+		const session = await createArgentDeviceSession({ platform: "ios", deviceId: "sim-1" });
+
+		await session.type("hello\n");
+
+		expect(gestureCalls("keyboard")).toHaveLength(0);
+		const sequence = gestureCalls("run-sequence");
+		expect(sequence).toHaveLength(1);
+		const steps = JSON.parse(
+			sequence[0]?.args[sequence[0]?.args.indexOf("--steps-json") + 1] as string,
+		) as Array<{ tool: string; args: { text?: string; key?: string } }>;
+		expect(steps).toEqual([
+			{ tool: "keyboard", args: { text: "hello" } },
+			{ tool: "keyboard", args: { key: "enter" } },
+		]);
+		await session.quit();
+	});
+
+	test("type with a mid-text newline splits segments around enter keys", async () => {
+		const session = await createArgentDeviceSession({ platform: "ios", deviceId: "sim-1" });
+
+		await session.type("a\nb\n");
+
+		const sequence = gestureCalls("run-sequence");
+		expect(sequence).toHaveLength(1);
+		const steps = JSON.parse(
+			sequence[0]?.args[sequence[0]?.args.indexOf("--steps-json") + 1] as string,
+		) as Array<{ tool: string; args: { text?: string; key?: string } }>;
+		expect(steps).toEqual([
+			{ tool: "keyboard", args: { text: "a" } },
+			{ tool: "keyboard", args: { key: "enter" } },
+			{ tool: "keyboard", args: { text: "b" } },
+			{ tool: "keyboard", args: { key: "enter" } },
+		]);
+		await session.quit();
+	});
+
+	test("awaitScreenIdle calls await-screen-idle with the settle budget", async () => {
+		const session = await createArgentDeviceSession({ platform: "ios", deviceId: "sim-1" });
+		toolCalls = [];
+
+		await session.awaitScreenIdle(800);
+
+		const idleCalls = toolCalls.filter((call) => call.tool === "await-screen-idle");
+		expect(idleCalls.map((call) => call.args)).toEqual([
+			["--udid", "sim-1", "--timeoutMs", "800", "--pollIntervalMs", "200", "--minStableMs", "250"],
+		]);
+		await session.quit();
+	});
+
 	test("keyboard dismiss|enter map to escape|enter keys", async () => {
 		const session = await createArgentDeviceSession({ platform: "ios", deviceId: "sim-1" });
 
@@ -536,14 +586,20 @@ describe("argent lifecycle", () => {
 		await session.quit();
 	});
 
-	test("terminateApp throws explicit unsupported without tool calls", async () => {
+	test("terminateApp calls terminate-app and surfaces Argent's tool-not-found with a restart-app hint", async () => {
 		const session = await createArgentDeviceSession({ platform: "ios", deviceId: "sim-1" });
 		toolCalls = [];
+		toolErrors["terminate-app"] = new ArgentError(
+			'Tool "terminate-app" not found. Run `argent tools` to list available tools.',
+			"COMMAND_FAILED",
+		);
 
 		await expect(session.terminateApp("com.example.app")).rejects.toThrow(
-			/not supported by Argent/,
+			/use restartApp\(appId\)/,
 		);
-		expect(toolCalls).toHaveLength(0);
+		expect(toolArgs("terminate-app")).toEqual([
+			["--udid", "sim-1", "--bundleId", "com.example.app"],
+		]);
 		await session.quit();
 	});
 

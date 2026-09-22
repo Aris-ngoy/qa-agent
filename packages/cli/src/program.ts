@@ -284,7 +284,7 @@ for (const platform of ["ios", "android"] as const) {
 
 devices
 	.command("install-runner")
-	.description("Removed with the agent-device backend — Argent manages its own runner")
+	.description("iOS runner install is gone — Argent manages its own runner")
 	.argument("<deviceId>", "Device UDID")
 	.option("--kind <kind>", "physical | simulator", "physical")
 	.option("--force", "Rebuild even when the cached install is valid")

@@ -327,19 +327,3 @@ export async function setIosToolchainSelection(params: {
 	await writePreferences(next);
 	return next;
 }
-
-/** Unused since the Argent cutover — no backend consumes this env (Argent manages its own runner). */
-export async function iosToolchainProcessEnv(): Promise<Record<string, string>> {
-	const snapshot = await getIosToolchainSnapshot();
-	const env: Record<string, string> = {};
-	const teamId = snapshot.preferences.teamId ?? process.env.AGENT_DEVICE_IOS_TEAM_ID?.trim();
-	const bundleId =
-		snapshot.preferences.agentDeviceBundleId ?? process.env.AGENT_DEVICE_IOS_BUNDLE_ID?.trim();
-	if (teamId) {
-		env.AGENT_DEVICE_IOS_TEAM_ID = teamId;
-	}
-	if (bundleId) {
-		env.AGENT_DEVICE_IOS_BUNDLE_ID = bundleId;
-	}
-	return env;
-}

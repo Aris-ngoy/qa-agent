@@ -54,7 +54,7 @@ The `yoqa` CLI talks to the **local runner**. If nothing is listening on `http:/
 
 ## CI / CD
 
-Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later steps reuse it. Host **Node/npm** must be on `PATH`, plus the agent-device CLI (`npm install -g agent-device@latest`).
+Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later steps reuse it. Host **Node/npm** must be on `PATH`, plus the Argent CLI (`npm install -g @swmansion/argent`).
 
 ```yaml
 - uses: oven-sh/setup-bun@v2
@@ -79,7 +79,7 @@ yoqa serve --stop          # SIGTERM a runner this CLI started (~/.yoqa/runner.p
 
 Override the runner URL with `YOQA_RUNNER_HOST` / `YOQA_RUNNER_PORT` / `YOQA_RUNNER_URL`. Pin a binary with `YOQA_RUNNER_BIN`.
 
-Device runs need a simulator or emulator and agent-device (`yoqa doctor --fix` / `yoqa runtime ensure`). Description grounding and agent runs also need provider secrets. GitHub-hosted iOS needs `macos-*` + Xcode. This is not a cloud device farm — cache `~/.agent-device` between jobs to skip rebuilding the iOS runner.
+Device runs need a simulator or emulator and Argent (`yoqa doctor --fix` / `yoqa runtime ensure`). Description grounding and agent runs also need provider secrets. GitHub-hosted iOS needs `macos-*` + Xcode. This is not a cloud device farm — no runner cache is needed (Argent manages its own runner); `npm i -g @swmansion/argent` reinstalls fast.
 
 ## Doctor & servers
 
@@ -112,7 +112,7 @@ yoqa devices disconnect
 
 ```bash
 yoqa screen                                  # cleaned element tree + relative coords (0–1000)
-yoqa screen --full                           # raw agent-device snapshot JSON
+yoqa screen --full                           # raw screen snapshot JSON
 yoqa screenshot ./shot.png                   # save a PNG
 ```
 

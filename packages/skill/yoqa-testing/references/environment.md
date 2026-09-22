@@ -19,13 +19,13 @@ yoqa serve --stop           # stop a runner previously started by yoqa
 ```
 
 `yoqa status` is the one-shot readiness check: it reports whether the runner is up, whether the
-agent-device runtime is ready, whether an AI provider is configured (needed for `--description` grounding
+Argent runtime is ready, whether an AI provider is configured (needed for `--description` grounding
 and agent runs), and which device is connected.
 
 ## Diagnose and repair
 
 ```bash
-yoqa doctor                 # diagnose tooling, agent-device, and the device session
+yoqa doctor                 # diagnose tooling, Argent, and the device session
 yoqa doctor --json
 yoqa doctor --fix           # apply the safe repairs it identified
 ```
@@ -34,16 +34,16 @@ yoqa doctor --fix           # apply the safe repairs it identified
 safe (ensure runtime, disconnect a stuck session) and re-reports.
 **Try `yoqa doctor --fix` before any manual recovery** — it covers most "it won't connect" cases.
 
-## agent-device runtime
+## Argent runtime
 
 ```bash
-yoqa runtime status         # readiness of agent-device and host tools (non-zero if not ready)
-yoqa runtime ensure         # verify agent-device and host tools are ready
-yoqa setup ios              # verify agent-device iOS readiness
-yoqa setup android          # verify agent-device Android readiness
+yoqa runtime status         # readiness of Argent and host tools (non-zero if not ready)
+yoqa runtime ensure         # verify Argent and host tools are ready
+yoqa setup ios              # verify Argent iOS readiness
+yoqa setup android          # verify Argent Android readiness
 ```
 
-Install the CLI if it is missing: `npm install -g agent-device@latest`.
+Install the CLI if it is missing: `npm install -g @swmansion/argent`.
 
 ## Servers and sessions
 

@@ -123,21 +123,15 @@ export async function performAction(
 		}
 		case "terminate-app": {
 			if (!body.appId) throw new ActionValidationError("terminate-app requires appId");
-			// Argent has no bare terminate tool — the backend throws an explicit
-			// unsupported error here. Surface it, never a silent success.
+			// The backend calls Argent's `terminate-app`; where the installed
+			// Argent has no such tool it surfaces an actionable ArgentError —
+			// never a silent success.
 			await session.terminateApp(body.appId);
 			break;
 		}
 		case "restart-app": {
 			if (!body.appId) throw new ActionValidationError("restart-app requires appId");
-			// Prefer the backend's clean relaunch when it offers one
-			// (Argent `restart-app`); otherwise fall back to terminate+activate.
-			if (typeof session.restartApp === "function") {
-				await session.restartApp(body.appId);
-			} else {
-				await session.terminateApp(body.appId);
-				await session.activateApp(body.appId);
-			}
+			await session.restartApp(body.appId);
 			break;
 		}
 		case "background-app": {

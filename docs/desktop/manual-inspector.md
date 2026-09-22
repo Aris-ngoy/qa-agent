@@ -8,11 +8,11 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 
 - **Script format:** Bash-style lines (`yoqa action …`, `yoqa assert …`, `sleep N`) — not Maestro YAML.
 - **Interaction model:** Cached Select Mode (warm accessibility tree when Live control is off) → hover preview + instant click hit-test → **hold Control** to pick a raw screenshot `x,y` when hit-test cannot select a control → floating action menu → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut (not while Control is held). Live control keeps the poll feed without tree fetches.
-- **Live feed:** multipart live-frame stream (`GET /screenshot/stream`, ~1 frame/s on sim — the capture ceiling) with screenshot-poll fallback — no MJPEG broadcaster since the agent-device migration. See [live feed](./manual-inspector-mjpeg-stream.md).
+- **Live feed:** multipart live-frame stream (`GET /screenshot/stream`, ~1 frame/s on sim — the capture ceiling) with screenshot-poll fallback — no MJPEG broadcaster since the Argent migration. See [live feed](./manual-inspector-mjpeg-stream.md).
 - **Live control:** drag on the mirror → WS pointer → tap/swipe on release. Gestures block until the socket shows open ("Connecting live control…"); pointer-up shows "Sending…" until the device acks. Pointer failures toast with the server detail; dropped sockets reconnect with backoff; an in-flight gesture is flushed at its last point on toggle-off so the server never releases it at a fallback position.
 - **Screenshot coords:** Inspector Control-pick, `tap (x,y)`, and agent in-app taps use the 0–1000 grid of the **screenshot image** on both iOS and Android. Locator taps (`--id` / `--label`) still resolve against the accessibility tree. System permission sheets still use label/alert, not guessed coords.
 - **Input text:** Menu action focuses the selected field (`--id` / `--label` / coords) then types; runner taps whenever coordinates are resolved.
-- **System controls:** every agent-device control used in manual QA maps to a `yoqa action` kind — `back`, `scroll --direction`, `home`, `keyboard`, plus the existing tap/swipe/drag/input/app-lifecycle/alert set (see matrix below). The command bar exposes swipe/scroll/back/home/keyboard without needing a selection.
+- **System controls:** every Argent control used in manual QA maps to a `yoqa action` kind — `back`, `scroll --direction`, `home`, `keyboard`, plus the existing tap/swipe/drag/input/app-lifecycle/alert set (see matrix below). The command bar exposes swipe/scroll/back/home/keyboard without needing a selection.
 - **Save as test case:** Convert convertible shell steps → CaseScript (`tap` / `type` / `wait`), `createCase` + `updateCase({ script })`, open the new case. `back` / `scroll` / `home` / `keyboard` replay live but skip CaseScript with a warning.
 - Rejected for this slice: All Commands catalog, View Docs, `scrollUntilVisible` / `copyTextFrom`, full assert/swipe in CaseScript, Maestro relational selectors (`above` / `childOf`).
 
@@ -22,8 +22,8 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 
 - `input` taps to focus whenever `x,y` are present (id/label/description/coords), then types
 - `tap` supports `--double` and `--duration` (long-press hold)
-- New actions: `back` → `agent-device back`; `scroll --direction --amount` → `agent-device scroll`;
-  `home` → `agent-device home`; `keyboard [--action dismiss|enter]` → `agent-device keyboard`
+- New actions: `back` → Argent `back`; `scroll --direction --amount` → Argent `scroll`;
+  `home` → Argent `home`; `keyboard [--action dismiss|enter]` → Argent `keyboard`
 - Live frames via `GET /screenshot/stream` (multipart, fresh captures back-to-back) with 500ms poll fallback; `captureFrame()` uses `--no-stabilize` + 150ms server-side coalescing
 - Page-source cleaning skips URL-like iOS `name` values as ids/labels, drops unlabeled ScrollView/CollectionView/Table/WebView containers, and never falls back to the XML type as a label
 - Coordinate-only taps (`--x/--y`, no `--id`/`--label`) inject in **screenshot space**: Android uses screenshot pixels even when they differ from `getWindowSize()`; iOS keeps window points (W3C). Locator taps stay window/tree-aligned.
@@ -50,9 +50,9 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 - Command bar: swipe + scroll + back + home + dismiss-keyboard + wait (no selection needed)
 - **Save as test case** on the run panel (requires selected app + convertible actions); recorded taps/inputs always include `--x/--y` so conversion does not depend on the live accessibility tree
 
-### agent-device → yoqa command matrix
+### Argent → `yoqa action` matrix
 
-| agent-device | `yoqa action` kind | Inspector | Notes |
+| Argent | `yoqa action` kind | Inspector | Notes |
 |---|---|---|---|
 | `press` / `click` / `longpress` | `tap` (+ `--double`, `--duration`) | element menu, double-click | coords, id, label, or `-d` grounding |
 | `swipe x1 y1 x2 y2` | `swipe --x --y --x2 --y2` | command bar (directional) | 0–1000 grid |
@@ -69,7 +69,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 | `snapshot -i` | `yoqa screen` | Refresh tree / cached select | cleaned 0–1000 tree |
 | `screenshot` | `yoqa screenshot [path]` | element menu | live feed never persists |
 | `wait` / `is` / `get` | `yoqa assert`, `sleep` | assert chips, wait control | no element-attribute reads in yoqa |
-| `install`, `record`, `boot`, `orientation`, `clipboard`, `settings` | — | — | intentionally not exposed; use `agent-device` directly |
+| `install`, `record`, `boot`, `orientation`, `clipboard`, `settings` | — | — | intentionally not exposed; use `argent run …` directly |
 
 ## How to verify
 

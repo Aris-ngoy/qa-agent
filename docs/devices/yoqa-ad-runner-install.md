@@ -1,5 +1,7 @@
 # YoqaADRunner guided install
 
+> **Historical:** written for the pre-Argent backends (Appium, then `agent-device`). Both are gone — the Argent backend replaced `agent-device` (see `docs/adr/0004-argent-backend.md`). Kept for history; commands and paths below may no longer exist (the `domains/agent-device/` paths linked below no longer exist).
+
 ## Goal
 
 When connecting an iOS device without a signed agent-device runner, show a

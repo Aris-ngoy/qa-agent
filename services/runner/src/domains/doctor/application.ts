@@ -197,8 +197,9 @@ export async function repairDoctor(repairs: DoctorRepairId[]): Promise<DoctorRep
 				info ? `Disconnected ${info.platform} ${info.deviceId}` : "No active device session",
 			);
 		} else if (repair === "enable-developer-tools") {
-			// The Developer Mode gate left with the agent-device backend —
-			// Argent manages its own runner, so there is nothing to enable.
+			// Historical repair id kept for client compat: the Developer Mode
+			// gate left with the pre-Argent runner — Argent manages its own
+			// runner, so there is nothing to enable.
 			parts.push("Developer Mode repair is not needed with the Argent backend");
 		}
 	}

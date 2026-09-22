@@ -1,7 +1,7 @@
 /**
  * Bundle the runner for npm: Bun-compatible ESM with inlined workspace deps.
- * Device automation shells out to the `agent-device` CLI (resolved at runtime
- * from node_modules/.bin, then PATH) — no native driver to bundle.
+ * Device automation shells out to the Argent CLI (`argent run …`, resolved at
+ * runtime from global user installs then PATH) — no native driver to bundle.
  */
 const result = await Bun.build({
 	entrypoints: ["./src/index.ts"],
@@ -11,7 +11,6 @@ const result = await Bun.build({
 	minify: false,
 	sourcemap: "none",
 	packages: "bundle",
-	external: ["agent-device"],
 });
 
 if (!result.success) {

@@ -27,9 +27,9 @@ describe("isSupportedArgentVersion", () => {
 });
 
 describe("argentCandidateBins", () => {
-	test("prefers workspace installs before PATH", () => {
+	test("offers only global user installs — no workspace node_modules", () => {
 		const bins = argentCandidateBins();
-		expect(bins[0]).toEndWith("node_modules/.bin/argent");
+		expect(bins.some((bin) => bin.includes("node_modules"))).toBe(false);
 		expect(bins.some((bin) => bin === "/opt/homebrew/bin/argent")).toBe(true);
 	});
 });

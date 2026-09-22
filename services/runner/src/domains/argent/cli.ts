@@ -45,15 +45,21 @@ const DEAD_SESSION_CODES = new Set([
 	"SERVER_UNREACHABLE",
 ]);
 
+/**
+ * "Target gone" message patterns — one source of truth shared by
+ * `argentErrorFromStderr` (stderr → code) and the dead-session detector below.
+ */
+const DEVICE_NOT_FOUND_PATTERN = /device.+not found|no such device|unknown (device|udid)/i;
+const DEVICE_LOST_PATTERN = /device.+(lost|disconnected)/i;
+const SESSION_GONE_PATTERN = /session.+not found|session.+expired/i;
+const SERVER_DOWN_PATTERN =
+	/econnrefused|tool-server.*(not running|unreachable)|server.*not running/i;
+
 const DEAD_MESSAGE_PATTERNS = [
-	/device.+not found/i,
-	/no such device/i,
-	/unknown (device|udid)/i,
-	/device.+lost|device.+disconnected/i,
-	/session.+not found|session.+expired/i,
-	/econnrefused/i,
-	/tool-server.*(not running|unreachable)/i,
-	/server.*not running/i,
+	DEVICE_NOT_FOUND_PATTERN,
+	DEVICE_LOST_PATTERN,
+	SESSION_GONE_PATTERN,
+	SERVER_DOWN_PATTERN,
 ];
 
 /** True when the target is gone (or the tool-server is down) and the caller must reconnect. */
@@ -80,17 +86,17 @@ export function argentErrorFromStderr(
 			"Run `argent tools` to list available tools.",
 		);
 	}
-	if (/device.+not found|no such device|unknown (device|udid)/i.test(message)) {
+	if (DEVICE_NOT_FOUND_PATTERN.test(message)) {
 		return new ArgentError(
 			message,
 			"DEVICE_NOT_FOUND",
 			"Run `argent run list-devices` to pick a live target, then reconnect.",
 		);
 	}
-	if (/device.+(lost|disconnected)/i.test(message)) {
+	if (DEVICE_LOST_PATTERN.test(message)) {
 		return new ArgentError(message, "DEVICE_DISCONNECTED", "Reconnect the device, then retry.");
 	}
-	if (/econnrefused|tool-server.*(not running|unreachable)|server.*not running/i.test(message)) {
+	if (SERVER_DOWN_PATTERN.test(message)) {
 		return new ArgentError(
 			message,
 			"SERVER_UNREACHABLE",
@@ -100,21 +106,14 @@ export function argentErrorFromStderr(
 	return new ArgentError(message, "COMMAND_FAILED");
 }
 
-/** Workspace installs first, then the rest of PATH. */
+/**
+ * Global user-install locations only (spec: `npx @swmansion/argent@latest init`
+ * / `npm install -g`) — never workspace `node_modules`. `resolveArgentBin`
+ * falls back to `PATH` after these.
+ */
 export function argentCandidateBins(): string[] {
 	const home = homedir();
-	const localBin = join(process.cwd(), "node_modules", ".bin", "argent");
-	const runnerLocalBin = join(
-		process.cwd(),
-		"services",
-		"runner",
-		"node_modules",
-		".bin",
-		"argent",
-	);
 	return [
-		localBin,
-		runnerLocalBin,
 		join(home, ".bun", "bin", "argent"),
 		join(home, ".local", "bin", "argent"),
 		"/opt/homebrew/bin/argent",
@@ -132,7 +131,7 @@ async function pathExists(path: string): Promise<boolean> {
 	}
 }
 
-/** Resolve the argent binary: workspace install first, then PATH. */
+/** Resolve the argent binary: global user installs first, then PATH. */
 export async function resolveArgentBin(): Promise<string> {
 	if (cachedBin) return cachedBin;
 	for (const candidate of argentCandidateBins()) {

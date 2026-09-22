@@ -11,16 +11,30 @@ import { setupArgentPlatform } from "../../domains/argent/runtime";
 import { listDevices } from "../../domains/devices/application";
 
 /**
- * The YoqaADRunner install flow left with the agent-device backend — Argent
- * manages its own runner, so these endpoints stay only as explicit 410s (same
- * paths, so old clients get an actionable message instead of a 404).
+ * The YoqaADRunner install flow is gone — Argent manages its own runner, so
+ * these endpoints stay only as explicit 410s (same paths, so old clients get
+ * an actionable message instead of a 404).
  */
 const RUNNER_REMOVED = {
-	error: "iOS runner install was removed with the agent-device backend",
+	error: "iOS runner install is gone — Argent manages its own runner",
 	detail:
 		"Argent manages its own runner — nothing to install. " +
 		"Install Argent globally with: npm install -g @swmansion/argent " +
 		"(Argent telemetry is opt-out: run `argent telemetry disable` to disable it).",
+};
+
+/**
+ * Status shape inlined alongside `{error, detail}` so a client that parses the
+ * body as `iosRunnerStatusResponseSchema` (instead of surfacing the error)
+ * still gets a coherent `installed: false` answer rather than a schema throw.
+ * The install route keeps the pure `{error, detail}` body — inlining
+ * `ok: true` there would claim a success that never happened.
+ */
+const RUNNER_REMOVED_STATUS = {
+	...RUNNER_REMOVED,
+	installed: false,
+	bundleId: "n/a",
+	displayName: "iOS runner removed (Argent manages its own runner)",
 };
 
 export function createDevicesRoutes() {
@@ -94,7 +108,7 @@ export function createDevicesRoutes() {
 		if (kind !== "physical" && kind !== "simulator" && kind !== "emulator") {
 			return c.json({ error: "Query param kind must be physical, simulator, or emulator" }, 400);
 		}
-		return c.json(RUNNER_REMOVED, 410);
+		return c.json(RUNNER_REMOVED_STATUS, 410);
 	});
 
 	app.post("/devices/ios-runner/install", async (c) => {
