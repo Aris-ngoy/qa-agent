@@ -18,6 +18,15 @@ function truncateTitle(text: string): string {
 /** Map known long runner errors to short toast copy. */
 export function summarizeError(message: string): SummarizedError {
 	if (
+		message.includes("APP_NOT_INSTALLED") ||
+		(message.includes("is not installed on") && message.includes("Install a build"))
+	) {
+		return {
+			title: "App not installed on device",
+			description: "Install a build on the device first, then reconnect.",
+		};
+	}
+	if (
 		message.includes("ARGENT_IOS_TEAM_ID") ||
 		message.includes("trust the developer") ||
 		message.includes("VPN & Device Management")

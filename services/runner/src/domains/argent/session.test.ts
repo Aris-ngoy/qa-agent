@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	DeadSessionError,
+	isAppNotInstalledError,
 	isDeadSessionError,
 	parseDescribeToNodes,
 	screenshotPathFromResult,
@@ -57,6 +58,19 @@ describe("screenshotPathFromResult", () => {
 		expect(screenshotPathFromResult({ path: "/tmp/a.png" })).toBe("/tmp/a.png");
 		expect(screenshotPathFromResult({ image: "abc" })).toBeNull();
 		expect(screenshotPathFromResult("unexpected output")).toBeNull();
+	});
+});
+
+describe("isAppNotInstalledError", () => {
+	test("matches simctl launch failures for missing apps", () => {
+		expect(
+			isAppNotInstalledError(
+				new Error(
+					"[Tool:launch-app] Failed to launch iOS app com.example.Nope on UDID. — caused by: Command failed: xcrun simctl launch UDID com.example.Nope (domain=FBSOpenApplicationServiceErrorDomain, code=4)",
+				),
+			),
+		).toBe(true);
+		expect(isAppNotInstalledError(new Error("transport not wired"))).toBe(false);
 	});
 });
 

@@ -2,7 +2,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DeviceKind, DevicePlatform } from "@yoqa/runner-client";
-import { type ArgentError, isDeadArgentSessionError, runArgentTool } from "./cli";
+import { ArgentError, isDeadArgentSessionError, runArgentTool } from "./cli";
 
 const YOQA_ROOT = join(process.env.HOME ?? tmpdir(), ".yoqa");
 const SCREENSHOT_DIR = join(YOQA_ROOT, "runs", "screenshots");
@@ -340,6 +340,55 @@ class ActionGate {
 	}
 }
 
+/** Error code when the launch target is not installed on the device. */
+export const APP_NOT_INSTALLED_CODE = "APP_NOT_INSTALLED";
+
+const APP_NOT_INSTALLED_PATTERNS = [
+	/not installed on/i,
+	/is not installed/i,
+	/failed to launch .* app/i,
+	/FBSOpenApplicationServiceErrorDomain/i,
+	/does not exist/i,
+	/unable to find explicit activity/i,
+	/activity not started/i,
+	/The request to open .* failed/i,
+];
+
+/** True when a launch-app failure means the app is missing on the device. */
+export function isAppNotInstalledError(error: unknown): boolean {
+	if (error instanceof ArgentError && error.code === APP_NOT_INSTALLED_CODE) return true;
+	const message = error instanceof Error ? error.message : String(error);
+	const hint = error instanceof ArgentError ? (error.hint ?? "") : "";
+	return APP_NOT_INSTALLED_PATTERNS.some((re) => re.test(message) || re.test(hint));
+}
+
+function appNotInstalledError(
+	target: string,
+	options: SessionOptions,
+	cause: unknown,
+): ArgentError {
+	const message = cause instanceof Error ? cause.message : String(cause);
+	return new ArgentError(
+		`App ${target} is not installed on ${options.deviceId} (${options.platform}). Install a build first (yoqa builds list/create, then reinstall on the device), then reconnect.`,
+		APP_NOT_INSTALLED_CODE,
+		"Check the bundle id / package name, or connect without one to drive the home screen.",
+		message.slice(0, 500),
+	);
+}
+
+async function launchTargetApp(
+	udid: string,
+	target: string,
+	options: SessionOptions,
+): Promise<void> {
+	try {
+		await runArgentTool("launch-app", { udid, bundleId: target }, { timeoutMs: OPEN_TIMEOUT_MS });
+	} catch (error) {
+		if (isAppNotInstalledError(error)) throw appNotInstalledError(target, options, error);
+		throw error;
+	}
+}
+
 export async function createDeviceSession(options: SessionOptions): Promise<DeviceSession> {
 	await releaseExistingSession(options.deviceId);
 
@@ -354,7 +403,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 				() => undefined,
 			);
 		}
-		await runArgentTool("launch-app", { udid, bundleId: target }, { timeoutMs: OPEN_TIMEOUT_MS });
+		await launchTargetApp(udid, target, options);
 	} catch (error) {
 		if (options.platform === "android") {
 			// Android ids may be AVD names rather than adb serials — try a boot by name.
@@ -364,11 +413,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 					{ avdName: options.deviceId },
 					{ timeoutMs: OPEN_TIMEOUT_MS },
 				);
-				await runArgentTool(
-					"launch-app",
-					{ udid, bundleId: target },
-					{ timeoutMs: OPEN_TIMEOUT_MS },
-				);
+				await launchTargetApp(udid, target, options);
 			} catch {
 				throw error;
 			}
@@ -612,11 +657,7 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	const activateApp = async (appId: string) => {
 		await gate.withLock(async () => {
 			await guard(async () => {
-				await runArgentTool(
-					"launch-app",
-					{ udid, bundleId: appId },
-					{ timeoutMs: OPEN_TIMEOUT_MS },
-				);
+				await launchTargetApp(udid, appId, options);
 				lastApp = appId;
 			});
 		});
@@ -832,4 +873,4 @@ export async function createDeviceSession(options: SessionOptions): Promise<Devi
 	return session;
 }
 
-export type { ArgentError };
+export { ArgentError };
