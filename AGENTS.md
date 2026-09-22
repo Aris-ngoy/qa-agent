@@ -123,3 +123,26 @@ External / fork PRs require maintainer approval before Actions run (`all_externa
 - Never use `--no-verify` or force-push to `main`.
 - Never merge a PR that is behind `main`, has unresolved conversations, or has failing required checks.
 - For **owner-authored** PRs only: after green checks, merging via ruleset bypass is OK. For **any other author**: require a real approval first; never admin-bypass their review gate.
+
+## Local checks
+
+```bash
+bun install --frozen-lockfile
+bun run lint:ci
+bun run test
+bun run check
+```
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for Aris-ngoy/qa-agent via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
