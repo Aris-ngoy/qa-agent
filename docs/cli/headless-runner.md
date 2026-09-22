@@ -12,7 +12,7 @@ Let `yoqa` start the local runner without the desktop app, so GitHub Actions and
 
 ## What shipped
 
-- `@yoqa/runner` npm package: `bun build --target bun` → `dist/index.js`, `yoqa-runner` bin stub that execs Bun. `agent-device` stays external (resolved at runtime from `node_modules/.bin`, then `PATH`).
+- `@yoqa/runner` npm package: `bun build --target bun` → `dist/index.js`, `yoqa-runner` bin stub that execs Bun. Device automation shells out to the user-installed Argent CLI (`argent run …`), resolved at runtime from global user installs then `PATH`.
 - `yoqa serve` / `yoqa serve --stop`. Auto-start via Commander `preAction` unless `YOQA_NO_AUTOSTART=1`.
 - Spawn order: `YOQA_RUNNER_BIN` → `yoqa-runner` on `PATH` → packaged desktop sidecar → monorepo `services/runner/src/index.ts` → `@yoqa/runner` dist.
 - Release workflow publishes `@yoqa/runner` then `@yoqa/cli` on `v*` tags.
@@ -46,7 +46,7 @@ GitHub Actions:
 - run: yoqa doctor
 ```
 
-Host Node/npm must be on `PATH`, plus the agent-device CLI (`npm install -g agent-device@latest`). Cache `~/.agent-device` between jobs to skip the iOS runner rebuild. iOS still needs `macos-*` + Xcode; this is not a cloud device farm.
+Host Node/npm must be on `PATH`, plus the Argent CLI (`npm install -g @swmansion/argent`). Argent manages its own runner, so no runner cache is needed between jobs. iOS still needs `macos-*` + Xcode; this is not a cloud device farm.
 
 ## Follow-ups
 

@@ -160,6 +160,9 @@ export type EnsureRuntimeResponse = z.infer<typeof ensureRuntimeResponseSchema>;
 // --- Servers lifecycle ---
 
 export const serverKindSchema = z.union([
+	/** Argent tool-server / adapter entries. */
+	z.literal("argent"),
+	/** Pre-cutover backend kind — kept so old payloads still parse. */
 	z.literal("agent-device"),
 	z.literal("runner"),
 	z.literal("device-session"),
@@ -260,7 +263,7 @@ export type DoctorRepairResponse = z.infer<typeof doctorRepairResponseSchema>;
 
 /**
  * @deprecated Custom driver capabilities were an Appium concept and are no
- * longer read by the runner (agent-device backend). Kept for wire compat —
+ * longer read by the runner (Argent backend). Kept for wire compat —
  * servers always return `[]` and request fields are ignored.
  */
 export const capabilitySchema = z.object({
@@ -978,11 +981,11 @@ export const actionRequestSchema = z.object({
 	url: z.string().optional(),
 	alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).optional(),
 	seconds: z.number().optional(),
-	/** Scroll direction for `scroll` (agent-device `scroll <direction> [amount]`). */
+	/** Scroll direction for `scroll` (Argent `run-sequence` keyboard/scroll steps). */
 	direction: scrollDirectionSchema.optional(),
-	/** Finger-path fraction of the viewport axis for `scroll` (agent-device amount). */
+	/** Finger-path fraction of the viewport axis for `scroll`. */
 	amount: z.number().optional(),
-	/** Key action for `keyboard` (agent-device `keyboard dismiss|enter`). */
+	/** Key action for `keyboard` (Argent `keyboard --key escape|enter`). */
 	keyboardAction: keyboardActionSchema.optional(),
 });
 export type ActionRequest = z.infer<typeof actionRequestSchema>;

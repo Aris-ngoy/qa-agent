@@ -77,7 +77,7 @@ yoqa action alert --dismiss    # dismiss
 
 ## System navigation
 
-Semantic controls backed by `agent-device` (`back`, `scroll`, `home`, `keyboard`). `scroll` moves
+Semantic controls backed by Argent (`back`, `scroll`, `home`, `keyboard`). `scroll` moves
 content in place; use coordinate `swipe`/`drag` (see [Actions by coordinates](actions-coordinates.md))
 when you need an exact finger path.
 

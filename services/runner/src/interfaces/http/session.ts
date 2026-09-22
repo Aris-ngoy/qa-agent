@@ -11,6 +11,7 @@ import {
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
 import { ArgentError } from "../../domains/argent/cli";
+import { SingleAppScopeError } from "../../domains/argent/session";
 import {
 	SessionBusyError,
 	abandonActiveSession,
@@ -268,6 +269,10 @@ export function createSessionRoutes() {
 		} catch (error) {
 			const gone = sessionErrorResponse(error);
 			if (gone) return c.json(gone.body, gone.status);
+			if (error instanceof SingleAppScopeError) {
+				// Physical iPhone cross-app step: actionable 409, not a generic 500.
+				return c.json({ error: error.message }, 409);
+			}
 			if (error instanceof ActionValidationError) {
 				return c.json({ error: error.message }, 400);
 			}

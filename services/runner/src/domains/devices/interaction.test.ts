@@ -155,7 +155,7 @@ describe("performAction system actions", () => {
 });
 
 describe("performAction app lifecycle", () => {
-	test("restart-app prefers session.restartApp when present", async () => {
+	test("restart-app delegates to session.restartApp", async () => {
 		const calls: string[] = [];
 		const session = {
 			terminateApp: async (appId: string) => {
@@ -173,23 +173,9 @@ describe("performAction app lifecycle", () => {
 		expect(result).toEqual({ ok: true, kind: "restart-app" });
 	});
 
-	test("restart-app falls back to terminate+activate without restartApp", async () => {
-		const calls: string[] = [];
-		const session = {
-			terminateApp: async (appId: string) => {
-				calls.push(`terminate:${appId}`);
-			},
-			activateApp: async (appId: string) => {
-				calls.push(`activate:${appId}`);
-			},
-		} as unknown as DeviceSession;
-		await performAction(session, { kind: "restart-app", appId: "com.example.app" });
-		expect(calls).toEqual(["terminate:com.example.app", "activate:com.example.app"]);
-	});
-
-	test("terminate-app surfaces the backend unsupported error", async () => {
+	test("terminate-app surfaces the backend tool-not-found error unchanged", async () => {
 		const backendError = new Error(
-			"terminateApp is not supported by Argent 0.25.2 (no bare terminate tool)",
+			'Tool "terminate-app" not found. Run `argent tools` to list available tools.',
 		);
 		const session = {
 			terminateApp: async () => {

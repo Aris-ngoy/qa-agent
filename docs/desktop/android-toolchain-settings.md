@@ -9,8 +9,8 @@ Let users see the Android SDK and JDK paths Yoqa detected, and override them whe
 - Add an **Android** Settings tab next to iOS.
 - Default to `ANDROID_HOME` / `ANDROID_SDK_ROOT` / Android Studio SDK, and `JAVA_HOME` / Android Studio JBR / `java_home`.
 - Store only true overrides in `~/Library/Application Support/yoqa/settings.json`. Paths that match the live system default are stored as `null`.
-- Inject the effective paths into the runner sidecar env (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, `JAVA_HOME`) and restart the runner on save so agent-device sees them.
-- Rejected: per-session driver capabilities for SDK root (env is what adb/agent-device actually reads).
+- Inject the effective paths into the runner sidecar env (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, `JAVA_HOME`) and restart the runner on save so Argent sees them.
+- Rejected: per-session driver capabilities for SDK root (env is what adb actually reads).
 
 ## What shipped
 
@@ -25,7 +25,7 @@ Let users see the Android SDK and JDK paths Yoqa detected, and override them whe
 ## How to verify
 
 1. Open Settings → Android. SDK should show `~/Library/Android/sdk` (or your `ANDROID_HOME`) and Java should show `JAVA_HOME` or Android Studio JBR.
-2. Change SDK to another existing SDK folder, click **Save and restart runner**, start an Android session — agent-device should use the override.
+2. Change SDK to another existing SDK folder, click **Save and restart runner**, start an Android session — Argent/adb should use the override.
 3. Click **Use system default**, save again — session should work with the detected path.
 4. `~/Library/Application Support/yoqa/settings.json` should contain `"android"` only when an override is set.
 5. Quit Yoqa, reopen, run on a physical Android device — session must not fail with `Neither ANDROID_HOME nor ANDROID_SDK_ROOT environment variable was exported`.

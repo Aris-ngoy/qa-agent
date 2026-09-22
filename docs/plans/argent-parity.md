@@ -5,14 +5,38 @@ Scope: `services/runner` (argent adapter, devices, runs, HTTP), desktop copy, do
 Platforms: iOS sim/device + Android emu/device parity only. No TV, no Chromium/CDP, no profiling/flows in this cut.
 Base: ADR `0004-argent-backend.md`. Argent `0.25.2` enumerated via `argent tools`.
 
+## Plan summary
+
+Key decisions (as built):
+
+* Swap the `agent-device` subprocess for the user-installed Argent CLI behind the unchanged `DeviceSession` interface; coords stay 0–1000 at the API boundary.
+* `run-sequence --steps-json` with `--udid` passed at the CLI level (never inside step args); secret suppression applies to the whole sequence.
+* Physical-iPhone single-app scope raises a typed `SingleAppScopeError`, mapped to 409 in `/action` (checked: the builds install path calls `reinstall-app` directly and never throws it, so `/action` is the only mapping).
+* `/devices/ios-runner/*` stay explicit 410s; the status body is dual-shape (`{error, detail}` alongside `installed:false, bundleId, displayName`) so a client can't silently swallow the 410 — locked by `packages/runner-client/src/ios-runner-removed.test.ts`.
+* Post-action settle in the case executor is `await-screen-idle` (block-until-stable) **then** the fixed settle sleep, through a module-level `settleAfterIdle` helper; sessions without a working idle wait fall back to the sleep alone.
+
+Rejected alternatives:
+
+* Cache the last action-returned tree (original §2 L44) — rejected after probing: Argent actions return receipts (`gesture-tap` → `{tapped, timestampMs}`), not trees; screen reads always go through `describe --udid`.
+* `argent --no-telemetry` flag — rejected after probing: it does not exist; the real command is `argent telemetry disable --scope global|project`, and `--scope project` (`.argent/config.json`) is the team-install story.
+* terminate+activate fallback for `restart-app` — rejected: `restartApp` is required on the session; `terminateApp` calls `argent run terminate-app` and rewraps Argent's tool-not-found with a `restartApp(appId)` hint (0.25.2 ships no bare terminate tool).
+
+In-scope extras kept (scope-creep adjudication: amend the spec, not the code):
+
+* `MIN_ARGENT_VERSION` gate (`0.25.2`) in runtime readiness.
+* Extra `await-ui-element` options (`--timeoutMs`, `--pollIntervalMs`, `--minStableMs` beyond `--condition/--selector-json`).
+* Retained no-op doctor repair id `enable-developer-tools` (`doctor/application.ts`) for client compat.
+
 ## What shipped (ticket 5: argent-cutover)
 
-* `domains/devices/session.ts` delegates to `createArgentDeviceSession` (same exported names; `activity` passthrough; `restartApp` on the session type); steal path, `withDeviceInUseTakeover`, and the YoqaADRunner check-and-install are gone. `isDeadSessionError` covers `isDeadArgentSessionError`.
-* `interaction.ts` `restart-app` prefers `session.restartApp`, else terminate+activate; `terminate-app` surfaces the Argent unsupported error.
+* `domains/devices/session.ts` delegates to `createArgentDeviceSession` (same exported names; `activity` passthrough; `restartApp` and `awaitScreenIdle` required on the session type); steal path, `withDeviceInUseTakeover`, and the YoqaADRunner check-and-install are gone. `isDeadSessionError` covers `isDeadArgentSessionError`.
+* `interaction.ts` `restart-app` calls `session.restartApp` directly (no feature-check, no terminate+activate fallback); `terminate-app` calls `argent run terminate-app` and surfaces Argent's tool-not-found error, rewrapped with a `restartApp(appId)` hint.
+* `session.type()` sends plain text as a bare `keyboard --text`, and routes any text containing a newline (or a `{{secret:NAME}}` placeholder) through one `run-sequence` of keyboard steps — `"hello\n"` → `[keyboard text "hello", keyboard key "enter"]`, never two bare `keyboard` calls.
+* Case-executor settle blocks on `await-screen-idle` (`--udid`, `--timeoutMs`, `--pollIntervalMs 200`, `--minStableMs 250`) for up to `settleMs`, then always holds the fixed settle sleep (`settleAfterIdle`); a missing/rejected idle wait falls back to the sleep alone.
 * Builds install via `reinstall-app --udid --bundleId --appPath` (bundle id from the run's app, else the build record; actionable error when unknown).
-* Doctor/runtime/status/devices/session HTTP rewired to `argent/*` (`argent` runtime check id, `setupArgentPlatform` verify, `argent-server` doctor probe). `/devices/ios-runner/*` stay as explicit 410s (same paths/schemas, so old clients get an actionable message). Developer Mode gate and iOS signing overlay dropped; host PATH + Android SDK env kept under `domains/host/`.
-* `runtimeCheckIdSchema` gains first-class `argent` (`agent-device` kept for old payloads).
-* `domains/agent-device/` deleted. Desktop copy points at Argent (signing sections marked removed) with telemetry opt-out; CONTEXT glossary updated.
+* Doctor/runtime/status/devices/session HTTP rewired to `argent/*` (`argent` runtime check id, `setupArgentPlatform` verify, `argent-server` doctor probe). `/devices/ios-runner/*` stay as explicit 410s (same paths/schemas, so old clients get an actionable message); the status 410 body is dual-shape. Developer Mode gate and iOS signing overlay dropped (the unused `iosToolchainProcessEnv` + sidecar env spread are deleted); host PATH + Android SDK env kept under `domains/host/`. `/action` maps `SingleAppScopeError` → 409. The desktop "Runner Signing (removed)" section is now one shared component for both settings twins.
+* `runtimeCheckIdSchema` keeps first-class `argent` (`agent-device` kept for old payloads); `serverKindSchema`/`ServerEntry.kind` gain an `argent` literal alongside the legacy `agent-device` kind.
+* `domains/agent-device/` deleted; `argentCandidateBins()` probes global user installs then `PATH` (no workspace `node_modules`); list-devices parsing is shared in `argent/list-devices.ts`. Desktop copy points at Argent (signing sections marked removed) with telemetry opt-out; CONTEXT glossary updated.
 
 ## How to verify
 
@@ -21,9 +45,9 @@ Base: ADR `0004-argent-backend.md`. Argent `0.25.2` enumerated via `argent tools
 
 ## Follow-ups
 
-* Remove the desktop iOS-signing pipeline (preferences, RPC, sidecar env) and the YoqaADRunner install dialog flow (never triggers post-cutover).
-* Decide whether `/devices/ios-runner/*` 410s and the `yoqa devices install-runner` stub stay or are deleted with the `agent-device` server kind and `agentDeviceVersion` wire names.
-* Physical-iPhone cross-app steps still gate with an actionable single-app error (carried over).
+* ~~Remove the desktop iOS-signing pipeline (preferences, RPC, sidecar env)~~ — `iosToolchainProcessEnv` + the sidecar env spread are gone; the preferences/RPC/settings fields remain (marked removed, slated for deletion) and are shared between the settings twins via one component.
+* ~~Decide whether `/devices/ios-runner/*` 410s stay~~ — kept (status body dual-shape + `ios-runner-removed.test.ts`); the `agent-device` server kind and `agentDeviceVersion` wire names stay for old payloads.
+* Physical-iPhone cross-app steps now return 409 (`SingleAppScopeError` in `/action`) instead of a 500 — behavior carried over and hardened.
 
 ---
 
@@ -41,7 +65,7 @@ License: Argent source Apache-2.0; `bin/<platform>/simulator-server`, `bin/darwi
 | readiness | `doctor --remote` / `--platform` (`domains/agent-device/runtime.ts:155,185`) | `argent server status` + `list-devices`; keep `doctor` shape, new hints |
 | connect | open named session (`domains/devices/session.ts:195,204`) | `launch-app --udid --bundleId` registers target; no persistent named session; ActiveSession stores `{udid, bundleId}` |
 | disconnect | `close --session` (`session.ts:173,277`) | `stop-simulator-server` per-device only where owned; otherwise clear registry (never `stop-all-simulator-servers` implicitly) |
-| screen tree | `snapshot -i` (`session.ts:335`) | `describe --udid` (AX/uiautomator, frames 0–1); map to 0–1000 cleaned tree. Cache last tree since each Argent action already returns one |
+| screen tree | `snapshot -i` (`session.ts:335`) | `describe --udid` (AX/uiautomator, frames 0–1); map to 0–1000 cleaned tree. **No tree cache:** Argent actions return receipts (`gesture-tap` → `{tapped, timestampMs}`), not trees — every screen read goes through `describe` |
 | screenshot | `screenshot path` (`session.ts:405,429`) | `screenshot --udid [--scale]` |
 | tap/double | `press x y` (`session.ts:601,605`) | `gesture-tap --udid --x 0-1 --y 0-1 [--clickCount]`; divide Yoqa 0–1000 by 1000 |
 | swipe/scroll | swipe args | `gesture-swipe --fromX/--fromY/--toX/--toY --durationMs --momentum`; `momentum:false` for deterministic settle loops |
@@ -69,7 +93,7 @@ New `services/runner/src/domains/argent/` adapter:
 
 Runner:
 
-* `services/runner/src/domains/argent/cli.ts` (new), `runtime.ts` (new), `devices-map.ts` (new: describe->cleaned tree)
+* `services/runner/src/domains/argent/cli.ts` (new), `runtime.ts` (new), `screen.ts` (new: describe->cleaned tree), `list-devices.ts` (new: shared list parsing), `devices.ts`
 * `services/runner/src/domains/devices/session.ts`, `screen.ts`, `interaction.ts`, `application.ts` — swap calls, keep signatures
 * `services/runner/src/domains/devices/active-session.ts` — drop steal path
 * `services/runner/src/domains/builds/application.ts` — install via `reinstall-app`
@@ -91,7 +115,7 @@ Desktop/docs:
 | Type+Enter | single `run-sequence`, never two bare `keyboard` calls (screenshot/secret semantics) |
 | Swipe determinism | scroll-to-element loops use `momentum:false` + `durationMs>=150` |
 | Disconnect | never call `stop-all-simulator-servers` from disconnect path |
-| Telemetry | `argent telemetry disable` documented; `--no-telemetry` noted for team installs |
+| Telemetry | `argent telemetry disable` documented (`--scope global\|project`); team installs use `--scope project` — there is no `--no-telemetry` flag |
 
 ## 6. Verification
 

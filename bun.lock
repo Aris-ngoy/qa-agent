@@ -111,7 +111,6 @@
         "@ai-sdk/openai": "^4.0.30",
         "@ai-sdk/xai": "^4",
         "@typesafe-ai/sdk": "^0.6.0",
-        "agent-device": "^0.21.6",
         "ai": "^7.0.37",
         "drizzle-orm": "^0.45.2",
         "hono": "^4.13.0",
@@ -509,8 +508,6 @@
     "@yoqa/ui": ["@yoqa/ui@workspace:packages/ui"],
 
     "agent-base": ["agent-base@7.1.4", "", {}, "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ=="],
-
-    "agent-device": ["agent-device@0.21.6", "", { "peerDependencies": { "ai": "^6.0.0 || ^7.0.0" }, "optionalPeers": ["ai"], "bin": { "agent-device": "bin/agent-device.mjs" } }, "sha512-p0tYqpU0pATvcblhwmUaq4ayi7EQ74wU5lK5kceCrhF8R5nYqQe3OTA3cxpyN/seIRtRUgVLvpJbRB0CPkFauA=="],
 
     "ai": ["ai@7.0.37", "", { "dependencies": { "@ai-sdk/gateway": "4.0.28", "@ai-sdk/provider": "4.0.3", "@ai-sdk/provider-utils": "5.0.12" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-stF+SEQJgKY3Qfe3FwNzqUrehHviOp2l7LemoI8YMOa0Zk5PxKsRNgUk3cHXz0RAue9RRyCAis2fz6LSCP6EKw=="],
 

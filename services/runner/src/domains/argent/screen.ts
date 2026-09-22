@@ -34,7 +34,8 @@ function firstGroup(re: RegExp, text: string): string | undefined {
 	return match?.[1];
 }
 
-function toGrid(value: number): number {
+/** Argent wire fraction (0.0–1.0) → 0–1000 window grid coord. */
+function fractionToGrid(value: number): number {
 	return Math.round(value * 1000);
 }
 
@@ -68,7 +69,12 @@ export function parseArgentDescribe(description: string): SnapshotNode[] {
 			...(label ? { label } : {}),
 			...(value ? { value } : {}),
 			...(identifier ? { identifier } : {}),
-			rect: { x: toGrid(fx), y: toGrid(fy), width: toGrid(fw), height: toGrid(fh) },
+			rect: {
+				x: fractionToGrid(fx),
+				y: fractionToGrid(fy),
+				width: fractionToGrid(fw),
+				height: fractionToGrid(fh),
+			},
 		});
 	}
 	return nodes;

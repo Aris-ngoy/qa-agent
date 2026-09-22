@@ -1,21 +1,5 @@
 import type { Device, DeviceKind, DevicePlatform } from "@yoqa/runner-client";
-import { runArgentTool } from "./cli";
-
-type ArgentListEntry = {
-	platform?: unknown;
-	udid?: unknown;
-	serial?: unknown;
-	id?: unknown;
-	name?: unknown;
-	kind?: unknown;
-	state?: unknown;
-	runtime?: unknown;
-	model?: unknown;
-};
-
-function asString(value: unknown): string | null {
-	return typeof value === "string" && value.trim() ? value.trim() : null;
-}
+import { type ArgentListEntry, asString, listArgentEntries } from "./list-devices";
 
 function mapKind(entry: ArgentListEntry, platform: DevicePlatform): DeviceKind {
 	const kind = asString(entry.kind)?.toLowerCase() ?? "";
@@ -71,14 +55,8 @@ export async function listArgentDevices(
 	platform: DevicePlatform,
 	options: { includeUnavailable?: boolean } = {},
 ): Promise<Device[]> {
-	const data = (await runArgentTool("list-devices", [], { timeoutMs: 60_000 })) as {
-		devices?: unknown;
-	};
-	const raw = Array.isArray(data?.devices) ? (data.devices as unknown[]) : [];
 	const devices: Device[] = [];
-	for (const item of raw) {
-		if (typeof item !== "object" || item === null) continue;
-		const entry = item as ArgentListEntry;
+	for (const entry of await listArgentEntries()) {
 		if (entry.platform !== platform) continue;
 		const device = toDevice(entry, platform);
 		if (!device) continue;

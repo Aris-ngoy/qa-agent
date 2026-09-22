@@ -28,7 +28,8 @@ async function probeArgent(): Promise<{ version: string | null; path: string | n
 	const path = await which("argent");
 	const version = await argentVersion();
 	if (version) return { version, path };
-	// Fall back to the workspace-local binary resolved without PATH.
+	// Fall back to the resolved binary (global user install or PATH) when
+	// `which` found nothing on PATH.
 	try {
 		const { resolveArgentBin } = await import("./cli");
 		const bin = await resolveArgentBin();

@@ -6,9 +6,9 @@ Give operators a Play-adjacent control to list/stop/restart the yoqa-runner and 
 
 ## Plan summary
 
-- **Servers scope:** yoqa-runner and the active device session (agent-device owns the device backend; there is no local Appium process).
+- **Servers scope:** yoqa-runner and the active device session (Argent owns the device backend; there is no local Appium process).
 - **Stop all safety:** disconnects the device session; does **not** kill yoqa-runner (would brick the live UI). Runner Stop/Restart goes through desktop RPC with confirmation.
-- **Doctor:** one report schema for CLI, Play-adjacent Doctor tab, and Settings Diagnostics — runtime checks, host probes, agent-device doctor, and ordered repair steps.
+- **Doctor:** one report schema for CLI, Play-adjacent Doctor tab, and Settings Diagnostics — runtime checks, host probes, Argent tool-server/doctor probes, and ordered repair steps.
 
 Rejected: killing the runner from `POST /servers/stop-all`, and auto-running full doctor on every boot beyond existing splash `ensureRuntime`.
 

@@ -2,7 +2,7 @@
 
 **Product:** Yoqa (`yoqa.ai`) · **Code name:** `qa-agent`
 
-This document is the product design and build architecture for Yoqa: desktop + local runner + agent-device + agent skill, with optional cloud later.
+This document is the product design and build architecture for Yoqa: desktop + local runner + Argent + agent skill, with optional cloud later.
 
 Related: public docs in [`apps/docs/`](apps/docs/) (Mintlify) and engineering notes under [`docs/`](docs/).
 
@@ -10,7 +10,7 @@ Related: public docs in [`apps/docs/`](apps/docs/) (Mintlify) and engineering no
 
 ## 1. Product thesis
 
-**Visual, natural-language mobile QA.** An agent tests iOS/Android apps and games from screenshots (and optional cleaned accessibility trees for coding agents), without locator scripts. Device control is **agent-device under the hood** (snapshots with refs, semantic selectors, gestures): the runner shells out to the `agent-device` CLI.
+**Visual, natural-language mobile QA.** An agent tests iOS/Android apps and games from screenshots (and optional cleaned accessibility trees for coding agents), without locator scripts. Device control is **Argent under the hood** (screen trees with refs, semantic selectors, gestures): the runner shells out to the `argent` CLI.
 
 Two complementary modes:
 
@@ -25,17 +25,17 @@ Two complementary modes:
 
 ### 2.1 Desktop app (macOS)
 
-- Local host for agent-device sessions
+- Local host for device sessions (Argent manages its own runner/tool-server)
 - Account sign-in (cloud features, grounding, test management)
 - Settings → Tools: **Install CLI**, **Install skill** (`yoqa-testing`)
 - Local device / simulator browsing and connection
 - Dashboard-like UX for apps, cases, runs, builds (also mirrored in web)
 - Auto-update (Electrobun updater via CDN)
 
-### 2.2 Device layer (agent-device)
+### 2.2 Device layer (Argent)
 
-- Discover iOS devices & simulators / Android devices & emulators (`agent-device devices`)
-- Connect session to a device id (`agent-device open` per device, one named session each)
+- Discover iOS devices & simulators / Android devices & emulators (`argent run list-devices`)
+- Connect a session to a device id (validated via `list-devices`; Argent owns its own tool-server sessions)
 - Install / launch apps from local builds (`.ipa`, `.app`, `.apk`)
 - Screenshot capture
 - Raw snapshot JSON (`screen --full`)
@@ -48,7 +48,7 @@ Two complementary modes:
 | API | Purpose | Cost (docs) |
 |-----|---------|-------------|
 | `screen` | Cleaned element tree + relative coords 0–1000 | ~1× tokens |
-| `screen --full` | Raw agent-device snapshot JSON | ~7× |
+| `screen --full` | Raw Argent screen snapshot JSON | ~7× |
 | `screenshot` | PNG for vision | ~2× |
 
 ### 2.4 Automatic grounding
@@ -134,7 +134,7 @@ Product must support:
 
 ## 3. Reference architecture (how we build it)
 
-Desktop + local runner + agent-device + optional cloud, implemented in **TypeScript throughout** — Electrobun desktop, Bun runner.
+Desktop + local runner + Argent + optional cloud, implemented in **TypeScript throughout** — Electrobun desktop, Bun runner.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -149,12 +149,12 @@ Desktop + local runner + agent-device + optional cloud, implemented in **TypeScr
 │  /devices /screen /action   │        │ Builds · Runs · Billing  │
 │  /apps /cases /runs (proxy) │───────►│ Grounding · Agent LLM    │
 │ Domain services             │        │ Cloud device farm        │
-│ agent-device CLI adapter    │        │ Object storage (S3)      │
+│ Argent CLI adapter          │        │ Object storage (S3)      │
 └─────────────┬───────────────┘        └────────────┬─────────────┘
-              │ CLI subprocess (`--json`)             │
+              │ CLI subprocess (`argent run … --json`)│
               ▼                                       ▼
 ┌─────────────────────────────┐        ┌──────────────────────────┐
-│ agent-device (npm/global)   │        │ Remote devices           │
+│ Argent (npm/global)         │        │ Remote devices           │
 │ iOS sim/devices │ Android   │        │ Video/screenshot ingest  │
 └─────────────────────────────┘        └──────────────────────────┘
 ```
@@ -169,8 +169,8 @@ Desktop + local runner + agent-device + optional cloud, implemented in **TypeScr
 | Styling / lint | **Tailwind CSS v4 + Biome** | Shared UI + fast lint/format |
 | Local runner | **Bun + Hono + Zod + Drizzle/SQLite** | Same language as desktop/CLI; local catalog in `~/.yoqa/yoqa.db` |
 | CLI | **commander** in `packages/cli` (`yoqa` on npm) → HTTP | Thin Node/npx client over localhost runner |
-| Device control | **agent-device CLI** (`npm i -g agent-device`) | Snapshots with refs, gestures, installs; no driver management |
-| Runtime bundle | Host Node 22+ + agent-device on PATH | User installs one npm package; runner shells out |
+| Device control | **Argent CLI** (`npm i -g @swmansion/argent`) | Screen trees, gestures, app lifecycle; Argent manages its own runner |
+| Runtime bundle | Host Node 22+ + Argent on PATH | User installs one npm package; runner shells out |
 | Local catalog | **SQLite via Drizzle** in runner | Apps, cases, flows, tags, AI providers (Phase 3+); devices stay live-discovered |
 | Cloud API | Later (TanStack Start web + API of choice) | Cases/runs/billing sync — out of Phase 1 |
 | Auth / user data | Later | Phase 1 is local-only, no login |
@@ -181,7 +181,7 @@ Desktop + local runner + agent-device + optional cloud, implemented in **TypeScr
 ### 3.2 Process model (local)
 
 1. User launches desktop app → Electrobun starts **runner sidecar** (`@yoqa/runner`).
-2. Runner shells out to the **agent-device CLI** (workspace `node_modules/.bin`, then `PATH`).
+2. Runner shells out to the **Argent CLI** (global user installs — `~/.bun/bin`, `~/.local/bin`, Homebrew — then `PATH`).
 3. CLI / UI call `http://127.0.0.1:<port>/…` via `@yoqa/runner-client`.
 4. Cloud calls (auth, grounding, cases sync, agent run orchestration) go to `api.*` with user token (post–Phase 1).
 5. For `runs create`, runner resolves AI auth via `resolveActiveProviderAuth()` (local BYO provider instances from Settings → Provider: Anthropic/OpenAI API keys, Claude/Codex CLI, OpenCode, GitHub Copilot) or later streams screenshots to a cloud agent with a user token.
@@ -194,15 +194,15 @@ Modular layout under the runner:
 
 ```
 services/runner/src/
-  index.ts                # Hono app (no managed device server; agent-device owns sessions)
+  index.ts                # Hono app (no managed device server; Argent owns its tool-server)
   settings.ts
   domains/
-    agent-device/         # CLI adapter (`--json` envelope), device listing, runtime readiness
+    argent/               # CLI adapter (`argent run … --json`), device listing, runtime readiness
     devices/              # list, connect, session registry
     testing/              # screen tree cleanup, actions, local runs
     builds/               # register ipa/apk, parse metadata
     apps/                 # local cache of app metadata
-    ios/                  # legacy WDA / signing prep (unused by the agent-device backend)
+    host/                 # host PATH + Android SDK env (kept through the cutover)
     providers/            # Multi-instance AI drivers (API keys / CLI / tokens; encrypted at rest)
     auth/                 # token storage, refresh (post–Phase 1)
     environment/          # CLI symlink, skill install
@@ -219,23 +219,23 @@ services/runner/src/
 
 ```text
 connect(device_id):
-  open agent-device app on the target (--udid/--serial selector, one named session)
+  validate the target via `argent run list-devices`, then launch the app (--udid selector)
   store session in ActiveSession registry
 
 action(cmd):
   if description: coords = await grounding(screenshot|tree, description)
   else: coords = normalize_0_1000_to_pixels(x,y)
-  dispatch agent-device gesture (press / swipe / fill / alert …)
+  dispatch Argent gesture (gesture-tap / swipe / keyboard / alert …)
 
 screen(cleaned=True):
-  source = agent-device snapshot -i
+  source = Argent screen tree
   if cleaned: filter noise, emit {label, type, bounds_rel_0_1000}[]
   else: return raw snapshot JSON
 ```
 
 ### 4.2 Cleaned element tree
 
-Goals: cut token cost vs the raw agent-device snapshot while keeping actionable nodes + exact relative boxes.
+Goals: cut token cost vs the raw Argent snapshot while keeping actionable nodes + exact relative boxes.
 
 Heuristics (implement iteratively):
 
@@ -305,11 +305,11 @@ CLI is a first-class peer of the UI (same local API).
 
 - Monorepo: `apps/desktop` (Electrobun+Vite+React), `services/runner` (Bun/Hono), `packages/skill`
 - Runner health endpoint; Electrobun spawns sidecar
-- Resolve agent-device CLI first (`node_modules/.bin`, then `PATH`)
+- Resolve the Argent CLI first (global user installs, then `PATH`)
 
 ### Phase 1 — Device connector MVP (core value)
 
-- agent-device session connect (sim + 1 real device each platform)
+- Device session connect (sim + 1 real device each platform)
 - `screenshot`, raw `page_source`, cleaned `screen`
 - Coordinate-based `tap/swipe/drag/input` + app lifecycle + alerts
 - `yoqa` CLI parity for device/inspect/action
@@ -348,9 +348,9 @@ CLI is a first-class peer of the UI (same local API).
 
 ### Phase 6 — Packaging polish
 
-- agent-device npm dependency + global-install guidance
+- Argent global-install guidance (`npm i -g @swmansion/argent`) + telemetry opt-out note
 - Electrobun build + DMG + updater CDN
-- agent-device readiness checks (`doctor`), Android SDK checks
+- Argent readiness checks (`doctor`), Android SDK checks
 
 ---
 
@@ -382,7 +382,7 @@ run_steps(id, run_test_id, idx, action jsonb, screenshot_uri, ok, latency_ms)
 
 - Local runner binds **localhost only**
 - Cloud API never accepts raw device control of user’s laptop without auth
-- No custom driver flags (agent-device CLI surface only)
+- No custom driver flags (Argent CLI surface only)
 - Secrets (test passwords) in app_context → encrypt at rest
 - Sandbox IAP only; document store account requirements
 - Quarantine unsigned builds; clear Gatekeeper xattrs on install helpers
@@ -394,17 +394,17 @@ run_steps(id, run_test_id, idx, action jsonb, screenshot_uri, ok, latency_ms)
 Yoqa owns its stack end-to-end:
 
 - Vision / agent prompts and provider wiring (`resolveActiveProviderAuth()`, Settings → Provider)
-- Cleaned snapshot-tree heuristics measured against real agent-device snapshots
+- Cleaned snapshot-tree heuristics measured against real Argent snapshots
 - Branding and bundle ids (`ai.yoqa.app`, `io.yoqa.WebDriverAgentRunner`, `@yoqa/*`)
 
-Product surface we ship: agent-device execution, `yoqa` CLI contract, case/flow model, dual agent modes, Electrobun packaging, and Mintlify docs + `yoqa-testing` skill.
+Product surface we ship: Argent-backed device execution, `yoqa` CLI contract, case/flow model, dual agent modes, Electrobun packaging, and Mintlify docs + `yoqa-testing` skill.
 
 ---
 
 ## 10. Immediate next engineering tasks
 
 1. Scaffold monorepo (`desktop` + `runner` + `skill`) — Bun + Turborepo.
-2. Implement `DeviceSession` + agent-device CLI adapter.
+2. Implement `DeviceSession` + Argent CLI adapter.
 3. Implement cleaned `screen` + coordinate actions.
 4. Wire `yoqa` CLI → local Hono runner.
 5. Add Electrobun window that shows connection status and Install CLI.
@@ -413,19 +413,19 @@ Product surface we ship: agent-device execution, `yoqa` CLI contract, case/flow 
 
 ## 11. Sequence diagrams (core paths)
 
-### 11.1 agent-device session connect
+### 11.1 Device session connect
 
 ```mermaid
 sequenceDiagram
   participant CLI as CLI / Desktop
   participant R as Local Runner
-  participant A as agent-device CLI
+  participant A as Argent CLI
   participant D as Device / Sim
 
   CLI->>R: POST /devices/connect {device_id, caps?}
   R->>R: resolve platform + udid
   R->>R: merge defaults ∪ app.caps
-  R->>A: open app on device (named session)
+  R->>A: validate target + launch app (list-devices, --udid)
   A->>D: platform automation
   D-->>A: session ready
   A-->>R: session
@@ -440,7 +440,7 @@ sequenceDiagram
   participant CLI as CLI
   participant R as Local Runner
   participant G as Cloud Grounding
-  participant A as agent-device
+  participant A as Argent
 
   CLI->>R: POST /action/tap {description}
   R->>A: screenshot / snapshot
@@ -460,7 +460,7 @@ sequenceDiagram
   participant CLI as CLI / UI
   participant R as Local Runner
   participant C as Cloud Agent API
-  participant A as agent-device
+  participant A as Argent
 
   CLI->>R: POST /runs {case_ids, build?}
   R->>R: install build if needed + merge case caps
@@ -500,8 +500,9 @@ repo/
 │           ├── settings.ts           # listen host/port/version (not product prefs)
 │           ├── domains/
 │           │   ├── devices/          # Device Session, Screen, Action, Active Session
-│           │   ├── agent-device/     # agent-device CLI adapter + runtime readiness
-│           │   ├── ios/              # legacy WDA / signing prep (unused)
+│           │   ├── argent/          # Argent CLI adapter + runtime readiness
+│           │   ├── doctor/          # doctor report + repairs
+│           │   ├── host/            # host PATH + Android SDK env (kept through the cutover)
 │           │   ├── providers/        # Provider adapters + vision completion
 │           │   ├── runs/             # Run orchestration + Case executor + agent prompts
 │           │   ├── catalog/          # apps, cases, flows
@@ -521,7 +522,7 @@ repo/
 |--------|------|
 | `devices/` Device Session | create/attach, gestures, screenshots, Dead Session errors; Active Session registry |
 | `devices/` Screen & Action | `getScreen`, `performAction` (incl. Grounding) |
-| `agent-device/` | CLI subprocess adapter (sessions, snapshots, actions, installs) + runtime readiness |
+| `argent/` | Argent subprocess adapter (`argent run … --json`; sessions, screen trees, gestures, installs) + runtime readiness |
 | `providers/` | probe/validate/listModels + optional decide/ground; catalog for Settings UI |
 | `runs/` Case executor | one case with injected session/decide/clock/abort; uses Screen & Action |
 | `packages/cli` | thin HTTP client to local runner |
@@ -548,7 +549,7 @@ Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done
 | [Writing test cases](https://docs.yoqa.ai/guide/writing-test-cases) | app_context, reusable flows | [ ] |
 | Local vs cloud | capability matrix | [ ] |
 | Cloud / Cloud builds / CI/CD | farm, upload, pipeline | [ ] |
-| Device capabilities (removed) | ~~merge + autoLaunch/activity~~ — custom driver caps were an Appium concept; the agent-device backend needs none | [x] |
+| Device capabilities (removed) | ~~merge + autoLaunch/activity~~ — custom driver caps were an Appium concept; the Argent backend needs none | [x] |
 | Best practices: [state](https://docs.yoqa.ai/guide/best-practices-app-state), [cross-app](https://docs.yoqa.ai/guide/best-practices-cross-app), [cross-platform](https://docs.yoqa.ai/guide/best-practices-cross-platform), [games](https://docs.yoqa.ai/guide/best-practices-games), [IAP](https://docs.yoqa.ai/guide/best-practices-iap), [non-native](https://docs.yoqa.ai/guide/best-practices-non-native-ui) | product behaviors / guides | [ ] |
 
 ### Public API (planned)

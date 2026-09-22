@@ -1,7 +1,8 @@
 import type { DeviceKind, DevicePlatform } from "@yoqa/runner-client";
 import type { CapturedFrame, PointerPhase, SnapshotNode } from "../devices/session";
 import { DeadSessionError } from "../devices/session";
-import { isDeadArgentSessionError, runArgentTool } from "./cli";
+import { ArgentError, MIN_ARGENT_VERSION, isDeadArgentSessionError, runArgentTool } from "./cli";
+import { listArgentEntries, matchesDeviceId } from "./list-devices";
 import { argentCaptureFrame, argentScreenshot, argentSnapshotNodes } from "./screen";
 
 export { isDeadArgentSessionError };
@@ -89,7 +90,7 @@ function toFraction(norm: number): number {
 }
 
 /** Grid coord clamped for pointer bookkeeping (mirrors `toPx` clamping). */
-function toGrid(norm: number): number {
+function clampToGrid(norm: number): number {
 	return Math.round(Math.min(1000, Math.max(0, norm)));
 }
 
@@ -133,8 +134,10 @@ export type ArgentDeviceSession = {
 	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	type: (text: string) => Promise<void>;
 	/**
-	 * Argent 0.25.2 has no bare terminate tool — always throws an explicit
-	 * unsupported error (ticket-5 gap). Use `restartApp` for a clean relaunch.
+	 * Calls `argent run terminate-app`. Argent 0.25.2 ships no bare terminate
+	 * tool, so this rethrows the tool-not-found `ArgentError` with an
+	 * actionable hint (use `restartApp` for a clean terminate+relaunch) —
+	 * never a silent success.
 	 */
 	terminateApp: (appId: string) => Promise<void>;
 	restartApp: (appId: string) => Promise<void>;
@@ -150,6 +153,12 @@ export type ArgentDeviceSession = {
 	home: () => Promise<void>;
 	/** Device keyboard control (`keyboard --key escape|enter`). */
 	keyboard: (action: "dismiss" | "enter") => Promise<void>;
+	/**
+	 * Settle helper for the case executor: block until the screen stops
+	 * changing (`await-screen-idle`, block-until-stable). `timeoutMs` caps
+	 * the wait; failures are non-fatal for callers (they settle with a sleep).
+	 */
+	awaitScreenIdle: (timeoutMs: number) => Promise<void>;
 	/**
 	 * Settle helper for the case executor: blocks until the UI element reaches
 	 * the expected state (`await-ui-element`).
@@ -205,32 +214,10 @@ function unknownDeviceError(options: ArgentSessionOptions): Error {
 	);
 }
 
-type ArgentDeviceEntry = {
-	udid?: unknown;
-	serial?: unknown;
-	id?: unknown;
-};
-
-function normalizeDeviceEntries(data: unknown): ArgentDeviceEntry[] {
-	const raw =
-		// `list-devices` returns `{ devices: [...] }`; tolerate a bare array.
-		(Array.isArray(data) ? data : (data as { devices?: unknown } | null)?.devices) ?? [];
-	if (!Array.isArray(raw)) return [];
-	return raw.filter(
-		(entry): entry is ArgentDeviceEntry => typeof entry === "object" && entry !== null,
-	);
-}
-
-function matchesDeviceId(entry: ArgentDeviceEntry, deviceId: string): boolean {
-	return [entry.udid, entry.serial, entry.id].some(
-		(candidate) => typeof candidate === "string" && candidate === deviceId,
-	);
-}
-
 /** Validate the target is visible to Argent before launching. */
 async function ensureDevicePresent(options: ArgentSessionOptions): Promise<void> {
-	const data = await runArgentTool("list-devices", [], { timeoutMs: LIST_TIMEOUT_MS });
-	if (!normalizeDeviceEntries(data).some((entry) => matchesDeviceId(entry, options.deviceId))) {
+	const entries = await listArgentEntries({ timeoutMs: LIST_TIMEOUT_MS });
+	if (!entries.some((entry) => matchesDeviceId(entry, options.deviceId))) {
 		throw unknownDeviceError(options);
 	}
 }
@@ -267,6 +254,18 @@ function isPhysicalIPhone(options: ArgentSessionOptions): boolean {
 	return options.platform === "ios" && options.kind === "physical";
 }
 
+/**
+ * Physical-iPhone single-app scope violation — the HTTP layer maps this to
+ * 409 (conflict) instead of a generic 500, so the caller gets an actionable
+ * "launch-app first / connect with bundleId" message.
+ */
+export class SingleAppScopeError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "SingleAppScopeError";
+	}
+}
+
 function assertSingleAppScope(
 	options: ArgentSessionOptions,
 	registered: string,
@@ -274,7 +273,7 @@ function assertSingleAppScope(
 ): void {
 	if (!requested || !isPhysicalIPhone(options)) return;
 	if (requested === registered || requested === SPRINGBOARD_BUNDLE_ID) return;
-	throw new Error(
+	throw new SingleAppScopeError(
 		`Physical iPhone is single-app scoped to ${registered} — launch-app ${requested} first (connect with bundleId ${requested}).`,
 	);
 }
@@ -473,22 +472,34 @@ export async function createArgentDeviceSession(
 	};
 
 	const type = async (text: string) => {
-		if (hasSecretPlaceholder(text)) {
-			// A `{{secret:NAME}}` placeholder resolves server-side; keep the
-			// whole keystroke in one `run-sequence` step so the after-typing
-			// auto-capture is suppressed for the submission too.
-			const steps = JSON.stringify([{ tool: "keyboard", args: { text } }]);
+		// Secret placeholders resolve server-side, and a trailing/embedded
+		// newline means type+enter — both ride a single `run-sequence` so the
+		// submission is one atomic keystroke run (never two bare `keyboard`
+		// calls), keeping the after-typing auto-capture suppressed for it.
+		const segments = text.split("\n");
+		const needsSequence = hasSecretPlaceholder(text) || segments.length > 1;
+		if (!needsSequence) {
 			await locked(async () => {
-				await runArgentTool("run-sequence", ["--udid", options.deviceId, "--steps-json", steps], {
+				await runArgentTool("keyboard", ["--udid", options.deviceId, "--text", text], {
 					timeoutMs: ACTION_TIMEOUT_MS,
 				});
 			});
 			return;
 		}
+		const steps: Array<{ tool: string; args: Record<string, string> }> = [];
+		for (let i = 0; i < segments.length; i++) {
+			const segment = segments[i];
+			if (segment) steps.push({ tool: "keyboard", args: { text: segment } });
+			// Every newline becomes an explicit enter — `"hello\n"` is one
+			// run-sequence of [keyboard text, keyboard key enter].
+			if (i < segments.length - 1) steps.push({ tool: "keyboard", args: { key: "enter" } });
+		}
 		await locked(async () => {
-			await runArgentTool("keyboard", ["--udid", options.deviceId, "--text", text], {
-				timeoutMs: ACTION_TIMEOUT_MS,
-			});
+			await runArgentTool(
+				"run-sequence",
+				["--udid", options.deviceId, "--steps-json", JSON.stringify(steps)],
+				{ timeoutMs: ACTION_TIMEOUT_MS },
+			);
 		});
 	};
 
@@ -603,10 +614,24 @@ export async function createArgentDeviceSession(
 	};
 
 	const terminateApp = async (appId: string): Promise<void> => {
-		void appId;
-		throw new Error(
-			"terminateApp is not supported by Argent 0.25.2 (no bare terminate tool) — use restartApp(appId) for a clean terminate+relaunch.",
-		);
+		await locked(async () => {
+			try {
+				await runArgentTool("terminate-app", ["--udid", options.deviceId, "--bundleId", appId], {
+					timeoutMs: ACTION_TIMEOUT_MS,
+				});
+			} catch (error) {
+				// Argent 0.25.2 ships no bare terminate tool — surface the real
+				// tool-not-found error with a next step instead of pretending.
+				if (error instanceof ArgentError && /tool ".+" not found/i.test(error.message)) {
+					throw new ArgentError(
+						`${error.message} — terminateApp is not supported by Argent ${MIN_ARGENT_VERSION}: use restartApp(appId) for a clean terminate+relaunch.`,
+						"UNSUPPORTED",
+						"Use restartApp(appId) — it terminates then relaunches in one step.",
+					);
+				}
+				throw error;
+			}
+		});
 	};
 
 	const restartApp = async (appId: string) => {
@@ -730,6 +755,27 @@ export async function createArgentDeviceSession(
 
 	const isPointerActive = (): boolean => gate.isPointerActive();
 
+	const awaitScreenIdle = async (timeoutMs: number): Promise<void> => {
+		await guard(async () => {
+			await runArgentTool(
+				"await-screen-idle",
+				[
+					"--udid",
+					options.deviceId,
+					"--timeoutMs",
+					String(Math.max(0, Math.round(timeoutMs))),
+					"--pollIntervalMs",
+					"200",
+					"--minStableMs",
+					"250",
+				],
+				// The tool blocks until stable; give it its own budget plus slack
+				// for the poll loop rather than the fixed action timeout.
+				{ timeoutMs: Math.max(0, Math.round(timeoutMs)) + 30_000 },
+			);
+		});
+	};
+
 	const pointerEvent = async (
 		phase: PointerPhase,
 		xNorm: number,
@@ -737,8 +783,8 @@ export async function createArgentDeviceSession(
 		seq: number,
 	): Promise<void> => {
 		void seq;
-		const x = toGrid(xNorm);
-		const y = toGrid(yNorm);
+		const x = clampToGrid(xNorm);
+		const y = clampToGrid(yNorm);
 		if (phase === "begin") {
 			gate.begin(x, y);
 			return;
@@ -795,6 +841,7 @@ export async function createArgentDeviceSession(
 		scroll,
 		home,
 		keyboard,
+		awaitScreenIdle,
 		waitFor,
 		withActionLock,
 		pointerEvent,

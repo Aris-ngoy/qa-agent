@@ -35,6 +35,7 @@ import type {
 	XcodeInstallation,
 } from "../../../shared/ios-toolchain";
 import { ProvidersSection } from "./providers/providers-section";
+import { RunnerSigningRemoved } from "./runner-signing-removed";
 
 type SettingsSection = "ios" | "android" | "cli" | "provider" | "diagnostics";
 type IdentityFilter = "all" | SigningTier;
@@ -451,33 +452,14 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 			</SectionCard>
 
 			<SectionCard>
-				<h3 className="text-subheading font-semibold text-on-surface">Runner Signing (removed)</h3>
-				<p className="mt-1 mb-3 text-body-md text-on-surface-variant">
-					Argent manages its own runner since the backend cutover, so these signing settings are no
-					longer used and will be removed.
-				</p>
-				<p className="mb-3 text-body-md text-on-surface-variant">
-					Team ID:{" "}
-					<span className="font-mono text-body-sm text-on-surface">
-						{teamId ?? "select a signing identity above"}
-					</span>
-				</p>
-				<TextField
-					aria-label="Runner bundle id"
-					className="w-full"
-					onChange={setBundleId}
-					value={bundleId}
-				>
-					<Input
-						className="h-12 w-full rounded-xl border border-outline-variant bg-surface-container px-3.5 font-mono text-body-sm shadow-none"
-						onBlur={handleBundleBlur}
-						onFocus={() => setBundleFocused(true)}
-						placeholder="com.yourname.agentdevice.runner"
-					/>
-					<Description className="mt-1.5 text-helper text-on-surface-variant">
-						No longer used — Argent manages its own runner.
-					</Description>
-				</TextField>
+				<RunnerSigningRemoved
+					bundleId={bundleId}
+					inputSurfaceClass="bg-surface-container"
+					onBundleBlur={handleBundleBlur}
+					onBundleChange={setBundleId}
+					onBundleFocus={() => setBundleFocused(true)}
+					teamId={teamId}
+				/>
 			</SectionCard>
 		</div>
 	);

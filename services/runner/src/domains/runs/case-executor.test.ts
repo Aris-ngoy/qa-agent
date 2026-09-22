@@ -11,6 +11,7 @@ function fakeSession(shotCount = { n: 0 }): DeviceSession {
 			shotCount.n += 1;
 			return { path: `/tmp/shot-${shotCount.n}.png`, base64: "aaa" };
 		},
+		awaitScreenIdle: async () => {},
 	} as unknown as DeviceSession;
 }
 
@@ -86,6 +87,84 @@ describe("executeScriptCase", () => {
 		expect(steps).toHaveLength(2);
 		expect(steps[0]?.action).toMatchObject({ type: "tap", x: 100, y: 200 });
 		expect(steps[1]?.action).toMatchObject({ type: "done" });
+	});
+
+	it("settle waits for await-screen-idle then holds the fixed sleep", async () => {
+		const idleBudgets: number[] = [];
+		const sleeps: number[] = [];
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "tap", x: 100, y: 200, reason: "tap login" }],
+		};
+
+		const status = await executeScriptCase({
+			script,
+			session: {
+				screenshot: async () => ({ path: "/tmp/shot.png", base64: "aaa" }),
+				awaitScreenIdle: async (ms: number) => {
+					idleBudgets.push(ms);
+				},
+			} as unknown as DeviceSession,
+			isAborted: () => false,
+			appendStep: async () => {},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async (ms) => {
+					sleeps.push(ms);
+				},
+				now: () => 1000,
+			},
+			settleMs: 10,
+		});
+
+		expect(status).toBe("passed");
+		expect(idleBudgets).toEqual([10]);
+		expect(sleeps).toEqual([10]);
+	});
+
+	it("settle still sleeps when await-screen-idle is missing or rejects", async () => {
+		const sleeps: number[] = [];
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "tap", x: 100, y: 200, reason: "tap login" }],
+		};
+		const clock = {
+			sleep: async (ms: number) => {
+				sleeps.push(ms);
+			},
+			now: () => 1000,
+		};
+
+		// No awaitScreenIdle at all (partial fake) — TypeError is absorbed.
+		await executeScriptCase({
+			script,
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock,
+			settleMs: 7,
+		});
+
+		// awaitScreenIdle exists but rejects — settle must not throw.
+		await executeScriptCase({
+			script,
+			session: {
+				screenshot: async () => ({ path: "/tmp/shot.png", base64: "aaa" }),
+				awaitScreenIdle: async () => {
+					throw new Error("tool-server unreachable");
+				},
+			} as unknown as DeviceSession,
+			isAborted: () => false,
+			appendStep: async () => {},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock,
+			settleMs: 7,
+		});
+
+		expect(sleeps).toEqual([7, 7]);
 	});
 
 	it("replays label taps and visible asserts", async () => {
@@ -502,6 +581,7 @@ describe("executeAgentCase", () => {
 				const base64 = shot === 1 ? "moving-1" : "stable";
 				return { path: `/tmp/shot-${shot}.png`, base64 };
 			},
+			awaitScreenIdle: async () => {},
 		} as unknown as DeviceSession;
 
 		const result = await executeAgentCase({
