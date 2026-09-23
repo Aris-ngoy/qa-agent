@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { ArgentError, isDeadArgentSessionError } from "../argent/cli";
 
 let delegateCalls: Array<Record<string, unknown>> = [];
@@ -15,6 +15,13 @@ mock.module("../argent/session", () => ({
 }));
 
 const { DeadSessionError, createDeviceSession, isDeadSessionError } = await import("./session");
+
+// `mock.module` leaks across test files on Bun versions with a global mock
+// registry (CI pins 1.2.x) — this file's `../argent/session` fake must not
+// survive into later files (e.g. active-session.test.ts needs the real chain).
+afterAll(() => {
+	mock.restore();
+});
 
 beforeEach(() => {
 	delegateCalls = [];

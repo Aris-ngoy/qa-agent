@@ -105,6 +105,9 @@ jobs:
         working-directory: examples/expo-demo
         run: npm ci
 
+      - name: Install Argent CLI
+        run: npm install -g @swmansion/argent
+
       - name: Start Yoqa runner
         run: |
           yoqa health
@@ -279,6 +282,9 @@ jobs:
         if: steps.demo-apk.outputs.cache-hit != 'true'
         working-directory: examples/expo-demo
         run: npm ci
+
+      - name: Install Argent CLI
+        run: npm install -g @swmansion/argent
 
       - name: Start Yoqa runner
         run: |
