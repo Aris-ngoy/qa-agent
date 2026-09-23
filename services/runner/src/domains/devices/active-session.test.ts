@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { ArgentError } from "../argent/cli";
 import * as actualCli from "../argent/cli";
 import { resetArgentSessionsForTests } from "../argent/session";
@@ -39,6 +39,13 @@ const {
 	isActiveSessionHeldByRun,
 	releaseSessionFromRun,
 } = await import("./active-session");
+
+// `mock.module` leaks across test files on Bun versions with a global mock
+// registry (CI pins 1.2.x) — file load order then decides which stub wins.
+// Restore this file's stubs when done so later files resolve real modules.
+afterAll(() => {
+	mock.restore();
+});
 
 beforeEach(() => {
 	// Tests always start from an explicit connect; connectDevice replaces any

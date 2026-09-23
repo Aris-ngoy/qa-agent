@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,6 +32,13 @@ const {
 	parseArgentDescribe,
 	resetArgentScreenForTests,
 } = await import("./screen");
+
+// `mock.module` leaks across test files on Bun versions with a global mock
+// registry (CI pins 1.2.x) — restore this file's stubs when done so later
+// files resolve real modules.
+afterAll(() => {
+	mock.restore();
+});
 
 const PNG_BASE64 =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";

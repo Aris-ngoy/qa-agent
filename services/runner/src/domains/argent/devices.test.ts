@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as actualCli from "./cli";
 
 let listDevicesPayload: unknown = { devices: [] };
@@ -13,6 +13,13 @@ mock.module("./cli", () => ({
 }));
 
 const { listArgentDevices } = await import("./devices");
+
+// `mock.module` leaks across test files on Bun versions with a global mock
+// registry (CI pins 1.2.x) — restore this file's stubs when done so later
+// files resolve real modules.
+afterAll(() => {
+	mock.restore();
+});
 
 beforeEach(() => {
 	listDevicesPayload = { devices: [] };

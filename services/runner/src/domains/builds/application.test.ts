@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as actualCli from "../argent/cli";
 
 let toolCalls: Array<{ tool: string; args: string[] }> = [];
@@ -13,6 +13,13 @@ mock.module("../argent/cli", () => ({
 }));
 
 const { installBuildOnDevice } = await import("./application");
+
+// `mock.module` leaks across test files on Bun versions with a global mock
+// registry (CI pins 1.2.x) — restore this file's stubs when done so later
+// files resolve real modules.
+afterAll(() => {
+	mock.restore();
+});
 
 const BUILD = {
 	id: "build_1",
