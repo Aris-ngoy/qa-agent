@@ -32,9 +32,9 @@
 - [ ] Required check **Unit tests** is green
 - [ ] Required check **Typecheck** is green
 
-Missing approval, open threads, or failing/pending required checks = **not mergeable**.
+Missing approval (non-owner PRs), open threads, or failing/pending required checks = **not mergeable**.
 
-Owner self-PRs may use the PR-only ruleset bypass after CI is green; do **not** bypass review for other authors.
+**Owner / CODEOWNER self-PRs:** after required CI is green, merge via the REST ruleset bypass (`gh api -X PUT repos/.../pulls/<n>/merge -f merge_method=rebase`). Do **not** wait for a second reviewer. Do **not** bypass review for other authors.
 
 ## Docs
 
