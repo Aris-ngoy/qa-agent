@@ -1,28 +1,22 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import * as actualCli from "./cli";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { resetRunArgentToolForTests, setRunArgentToolForTests } from "./cli";
+import { listArgentDevices } from "./devices";
 
 let listDevicesPayload: unknown = { devices: [] };
 
-// Stub the Argent backend so no `argent` binary is needed.
-mock.module("./cli", () => ({
-	...actualCli,
-	runArgentTool: async (toolName: string, _args: string[] = []) => {
-		if (toolName === "list-devices") return listDevicesPayload;
-		return { ok: true };
-	},
-}));
-
-const { listArgentDevices } = await import("./devices");
-
-// `mock.module` leaks across test files on Bun versions with a global mock
-// registry (CI pins 1.2.x) — restore this file's stubs when done so later
-// files resolve real modules.
 afterAll(() => {
-	mock.restore();
+	resetRunArgentToolForTests();
 });
 
 beforeEach(() => {
 	listDevicesPayload = { devices: [] };
+	// Install the stub at test-run time (not import time): `mock.module`
+	// leaks across files on Bun 1.2.x's global registry, so per-file stubs
+	// must be (re)installed sequentially before each test.
+	setRunArgentToolForTests(async (toolName: string) => {
+		if (toolName === "list-devices") return listDevicesPayload;
+		return { ok: true };
+	});
 });
 
 describe("listArgentDevices", () => {

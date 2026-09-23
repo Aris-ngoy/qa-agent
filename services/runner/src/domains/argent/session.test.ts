@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ArgentError } from "./cli";
-import * as actualCli from "./cli";
+import { DeadSessionError } from "../devices/session";
+import { ArgentError, resetRunArgentToolForTests, setRunArgentToolForTests } from "./cli";
+import { resetArgentScreenForTests } from "./screen";
+import { createArgentDeviceSession, resetArgentSessionsForTests } from "./session";
 
 type ToolCall = { tool: string; args: string[] };
 
@@ -16,10 +18,28 @@ let screenshotError: unknown = null;
 let awaitPayload: unknown = { success: true, elapsed: 120 };
 let toolErrors: Record<string, unknown> = {};
 
-// Stub the Argent backend so no `argent` binary is needed.
-mock.module("./cli", () => ({
-	...actualCli,
-	runArgentTool: async (toolName: string, args: string[] = []) => {
+afterAll(() => {
+	resetRunArgentToolForTests();
+});
+
+beforeEach(() => {
+	toolCalls = [];
+	listDevicesPayload = { devices: [{ udid: "sim-1" }] };
+	listDevicesError = null;
+	launchError = null;
+	openUrlError = null;
+	describePayload = { description: "", source: "test" };
+	describeError = null;
+	screenshotPayload = null;
+	screenshotError = null;
+	awaitPayload = { success: true, elapsed: 120 };
+	toolErrors = {};
+	resetArgentSessionsForTests();
+	resetArgentScreenForTests();
+	// Install the stub at test-run time (not import time): `mock.module`
+	// leaks across files on Bun 1.2.x's global registry, so per-file stubs
+	// must be (re)installed sequentially before each test.
+	setRunArgentToolForTests(async (toolName: string, args: string[] = []) => {
 		toolCalls.push({ tool: toolName, args: [...args] });
 		if (toolName in toolErrors) throw toolErrors[toolName];
 		if (toolName === "list-devices") {
@@ -44,34 +64,7 @@ mock.module("./cli", () => ({
 		}
 		if (toolName === "await-ui-element") return awaitPayload;
 		return { ok: true };
-	},
-}));
-
-const { createArgentDeviceSession, resetArgentSessionsForTests } = await import("./session");
-const { resetArgentScreenForTests } = await import("./screen");
-const { DeadSessionError } = await import("../devices/session");
-
-// `mock.module` leaks across test files on Bun versions with a global mock
-// registry (CI pins 1.2.x) — restore this file's stubs when done so later
-// files resolve real modules.
-afterAll(() => {
-	mock.restore();
-});
-
-beforeEach(() => {
-	toolCalls = [];
-	listDevicesPayload = { devices: [{ udid: "sim-1" }] };
-	listDevicesError = null;
-	launchError = null;
-	openUrlError = null;
-	describePayload = { description: "", source: "test" };
-	describeError = null;
-	screenshotPayload = null;
-	screenshotError = null;
-	awaitPayload = { success: true, elapsed: 120 };
-	toolErrors = {};
-	resetArgentSessionsForTests();
-	resetArgentScreenForTests();
+	});
 });
 
 function launchCalls(): ToolCall[] {
