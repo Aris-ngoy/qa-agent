@@ -1,24 +1,11 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import * as actualCli from "../argent/cli";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { resetRunArgentToolForTests, setRunArgentToolForTests } from "../argent/cli";
+import { installBuildOnDevice } from "./application";
 
 let toolCalls: Array<{ tool: string; args: string[] }> = [];
 
-// Stub the Argent backend so no `argent` binary is needed.
-mock.module("../argent/cli", () => ({
-	...actualCli,
-	runArgentTool: async (toolName: string, args: string[] = []) => {
-		toolCalls.push({ tool: toolName, args: [...args] });
-		return { ok: true };
-	},
-}));
-
-const { installBuildOnDevice } = await import("./application");
-
-// `mock.module` leaks across test files on Bun versions with a global mock
-// registry (CI pins 1.2.x) — restore this file's stubs when done so later
-// files resolve real modules.
 afterAll(() => {
-	mock.restore();
+	resetRunArgentToolForTests();
 });
 
 const BUILD = {
@@ -34,6 +21,10 @@ const BUILD = {
 
 beforeEach(() => {
 	toolCalls = [];
+	setRunArgentToolForTests(async (toolName: string, args: string[] = []) => {
+		toolCalls.push({ tool: toolName, args: [...args] });
+		return { ok: true };
+	});
 });
 
 describe("installBuildOnDevice", () => {

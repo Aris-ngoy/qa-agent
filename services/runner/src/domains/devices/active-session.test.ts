@@ -1,18 +1,34 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ArgentError } from "../argent/cli";
-import * as actualCli from "../argent/cli";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { ArgentError, resetRunArgentToolForTests, setRunArgentToolForTests } from "../argent/cli";
 import { resetArgentSessionsForTests } from "../argent/session";
+import {
+	SessionBusyError,
+	acquireSessionForRun,
+	connectDevice,
+	disconnectDevice,
+	getActiveSessionInfo,
+	isActiveSessionHeldByRun,
+	releaseSessionFromRun,
+} from "./active-session";
 
 let knownDevices: string[] = ["dev-1", "dev-2"];
 let launchCalls = 0;
 let describeDead = false;
 
-// Stub the Argent backend so no `argent` binary is needed. The tests below
-// exercise the real delegation chain (active-session -> devices/session ->
-// argent/session) with canned tool results.
-mock.module("../argent/cli", () => ({
-	...actualCli,
-	runArgentTool: async (toolName: string, _args: string[] = []) => {
+afterAll(() => {
+	resetRunArgentToolForTests();
+});
+
+beforeEach(() => {
+	// Tests always start from an explicit connect; connectDevice replaces any
+	// unheld leftover session from a previous test.
+	knownDevices = ["dev-1", "dev-2"];
+	launchCalls = 0;
+	describeDead = false;
+	resetArgentSessionsForTests();
+	// Install the stub at test-run time (not import time): `mock.module`
+	// leaks across files on Bun 1.2.x's global registry.
+	setRunArgentToolForTests(async (toolName: string) => {
 		if (toolName === "list-devices") {
 			return { devices: knownDevices.map((udid) => ({ udid })) };
 		}
@@ -27,33 +43,7 @@ mock.module("../argent/cli", () => ({
 			return { description: "", source: "test" };
 		}
 		return { ok: true };
-	},
-}));
-
-const {
-	SessionBusyError,
-	acquireSessionForRun,
-	connectDevice,
-	disconnectDevice,
-	getActiveSessionInfo,
-	isActiveSessionHeldByRun,
-	releaseSessionFromRun,
-} = await import("./active-session");
-
-// `mock.module` leaks across test files on Bun versions with a global mock
-// registry (CI pins 1.2.x) — file load order then decides which stub wins.
-// Restore this file's stubs when done so later files resolve real modules.
-afterAll(() => {
-	mock.restore();
-});
-
-beforeEach(() => {
-	// Tests always start from an explicit connect; connectDevice replaces any
-	// unheld leftover session from a previous test.
-	knownDevices = ["dev-1", "dev-2"];
-	launchCalls = 0;
-	describeDead = false;
-	resetArgentSessionsForTests();
+	});
 });
 
 describe("shared device session", () => {

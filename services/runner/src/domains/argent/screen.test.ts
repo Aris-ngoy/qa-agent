@@ -1,9 +1,15 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ArgentError } from "./cli";
-import * as actualCli from "./cli";
+import { resetRunArgentToolForTests, setRunArgentToolForTests } from "./cli";
+import {
+	argentCaptureFrame,
+	argentScreenshot,
+	argentSnapshotNodes,
+	parseArgentDescribe,
+	resetArgentScreenForTests,
+} from "./screen";
 
 type ToolCall = { tool: string; args: string[] };
 
@@ -12,32 +18,8 @@ let describePayload: unknown = { description: "", source: "test" };
 let screenshotPayload: unknown = null;
 let screenshotError: unknown = null;
 
-mock.module("./cli", () => ({
-	...actualCli,
-	runArgentTool: async (toolName: string, args: string[] = []) => {
-		toolCalls.push({ tool: toolName, args: [...args] });
-		if (toolName === "describe") return describePayload;
-		if (toolName === "screenshot") {
-			if (screenshotError) throw screenshotError;
-			return screenshotPayload;
-		}
-		throw new ArgentError(`unexpected tool in tests: ${toolName}`, "COMMAND_FAILED");
-	},
-}));
-
-const {
-	argentCaptureFrame,
-	argentScreenshot,
-	argentSnapshotNodes,
-	parseArgentDescribe,
-	resetArgentScreenForTests,
-} = await import("./screen");
-
-// `mock.module` leaks across test files on Bun versions with a global mock
-// registry (CI pins 1.2.x) — restore this file's stubs when done so later
-// files resolve real modules.
 afterAll(() => {
-	mock.restore();
+	resetRunArgentToolForTests();
 });
 
 const PNG_BASE64 =
@@ -55,6 +37,16 @@ beforeEach(() => {
 	screenshotPayload = null;
 	screenshotError = null;
 	resetArgentScreenForTests();
+	setRunArgentToolForTests(async (toolName: string, args: string[] = []) => {
+		toolCalls.push({ tool: toolName, args: [...args] });
+		if (toolName === "describe") return describePayload;
+		if (toolName === "screenshot") {
+			if (screenshotError) throw screenshotError;
+			return screenshotPayload;
+		}
+		if (toolName === "list-devices") return { devices: [] };
+		return { ok: true };
+	});
 });
 
 describe("parseArgentDescribe", () => {

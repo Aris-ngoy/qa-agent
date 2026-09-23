@@ -220,12 +220,36 @@ export async function runArgentBin(
  * Run one Argent tool (`argent run <name> …`) and return its parsed JSON result.
  * Unlike the previous backend there is no `{success, data|error}` envelope — stdout is
  * the tool result and failures arrive on stderr with a non-zero exit.
+ *
+ * Test seam: `setRunArgentToolForTests` installs a process-global override
+ * consulted first. `mock.module("./cli")` writes to Bun's process-global mock
+ * registry with no per-file teardown on 1.2.x, so top-level module mocks leak
+ * across test files in one `bun test` run (Linux CI load order hits it first,
+ * macOS APFS order hides it). The seam is installed in `beforeEach` (test-run
+ * time, sequential) instead of at import time, so each file's tests see their
+ * own stub regardless of file load order. Always `resetRunArgentToolForTests`
+ * in `afterAll`/`afterEach`.
  */
+let runArgentToolOverride: ((toolName: string, args: string[]) => Promise<unknown>) | null = null;
+
+/** Test-only: install (or clear with `null`) the `runArgentTool` stub. */
+export function setRunArgentToolForTests(
+	fn: ((toolName: string, args: string[]) => Promise<unknown>) | null,
+): void {
+	runArgentToolOverride = fn;
+}
+
+/** Test-only: drop any `runArgentTool` stub so later files hit the real backend. */
+export function resetRunArgentToolForTests(): void {
+	runArgentToolOverride = null;
+}
+
 export async function runArgentTool(
 	toolName: string,
 	args: string[] = [],
 	options: { timeoutMs?: number; bin?: string } = {},
 ): Promise<unknown> {
+	if (runArgentToolOverride) return runArgentToolOverride(toolName, [...args]);
 	const bin = options.bin ?? (await resolveArgentBin());
 	return runArgentBin(bin, ["run", toolName, ...args, "--json"], {
 		timeoutMs: options.timeoutMs,

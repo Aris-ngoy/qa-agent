@@ -1,30 +1,30 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { ArgentError, isDeadArgentSessionError } from "../argent/cli";
+import { ArgentError, resetRunArgentToolForTests, setRunArgentToolForTests } from "../argent/cli";
+import { resetArgentSessionsForTests } from "../argent/session";
+import { DeadSessionError, createDeviceSession, isDeadSessionError } from "./session";
 
-let delegateCalls: Array<Record<string, unknown>> = [];
-const fakeSession = { __fake: "argent-session" };
+type ToolCall = { tool: string; args: string[] };
 
-// Stub the Argent adapter so no `argent` binary is needed. `isDeadSessionError`
-// uses the real classifier from `argent/cli` (cycle-free).
-mock.module("../argent/session", () => ({
-	createArgentDeviceSession: async (options: Record<string, unknown>) => {
-		delegateCalls.push({ ...options });
-		return fakeSession;
-	},
-	isDeadArgentSessionError,
-}));
+let toolCalls: ToolCall[] = [];
 
-const { DeadSessionError, createDeviceSession, isDeadSessionError } = await import("./session");
-
-// `mock.module` leaks across test files on Bun versions with a global mock
-// registry (CI pins 1.2.x) — this file's `../argent/session` fake must not
-// survive into later files (e.g. active-session.test.ts needs the real chain).
 afterAll(() => {
-	mock.restore();
+	resetRunArgentToolForTests();
 });
 
 beforeEach(() => {
-	delegateCalls = [];
+	toolCalls = [];
+	resetArgentSessionsForTests();
+	// Exercise the real delegation chain (devices/session -> argent/session)
+	// with a canned backend. Installed at test-run time: `mock.module`
+	// on `../argent/session` leaks a fake session into sibling files on
+	// Bun 1.2.x's global mock registry (the CI failure this fixes).
+	setRunArgentToolForTests(async (toolName: string, args: string[] = []) => {
+		toolCalls.push({ tool: toolName, args: [...args] });
+		if (toolName === "list-devices") {
+			return { devices: [{ udid: "sim-1" }, { udid: "emu-1" }] };
+		}
+		return { ok: true };
+	});
 });
 
 describe("isDeadSessionError", () => {
@@ -48,25 +48,19 @@ describe("isDeadSessionError", () => {
 });
 
 describe("createDeviceSession", () => {
-	test("delegates to the Argent adapter and returns its session", async () => {
+	test("delegates to the Argent adapter and launches the default iOS target", async () => {
 		const session = await createDeviceSession({ platform: "ios", deviceId: "sim-1" });
-		expect(session).toBe(fakeSession as never);
-		expect(delegateCalls).toEqual([
-			{
-				platform: "ios",
-				deviceId: "sim-1",
-				kind: undefined,
-				bundleId: undefined,
-				appPackage: undefined,
-				activity: undefined,
-				onSessionDead: undefined,
-			},
-		]);
+		// Real Argent session (not a fake): has device actions and quits cleanly.
+		expect(typeof session.tap).toBe("function");
+		expect(typeof session.quit).toBe("function");
+		const launch = toolCalls.find((call) => call.tool === "launch-app");
+		expect(launch?.args).toEqual(["--udid", "sim-1", "--bundleId", "com.apple.Preferences"]);
+		await session.quit();
 	});
 
 	test("passes kind/bundle/activity through to Argent", async () => {
 		const onSessionDead = mock(() => undefined);
-		await createDeviceSession({
+		const session = await createDeviceSession({
 			platform: "android",
 			deviceId: "emu-1",
 			kind: "emulator",
@@ -74,13 +68,15 @@ describe("createDeviceSession", () => {
 			activity: ".MainActivity",
 			onSessionDead,
 		});
-		expect(delegateCalls[0]).toMatchObject({
-			platform: "android",
-			deviceId: "emu-1",
-			kind: "emulator",
-			appPackage: "com.example.app",
-			activity: ".MainActivity",
-		});
-		expect(delegateCalls[0]?.onSessionDead).toBe(onSessionDead);
+		const launch = toolCalls.find((call) => call.tool === "launch-app");
+		expect(launch?.args).toEqual([
+			"--udid",
+			"emu-1",
+			"--bundleId",
+			"com.example.app",
+			"--activity",
+			".MainActivity",
+		]);
+		await session.quit();
 	});
 });
