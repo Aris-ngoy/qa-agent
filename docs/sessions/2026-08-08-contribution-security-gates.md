@@ -28,6 +28,7 @@ Harden how Yoqa accepts contributions and ships releases: branch/PR lifecycle, C
 ## Follow-ups
 
 - Done: owner PR-only ruleset bypass for **own** PRs; policy forbids bypass on others’ work (see `AGENTS.md` / `CONTRIBUTING.md`)
+- Done: classic branch protection no longer duplicates PR reviews (reviews live on the ruleset so owner bypass works); CI checks remain on classic with `enforce_admins`
 - Optional: invite a second maintainer so owner self-PRs can use normal approvals instead of bypass
 - Optional: require signed commits; finish classic → rulesets migration (status checks still on classic)
 - Add codesign/notarize Environment secrets when ready

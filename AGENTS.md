@@ -81,18 +81,22 @@ Keep it concise. Link to existing specs (`ARCHITECTURE.md`, etc.) instead of dup
 
 ## Reviews required
 
-- At least **one approving review** is required (stale reviews dismiss on new pushes).
+- At least **one approving review** is required (stale reviews dismiss on new pushes). Reviews are enforced by the **“PR reviews on main”** ruleset (not classic branch protection).
 - **CODEOWNERS** reviews are required for owned paths (see `.github/CODEOWNERS`).
-- Authors cannot approve their own PRs.
+- Authors cannot approve their own PRs (except the owner self-merge path below).
 - Required status checks stay enforced for everyone (`enforce_admins` on classic protection) — never skip CI.
 
-### Owner bypass — own work only
+### Owner / CODEOWNER self-merge — own work only
 
-GitHub grants the **repository owner** a ruleset bypass (`pull_request` mode) so solo owner PRs can merge without a second reviewer. That capability is **scoped by policy**, not by the API:
+The **repository owner** (also the default CODEOWNER) **can and should** merge **their own** PRs once required checks are green. GitHub grants a ruleset bypass (`pull_request` mode) so solo owner PRs do not need a second reviewer. That capability is **scoped by policy**, not by the API:
 
-- **Allowed:** use the bypass **only** when the PR **author is the repository owner** (the owner’s own work), and all required checks are green, threads are resolved, and the branch is up to date.
+- **Allowed / expected:** when the PR **author is the repository owner**, required checks are green, threads are resolved, and the branch is up to date with `main` — **merge it**. Do not wait for a second reviewer or ask the user to approve their own PR.
 - **Forbidden:** do **not** use bypass / `--admin` / admin merge on anyone else’s PR. Contributor and Dependabot PRs still need a real approving review (typically the owner as CODEOWNER) before merge.
-- Prefer merging owner self-PRs via the REST merge endpoint (ruleset bypass) rather than disabling protection or asking to drop reviews globally.
+- **How to merge owner self-PRs:** use the REST merge endpoint (ruleset bypass). `gh pr merge` often fails with a GraphQL “approving review required” error even when bypass applies — prefer:
+
+```bash
+gh api -X PUT "repos/<owner>/<repo>/pulls/<number>/merge" -f merge_method=rebase
+```
 
 ## Required checks (must pass)
 
@@ -122,7 +126,7 @@ External / fork PRs require maintainer approval before Actions run (`all_externa
 - After opening or updating a plan-and-build PR, if checks fail, fix and push until green (or clearly report a blocker).
 - Never use `--no-verify` or force-push to `main`.
 - Never merge a PR that is behind `main`, has unresolved conversations, or has failing required checks.
-- For **owner-authored** PRs only: after green checks, merging via ruleset bypass is OK. For **any other author**: require a real approval first; never admin-bypass their review gate.
+- For **owner-authored** PRs only: after green checks, **merge via the REST ruleset bypass** (see above). Do not leave owner self-PRs blocked on `REVIEW_REQUIRED`. For **any other author**: require a real approval first; never admin-bypass their review gate.
 
 ## Local checks
 
