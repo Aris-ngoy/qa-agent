@@ -112,6 +112,7 @@ export function formatProviderHttpError(label: string, status: number, body: str
 	}
 	if (
 		label === "Groq" &&
+		status === 400 &&
 		(body.includes("invalid JSON schema for response_format") ||
 			(body.includes("required") && body.includes("every key in properties")))
 	) {

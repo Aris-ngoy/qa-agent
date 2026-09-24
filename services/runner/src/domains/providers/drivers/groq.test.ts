@@ -24,4 +24,9 @@ describe("Groq strict-schema error mapping", () => {
 		const message = formatProviderHttpError("Groq", 429, body);
 		expect(message).toBe(`Groq request failed (429): ${body.slice(0, 400)}`);
 	});
+
+	test("strict-schema body at non-400 status keeps status prefix", () => {
+		const message = formatProviderHttpError("Groq", 500, STRICT_SCHEMA_BODY);
+		expect(message.startsWith("Groq request failed (500):")).toBe(true);
+	});
 });
