@@ -98,6 +98,68 @@ describe("parseAgentDecision", () => {
 			alertAction: "accept",
 		});
 	});
+
+	test("validates a prompt-JSON tap with reason and thoughts preserved", () => {
+		const decision = parseAgentDecision(
+			extractAgentJsonObject(
+				'{"type":"tap","x":420,"y":780,"reason":"Open the product","thoughts":"The catalog shows a product card and tapping it opens the detail screen."}',
+				"Groq",
+			),
+		);
+		expect(decision).toMatchObject({
+			type: "tap",
+			x: 420,
+			y: 780,
+			reason: "Open the product",
+			thoughts: "The catalog shows a product card and tapping it opens the detail screen.",
+		});
+	});
+
+	test("validates a prompt-JSON wait with pause duration", () => {
+		const decision = parseAgentDecision(
+			extractAgentJsonObject(
+				'{"type":"wait","ms":2000,"reason":"Let the splash settle","thoughts":"A splash logo is visible and the home screen has not loaded yet."}',
+				"Groq",
+			),
+		);
+		expect(decision).toMatchObject({
+			type: "wait",
+			ms: 2000,
+			reason: "Let the splash settle",
+		});
+	});
+
+	test("salvages fenced single-quoted prompt JSON", () => {
+		const decision = parseAgentDecision(
+			extractAgentJsonObject(
+				"Here you go:\n```json\n{'type':'tap','x':120,'y':340,'reason':'Tap the login button','thoughts':'The login form is visible with the button enabled.'}\n```",
+				"Groq",
+			),
+		);
+		expect(decision).toMatchObject({
+			type: "tap",
+			x: 120,
+			y: 340,
+			reason: "Tap the login button",
+		});
+	});
+
+	test("salvages a lightly truncated prompt-JSON wait", () => {
+		const decision = parseAgentDecision(
+			extractAgentJsonObject(
+				'{"type":"wait","ms":1500,"reason":"Splash is loading","thoughts":"The splash logo is still visi',
+				"Groq",
+			),
+		);
+		expect(decision.type).toBe("wait");
+		expect(decision).toMatchObject({ ms: 1500, reason: "Splash is loading" });
+	});
+
+	test("rejects an unrecoverable reply as not-a-valid-action with path detail", () => {
+		expect(() =>
+			parseAgentDecision(extractAgentJsonObject('{"type":"tap","x":100,"y":200}', "Groq")),
+		).toThrow(/not a valid action.*reason/);
+	});
 });
 
 describe("prefersScreenshotTap", () => {
