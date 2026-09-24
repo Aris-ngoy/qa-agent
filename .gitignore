@@ -42,3 +42,7 @@ examples/expo-demo/ios/
 examples/expo-demo/android/
 examples/expo-demo/.expo/
 examples/expo-demo/dist/
+
+.cursor/
+.agents/
+.claude/

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { withGroqRequestHooks } from "./vision-model";
+import { groqDriver } from "./drivers/groq";
+import {
+	isSparseResponseFormatBody,
+	prepareVisionImage,
+	resolveGroqKey,
+	resolveOpenAiCompatibleBaseUrl,
+	withGroqRequestHooks,
+} from "./vision-model";
 
 /** Decide schema shape: many optional Action fields, only type/reason/thoughts required. */
 function decideBody() {
@@ -123,5 +130,78 @@ describe("Groq decide works via prompt JSON (#138)", () => {
 	test("non-JSON bodies pass through without throwing", async () => {
 		const sent = await captureSentBody("not-json{{{" as unknown as Record<string, unknown>);
 		expect(sent).toBe("not-json{{{");
+	});
+});
+
+describe("Groq unchanged surfaces (#140)", () => {
+	test("sparse decide schema strips while fully-required grounding keeps format", () => {
+		expect(
+			isSparseResponseFormatBody({
+				response_format: {
+					json_schema: {
+						schema: {
+							properties: { type: {}, x: {}, reason: {}, thoughts: {} },
+							required: ["type", "reason", "thoughts"],
+						},
+					},
+				},
+			}),
+		).toBe(true);
+		expect(
+			isSparseResponseFormatBody({
+				response_format: {
+					json_schema: { schema: { properties: { x: {}, y: {} }, required: ["x", "y"] } },
+				},
+			}),
+		).toBe(false);
+		expect(isSparseResponseFormatBody({ model: "m" })).toBe(false);
+	});
+
+	test("Groq auth resolution prefers explicit key then env", () => {
+		const base = {
+			kind: "groq" as const,
+			authMode: "api_key" as const,
+			baseUrl: null,
+			serverUrl: null,
+			defaultModel: null,
+			binaryPath: null,
+			env: {},
+		};
+		expect(resolveGroqKey({ ...base, apiKey: " sk-123 ", env: {} })).toBe("sk-123");
+		expect(resolveGroqKey({ ...base, apiKey: null, env: { GROQ_API_KEY: " env-key " } })).toBe(
+			"env-key",
+		);
+		expect(resolveGroqKey({ ...base, apiKey: null, env: {} })).toBeNull();
+	});
+
+	test("Groq OpenAI-compatible base URL defaults to api.groq.com", () => {
+		const base = {
+			kind: "groq" as const,
+			authMode: "api_key" as const,
+			apiKey: null,
+			serverUrl: null,
+			defaultModel: null,
+			binaryPath: null,
+			env: {},
+		};
+		expect(resolveOpenAiCompatibleBaseUrl({ ...base, baseUrl: null })).toBe(
+			"https://api.groq.com/openai/v1",
+		);
+		expect(resolveOpenAiCompatibleBaseUrl({ ...base, baseUrl: "https://custom.test/" })).toBe(
+			"https://custom.test",
+		);
+	});
+
+	test("Groq driver keeps vision capability and provider surfaces", () => {
+		expect(groqDriver.kind).toBe("groq");
+		expect(groqDriver.capabilities.vision).toBe(true);
+		expect(typeof groqDriver.vision?.completeObject).toBe("function");
+		expect(typeof groqDriver.validate).toBe("function");
+		expect(typeof groqDriver.listModels).toBe("function");
+	});
+
+	test("screenshot preparation passes empty input through unchanged", async () => {
+		const image = await prepareVisionImage("");
+		expect(image).toEqual({ base64: "", mediaType: "image/png" });
 	});
 });
