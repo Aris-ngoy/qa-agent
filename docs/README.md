@@ -11,7 +11,7 @@ Build notes and feature write-ups produced after **plan → build** work.
 | `sessions/` | Dated one-off build logs (`YYYY-MM-DD-slug.md`) |
 | `<area>/` | Durable docs for a domain (e.g. `providers/`, `runner/`, `desktop/`, `runs/`) |
 
-Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See `.cursor/rules/document-plan-builds.mdc` for when and how agents should add entries.
+Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) for when and how agents should add entries, and for the contribution gates (PR-only `main`, required checks, owner bypass).
 
 ## Index
 
@@ -49,6 +49,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See `.cursor/rules/document-plan
 | [devices/text-input.md](./devices/text-input.md) | WDA-safe typing via `mobile: type` + paired keyDown/keyUp |
 | [runs/saved-scripts.md](./runs/saved-scripts.md) | Save script after pass; script vs AI run prompt |
 | [runs/report-export.md](./runs/report-export.md) | HTML/Markdown E2E report export (runs + inspector) |
+| [runs/agent-step-latency-and-knowledge.md](./runs/agent-step-latency-and-knowledge.md) | Decide latency, per-phase step timing, App Knowledge, retention |
 | [ios/wda-reuse-on-select.md](./ios/wda-reuse-on-select.md) | Skip/rebuild WebDriverAgent on physical iOS select |
 | [sessions/2026-07-24-yoqa-testing-skill.md](./sessions/2026-07-24-yoqa-testing-skill.md) | Copied/rebranded `yoqa-testing` agent skill |
 | [sessions/2026-07-27-mintlify-docs-site.md](./sessions/2026-07-27-mintlify-docs-site.md) | Public Mintlify docs site at `apps/docs` |
