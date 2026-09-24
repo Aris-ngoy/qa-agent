@@ -461,6 +461,48 @@ describe("executeAgentCase", () => {
 		expect(steps[0]?.detail).toContain("AI decide timed out after 30ms");
 	});
 
+	it("budgets each decide attempt separately so two slow-but-working attempts succeed", async () => {
+		let calls = 0;
+		const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => {
+				calls += 1;
+				// Each attempt stays under the 300ms budget, but the two
+				// attempts combined exceed it — a single outer budget would
+				// spuriously fail this slow-but-working step.
+				await sleep(200);
+				if (calls === 1) {
+					return {
+						type: "fail",
+						reason: "No screenshot was provided",
+						thoughts: "I cannot see the screen without a screenshot",
+					};
+				}
+				return {
+					type: "verify",
+					reason: "done",
+					thoughts: "expected visible",
+				};
+			},
+			decideTimeoutMs: 300,
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(calls).toBe(2);
+		expect(result.status).toBe("passed");
+	});
+
 	it("publishes the AI deciding label while waiting on the model", async () => {
 		const timeline: string[] = [];
 

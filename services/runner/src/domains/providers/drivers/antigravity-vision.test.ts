@@ -49,6 +49,27 @@ describe("parseAgyDecision", () => {
 		expect(isJsonRepairableError(error as AgentProviderError)).toBe(false);
 	});
 
+	it("classifies print-timeout partial output as non-repairable even when it fails schema validation", async () => {
+		const error = await Promise.resolve()
+			.then(() =>
+				parseAgyDecision(decisionSchema, {
+					// Valid JSON shape, wrong types: extraction succeeds, schema
+					// validation fails ("was not a valid") while the marker sits
+					// in stderr. Must still fail fast, not burn a repair retry.
+					stdout: '{"type":"tap","x":"left-ish","y":40}',
+					stderr: PRINT_TIMEOUT_OUTPUT,
+					exitCode: 0,
+				}),
+			)
+			.then(
+				() => null,
+				(thrown: unknown) => thrown,
+			);
+		expect(error).toBeInstanceOf(AgentProviderError);
+		expect((error as Error).message).toContain("print timeout");
+		expect(isJsonRepairableError(error as AgentProviderError)).toBe(false);
+	});
+
 	it("still parses salvagable JSON even when the print-timeout marker is present", () => {
 		const parsed = parseAgyDecision(decisionSchema, {
 			stdout: `${PRINT_TIMEOUT_OUTPUT}\n{"type":"tap","x":30,"y":40}`,

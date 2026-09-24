@@ -199,6 +199,13 @@ export async function runArgentBin(
 	try {
 		const outcome = await Promise.race([finished, deadline]);
 		if (outcome === null) {
+			// The pipe reads may still settle (or reject) after the kill tears
+			// the pipes down — settle them quietly instead of leaving an
+			// unhandled rejection behind the thrown TIMEOUT.
+			void finished.then(
+				() => undefined,
+				() => undefined,
+			);
 			throw new ArgentError(
 				`argent ${label} timed out after ${timeoutMs}ms`,
 				"TIMEOUT",
