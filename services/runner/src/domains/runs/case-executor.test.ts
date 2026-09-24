@@ -11,7 +11,6 @@ function fakeSession(shotCount = { n: 0 }): DeviceSession {
 			shotCount.n += 1;
 			return { path: `/tmp/shot-${shotCount.n}.png`, base64: "aaa" };
 		},
-		awaitScreenIdle: async () => {},
 	} as unknown as DeviceSession;
 }
 
@@ -87,84 +86,6 @@ describe("executeScriptCase", () => {
 		expect(steps).toHaveLength(2);
 		expect(steps[0]?.action).toMatchObject({ type: "tap", x: 100, y: 200 });
 		expect(steps[1]?.action).toMatchObject({ type: "done" });
-	});
-
-	it("settle waits for await-screen-idle then holds the fixed sleep", async () => {
-		const idleBudgets: number[] = [];
-		const sleeps: number[] = [];
-		const script: CaseScript = {
-			version: 1,
-			savedAt: 1,
-			actions: [{ type: "tap", x: 100, y: 200, reason: "tap login" }],
-		};
-
-		const status = await executeScriptCase({
-			script,
-			session: {
-				screenshot: async () => ({ path: "/tmp/shot.png", base64: "aaa" }),
-				awaitScreenIdle: async (ms: number) => {
-					idleBudgets.push(ms);
-				},
-			} as unknown as DeviceSession,
-			isAborted: () => false,
-			appendStep: async () => {},
-			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-			clock: {
-				sleep: async (ms) => {
-					sleeps.push(ms);
-				},
-				now: () => 1000,
-			},
-			settleMs: 10,
-		});
-
-		expect(status).toBe("passed");
-		expect(idleBudgets).toEqual([10]);
-		expect(sleeps).toEqual([10]);
-	});
-
-	it("settle still sleeps when await-screen-idle is missing or rejects", async () => {
-		const sleeps: number[] = [];
-		const script: CaseScript = {
-			version: 1,
-			savedAt: 1,
-			actions: [{ type: "tap", x: 100, y: 200, reason: "tap login" }],
-		};
-		const clock = {
-			sleep: async (ms: number) => {
-				sleeps.push(ms);
-			},
-			now: () => 1000,
-		};
-
-		// No awaitScreenIdle at all (partial fake) — TypeError is absorbed.
-		await executeScriptCase({
-			script,
-			session: fakeSession(),
-			isAborted: () => false,
-			appendStep: async () => {},
-			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-			clock,
-			settleMs: 7,
-		});
-
-		// awaitScreenIdle exists but rejects — settle must not throw.
-		await executeScriptCase({
-			script,
-			session: {
-				screenshot: async () => ({ path: "/tmp/shot.png", base64: "aaa" }),
-				awaitScreenIdle: async () => {
-					throw new Error("tool-server unreachable");
-				},
-			} as unknown as DeviceSession,
-			isAborted: () => false,
-			appendStep: async () => {},
-			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-			clock,
-			settleMs: 7,
-		});
-
-		expect(sleeps).toEqual([7, 7]);
 	});
 
 	it("replays label taps and visible asserts", async () => {
@@ -421,119 +342,12 @@ describe("executeAgentCase", () => {
 
 		expect(result.status).toBe("passed");
 		expect(timeline).toEqual([
-			"AI deciding next action…",
-			"null",
 			"yoqa action tap --label 'Allow'",
 			"perform:tap",
 			"append:yoqa action tap --label 'Allow'",
 			"null",
-			"AI deciding next action…",
-			"null",
 			"append:null",
 		]);
-	});
-
-	it("fails the case with a clear error instead of hanging when decide never settles", async () => {
-		const steps: Array<{ ok: boolean; detail: string | null }> = [];
-		const result = await executeAgentCase({
-			catalogCase: emptyCase(),
-			appContext: "demo",
-			auth: fakeAuth(),
-			session: fakeSession(),
-			isAborted: () => false,
-			appendStep: async (step) => {
-				steps.push({ ok: step.ok, detail: step.detail });
-			},
-			decide: () => new Promise<AgentDecision>(() => {}),
-			decideTimeoutMs: 30,
-			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-			clock: {
-				sleep: async () => {},
-				now: () => 1,
-			},
-			settleMs: 0,
-		});
-
-		expect(result.status).toBe("errored");
-		expect(result.error).toContain("AI decide timed out after 30ms");
-		expect(steps).toHaveLength(1);
-		expect(steps[0]?.ok).toBe(false);
-		expect(steps[0]?.detail).toContain("AI decide timed out after 30ms");
-	});
-
-	it("budgets each decide attempt separately so two slow-but-working attempts succeed", async () => {
-		let calls = 0;
-		const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-		const result = await executeAgentCase({
-			catalogCase: emptyCase(),
-			appContext: "demo",
-			auth: fakeAuth(),
-			session: fakeSession(),
-			isAborted: () => false,
-			appendStep: async () => {},
-			decide: async () => {
-				calls += 1;
-				// Each attempt stays under the 300ms budget, but the two
-				// attempts combined exceed it — a single outer budget would
-				// spuriously fail this slow-but-working step.
-				await sleep(200);
-				if (calls === 1) {
-					return {
-						type: "fail",
-						reason: "No screenshot was provided",
-						thoughts: "I cannot see the screen without a screenshot",
-					};
-				}
-				return {
-					type: "verify",
-					reason: "done",
-					thoughts: "expected visible",
-				};
-			},
-			decideTimeoutMs: 300,
-			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-			clock: {
-				sleep: async () => {},
-				now: () => 1,
-			},
-			settleMs: 0,
-		});
-
-		expect(calls).toBe(2);
-		expect(result.status).toBe("passed");
-	});
-
-	it("publishes the AI deciding label while waiting on the model", async () => {
-		const timeline: string[] = [];
-
-		const result = await executeAgentCase({
-			catalogCase: emptyCase(),
-			appContext: "demo",
-			auth: fakeAuth(),
-			session: fakeSession(),
-			isAborted: () => false,
-			appendStep: async () => {},
-			setCurrentCommand: async (command) => {
-				timeline.push(`cmd:${command ?? "null"}`);
-			},
-			decide: async () => {
-				timeline.push("model:responded");
-				return {
-					type: "verify",
-					reason: "done",
-					thoughts: "expected visible",
-				};
-			},
-			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-			clock: {
-				sleep: async () => {},
-				now: () => 1,
-			},
-			settleMs: 0,
-		});
-
-		expect(result.status).toBe("passed");
-		expect(timeline).toEqual(["cmd:AI deciding next action…", "model:responded", "cmd:null"]);
 	});
 
 	it("taps by label and accepts alerts without guessed coordinates", async () => {
@@ -688,7 +502,6 @@ describe("executeAgentCase", () => {
 				const base64 = shot === 1 ? "moving-1" : "stable";
 				return { path: `/tmp/shot-${shot}.png`, base64 };
 			},
-			awaitScreenIdle: async () => {},
 		} as unknown as DeviceSession;
 
 		const result = await executeAgentCase({
@@ -1229,86 +1042,5 @@ describe("executeAgentCase", () => {
 
 		expect(result.status).toBe("passed");
 		expect(performed).toEqual([{ kind: "input", id: "search_input", text: "my query\n" }]);
-	});
-
-	it("keeps the instruction open when the judge continues a verify", async () => {
-		let calls = 0;
-		const result = await executeAgentCase({
-			catalogCase: emptyCase(),
-			appContext: "demo",
-			auth: fakeAuth(),
-			session: fakeSession(),
-			isAborted: () => false,
-			appendStep: async () => {},
-			maxStepsPerCase: 5,
-			decide: async () => {
-				calls += 1;
-				if (calls === 1) {
-					return {
-						type: "verify",
-						reason: "Looks done",
-						thoughts: "Home might be visible",
-					};
-				}
-				return {
-					type: "done",
-					reason: "Home is visible",
-					thoughts: "Expected result is on screen",
-				};
-			},
-			judge: async (input) => {
-				if (input.proposed === "verify") {
-					return {
-						outcome: "continue",
-						reason: "Jev rejected a premature verify.",
-						thoughts: "Login is still showing",
-					};
-				}
-				return {
-					outcome: "confirm",
-					reason: "Jev confirmed the instruction is complete.",
-					thoughts: "Home is visible",
-				};
-			},
-			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-			clock: {
-				sleep: async () => {},
-				now: () => 1,
-			},
-			settleMs: 0,
-		});
-
-		expect(result.status).toBe("passed");
-		expect(result.decisions.map((decision) => decision.type)).toEqual(["wait", "done"]);
-	});
-
-	it("completes the instruction when the judge confirms verify", async () => {
-		const result = await executeAgentCase({
-			catalogCase: emptyCase(),
-			appContext: "demo",
-			auth: fakeAuth(),
-			session: fakeSession(),
-			isAborted: () => false,
-			appendStep: async () => {},
-			decide: async () => ({
-				type: "verify",
-				reason: "Home visible",
-				thoughts: "Expected result is on screen",
-			}),
-			judge: async () => ({
-				outcome: "confirm",
-				reason: "Jev confirmed the instruction is complete.",
-				thoughts: "Home is visible",
-			}),
-			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-			clock: {
-				sleep: async () => {},
-				now: () => 1,
-			},
-			settleMs: 0,
-		});
-
-		expect(result.status).toBe("passed");
-		expect(result.decisions.map((decision) => decision.type)).toEqual(["verify"]);
 	});
 });

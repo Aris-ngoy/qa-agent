@@ -41,10 +41,29 @@ export const listDevicesResponseSchema = z.object({
 
 export type ListDevicesResponse = z.infer<typeof listDevicesResponseSchema>;
 
+export const appiumDriverSchema = z.union([z.literal("xcuitest"), z.literal("uiautomator2")]);
+export type AppiumDriver = z.infer<typeof appiumDriverSchema>;
+
+export const iosWdaActionSchema = z.union([
+	z.literal("reused"),
+	z.literal("reinstalled"),
+	z.literal("built"),
+]);
+
+export type IosWdaAction = z.infer<typeof iosWdaActionSchema>;
+
 export const setupPlatformRequestSchema = z.object({
 	platform: devicePlatformSchema,
 	deviceId: z.string().min(1).optional(),
 	kind: deviceKindSchema.optional(),
+	/** Absolute path to Xcode Contents/Developer (iOS physical) */
+	xcodeDeveloperDir: z.string().min(1).optional(),
+	/** Apple Development team ID (iOS physical) */
+	developmentTeam: z.string().min(1).optional(),
+	/** Full codesigning identity name, e.g. "Apple Development: …" (iOS physical) */
+	codeSignIdentity: z.string().min(1).optional(),
+	/** Force a full WebDriverAgent rebuild/install even when prep is reusable */
+	force: z.boolean().optional(),
 });
 
 export type SetupPlatformRequest = z.infer<typeof setupPlatformRequestSchema>;
@@ -52,80 +71,36 @@ export type SetupPlatformRequest = z.infer<typeof setupPlatformRequestSchema>;
 export const setupPlatformResponseSchema = z.object({
 	ok: z.literal(true),
 	platform: devicePlatformSchema,
-	agentDeviceVersion: z.string().min(1),
+	driver: appiumDriverSchema,
+	appiumVersion: z.string().min(1),
+	driverVersion: z.string().optional(),
 	alreadyInstalled: z.boolean(),
 	message: z.string().min(1),
+	/** True when WebDriverAgent was ensured on a physical iOS device (any action) */
+	wdaInstalled: z.boolean().optional(),
+	/** Bundle ID of the installed WebDriverAgent runner */
+	wdaBundleId: z.string().min(1).optional(),
+	/** Whether WDA was reused, reinstalled from cache, or freshly built */
+	wdaAction: iosWdaActionSchema.optional(),
 });
 
 export type SetupPlatformResponse = z.infer<typeof setupPlatformResponseSchema>;
 
 export const setupPlatformErrorSchema = z.object({
 	error: z.string().min(1),
-	code: z.string().optional(),
 	detail: z.string().optional(),
 });
 
 export type SetupPlatformError = z.infer<typeof setupPlatformErrorSchema>;
 
-// --- iOS runner (YoqaADRunner) install ---
-
-/** Machine-readable code when the iOS runner must be installed first. */
-export const IOS_RUNNER_NOT_INSTALLED_CODE = "IOS_RUNNER_NOT_INSTALLED";
-
-export const iosRunnerKindSchema = z.union([
-	z.literal("physical"),
-	z.literal("simulator"),
-	z.literal("emulator"),
-]);
-export type IosRunnerKind = z.infer<typeof iosRunnerKindSchema>;
-
-export const iosRunnerInstallRequestSchema = z.object({
-	deviceId: z.string().min(1),
-	kind: iosRunnerKindSchema.optional(),
-	/** When true, rebuild even if prep/cache is valid */
-	force: z.boolean().optional(),
-});
-export type IosRunnerInstallRequest = z.infer<typeof iosRunnerInstallRequestSchema>;
-
-export const iosRunnerActionSchema = z.union([
-	z.literal("reused"),
-	z.literal("reinstalled"),
-	z.literal("built"),
-]);
-export type IosRunnerAction = z.infer<typeof iosRunnerActionSchema>;
-
-export const iosRunnerInstallResponseSchema = z.object({
-	ok: z.literal(true),
-	bundleId: z.string().min(1),
-	displayName: z.string().min(1),
-	appPath: z.string().min(1),
-	derivedDataPath: z.string().nullable(),
-	deviceId: z.string().min(1),
-	action: iosRunnerActionSchema,
-	branded: z.boolean(),
-	/** Stale runner copies removed so exactly one stays on the device. */
-	removedStale: z.array(z.string()),
-	/** Non-fatal note (e.g. built bundle id differs from Settings). */
-	warning: z.string().optional(),
-});
-export type IosRunnerInstallResponse = z.infer<typeof iosRunnerInstallResponseSchema>;
-
-export const iosRunnerStatusResponseSchema = z.object({
-	installed: z.boolean(),
-	bundleId: z.string().min(1),
-	displayName: z.string().min(1),
-});
-export type IosRunnerStatusResponse = z.infer<typeof iosRunnerStatusResponseSchema>;
-
 export const runtimeCheckIdSchema = z.union([
 	z.literal("node"),
 	z.literal("npm"),
-	z.literal("argent"),
-	/** Pre-cutover id for the removed agent-device backend — kept so old payloads still parse. */
-	z.literal("agent-device"),
+	z.literal("appium"),
+	z.literal("xcuitest"),
+	z.literal("uiautomator2"),
 	z.literal("xcode"),
 	z.literal("adb"),
-	z.literal("developer-mode"),
 ]);
 
 export type RuntimeCheckId = z.infer<typeof runtimeCheckIdSchema>;
@@ -142,7 +117,8 @@ export type RuntimeCheck = z.infer<typeof runtimeCheckSchema>;
 
 export const runtimeStatusSchema = z.object({
 	ready: z.boolean(),
-	agentDeviceVersion: z.string().optional(),
+	appiumVersion: z.string().optional(),
+	appiumSource: z.union([z.literal("system"), z.literal("managed")]).optional(),
 	checks: z.array(runtimeCheckSchema),
 });
 
@@ -152,6 +128,7 @@ export const ensureRuntimeResponseSchema = z.object({
 	ok: z.literal(true),
 	ready: z.boolean(),
 	status: runtimeStatusSchema,
+	installed: z.array(setupPlatformResponseSchema),
 	message: z.string().min(1),
 });
 
@@ -160,10 +137,7 @@ export type EnsureRuntimeResponse = z.infer<typeof ensureRuntimeResponseSchema>;
 // --- Servers lifecycle ---
 
 export const serverKindSchema = z.union([
-	/** Argent tool-server / adapter entries. */
-	z.literal("argent"),
-	/** Pre-cutover backend kind — kept so old payloads still parse. */
-	z.literal("agent-device"),
+	z.literal("appium"),
 	z.literal("runner"),
 	z.literal("device-session"),
 ]);
@@ -217,8 +191,8 @@ export type DoctorCheckStatus = z.infer<typeof doctorCheckStatusSchema>;
 
 export const doctorRepairIdSchema = z.union([
 	z.literal("ensure-runtime"),
+	z.literal("stop-foreign-appium"),
 	z.literal("disconnect-session"),
-	z.literal("enable-developer-tools"),
 ]);
 export type DoctorRepairId = z.infer<typeof doctorRepairIdSchema>;
 
@@ -261,11 +235,6 @@ export type DoctorRepairResponse = z.infer<typeof doctorRepairResponseSchema>;
 
 // --- Catalog: apps / cases / flows / tags ---
 
-/**
- * @deprecated Custom driver capabilities were an Appium concept and are no
- * longer read by the runner (Argent backend). Kept for wire compat —
- * servers always return `[]` and request fields are ignored.
- */
 export const capabilitySchema = z.object({
 	id: z.string().min(1),
 	key: z.string(),
@@ -303,6 +272,7 @@ export const updateAppRequestSchema = z.object({
 	iosBundleId: z.string().optional(),
 	iosAppStoreId: z.string().optional(),
 	androidApplicationId: z.string().optional(),
+	capabilities: z.array(capabilitySchema).optional(),
 });
 
 export type UpdateAppRequest = z.infer<typeof updateAppRequestSchema>;
@@ -473,6 +443,7 @@ export const createCaseRequestSchema = z.object({
 			}),
 		)
 		.optional(),
+	capabilities: z.array(capabilitySchema).optional(),
 });
 
 export type CreateCaseRequest = z.infer<typeof createCaseRequestSchema>;
@@ -490,6 +461,7 @@ export const updateCaseRequestSchema = z.object({
 			}),
 		)
 		.optional(),
+	capabilities: z.array(capabilitySchema).optional(),
 	/** Set to replace the saved script; `null` clears it. */
 	script: caseScriptSchema.nullable().optional(),
 });
@@ -589,7 +561,6 @@ export const providerKindSchema = z.union([
 	z.literal("cursor"),
 	z.literal("grok"),
 	z.literal("custom"),
-	z.literal("jev"),
 ]);
 export type ProviderKind = z.infer<typeof providerKindSchema>;
 
@@ -650,7 +621,6 @@ export type ListProvidersResponse = z.infer<typeof listProvidersResponseSchema>;
 
 export const providerDriverCapabilitiesSchema = z.object({
 	vision: z.boolean(),
-	judge: z.boolean().optional().default(false),
 });
 
 export type ProviderDriverCapabilities = z.infer<typeof providerDriverCapabilitiesSchema>;
@@ -668,15 +638,8 @@ export const providerDriverCatalogEntrySchema = z.object({
 
 export type ProviderDriverCatalogEntry = z.infer<typeof providerDriverCatalogEntrySchema>;
 
-function parseCatalogDrivers(entries: unknown[]): ProviderDriverCatalogEntry[] {
-	return entries.flatMap((entry) => {
-		const parsed = providerDriverCatalogEntrySchema.safeParse(entry);
-		return parsed.success ? [parsed.data] : [];
-	});
-}
-
 export const listProviderCatalogResponseSchema = z.object({
-	drivers: z.array(z.unknown()).transform(parseCatalogDrivers),
+	drivers: z.array(providerDriverCatalogEntrySchema),
 });
 
 export type ListProviderCatalogResponse = z.infer<typeof listProviderCatalogResponseSchema>;
@@ -870,8 +833,6 @@ export type RunError = z.infer<typeof runErrorSchema>;
 export const connectDeviceRequestSchema = z.object({
 	deviceId: z.string().min(1),
 	platform: devicePlatformSchema,
-	/** Physical vs simulator — enables check-and-install of YoqaADRunner on connect. */
-	kind: deviceKindSchema.optional(),
 	bundleId: z.string().min(1).optional(),
 	appPackage: z.string().min(1).optional(),
 });
@@ -944,23 +905,8 @@ export const actionKindSchema = z.union([
 	z.literal("background-app"),
 	z.literal("open-url"),
 	z.literal("alert"),
-	z.literal("back"),
-	z.literal("scroll"),
-	z.literal("home"),
-	z.literal("keyboard"),
 ]);
 export type ActionKind = z.infer<typeof actionKindSchema>;
-
-export const scrollDirectionSchema = z.union([
-	z.literal("up"),
-	z.literal("down"),
-	z.literal("left"),
-	z.literal("right"),
-]);
-export type ScrollDirection = z.infer<typeof scrollDirectionSchema>;
-
-export const keyboardActionSchema = z.union([z.literal("dismiss"), z.literal("enter")]);
-export type KeyboardAction = z.infer<typeof keyboardActionSchema>;
 
 export const actionRequestSchema = z.object({
 	kind: actionKindSchema,
@@ -981,12 +927,6 @@ export const actionRequestSchema = z.object({
 	url: z.string().optional(),
 	alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).optional(),
 	seconds: z.number().optional(),
-	/** Scroll direction for `scroll` (Argent `run-sequence` keyboard/scroll steps). */
-	direction: scrollDirectionSchema.optional(),
-	/** Finger-path fraction of the viewport axis for `scroll`. */
-	amount: z.number().optional(),
-	/** Key action for `keyboard` (Argent `keyboard --key escape|enter`). */
-	keyboardAction: keyboardActionSchema.optional(),
 });
 export type ActionRequest = z.infer<typeof actionRequestSchema>;
 
@@ -1015,13 +955,6 @@ export const yoqaStatusResponseSchema = z.object({
 		kind: z.string().nullable(),
 		label: z.string().nullable(),
 	}),
-	judge: z
-		.object({
-			configured: z.boolean(),
-			kind: z.string().nullable(),
-			label: z.string().nullable(),
-		})
-		.optional(),
 	activeDevice: activeDeviceResponseSchema.nullable(),
 });
 export type YoqaStatusResponse = z.infer<typeof yoqaStatusResponseSchema>;

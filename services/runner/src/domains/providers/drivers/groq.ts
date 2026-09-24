@@ -13,7 +13,7 @@ export const groqDriver: DriverDefinition = {
 	authModes: ["api_key"],
 	envHints: ["GROQ_API_KEY"],
 	loginInstructions: null,
-	capabilities: { vision: true, judge: false },
+	capabilities: { vision: true },
 	vision: createSdkVisionPort({
 		label: "Groq",
 		defaultModel: "meta-llama/llama-4-scout-17b-16e-instruct",

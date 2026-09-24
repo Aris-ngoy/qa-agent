@@ -35,7 +35,6 @@ import type {
 	XcodeInstallation,
 } from "../../../shared/ios-toolchain";
 import { ProvidersSection } from "./providers/providers-section";
-import { RunnerSigningRemoved } from "./runner-signing-removed";
 
 type SettingsSection = "ios" | "android" | "cli" | "provider" | "diagnostics";
 type IdentityFilter = "all" | SigningTier;
@@ -212,8 +211,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	const [tierFilter, setTierFilter] = useState<IdentityFilter>("all");
 	const [xcodeId, setXcodeId] = useState<string | null>(null);
 	const [signingId, setSigningId] = useState<string | null>(null);
-	const [bundleId, setBundleId] = useState("");
-	const [bundleFocused, setBundleFocused] = useState(false);
 
 	const toolchainQuery = useQuery({
 		queryKey: IOS_TOOLCHAIN_QUERY_KEY,
@@ -226,10 +223,7 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 		if (!toolchainQuery.data) return;
 		setXcodeId(toolchainQuery.data.preferences.xcodeDeveloperDir);
 		setSigningId(toolchainQuery.data.preferences.signingIdentityHash);
-		if (!bundleFocused) {
-			setBundleId(toolchainQuery.data.preferences.agentDeviceBundleId ?? "");
-		}
-	}, [toolchainQuery.data, bundleFocused]);
+	}, [toolchainQuery.data]);
 
 	const xcodes = toolchainQuery.data?.xcodes ?? [];
 	const identities = toolchainQuery.data?.identities ?? [];
@@ -257,7 +251,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	const persistSelection = async (next: {
 		xcodeDeveloperDir?: string | null;
 		signingIdentityHash?: string | null;
-		agentDeviceBundleId?: string | null;
 	}) => {
 		const preferences = await getDesktopRpc().request.setIosToolchainSelection(next);
 		queryClient.setQueryData<IosToolchainSnapshot>(IOS_TOOLCHAIN_QUERY_KEY, (current) => {
@@ -276,17 +269,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 		if (key == null) return;
 		setSigningId(key);
 		void persistSelection({ signingIdentityHash: key });
-	};
-
-	const teamId = selectedSigning?.teamId ?? toolchainQuery.data?.preferences.teamId ?? null;
-
-	const handleBundleBlur = () => {
-		setBundleFocused(false);
-		const trimmed = bundleId.trim();
-		const saved = toolchainQuery.data?.preferences.agentDeviceBundleId ?? "";
-		if (trimmed !== saved) {
-			void persistSelection({ agentDeviceBundleId: trimmed || null });
-		}
 	};
 
 	return (
@@ -450,17 +432,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 					</ul>
 				</div>
 			</SectionCard>
-
-			<SectionCard>
-				<RunnerSigningRemoved
-					bundleId={bundleId}
-					inputSurfaceClass="bg-surface-container"
-					onBundleBlur={handleBundleBlur}
-					onBundleChange={setBundleId}
-					onBundleFocus={() => setBundleFocused(true)}
-					teamId={teamId}
-				/>
-			</SectionCard>
 		</div>
 	);
 }
@@ -592,7 +563,7 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				Paths Argent uses for local Android tests. Detected from your system; override only if you
+				Paths Appium uses for local Android tests. Detected from your system; override only if you
 				need a different SDK or JDK.
 			</p>
 
@@ -649,7 +620,7 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 				</Button>
 				{dirty ? (
 					<p className="text-body-sm text-on-surface-variant">
-						Saving restarts the local runner so Argent picks up the new paths.
+						Saving restarts the local runner so Appium picks up the new paths.
 					</p>
 				) : null}
 			</div>
@@ -922,9 +893,8 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				System checks for Node, Argent, host tools, and leftover processes. Same report as{" "}
-				<code className="font-mono text-helper">yoqa doctor</code>. Argent telemetry is opt-out: run{" "}
-				<code className="font-mono text-helper">argent telemetry disable</code> to disable it.
+				System checks for Node, Appium, drivers, host tools, and leftover processes. Same report as{" "}
+				<code className="font-mono text-helper">yoqa doctor</code>.
 			</p>
 
 			<SectionCard>

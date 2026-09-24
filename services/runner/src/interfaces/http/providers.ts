@@ -1,5 +1,4 @@
 import {
-	type CreateProviderRequest,
 	aiProviderSchema,
 	createProviderRequestSchema,
 	listProviderCatalogResponseSchema,
@@ -11,7 +10,6 @@ import {
 	validateProviderResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
-import { z } from "zod";
 import {
 	ProviderNotFoundError,
 	ProviderValidationError,
@@ -25,22 +23,7 @@ import {
 	updateProvider,
 	validateProvider,
 } from "../../domains/providers/application";
-import { isDriverKind, listDriverCatalog } from "../../domains/providers/drivers";
-
-const createProviderHttpSchema = createProviderRequestSchema.extend({
-	kind: z.string().min(1),
-});
-
-const probeProviderHttpSchema = probeProviderRequestSchema.extend({
-	kind: z.string().min(1),
-});
-
-function asRegisteredKindRequest<T extends { kind: string }>(
-	data: T,
-): (Omit<T, "kind"> & { kind: CreateProviderRequest["kind"] }) | null {
-	if (!isDriverKind(data.kind)) return null;
-	return { ...data, kind: data.kind };
-}
+import { listDriverCatalog } from "../../domains/providers/drivers";
 
 function providerErrorResponse(error: unknown): {
 	status: 400 | 404 | 500;
@@ -82,8 +65,7 @@ export function createProviderRoutes() {
 	app.get("/providers/catalog", async (c) => {
 		try {
 			const drivers = listDriverCatalog();
-			const parsed = listProviderCatalogResponseSchema.safeParse({ drivers });
-			return c.json(parsed.success ? parsed.data : { drivers });
+			return c.json(listProviderCatalogResponseSchema.parse({ drivers }));
 		} catch (error) {
 			const { status, body } = providerErrorResponse(error);
 			return c.json(body, status);
@@ -95,21 +77,12 @@ export function createProviderRoutes() {
 		if (!body.ok) {
 			return c.json({ error: "Invalid JSON body" }, 400);
 		}
-		const parsed = probeProviderHttpSchema.safeParse(body.json);
-		const request = parsed.success ? asRegisteredKindRequest(parsed.data) : null;
-		if (!parsed.success || !request) {
-			return c.json(
-				{
-					error: "Invalid probe provider request",
-					detail: parsed.success
-						? `Unknown provider kind: ${parsed.data.kind}`
-						: parsed.error.message,
-				},
-				400,
-			);
+		const parsed = probeProviderRequestSchema.safeParse(body.json);
+		if (!parsed.success) {
+			return c.json({ error: "Invalid probe provider request", detail: parsed.error.message }, 400);
 		}
 		try {
-			const result = await probeProvider(request);
+			const result = await probeProvider(parsed.data);
 			return c.json(probeProviderResponseSchema.parse(result));
 		} catch (error) {
 			const { status, body: err } = providerErrorResponse(error);
@@ -122,21 +95,15 @@ export function createProviderRoutes() {
 		if (!body.ok) {
 			return c.json({ error: "Invalid JSON body" }, 400);
 		}
-		const parsed = createProviderHttpSchema.safeParse(body.json);
-		const request = parsed.success ? asRegisteredKindRequest(parsed.data) : null;
-		if (!parsed.success || !request) {
+		const parsed = createProviderRequestSchema.safeParse(body.json);
+		if (!parsed.success) {
 			return c.json(
-				{
-					error: "Invalid create provider request",
-					detail: parsed.success
-						? `Unknown provider kind: ${parsed.data.kind}`
-						: parsed.error.message,
-				},
+				{ error: "Invalid create provider request", detail: parsed.error.message },
 				400,
 			);
 		}
 		try {
-			const provider = await createProvider(request);
+			const provider = await createProvider(parsed.data);
 			return c.json(aiProviderSchema.parse(provider), 201);
 		} catch (error) {
 			const { status, body: err } = providerErrorResponse(error);

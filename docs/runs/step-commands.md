@@ -28,7 +28,6 @@ Rejected for this slice: a dedicated run-event stream; changing the friendly act
 **Desktop**
 - Run detail: monospace command under each completed step
 - Live trailing row: `Executing…` plus the in-flight command, or `In progress…` while the agent is still deciding
-  - Since [`ai-decide-timeout`](ai-decide-timeout.md): the decide phase itself publishes `AI deciding next action…`, so only the screenshot/tree capture renders as `In progress…`
 - Inspector session reports pass the raw shell line as `command`
 
 ## How to verify

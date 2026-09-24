@@ -38,8 +38,6 @@ export type DriverValidateInput = {
 export type DriverCapabilities = {
 	/** True when this adapter can run vision decide/ground for agent runs. */
 	vision: boolean;
-	/** True when this adapter can confirm verify/done/fail from text state. */
-	judge: boolean;
 };
 
 /** Runtime auth blob passed into vision completion (same fields as ActiveProviderAuth minus id). */
@@ -67,34 +65,6 @@ export type VisionPort = {
 	completeObject: <T>(input: VisionCompleteInput<T>) => Promise<T>;
 };
 
-export type JudgeProposed = "verify" | "done" | "fail";
-
-export type InstructionJudgeInput = {
-	auth: VisionAuth;
-	instruction: string;
-	expectedResult: string;
-	screenSnapshot: string;
-	recentActions: Array<{ type: string; reason?: string }>;
-	proposed: JudgeProposed;
-	proposedReason: string;
-	proposedThoughts: string;
-};
-
-export type InstructionJudgeVerdict = {
-	outcome: "confirm" | "continue" | "fail";
-	reason: string;
-	thoughts: string;
-	scores?: {
-		instructionComplete: number;
-		expectedVisible: number;
-		stillBlocked: number;
-	};
-};
-
-export type JudgePort = {
-	confirmInstruction: (input: InstructionJudgeInput) => Promise<InstructionJudgeVerdict>;
-};
-
 /** Serializable provider facts for Settings UI (logos stay in the desktop). */
 export type DriverCatalogEntry = {
 	kind: ProviderKind;
@@ -119,8 +89,6 @@ export type DriverDefinition = {
 	capabilities: DriverCapabilities;
 	/** Present iff `capabilities.vision` is true. */
 	vision?: VisionPort;
-	/** Present iff `capabilities.judge` is true. */
-	judge?: JudgePort;
 	probe: (binaryPath?: string | null) => Promise<ProbeResult>;
 	validate: (input: DriverValidateInput) => Promise<ValidateResult>;
 	listModels: (input: DriverValidateInput) => Promise<ListModelsResult>;

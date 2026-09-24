@@ -1,8 +1,8 @@
 import { basename, extname } from "node:path";
 import type { Build, CreateBuildRequest } from "@yoqa/runner-client";
 import { desc, eq } from "drizzle-orm";
-import { runArgentTool } from "../argent/cli";
 import { getCatalogDb } from "../catalog/db";
+import { resolveAndroidAppiumIdentity } from "../devices/application";
 import { builds } from "./schema";
 
 export class BuildNotFoundError extends Error {
@@ -127,27 +127,53 @@ export async function installBuildOnDevice(options: {
 	build: Build;
 	deviceId: string;
 	platform: "ios" | "android";
-	/**
-	 * Bundle id / application id to (re)install under. Falls back to the
-	 * build record; Argent `reinstall-app` requires one.
-	 */
-	bundleId?: string;
 }): Promise<void> {
-	const { build, deviceId } = options;
-	const bundleId = options.bundleId?.trim() || build.bundleId?.trim();
-	if (!bundleId) {
+	const { build, deviceId, platform } = options;
+	if (platform === "ios") {
+		if (build.path.endsWith(".app") || build.path.includes(".app")) {
+			const proc = Bun.spawn(["xcrun", "simctl", "install", deviceId, build.path], {
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+			if (code !== 0) {
+				throw new Error(`simctl install failed: ${stderr.trim() || `exit ${code}`}`);
+			}
+			return;
+		}
+		// .ipa on physical — try ideviceinstaller or tip
+		const which = Bun.which("ideviceinstaller");
+		if (which && build.path.endsWith(".ipa")) {
+			const proc = Bun.spawn([which, "-u", deviceId, "-i", build.path], {
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+			if (code !== 0) {
+				throw new Error(`ideviceinstaller failed: ${stderr.trim() || `exit ${code}`}`);
+			}
+			return;
+		}
 		throw new Error(
-			`Cannot install ${build.path}: no bundle id is known. Set the app's iOS bundle id / Android application id first.`,
+			`Cannot install iOS build at ${build.path}. Use a .app on simulator or install .ipa via ideviceinstaller.`,
 		);
 	}
-	try {
-		await runArgentTool(
-			"reinstall-app",
-			["--udid", deviceId, "--bundleId", bundleId, "--appPath", build.path],
-			{ timeoutMs: 300_000 },
+
+	const identity = await resolveAndroidAppiumIdentity(deviceId);
+	const serial = identity.udid;
+	if (!serial) {
+		throw new Error(
+			`Android emulator ${deviceId} is not running. Boot it, then retry the install.`,
 		);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`argent reinstall-app failed for ${build.path}: ${message.slice(0, 300)}`);
+	}
+
+	const adb = Bun.which("adb") ?? "adb";
+	const proc = Bun.spawn([adb, "-s", serial, "install", "-r", build.path], {
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+	if (code !== 0) {
+		throw new Error(`adb install failed: ${stderr.trim() || `exit ${code}`}`);
 	}
 }

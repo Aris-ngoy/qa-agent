@@ -6,24 +6,56 @@ import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
 import { runsListQueryKey } from "@/features/runs/list-page";
 import { type TestCase, casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
-import { AlertDialog, Button, Dropdown, Label } from "@heroui/react";
+import { AlertDialog, Button, Dropdown, Label, ListBox, Select } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
 	type RunExecutionMode,
 	type SetupPlatformRequest,
 	createRunnerClient,
-	isRunnerNotInstalledError,
 } from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useMemo, useRef, useState } from "react";
 import { DeviceSetupPanel, type DeviceSetupStatus } from "./device-setup-panel";
-import { RunnerInstallDialog } from "./runner-install-dialog";
 import { type DevicePlatform, SelectDeviceModal, type SelectedDevice } from "./select-device-modal";
 import { ServersDoctorPanel } from "./servers-doctor-panel";
 import { useActiveDeviceSession } from "./use-active-device-session";
-import { useRunnerInstall } from "./use-runner-install";
 
-async function setupSelectedDevice(device: SelectedDevice, signal: AbortSignal) {
+async function resolveIosPhysicalSetup(): Promise<
+	Pick<SetupPlatformRequest, "xcodeDeveloperDir" | "developmentTeam" | "codeSignIdentity">
+> {
+	const toolchain = await getDesktopRpc().request.getIosToolchain();
+	const xcodeDeveloperDir = toolchain.preferences.xcodeDeveloperDir;
+	if (!xcodeDeveloperDir) {
+		throw new Error("No Xcode selected. Open Settings and choose an Xcode installation.");
+	}
+
+	const identity =
+		(toolchain.preferences.signingIdentityHash &&
+			toolchain.identities.find(
+				(item) => item.hash === toolchain.preferences.signingIdentityHash,
+			)) ||
+		toolchain.identities.find((item) => item.tier === "Paid") ||
+		toolchain.identities[0] ||
+		null;
+
+	if (!identity) {
+		throw new Error(
+			"No valid Apple Development certificate found. Open Settings, pick a certificate that is not revoked, and try again.",
+		);
+	}
+
+	return {
+		xcodeDeveloperDir,
+		developmentTeam: identity.teamId,
+		codeSignIdentity: identity.name,
+	};
+}
+
+async function setupSelectedDevice(
+	device: SelectedDevice,
+	signal: AbortSignal,
+	options?: { force?: boolean },
+) {
 	const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
 	const client = createRunnerClient({ baseUrl });
 
@@ -31,10 +63,23 @@ async function setupSelectedDevice(device: SelectedDevice, signal: AbortSignal) 
 		platform: device.platform,
 		deviceId: device.id,
 		kind: device.kind,
+		force: options?.force === true ? true : undefined,
 	};
+
+	if (device.platform === "ios" && device.kind === "physical") {
+		Object.assign(request, await resolveIosPhysicalSetup());
+	}
 
 	return client.setupPlatform(request, { signal });
 }
+
+/** WebDriverAgent policy for iOS physical runs (`force` maps to setup `--force`). */
+const WDA_MODES = [
+	{ id: "skip", label: "Skip" },
+	{ id: "rebuild", label: "Rebuild" },
+] as const;
+
+type WdaMode = (typeof WDA_MODES)[number]["id"];
 
 const PLATFORMS = [
 	{ id: "ios", label: "iOS", available: true },
@@ -122,6 +167,25 @@ function LaptopIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
+function KeyIcon(props: SVGProps<SVGSVGElement>) {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-5"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.75"
+			viewBox="0 0 24 24"
+			{...props}
+		>
+			<path
+				d="M14.7 6.3a4.5 4.5 0 0 0-6.4 6.4L4 17v3h3l4.3-4.3a4.5 4.5 0 0 0 6.4-6.4Z"
+				strokeLinejoin="round"
+			/>
+		</svg>
+	);
+}
+
 function DownloadIcon(props: SVGProps<SVGSVGElement>) {
 	return (
 		<svg
@@ -174,20 +238,13 @@ export function RunsPanel() {
 	const [setupStatus, setSetupStatus] = useState<DeviceSetupStatus>("loading");
 	const [setupMessage, setSetupMessage] = useState<string | null>(null);
 	const [setupAttempt, setSetupAttempt] = useState(0);
+	const [setupForce, setSetupForce] = useState(false);
+	const [wdaMode, setWdaMode] = useState<WdaMode>("skip");
 	const [deviceOpen, setDeviceOpen] = useState(false);
+	const [wdaOpen, setWdaOpen] = useState(false);
 	const [modalPlatform, setModalPlatform] = useState<DevicePlatform | null>(null);
 	const [executionPromptOpen, setExecutionPromptOpen] = useState(false);
 	const [serversOpen, setServersOpen] = useState(false);
-	const {
-		runnerInstallTarget,
-		runnerInstallPhase,
-		runnerInstallMessage,
-		openRunnerInstall,
-		closeRunnerInstall,
-		startRunnerInstall,
-	} = useRunnerInstall();
-	/** Execution mode to retry with after a YoqaADRunner install. */
-	const pendingModeRef = useRef<RunExecutionMode>("agent");
 	const setupAbortRef = useRef<AbortController | null>(null);
 	/** Last device id seen on the runner's Active Session — drives preselection. */
 	const lastSeenSessionDeviceRef = useRef<string | null>(null);
@@ -253,6 +310,11 @@ export function RunsPanel() {
 				throw new Error("Select at least one test case");
 			}
 
+			// Rebuild → force WebDriverAgent rebuild/install on physical iOS (setup `--force`).
+			if (wdaMode === "rebuild" && device.platform === "ios" && device.kind === "physical") {
+				await setupSelectedDevice(device, new AbortController().signal, { force: true });
+			}
+
 			const client = await getRunnerClient();
 			return client.createRun({
 				appId: selectedApp.id,
@@ -262,8 +324,7 @@ export function RunsPanel() {
 				executionMode,
 			});
 		},
-		onMutate: (executionMode) => {
-			pendingModeRef.current = executionMode;
+		onMutate: () => {
 			setExecutionPromptOpen(false);
 		},
 		onSuccess: (run) => {
@@ -277,14 +338,6 @@ export function RunsPanel() {
 			void navigate({ to: "/runs/$runId", params: { runId: run.id } });
 		},
 		onError: (error) => {
-			if (device?.platform === "ios" && isRunnerNotInstalledError(error)) {
-				const detail = error instanceof Error ? error.message : null;
-				const target = device;
-				openRunnerInstall(target, detail, () => {
-					runMutation.mutate(pendingModeRef.current);
-				});
-				return;
-			}
 			showErrorToast(error, "Failed to start run");
 		},
 	});
@@ -311,6 +364,7 @@ export function RunsPanel() {
 
 	const openPlatformModal = (platform: DevicePlatform) => {
 		setDeviceOpen(false);
+		setWdaOpen(false);
 		setModalPlatform(platform);
 	};
 
@@ -321,6 +375,7 @@ export function RunsPanel() {
 		setDeviceReady(false);
 		setSetupStatus("loading");
 		setSetupMessage(null);
+		setSetupForce(false);
 		setSetupDevice(selected);
 		setSetupAttempt((n) => n + 1);
 	};
@@ -329,6 +384,7 @@ export function RunsPanel() {
 		setupAbortRef.current?.abort();
 		setupAbortRef.current = null;
 		setSetupDevice(null);
+		setSetupForce(false);
 		setSetupStatus("loading");
 		setSetupMessage(null);
 		setDeviceReady(false);
@@ -338,6 +394,7 @@ export function RunsPanel() {
 		if (!setupDevice) return;
 		setSetupStatus("loading");
 		setSetupMessage(null);
+		setSetupForce(true);
 		setSetupAttempt((n) => n + 1);
 	};
 
@@ -348,6 +405,7 @@ export function RunsPanel() {
 
 		void setupAttempt;
 		const selected = setupDevice;
+		const forceRebuild = setupForce;
 		const controller = new AbortController();
 		setupAbortRef.current = controller;
 
@@ -357,17 +415,18 @@ export function RunsPanel() {
 			isIosPhysical
 				? "Preparing iOS device…"
 				: selected.platform === "ios"
-					? "Verifying Argent iOS readiness…"
-					: "Verifying Argent Android readiness…",
+					? "Installing Appium XCUITest driver…"
+					: "Installing Appium UiAutomator2 driver…",
 		);
 
 		void (async () => {
 			try {
-				await setupSelectedDevice(selected, controller.signal);
+				await setupSelectedDevice(selected, controller.signal, { force: forceRebuild });
 				if (controller.signal.aborted) return;
 				setDevice(selected);
 				setDeviceReady(true);
 				setSetupDevice(null);
+				setSetupForce(false);
 				setSetupStatus("loading");
 				setSetupMessage(null);
 			} catch (error) {
@@ -388,7 +447,7 @@ export function RunsPanel() {
 		return () => {
 			controller.abort();
 		};
-	}, [setupDevice, setupAttempt]);
+	}, [setupDevice, setupAttempt, setupForce]);
 
 	// After a run finishes, refresh cases so newly saved scripts show up.
 	useEffect(() => {
@@ -403,6 +462,7 @@ export function RunsPanel() {
 		selectedApp &&
 			device &&
 			deviceReady &&
+			wdaMode &&
 			selectedCaseIds.length > 0 &&
 			!runMutation.isPending &&
 			!isRunLive,
@@ -410,7 +470,9 @@ export function RunsPanel() {
 	const runTitle = isRunLive
 		? "Cancel run"
 		: runMutation.isPending
-			? "Starting run…"
+			? wdaMode === "rebuild" && device?.platform === "ios" && device.kind === "physical"
+				? "Rebuilding WebDriverAgent…"
+				: "Starting run…"
 			: !selectedApp
 				? "Select an app to run"
 				: selectedCaseIds.length === 0
@@ -430,8 +492,7 @@ export function RunsPanel() {
 			setExecutionPromptOpen(true);
 			return;
 		}
-		// No saved scripts → AI agent by default. A missing iOS runner is
-		// installed automatically during run start; failures open the dialog.
+		// No saved scripts → AI agent by default.
 		runMutation.mutate("agent");
 	};
 
@@ -446,12 +507,27 @@ export function RunsPanel() {
 							aria-label="Select device"
 							className="text-white/90 transition-opacity hover:opacity-100"
 							onClick={() => {
+								setWdaOpen(false);
 								setDeviceOpen(true);
 							}}
 							title="Select device"
 							type="button"
 						>
 							<PhoneIcon className="size-6" />
+						</button>
+						<button
+							aria-expanded={wdaOpen}
+							aria-haspopup="listbox"
+							aria-label="WebDriverAgent mode"
+							className="text-white/90 transition-opacity hover:opacity-100"
+							onClick={() => {
+								setDeviceOpen(false);
+								setWdaOpen(true);
+							}}
+							title="WebDriverAgent: Skip or Rebuild"
+							type="button"
+						>
+							<KeyIcon />
 						</button>
 						<button
 							aria-label="Export results"
@@ -512,6 +588,35 @@ export function RunsPanel() {
 							</Dropdown.Popover>
 						</Dropdown>
 
+						<Select
+							aria-label="WebDriverAgent mode"
+							className="w-[11.5rem]"
+							isOpen={wdaOpen}
+							placeholder="WDA"
+							selectedKey={wdaMode}
+							onOpenChange={setWdaOpen}
+							onSelectionChange={(key) => {
+								if (key === "skip" || key === "rebuild") {
+									setWdaMode(key);
+								}
+							}}
+						>
+							<Select.Trigger className="h-10 items-center gap-2 rounded-full border border-outline-variant bg-surface-container-lowest px-3.5 shadow-none">
+								<Select.Value />
+								<Select.Indicator className="text-on-surface-variant" />
+							</Select.Trigger>
+							<Select.Popover>
+								<ListBox>
+									{WDA_MODES.map((mode) => (
+										<ListBox.Item id={mode.id} key={mode.id} textValue={mode.label}>
+											{mode.label}
+											<ListBox.ItemIndicator />
+										</ListBox.Item>
+									))}
+								</ListBox>
+							</Select.Popover>
+						</Select>
+
 						<ServersDoctorPanel onOpenChange={setServersOpen} open={serversOpen} />
 
 						<button
@@ -555,22 +660,6 @@ export function RunsPanel() {
 					onRetry={retrySetup}
 					open
 					status={setupStatus}
-				/>
-			) : null}
-
-			{runnerInstallTarget ? (
-				<RunnerInstallDialog
-					device={runnerInstallTarget.device}
-					open
-					phase={runnerInstallPhase}
-					message={runnerInstallMessage}
-					onInstall={() => {
-						void startRunnerInstall();
-					}}
-					onRetry={() => {
-						void startRunnerInstall();
-					}}
-					onCancel={closeRunnerInstall}
 				/>
 			) : null}
 

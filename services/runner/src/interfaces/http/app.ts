@@ -52,7 +52,7 @@ export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 	app.get("/", (c) =>
 		c.json({
 			name: "yoqa-runner",
-			docs: "GET /health · GET /status · GET /doctor · GET /servers · GET /devices · POST /devices/connect · GET /screen · GET /screenshot/image · GET /screenshot/stream · WS /ws/control · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds",
+			docs: "GET /health · GET /status · GET /doctor · GET /servers · GET /devices · POST /devices/connect · GET /screen · GET /screenshot/image · GET /stream.mjpeg · WS /ws/control · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds",
 		}),
 	);
 

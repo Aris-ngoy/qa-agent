@@ -1,7 +1,7 @@
 {
 	"name": "@yoqa/runner",
 	"version": "0.3.27",
-	"description": "Yoqa local runner — Argent device backend + catalog HTTP API (Bun). Start with yoqa serve or the yoqa-runner bin.",
+	"description": "Yoqa local runner — Appium + catalog HTTP API (Bun). Start with yoqa serve or the yoqa-runner bin.",
 	"license": "UNLICENSED",
 	"type": "module",
 	"bin": {
@@ -24,7 +24,7 @@
 	"bugs": {
 		"url": "https://github.com/Aris-ngoy/qa-agent/issues"
 	},
-	"keywords": ["yoqa", "runner", "argent", "mobile", "qa"],
+	"keywords": ["yoqa", "runner", "appium", "mobile", "qa"],
 	"scripts": {
 		"start": "bun run src/index.ts",
 		"dev": "bun run --watch src/index.ts",
@@ -40,10 +40,11 @@
 		"@ai-sdk/groq": "^4.0.13",
 		"@ai-sdk/openai": "^4.0.30",
 		"@ai-sdk/xai": "^4",
-		"@typesafe-ai/sdk": "^0.6.0",
 		"ai": "^7.0.37",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.13.0",
+		"webdriver": "^9.16.2",
+		"webdriverio": "^9.16.2",
 		"zod": "^3.25.67"
 	},
 	"devDependencies": {

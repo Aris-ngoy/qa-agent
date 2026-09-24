@@ -63,7 +63,7 @@ export const googleDriver: DriverDefinition = {
 	authModes: ["api_key"],
 	envHints: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
 	loginInstructions: null,
-	capabilities: { vision: true, judge: false },
+	capabilities: { vision: true },
 	vision: createSdkVisionPort({
 		label: "Google",
 		defaultModel: "gemini-2.5-flash",

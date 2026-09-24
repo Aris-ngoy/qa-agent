@@ -20,7 +20,7 @@
 	"bugs": {
 		"url": "https://github.com/Aris-ngoy/qa-agent/issues"
 	},
-	"keywords": ["yoqa", "cli", "mobile", "qa", "agent-device", "testing"],
+	"keywords": ["yoqa", "cli", "mobile", "qa", "appium", "testing"],
 	"scripts": {
 		"yoqa": "bun run src/main.ts",
 		"build": "bun run build.ts",

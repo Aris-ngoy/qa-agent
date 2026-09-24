@@ -34,7 +34,7 @@ export type DriverMeta = {
 	comingSoon?: boolean;
 	earlyAccess?: boolean;
 	loginInstructions: string | null;
-	capabilities?: { vision: boolean; judge?: boolean };
+	capabilities?: { vision: boolean };
 };
 
 /**
@@ -52,7 +52,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["ANTHROPIC_API_KEY"],
 		keyPlaceholder: "sk-ant-…",
 		loginInstructions: null,
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "openai",
@@ -63,7 +63,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["OPENAI_API_KEY"],
 		keyPlaceholder: "sk-…",
 		loginInstructions: null,
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "claude",
@@ -74,7 +74,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["ANTHROPIC_API_KEY"],
 		keyPlaceholder: "sk-ant-…",
 		loginInstructions: "Run `claude auth login` in a terminal, then re-check.",
-		capabilities: { vision: false, judge: false },
+		capabilities: { vision: false },
 	},
 	{
 		kind: "codex",
@@ -86,7 +86,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["OPENAI_API_KEY"],
 		keyPlaceholder: "sk-…",
 		loginInstructions: "Run `codex login` in a terminal, then re-check.",
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "opencode",
@@ -99,7 +99,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		keyPlaceholder: "sk-…",
 		loginInstructions:
 			"Paste a Zen API key from https://opencode.ai for Zen vision. LiteLLM uses opencode.json plus CLI auth or LITELLM_API_KEY. CLI login alone is not enough for Zen (local serve has no OpenAI /v1).",
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "github-copilot",
@@ -110,7 +110,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN"],
 		keyPlaceholder: "ghp_… / gho_…",
 		loginInstructions: "Paste COPILOT_GITHUB_TOKEN / GH_TOKEN. Device login requires a terminal.",
-		capabilities: { vision: false, judge: false },
+		capabilities: { vision: false },
 	},
 	{
 		kind: "groq",
@@ -121,7 +121,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["GROQ_API_KEY"],
 		keyPlaceholder: "gsk_…",
 		loginInstructions: null,
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "google",
@@ -132,7 +132,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
 		keyPlaceholder: "AIza…",
 		loginInstructions: null,
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "google-vertex",
@@ -149,7 +149,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		keyPlaceholder: "Vertex API key…",
 		loginInstructions:
 			"Paste express-mode API key, or set GOOGLE_VERTEX_PROJECT / LOCATION env in Advanced.",
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "antigravity",
@@ -162,7 +162,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		keyPlaceholder: "AIza…",
 		loginInstructions:
 			"Install `agy` and sign in via Antigravity. If eligibility fails, paste a Google AI Studio API key (or use the Google provider).",
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "cursor",
@@ -174,7 +174,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["CURSOR_API_KEY"],
 		keyPlaceholder: "key_…",
 		loginInstructions: "Run `cursor-agent login` (or `cursor agent login`), then re-check.",
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "grok",
@@ -185,19 +185,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		envHints: ["XAI_API_KEY"],
 		keyPlaceholder: "xai-…",
 		loginInstructions: null,
-		capabilities: { vision: true, judge: false },
-	},
-	{
-		kind: "jev",
-		label: "Jev",
-		description:
-			"TypeSafe System One judge for verify/done/fail. Text-only — pair with a vision provider for agent taps.",
-		authModes: ["api_key"],
-		defaultBinary: null,
-		envHints: ["TYPESAFE_API_KEY"],
-		keyPlaceholder: "sk-…",
-		loginInstructions: "Create a key at https://console.typesafe.ai/settings/keys",
-		capabilities: { vision: false, judge: true },
+		capabilities: { vision: true },
 	},
 	{
 		kind: "custom",
@@ -210,7 +198,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 		keyPlaceholder: "optional…",
 		loginInstructions:
 			"Set Base URL to an OpenAI-compatible /v1 root (e.g. http://127.0.0.1:11434/v1).",
-		capabilities: { vision: true, judge: false },
+		capabilities: { vision: true },
 	},
 ];
 
@@ -248,7 +236,7 @@ export const PROVIDER_CATALOG_QUERY_KEY = [...PROVIDERS_QUERY_KEY, "catalog"] as
 export function mergeCatalogWithLocal(
 	catalog: ProviderDriverCatalogEntry[] | null | undefined,
 ): DriverMeta[] {
-	if (catalog == null) return FALLBACK_ACTIVE_DRIVERS;
+	if (!catalog?.length) return FALLBACK_ACTIVE_DRIVERS;
 	return catalog.map((entry) => {
 		const local = FALLBACK_ACTIVE_DRIVERS.find((d) => d.kind === entry.kind);
 		return {
@@ -277,11 +265,9 @@ export function useProviderDriverCatalog(enabled = true) {
 	});
 }
 
-/** Active drivers advertised by the live runner catalog. Empty until that catalog loads. */
+/** Active drivers with runner catalog preferred when available. */
 export function useActiveDrivers(enabled = true): DriverMeta[] {
 	const catalogQuery = useProviderDriverCatalog(enabled);
-	if (catalogQuery.isPending) return [];
-	if (catalogQuery.isError || catalogQuery.data == null) return FALLBACK_ACTIVE_DRIVERS;
 	return mergeCatalogWithLocal(catalogQuery.data);
 }
 
@@ -366,8 +352,6 @@ export function DriverGlyph({ kind }: { kind: string }): ReactNode {
 				return <CursorLogo />;
 			case "grok":
 				return <GrokLogo />;
-			case "jev":
-				return <FallbackLogo label="Jev" />;
 			case "custom":
 				return <FallbackLogo label="Custom" />;
 			case "acp":

@@ -11,7 +11,7 @@ Build notes and feature write-ups produced after **plan → build** work.
 | `sessions/` | Dated one-off build logs (`YYYY-MM-DD-slug.md`) |
 | `<area>/` | Durable docs for a domain (e.g. `providers/`, `runner/`, `desktop/`, `runs/`) |
 
-Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [`AGENTS.md`](../AGENTS.md) (Plan-and-build) for when and how agents should add entries. That file is the source of truth for every coding harness; `.cursor/rules`, `CLAUDE.md`, and `.github/copilot-instructions.md` are thin adapters.
+Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See `.cursor/rules/document-plan-builds.mdc` for when and how agents should add entries.
 
 ## Index
 

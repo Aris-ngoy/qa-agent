@@ -112,10 +112,12 @@ describe("listOpenCodeModelsFromCli", () => {
 			expect(result.detail.length).toBeGreaterThan(0);
 			return;
 		}
-		// The CLI catalog churns (model ids retire frequently), so assert shape
-		// rather than a pinned id.
-		expect(result.models.length).toBeGreaterThan(0);
-		expect(result.models.every((m) => Boolean(m.id) && Boolean(m.provider))).toBe(true);
+		expect(
+			result.models.some(
+				(m) => m.id === "opencode/deepseek-v4-flash-free" || m.id === "deepseek-v4-flash-free",
+			),
+		).toBe(true);
+		expect(result.models.every((m) => Boolean(m.provider))).toBe(true);
 	});
 });
 

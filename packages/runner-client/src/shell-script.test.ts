@@ -132,39 +132,6 @@ describe("format helpers", () => {
 		expect(formatScreenshotShellLine()).toBe("yoqa screenshot");
 		expect(formatScreenshotShellLine("/tmp/a.png")).toBe("yoqa screenshot '/tmp/a.png'");
 	});
-
-	test("formatActionShellLine emits system actions", () => {
-		expect(formatActionShellLine({ kind: "back" })).toBe("yoqa action back");
-		expect(formatActionShellLine({ kind: "scroll", direction: "down" })).toBe(
-			"yoqa action scroll --direction down",
-		);
-		expect(formatActionShellLine({ kind: "home" })).toBe("yoqa action home");
-		expect(formatActionShellLine({ kind: "keyboard", keyboardAction: "enter" })).toBe(
-			"yoqa action keyboard --action enter",
-		);
-	});
-
-	test("parseYoqaShellScript round-trips system actions", () => {
-		const parsed = parseYoqaShellScript(
-			[
-				"yoqa action back",
-				"yoqa action scroll --direction up --amount 0.5",
-				"yoqa action home",
-				"yoqa action keyboard --action dismiss",
-			].join("\n"),
-		);
-		expect(parsed.errors).toEqual([]);
-		expect(parsed.steps.map((step) => step.kind)).toEqual(["action", "action", "action", "action"]);
-		const actions = parsed.steps.flatMap((step) => (step.kind === "action" ? [step.action] : []));
-		expect(actions[1]).toMatchObject({ kind: "scroll", direction: "up", amount: 0.5 });
-		expect(actions[3]).toMatchObject({ kind: "keyboard", keyboardAction: "dismiss" });
-	});
-
-	test("parseYoqaShellScript rejects a bad scroll direction", () => {
-		const parsed = parseYoqaShellScript("yoqa action scroll --direction diagonal");
-		expect(parsed.steps).toEqual([]);
-		expect(parsed.errors).toHaveLength(1);
-	});
 });
 
 describe("element helpers", () => {
@@ -254,21 +221,6 @@ yoqa action alert --dismiss`,
 			{ type: "alert", alertAction: "accept" },
 			{ type: "alert", alertAction: "dismiss" },
 		]);
-	});
-
-	test("skips back/scroll/home/keyboard with warnings", () => {
-		const result = shellToCaseScript(
-			`yoqa action tap --x 100 --y 200
-yoqa action back
-yoqa action scroll --direction down
-yoqa action home
-yoqa action keyboard --action dismiss`,
-			{ savedAt: 1 },
-		);
-		expect(result.errors).toEqual([]);
-		expect(result.script?.actions).toEqual([{ type: "tap", x: 100, y: 200 }]);
-		expect(result.warnings).toHaveLength(4);
-		expect(result.warnings.every((w) => w.includes("not supported in CaseScript"))).toBe(true);
 	});
 
 	test("converts assert-only scripts", () => {

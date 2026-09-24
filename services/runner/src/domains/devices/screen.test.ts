@@ -1,33 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { snapshotNodesToScreen } from "./screen";
-import type { SnapshotNode } from "./session";
+import { cleanPageSource } from "./screen";
 
-const WINDOW = { width: 402, height: 874 };
+const WINDOW = { width: 1000, height: 2000 };
 
-function node(partial: Partial<SnapshotNode> & { ref: string }): SnapshotNode {
-	return partial;
-}
-
-describe("snapshotNodesToScreen", () => {
-	test("normalizes rects to 0–1000 and keeps labeled nodes", () => {
-		const screen = snapshotNodesToScreen(
-			[
-				node({
-					ref: "e1",
-					role: "button",
-					label: "Login",
-					identifier: "com.app:id/login",
-					rect: { x: 40.2, y: 87.4, width: 80.4, height: 34.96 },
-					enabled: true,
-				}),
-				node({ ref: "e2", role: "window", rect: { x: 0, y: 0, width: 402, height: 874 } }),
-			],
-			WINDOW,
-		);
-		expect(screen.window).toEqual(WINDOW);
-		expect(screen.elements).toHaveLength(1);
-		expect(screen.elements[0]).toMatchObject({
-			type: "button",
+describe("cleanPageSource", () => {
+	test("normalizes Android bounds to 0–1000 and keeps labeled nodes", () => {
+		const xml = `
+<hierarchy>
+  <android.widget.FrameLayout bounds="[0,0][1000,2000]" />
+  <android.widget.Button bounds="[100,200][300,280]" text="Login" resource-id="com.app:id/login" enabled="true" />
+  <android.widget.TextView bounds="[0,0][0,0]" text="zero" />
+  <android.widget.TextView bounds="[2000,0][2100,50]" text="offscreen" />
+</hierarchy>
+`;
+		const cleaned = cleanPageSource(xml, WINDOW);
+		expect(cleaned.window).toEqual(WINDOW);
+		expect(cleaned.elements).toHaveLength(1);
+		expect(cleaned.elements[0]).toMatchObject({
+			type: "android.widget.Button",
 			label: "Login",
 			id: "com.app:id/login",
 			x: 100,
@@ -38,69 +28,93 @@ describe("snapshotNodesToScreen", () => {
 		});
 	});
 
-	test("drops zero-size and offscreen nodes", () => {
-		const screen = snapshotNodesToScreen(
-			[
-				node({ ref: "e1", role: "text", label: "zero", rect: { x: 0, y: 0, width: 0, height: 0 } }),
-				node({
-					ref: "e2",
-					role: "text",
-					label: "offscreen",
-					rect: { x: 2000, y: 0, width: 100, height: 50 },
-				}),
-				node({
-					ref: "e3",
-					role: "text",
-					label: "Visible",
-					rect: { x: 20, y: 40, width: 100, height: 24 },
-				}),
-			],
-			WINDOW,
-		);
-		expect(screen.elements).toHaveLength(1);
-		expect(screen.elements[0]?.label).toBe("Visible");
+	test("parses iOS frames and drops invisible nodes", () => {
+		const xml = `
+<XCUIElementTypeApplication x="0" y="0" width="390" height="844">
+  <XCUIElementTypeButton x="39" y="84.4" width="78" height="42.2" label="Continue" name="continue_btn" visible="true" />
+  <XCUIElementTypeStaticText x="10" y="10" width="50" height="20" label="Hidden" visible="false" />
+  <XCUIElementTypeOther x="0" y="0" width="390" height="844" />
+</XCUIElementTypeApplication>
+`;
+		const cleaned = cleanPageSource(xml, { width: 390, height: 844 });
+		expect(cleaned.elements).toHaveLength(1);
+		expect(cleaned.elements[0]).toMatchObject({
+			type: "XCUIElementTypeButton",
+			label: "Continue",
+			id: "continue_btn",
+			x: 100,
+			y: 100,
+			width: 200,
+			height: 50,
+			visible: true,
+		});
 	});
 
-	test("does not treat deeplinks as ids or labels", () => {
-		const screen = snapshotNodesToScreen(
-			[
-				node({
-					ref: "e1",
-					type: "Cell",
-					identifier: "cashgiraffeSB://game-details/6751056655",
-					rect: { x: 0, y: 100, width: 390, height: 80 },
-				}),
-				node({
-					ref: "e2",
-					type: "Link",
-					label: "Open game",
-					identifier: "https://example.com/game",
-					rect: { x: 10, y: 200, width: 100, height: 40 },
-				}),
-			],
+	test("does not treat deeplink name as id or label", () => {
+		const xml = `
+<XCUIElementTypeApplication x="0" y="0" width="390" height="844">
+  <XCUIElementTypeCell x="0" y="100" width="390" height="80" name="cashgiraffeSB://game-details/6751056655" visible="true" />
+  <XCUIElementTypeLink x="10" y="200" width="100" height="40" label="Open game" name="https://example.com/game" visible="true" />
+</XCUIElementTypeApplication>
+`;
+		const cleaned = cleanPageSource(xml, { width: 390, height: 844 });
+		expect(cleaned.elements).toHaveLength(2);
+
+		const cell = cleaned.elements[0];
+		expect(cell).toMatchObject({
+			type: "XCUIElementTypeCell",
+			label: "",
+		});
+		expect(cell?.id).toBeUndefined();
+
+		const link = cleaned.elements[1];
+		expect(link).toMatchObject({
+			type: "XCUIElementTypeLink",
+			label: "Open game",
+		});
+		expect(link?.id).toBeUndefined();
+	});
+
+	test("drops unlabeled iOS scroll/table containers and never uses type as label", () => {
+		const xml = `
+<XCUIElementTypeApplication x="0" y="0" width="390" height="844">
+  <XCUIElementTypeScrollView x="0" y="0" width="390" height="844" visible="true" />
+  <XCUIElementTypeCollectionView x="0" y="0" width="390" height="400" visible="true" />
+  <XCUIElementTypeTable x="0" y="400" width="390" height="400" visible="true" />
+  <XCUIElementTypeWebView x="0" y="0" width="390" height="844" visible="true" />
+  <XCUIElementTypeStaticText x="20" y="40" width="100" height="24" label="Discover" visible="true" />
+</XCUIElementTypeApplication>
+`;
+		const cleaned = cleanPageSource(xml, { width: 390, height: 844 });
+		expect(cleaned.elements).toHaveLength(1);
+		expect(cleaned.elements[0]).toMatchObject({
+			type: "XCUIElementTypeStaticText",
+			label: "Discover",
+		});
+		expect(cleaned.elements.every((el) => el.label !== el.type)).toBe(true);
+	});
+
+	test("decodes XML entities in Android text and iOS label", () => {
+		const android = cleanPageSource(
+			`
+<hierarchy>
+  <android.widget.TextView bounds="[100,200][400,280]" text="Help &amp; Info" enabled="true" />
+</hierarchy>
+`,
+			WINDOW,
+		);
+		expect(android.elements).toHaveLength(1);
+		expect(android.elements[0]?.label).toBe("Help & Info");
+
+		const ios = cleanPageSource(
+			`
+<XCUIElementTypeApplication x="0" y="0" width="390" height="844">
+  <XCUIElementTypeStaticText x="39" y="84.4" width="78" height="42.2" label="Help &amp; Info" visible="true" />
+</XCUIElementTypeApplication>
+`,
 			{ width: 390, height: 844 },
 		);
-		expect(screen.elements).toHaveLength(2);
-		expect(screen.elements[0]).toMatchObject({ label: "" });
-		expect(screen.elements[0]?.id).toBeUndefined();
-		expect(screen.elements[1]).toMatchObject({ label: "Open game" });
-		expect(screen.elements[1]?.id).toBeUndefined();
-	});
-
-	test("keeps decoded labels such as Help & Info", () => {
-		const screen = snapshotNodesToScreen(
-			[
-				node({
-					ref: "e1",
-					role: "text",
-					label: "Help & Info",
-					rect: { x: 100, y: 200, width: 300, height: 80 },
-					enabled: true,
-				}),
-			],
-			WINDOW,
-		);
-		expect(screen.elements).toHaveLength(1);
-		expect(screen.elements[0]?.label).toBe("Help & Info");
+		expect(ios.elements).toHaveLength(1);
+		expect(ios.elements[0]?.label).toBe("Help & Info");
 	});
 });

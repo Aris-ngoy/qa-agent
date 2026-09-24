@@ -15,8 +15,7 @@ import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
 import { acquireSessionForRun, releaseSessionFromRun } from "../devices/active-session";
 import type { DeviceSession } from "../devices/session";
-import { type ActiveProviderAuth, resolveVisionProviderAuth } from "../providers/application";
-import { confirmInstruction } from "../providers/judge";
+import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
 import {
 	type AgentDecision,
 	AgentProviderError,
@@ -291,7 +290,6 @@ async function executeAgentCase(input: {
 			await setCurrentCommand(input.runTestId, command);
 		},
 		decide: decideNextAction,
-		judge: confirmInstruction,
 		clock: { sleep, now: () => Date.now() },
 		defaultAppId: input.defaultAppId,
 	});
@@ -430,7 +428,7 @@ export async function executeRun(runId: string): Promise<void> {
 
 		let auth: ActiveProviderAuth | null = null;
 		if (needsAgent) {
-			auth = await assertVisionCapableProvider(await resolveVisionProviderAuth());
+			auth = await assertVisionCapableProvider(await resolveActiveProviderAuth());
 		}
 
 		if (run.buildId) {
@@ -440,20 +438,19 @@ export async function executeRun(runId: string): Promise<void> {
 					build,
 					deviceId: run.deviceId,
 					platform: run.platform,
-					bundleId:
-						run.platform === "ios"
-							? app.iosBundleId || undefined
-							: app.androidApplicationId || undefined,
 				});
 			}
 		}
 
+		const firstCase = run.tests[0] ? await getCase(run.tests[0].caseId) : null;
 		// Adopt the shared Active Session when it already targets this device;
 		// otherwise connect (replacing any unheld session) and keep it live after.
 		const acquired = await acquireSessionForRun({
 			runId,
 			deviceId: run.deviceId,
 			platform: run.platform,
+			appCaps: app.capabilities,
+			caseCaps: firstCase?.capabilities ?? [],
 			bundleId: app.iosBundleId || undefined,
 			appPackage: app.androidApplicationId || undefined,
 		});
@@ -602,7 +599,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 
 	if (needsAgent) {
 		try {
-			await assertVisionCapableProvider(await resolveVisionProviderAuth());
+			await assertVisionCapableProvider(await resolveActiveProviderAuth());
 		} catch (error) {
 			if (error instanceof AgentProviderError) {
 				throw new RunValidationError(error.message);

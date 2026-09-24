@@ -20,24 +20,11 @@ export type SnippetCommandId =
 	| "activateApp"
 	| "terminateApp"
 	| "restartApp"
-	| "backgroundApp"
 	| "openUrl"
 	| "acceptAlert"
 	| "dismissAlert"
 	| "screenshot"
-	| "screenshotPath"
-	| "back"
-	| "scrollUp"
-	| "scrollDown"
-	| "scrollLeft"
-	| "scrollRight"
-	| "home"
-	| "keyboardDismiss"
-	| "keyboardEnter"
-	| "dragUp"
-	| "dragDown"
-	| "dragLeft"
-	| "dragRight";
+	| "screenshotPath";
 
 export type SnippetContext = {
 	defaultAppId: string;
@@ -264,47 +251,6 @@ function screenshotLines(path?: string): string[] {
 	return [trimmed ? `# screenshot ${trimmed}` : "# screenshot", formatScreenshotShellLine(trimmed)];
 }
 
-type ScrollDirection = "up" | "down" | "left" | "right";
-
-function scrollLines(direction: ScrollDirection): string[] {
-	return [`# scroll ${direction}`, formatActionShellLine({ kind: "scroll", direction })];
-}
-
-function backLines(): string[] {
-	return ["# back", formatActionShellLine({ kind: "back" })];
-}
-
-function homeLines(): string[] {
-	return ["# home", formatActionShellLine({ kind: "home" })];
-}
-
-function keyboardLines(action: "dismiss" | "enter"): string[] {
-	return [
-		action === "dismiss" ? "# dismiss keyboard" : "# press enter key",
-		formatActionShellLine({ kind: "keyboard", keyboardAction: action }),
-	];
-}
-
-function backgroundAppLines(seconds: number): string[] {
-	const safe = Number.isFinite(seconds) && seconds >= 0 ? seconds : 3;
-	return ["# background app", formatActionShellLine({ kind: "background-app", seconds: safe })];
-}
-
-/** Slow press-move from the selection center toward a screen edge (Argent drag). */
-function dragLines(selection: InspectorSelection, direction: ScrollDirection): string[] {
-	const offset = 300;
-	const end = {
-		up: { x: selection.x, y: Math.max(0, selection.y - offset) },
-		down: { x: selection.x, y: Math.min(1000, selection.y + offset) },
-		left: { x: Math.max(0, selection.x - offset), y: selection.y },
-		right: { x: Math.min(1000, selection.x + offset), y: selection.y },
-	}[direction];
-	return [
-		`# drag ${direction}`,
-		formatActionShellLine({ kind: "drag", x: selection.x, y: selection.y, x2: end.x, y2: end.y }),
-	];
-}
-
 function previewTap(
 	selection: InspectorSelection,
 	extras?: Partial<Pick<ActionRequest, "double" | "durationMs">>,
@@ -318,19 +264,6 @@ function previewTapPoint(
 	extras?: Partial<Pick<ActionRequest, "double" | "durationMs">>,
 ): string[] {
 	return [formatActionShellLine(tapPointActionForSelection(selection, extras))];
-}
-
-function previewDrag(selection: InspectorSelection, direction: ScrollDirection): string[] {
-	const offset = 300;
-	const end = {
-		up: { x: selection.x, y: Math.max(0, selection.y - offset) },
-		down: { x: selection.x, y: Math.min(1000, selection.y + offset) },
-		left: { x: Math.max(0, selection.x - offset), y: selection.y },
-		right: { x: Math.min(1000, selection.x + offset), y: selection.y },
-	}[direction];
-	return [
-		formatActionShellLine({ kind: "drag", x: selection.x, y: selection.y, x2: end.x, y2: end.y }),
-	];
 }
 
 function hasStableSelector(selection: InspectorSelection): boolean {
@@ -478,15 +411,6 @@ export function selectorCommands(
 			promptKind: "appId",
 		},
 		{
-			id: "backgroundApp",
-			label: "backgroundApp",
-			previewLines: [
-				formatActionShellLine({ kind: "background-app", seconds: DEFAULT_WAIT_SECONDS }),
-			],
-			needsPrompt: "seconds",
-			promptKind: "seconds",
-		},
-		{
 			id: "openUrl",
 			label: "openUrl",
 			previewLines: [formatActionShellLine({ kind: "open-url", url: URL_PLACEHOLDER })],
@@ -598,78 +522,6 @@ export function selectorCommands(
 			promptKind: "seconds",
 		},
 		...appControl,
-		{
-			id: "back",
-			label: "back",
-			previewLines: [formatActionShellLine({ kind: "back" })],
-			needsPrompt: null,
-		},
-		{
-			id: "scrollUp",
-			label: "scroll up",
-			previewLines: [formatActionShellLine({ kind: "scroll", direction: "up" })],
-			needsPrompt: null,
-		},
-		{
-			id: "scrollDown",
-			label: "scroll down",
-			previewLines: [formatActionShellLine({ kind: "scroll", direction: "down" })],
-			needsPrompt: null,
-		},
-		{
-			id: "scrollLeft",
-			label: "scroll left",
-			previewLines: [formatActionShellLine({ kind: "scroll", direction: "left" })],
-			needsPrompt: null,
-		},
-		{
-			id: "scrollRight",
-			label: "scroll right",
-			previewLines: [formatActionShellLine({ kind: "scroll", direction: "right" })],
-			needsPrompt: null,
-		},
-		{
-			id: "home",
-			label: "home",
-			previewLines: [formatActionShellLine({ kind: "home" })],
-			needsPrompt: null,
-		},
-		{
-			id: "keyboardDismiss",
-			label: "dismiss keyboard",
-			previewLines: [formatActionShellLine({ kind: "keyboard", keyboardAction: "dismiss" })],
-			needsPrompt: null,
-		},
-		{
-			id: "keyboardEnter",
-			label: "press enter",
-			previewLines: [formatActionShellLine({ kind: "keyboard", keyboardAction: "enter" })],
-			needsPrompt: null,
-		},
-		{
-			id: "dragUp",
-			label: "drag up",
-			previewLines: previewDrag(selection, "up"),
-			needsPrompt: null,
-		},
-		{
-			id: "dragDown",
-			label: "drag down",
-			previewLines: previewDrag(selection, "down"),
-			needsPrompt: null,
-		},
-		{
-			id: "dragLeft",
-			label: "drag left",
-			previewLines: previewDrag(selection, "left"),
-			needsPrompt: null,
-		},
-		{
-			id: "dragRight",
-			label: "drag right",
-			previewLines: previewDrag(selection, "right"),
-			needsPrompt: null,
-		},
 	];
 }
 
@@ -711,35 +563,6 @@ export function buildCommandLines(
 			if (!Number.isFinite(seconds) || seconds < 0) return waitLines(DEFAULT_WAIT_SECONDS);
 			return waitLines(seconds);
 		}
-		case "backgroundApp": {
-			const seconds = Number(promptValue ?? 3);
-			if (!Number.isFinite(seconds) || seconds < 0) return backgroundAppLines(3);
-			return backgroundAppLines(seconds);
-		}
-		case "back":
-			return backLines();
-		case "scrollUp":
-			return scrollLines("up");
-		case "scrollDown":
-			return scrollLines("down");
-		case "scrollLeft":
-			return scrollLines("left");
-		case "scrollRight":
-			return scrollLines("right");
-		case "home":
-			return homeLines();
-		case "keyboardDismiss":
-			return keyboardLines("dismiss");
-		case "keyboardEnter":
-			return keyboardLines("enter");
-		case "dragUp":
-			return dragLines(selection, "up");
-		case "dragDown":
-			return dragLines(selection, "down");
-		case "dragLeft":
-			return dragLines(selection, "left");
-		case "dragRight":
-			return dragLines(selection, "right");
 		case "activateApp":
 			return appActionLines("activate-app", promptValue ?? context?.defaultAppId ?? "");
 		case "terminateApp":

@@ -3,13 +3,13 @@ title: Device Preparation
 description: Prepare iOS and Android devices for local testing with Yoqa.
 ---
 
-Yoqa drives devices through **Argent**. Install it once (`npm install -g @swmansion/argent`), get the toolchain healthy (`yoqa doctor`), then connect from the desktop UI or CLI.
+Yoqa drives devices through **Appium** (XCUITest / UiAutomator2). Get the toolchain healthy once, then connect from the desktop UI or CLI.
 
 ## Checklist
 
 ```bash
-yoqa setup ios       # verifies Argent iOS readiness
-yoqa setup android   # verifies Argent Android readiness
+yoqa setup ios       # when available — guides Xcode / WDA readiness
+yoqa setup android   # when available — guides adb / emulator readiness
 yoqa status          # runner, runtime, provider, active device
 yoqa devices ios
 yoqa devices android
@@ -19,7 +19,7 @@ yoqa devices android
 
 1. Install **Xcode** and accept the license; install additional platforms if prompted.
 2. Boot an **iOS Simulator**, or connect a physical device with Developer Mode enabled.
-3. For **physical devices**, enable Developer Mode and trust the host. Argent manages its own runner, so no runner signing is needed — the desktop **Settings → iOS** signing fields are legacy and no longer used.
+3. For **physical devices**, WebDriverAgent (WDA) must be built/signed for your team. In the desktop app you can **Skip** (reuse) or **Rebuild** WDA when selecting a device or starting a run.
 4. Confirm the device appears in `yoqa devices ios`.
 
 ## Android
@@ -38,7 +38,7 @@ yoqa devices active
 The desktop app performs the same connect when you select a device for a run or Manual Inspector.
 
 <Tip>
-  If runs fail before the first step, re-check `yoqa status` and `yoqa doctor` — most local issues are toolchain, not test wording.
+  If runs fail before the first step, re-check `yoqa status` and WDA/adb — most local issues are toolchain, not test wording.
 </Tip>
 
 <CardGroup cols={2}>

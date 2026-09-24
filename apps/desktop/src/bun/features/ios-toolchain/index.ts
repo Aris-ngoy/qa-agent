@@ -26,16 +26,11 @@ async function runCommand(
 	return { stdout, stderr, exitCode };
 }
 
-/** Fallback bundle id when nothing is stored and no env override exists. */
-export const DEFAULT_AGENT_DEVICE_BUNDLE_ID = "com.yoqa.agentdevice.runner";
-
 async function readPreferences(): Promise<IosToolchainPreferences> {
 	const parsed = await readStoredSettings();
 	return {
 		xcodeDeveloperDir: parsed.ios?.xcodeDeveloperDir ?? null,
 		signingIdentityHash: parsed.ios?.signingIdentityHash ?? null,
-		teamId: parsed.ios?.teamId ?? null,
-		agentDeviceBundleId: parsed.ios?.agentDeviceBundleId ?? null,
 	};
 }
 
@@ -273,19 +268,12 @@ export async function getIosToolchainSnapshot(): Promise<IosToolchainSnapshot> {
 	const resolved: IosToolchainPreferences = {
 		xcodeDeveloperDir: selectedXcode?.developerDir ?? preferences.xcodeDeveloperDir,
 		signingIdentityHash: selectedIdentity?.hash ?? preferences.signingIdentityHash,
-		teamId: selectedIdentity?.teamId ?? preferences.teamId,
-		agentDeviceBundleId:
-			preferences.agentDeviceBundleId ??
-			process.env.AGENT_DEVICE_IOS_BUNDLE_ID?.trim() ??
-			DEFAULT_AGENT_DEVICE_BUNDLE_ID,
 	};
 
 	// Persist resolved defaults so later runner install can read them
 	if (
 		resolved.xcodeDeveloperDir !== preferences.xcodeDeveloperDir ||
-		resolved.signingIdentityHash !== preferences.signingIdentityHash ||
-		resolved.teamId !== preferences.teamId ||
-		resolved.agentDeviceBundleId !== preferences.agentDeviceBundleId
+		resolved.signingIdentityHash !== preferences.signingIdentityHash
 	) {
 		await writePreferences(resolved);
 	}
@@ -300,20 +288,8 @@ export async function getIosToolchainSnapshot(): Promise<IosToolchainSnapshot> {
 export async function setIosToolchainSelection(params: {
 	xcodeDeveloperDir?: string | null;
 	signingIdentityHash?: string | null;
-	agentDeviceBundleId?: string | null;
 }): Promise<IosToolchainPreferences> {
 	const current = await readPreferences();
-	const bundleId =
-		params.agentDeviceBundleId === undefined
-			? current.agentDeviceBundleId
-			: params.agentDeviceBundleId?.trim() || null;
-	// Resolve the team from the newly selected identity so the runner can sign
-	// physical-device builds without Keychain access.
-	let teamId = current.teamId;
-	if (params.signingIdentityHash !== undefined) {
-		const identities = await listSigningIdentities();
-		teamId = identities.find((item) => item.hash === params.signingIdentityHash)?.teamId ?? null;
-	}
 	const next: IosToolchainPreferences = {
 		xcodeDeveloperDir:
 			params.xcodeDeveloperDir === undefined ? current.xcodeDeveloperDir : params.xcodeDeveloperDir,
@@ -321,8 +297,6 @@ export async function setIosToolchainSelection(params: {
 			params.signingIdentityHash === undefined
 				? current.signingIdentityHash
 				: params.signingIdentityHash,
-		teamId,
-		agentDeviceBundleId: bundleId,
 	};
 	await writePreferences(next);
 	return next;

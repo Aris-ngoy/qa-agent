@@ -29,12 +29,8 @@ function ServerIcon({ className = "size-5", ...props }: SVGProps<SVGSVGElement>)
 	);
 }
 
-/**
- * Display label for a server row's `kind`. `agent-device` is the pre-cutover
- * kind (legacy payloads only) — both it and `argent` label as "Argent".
- */
-function serverKindLabel(kind: ServerEntry["kind"]): string {
-	if (kind === "argent" || kind === "agent-device") return "Argent";
+function kindBadge(kind: ServerEntry["kind"]): string {
+	if (kind === "appium") return "Appium";
 	if (kind === "runner") return "Runner";
 	return "Session";
 }
@@ -226,7 +222,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 								</Button>
 							</div>
 							<p className="mb-2 text-helper text-on-surface-variant">
-								Stop all ends the device session. Runner is separate.
+								Stop all ends Appium + the device session. Runner is separate.
 							</p>
 							<ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
 								{servers.map((entry) => {
@@ -246,7 +242,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 												<span className="flex items-center justify-between gap-2">
 													<span className="truncate text-body-sm font-medium">{entry.label}</span>
 													<span className="shrink-0 text-helper text-on-surface-variant">
-														{serverKindLabel(entry.kind)} · {ownershipHint(entry)}
+														{kindBadge(entry.kind)} · {ownershipHint(entry)}
 													</span>
 												</span>
 												<span className="text-helper text-on-surface-variant">
@@ -424,7 +420,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 							) : (
 								<div className="flex flex-col gap-3">
 									<p className="text-body-sm text-on-surface-variant">
-										Run doctor to check Node, Argent, and leftover processes.
+										Run doctor to check Node, Appium, drivers, and leftover processes.
 									</p>
 									<Button onPress={runDoctor} size="sm" variant="primary">
 										Run doctor

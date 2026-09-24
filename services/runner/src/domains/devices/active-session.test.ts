@@ -1,7 +1,50 @@
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { ArgentError, resetRunArgentToolForTests, setRunArgentToolForTests } from "../argent/cli";
-import { resetArgentSessionsForTests } from "../argent/session";
-import {
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as actualSession from "./session";
+
+type FakeSession = { quitCalls: number; healthy: boolean };
+
+function fakeSession(deviceId: string): unknown {
+	const session = {
+		deviceId,
+		quitCalls: 0,
+		healthy: true,
+		mjpegPort: 9100,
+		streamReady: true,
+		getWindowSize: async () => {
+			if (!session.healthy) {
+				throw new Error("invalid session id");
+			}
+			return { width: 100, height: 200 };
+		},
+		quit: async () => {
+			session.quitCalls += 1;
+		},
+	};
+	return session;
+}
+
+let createdCount = 0;
+let createdFakeSessions: FakeSession[] = [];
+
+// Keep every real export (session.test.ts relies on them) and only stub
+// session creation so no Appium server is needed.
+mock.module("./session", () => ({
+	...actualSession,
+	createDeviceSession: async (options: { deviceId: string }) => {
+		createdCount += 1;
+		const session = fakeSession(options.deviceId) as unknown as Record<string, unknown> & {
+			deviceId: string;
+		};
+		createdFakeSessions.push(session as unknown as FakeSession);
+		return session;
+	},
+}));
+
+mock.module("./mjpeg-proxy", () => ({
+	abortAllMjpegProxies: () => {},
+}));
+
+const {
 	SessionBusyError,
 	acquireSessionForRun,
 	connectDevice,
@@ -9,41 +52,13 @@ import {
 	getActiveSessionInfo,
 	isActiveSessionHeldByRun,
 	releaseSessionFromRun,
-} from "./active-session";
-
-let knownDevices: string[] = ["dev-1", "dev-2"];
-let launchCalls = 0;
-let describeDead = false;
-
-afterAll(() => {
-	resetRunArgentToolForTests();
-});
+} = await import("./active-session");
 
 beforeEach(() => {
 	// Tests always start from an explicit connect; connectDevice replaces any
 	// unheld leftover session from a previous test.
-	knownDevices = ["dev-1", "dev-2"];
-	launchCalls = 0;
-	describeDead = false;
-	resetArgentSessionsForTests();
-	// Install the stub at test-run time (not import time): `mock.module`
-	// leaks across files on Bun 1.2.x's global registry.
-	setRunArgentToolForTests(async (toolName: string) => {
-		if (toolName === "list-devices") {
-			return { devices: knownDevices.map((udid) => ({ udid })) };
-		}
-		if (toolName === "launch-app" || toolName === "restart-app") {
-			launchCalls += 1;
-			return { ok: true };
-		}
-		if (toolName === "describe") {
-			if (describeDead) {
-				throw new ArgentError("device disconnected", "DEVICE_DISCONNECTED");
-			}
-			return { description: "", source: "test" };
-		}
-		return { ok: true };
-	});
+	createdCount = 0;
+	createdFakeSessions = [];
 });
 
 describe("shared device session", () => {
@@ -57,7 +72,7 @@ describe("shared device session", () => {
 	test("run adopts a matching Active Session and keeps it live after release", async () => {
 		await connectDevice({ deviceId: "dev-1", platform: "android" });
 		const before = getActiveSessionInfo();
-		const launchesBeforeAcquire = launchCalls;
+		const sessionsBeforeAcquire = createdCount;
 
 		const acquired = await acquireSessionForRun({
 			runId: "run_a",
@@ -72,7 +87,7 @@ describe("shared device session", () => {
 		const after = getActiveSessionInfo();
 		expect(after?.deviceId).toBe(before?.deviceId);
 		expect(after?.heldByRun).toBe(false);
-		expect(launchCalls).toBe(launchesBeforeAcquire);
+		expect(createdCount).toBe(sessionsBeforeAcquire);
 	});
 
 	test("run replaces an unheld Active Session on another device", async () => {
@@ -84,7 +99,7 @@ describe("shared device session", () => {
 			platform: "android",
 		});
 		expect(acquired.shared).toBe(true);
-		expect(launchCalls).toBe(2);
+		expect(createdCount).toBe(2);
 		expect(getActiveSessionInfo()?.deviceId).toBe("dev-2");
 
 		await releaseSessionFromRun("run_a", acquired.session as never, acquired.shared);
@@ -104,18 +119,12 @@ describe("shared device session", () => {
 			platform: "ios",
 		});
 		expect(second.shared).toBe(false);
-		expect(launchCalls).toBe(2);
+		expect(createdCount).toBe(2);
 		expect(getActiveSessionInfo()?.deviceId).toBe("dev-1");
 		expect(getActiveSessionInfo()?.heldByRun).toBe(true);
 
-		let quitCalls = 0;
-		const quit = second.session.quit.bind(second.session);
-		second.session.quit = async () => {
-			quitCalls += 1;
-			await quit();
-		};
 		await releaseSessionFromRun("run_b", second.session as never, second.shared);
-		expect(quitCalls).toBe(1);
+		expect((second.session as unknown as FakeSession).quitCalls).toBe(1);
 		expect(getActiveSessionInfo()?.heldByRun).toBe(true);
 
 		await releaseSessionFromRun("run_a", first.session as never, first.shared);
@@ -124,8 +133,9 @@ describe("shared device session", () => {
 
 	test("run replaces a dead Active Session with a fresh one", async () => {
 		await connectDevice({ deviceId: "dev-1", platform: "android" });
-		const launchesBeforeAcquire = launchCalls;
-		describeDead = true;
+		const stale = createdFakeSessions.at(0);
+		if (!stale) throw new Error("expected a created session");
+		stale.healthy = false;
 
 		const acquired = await acquireSessionForRun({
 			runId: "run_a",
@@ -133,10 +143,10 @@ describe("shared device session", () => {
 			platform: "android",
 		});
 		expect(acquired.shared).toBe(true);
-		expect(launchCalls).toBeGreaterThan(launchesBeforeAcquire);
+		expect(createdCount).toBe(2);
+		expect(acquired.session).not.toBe(stale);
 		expect(getActiveSessionInfo()?.heldByRun).toBe(true);
 
-		describeDead = false;
 		await releaseSessionFromRun("run_a", acquired.session as never, acquired.shared);
 	});
 
