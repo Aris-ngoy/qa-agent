@@ -439,10 +439,14 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 						? `<img class="shot" alt="Step ${step.index} screenshot" src="${pngDataUri(step.screenshotBase64)}" />`
 						: `<p class="muted">No screenshot</p>`;
 					const actionSuffix = step.actionMs != null ? ` + action ${step.actionMs}ms` : "";
+					const actionOnly =
+						step.latencyMs == null && step.actionMs != null
+							? `<span class="muted">action ${step.actionMs}ms</span>`
+							: "";
 					const latency =
 						step.latencyMs != null
 							? `<span class="muted">${step.latencyMs}ms${actionSuffix}</span>`
-							: "";
+							: actionOnly;
 					const commandBlock = step.command
 						? `<pre class="command"><code>${escapeHtml(step.command)}</code></pre>`
 						: "";

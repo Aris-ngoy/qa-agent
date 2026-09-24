@@ -1364,7 +1364,7 @@ describe("executeAgentCase", () => {
 		expect((steps[0]?.latencyMs ?? 0) / Math.max(1, steps[0]?.actionMs ?? 0)).toBeGreaterThan(10);
 	});
 
-	it("attributes fast decide and slow action to actionMs", async () => {
+	it("attributes fast decide and slow settle to actionMs", async () => {
 		let now = 2000;
 		const steps: Array<{ latencyMs: number; actionMs?: number | null }> = [];
 		let calls = 0;
@@ -1397,14 +1397,16 @@ describe("executeAgentCase", () => {
 				};
 			},
 			performAction: async (_session, body) => {
-				now += 2000;
+				now += 10;
 				return { ok: true, kind: body.kind };
 			},
 			clock: {
-				sleep: async () => {},
+				sleep: async (ms) => {
+					now += ms;
+				},
 				now: () => now,
 			},
-			settleMs: 0,
+			settleMs: 2000,
 		});
 
 		expect(result.status).toBe("passed");

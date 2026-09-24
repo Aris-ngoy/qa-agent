@@ -46,8 +46,8 @@ export const runSteps = sqliteTable("run_steps", {
 	screenshotUri: text("screenshot_uri"),
 	ok: integer("ok").notNull().default(0),
 	latencyMs: integer("latency_ms").notNull().default(0),
-	/** Gesture plus settle time (performAction + settle). Additive; latency_ms stays perceive plus decide. */
-	actionMs: integer("action_ms").notNull().default(0),
+	/** Gesture plus settle time (performAction + settle). Null for rows written before attribution. */
+	actionMs: integer("action_ms"),
 	detail: text("detail"),
 	/** Exact yoqa / sleep command executed for this step. */
 	command: text("command"),

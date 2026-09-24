@@ -135,7 +135,7 @@ function ensureSchema(sqlite: Database): void {
 			screenshot_uri TEXT,
 			ok INTEGER NOT NULL DEFAULT 0,
 			latency_ms INTEGER NOT NULL DEFAULT 0,
-			action_ms INTEGER NOT NULL DEFAULT 0,
+			action_ms INTEGER,
 			detail TEXT,
 			command TEXT,
 			created_at INTEGER NOT NULL
@@ -216,13 +216,7 @@ function migrateRunCommands(sqlite: Database): void {
 function migrateRunStepActionMs(sqlite: Database): void {
 	const stepCols = tableColumns(sqlite, "run_steps");
 	if (stepCols.size > 0) {
-		addColumnIfMissing(
-			sqlite,
-			"run_steps",
-			"action_ms",
-			"action_ms INTEGER NOT NULL DEFAULT 0",
-			stepCols,
-		);
+		addColumnIfMissing(sqlite, "run_steps", "action_ms", "action_ms INTEGER", stepCols);
 	}
 }
 
