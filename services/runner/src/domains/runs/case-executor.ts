@@ -35,6 +35,17 @@ import {
 export const MAX_STEPS_PER_CASE = 25;
 /** Let splash / nav transitions settle before the next screenshot. */
 export const POST_ACTION_SETTLE_MS = 800;
+/**
+ * Live trailing-row label while the vision model is choosing the next action.
+ * Without it a slow decide call renders as a silent "In progress…" forever.
+ */
+export const AI_DECIDING_COMMAND = "AI deciding next action…";
+/**
+ * Hard guard around one decide (+judge) call. Slow CLI providers legitimately
+ * take ~130s per call (and ~260s with their internal JSON-repair retry); beyond
+ * that treat it as hung so the run fails with a clear error instead of freezing.
+ */
+export const DECIDE_TIMEOUT_MS = 300_000;
 
 export type AppendCaseStep = (input: {
 	idx: number;
@@ -105,6 +116,8 @@ export type AgentCaseDeps = {
 	settleMs?: number;
 	maxStepsPerCase?: number;
 	defaultAppId?: string;
+	/** Hard budget for one decide (+judge) call; defaults to `DECIDE_TIMEOUT_MS`. */
+	decideTimeoutMs?: number;
 };
 
 const defaultClock: CaseExecutorClock = {
@@ -204,6 +217,35 @@ async function withCurrentCommand<T>(
 
 function isRetriableActionError(error: unknown): boolean {
 	return error instanceof ActionNotFoundError || error instanceof ActionValidationError;
+}
+
+function formatBudget(ms: number): string {
+	return ms >= 1000 ? `${Math.round(ms / 1000)}s` : `${ms}ms`;
+}
+
+/**
+ * Fail fast when a decide (+judge) call never settles — a hung provider CLI
+ * (kill that never closes its pipes, a stalled daemon) would otherwise leave
+ * the run "running" with zero steps forever. The raced call is not aborted; it
+ * just no longer decides the run's fate.
+ */
+async function withDecideTimeout<T>(work: () => Promise<T>, timeoutMs: number): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const guard = new Promise<never>((_resolve, reject) => {
+		timer = setTimeout(() => {
+			reject(
+				new Error(
+					`AI decide timed out after ${formatBudget(timeoutMs)} — the vision provider did not respond. Failing the step instead of hanging the run (check Settings → Provider).`,
+				),
+			);
+		}, timeoutMs);
+	});
+	const running = work();
+	try {
+		return await Promise.race([running, guard]);
+	} finally {
+		clearTimeout(timer);
+	}
 }
 
 async function readCleanedTree(
@@ -656,7 +698,14 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	const clock = deps.clock ?? defaultClock;
 	const settleMs = deps.settleMs ?? POST_ACTION_SETTLE_MS;
 	const maxSteps = deps.maxStepsPerCase ?? MAX_STEPS_PER_CASE;
+	const decideTimeoutMs = deps.decideTimeoutMs ?? DECIDE_TIMEOUT_MS;
 	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
+
+	/** Decide under the live "AI deciding…" label with a hard timeout budget. */
+	const decideGuarded = (input: Parameters<typeof decideOnce>[0]): Promise<AgentDecision> =>
+		withCurrentCommand(setCurrentCommand, AI_DECIDING_COMMAND, () =>
+			withDecideTimeout(() => decideOnce(input), decideTimeoutMs),
+		);
 
 	/** Same settle contract as `executeScriptCase` (idle wait + fixed sleep). */
 	const settle = () => settleAfterIdle(deps.session, clock, settleMs);
@@ -842,7 +891,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					instructionCount: instructionQueue.length,
 				};
 
-				let decision = await decideOnce(decideInput);
+				let decision = await decideGuarded(decideInput);
 				prevFingerprint = fingerprint;
 
 				const latencyMs = clock.now() - shotStarted;
@@ -859,7 +908,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					} catch (error) {
 						if (!isRetriableActionError(error) || deps.isAborted()) throw error;
 						const failed = decision;
-						decision = await decideOnce({
+						decision = await decideGuarded({
 							...decideInput,
 							recentActions: [...recentActions, failed],
 							lastError: error instanceof Error ? error.message : String(error),

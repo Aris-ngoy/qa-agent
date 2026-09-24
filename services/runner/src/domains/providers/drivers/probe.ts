@@ -75,10 +75,38 @@ export async function resolveBinary(
 	return { path: resolved, detail: `Found at ${resolved}` };
 }
 
+/** How long to wait after kill for the pipes to close before returning partial output. */
+const KILL_GRACE_MS = 250;
+
+/** Drain a pipe without blocking the caller past `kill()` — keep whatever was collected. */
+async function drainStream(
+	stream: ReadableStream<Uint8Array>,
+	sink: { text: string },
+): Promise<void> {
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (value) sink.text += decoder.decode(value, { stream: true });
+		}
+	} catch {
+		// pipe torn down by kill — keep what we already collected
+	}
+}
+
+/**
+ * Run a command with a hard deadline. Never awaits pipe EOF past the timeout:
+ * a spawned child can inherit stdout/stderr (CLI daemons do) and keep them open
+ * forever, which used to freeze the caller even after `kill()`. On timeout the
+ * child is killed, the drains get a short grace period, and the partial output
+ * is returned with `timedOut: true` and `exitCode: 124`.
+ */
 export async function runCommand(
 	command: string[],
 	opts?: { env?: Record<string, string>; timeoutMs?: number },
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut?: boolean }> {
 	try {
 		const proc = Bun.spawn(command, {
 			stdout: "pipe",
@@ -86,20 +114,47 @@ export async function runCommand(
 			env: { ...process.env, ...opts?.env },
 		});
 		const timeoutMs = opts?.timeoutMs ?? 12_000;
-		const timer = setTimeout(() => {
-			try {
-				proc.kill();
-			} catch {
-				// ignore
-			}
-		}, timeoutMs);
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-			proc.exited,
+
+		const stdout = { text: "" };
+		const stderr = { text: "" };
+		const drained = Promise.all([
+			drainStream(proc.stdout, stdout),
+			drainStream(proc.stderr, stderr),
 		]);
-		clearTimeout(timer);
-		return { stdout, stderr, exitCode };
+		const finished = Promise.all([proc.exited, drained]).then(([exitCode]) => exitCode);
+
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const deadline = new Promise<null>((resolve) => {
+			timer = setTimeout(() => {
+				try {
+					proc.kill();
+				} catch {
+					// already exited
+				}
+				resolve(null);
+			}, timeoutMs);
+		});
+
+		try {
+			const exitCode = await Promise.race([finished, deadline]);
+			if (exitCode === null) {
+				// The kill did not close the pipes (grandchild still holds them) —
+				// wait a moment for the partial output, then return regardless.
+				await Promise.race([
+					drained,
+					new Promise<void>((resolve) => setTimeout(resolve, KILL_GRACE_MS)),
+				]);
+				return {
+					stdout: stdout.text,
+					stderr: `${stderr.text}\nCommand timed out after ${timeoutMs}ms`.trim(),
+					exitCode: 124,
+					timedOut: true,
+				};
+			}
+			return { stdout: stdout.text, stderr: stderr.text, exitCode };
+		} finally {
+			clearTimeout(timer);
+		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return { stdout: "", stderr: message, exitCode: 127 };

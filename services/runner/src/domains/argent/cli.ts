@@ -161,6 +161,10 @@ export function resetArgentBinForTests(): void {
  * Run an argv against an explicit binary and return parsed `--json` stdout.
  * Exported so non-`run` subcommands (`server status`) and tests share the
  * spawn/timeout/error path.
+ *
+ * The deadline races the pipe reads instead of only killing: a grandchild can
+ * inherit stdout/stderr and keep them open forever, so awaiting pipe EOF after
+ * `kill()` could hang the caller (and any run waiting on screenshot/screen).
  */
 export async function runArgentBin(
 	bin: string,
@@ -175,22 +179,33 @@ export async function runArgentBin(
 	});
 
 	const timeoutMs = options.timeoutMs ?? 120_000;
-	let timedOut = false;
-	const timer = setTimeout(() => {
-		timedOut = true;
-		try {
-			proc.kill();
-		} catch {
-			// ignore
-		}
-	}, timeoutMs);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const finished = Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]).then(([stdout, stderr, exitCode]) => ({ stdout, stderr, exitCode }));
+	const deadline = new Promise<null>((resolve) => {
+		timer = setTimeout(() => {
+			try {
+				proc.kill();
+			} catch {
+				// already exited
+			}
+			resolve(null);
+		}, timeoutMs);
+	});
 
 	try {
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-			proc.exited,
-		]);
+		const outcome = await Promise.race([finished, deadline]);
+		if (outcome === null) {
+			throw new ArgentError(
+				`argent ${label} timed out after ${timeoutMs}ms`,
+				"TIMEOUT",
+				"Retry with a booted simulator/emulator, or increase the timeout.",
+			);
+		}
+		const { stdout, stderr, exitCode } = outcome;
 		if (exitCode !== 0) {
 			throw argentErrorFromStderr(label, stderr || stdout, exitCode);
 		}
@@ -202,15 +217,6 @@ export async function runArgentBin(
 			// Zero exit but not JSON — return raw text.
 			return raw;
 		}
-	} catch (error) {
-		if (timedOut) {
-			throw new ArgentError(
-				`argent ${label} timed out after ${timeoutMs}ms`,
-				"TIMEOUT",
-				"Retry with a booted simulator/emulator, or increase the timeout.",
-			);
-		}
-		throw error;
 	} finally {
 		clearTimeout(timer);
 	}

@@ -421,12 +421,77 @@ describe("executeAgentCase", () => {
 
 		expect(result.status).toBe("passed");
 		expect(timeline).toEqual([
+			"AI deciding next action…",
+			"null",
 			"yoqa action tap --label 'Allow'",
 			"perform:tap",
 			"append:yoqa action tap --label 'Allow'",
 			"null",
+			"AI deciding next action…",
+			"null",
 			"append:null",
 		]);
+	});
+
+	it("fails the case with a clear error instead of hanging when decide never settles", async () => {
+		const steps: Array<{ ok: boolean; detail: string | null }> = [];
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push({ ok: step.ok, detail: step.detail });
+			},
+			decide: () => new Promise<AgentDecision>(() => {}),
+			decideTimeoutMs: 30,
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("errored");
+		expect(result.error).toContain("AI decide timed out after 30ms");
+		expect(steps).toHaveLength(1);
+		expect(steps[0]?.ok).toBe(false);
+		expect(steps[0]?.detail).toContain("AI decide timed out after 30ms");
+	});
+
+	it("publishes the AI deciding label while waiting on the model", async () => {
+		const timeline: string[] = [];
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			setCurrentCommand: async (command) => {
+				timeline.push(`cmd:${command ?? "null"}`);
+			},
+			decide: async () => {
+				timeline.push("model:responded");
+				return {
+					type: "verify",
+					reason: "done",
+					thoughts: "expected visible",
+				};
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(timeline).toEqual(["cmd:AI deciding next action…", "model:responded", "cmd:null"]);
 	});
 
 	it("taps by label and accepts alerts without guessed coordinates", async () => {
