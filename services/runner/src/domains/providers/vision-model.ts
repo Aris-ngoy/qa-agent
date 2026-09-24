@@ -110,6 +110,13 @@ export function formatProviderHttpError(label: string, status: number, body: str
 	) {
 		return `OpenCode Zen returned an internal error for this vision request. Many free models reject screenshots. In Settings → Provider, set the default model to ${EXAMPLE_OPENCODE_VISION_MODEL} (or another vision-capable model).`;
 	}
+	if (
+		label === "Groq" &&
+		(body.includes("invalid JSON schema for response_format") ||
+			(body.includes("required") && body.includes("every key in properties")))
+	) {
+		return "Groq rejected strict JSON schema mode for this model (response_format requires every key in properties). The runner already compensates with prompt JSON — retry the run; if it persists, pick a different Groq model in Settings → Provider.";
+	}
 	return `${label} request failed (${status}): ${body.slice(0, 400)}`;
 }
 
