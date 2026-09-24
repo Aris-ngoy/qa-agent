@@ -18,6 +18,42 @@ const ANTIGRAVITY_DEFAULT_VISION_MODEL = "gemini-3.5-flash-medium";
 const JSON_REPAIR_PROMPT =
 	"Your previous reply was not valid JSON for this task. Reply again with ONLY one strict JSON object using double quotes for every key and string (no single quotes, no markdown, no prose).";
 
+/** `agy` markers for "the model turn outlasted --print-timeout, here is partial output". */
+const AGY_PRINT_TIMEOUT_RE = /print timeout|turn in progress/i;
+
+/**
+ * Parse `agy --print` output into a decision.
+ *
+ * Print-timeout partial output is deliberately NOT JSON-repairable: a retry
+ * would block for another full print-timeout waiting on the same slow turn
+ * (~4+ silent minutes per step), so it surfaces as a plain provider error the
+ * run can fail fast on instead.
+ */
+export function parseAgyDecision<T>(
+	schema: VisionCompleteInput<T>["schema"],
+	result: { stdout: string; stderr: string; exitCode: number },
+): T {
+	const combined = `${result.stdout}\n${result.stderr}`.trim();
+	try {
+		return parseVisionObject(
+			schema,
+			extractAgentJsonObject(result.stdout || combined, "Antigravity CLI"),
+			"Antigravity CLI",
+		);
+	} catch (error) {
+		if (
+			error instanceof AgentProviderError &&
+			error.message.includes("did not return JSON") &&
+			AGY_PRINT_TIMEOUT_RE.test(combined)
+		) {
+			throw new AgentProviderError(
+				"Antigravity CLI print timeout: the model turn exceeded --print-timeout (120s) and only partial output came back. Retry with a faster model or switch the default provider in Settings → Provider.",
+			);
+		}
+		throw error;
+	}
+}
+
 async function completeWithAgyCli<T>(
 	input: VisionCompleteInput<T>,
 	repairHint?: string,
@@ -60,6 +96,12 @@ async function completeWithAgyCli<T>(
 			{ timeoutMs: 130_000 },
 		);
 
+		if (result.timedOut) {
+			throw new AgentProviderError(
+				"Antigravity CLI did not respond within 130s and was killed — the model turn never finished. Retry with a faster model or switch the default provider in Settings → Provider.",
+			);
+		}
+
 		const combined = `${result.stdout}\n${result.stderr}`.trim();
 		if (/not eligible for Antigravity/i.test(combined)) {
 			throw new AgentProviderError(
@@ -74,11 +116,7 @@ async function completeWithAgyCli<T>(
 			);
 		}
 
-		return parseVisionObject(
-			input.schema,
-			extractAgentJsonObject(result.stdout || combined, "Antigravity CLI"),
-			"Antigravity CLI",
-		);
+		return parseAgyDecision(input.schema, result);
 	} catch (error) {
 		if (error instanceof AgentProviderError) throw error;
 		if (error instanceof SyntaxError) {
