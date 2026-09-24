@@ -7,13 +7,16 @@ import type {
 	RunStep,
 	RunTest,
 	RunTestStatus,
+	StepPhases,
 } from "@yoqa/runner-client";
+import { stepPhasesSchema } from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
 import { getApp, getCase, getCaseScriptJson, saveCaseScript } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
 import { acquireSessionForRun, releaseSessionFromRun } from "../devices/active-session";
+import { pruneOldRunScreenshots } from "../devices/screenshot-retention";
 import type { DeviceSession } from "../devices/session";
 import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
 import {
@@ -64,6 +67,15 @@ function parseAction(raw: string): unknown {
 		return JSON.parse(raw) as unknown;
 	} catch {
 		return {};
+	}
+}
+
+function parsePhases(raw: string | null): StepPhases | null {
+	if (!raw) return null;
+	try {
+		return stepPhasesSchema.parse(JSON.parse(raw));
+	} catch {
+		return null;
 	}
 }
 
@@ -118,6 +130,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 			screenshotUri: step.screenshotUri,
 			ok: step.ok === 1,
 			latencyMs: step.latencyMs,
+			phases: parsePhases(step.phasesJson),
 			detail: step.detail,
 			command: step.command ?? null,
 			createdAt: step.createdAt,
@@ -161,6 +174,7 @@ async function appendStep(input: {
 	screenshotUri: string | null;
 	ok: boolean;
 	latencyMs: number;
+	phases?: StepPhases | null;
 	detail: string | null;
 	command: string | null;
 }): Promise<void> {
@@ -173,6 +187,7 @@ async function appendStep(input: {
 		screenshotUri: input.screenshotUri,
 		ok: input.ok ? 1 : 0,
 		latencyMs: Math.max(0, Math.round(input.latencyMs)),
+		phasesJson: input.phases ? JSON.stringify(input.phases) : null,
 		detail: input.detail,
 		command: input.command,
 		createdAt: Date.now(),
@@ -261,6 +276,7 @@ async function executeAgentCase(input: {
 	runTestId: string;
 	caseId: string;
 	appContext: string;
+	appKnowledge?: string;
 	session: DeviceSession;
 	auth: ActiveProviderAuth;
 	defaultAppId?: string;
@@ -277,6 +293,7 @@ async function executeAgentCase(input: {
 	return runAgentCase({
 		catalogCase,
 		appContext: input.appContext,
+		appKnowledge: input.appKnowledge,
 		auth: input.auth,
 		session: input.session,
 		isAborted: () => isAborted(input.runId),
@@ -300,6 +317,7 @@ async function executeCase(input: {
 	runTestId: string;
 	caseId: string;
 	appContext: string;
+	appKnowledge?: string;
 	session: DeviceSession;
 	auth: ActiveProviderAuth | null;
 	caseMode: "script" | "agent";
@@ -348,6 +366,7 @@ async function executeCase(input: {
 			runTestId: input.runTestId,
 			caseId: input.caseId,
 			appContext: input.appContext,
+			appKnowledge: input.appKnowledge,
 			session: input.session,
 			auth: input.auth,
 			defaultAppId: input.defaultAppId,
@@ -404,6 +423,9 @@ export async function executeRun(runId: string): Promise<void> {
 			.update(runs)
 			.set({ status: "running", startedAt, error: null })
 			.where(eq(runs.id, runId));
+
+		// Reclaim old run evidence in the background; never blocks or fails a run.
+		void pruneOldRunScreenshots();
 
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
@@ -492,6 +514,7 @@ export async function executeRun(runId: string): Promise<void> {
 				runTestId: test.id,
 				caseId: test.caseId,
 				appContext: app.context,
+				appKnowledge: app.knowledge,
 				session,
 				auth,
 				caseMode,

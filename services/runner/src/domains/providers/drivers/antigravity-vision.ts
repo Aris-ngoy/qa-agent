@@ -30,7 +30,7 @@ async function completeWithAgyCli<T>(
 		);
 	}
 
-	const image = await prepareVisionImage(input.imageBase64);
+	const image = input.image ?? (await prepareVisionImage(input.imageBase64));
 	const model = input.auth.defaultModel?.trim() || ANTIGRAVITY_DEFAULT_VISION_MODEL;
 	const ext = image.mediaType === "image/jpeg" ? "jpg" : "png";
 	const dir = await mkdtemp(join(tmpdir(), "yoqa-agy-"));
@@ -99,7 +99,7 @@ export const antigravityVision: VisionPort = {
 				requested.startsWith("gemini-1.") || requested.startsWith("gemini-2.")
 					? requested
 					: "gemini-2.5-flash";
-			const image = await prepareVisionImage(input.imageBase64);
+			const image = input.image ?? (await prepareVisionImage(input.imageBase64));
 			const provider = createGoogleGenerativeAI({ apiKey });
 			return completeWithAiSdk({
 				label: "Antigravity",
@@ -108,6 +108,7 @@ export const antigravityVision: VisionPort = {
 				system: input.system,
 				prompt: input.prompt,
 				image,
+				onDecideRetry: input.onDecideRetry,
 			});
 		}
 
@@ -117,6 +118,7 @@ export const antigravityVision: VisionPort = {
 			if (!(error instanceof AgentProviderError) || !isJsonRepairableError(error)) {
 				throw error;
 			}
+			input.onDecideRetry?.();
 			return completeWithAgyCli(input, JSON_REPAIR_PROMPT);
 		}
 	},

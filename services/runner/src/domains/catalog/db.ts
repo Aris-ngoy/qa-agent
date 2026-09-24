@@ -26,6 +26,7 @@ function ensureSchema(sqlite: Database): void {
 			name TEXT NOT NULL,
 			prefix TEXT NOT NULL DEFAULT '',
 			context TEXT NOT NULL DEFAULT '',
+			knowledge TEXT NOT NULL DEFAULT '',
 			ios_bundle_id TEXT NOT NULL DEFAULT '',
 			ios_app_store_id TEXT NOT NULL DEFAULT '',
 			android_application_id TEXT NOT NULL DEFAULT '',
@@ -135,6 +136,7 @@ function ensureSchema(sqlite: Database): void {
 			screenshot_uri TEXT,
 			ok INTEGER NOT NULL DEFAULT 0,
 			latency_ms INTEGER NOT NULL DEFAULT 0,
+			phases_json TEXT,
 			detail TEXT,
 			command TEXT,
 			created_at INTEGER NOT NULL
@@ -154,9 +156,11 @@ function ensureSchema(sqlite: Database): void {
 
 	migrateProvidersTable(sqlite);
 	migrateAppsPrefix(sqlite);
+	migrateAppsKnowledge(sqlite);
 	migrateCaseScripts(sqlite);
 	migrateRunExecutionMode(sqlite);
 	migrateRunCommands(sqlite);
+	migrateRunStepPhases(sqlite);
 }
 
 function tableColumns(sqlite: Database, table: string): Set<string> {
@@ -209,6 +213,12 @@ function migrateRunCommands(sqlite: Database): void {
 	if (stepCols.size > 0) {
 		addColumnIfMissing(sqlite, "run_steps", "command", "command TEXT", stepCols);
 	}
+}
+
+function migrateRunStepPhases(sqlite: Database): void {
+	const stepCols = tableColumns(sqlite, "run_steps");
+	if (stepCols.size === 0) return;
+	addColumnIfMissing(sqlite, "run_steps", "phases_json", "phases_json TEXT", stepCols);
 }
 
 function migrateProvidersTable(sqlite: Database): void {
@@ -327,6 +337,12 @@ function migrateAppsPrefix(sqlite: Database): void {
 		used.add(candidate);
 		sqlite.run("UPDATE apps SET prefix = ? WHERE id = ?", [candidate, row.id]);
 	}
+}
+
+function migrateAppsKnowledge(sqlite: Database): void {
+	const existing = tableColumns(sqlite, "apps");
+	if (existing.size === 0) return;
+	addColumnIfMissing(sqlite, "apps", "knowledge", "knowledge TEXT NOT NULL DEFAULT ''", existing);
 }
 
 export function getCatalogDbPath(): string {

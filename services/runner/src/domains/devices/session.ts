@@ -19,10 +19,10 @@ import {
 } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
 import { typeText } from "./keyboard";
+import { SCREENSHOT_DIR } from "./screenshot-retention";
 
 const YOQA_ROOT = join(homedir(), ".yoqa");
 const DEFAULT_MJPEG_PORT = Number(process.env.YOQA_MJPEG_PORT ?? "9100");
-const SCREENSHOT_DIR = join(YOQA_ROOT, "runs", "screenshots");
 
 const MJPEG_SETTINGS_BASE = {
 	/** Lower quality keeps high FPS workable over the proxy. */

@@ -94,7 +94,7 @@ async function invokeCursorPrint(input: {
 }
 
 async function completeOnce<T>(input: VisionCompleteInput<T>, repairHint?: string): Promise<T> {
-	const image = await prepareVisionImage(input.imageBase64);
+	const image = input.image ?? (await prepareVisionImage(input.imageBase64));
 	const ext = image.mediaType === "image/jpeg" ? "jpg" : "png";
 	const shotName = `shot.${ext}`;
 	const userText = [
@@ -135,6 +135,7 @@ export const cursorVision: VisionPort = {
 			if (!(error instanceof AgentProviderError) || !isJsonRepairableError(error)) {
 				throw error;
 			}
+			input.onDecideRetry?.();
 			return completeOnce(input, JSON_REPAIR_PROMPT);
 		}
 	},

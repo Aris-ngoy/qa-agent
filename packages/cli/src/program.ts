@@ -930,6 +930,7 @@ appsCmd
 			console.log(`prefix: ${app.prefix}`);
 			console.log(`name: ${app.name}`);
 			console.log(`app_context: ${app.context || "(empty)"}`);
+			console.log(`app_knowledge: ${app.knowledge || "(empty)"}`);
 			console.log(`ios_bundle_id: ${app.iosBundleId || "(empty)"}`);
 			console.log(`android_application_id: ${app.androidApplicationId || "(empty)"}`);
 		} catch (error) {
@@ -944,6 +945,7 @@ appsCmd
 	.option("--name <name>", "Display name")
 	.option("--prefix <prefix>", "CLI prefix")
 	.option("--context <text>", "App context / shared rules")
+	.option("--knowledge <text>", "App knowledge notes injected into agent runs")
 	.option("--ios-bundle-id <id>", "iOS bundle id")
 	.option("--android-application-id <id>", "Android application id")
 	.option("--json", "Print raw JSON")
@@ -955,6 +957,7 @@ appsCmd
 				name?: string;
 				prefix?: string;
 				context?: string;
+				knowledge?: string;
 				iosBundleId?: string;
 				androidApplicationId?: string;
 				json?: boolean;
@@ -967,6 +970,7 @@ appsCmd
 					name: options.name,
 					prefix: options.prefix,
 					context: options.context,
+					knowledge: options.knowledge,
 					iosBundleId: options.iosBundleId,
 					androidApplicationId: options.androidApplicationId,
 				});

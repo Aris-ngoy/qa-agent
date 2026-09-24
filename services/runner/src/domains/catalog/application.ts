@@ -53,6 +53,7 @@ function mapApp(row: typeof apps.$inferSelect): CatalogApp {
 		name: row.name,
 		prefix: row.prefix || row.id,
 		context: row.context,
+		knowledge: row.knowledge,
 		iosBundleId: row.iosBundleId,
 		iosAppStoreId: row.iosAppStoreId,
 		androidApplicationId: row.androidApplicationId,
@@ -288,6 +289,7 @@ export async function createApp(input: CreateAppRequest): Promise<CatalogApp> {
 		name,
 		prefix,
 		context: "",
+		knowledge: "",
 		iosBundleId: "",
 		iosAppStoreId: "",
 		androidApplicationId: "",
@@ -302,6 +304,9 @@ export async function createApp(input: CreateAppRequest): Promise<CatalogApp> {
 	return created;
 }
 
+/** App Knowledge prompt/storage cap (2 KB) — see MAX_APP_KNOWLEDGE_CHARS in the agent prompt. */
+const MAX_APP_KNOWLEDGE_CHARS = 2048;
+
 export async function updateApp(appId: string, input: UpdateAppRequest): Promise<CatalogApp> {
 	const db = getCatalogDb();
 	const existing = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
@@ -312,6 +317,12 @@ export async function updateApp(appId: string, input: UpdateAppRequest): Promise
 	const name = input.name !== undefined ? input.name.trim() : existing.name;
 	if (!name) {
 		throw new CatalogValidationError("Application name is required");
+	}
+
+	if (input.knowledge !== undefined && input.knowledge.length > MAX_APP_KNOWLEDGE_CHARS) {
+		throw new CatalogValidationError(
+			`App knowledge must be at most ${MAX_APP_KNOWLEDGE_CHARS} characters`,
+		);
 	}
 
 	const prefix =
@@ -325,6 +336,7 @@ export async function updateApp(appId: string, input: UpdateAppRequest): Promise
 			name,
 			prefix,
 			context: input.context ?? existing.context,
+			knowledge: input.knowledge ?? existing.knowledge,
 			iosBundleId: input.iosBundleId ?? existing.iosBundleId,
 			iosAppStoreId: input.iosAppStoreId ?? existing.iosAppStoreId,
 			androidApplicationId: input.androidApplicationId ?? existing.androidApplicationId,

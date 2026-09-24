@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { groqDriver } from "./drivers/groq";
+import { groqDriver, groqModelVision } from "./drivers/groq";
 import {
 	isSparseResponseFormatBody,
 	prepareVisionImage,
@@ -130,6 +130,69 @@ describe("Groq decide works via prompt JSON (#138)", () => {
 	test("non-JSON bodies pass through without throwing", async () => {
 		const sent = await captureSentBody("not-json{{{" as unknown as Record<string, unknown>);
 		expect(sent).toBe("not-json{{{");
+	});
+});
+
+describe("Groq model vision metadata (#141)", () => {
+	test("flags known vision and text-only families, leaves unknown models unflagged", () => {
+		expect(groqModelVision("meta-llama/llama-4-scout-17b-16e-instruct")).toBe(true);
+		expect(groqModelVision("meta-llama/llama-4-maverick-17b-128e-instruct")).toBe(true);
+		expect(groqModelVision("qwen/qwen3.8-27b")).toBe(false);
+		expect(groqModelVision("qwen/qwen3-32b")).toBe(false);
+		expect(groqModelVision("llama-3.3-70b-versatile")).toBe(false);
+		expect(groqModelVision("openai/gpt-oss-120b")).toBe(false);
+		expect(groqModelVision("gemma2-9b-it")).toBe(false);
+		expect(groqModelVision("mixtral-8x7b-32768")).toBe(false);
+	});
+
+	test("unknown model families return undefined so Settings never false-warns", () => {
+		expect(groqModelVision("some-future-vision-model")).toBeUndefined();
+		expect(groqModelVision("")).toBeUndefined();
+	});
+});
+
+describe("Groq reasoning models run without thinking (#141)", () => {
+	test("qwen3 decide requests disable provider-side reasoning", async () => {
+		const body = { ...decideBody(), model: "qwen/qwen3.8-27b" };
+		const parsed = JSON.parse(await captureSentBody(body)) as Record<string, unknown>;
+		expect(parsed.reasoning_effort).toBe("none");
+	});
+
+	test("an existing reasoning_effort is overridden so thinking really is off", async () => {
+		const parsed = JSON.parse(
+			await captureSentBody({
+				...decideBody(),
+				model: "qwen/qwen3.8-27b",
+				reasoning_effort: "auto",
+			}),
+		) as Record<string, unknown>;
+		expect(parsed.reasoning_effort).toBe("none");
+	});
+
+	test("reasoning off composes with the sparse decide schema strip", async () => {
+		const parsed = JSON.parse(
+			await captureSentBody({ ...decideBody(), model: "qwen/qwen3.8-27b" }),
+		) as Record<string, unknown>;
+		expect(parsed.reasoning_effort).toBe("none");
+		expect(parsed.response_format).toBeUndefined();
+	});
+
+	test("non-reasoning models are left untouched", async () => {
+		const original = {
+			model: "meta-llama/llama-4-scout-17b-16e-instruct",
+			messages: [{ role: "user", content: "hi" }],
+		};
+		const parsed = JSON.parse(await captureSentBody(original)) as Record<string, unknown>;
+		expect(parsed.reasoning_effort).toBeUndefined();
+		expect(parsed).toEqual(original);
+	});
+
+	test("grounding bodies on qwen3 keep structured output but still disable reasoning", async () => {
+		const parsed = JSON.parse(
+			await captureSentBody({ ...groundingBody(), model: "qwen/qwen3.8-27b" }),
+		) as Record<string, unknown>;
+		expect(parsed.reasoning_effort).toBe("none");
+		expect(parsed.response_format).toEqual(groundingBody().response_format);
 	});
 });
 

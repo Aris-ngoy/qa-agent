@@ -248,6 +248,8 @@ export const catalogAppSchema = z.object({
 	name: z.string().min(1),
 	prefix: z.string().min(1),
 	context: z.string(),
+	/** App Knowledge: free-form notes about the app injected into agent decide context. */
+	knowledge: z.string(),
 	iosBundleId: z.string(),
 	iosAppStoreId: z.string(),
 	androidApplicationId: z.string(),
@@ -269,6 +271,7 @@ export const updateAppRequestSchema = z.object({
 	name: z.string().min(1).optional(),
 	prefix: z.string().min(1).optional(),
 	context: z.string().optional(),
+	knowledge: z.string().optional(),
 	iosBundleId: z.string().optional(),
 	iosAppStoreId: z.string().optional(),
 	androidApplicationId: z.string().optional(),
@@ -708,6 +711,8 @@ export const providerModelSchema = z.object({
 	name: z.string().min(1),
 	/** OpenCode catalog group, e.g. "Amazon Bedrock" or "OpenCode Zen". */
 	provider: z.string().min(1).optional(),
+	/** Known vision capability; absent = unknown (Settings must not warn). */
+	vision: z.boolean().optional(),
 });
 
 export type ProviderModel = z.infer<typeof providerModelSchema>;
@@ -770,6 +775,19 @@ export const createRunRequestSchema = z.object({
 });
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 
+/** Per-phase wall-clock breakdown of one agent step (script steps leave it null). */
+export const stepPhasesSchema = z.object({
+	captureMs: z.number().nonnegative(),
+	screenMs: z.number().nonnegative(),
+	prepareMs: z.number().nonnegative(),
+	decideMs: z.number().nonnegative(),
+	actionMs: z.number().nonnegative(),
+	settleMs: z.number().nonnegative(),
+	/** Decide re-calls caused by JSON repair or an unusable first reply. */
+	decideRetries: z.number().int().nonnegative(),
+});
+export type StepPhases = z.infer<typeof stepPhasesSchema>;
+
 export const runStepSchema = z.object({
 	id: z.string().min(1),
 	runTestId: z.string().min(1),
@@ -778,6 +796,7 @@ export const runStepSchema = z.object({
 	screenshotUri: z.string().nullable(),
 	ok: z.boolean(),
 	latencyMs: z.number().nonnegative(),
+	phases: stepPhasesSchema.nullable().optional(),
 	detail: z.string().nullable(),
 	command: z.string().nullable().optional(),
 	createdAt: z.number().int().nonnegative(),

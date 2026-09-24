@@ -14,6 +14,8 @@ export const apps = sqliteTable(
 		name: text("name").notNull(),
 		prefix: text("prefix").notNull().default(""),
 		context: text("context").notNull().default(""),
+		/** App Knowledge — free-form notes injected into agent decide context. */
+		knowledge: text("knowledge").notNull().default(""),
 		iosBundleId: text("ios_bundle_id").notNull().default(""),
 		iosAppStoreId: text("ios_app_store_id").notNull().default(""),
 		androidApplicationId: text("android_application_id").notNull().default(""),

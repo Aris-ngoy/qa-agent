@@ -6,7 +6,7 @@ import type { FetchFunction } from "@ai-sdk/provider-utils";
 import { APICallError, NoObjectGeneratedError, generateObject } from "ai";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
-import type { VisionAuth, VisionCompleteInput, VisionPort } from "./drivers/types";
+import type { VisionAuth, VisionCompleteInput, VisionImage, VisionPort } from "./drivers/types";
 import { normalizeVisionJson, salvageAgentJsonText } from "./json-salvage";
 
 export class AgentProviderError extends Error {
@@ -23,7 +23,7 @@ const VISION_MAX_EDGE = 1170;
 const JSON_REPAIR_PROMPT =
 	"Your previous reply was not valid JSON for this task. Reply again with ONLY one strict JSON object using double quotes for every key and string (no single quotes, no markdown, no prose).";
 
-export type VisionImage = { base64: string; mediaType: "image/png" | "image/jpeg" };
+export type { VisionImage } from "./drivers/types";
 
 /**
  * Shrink device screenshots for vision APIs. Full-res iPhone PNGs (~1–2MB) are
@@ -204,6 +204,8 @@ export async function completeWithAiSdk<T>(input: {
 	system: string;
 	prompt: string;
 	image: VisionImage;
+	onDecideRetry?: () => void;
+	maxOutputTokens?: number;
 }): Promise<T> {
 	const run = async (prompt: string): Promise<T> => {
 		try {
@@ -211,7 +213,7 @@ export async function completeWithAiSdk<T>(input: {
 				model: input.model,
 				schema: input.schema,
 				system: input.system,
-				maxOutputTokens: VISION_MAX_TOKENS,
+				maxOutputTokens: input.maxOutputTokens ?? VISION_MAX_TOKENS,
 				experimental_repairText: async ({ text }) => salvageAgentJsonText(text),
 				messages: [
 					{
@@ -249,6 +251,7 @@ export async function completeWithAiSdk<T>(input: {
 		if (!(error instanceof AgentProviderError) || !isJsonRepairableError(error)) {
 			throw error;
 		}
+		input.onDecideRetry?.();
 		return run(`${input.prompt}\n\n${JSON_REPAIR_PROMPT}`);
 	}
 }
@@ -256,12 +259,14 @@ export async function completeWithAiSdk<T>(input: {
 export function createSdkVisionPort(opts: {
 	label: string;
 	defaultModel: string;
+	/** Output-token cap for completions; defaults to VISION_MAX_TOKENS. */
+	maxOutputTokens?: number;
 	createModel: (auth: VisionAuth, modelId: string) => Promise<LanguageModel> | LanguageModel;
 }): VisionPort {
 	return {
 		async completeObject<T>(input: VisionCompleteInput<T>): Promise<T> {
 			const modelId = input.auth.defaultModel?.trim() || opts.defaultModel;
-			const image = await prepareVisionImage(input.imageBase64);
+			const image = input.image ?? (await prepareVisionImage(input.imageBase64));
 			const model = await opts.createModel(input.auth, modelId);
 			return completeWithAiSdk({
 				label: opts.label,
@@ -270,6 +275,8 @@ export function createSdkVisionPort(opts: {
 				system: input.system,
 				prompt: input.prompt,
 				image,
+				onDecideRetry: input.onDecideRetry,
+				maxOutputTokens: opts.maxOutputTokens,
 			});
 		},
 	};
@@ -446,6 +453,14 @@ export function isSparseResponseFormatBody(parsedBody: Record<string, unknown>):
 }
 
 /**
+ * Groq reasoning families that accept `reasoning_effort: "none"`. Reasoning
+ * tokens burn the decide output budget and get silently truncated, so decide
+ * calls turn thinking off for these models (see #141). Unknown model families
+ * are left alone — only families known to accept the flag are rewritten.
+ */
+const GROQ_REASONING_MODEL_RE = /qwen3/i;
+
+/**
  * Groq rejects strict `json_schema` for decide (optional Action fields are
  * absent from `required`). Strip `response_format` only for sparse schemas so
  * decide asks for JSON in the prompt only; fully-required schemas (grounding)
@@ -468,14 +483,27 @@ export function withGroqRequestHooks(opts: {
 				return fetchImpl(input, { ...init, headers });
 			}
 			const parsedBody = { ...(parsed as Record<string, unknown>) };
-			if (!isSparseResponseFormatBody(parsedBody)) {
+			let mutated = false;
+			if (typeof parsedBody.model === "string" && GROQ_REASONING_MODEL_RE.test(parsedBody.model)) {
+				// The runner owns this flag: thinking off for decide/ground on these families.
+				parsedBody.reasoning_effort = "none";
+				mutated = true;
+			}
+			if (isSparseResponseFormatBody(parsedBody)) {
+				const { response_format: _responseFormat, ...withoutFormat } = parsedBody;
+				return fetchImpl(input, {
+					...init,
+					headers,
+					body: JSON.stringify(withoutFormat),
+				});
+			}
+			if (!mutated) {
 				return fetchImpl(input, { ...init, headers });
 			}
-			const { response_format: _responseFormat, ...withoutFormat } = parsedBody;
 			return fetchImpl(input, {
 				...init,
 				headers,
-				body: JSON.stringify(withoutFormat),
+				body: JSON.stringify(parsedBody),
 			});
 		} catch {
 			return fetchImpl(input, { ...init, headers });

@@ -46,6 +46,8 @@ export const runSteps = sqliteTable("run_steps", {
 	screenshotUri: text("screenshot_uri"),
 	ok: integer("ok").notNull().default(0),
 	latencyMs: integer("latency_ms").notNull().default(0),
+	/** JSON StepPhases — per-phase wall-clock breakdown (agent steps only). */
+	phasesJson: text("phases_json"),
 	detail: text("detail"),
 	/** Exact yoqa / sleep command executed for this step. */
 	command: text("command"),

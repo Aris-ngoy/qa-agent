@@ -1,6 +1,7 @@
 import {
 	type ActionRequest,
 	type ActionResponse,
+	type ScreenElement,
 	type ScreenResponse,
 	elementCenterNorm,
 	findElementById,
@@ -72,10 +73,13 @@ export class ActionNotFoundError extends Error {
 /**
  * Perform one Action on a Device Session. Resolves id/label against the cleaned
  * tree, or Grounding from description, then runs the gesture / lifecycle command.
+ * `options.screenElements` reuses an already-read Screen (agent steps) instead of
+ * re-fetching the device tree.
  */
 export async function performAction(
 	session: DeviceSession,
 	body: ActionRequest,
+	options?: { screenElements?: ScreenElement[] },
 ): Promise<ActionResponse> {
 	const locatorTap = Boolean(
 		(body.id || body.label) && (body.kind === "tap" || body.kind === "input"),
@@ -84,8 +88,8 @@ export async function performAction(
 	let y = body.y;
 
 	if (locatorTap) {
-		const screen = await getScreen(session, { full: false });
-		const elements = screen.elements ?? [];
+		const elements =
+			options?.screenElements ?? (await getScreen(session, { full: false })).elements ?? [];
 		const match = body.id
 			? findElementById(elements, body.id)
 			: findElementByLabel(elements, body.label ?? "");

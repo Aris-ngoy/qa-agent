@@ -20,6 +20,8 @@ export type ModelEntry = {
 	name: string;
 	/** OpenCode catalog group, e.g. "Amazon Bedrock" or "OpenCode Zen". */
 	provider?: string;
+	/** Known vision capability; absent = unknown (Settings must not warn). */
+	vision?: boolean;
 };
 
 export type ListModelsResult = {
@@ -52,6 +54,9 @@ export type VisionAuth = {
 	env: Record<string, string>;
 };
 
+/** A screenshot prepared for a vision API (already resized/compressed). */
+export type VisionImage = { base64: string; mediaType: "image/png" | "image/jpeg" };
+
 export type VisionCompleteInput<T> = {
 	auth: VisionAuth;
 	schema: z.ZodType<T>;
@@ -59,6 +64,10 @@ export type VisionCompleteInput<T> = {
 	prompt: string;
 	/** Raw screenshot (PNG base64). The adapter resizes before sending. */
 	imageBase64: string;
+	/** Pre-prepared image for this screenshot — reused across retries, skips re-prepare. */
+	image?: VisionImage;
+	/** Called when a completion is retried because the first reply was not usable JSON (provider JSON repair). */
+	onDecideRetry?: () => void;
 };
 
 export type VisionPort = {
