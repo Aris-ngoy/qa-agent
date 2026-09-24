@@ -162,6 +162,155 @@ describe("parseAgentDecision", () => {
 	});
 });
 
+describe("Groq Action-family parity (#140)", () => {
+	function groqDecision(json: string) {
+		return parseAgentDecision(extractAgentJsonObject(json, "Groq"));
+	}
+
+	test("swipe accepts finger direction or four coordinates", () => {
+		expect(
+			groqDecision(
+				'{"type":"swipe","direction":"up","reason":"Scroll down","thoughts":"A feed is visible and more content sits below the fold."}',
+			),
+		).toMatchObject({ type: "swipe", direction: "up", reason: "Scroll down" });
+		expect(
+			groqDecision(
+				'{"type":"swipe","x":500,"y":800,"x2":500,"y2":200,"reason":"Scroll down","thoughts":"List continues below the visible rows."}',
+			),
+		).toMatchObject({ type: "swipe", x: 500, y: 800, x2: 500, y2: 200 });
+		expect(() =>
+			groqDecision(
+				'{"type":"swipe","reason":"Scroll","thoughts":"List may continue but no direction or coordinates were given."}',
+			),
+		).toThrow(/not a valid action.*swipe requires direction/);
+	});
+
+	test("drag requires four coordinates", () => {
+		expect(
+			groqDecision(
+				'{"type":"drag","x":100,"y":500,"x2":800,"y2":500,"reason":"Move slider","thoughts":"Slider handle is at the left and the track extends right."}',
+			),
+		).toMatchObject({ type: "drag", x: 100, y: 500, x2: 800, y2: 500 });
+		expect(() =>
+			groqDecision(
+				'{"type":"drag","x":100,"y":500,"reason":"Move slider","thoughts":"Slider is visible but the drop point is missing."}',
+			),
+		).toThrow(/not a valid action.*drag requires x,y,x2,y2/);
+	});
+
+	test("type/input require text", () => {
+		expect(
+			groqDecision(
+				'{"type":"type","text":"hello","reason":"Fill search","thoughts":"Search field is focused and empty."}',
+			),
+		).toMatchObject({ type: "type", text: "hello" });
+		expect(
+			groqDecision(
+				'{"type":"input","text":"user@example.com","id":"email_field","reason":"Fill email","thoughts":"Login form shows an empty email field."}',
+			),
+		).toMatchObject({ type: "input", text: "user@example.com" });
+		expect(() =>
+			groqDecision(
+				'{"type":"type","reason":"Fill search","thoughts":"Search field is focused but no text was provided."}',
+			),
+		).toThrow(/not a valid action.*type\/input requires text/);
+		expect(() =>
+			groqDecision(
+				'{"type":"input","text":"   ","reason":"Fill email","thoughts":"Field is empty and blank text was given."}',
+			),
+		).toThrow(/not a valid action.*type\/input requires text/);
+	});
+
+	test("open-url requires URL", () => {
+		expect(
+			groqDecision(
+				'{"type":"open-url","url":"https://example.com","reason":"Open help","thoughts":"Help link is needed to finish this instruction."}',
+			),
+		).toMatchObject({ type: "open-url", url: "https://example.com" });
+		expect(() =>
+			groqDecision(
+				'{"type":"open-url","reason":"Open help","thoughts":"Navigation was requested but no URL was provided."}',
+			),
+		).toThrow(/not a valid action.*open-url requires url/);
+	});
+
+	test("assert requires text", () => {
+		expect(
+			groqDecision(
+				'{"type":"assert","assertion":"visible","text":"Welcome","reason":"Check copy","thoughts":"Home title should read Welcome after login."}',
+			),
+		).toMatchObject({ type: "assert", assertion: "visible", text: "Welcome" });
+		expect(
+			groqDecision(
+				'{"type":"assert","assertion":"not-visible","text":"Loading","reason":"Check spinner gone","thoughts":"Spinner should be gone once content loads."}',
+			),
+		).toMatchObject({ type: "assert", assertion: "not-visible", text: "Loading" });
+		expect(() =>
+			groqDecision(
+				'{"type":"assert","assertion":"visible","reason":"Check copy","thoughts":"Title check was requested but no text was given."}',
+			),
+		).toThrow(/not a valid action.*assert requires text/);
+	});
+
+	test("alert accepts accept/dismiss", () => {
+		expect(
+			groqDecision(
+				'{"type":"alert","alertAction":"accept","reason":"Accept permission","thoughts":"System Allow dialog is on screen."}',
+			),
+		).toMatchObject({ type: "alert", alertAction: "accept" });
+		expect(
+			groqDecision(
+				'{"type":"alert","alertAction":"dismiss","reason":"Dismiss dialog","thoughts":"Permission dialog blocks the form and should be dismissed."}',
+			),
+		).toMatchObject({ type: "alert", alertAction: "dismiss" });
+	});
+
+	test("app-lifecycle carries application id", () => {
+		expect(
+			groqDecision(
+				'{"type":"activate-app","appId":"com.example.app","reason":"Foreground app","thoughts":"App is backgrounded and the case needs it open."}',
+			),
+		).toMatchObject({ type: "activate-app", appId: "com.example.app" });
+		expect(
+			groqDecision(
+				'{"type":"terminate-app","appId":"com.example.app","reason":"Cold start","thoughts":"App state is stale and needs a fresh launch."}',
+			),
+		).toMatchObject({ type: "terminate-app", appId: "com.example.app" });
+		expect(
+			groqDecision(
+				'{"type":"restart-app","appId":"com.example.app","reason":"Restart","thoughts":"Restart clears the stuck splash screen."}',
+			),
+		).toMatchObject({ type: "restart-app", appId: "com.example.app" });
+		expect(
+			groqDecision(
+				'{"type":"background-app","seconds":3,"reason":"Background briefly","thoughts":"Case needs the app backgrounded for three seconds."}',
+			),
+		).toMatchObject({ type: "background-app", seconds: 3 });
+	});
+
+	test("verify/done/fail validate with reason and thoughts", () => {
+		for (const type of ["verify", "done", "fail"] as const) {
+			expect(
+				groqDecision(
+					`{"type":"${type}","reason":"Step complete","thoughts":"Expected result is visible on screen now."}`,
+				),
+			).toMatchObject({ type, reason: "Step complete" });
+		}
+	});
+
+	test("every decision requires non-empty reason and thoughts", () => {
+		expect(() => groqDecision('{"type":"tap","x":100,"y":200}')).toThrow(/not a valid action/);
+		expect(() => groqDecision('{"type":"tap","x":100,"y":200,"reason":"","thoughts":""}')).toThrow(
+			/not a valid action/,
+		);
+		const decision = groqDecision(
+			'{"type":"tap","x":100,"y":200,"reason":"Tap login","thoughts":"Login button is visible and enabled."}',
+		);
+		expect(decision.reason.trim().length).toBeGreaterThan(0);
+		expect(decision.thoughts.trim().length).toBeGreaterThan(0);
+	});
+});
+
 describe("prefersScreenshotTap", () => {
 	test("in-app coords win even when a label is also present", () => {
 		expect(prefersScreenshotTap({ x: 120, y: 340, label: "Login" })).toBe(true);

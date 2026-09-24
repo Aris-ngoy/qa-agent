@@ -50,6 +50,16 @@ _Avoid_: driver (implementation), LLM, model vendor alone
 A Provider that can decide the next Action or perform Grounding from a screenshot.
 _Avoid_: any Provider with an API key
 
+**Decide**:
+A single vision completion by a Vision-capable Provider that maps the current Screen, screenshot, and one instruction to the next Action.
+_Avoid_: LLM call, inference, step (Run timeline)
+
+### Catalog
+
+**App Knowledge**:
+A small, user-maintained notes document attached to one catalog app, available as decide context so recurring screens and flows are handled correctly.
+_Avoid_: memory, learned context, app summary
+
 ### Runs
 
 **Run**:
