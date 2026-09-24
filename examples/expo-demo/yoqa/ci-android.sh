@@ -36,6 +36,10 @@ capture_failure() {
 		echo "=== logcat ReactNative / AndroidRuntime ==="
 		adb -s "$SERIAL" logcat -d -t 120 -s ReactNative:V ReactNativeJS:V AndroidRuntime:E libc:F || true
 	} >artifacts/android-diagnostics.txt 2>&1 || true
+	# Argent forwards each device's simulator-server stderr into the tool-server
+	# log as `[sim <udid>]` — the only place a spawn failure explains itself
+	# (e.g. "simulator-server exited with code before becoming ready").
+	argent server logs >artifacts/argent-server.log 2>&1 || true
 	yoqa screenshot artifacts/android-failure.png || true
 	yoqa screen --json >artifacts/android-screen.json || true
 }
