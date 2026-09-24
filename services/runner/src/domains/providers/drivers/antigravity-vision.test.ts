@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { z } from "zod";
 import { AgentProviderError, isJsonRepairableError } from "../vision-model";
-import { parseAgyDecision } from "./antigravity-vision";
+import { parseAgyDecision, resolveAgyModelId } from "./antigravity-vision";
 
 const decisionSchema = z.object({
 	type: z.literal("tap"),
@@ -77,5 +77,22 @@ describe("parseAgyDecision", () => {
 			exitCode: 0,
 		});
 		expect(parsed).toEqual({ type: "tap", x: 30, y: 40 });
+	});
+});
+
+describe("resolveAgyModelId", () => {
+	it("passes clean ids through", () => {
+		expect(resolveAgyModelId("gemini-3.8-flash-low")).toBe("gemini-3.8-flash-low");
+	});
+
+	it("strips a legacy tab-joined display name from stored settings", () => {
+		expect(resolveAgyModelId("gemini-3.8-flash-low\tGemini 3.8 Flash (Low)")).toBe(
+			"gemini-3.8-flash-low",
+		);
+	});
+
+	it("falls back to the default for blank input", () => {
+		expect(resolveAgyModelId(null)).toBe("gemini-3.5-flash-medium");
+		expect(resolveAgyModelId("   ")).toBe("gemini-3.5-flash-medium");
 	});
 });

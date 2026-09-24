@@ -23,6 +23,16 @@ const JSON_REPAIR_PROMPT =
 const AGY_PRINT_TIMEOUT_RE = /print timeout|turn in progress/i;
 
 /**
+ * Resolve the `--model` id from the stored provider setting. Older settings
+ * may hold a raw `agy models` row (`"<id>\t<Display name>"`); model ids never
+ * contain whitespace, so the first token is always the id the CLI expects.
+ */
+export function resolveAgyModelId(defaultModel?: string | null): string {
+	const firstToken = defaultModel?.trim().split(/\s+/)[0];
+	return firstToken || ANTIGRAVITY_DEFAULT_VISION_MODEL;
+}
+
+/**
  * Parse `agy --print` output into a decision.
  *
  * Print-timeout partial output is deliberately NOT JSON-repairable: a retry
@@ -66,7 +76,7 @@ async function completeWithAgyCli<T>(
 	}
 
 	const image = await prepareVisionImage(input.imageBase64);
-	const model = input.auth.defaultModel?.trim() || ANTIGRAVITY_DEFAULT_VISION_MODEL;
+	const model = resolveAgyModelId(input.auth.defaultModel);
 	const ext = image.mediaType === "image/jpeg" ? "jpg" : "png";
 	const dir = await mkdtemp(join(tmpdir(), "yoqa-agy-"));
 	const shotPath = join(dir, `shot.${ext}`);
