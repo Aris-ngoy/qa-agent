@@ -82,23 +82,12 @@ jobs:
           chmod +x "$HOME/.local/bin/yoqa"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Cache Yoqa runtime
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.yoqa/runtime
-            ~/.yoqa/wda-sim
-          key: yoqa-runtime-${{ runner.os }}-${{ hashFiles('services/runner/package.json') }}
-          restore-keys: yoqa-runtime-${{ runner.os }}-
-
       - name: Restore cached iOS .app
         id: demo-app
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4.1.0
         with:
           path: examples/expo-demo/build-cache
           key: expo-demo-ios-${{ hashFiles('examples/expo-demo/App.tsx', 'examples/expo-demo/index.ts', 'examples/expo-demo/app.json', 'examples/expo-demo/package.json', 'examples/expo-demo/package-lock.json', 'examples/expo-demo/assets/**') }}
-          # Keep the binary even when the smoke step fails, so retries skip the build.
-          save-always: true
 
       - name: Install Expo demo dependencies
         if: steps.demo-app.outputs.cache-hit != 'true'
@@ -107,6 +96,9 @@ jobs:
 
       - name: Install Argent CLI
         run: npm install -g @swmansion/argent
+
+      - name: Start Argent tool-server
+        uses: ./.github/actions/argent-server
 
       - name: Start Yoqa runner
         run: |
@@ -168,6 +160,17 @@ jobs:
           ditto -c -k --keepParent \
             ios/build/Build/Products/Release-iphonesimulator/YoqaDemo.app \
             build-cache/YoqaDemo.app.zip
+
+      # The combined actions/cache step only saves on job success, and its
+      # `save-always` input is deprecated ("does not work as intended"), so a
+      # failed smoke used to throw away the ~12-minute build and every retry
+      # rebuilt from scratch. Save explicitly whenever the binary exists.
+      - name: Save iOS .app cache
+        if: always() && steps.demo-app.outputs.cache-hit != 'true' && hashFiles('examples/expo-demo/build-cache/YoqaDemo.app.zip') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4.1.0
+        with:
+          path: examples/expo-demo/build-cache
+          key: expo-demo-ios-${{ hashFiles('examples/expo-demo/App.tsx', 'examples/expo-demo/index.ts', 'examples/expo-demo/app.json', 'examples/expo-demo/package.json', 'examples/expo-demo/package-lock.json', 'examples/expo-demo/assets/**') }}
 
       - name: Install and launch cached .app
         run: |
@@ -243,7 +246,9 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        # v4.0.1 still ran `sdkmanager tools`; Google removed that package, so the
+        # job died in ~30s. v4.0.2+ skips it.
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
 
       - name: Install monorepo dependencies
         run: bun install --frozen-lockfile
@@ -260,23 +265,12 @@ jobs:
           chmod +x "$HOME/.local/bin/yoqa"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Cache Yoqa runtime
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.yoqa/runtime
-            ~/.yoqa/wda-sim
-          key: yoqa-runtime-${{ runner.os }}-${{ hashFiles('services/runner/package.json') }}
-          restore-keys: yoqa-runtime-${{ runner.os }}-
-
       - name: Restore cached Android .apk
         id: demo-apk
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4.1.0
         with:
           path: examples/expo-demo/build-cache
           key: expo-demo-android-${{ hashFiles('examples/expo-demo/App.tsx', 'examples/expo-demo/index.ts', 'examples/expo-demo/app.json', 'examples/expo-demo/package.json', 'examples/expo-demo/package-lock.json', 'examples/expo-demo/assets/**') }}
-          # Keep the binary even when the smoke step fails, so retries skip the build.
-          save-always: true
 
       - name: Install Expo demo dependencies
         if: steps.demo-apk.outputs.cache-hit != 'true'
@@ -285,6 +279,9 @@ jobs:
 
       - name: Install Argent CLI
         run: npm install -g @swmansion/argent
+
+      - name: Start Argent tool-server
+        uses: ./.github/actions/argent-server
 
       - name: Start Yoqa runner
         run: |
@@ -299,6 +296,15 @@ jobs:
           android/gradlew -p android assembleRelease
           mkdir -p build-cache
           cp android/app/build/outputs/apk/release/app-release.apk build-cache/app-release.apk
+
+      # See the iOS save step: the combined cache action drops the build when
+      # the smoke fails, so retries re-run gradle from scratch.
+      - name: Save Android .apk cache
+        if: always() && steps.demo-apk.outputs.cache-hit != 'true' && hashFiles('examples/expo-demo/build-cache/app-release.apk') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v4.1.0
+        with:
+          path: examples/expo-demo/build-cache
+          key: expo-demo-android-${{ hashFiles('examples/expo-demo/App.tsx', 'examples/expo-demo/index.ts', 'examples/expo-demo/app.json', 'examples/expo-demo/package.json', 'examples/expo-demo/package-lock.json', 'examples/expo-demo/assets/**') }}
 
       - name: Build, install, and smoke on emulator
         id: smoke
