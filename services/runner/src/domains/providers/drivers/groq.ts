@@ -1,5 +1,10 @@
 import { createGroq } from "@ai-sdk/groq";
-import { AgentProviderError, createSdkVisionPort, resolveGroqKey } from "../vision-model";
+import {
+	AgentProviderError,
+	createSdkVisionPort,
+	resolveGroqKey,
+	withGroqRequestHooks,
+} from "../vision-model";
 import { pingOpenAiCompatible } from "./probe";
 import type { DriverDefinition } from "./types";
 
@@ -23,7 +28,7 @@ export const groqDriver: DriverDefinition = {
 				throw new AgentProviderError("Groq provider has no API key");
 			}
 			const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || DEFAULT_BASE;
-			return createGroq({ apiKey, baseURL })(modelId);
+			return createGroq({ apiKey, baseURL, fetch: withGroqRequestHooks({}) })(modelId);
 		},
 	}),
 	async probe() {

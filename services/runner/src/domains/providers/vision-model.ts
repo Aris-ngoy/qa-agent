@@ -409,6 +409,73 @@ export function resolveVertexApiKey(auth: VisionAuth): string | null {
 }
 
 /**
+ * True when an outgoing chat-completions body carries a strict `json_schema`
+ * marker whose `required` list omits optional properties. Groq rejects that
+ * shape with `400 ... required ... including every key in properties`, while
+ * fully-required schemas (e.g. grounding `{x,y}`) are strict-safe.
+ */
+export function isSparseResponseFormatBody(parsedBody: Record<string, unknown>): boolean {
+	const format = parsedBody.response_format;
+	if (!format || typeof format !== "object" || Array.isArray(format)) return false;
+	const jsonSchema = (format as Record<string, unknown>).json_schema;
+	if (!jsonSchema || typeof jsonSchema !== "object" || Array.isArray(jsonSchema)) {
+		return false;
+	}
+	const schema = (jsonSchema as Record<string, unknown>).schema;
+	if (!schema || typeof schema !== "object" || Array.isArray(schema)) return false;
+	const properties = (schema as Record<string, unknown>).properties;
+	if (!properties || typeof properties !== "object" || Array.isArray(properties)) {
+		return false;
+	}
+	const keys = Object.keys(properties);
+	if (keys.length === 0) return false;
+	const required = (schema as Record<string, unknown>).required;
+	if (!Array.isArray(required)) return true;
+	const requiredSet = new Set(
+		required.filter((entry): entry is string => typeof entry === "string"),
+	);
+	return keys.some((key) => !requiredSet.has(key));
+}
+
+/**
+ * Groq rejects strict `json_schema` for decide (optional Action fields are
+ * absent from `required`). Strip `response_format` only for sparse schemas so
+ * decide asks for JSON in the prompt only; fully-required schemas (grounding)
+ * keep structured-output mode. Model, messages, and screenshot payload pass
+ * through untouched. Client-side Zod plus salvage/repair still validate.
+ */
+export function withGroqRequestHooks(opts: {
+	fetchImpl?: FetchFunction;
+}): FetchFunction {
+	const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
+	return (async (input, init) => {
+		const headers = new Headers(init?.headers);
+		const rawBody = init?.body;
+		if (typeof rawBody !== "string") {
+			return fetchImpl(input, { ...init, headers });
+		}
+		try {
+			const parsed: unknown = JSON.parse(rawBody);
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+				return fetchImpl(input, { ...init, headers });
+			}
+			const parsedBody = { ...(parsed as Record<string, unknown>) };
+			if (!isSparseResponseFormatBody(parsedBody)) {
+				return fetchImpl(input, { ...init, headers });
+			}
+			const { response_format: _responseFormat, ...withoutFormat } = parsedBody;
+			return fetchImpl(input, {
+				...init,
+				headers,
+				body: JSON.stringify(withoutFormat),
+			});
+		} catch {
+			return fetchImpl(input, { ...init, headers });
+		}
+	}) as FetchFunction;
+}
+
+/**
  * DeepSeek-style OpenCode models burn tokens on reasoning unless thinking is off.
  * LiteLLM/Bedrock rejects OpenAI `response_format` (mapped to `output_config.format`).
  */
