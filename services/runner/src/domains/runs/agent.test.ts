@@ -642,6 +642,42 @@ describe("formatDecidePrompt", () => {
 			"Decide whether to use x,y coordinates or an id based on both sources.",
 		);
 	});
+
+	test("injects app knowledge when present and omits the section when absent", () => {
+		const base = {
+			appContext: "Playzone",
+			caseTitle: "Check Navigation",
+			instructions: "Open My Games",
+			expectedResult: "My Games list",
+			stepIndex: 0,
+			screenSnapshot: "(empty tree)",
+		};
+		const withKnowledge = formatDecidePrompt({
+			...base,
+			appKnowledge:
+				"Cold start shows a 'Verifying your installation' splash — tap Continue. Bottom nav: Discover / My Games / Rewards / Profile.",
+		});
+		expect(withKnowledge).toContain("App knowledge");
+		expect(withKnowledge).toContain("Verifying your installation");
+		expect(withKnowledge).toContain("Discover / My Games / Rewards / Profile");
+
+		const without = formatDecidePrompt({ ...base, appKnowledge: "   " });
+		expect(without).not.toContain("App knowledge");
+	});
+
+	test("caps oversized app knowledge instead of sending the whole document", () => {
+		const prompt = formatDecidePrompt({
+			appContext: "Playzone",
+			caseTitle: "Check Navigation",
+			instructions: "Open My Games",
+			expectedResult: "My Games list",
+			stepIndex: 0,
+			screenSnapshot: "(empty tree)",
+			appKnowledge: "x".repeat(5000),
+		});
+		expect(prompt).toContain("truncated");
+		expect(prompt).not.toContain("x".repeat(2049));
+	});
 });
 
 describe("SYSTEM_PROMPT dual-context and keyboard guidance", () => {

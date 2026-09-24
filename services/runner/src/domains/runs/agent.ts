@@ -3,6 +3,7 @@ import { z } from "zod";
 import { parseVisionObject } from "../providers/agent-json";
 import type { ActiveProviderAuth } from "../providers/application";
 import { completeVision } from "../providers/vision";
+import type { VisionImage } from "../providers/vision-model";
 
 export { AgentProviderError, assertVisionCapableProvider } from "../providers/vision";
 
@@ -537,9 +538,21 @@ export function formatCompletedInstructions(completed: string[]): string {
 	return completed.map((text, index) => `${index + 1}. ${text}`).join("\n");
 }
 
+/** Prompt budget for the per-app knowledge document. */
+const MAX_APP_KNOWLEDGE_CHARS = 2048;
+
+/** App Knowledge: notes your team keeps about the app, injected into decide. */
+function formatAppKnowledge(knowledge: string | undefined): string | null {
+	const trimmed = (knowledge ?? "").trim();
+	if (!trimmed) return null;
+	if (trimmed.length <= MAX_APP_KNOWLEDGE_CHARS) return trimmed;
+	return `${trimmed.slice(0, MAX_APP_KNOWLEDGE_CHARS)}\n… (app knowledge truncated at ${MAX_APP_KNOWLEDGE_CHARS} characters)`;
+}
+
 /** User-message body for a vision decide call (no image). */
 export function formatDecidePrompt(input: {
 	appContext: string;
+	appKnowledge?: string;
 	caseTitle: string;
 	instructions: string;
 	expectedResult: string;
@@ -567,8 +580,15 @@ export function formatDecidePrompt(input: {
 			? `Later instructions exist (${remaining}) but are hidden. Do not invent or perform them. Do not open unrelated screens to skip ahead.`
 			: "This is the last instruction of the case.";
 
+	const appKnowledge = formatAppKnowledge(input.appKnowledge);
+
 	return [
 		`App context: ${input.appContext || "(none)"}`,
+		...(appKnowledge
+			? [
+					`App knowledge (notes your team keeps about this app — trust these over guesses):\n${appKnowledge}`,
+				]
+			: []),
 		`Test case: ${input.caseTitle}`,
 		progress,
 		"Completed instructions (already done — do not repeat):",
@@ -605,11 +625,14 @@ export function isAbsurdNoScreenshotFail(decision: AgentDecision): boolean {
 export async function decideNextAction(input: {
 	auth: ActiveProviderAuth;
 	appContext: string;
+	appKnowledge?: string;
 	caseTitle: string;
 	instructions: string;
 	expectedResult: string;
 	stepIndex: number;
 	imageBase64: string;
+	image?: VisionImage;
+	onDecideRetry?: () => void;
 	recentActions?: AgentDecision[];
 	screenSnapshot?: string;
 	lastError?: string;
@@ -623,5 +646,7 @@ export async function decideNextAction(input: {
 		system: SYSTEM_PROMPT,
 		prompt: formatDecidePrompt(input),
 		imageBase64: input.imageBase64,
+		image: input.image,
+		onDecideRetry: input.onDecideRetry,
 	});
 }

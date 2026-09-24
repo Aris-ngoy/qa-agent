@@ -4,6 +4,7 @@ import {
 	type CaseScript,
 	type CatalogCase,
 	type ScreenElement,
+	type StepPhases,
 	formatActionShellLine,
 	formatAssertShellLine,
 	formatSleepShellLine,
@@ -17,6 +18,7 @@ import {
 } from "../devices/interaction";
 import { type DeviceSession, isDeadSessionError } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
+import { type VisionImage, prepareVisionImage } from "../providers/vision-model";
 import {
 	type AgentDecision,
 	coerceScrollIntentToSwipe,
@@ -40,6 +42,8 @@ export type AppendCaseStep = (input: {
 	screenshotUri: string | null;
 	ok: boolean;
 	latencyMs: number;
+	/** Per-phase wall-clock breakdown (agent steps only). */
+	phases?: StepPhases | null;
 	detail: string | null;
 	command: string | null;
 }) => Promise<void>;
@@ -49,11 +53,19 @@ export type SetCurrentCommand = (command: string | null) => Promise<void>;
 export type CaseDecideFn = (input: {
 	auth: ActiveProviderAuth;
 	appContext: string;
+	appKnowledge?: string;
 	caseTitle: string;
 	instructions: string;
 	expectedResult: string;
 	stepIndex: number;
 	imageBase64: string;
+	/** Pre-prepared vision image for this step's screenshot (reused across retries). */
+	image?: VisionImage;
+	/**
+	 * Called when this step's decide is retried: the Provider repaired invalid
+	 * JSON, or the first reply was unusable (e.g. claiming no screenshot).
+	 */
+	onDecideRetry?: () => void;
 	recentActions?: AgentDecision[];
 	screenSnapshot?: string;
 	lastError?: string;
@@ -66,6 +78,7 @@ export type CaseDecideFn = (input: {
 export type PerformActionFn = (
 	session: DeviceSession,
 	body: ActionRequest,
+	options?: { screenElements?: ScreenElement[] },
 ) => Promise<ActionResponse>;
 
 export type CaseExecutorClock = {
@@ -88,6 +101,8 @@ export type ScriptCaseDeps = {
 export type AgentCaseDeps = {
 	catalogCase: CatalogCase;
 	appContext: string;
+	/** Per-app knowledge notes injected into the decide context (App Knowledge). */
+	appKnowledge?: string;
 	auth: ActiveProviderAuth;
 	session: DeviceSession;
 	isAborted: () => boolean;
@@ -574,10 +589,14 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	let caseError: string | null = null;
 	let lastScreenshotUri: string | null = null;
 	const recordedDecisions: AgentDecision[] = [];
+	// Kept so a crashed step still reports the timing/retries it accumulated.
+	let inFlightPhases: StepPhases | null = null;
+	let inFlightLatencyMs = 0;
 
 	const decideOnce = async (input: {
 		flow: { instructions: string; expectedResult: string };
 		imageBase64: string;
+		image: VisionImage;
 		recentActions: AgentDecision[];
 		screenSnapshot: string;
 		lastError?: string;
@@ -585,15 +604,18 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		completedInstructions: string[];
 		instructionOrdinal: number;
 		instructionCount: number;
+		onDecideRetry?: () => void;
 	}): Promise<AgentDecision> => {
 		const payload = {
 			auth: deps.auth,
 			appContext: deps.appContext,
+			appKnowledge: deps.appKnowledge,
 			caseTitle: deps.catalogCase.name,
 			instructions: input.flow.instructions,
 			expectedResult: input.flow.expectedResult,
 			stepIndex: stepIdx,
 			imageBase64: input.imageBase64,
+			image: input.image,
 			recentActions: input.recentActions,
 			screenSnapshot: input.screenSnapshot,
 			lastError: input.lastError,
@@ -601,9 +623,11 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 			completedInstructions: [...input.completedInstructions],
 			instructionOrdinal: input.instructionOrdinal,
 			instructionCount: input.instructionCount,
+			onDecideRetry: input.onDecideRetry,
 		};
 		let decision = await decide(payload);
 		if (isAbsurdNoScreenshotFail(decision)) {
+			input.onDecideRetry?.();
 			decision = await decide(payload);
 			if (isAbsurdNoScreenshotFail(decision)) {
 				decision = {
@@ -635,10 +659,16 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		return decision;
 	};
 
-	const applyDecision = async (decision: AgentDecision): Promise<"continue" | "done" | "fail"> => {
+	const applyDecision = async (
+		decision: AgentDecision,
+		phases: StepPhases,
+		screenElements: ScreenElement[],
+	): Promise<"continue" | "done" | "fail"> => {
 		if (decision.type === "wait") {
 			const waitMs = Math.min(3000, Math.max(500, decision.ms ?? 1500));
+			const waitStarted = clock.now();
 			await clock.sleep(waitMs);
+			phases.actionMs += clock.now() - waitStarted;
 			return "continue";
 		}
 		if (decision.type === "verify" || decision.type === "done") {
@@ -650,6 +680,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		if (decision.type === "assert") {
 			const assertion = decision.assertion === "not-visible" ? "not-visible" : "visible";
 			const timeoutMs = Math.min(60_000, Math.max(1_000, decision.timeoutMs ?? 5_000));
+			const assertStarted = clock.now();
 			await runTextAssert({
 				session: deps.session,
 				readScreen,
@@ -659,14 +690,16 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				text: decision.text ?? "",
 				timeoutMs,
 			});
+			phases.actionMs += clock.now() - assertStarted;
 			return "continue";
 		}
 		const body = decisionToActionRequest(decision, { defaultAppId: deps.defaultAppId });
 		if (!body) {
 			throw new Error(`${decision.type} is missing required fields`);
 		}
+		const actionStarted = clock.now();
 		try {
-			await perform(deps.session, body);
+			await perform(deps.session, body, { screenElements });
 		} catch (error) {
 			if (
 				error instanceof ActionNotFoundError &&
@@ -685,8 +718,12 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 			} else {
 				throw error;
 			}
+		} finally {
+			phases.actionMs += clock.now() - actionStarted;
 		}
+		const settleStarted = clock.now();
 		await clock.sleep(settleMs);
+		phases.settleMs += clock.now() - settleStarted;
 		return "continue";
 	};
 
@@ -717,10 +754,33 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					break;
 				}
 
-				const shotStarted = clock.now();
+				const phases: StepPhases = {
+					captureMs: 0,
+					screenMs: 0,
+					prepareMs: 0,
+					decideMs: 0,
+					actionMs: 0,
+					settleMs: 0,
+					decideRetries: 0,
+				};
+
+				// Rolling phase boundary: each advance() charges elapsed time to one phase,
+				// so the four phases always sum to the step's reported latency.
+				let phaseStartedAt = clock.now();
+				const shotStarted = phaseStartedAt;
+				inFlightPhases = phases;
 				const shot = await deps.session.screenshot();
 				lastScreenshotUri = shot.path;
+				const advance = (phase: "captureMs" | "screenMs" | "prepareMs" | "decideMs") => {
+					const now = clock.now();
+					phases[phase] = now - phaseStartedAt;
+					phaseStartedAt = now;
+				};
+				advance("captureMs");
 				const tree = await readCleanedTree(readScreen, deps.session);
+				advance("screenMs");
+				const image = await prepareVisionImage(shot.base64);
+				advance("prepareMs");
 				const fingerprint = screenshotFingerprint(shot.base64);
 				const lastAction = recentActions.at(-1);
 				const lastSwipeMovedScreen =
@@ -737,18 +797,24 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				const decideInput = {
 					flow: instruction,
 					imageBase64: shot.base64,
+					image,
 					recentActions,
 					screenSnapshot: tree.snapshot,
 					lastSwipeMovedScreen,
 					completedInstructions,
 					instructionOrdinal: instructionIndex + 1,
 					instructionCount: instructionQueue.length,
+					onDecideRetry: () => {
+						phases.decideRetries += 1;
+					},
 				};
 
 				let decision = await decideOnce(decideInput);
+				advance("decideMs");
 				prevFingerprint = fingerprint;
 
-				const latencyMs = clock.now() - shotStarted;
+				const latencyMs = phaseStartedAt - shotStarted;
+				inFlightLatencyMs = latencyMs;
 
 				if (deps.isAborted()) {
 					caseStatus = "cancelled";
@@ -758,18 +824,20 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 
 				const applyWithRetry = async (): Promise<"continue" | "done" | "fail"> => {
 					try {
-						return await applyDecision(decision);
+						return await applyDecision(decision, phases, tree.elements);
 					} catch (error) {
 						if (!isRetriableActionError(error) || deps.isAborted()) throw error;
 						const failed = decision;
+						const retryDecideStarted = clock.now();
 						decision = await decideOnce({
 							...decideInput,
 							recentActions: [...recentActions, failed],
 							lastError: error instanceof Error ? error.message : String(error),
 						});
+						phases.decideMs += clock.now() - retryDecideStarted;
 						const retryCommand = commandForDecision(decision, deps.defaultAppId);
 						await setCurrentCommand(retryCommand);
-						return await applyDecision(decision);
+						return await applyDecision(decision, phases, tree.elements);
 					}
 				};
 
@@ -785,6 +853,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 						screenshotUri: shot.path,
 						ok: outcome !== "fail",
 						latencyMs,
+						phases,
 						detail:
 							decision.type === "wait"
 								? (decision.reason ??
@@ -841,7 +910,8 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				},
 				screenshotUri: lastScreenshotUri,
 				ok: false,
-				latencyMs: 0,
+				latencyMs: inFlightLatencyMs,
+				phases: inFlightPhases,
 				detail: caseError,
 				command: null,
 			});

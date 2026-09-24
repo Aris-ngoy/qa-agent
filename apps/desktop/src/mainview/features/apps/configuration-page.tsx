@@ -7,6 +7,7 @@ import { useFieldArray, useForm, useWatch } from "react-hook-form";
 type FormValues = {
 	name: string;
 	context: string;
+	knowledge: string;
 	iosBundleId: string;
 	iosAppStoreId: string;
 	androidApplicationId: string;
@@ -39,6 +40,7 @@ const fieldInputClass =
 function formFromApp(app: {
 	name: string;
 	context: string;
+	knowledge: string;
 	iosBundleId: string;
 	iosAppStoreId: string;
 	androidApplicationId: string;
@@ -47,6 +49,7 @@ function formFromApp(app: {
 	return {
 		name: app.name,
 		context: app.context,
+		knowledge: app.knowledge,
 		iosBundleId: app.iosBundleId,
 		iosAppStoreId: app.iosAppStoreId,
 		androidApplicationId: app.androidApplicationId,
@@ -68,6 +71,7 @@ export function ConfigurationPage() {
 		defaultValues: {
 			name: "",
 			context: "",
+			knowledge: "",
 			iosBundleId: "",
 			iosAppStoreId: "",
 			androidApplicationId: "",
@@ -103,6 +107,7 @@ export function ConfigurationPage() {
 		void updateApp(selectedApp.id, {
 			name: values.name.trim(),
 			context: values.context,
+			knowledge: values.knowledge,
 			iosBundleId: values.iosBundleId.trim(),
 			iosAppStoreId: values.iosAppStoreId.trim(),
 			androidApplicationId: values.androidApplicationId.trim(),
@@ -206,6 +211,22 @@ export function ConfigurationPage() {
 								rows={5}
 							/>
 						</div>
+					</div>
+
+					<div className="flex flex-col gap-2">
+						<p className="text-body-sm leading-relaxed text-on-surface-variant">
+							App Knowledge: facts the agent should trust on sight — recurring screens and how to
+							get past them. Injected into every agent run for this app (first ~2 KB).
+						</p>
+						<RhfTextField
+							control={control}
+							inputClassName={`${fieldInputClass} min-h-24 resize-y rounded-xl`}
+							label="App Knowledge"
+							multiline
+							name="knowledge"
+							placeholder="e.g., Cold start shows a 'Verifying your installation' splash — tap Continue. Bottom nav order: Discover / My Games / Rewards / Profile."
+							rows={4}
+						/>
 					</div>
 				</section>
 

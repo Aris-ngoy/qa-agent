@@ -10,6 +10,21 @@ import type { DriverDefinition } from "./types";
 
 const DEFAULT_BASE = "https://api.groq.com/openai/v1";
 
+/** Groq model families known to accept screenshots. */
+const GROQ_VISION_MODEL_RE = /llama-4-(scout|maverick)/i;
+/** Groq model families known to be text-only (a blind agent footgun — see #141). */
+const GROQ_TEXT_ONLY_MODEL_RE =
+	/^(qwen|deepseek|llama-3|gemma|mixtral|whisper|openai\/gpt-oss|compound-beta)/i;
+
+/** Tri-state vision capability for a model id: true / false / undefined (unknown). */
+export function groqModelVision(modelId: string): boolean | undefined {
+	const id = modelId.trim();
+	if (!id) return undefined;
+	if (GROQ_VISION_MODEL_RE.test(id)) return true;
+	if (GROQ_TEXT_ONLY_MODEL_RE.test(id)) return false;
+	return undefined;
+}
+
 export const groqDriver: DriverDefinition = {
 	kind: "groq",
 	label: "Groq",
@@ -22,6 +37,9 @@ export const groqDriver: DriverDefinition = {
 	vision: createSdkVisionPort({
 		label: "Groq",
 		defaultModel: "meta-llama/llama-4-scout-17b-16e-instruct",
+		// Decide output is one small JSON Action; a runaway thinking trace should
+		// fail fast instead of burning the full budget (see #141).
+		maxOutputTokens: 2048,
 		createModel: (auth, modelId) => {
 			const apiKey = resolveGroqKey(auth);
 			if (!apiKey) {
@@ -69,7 +87,10 @@ export const groqDriver: DriverDefinition = {
 			label: "Groq",
 		});
 		return {
-			models: (result.models ?? []).map((id) => ({ id, name: id })),
+			models: (result.models ?? []).map((id) => {
+				const vision = groqModelVision(id);
+				return { id, name: id, ...(vision === undefined ? {} : { vision }) };
+			}),
 			message: result.ok ? `${result.models?.length ?? 0} models available` : result.message,
 		};
 	},

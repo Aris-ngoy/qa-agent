@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ActionRequest, CaseScript, CatalogCase } from "@yoqa/runner-client";
+import type { ActionRequest, CaseScript, CatalogCase, StepPhases } from "@yoqa/runner-client";
 import type { DeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import type { AgentDecision } from "./agent";
@@ -660,6 +660,180 @@ describe("executeAgentCase", () => {
 		expect(performed).toEqual([{ kind: "tap", id: "login_btn" }]);
 		expect(result.decisions[0]?.id).toBe("login_btn");
 		expect(result.decisions.map((decision) => decision.type)).toContain("done");
+	});
+
+	it("prepares the vision image once per screenshot and reuses it across retries", async () => {
+		const { ActionNotFoundError } = await import("../devices/interaction");
+		const images: Array<unknown> = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => ({ elements: [] }),
+			decide: async (input) => {
+				images.push(input.image);
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						id: "missing_id",
+						reason: "Tap login",
+						thoughts: "Guessed a stale id",
+					};
+				}
+				return { type: "done", reason: "done", thoughts: "ok" };
+			},
+			performAction: async (_session, body) => {
+				if (body.id === "missing_id") {
+					throw new ActionNotFoundError("No element matching id: missing_id");
+				}
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(images).toHaveLength(2);
+		expect(images[0]).toEqual({ base64: "aaa", mediaType: "image/png" });
+		expect(images[1]).toBe(images[0]);
+	});
+
+	it("records a per-phase timing breakdown and decide retry count on each step", async () => {
+		const steps: Array<{ latencyMs: number; phases?: StepPhases | null }> = [];
+		let t = 0;
+		let calls = 0;
+		const clock = {
+			sleep: async () => {},
+			now: () => {
+				t += 10;
+				return t;
+			},
+		};
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push({ latencyMs: step.latencyMs, phases: step.phases });
+			},
+			readScreen: async () => ({ elements: [] }),
+			decide: async (input) => {
+				calls += 1;
+				if (calls === 1) {
+					input.onDecideRetry?.();
+					return { type: "tap", x: 100, y: 200, reason: "Tap center", thoughts: "tapping" };
+				}
+				return { type: "done", reason: "done", thoughts: "ok" };
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock,
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		const first = steps[0];
+		const phases = first?.phases;
+		expect(phases).toBeDefined();
+		expect(phases?.decideRetries).toBe(1);
+		expect(phases?.captureMs).toBeGreaterThan(0);
+		expect(phases?.screenMs).toBeGreaterThan(0);
+		expect(phases?.prepareMs).toBeGreaterThan(0);
+		expect(phases?.decideMs).toBeGreaterThan(0);
+		expect(first?.latencyMs).toBe(
+			(phases?.captureMs ?? 0) +
+				(phases?.screenMs ?? 0) +
+				(phases?.prepareMs ?? 0) +
+				(phases?.decideMs ?? 0),
+		);
+	});
+
+	it("reads the Screen once per step and reuses it for id taps", async () => {
+		let pageSourceCalls = 0;
+		const taps: Array<{ x: number; y: number }> = [];
+		let calls = 0;
+		const session = {
+			screenshot: async () => ({ path: "/tmp/shot-reuse.png", base64: "aaa" }),
+			pageSource: async () => {
+				pageSourceCalls += 1;
+				return `<XCUIElementTypeApplication name="App" x="0" y="0" width="390" height="844">
+					<XCUIElementTypeButton name="login_btn" label="Login" x="100" y="400" width="120" height="40" visible="true" enabled="true" />
+				</XCUIElementTypeApplication>`;
+			},
+			getWindowSize: async () => ({ width: 390, height: 844 }),
+			tap: async (x: number, y: number) => {
+				taps.push({ x, y });
+			},
+		} as unknown as DeviceSession;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session,
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return { type: "tap", id: "login_btn", reason: "Tap login", thoughts: "tree id" };
+				}
+				return { type: "done", reason: "done", thoughts: "ok" };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(taps).toHaveLength(1);
+		expect(pageSourceCalls).toBe(2);
+	});
+
+	it("passes app knowledge from the case deps into decide", async () => {
+		const knowledge: string[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			appKnowledge: "Cold start shows a verification splash — tap Continue.",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => ({ elements: [] }),
+			decide: async (input) => {
+				calls += 1;
+				knowledge.push(input.appKnowledge ?? "");
+				if (calls === 1) {
+					return { type: "tap", x: 100, y: 200, reason: "Tap", thoughts: "tapping" };
+				}
+				return { type: "done", reason: "done", thoughts: "ok" };
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async () => {},
+				now: () => 1,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(knowledge[0]).toBe("Cold start shows a verification splash — tap Continue.");
 	});
 
 	it("falls back to screenshot x,y when a tree id tap misses", async () => {

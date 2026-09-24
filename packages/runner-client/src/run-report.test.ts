@@ -216,6 +216,49 @@ function sampleDoc(overrides: Partial<RunReportDocument> = {}): RunReportDocumen
 	};
 }
 
+describe("per-phase step timing", () => {
+	test("renders the breakdown in markdown and HTML when the step has phases", () => {
+		const base = sampleDoc();
+		const baseTest = base.tests[0];
+		const baseStep = baseTest?.steps[0];
+		if (!baseTest || !baseStep) throw new Error("sample doc is missing a step");
+		const doc: RunReportDocument = {
+			...base,
+			tests: [
+				{
+					...baseTest,
+					steps: [
+						{
+							...baseStep,
+							latencyMs: 34740,
+							phases: {
+								captureMs: 820,
+								screenMs: 1100,
+								prepareMs: 95,
+								decideMs: 32400,
+								actionMs: 210,
+								settleMs: 800,
+								decideRetries: 1,
+							},
+						},
+					],
+				},
+			],
+		};
+		const markdown = formatRunReportMarkdown(doc);
+		expect(markdown).toContain(
+			"Phases: capture 820ms · screen 1100ms · image 95ms · decide 32400ms · action 210ms · settle 800ms · retries 1",
+		);
+		expect(formatRunReportHtml(doc)).toContain("capture 820ms");
+	});
+
+	test("omits the breakdown for steps without phases", () => {
+		const markdown = formatRunReportMarkdown(sampleDoc());
+		expect(markdown).not.toContain("Phases:");
+		expect(formatRunReportHtml(sampleDoc())).not.toContain("capture ");
+	});
+});
+
 describe("formatRunReportGithubSummary", () => {
 	test("lists failed steps and omits screenshot data URIs", () => {
 		const markdown = formatRunReportGithubSummary(sampleDoc());

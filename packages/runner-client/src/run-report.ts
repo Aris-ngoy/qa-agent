@@ -1,4 +1,4 @@
-import type { ActionRequest, Run, RunStatus, RunStep, RunTestStatus } from "./schemas";
+import type { ActionRequest, Run, RunStatus, RunStep, RunTestStatus, StepPhases } from "./schemas";
 import { formatActionShellLine, formatAssertShellLine, formatSleepShellLine } from "./shell-script";
 
 export type RunReportStatus = "passed" | "errored" | "cancelled";
@@ -10,6 +10,8 @@ export type RunReportStep = {
 	summary: string;
 	ok: boolean;
 	latencyMs: number | null;
+	/** Per-phase wall-clock breakdown for agent steps. */
+	phases?: StepPhases | null;
 	detail: string | null;
 	reason: string | null;
 	thoughts: string | null;
@@ -243,6 +245,21 @@ function toReportStatus(status: RunStatus): RunReportStatus | null {
 	return null;
 }
 
+export function formatStepPhases(phases: StepPhases): string {
+	const parts = [
+		`capture ${Math.round(phases.captureMs)}ms`,
+		`screen ${Math.round(phases.screenMs)}ms`,
+		`image ${Math.round(phases.prepareMs)}ms`,
+		`decide ${Math.round(phases.decideMs)}ms`,
+		`action ${Math.round(phases.actionMs)}ms`,
+		`settle ${Math.round(phases.settleMs)}ms`,
+	];
+	if (phases.decideRetries > 0) {
+		parts.push(`retries ${phases.decideRetries}`);
+	}
+	return parts.join(" · ");
+}
+
 function mapCatalogStep(step: RunStep, screenshotsByStepId: Record<string, string>): RunReportStep {
 	const { reason, thoughts } = stepReasoning(step);
 	return {
@@ -251,6 +268,7 @@ function mapCatalogStep(step: RunStep, screenshotsByStepId: Record<string, strin
 		summary: actionSummary(step.action),
 		ok: step.ok,
 		latencyMs: step.latencyMs,
+		phases: step.phases ?? null,
 		detail: step.detail,
 		reason,
 		thoughts,
@@ -435,6 +453,9 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 						: `<p class="muted">No screenshot</p>`;
 					const latency =
 						step.latencyMs != null ? `<span class="muted">${step.latencyMs}ms</span>` : "";
+					const phases = step.phases
+						? `<p class="muted phases">Phases: ${escapeHtml(formatStepPhases(step.phases))}</p>`
+						: "";
 					const commandBlock = step.command
 						? `<pre class="command"><code>${escapeHtml(step.command)}</code></pre>`
 						: "";
@@ -448,6 +469,7 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
     </div>
   </header>
   ${commandBlock}
+  ${phases}
   ${reasonBlock}
   ${detailBlock}
   ${thoughtsBlock}
@@ -584,6 +606,7 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 			lines.push(`- Result: **${step.ok ? "Passed" : "Failed"}**`);
 			if (step.command) lines.push(`- Command: \`${step.command.replace(/`/g, "'")}\``);
 			if (step.latencyMs != null) lines.push(`- Latency: ${step.latencyMs}ms`);
+			if (step.phases) lines.push(`- Phases: ${formatStepPhases(step.phases)}`);
 			if (step.reason) lines.push(`- Reason: ${step.reason}`);
 			if (step.detail && step.detail !== step.reason) lines.push(`- Detail: ${step.detail}`);
 			if (step.thoughts) {

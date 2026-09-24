@@ -21,6 +21,7 @@ export type Application = {
 	id: string;
 	name: string;
 	context: string;
+	knowledge: string;
 	iosBundleId: string;
 	iosAppStoreId: string;
 	androidApplicationId: string;
@@ -30,7 +31,13 @@ export type Application = {
 export type ApplicationUpdates = Partial<
 	Pick<
 		Application,
-		"name" | "context" | "iosBundleId" | "iosAppStoreId" | "androidApplicationId" | "capabilities"
+		| "name"
+		| "context"
+		| "knowledge"
+		| "iosBundleId"
+		| "iosAppStoreId"
+		| "androidApplicationId"
+		| "capabilities"
 	>
 >;
 
@@ -55,6 +62,7 @@ function mapCatalogApp(app: CatalogApp): Application {
 		id: app.id,
 		name: app.name,
 		context: app.context,
+		knowledge: app.knowledge,
 		iosBundleId: app.iosBundleId,
 		iosAppStoreId: app.iosAppStoreId,
 		androidApplicationId: app.androidApplicationId,

@@ -399,6 +399,12 @@ export function ProviderExpanded({
 
 	const modelListBusy = busy || saving || selectingModel;
 
+	const defaultModelEntry = models.find((model) => model.id === defaultModel?.trim());
+	const defaultModelVisionWarning =
+		defaultModelEntry?.vision === false
+			? `${defaultModelEntry.name} cannot read screenshots — agent runs need a vision model.`
+			: null;
+
 	const modelStatusHint = modelsLoading
 		? isOpenCode
 			? "Loading catalog…"
@@ -445,6 +451,9 @@ export function ProviderExpanded({
 							? OPENCODE_OTHER_PROVIDER_VISION_HINT
 							: OPENCODE_VISION_HINT}
 				</p>
+			) : null}
+			{defaultModelVisionWarning ? (
+				<p className="mt-1.5 text-helper text-error">{defaultModelVisionWarning}</p>
 			) : null}
 		</div>
 	);
