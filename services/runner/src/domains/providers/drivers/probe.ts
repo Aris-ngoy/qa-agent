@@ -78,6 +78,18 @@ export async function resolveBinary(
 /** How long to wait after kill for the pipes to close before returning partial output. */
 const KILL_GRACE_MS = 250;
 
+/**
+ * Shared stdout/stderr/exit envelope for spawned CLIs. `timedOut` is set only
+ * by deadline paths (`runCommand`); readers that only need the output (e.g.
+ * `parseAgyDecision`) ignore it.
+ */
+export type CommandResult = {
+	stdout: string;
+	stderr: string;
+	exitCode: number;
+	timedOut?: boolean;
+};
+
 /** Drain a pipe without blocking the caller past `kill()` — keep whatever was collected. */
 async function drainStream(
 	stream: ReadableStream<Uint8Array>,
@@ -106,7 +118,7 @@ async function drainStream(
 export async function runCommand(
 	command: string[],
 	opts?: { env?: Record<string, string>; timeoutMs?: number },
-): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut?: boolean }> {
+): Promise<CommandResult> {
 	try {
 		const proc = Bun.spawn(command, {
 			stdout: "pipe",

@@ -11,6 +11,7 @@ import {
 	resolveGoogleKey,
 } from "../vision-model";
 import { resolveBinary, runCommand } from "./probe";
+import type { CommandResult } from "./probe";
 import type { VisionCompleteInput, VisionPort } from "./types";
 
 const ANTIGRAVITY_DEFAULT_VISION_MODEL = "gemini-3.5-flash-medium";
@@ -26,12 +27,14 @@ const AGY_PRINT_TIMEOUT_RE = /print timeout|turn in progress/i;
  *
  * Print-timeout partial output is deliberately NOT JSON-repairable: a retry
  * would block for another full print-timeout waiting on the same slow turn
- * (~4+ silent minutes per step), so it surfaces as a plain provider error the
- * run can fail fast on instead.
+ * (~4+ silent minutes per step), so ANY parse failure on output carrying the
+ * print-timeout marker surfaces as a plain provider error the run can fail
+ * fast on instead — whether extraction found no JSON at all or the partial
+ * JSON failed schema validation.
  */
 export function parseAgyDecision<T>(
 	schema: VisionCompleteInput<T>["schema"],
-	result: { stdout: string; stderr: string; exitCode: number },
+	result: CommandResult,
 ): T {
 	const combined = `${result.stdout}\n${result.stderr}`.trim();
 	try {
@@ -41,11 +44,7 @@ export function parseAgyDecision<T>(
 			"Antigravity CLI",
 		);
 	} catch (error) {
-		if (
-			error instanceof AgentProviderError &&
-			error.message.includes("did not return JSON") &&
-			AGY_PRINT_TIMEOUT_RE.test(combined)
-		) {
+		if (error instanceof AgentProviderError && AGY_PRINT_TIMEOUT_RE.test(combined)) {
 			throw new AgentProviderError(
 				"Antigravity CLI print timeout: the model turn exceeded --print-timeout (120s) and only partial output came back. Retry with a faster model or switch the default provider in Settings → Provider.",
 			);

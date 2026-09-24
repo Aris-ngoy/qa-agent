@@ -41,9 +41,12 @@ export const POST_ACTION_SETTLE_MS = 800;
  */
 export const AI_DECIDING_COMMAND = "AI deciding next action…";
 /**
- * Hard guard around one decide (+judge) call. Slow CLI providers legitimately
- * take ~130s per call (and ~260s with their internal JSON-repair retry); beyond
- * that treat it as hung so the run fails with a clear error instead of freezing.
+ * Hard budget for one decide attempt. A slow CLI provider legitimately takes
+ * ~130s per call (and ~260s with its internal JSON-repair retry); beyond that
+ * treat it as hung so the run fails with a clear error instead of freezing.
+ * The budget applies per `decide` attempt — `decideOnce` may retry once on an
+ * absurd no-screenshot fail, so a step with two slow-but-working attempts can
+ * take up to ~2x this budget before the run moves on.
  */
 export const DECIDE_TIMEOUT_MS = 300_000;
 
@@ -116,7 +119,7 @@ export type AgentCaseDeps = {
 	settleMs?: number;
 	maxStepsPerCase?: number;
 	defaultAppId?: string;
-	/** Hard budget for one decide (+judge) call; defaults to `DECIDE_TIMEOUT_MS`. */
+	/** Hard budget for one decide attempt (initial + JSON-repair retry); defaults to `DECIDE_TIMEOUT_MS`. */
 	decideTimeoutMs?: number;
 };
 
@@ -224,10 +227,11 @@ function formatBudget(ms: number): string {
 }
 
 /**
- * Fail fast when a decide (+judge) call never settles — a hung provider CLI
+ * Fail fast when a decide attempt never settles — a hung provider CLI
  * (kill that never closes its pipes, a stalled daemon) would otherwise leave
- * the run "running" with zero steps forever. The raced call is not aborted; it
- * just no longer decides the run's fate.
+ * the run "running" with zero steps forever. The raced call is not aborted;
+ * it just no longer decides the run's fate. A hung child keeps running in the
+ * background until the OS reaps it — this frees the run, not the process.
  */
 async function withDecideTimeout<T>(work: () => Promise<T>, timeoutMs: number): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
@@ -701,11 +705,13 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	const decideTimeoutMs = deps.decideTimeoutMs ?? DECIDE_TIMEOUT_MS;
 	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
 
+	/** One decide attempt under the hard timeout budget (covers initial + JSON-repair CLI calls). */
+	const decideAttempt = (payload: Parameters<CaseDecideFn>[0]): Promise<AgentDecision> =>
+		withDecideTimeout(() => decide(payload), decideTimeoutMs);
+
 	/** Decide under the live "AI deciding…" label with a hard timeout budget. */
 	const decideGuarded = (input: Parameters<typeof decideOnce>[0]): Promise<AgentDecision> =>
-		withCurrentCommand(setCurrentCommand, AI_DECIDING_COMMAND, () =>
-			withDecideTimeout(() => decideOnce(input), decideTimeoutMs),
-		);
+		withCurrentCommand(setCurrentCommand, AI_DECIDING_COMMAND, () => decideOnce(input));
 
 	/** Same settle contract as `executeScriptCase` (idle wait + fixed sleep). */
 	const settle = () => settleAfterIdle(deps.session, clock, settleMs);
@@ -743,9 +749,9 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 			instructionOrdinal: input.instructionOrdinal,
 			instructionCount: input.instructionCount,
 		};
-		let decision = await decide(payload);
+		let decision = await decideAttempt(payload);
 		if (isAbsurdNoScreenshotFail(decision)) {
-			decision = await decide(payload);
+			decision = await decideAttempt(payload);
 			if (isAbsurdNoScreenshotFail(decision)) {
 				decision = {
 					type: "fail",
