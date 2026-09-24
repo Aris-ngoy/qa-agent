@@ -135,6 +135,7 @@ function ensureSchema(sqlite: Database): void {
 			screenshot_uri TEXT,
 			ok INTEGER NOT NULL DEFAULT 0,
 			latency_ms INTEGER NOT NULL DEFAULT 0,
+			action_ms INTEGER NOT NULL DEFAULT 0,
 			detail TEXT,
 			command TEXT,
 			created_at INTEGER NOT NULL
@@ -157,6 +158,7 @@ function ensureSchema(sqlite: Database): void {
 	migrateCaseScripts(sqlite);
 	migrateRunExecutionMode(sqlite);
 	migrateRunCommands(sqlite);
+	migrateRunStepActionMs(sqlite);
 }
 
 function tableColumns(sqlite: Database, table: string): Set<string> {
@@ -208,6 +210,19 @@ function migrateRunCommands(sqlite: Database): void {
 	const stepCols = tableColumns(sqlite, "run_steps");
 	if (stepCols.size > 0) {
 		addColumnIfMissing(sqlite, "run_steps", "command", "command TEXT", stepCols);
+	}
+}
+
+function migrateRunStepActionMs(sqlite: Database): void {
+	const stepCols = tableColumns(sqlite, "run_steps");
+	if (stepCols.size > 0) {
+		addColumnIfMissing(
+			sqlite,
+			"run_steps",
+			"action_ms",
+			"action_ms INTEGER NOT NULL DEFAULT 0",
+			stepCols,
+		);
 	}
 }
 

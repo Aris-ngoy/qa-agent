@@ -119,6 +119,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 			screenshotUri: step.screenshotUri,
 			ok: step.ok === 1,
 			latencyMs: step.latencyMs,
+			actionMs: step.actionMs ?? 0,
 			detail: step.detail,
 			command: step.command ?? null,
 			createdAt: step.createdAt,
@@ -162,6 +163,7 @@ async function appendStep(input: {
 	screenshotUri: string | null;
 	ok: boolean;
 	latencyMs: number;
+	actionMs?: number | null;
 	detail: string | null;
 	command: string | null;
 }): Promise<void> {
@@ -174,6 +176,7 @@ async function appendStep(input: {
 		screenshotUri: input.screenshotUri,
 		ok: input.ok ? 1 : 0,
 		latencyMs: Math.max(0, Math.round(input.latencyMs)),
+		actionMs: Math.max(0, Math.round(input.actionMs ?? 0)),
 		detail: input.detail,
 		command: input.command,
 		createdAt: Date.now(),

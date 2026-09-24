@@ -1311,4 +1311,105 @@ describe("executeAgentCase", () => {
 		expect(result.status).toBe("passed");
 		expect(result.decisions.map((decision) => decision.type)).toEqual(["verify"]);
 	});
+
+	it("attributes slow decide to latencyMs and fast action to actionMs", async () => {
+		let now = 1000;
+		const steps: Array<{ latencyMs: number; actionMs?: number | null }> = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push({ latencyMs: step.latencyMs, actionMs: step.actionMs });
+			},
+			decide: async () => {
+				calls += 1;
+				now += 5000;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						x: 50,
+						y: 60,
+						reason: "tap",
+						thoughts: "see button",
+					};
+				}
+				return {
+					type: "done",
+					reason: "done",
+					thoughts: "home visible",
+				};
+			},
+			performAction: async (_session, body) => {
+				now += 50;
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => now,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(steps).toHaveLength(2);
+		expect(steps[0]?.latencyMs).toBeGreaterThanOrEqual(5000);
+		expect(steps[0]?.actionMs).toBeDefined();
+		expect(steps[0]?.actionMs ?? 0).toBeGreaterThanOrEqual(50);
+		expect(steps[0]?.actionMs ?? 0).toBeLessThan(1000);
+		expect((steps[0]?.latencyMs ?? 0) / Math.max(1, steps[0]?.actionMs ?? 0)).toBeGreaterThan(10);
+	});
+
+	it("attributes fast decide and slow action to actionMs", async () => {
+		let now = 2000;
+		const steps: Array<{ latencyMs: number; actionMs?: number | null }> = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push({ latencyMs: step.latencyMs, actionMs: step.actionMs });
+			},
+			decide: async () => {
+				calls += 1;
+				now += 10;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						x: 50,
+						y: 60,
+						reason: "tap",
+						thoughts: "see button",
+					};
+				}
+				return {
+					type: "done",
+					reason: "done",
+					thoughts: "home visible",
+				};
+			},
+			performAction: async (_session, body) => {
+				now += 2000;
+				return { ok: true, kind: body.kind };
+			},
+			clock: {
+				sleep: async () => {},
+				now: () => now,
+			},
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(steps).toHaveLength(2);
+		expect(steps[0]?.latencyMs).toBeLessThan(1000);
+		expect(steps[0]?.actionMs ?? 0).toBeGreaterThanOrEqual(2000);
+	});
 });

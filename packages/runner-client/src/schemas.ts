@@ -815,6 +815,8 @@ export const runStepSchema = z.object({
 	screenshotUri: z.string().nullable(),
 	ok: z.boolean(),
 	latencyMs: z.number().nonnegative(),
+	/** Gesture plus settle time. Optional for backward compat with rows written before attribution. */
+	actionMs: z.number().nonnegative().nullable().optional(),
 	detail: z.string().nullable(),
 	command: z.string().nullable().optional(),
 	createdAt: z.number().int().nonnegative(),

@@ -56,6 +56,8 @@ export type AppendCaseStep = (input: {
 	screenshotUri: string | null;
 	ok: boolean;
 	latencyMs: number;
+	/** Gesture plus settle time (performAction + settle). Additive; latencyMs stays perceive plus decide. */
+	actionMs?: number | null;
 	detail: string | null;
 	command: string | null;
 }) => Promise<void>;
@@ -356,6 +358,7 @@ export async function executeScriptCase(
 			const shot = await deps.session.screenshot();
 			lastScreenshotUri = shot.path;
 			const latencyMs = clock.now() - shotStarted;
+			const actionStarted = clock.now();
 
 			if (deps.isAborted()) {
 				return "cancelled";
@@ -387,6 +390,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? action.label ?? action.id ?? null,
 						command,
 					});
@@ -419,6 +423,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? null,
 						command,
 					});
@@ -451,6 +456,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? null,
 						command,
 					});
@@ -476,6 +482,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? action.appId,
 						command,
 					});
@@ -500,6 +507,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? null,
 						command,
 					});
@@ -521,6 +529,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? action.url,
 						command,
 					});
@@ -542,6 +551,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? null,
 						command,
 					});
@@ -589,6 +599,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? `${assertion}: ${action.text}`,
 						command,
 					});
@@ -616,6 +627,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? action.alertAction ?? "accept",
 						command,
 					});
@@ -636,6 +648,7 @@ export async function executeScriptCase(
 						screenshotUri: shot.path,
 						ok: true,
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail: action.reason ?? `wait ${waitMs}ms`,
 						command,
 					});
@@ -655,6 +668,7 @@ export async function executeScriptCase(
 			screenshotUri: lastScreenshotUri,
 			ok: true,
 			latencyMs: 0,
+			actionMs: 0,
 			detail: "Saved script completed",
 			command: null,
 		});
@@ -675,6 +689,7 @@ export async function executeScriptCase(
 			screenshotUri: lastScreenshotUri,
 			ok: false,
 			latencyMs: 0,
+			actionMs: 0,
 			detail: message,
 			command: null,
 		});
@@ -925,6 +940,8 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					}
 				};
 
+				const actionStarted = clock.now();
+
 				const recordStep = async (
 					command: string | null,
 					outcome: "continue" | "done" | "fail",
@@ -937,6 +954,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 						screenshotUri: shot.path,
 						ok: outcome !== "fail",
 						latencyMs,
+						actionMs: Math.max(0, Math.round(clock.now() - actionStarted)),
 						detail:
 							decision.type === "wait"
 								? (decision.reason ??
@@ -994,6 +1012,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				screenshotUri: lastScreenshotUri,
 				ok: false,
 				latencyMs: 0,
+				actionMs: 0,
 				detail: caseError,
 				command: null,
 			});

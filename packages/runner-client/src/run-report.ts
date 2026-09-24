@@ -10,6 +10,8 @@ export type RunReportStep = {
 	summary: string;
 	ok: boolean;
 	latencyMs: number | null;
+	/** Gesture plus settle time. Null when the row predates attribution. */
+	actionMs?: number | null;
 	detail: string | null;
 	reason: string | null;
 	thoughts: string | null;
@@ -70,6 +72,7 @@ export type InspectorRunReportInput = {
 		summary: string;
 		ok: boolean;
 		latencyMs?: number | null;
+		actionMs?: number | null;
 		detail?: string | null;
 		command?: string | null;
 		screenshotBase64?: string | null;
@@ -251,6 +254,7 @@ function mapCatalogStep(step: RunStep, screenshotsByStepId: Record<string, strin
 		summary: actionSummary(step.action),
 		ok: step.ok,
 		latencyMs: step.latencyMs,
+		actionMs: step.actionMs ?? null,
 		detail: step.detail,
 		reason,
 		thoughts,
@@ -311,6 +315,7 @@ export function buildRunReportFromInspectorSession(
 		summary: step.summary,
 		ok: step.ok,
 		latencyMs: step.latencyMs ?? null,
+		actionMs: step.actionMs ?? null,
 		detail: step.detail ?? null,
 		reason: step.detail ?? null,
 		thoughts: null,
@@ -433,8 +438,11 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 					const shot = step.screenshotBase64
 						? `<img class="shot" alt="Step ${step.index} screenshot" src="${pngDataUri(step.screenshotBase64)}" />`
 						: `<p class="muted">No screenshot</p>`;
+					const actionSuffix = step.actionMs != null ? ` + action ${step.actionMs}ms` : "";
 					const latency =
-						step.latencyMs != null ? `<span class="muted">${step.latencyMs}ms</span>` : "";
+						step.latencyMs != null
+							? `<span class="muted">${step.latencyMs}ms${actionSuffix}</span>`
+							: "";
 					const commandBlock = step.command
 						? `<pre class="command"><code>${escapeHtml(step.command)}</code></pre>`
 						: "";
@@ -584,6 +592,7 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 			lines.push(`- Result: **${step.ok ? "Passed" : "Failed"}**`);
 			if (step.command) lines.push(`- Command: \`${step.command.replace(/`/g, "'")}\``);
 			if (step.latencyMs != null) lines.push(`- Latency: ${step.latencyMs}ms`);
+			if (step.actionMs != null) lines.push(`- Action: ${step.actionMs}ms`);
 			if (step.reason) lines.push(`- Reason: ${step.reason}`);
 			if (step.detail && step.detail !== step.reason) lines.push(`- Detail: ${step.detail}`);
 			if (step.thoughts) {

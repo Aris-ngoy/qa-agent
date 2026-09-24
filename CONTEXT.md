@@ -59,3 +59,11 @@ _Avoid_: executeRun (orchestration + persistence around cases)
 **Case Script**:
 A saved, coords-based replay of Actions for a Test Case (no live decide).
 _Avoid_: shell script (inspector/CLI step language), agent instructions
+
+**Step**:
+A single entry in a Run timeline (screenshot + decision + command + timings).
+_Avoid_: Action (device gesture), command (CLI display string)
+
+**Latency**:
+Perceive plus decide time for a Step (screenshot + Screen read + vision decide). Gesture plus settle time is recorded separately as action time.
+_Avoid_: total Step wall time, action time alone
