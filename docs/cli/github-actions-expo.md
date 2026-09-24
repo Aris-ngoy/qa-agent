@@ -10,7 +10,9 @@ Dogfood unpublished `@yoqa/cli` against a real Expo binary on GitHub-hosted runn
 - CI builds `@yoqa/runner` + `@yoqa/cli` from the same commit and puts `node packages/cli/dist/main.js` on `PATH` as `yoqa`.
 - Smoke uses a checked-in CaseScript ([`yoqa/smoke.yoqa.json`](../../examples/expo-demo/yoqa/smoke.yoqa.json)): `assert` + `tap --label` replayed with `yoqa runs create DEMO --cases 1 --mode script` (no `--description`, no agent). [`yoqa/ci-smoke.sh`](../../examples/expo-demo/yoqa/ci-smoke.sh) is the same steps on the device-connector CLI for local debugging.
 - Catalog runs write the same HTML as desktop **Export HTML**. Jobs upload `yoqa-expo-demo-*-report` (open the **run** summary → Artifacts, not the job log).
-- **iOS** on `macos-26` + Xcode **26.4.1** (Expo SDK 57 needs 26.4+; 26.5+ can fail ExpoModulesJSI SPM with an empty “Could not resolve package dependencies”). Simulator connect allows **600s** for the first WebDriverAgent compile and caches `~/.yoqa/wda-sim`. WDA is compiled on `yoqa devices connect` after `expo run:ios` (not in parallel). **Android** on `ubuntu-latest` + KVM (`x86_64` API 34). Path-filtered + `workflow_dispatch`. **Not** a required status check.
+- **iOS** on `macos-26` + Xcode **26.4.1** (Expo SDK 57 needs 26.4+; 26.5+ can fail ExpoModulesJSI SPM with an empty “Could not resolve package dependencies”). **Android** on `ubuntu-latest` + KVM (`x86_64` API 34). Path-filtered + `workflow_dispatch`. **Not** a required status check.
+- Device control is [Argent](https://www.npmjs.com/package/@swmansion/argent) (since the agent-device → Argent migration), so both jobs run [`argent server start --detach`](../../.github/actions/argent-server/action.yml) and poll `argent server status --json` until ready. `argent run` only auto-starts the tool-server with a short (~20s) wait, which a cold runner can miss — every `yoqa devices connect` then fails with “Timed out waiting for tools server to become ready”. `yoqa runtime ensure` is verify-only under Argent and installs nothing.
+- The demo binary is cached with `actions/cache/restore` + an explicit `actions/cache/save` (`if: always()`), not the combined `actions/cache` with `save-always` — that input is deprecated (“does not work as intended”), so a failed smoke used to discard the ~12-minute iOS build and every retry rebuilt from scratch.
 - Native projects are generated in CI with **Expo CLI**: `npx expo prebuild` then `npx expo run:ios` / `npx expo run:android`. `ios/` and `android/` stay gitignored.
 - Rejected for this slice: separate public customer repo, making the job required.
 
@@ -18,6 +20,8 @@ Dogfood unpublished `@yoqa/cli` against a real Expo binary on GitHub-hosted runn
 
 - Expo SDK 57 TypeScript app, bundle / application id `ai.yoqa.demo`, Home + Greeting screens with `accessibilityLabel`.
 - [`.github/workflows/demo-expo-e2e.yml`](../../.github/workflows/demo-expo-e2e.yml) — parallel iOS Simulator + Android Emulator jobs.
+- [`.github/actions/argent-server`](../../.github/actions/argent-server/action.yml) — starts the Argent tool-server and waits until it reports ready.
+- [`yoqa/ci-ios.sh`](../../examples/expo-demo/yoqa/ci-ios.sh) retries the simulator attach, waits for the demo's own text to appear in the accessibility tree (an empty tree otherwise surfaces as an opaque 60s “Expected visible text not found”), and captures `argent server logs` on failure.
 - Public Mintlify CI section + local-testing table updated to point at this example (hosted **device farm** remains “not yet”).
 
 Customer-equivalent (published CLI, not this repo’s workflow):
