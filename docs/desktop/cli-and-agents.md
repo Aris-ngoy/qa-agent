@@ -7,7 +7,7 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
 ## Plan summary
 
 - Settings install via **desktop Bun RPC** (same pattern as iOS toolchain), not a runner `environment/` domain.
-- Interactive device loop (connect / screen / action) via runner HTTP + the shared Active Session registry.
+- Interactive device loop (connect / screen / action) via runner HTTP + active Appium session registry.
 - Catalog/runs CLI as thin wraps over existing HTTP; add app `prefix` for skill-style args.
 - Builds domain registers local `.ipa` / `.app` / `.apk` and installs on run when `buildId` / `buildPath` is set.
 - Local `-d` grounding + `yoqa status` (no cloud auth yet); skill wording updated for local BYO providers.

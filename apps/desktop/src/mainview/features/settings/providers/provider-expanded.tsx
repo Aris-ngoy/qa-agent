@@ -660,22 +660,6 @@ export function ProviderExpanded({
 					</div>
 				) : null}
 
-				{provider.kind === "jev" ? (
-					<div>
-						<RhfTextField
-							control={control}
-							inputClassName={fieldInputClass}
-							label="Base URL (optional)"
-							name="baseUrl"
-							placeholder="https://api.typesafe.ai"
-						/>
-						<p className="mt-1.5 text-helper text-on-surface-variant">
-							Leave blank for TypeSafe. Use https://ai-gateway.vercel.sh/typesafe for Vercel AI
-							Gateway.
-						</p>
-					</div>
-				) : null}
-
 				{(provider.authMode === "api_key" || provider.authMode === "token") && (
 					<RhfTextField
 						control={control}
@@ -717,25 +701,19 @@ export function ProviderExpanded({
 						</Button>
 					</div>
 					<div className="justify-self-center">
-						{meta.capabilities?.vision ? (
-							!provider.isDefault ? (
-								<Button
-									isDisabled={busy || saving || selectingModel}
-									size="sm"
-									type="button"
-									variant="secondary"
-									onPress={() => void onSetDefault()}
-								>
-									Set as default
-								</Button>
-							) : (
-								<span className="inline-flex h-8 items-center rounded-full bg-primary px-3 text-label-caps font-semibold tracking-wide text-on-primary">
-									Default
-								</span>
-							)
+						{!provider.isDefault ? (
+							<Button
+								isDisabled={busy || saving || selectingModel}
+								size="sm"
+								type="button"
+								variant="secondary"
+								onPress={() => void onSetDefault()}
+							>
+								Set as default
+							</Button>
 						) : (
-							<span className="text-helper text-on-surface-variant">
-								Judge only — pair with a vision provider
+							<span className="inline-flex h-8 items-center rounded-full bg-primary px-3 text-label-caps font-semibold tracking-wide text-on-primary">
+								Default
 							</span>
 						)}
 					</div>

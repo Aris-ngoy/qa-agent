@@ -7,31 +7,52 @@ import {
 	findElementByLabel,
 } from "@yoqa/runner-client";
 import { groundDescription } from "./grounding";
-import { snapshotNodesToScreen } from "./screen";
+import { abortAllMjpegProxies } from "./mjpeg-proxy";
+import { cleanPageSource } from "./screen";
 import type { DeviceSession } from "./session";
 
 export type GetScreenOptions = {
-	/** When true, return raw snapshot JSON instead of the cleaned 0–1000 tree. */
+	/** When true, return raw Appium page source instead of the cleaned 0–1000 tree. */
 	full?: boolean;
-	/** Accepted for Inspector compatibility; there is no MJPEG proxy to pause. */
+	/**
+	 * Abort live `/stream.mjpeg` proxies before pageSource (iOS WDA cannot dual-load).
+	 * Default true. Inspector remounts the stream after the call.
+	 */
 	pauseMjpeg?: boolean;
 };
 
-/** Read the device Screen from the Argent snapshot backend. */
-export async function getScreen(
+const MJPEG_PAUSE_SETTLE_MS = 150;
+
+async function readScreen(
 	session: DeviceSession,
-	options: GetScreenOptions = {},
+	options: GetScreenOptions,
 ): Promise<ScreenResponse> {
-	const { nodes, window } = await session.snapshotNodes();
+	const raw = await session.pageSource();
+	const window = await session.getWindowSize();
 	if (options.full) {
-		return { full: true, window, raw: JSON.stringify(nodes) };
+		return { full: true, window, raw };
 	}
-	const cleaned = snapshotNodesToScreen(nodes, window);
+	const cleaned = cleanPageSource(raw, window);
 	return {
 		full: false,
 		window: cleaned.window,
 		elements: cleaned.elements,
 	};
+}
+
+/**
+ * Read the device Screen. Pauses MJPEG proxies first so iOS WDA is not
+ * dual-loaded (stream + pageSource); Inspector remounts the stream afterward.
+ */
+export async function getScreen(
+	session: DeviceSession,
+	options: GetScreenOptions = {},
+): Promise<ScreenResponse> {
+	if (options.pauseMjpeg !== false) {
+		const paused = abortAllMjpegProxies();
+		if (paused) await Bun.sleep(MJPEG_PAUSE_SETTLE_MS);
+	}
+	return await readScreen(session, options);
 }
 
 export class ActionValidationError extends Error {
@@ -49,9 +70,8 @@ export class ActionNotFoundError extends Error {
 }
 
 /**
- * Perform one Action on a Device Session. Resolves id/label against the
- * snapshot tree, or Grounding from description, then runs the gesture /
- * lifecycle command via Argent.
+ * Perform one Action on a Device Session. Resolves id/label against the cleaned
+ * tree, or Grounding from description, then runs the gesture / lifecycle command.
  */
 export async function performAction(
 	session: DeviceSession,
@@ -83,14 +103,19 @@ export async function performAction(
 		y = grounded.y;
 	}
 
+	const tapOptions = {
+		durationMs: body.durationMs,
+		coordSpace: locatorTap ? ("window" as const) : ("screenshot" as const),
+	};
+
 	switch (body.kind) {
 		case "tap": {
 			if (x == null || y == null) {
 				throw new ActionValidationError("tap requires x,y or --id or --label or description");
 			}
-			await session.tap(x, y, { durationMs: body.durationMs });
+			await session.tap(x, y, tapOptions);
 			if (body.double) {
-				await session.tap(x, y);
+				await session.tap(x, y, { coordSpace: tapOptions.coordSpace });
 			}
 			break;
 		}
@@ -100,7 +125,9 @@ export async function performAction(
 				throw new ActionValidationError(`${body.kind} requires x,y,x2,y2`);
 			}
 			if (body.kind === "swipe") {
-				await session.swipe(x, y, body.x2, body.y2, body.durationMs);
+				await session.swipe(x, y, body.x2, body.y2, body.durationMs, {
+					coordSpace: "screenshot",
+				});
 			} else {
 				await session.drag(x, y, body.x2, body.y2, body.durationMs);
 			}
@@ -108,7 +135,7 @@ export async function performAction(
 		}
 		case "input": {
 			if (x != null && y != null) {
-				await session.tap(x, y);
+				await session.tap(x, y, { coordSpace: tapOptions.coordSpace });
 			}
 			if (!body.text) {
 				throw new ActionValidationError("input requires text");
@@ -123,15 +150,13 @@ export async function performAction(
 		}
 		case "terminate-app": {
 			if (!body.appId) throw new ActionValidationError("terminate-app requires appId");
-			// The backend calls Argent's `terminate-app`; where the installed
-			// Argent has no such tool it surfaces an actionable ArgentError —
-			// never a silent success.
 			await session.terminateApp(body.appId);
 			break;
 		}
 		case "restart-app": {
 			if (!body.appId) throw new ActionValidationError("restart-app requires appId");
-			await session.restartApp(body.appId);
+			await session.terminateApp(body.appId);
+			await session.activateApp(body.appId);
 			break;
 		}
 		case "background-app": {
@@ -149,25 +174,6 @@ export async function performAction(
 			} else {
 				await session.acceptAlert();
 			}
-			break;
-		}
-		case "back": {
-			await session.back();
-			break;
-		}
-		case "scroll": {
-			if (!body.direction) {
-				throw new ActionValidationError("scroll requires --direction up|down|left|right");
-			}
-			await session.scroll(body.direction, body.amount);
-			break;
-		}
-		case "home": {
-			await session.home();
-			break;
-		}
-		case "keyboard": {
-			await session.keyboard(body.keyboardAction ?? "dismiss");
 			break;
 		}
 	}

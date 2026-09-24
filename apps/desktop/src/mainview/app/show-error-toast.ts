@@ -17,15 +17,6 @@ function truncateTitle(text: string): string {
 
 /** Map known long runner errors to short toast copy. */
 export function summarizeError(message: string): SummarizedError {
-	if (
-		message.includes("IOS_RUNNER_NOT_INSTALLED") ||
-		message.includes("iOS runner not installed")
-	) {
-		return {
-			title: "YoqaADRunner not installed",
-			description: "Install the test runner on this device, then reconnect.",
-		};
-	}
 	if (message.includes("No enabled AI provider configured")) {
 		return {
 			title: "No AI provider configured",

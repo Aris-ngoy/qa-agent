@@ -1,36 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import type { ActionRequest } from "@yoqa/runner-client";
 import { getScreen, performAction } from "./interaction";
-import type { DeviceSession, SnapshotNode } from "./session";
+import type { DeviceSession } from "./session";
 
-const ALLOW_NODES: SnapshotNode[] = [
-	{
-		ref: "e1",
-		type: "android.widget.Button",
-		role: "button",
-		label: "Allow",
-		identifier: "com.android.permissioncontroller:id/permission_allow_button",
-		rect: { x: 400, y: 1800, width: 400, height: 100 },
-		enabled: true,
-	},
-];
+const ALLOW_XML = `
+<hierarchy>
+  <android.widget.Button bounds="[400,1800][800,1900]" text="Allow" resource-id="com.android.permissioncontroller:id/permission_allow_button" enabled="true" />
+</hierarchy>
+`;
 
-function sessionStub(
-	taps: Array<{ x: number; y: number }>,
-	nodes: SnapshotNode[] = ALLOW_NODES,
-): DeviceSession {
+function sessionStub(taps: Array<{ x: number; y: number; coordSpace?: string }>): DeviceSession {
 	return {
-		snapshotNodes: async () => ({ nodes, window: { width: 1000, height: 2000 } }),
+		pageSource: async () => ALLOW_XML,
 		getWindowSize: async () => ({ width: 1000, height: 2000 }),
-		tap: async (x: number, y: number) => {
-			taps.push({ x, y });
+		tap: async (x: number, y: number, options?: { coordSpace?: "window" | "screenshot" }) => {
+			taps.push({ x, y, coordSpace: options?.coordSpace });
 		},
 	} as unknown as DeviceSession;
 }
 
 describe("performAction tap locators", () => {
 	test("prefers --label over guessed x,y so Allow hits the tree center", async () => {
-		const taps: Array<{ x: number; y: number }> = [];
+		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
 		const body: ActionRequest = {
 			kind: "tap",
 			label: "Allow",
@@ -38,34 +29,36 @@ describe("performAction tap locators", () => {
 			y: 951,
 		};
 		const result = await performAction(sessionStub(taps), body);
-		expect(taps).toEqual([{ x: 600, y: 925 }]);
+		expect(taps).toEqual([{ x: 600, y: 925, coordSpace: "window" }]);
 		expect(result.resolved).toEqual({ x: 600, y: 925 });
 	});
 
 	test("prefers --id over guessed x,y", async () => {
-		const taps: Array<{ x: number; y: number }> = [];
+		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
 		await performAction(sessionStub(taps), {
 			kind: "tap",
 			id: "permission_allow_button",
 			x: 1,
 			y: 1,
 		});
-		expect(taps).toEqual([{ x: 600, y: 925 }]);
+		expect(taps).toEqual([{ x: 600, y: 925, coordSpace: "window" }]);
 	});
 
-	test("resolves --label Help & Info", async () => {
+	test("resolves --label Help & Info against page source with &amp;", async () => {
 		const taps: Array<{ x: number; y: number }> = [];
-		const nodes: SnapshotNode[] = [
-			{
-				ref: "e2",
-				type: "android.widget.TextView",
-				role: "text",
-				label: "Help & Info",
-				rect: { x: 400, y: 1800, width: 400, height: 100 },
-				enabled: true,
+		const xml = `
+<hierarchy>
+  <android.widget.TextView bounds="[400,1800][800,1900]" text="Help &amp; Info" enabled="true" />
+</hierarchy>
+`;
+		const session = {
+			pageSource: async () => xml,
+			getWindowSize: async () => ({ width: 1000, height: 2000 }),
+			tap: async (x: number, y: number) => {
+				taps.push({ x, y });
 			},
-		];
-		const result = await performAction(sessionStub(taps, nodes), {
+		} as unknown as DeviceSession;
+		const result = await performAction(session, {
 			kind: "tap",
 			label: "Help & Info",
 			x: 500,
@@ -75,126 +68,45 @@ describe("performAction tap locators", () => {
 		expect(result.resolved).toEqual({ x: 600, y: 925 });
 	});
 
-	test("coordinate-only taps use the given 0–1000 point", async () => {
-		const taps: Array<{ x: number; y: number }> = [];
+	test("coordinate-only taps use screenshot space", async () => {
+		const taps: Array<{ x: number; y: number; coordSpace?: string }> = [];
 		await performAction(sessionStub(taps), { kind: "tap", x: 120, y: 340 });
-		expect(taps).toEqual([{ x: 120, y: 340 }]);
+		expect(taps).toEqual([{ x: 120, y: 340, coordSpace: "screenshot" }]);
 	});
 });
 
 describe("performAction swipe", () => {
-	test("swipes with the given 0–1000 points", async () => {
+	test("swipes in screenshot space", async () => {
 		const swipes: Array<{
 			x: number;
 			y: number;
 			x2: number;
 			y2: number;
+			coordSpace?: string;
 		}> = [];
 		const session = {
-			snapshotNodes: async () => ({ nodes: [], window: { width: 1000, height: 2000 } }),
+			pageSource: async () => "<hierarchy/>",
 			getWindowSize: async () => ({ width: 1000, height: 2000 }),
-			swipe: async (x: number, y: number, x2: number, y2: number) => {
-				swipes.push({ x, y, x2, y2 });
+			swipe: async (
+				x: number,
+				y: number,
+				x2: number,
+				y2: number,
+				_durationMs?: number,
+				options?: { coordSpace?: "window" | "screenshot" },
+			) => {
+				swipes.push({ x, y, x2, y2, coordSpace: options?.coordSpace });
 			},
 		} as unknown as DeviceSession;
 		await performAction(session, { kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 });
-		expect(swipes).toEqual([{ x: 500, y: 800, x2: 500, y2: 200 }]);
-	});
-});
-
-describe("performAction system actions", () => {
-	function systemStub(calls: string[]): DeviceSession {
-		return {
-			back: async () => {
-				calls.push("back");
-			},
-			scroll: async (direction: string, amount?: number) => {
-				calls.push(`scroll:${direction}:${amount ?? ""}`);
-			},
-			home: async () => {
-				calls.push("home");
-			},
-			keyboard: async (action: string) => {
-				calls.push(`keyboard:${action}`);
-			},
-		} as unknown as DeviceSession;
-	}
-
-	test("back delegates to the session", async () => {
-		const calls: string[] = [];
-		const result = await performAction(systemStub(calls), { kind: "back" });
-		expect(calls).toEqual(["back"]);
-		expect(result).toEqual({ ok: true, kind: "back" });
-	});
-
-	test("scroll passes direction and amount", async () => {
-		const calls: string[] = [];
-		await performAction(systemStub(calls), { kind: "scroll", direction: "down", amount: 0.5 });
-		expect(calls).toEqual(["scroll:down:0.5"]);
-	});
-
-	test("scroll without direction is a validation error", async () => {
-		const calls: string[] = [];
-		await expect(performAction(systemStub(calls), { kind: "scroll" })).rejects.toThrow(
-			"--direction",
-		);
-		expect(calls).toEqual([]);
-	});
-
-	test("home delegates to the session", async () => {
-		const calls: string[] = [];
-		await performAction(systemStub(calls), { kind: "home" });
-		expect(calls).toEqual(["home"]);
-	});
-
-	test("keyboard defaults to dismiss", async () => {
-		const calls: string[] = [];
-		await performAction(systemStub(calls), { kind: "keyboard" });
-		expect(calls).toEqual(["keyboard:dismiss"]);
-	});
-});
-
-describe("performAction app lifecycle", () => {
-	test("restart-app delegates to session.restartApp", async () => {
-		const calls: string[] = [];
-		const session = {
-			terminateApp: async (appId: string) => {
-				calls.push(`terminate:${appId}`);
-			},
-			activateApp: async (appId: string) => {
-				calls.push(`activate:${appId}`);
-			},
-			restartApp: async (appId: string) => {
-				calls.push(`restart:${appId}`);
-			},
-		} as unknown as DeviceSession;
-		const result = await performAction(session, { kind: "restart-app", appId: "com.example.app" });
-		expect(calls).toEqual(["restart:com.example.app"]);
-		expect(result).toEqual({ ok: true, kind: "restart-app" });
-	});
-
-	test("terminate-app surfaces the backend tool-not-found error unchanged", async () => {
-		const backendError = new Error(
-			'Tool "terminate-app" not found. Run `argent tools` to list available tools.',
-		);
-		const session = {
-			terminateApp: async () => {
-				throw backendError;
-			},
-		} as unknown as DeviceSession;
-		await expect(
-			performAction(session, { kind: "terminate-app", appId: "com.example.app" }),
-		).rejects.toBe(backendError);
+		expect(swipes).toEqual([{ x: 500, y: 800, x2: 500, y2: 200, coordSpace: "screenshot" }]);
 	});
 });
 
 describe("getScreen", () => {
-	test("reads the cleaned tree from snapshot nodes", async () => {
+	test("reads the cleaned tree without pausing when pauseMjpeg is false", async () => {
 		const session = {
-			snapshotNodes: async () => ({
-				nodes: ALLOW_NODES,
-				window: { width: 1000, height: 2000 },
-			}),
+			pageSource: async () => ALLOW_XML,
 			getWindowSize: async () => ({ width: 1000, height: 2000 }),
 		} as unknown as DeviceSession;
 		const screen = await getScreen(session, { pauseMjpeg: false });

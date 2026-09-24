@@ -7,7 +7,6 @@ import {
 	createCaseFlowsSchema,
 	createRunnerClient,
 	formatAssertShellLine,
-	isRunnerNotInstalledError,
 	runYoqaShellScript,
 	screenHasText,
 	updateCaseFlowsSchema,
@@ -207,9 +206,6 @@ program
 						: "not configured"
 				}`,
 			);
-			if (body.judge?.configured) {
-				console.log(`judge: ${body.judge.label ?? body.judge.kind ?? "configured"}`);
-			}
 			if (body.activeDevice) {
 				console.log(`active device: ${body.activeDevice.platform} ${body.activeDevice.deviceId}`);
 			} else {
@@ -283,56 +279,10 @@ for (const platform of ["ios", "android"] as const) {
 }
 
 devices
-	.command("install-runner")
-	.description("iOS runner install is gone — Argent manages its own runner")
-	.argument("<deviceId>", "Device UDID")
-	.option("--kind <kind>", "physical | simulator", "physical")
-	.option("--force", "Rebuild even when the cached install is valid")
-	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.action(
-		async (
-			deviceId: string,
-			options: {
-				baseUrl: string;
-				kind: string;
-				force?: boolean;
-				json?: boolean;
-			},
-		) => {
-			try {
-				const kind =
-					options.kind === "simulator" || options.kind === "emulator" ? options.kind : "physical";
-				const body = await client(options.baseUrl).installIosRunner({
-					deviceId,
-					kind,
-					force: options.force ? true : undefined,
-				});
-				if (options.json) {
-					console.log(JSON.stringify(body, null, 2));
-					return;
-				}
-				console.log(
-					`installed ${body.displayName} (${body.bundleId}) on ${body.deviceId} [${body.action}]`,
-				);
-				if (body.removedStale.length > 0) {
-					console.log(`removed old copies: ${body.removedStale.join(", ")}`);
-				}
-				if (body.warning) {
-					console.log(`warning: ${body.warning}`);
-				}
-			} catch (error) {
-				fail("devices install-runner", error);
-			}
-		},
-	);
-
-devices
 	.command("connect")
-	.description("Open a device session on a device (Argent backend)")
+	.description("Open an Appium session on a device")
 	.argument("<deviceId>", "Device UDID / serial")
 	.requiredOption("--platform <platform>", "ios | android")
-	.option("--kind <kind>", "physical | simulator | emulator", "physical")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
@@ -343,7 +293,6 @@ devices
 			options: {
 				baseUrl: string;
 				platform: string;
-				kind: string;
 				bundleId?: string;
 				appPackage?: string;
 				json?: boolean;
@@ -354,12 +303,9 @@ devices
 				if (platform !== "ios" && platform !== "android") {
 					throw new Error("--platform must be ios or android");
 				}
-				const kind =
-					options.kind === "simulator" || options.kind === "emulator" ? options.kind : "physical";
 				const body = await client(options.baseUrl).connectDevice({
 					deviceId,
 					platform,
-					kind,
 					bundleId: options.bundleId,
 					appPackage: options.appPackage,
 				});
@@ -370,11 +316,6 @@ devices
 				console.log(`connected ${body.platform} ${body.deviceId}`);
 			} catch (error) {
 				fail("devices connect", error);
-				if (isRunnerNotInstalledError(error)) {
-					console.error(
-						"Install the runner first: yoqa devices install-runner <device-id> --platform ios",
-					);
-				}
 			}
 		},
 	);
@@ -404,7 +345,7 @@ devices
 
 devices
 	.command("disconnect")
-	.description("Close the active device session")
+	.description("Close the active Appium session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -426,7 +367,7 @@ program
 	.command("screen")
 	.description("Inspect the active device screen (cleaned tree by default)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--full", "Return raw snapshot JSON")
+	.option("--full", "Return raw Appium page source")
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; full?: boolean; json?: boolean }) => {
 		try {
@@ -482,10 +423,7 @@ function addActionOptions(cmd: Command) {
 		.option("--text <text>", "Text to type")
 		.option("--app-id <id>", "Bundle id / application id")
 		.option("--url <url>", "URL to open")
-		.option("--seconds <n>", "Background seconds", (v) => Number(v))
-		.option("--direction <dir>", "Scroll direction: up|down|left|right")
-		.option("--amount <n>", "Scroll finger-path fraction (max 0.8)", (v) => Number(v))
-		.option("--action <name>", "Keyboard action: dismiss|enter");
+		.option("--seconds <n>", "Background seconds", (v) => Number(v));
 }
 
 for (const kind of [
@@ -498,10 +436,6 @@ for (const kind of [
 	"restart-app",
 	"background-app",
 	"open-url",
-	"back",
-	"scroll",
-	"home",
-	"keyboard",
 ] as const) {
 	addActionOptions(action.command(kind).description(`Perform ${kind}`)).action(
 		async (options: Record<string, unknown>) => {
@@ -521,13 +455,6 @@ for (const kind of [
 					appId: options.appId as string | undefined,
 					url: options.url as string | undefined,
 					seconds: options.seconds as number | undefined,
-					direction: options.direction as "up" | "down" | "left" | "right" | undefined,
-					amount: options.amount as number | undefined,
-					keyboardAction:
-						typeof options.action === "string" &&
-						(options.action === "dismiss" || options.action === "enter")
-							? options.action
-							: undefined,
 				});
 				if (options.json) {
 					console.log(JSON.stringify(body, null, 2));
@@ -569,30 +496,62 @@ addActionOptions(
 
 const setup = program
 	.command("setup")
-	.description("Verify the Argent backend for a platform (no drivers to install)");
+	.description("Install Appium and the platform driver (xcuitest / uiautomator2)");
 
 setup
 	.command("ios")
-	.description("Verify Argent iOS readiness")
+	.description("Ensure Appium + xcuitest; optionally build and install WDA on a physical device")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
-		try {
-			const body = await client(options.baseUrl).setupPlatform({ platform: "ios" });
-			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
-				return;
+	.option("--device <udid>", "Physical device UDID to install WebDriverAgent on")
+	.option("--kind <kind>", "Device kind: physical | simulator", "physical")
+	.option("--xcode <path>", "Xcode Contents/Developer path (DEVELOPER_DIR)")
+	.option("--team <teamId>", "Apple Development team ID")
+	.option("--identity <name>", 'Codesigning identity name, e.g. "Apple Development: …"')
+	.option("--force", "Force a full WebDriverAgent rebuild even when prep is reusable")
+	.action(
+		async (options: {
+			baseUrl: string;
+			json?: boolean;
+			device?: string;
+			kind?: string;
+			xcode?: string;
+			team?: string;
+			identity?: string;
+			force?: boolean;
+		}) => {
+			try {
+				const kind =
+					options.kind === "simulator" || options.kind === "physical" ? options.kind : undefined;
+				const body = await client(options.baseUrl).setupPlatform({
+					platform: "ios",
+					deviceId: options.device,
+					kind,
+					xcodeDeveloperDir: options.xcode,
+					developmentTeam: options.team,
+					codeSignIdentity: options.identity,
+					force: options.force === true,
+				});
+				if (options.json) {
+					console.log(JSON.stringify(body, null, 2));
+					return;
+				}
+				console.log(body.message);
+				console.log(`driver: ${body.driver}${body.driverVersion ? ` ${body.driverVersion}` : ""}`);
+				console.log(`appium: ${body.appiumVersion}`);
+				if (body.wdaInstalled) {
+					const action = body.wdaAction ?? "built";
+					console.log(`wda: ${action} (${body.wdaBundleId ?? "unknown bundle"})`);
+				}
+			} catch (error) {
+				fail("setup ios", error);
 			}
-			console.log(body.message);
-			console.log(`argent: ${body.agentDeviceVersion}`);
-		} catch (error) {
-			fail("setup ios", error);
-		}
-	});
+		},
+	);
 
 setup
 	.command("android")
-	.description("Verify Argent Android readiness")
+	.description("Ensure Appium + uiautomator2 driver are installed")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -603,7 +562,8 @@ setup
 				return;
 			}
 			console.log(body.message);
-			console.log(`argent: ${body.agentDeviceVersion}`);
+			console.log(`driver: ${body.driver}${body.driverVersion ? ` ${body.driverVersion}` : ""}`);
+			console.log(`appium: ${body.appiumVersion}`);
 		} catch (error) {
 			fail("setup android", error);
 		}
@@ -611,11 +571,11 @@ setup
 
 const runtime = program
 	.command("runtime")
-	.description("Check or ensure the local Argent runtime (CLI + host tools)");
+	.description("Check or ensure the local Appium runtime (drivers + host tools)");
 
 runtime
 	.command("status")
-	.description("Show readiness of Argent and host tools")
+	.description("Show readiness of Appium, drivers, and host tools")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -638,7 +598,7 @@ runtime
 
 runtime
 	.command("ensure")
-	.description("Verify Argent and host tools are ready")
+	.description("Install Appium + both platform drivers if missing")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -662,7 +622,7 @@ runtime
 
 const servers = program
 	.command("servers")
-	.description("List or control the runner and device sessions")
+	.description("List or control local Appium, runner, and device sessions")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -730,7 +690,7 @@ servers
 
 servers
 	.command("stop-all")
-	.description("Disconnect the device session (does not stop the runner)")
+	.description("Stop Appium processes and disconnect the device session (does not stop the runner)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -796,10 +756,10 @@ servers
 
 program
 	.command("doctor")
-	.description("Diagnose local tooling, Argent, and the device session")
+	.description("Diagnose local tooling, drivers, and leftover Appium processes")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.option("--fix", "Apply safe repairs (ensure runtime, disconnect session)")
+	.option("--fix", "Apply safe repairs (ensure runtime, stop foreign Appium, disconnect session)")
 	.action(async (options: { baseUrl: string; json?: boolean; fix?: boolean }) => {
 		try {
 			const c = client(options.baseUrl);

@@ -1,6 +1,8 @@
+import { ensureAndroidSdkEnv } from "./domains/appium/android-sdk";
+import { ensureHostToolPath } from "./domains/appium/host-path";
+import { stopAppiumServer } from "./domains/appium/server";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
-import { ensureAndroidSdkEnv } from "./domains/host/android-sdk";
-import { ensureHostToolPath } from "./domains/host/host-path";
+import { installAppiumSessionBridge } from "./domains/servers/application";
 import { createApp } from "./interfaces/http/app";
 import {
 	type ControlWsData,
@@ -13,6 +15,7 @@ import { loadSettings } from "./settings";
 ensureHostToolPath();
 // GUI apps also omit ANDROID_HOME; UiAutomator2 requires it even when adb is on PATH.
 ensureAndroidSdkEnv();
+installAppiumSessionBridge();
 
 const settings = loadSettings();
 const startedAt = Date.now();
@@ -62,8 +65,8 @@ const server = Bun.serve<ControlWsData>({
 console.log(`[yoqa-runner] listening on http://${server.hostname}:${server.port}`);
 
 function shutdown(signal: string): void {
-	console.log(`[yoqa-runner] ${signal} — exiting`);
-	process.exit(0);
+	console.log(`[yoqa-runner] ${signal} — stopping managed Appium`);
+	void stopAppiumServer().finally(() => process.exit(0));
 }
 
 process.once("SIGINT", () => shutdown("SIGINT"));

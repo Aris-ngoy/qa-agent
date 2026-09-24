@@ -54,16 +54,8 @@ type ScreenshotPanelProps = {
 	/** True while warming / refreshing the accessibility tree. */
 	treeRefreshing: boolean;
 	live: boolean;
-	feedMode: "stream" | "poll" | null;
-	/** Called when the multipart stream image errors (falls back to poll). */
-	onStreamError?: () => void;
+	feedMode: "mjpeg" | "poll" | null;
 	liveControl: boolean;
-	/** Control socket OPEN — gestures block until true (no silent drops). */
-	controlReady: boolean;
-	/** A pointer-up tap/swipe is still dispatching on the device. */
-	controlBusy: boolean;
-	/** Bumps on control reconnect — abandons any in-flight client gesture. */
-	controlResetKey: number;
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
 	snippetContext: SnippetContext;
@@ -90,14 +82,10 @@ export function ScreenshotPanel({
 	live,
 	feedMode,
 	liveControl,
-	controlReady,
-	controlBusy,
-	controlResetKey,
 	onLiveControlChange,
 	disabled,
 	snippetContext,
 	onSelectWithPoint,
-	onStreamError,
 	onSelect,
 	onChangeSelector,
 	onRefreshTree,
@@ -122,13 +110,6 @@ export function ScreenshotPanel({
 			setPickHover(null);
 		}
 	}, [liveControl]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: controlResetKey is the reconnect trigger
-	useEffect(() => {
-		// Control socket reconnected — the server gate is fresh, so any
-		// in-flight client gesture would error. Abandon it.
-		pointerActiveRef.current = false;
-	}, [controlResetKey]);
 
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
@@ -272,7 +253,7 @@ export function ScreenshotPanel({
 				pickPointAtEvent(event);
 				return;
 			}
-			if (!liveControl || !controlReady) return;
+			if (!liveControl) return;
 			event.preventDefault();
 			event.currentTarget.setPointerCapture(event.pointerId);
 			const point = coordsAtEvent(event);
@@ -283,7 +264,6 @@ export function ScreenshotPanel({
 		},
 		[
 			canInspect,
-			controlReady,
 			coordsAtEvent,
 			disabled,
 			liveControl,
@@ -296,7 +276,6 @@ export function ScreenshotPanel({
 	const handlePointerMove = useCallback(
 		(event: PointerEvent<HTMLElement>) => {
 			if (liveControl && pointerActiveRef.current) {
-				if (!controlReady) return;
 				const point = coordsAtEvent(event);
 				if (!point) return;
 				onPointer("move", point.x, point.y);
@@ -304,14 +283,13 @@ export function ScreenshotPanel({
 			}
 			handleHoverMove(event);
 		},
-		[controlReady, coordsAtEvent, handleHoverMove, liveControl, onPointer],
+		[coordsAtEvent, handleHoverMove, liveControl, onPointer],
 	);
 
 	const handlePointerUp = useCallback(
 		(event: PointerEvent<HTMLElement>) => {
 			if (!liveControl || !pointerActiveRef.current) return;
 			pointerActiveRef.current = false;
-			if (!controlReady) return;
 			const point = coordsAtEvent(event) ?? { x: 500, y: 500 };
 			onPointer("end", point.x, point.y);
 			try {
@@ -320,7 +298,7 @@ export function ScreenshotPanel({
 				/* already released */
 			}
 		},
-		[controlReady, coordsAtEvent, liveControl, onPointer],
+		[coordsAtEvent, liveControl, onPointer],
 	);
 
 	const selectionAnchor = selection
@@ -347,7 +325,7 @@ export function ScreenshotPanel({
 			: null;
 
 	const liveLabel =
-		feedMode === "stream" ? "Live" : feedMode === "poll" ? "Poll" : live ? "Live" : null;
+		feedMode === "poll" ? "Poll" : feedMode === "mjpeg" ? "Stream" : live ? "Live" : null;
 
 	const caption = selection ? activeSelectorCaption(selection) : null;
 	const showRefreshing = treeRefreshing && elements.length === 0;
@@ -395,11 +373,7 @@ export function ScreenshotPanel({
 				</div>
 				{liveControl ? (
 					<span className="text-helper text-on-surface-variant">
-						{!controlReady
-							? "Connecting live control…"
-							: controlBusy
-								? "Sending…"
-								: "Tap / drag to control · double-click to double-tap"}
+						Tap / drag to control · double-click to double-tap
 					</span>
 				) : showRefreshing ? (
 					<span className="text-helper text-on-surface-variant">Refreshing…</span>
@@ -463,9 +437,6 @@ export function ScreenshotPanel({
 								className="pointer-events-none block max-h-[min(72vh,760px)] w-auto max-w-full rounded-lg shadow-[0_12px_40px_-18px_rgba(0,0,0,0.45)] select-none"
 								draggable={false}
 								src={imageUrl}
-								onError={() => {
-									if (feedMode === "stream") onStreamError?.();
-								}}
 							/>
 							{hoverBox ? (
 								<span

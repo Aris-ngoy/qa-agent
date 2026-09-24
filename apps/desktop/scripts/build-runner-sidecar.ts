@@ -6,9 +6,11 @@
  *
  * Invoked via electrobun `scripts.preBuild` (cwd = apps/desktop).
  *
- * Device automation shells out to the `agent-device` CLI at runtime (resolved
- * from node_modules/.bin, then PATH), so the user must have it installed:
- * `npm install -g agent-device@latest`. Nothing driver-specific to bundle.
+ * WebdriverIO loads its protocol driver via `import(options.automationProtocol || "webdriver")`.
+ * That expression is not a string literal, so `bun build --compile` leaves it as a runtime
+ * package resolve against `/$bunfs/root/…`, which fails with:
+ *   ResolveMessage: Cannot find package 'webdriver' from '/$bunfs/root/yoqa-runner'
+ * The plugin below rewrites those imports to `import("webdriver")` so Bun embeds the package.
  * After compile, macOS binaries are adhoc-signed — Bun's bytecode append invalidates the
  * linker signature and Apple Silicon AMFI SIGKILLs the unsigned result (exit 137).
  */
@@ -29,16 +31,42 @@ const cliOutfile = join(outDir, "yoqa");
 const skillSourceDir = join(repoRoot, "packages/skill/yoqa-testing");
 const skillArchive = join(skillsOutDir, "yoqa-testing.tar.gz");
 
+const forceWebdriverLiteralImport: Bun.BunPlugin = {
+	name: "force-webdriver-literal-import",
+	setup(build) {
+		build.onLoad({ filter: /webdriverio\/build\/node\.js$/ }, async (args) => {
+			let source = await Bun.file(args.path).text();
+			const before = source;
+			source = source.replace(
+				/await import\(\s*\/\* @vite-ignore \*\/\s*options\.automationProtocol \|\| ["']webdriver["']\s*\)/g,
+				'await import("webdriver")',
+			);
+			source = source.replace(
+				/await import\(\s*\/\* @vite-ignore \*\/\s*this\.options\.automationProtocol\s*\)/g,
+				'await import("webdriver")',
+			);
+			if (source === before) {
+				throw new Error(
+					"webdriverio patch did not match; compiled yoqa-runner would fail to resolve 'webdriver'",
+				);
+			}
+			return { contents: source, loader: "js" };
+		});
+	},
+};
+
 async function compileBinary(
 	entry: string,
 	outfile: string,
 	label: string,
 	identifier: string,
+	plugins: Bun.BunPlugin[] = [],
 ): Promise<void> {
 	console.log(`[yoqa desktop] compiling ${label} → ${outfile}`);
 	const result = await Bun.build({
 		entrypoints: [entry],
 		target: "bun",
+		plugins,
 		compile: { outfile },
 	});
 	if (!result.success) {
@@ -62,6 +90,7 @@ await compileBinary(
 	runnerOutfile,
 	"runner sidecar",
 	RUNNER_CODE_IDENTIFIER,
+	[forceWebdriverLiteralImport],
 );
 
 await compileBinary(

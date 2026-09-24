@@ -9,7 +9,7 @@ relative coordinates — see [Actions by coordinates](actions-coordinates.md).
 ```bash
 yoqa screen                        # cleaned element list (primary way to read the screen)
 yoqa screen --json                 # same list as JSON — includes each element's id, type, enabled, visible
-yoqa screen --full                 # raw accessibility tree (JSON-wrapped, very long)
+yoqa screen --full                 # raw Appium page source (JSON-wrapped, very long)
 yoqa screenshot /tmp/screen.png    # save a screenshot to file, to visually verify
 ```
 
@@ -73,19 +73,4 @@ default; pass `--dismiss` to dismiss.
 ```bash
 yoqa action alert              # accept
 yoqa action alert --dismiss    # dismiss
-```
-
-## System navigation
-
-Semantic controls backed by `agent-device` (`back`, `scroll`, `home`, `keyboard`). `scroll` moves
-content in place; use coordinate `swipe`/`drag` (see [Actions by coordinates](actions-coordinates.md))
-when you need an exact finger path.
-
-```bash
-yoqa action back                                 # system back navigation
-yoqa action scroll --direction down              # up|down|left|right
-yoqa action scroll --direction up --amount 0.5   # shorter finger path (max 0.8)
-yoqa action home                                 # bare home-screen press
-yoqa action keyboard                             # dismiss keyboard (default)
-yoqa action keyboard --action enter              # press enter/return
 ```

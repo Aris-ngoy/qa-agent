@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { parseVisionObject } from "../providers/agent-json";
-import { resolveVisionProviderAuth } from "../providers/application";
+import { resolveActiveProviderAuth } from "../providers/application";
 import { assertVisionCapableProvider, completeVision } from "../providers/vision";
 import { AgentProviderError } from "../providers/vision-model";
-import { snapshotNodesToScreen } from "./screen";
+import { cleanPageSource } from "./screen";
 import type { DeviceSession } from "./session";
 
 const groundResultSchema = z.object({
@@ -27,7 +27,7 @@ export async function groundDescription(
 	session: DeviceSession,
 	description: string,
 ): Promise<{ x: number; y: number }> {
-	const auth = await assertVisionCapableProvider(await resolveVisionProviderAuth()).catch(
+	const auth = await assertVisionCapableProvider(await resolveActiveProviderAuth()).catch(
 		(error: unknown) => {
 			if (error instanceof AgentProviderError) {
 				throw new Error(error.message);
@@ -37,8 +37,9 @@ export async function groundDescription(
 	);
 
 	const shot = await session.captureFrame();
-	const { nodes, window } = await session.snapshotNodes();
-	const cleaned = snapshotNodesToScreen(nodes, window);
+	const window = await session.getWindowSize();
+	const raw = await session.pageSource();
+	const cleaned = cleanPageSource(raw, window);
 	const treeSummary = cleaned.elements
 		.slice(0, 80)
 		.map((el) => `${el.label || el.type} @(${el.x},${el.y}) ${el.width}x${el.height}`)

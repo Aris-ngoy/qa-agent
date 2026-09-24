@@ -28,7 +28,6 @@ Desktop app → **Settings → Providers**:
 | **OpenCode** | Zen API key and/or LiteLLM | Zen vision runs against hosted Zen (`opencode.ai/zen/v1`). LiteLLM models (`litellm/…`) use `opencode.json` plus CLI auth or `LITELLM_API_KEY`. CLI login alone is not enough for Zen — local `opencode serve` has no OpenAI-compatible `/v1`. Model picker groups by OpenCode provider (Amazon Bedrock, OpenCode Zen, LiteLLM, …). Zen default is `mimo-v2.5-free` |
 | **Cursor** | Cursor Agent CLI (+ optional key) | Vision via `cursor-agent --print` |
 | **Grok** (xAI) | API key | `@ai-sdk/xai` |
-| **Jev** (TypeSafe) | API key | Structured **judge** for verify/done/fail. Text-only — cannot drive screenshot taps. Pair with a vision provider. Optional base URL for [Vercel AI Gateway](https://vercel.com/docs/ai-gateway/sdks-and-apis/typesafe). |
 | **Custom** | Optional key + **Base URL** | Any OpenAI-compatible gateway (e.g. local Ollama `/v1`) |
 | **Codex / Claude CLI** | CLI where supported | Additional local agent backends |
 
@@ -43,7 +42,7 @@ Desktop app → **Settings → Providers**:
 
 ## Tips
 
-- Prefer models that accept **image** inputs — text-only models fail vision decide. **Jev** is the exception: it is a judge, not a runner.
+- Prefer models that accept **image** inputs — text-only models fail vision decide.
 - For OpenCode, paste a **Zen API key** from [opencode.ai](https://opencode.ai) in **Settings → Providers** for OpenCode Zen models. Yoqa calls hosted Zen at `opencode.ai/zen/v1`. The model picker groups catalogs by OpenCode provider (Amazon Bedrock, OpenCode Zen, LiteLLM, GitHub Copilot, and others from `opencode models`). **LiteLLM** models (`litellm/claude-haiku-4-5`) go through the gateway in `~/.config/opencode/opencode.json` — they are not sent to Zen. A local `opencode serve` does not expose OpenAI `/v1/chat/completions`, so CLI login alone will not authenticate Zen vision. New providers default to `mimo-v2.5-free`; most other free Zen models are text-only and reject screenshots — switch to `mimo-v2.5-free` if a Zen run reports "No endpoints found that support image input".
 - Custom base URLs are ideal for private gateways; leave the API key empty only if the host allows it.
 

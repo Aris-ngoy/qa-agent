@@ -1,7 +1,6 @@
 /**
  * Bundle the runner for npm: Bun-compatible ESM with inlined workspace deps.
- * Device automation shells out to the Argent CLI (`argent run …`, resolved at
- * runtime from global user installs then PATH) — no native driver to bundle.
+ * webdriver / webdriverio stay external (dynamic import, same as the desktop compile).
  */
 const result = await Bun.build({
 	entrypoints: ["./src/index.ts"],
@@ -11,6 +10,7 @@ const result = await Bun.build({
 	minify: false,
 	sourcemap: "none",
 	packages: "bundle",
+	external: ["webdriver", "webdriverio"],
 });
 
 if (!result.success) {

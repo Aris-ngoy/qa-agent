@@ -87,7 +87,7 @@ jobs:
             ### Notes
             - **Apple Silicon only** (`arm64`) for this release
             - Bundled local runner starts with the app (no monorepo checkout required)
-            - Xcode / adb stay on the host; device automation uses the Argent CLI (`npm install -g @swmansion/argent`)
+            - Appium / Xcode / adb stay on the host; first device setup may install Appium under `~/.yoqa`
             - Settings → CLI & Agents installs the bundled `yoqa` CLI and skill (no monorepo checkout)
 
             ### Verify

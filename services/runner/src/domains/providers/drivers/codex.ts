@@ -20,7 +20,7 @@ export const codexDriver: DriverDefinition = {
 	envHints: ["OPENAI_API_KEY"],
 	loginInstructions:
 		"Run `codex login` (or `codex auth login`) in a terminal, then re-check. Or paste an OpenAI API key.",
-	capabilities: { vision: true, judge: false },
+	capabilities: { vision: true },
 	vision: createSdkVisionPort({
 		label: "Codex",
 		defaultModel: CODEX_DEFAULT_VISION,

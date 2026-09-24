@@ -11,7 +11,7 @@ export const anthropicDriver: DriverDefinition = {
 	authModes: ["api_key"],
 	envHints: ["ANTHROPIC_API_KEY"],
 	loginInstructions: null,
-	capabilities: { vision: true, judge: false },
+	capabilities: { vision: true },
 	vision: createSdkVisionPort({
 		label: "Anthropic",
 		defaultModel: "claude-sonnet-4-20250514",

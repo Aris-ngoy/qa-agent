@@ -139,7 +139,7 @@ export const cursorDriver: DriverDefinition = {
 	envHints: ["CURSOR_API_KEY"],
 	loginInstructions:
 		"Run `cursor-agent login` (or `cursor agent login`) in a terminal, then re-check. Or paste a CURSOR_API_KEY.",
-	capabilities: { vision: true, judge: false },
+	capabilities: { vision: true },
 	vision: cursorVision,
 	async probe(binaryPath) {
 		return probeCli({

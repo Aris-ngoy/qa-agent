@@ -11,57 +11,12 @@ import {
 	resolveGoogleKey,
 } from "../vision-model";
 import { resolveBinary, runCommand } from "./probe";
-import type { CommandResult } from "./probe";
 import type { VisionCompleteInput, VisionPort } from "./types";
 
 const ANTIGRAVITY_DEFAULT_VISION_MODEL = "gemini-3.5-flash-medium";
 
 const JSON_REPAIR_PROMPT =
 	"Your previous reply was not valid JSON for this task. Reply again with ONLY one strict JSON object using double quotes for every key and string (no single quotes, no markdown, no prose).";
-
-/** `agy` markers for "the model turn outlasted --print-timeout, here is partial output". */
-const AGY_PRINT_TIMEOUT_RE = /print timeout|turn in progress/i;
-
-/**
- * Resolve the `--model` id from the stored provider setting. Older settings
- * may hold a raw `agy models` row (`"<id>\t<Display name>"`); model ids never
- * contain whitespace, so the first token is always the id the CLI expects.
- */
-export function resolveAgyModelId(defaultModel?: string | null): string {
-	const firstToken = defaultModel?.trim().split(/\s+/)[0];
-	return firstToken || ANTIGRAVITY_DEFAULT_VISION_MODEL;
-}
-
-/**
- * Parse `agy --print` output into a decision.
- *
- * Print-timeout partial output is deliberately NOT JSON-repairable: a retry
- * would block for another full print-timeout waiting on the same slow turn
- * (~4+ silent minutes per step), so ANY parse failure on output carrying the
- * print-timeout marker surfaces as a plain provider error the run can fail
- * fast on instead — whether extraction found no JSON at all or the partial
- * JSON failed schema validation.
- */
-export function parseAgyDecision<T>(
-	schema: VisionCompleteInput<T>["schema"],
-	result: CommandResult,
-): T {
-	const combined = `${result.stdout}\n${result.stderr}`.trim();
-	try {
-		return parseVisionObject(
-			schema,
-			extractAgentJsonObject(result.stdout || combined, "Antigravity CLI"),
-			"Antigravity CLI",
-		);
-	} catch (error) {
-		if (error instanceof AgentProviderError && AGY_PRINT_TIMEOUT_RE.test(combined)) {
-			throw new AgentProviderError(
-				"Antigravity CLI print timeout: the model turn exceeded --print-timeout (120s) and only partial output came back. Retry with a faster model or switch the default provider in Settings → Provider.",
-			);
-		}
-		throw error;
-	}
-}
 
 async function completeWithAgyCli<T>(
 	input: VisionCompleteInput<T>,
@@ -76,7 +31,7 @@ async function completeWithAgyCli<T>(
 	}
 
 	const image = await prepareVisionImage(input.imageBase64);
-	const model = resolveAgyModelId(input.auth.defaultModel);
+	const model = input.auth.defaultModel?.trim() || ANTIGRAVITY_DEFAULT_VISION_MODEL;
 	const ext = image.mediaType === "image/jpeg" ? "jpg" : "png";
 	const dir = await mkdtemp(join(tmpdir(), "yoqa-agy-"));
 	const shotPath = join(dir, `shot.${ext}`);
@@ -105,12 +60,6 @@ async function completeWithAgyCli<T>(
 			{ timeoutMs: 130_000 },
 		);
 
-		if (result.timedOut) {
-			throw new AgentProviderError(
-				"Antigravity CLI did not respond within 130s and was killed — the model turn never finished. Retry with a faster model or switch the default provider in Settings → Provider.",
-			);
-		}
-
 		const combined = `${result.stdout}\n${result.stderr}`.trim();
 		if (/not eligible for Antigravity/i.test(combined)) {
 			throw new AgentProviderError(
@@ -125,7 +74,11 @@ async function completeWithAgyCli<T>(
 			);
 		}
 
-		return parseAgyDecision(input.schema, result);
+		return parseVisionObject(
+			input.schema,
+			extractAgentJsonObject(result.stdout || combined, "Antigravity CLI"),
+			"Antigravity CLI",
+		);
 	} catch (error) {
 		if (error instanceof AgentProviderError) throw error;
 		if (error instanceof SyntaxError) {

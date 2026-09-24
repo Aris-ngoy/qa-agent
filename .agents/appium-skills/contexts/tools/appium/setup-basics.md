@@ -1,0 +1,51 @@
+---
+security_profile: appium-local-workflows
+owner: appium
+id: appium.setup.basics
+status: stable
+source: contexts/tools/appium/setup-basics.md
+optional_context:
+  - contexts/tools/appium/setup/references/node/node-decision-logic.md
+  - contexts/tools/appium/setup/references/node/node-version-manager-setup.md
+  - contexts/tools/appium/setup/references/node/node-npm-health.md
+  - contexts/tools/appium/setup/references/node/node-validation-evidence.md
+
+---
+
+# Appium Setup Basics
+
+## Goal
+
+Prepare the shared Appium setup baseline by validating the active Node.js runtime, npm availability, registry connectivity, command mode, and engine compatibility needed by Appium setup workflows.
+
+## Routing
+
+Load these references in order:
+
+1. `contexts/tools/appium/setup/references/node/node-decision-logic.md` for version, package-manager, and install triggers.
+2. `contexts/tools/appium/setup/references/node/node-version-manager-setup.md` for `nvm`, `fnm`, `asdf`, and Windows `winget` setup.
+3. `contexts/tools/appium/setup/references/node/node-npm-health.md` for npm availability, registry checks, and PowerShell policy repair.
+4. `contexts/tools/appium/setup/references/node/node-validation-evidence.md` for final evidence and completion criteria.
+
+For deterministic read-only validation, run:
+
+```bash
+node tools/appium/setup/scripts/check-node-env.mjs
+```
+
+## Completion Criteria
+
+- `node -v` succeeds.
+- Active Node major version is `>= 20`.
+- `npm -v` succeeds.
+- `npm ping` succeeds or a registry/network problem is explicitly reported.
+- Any calling Appium driver skill's Node engine requirements are satisfied.
+- On Windows, npm PowerShell script policy errors are repaired with CurrentUser scope only.
+
+## Evidence To Report
+
+Report OS, architecture, shell, `node -v`, `npm -v`, active Node executable path, active npm executable path, detected version manager, npm registry, npm ping result, and any engine-range compatibility issue.
+
+## Constraints
+
+Prefer maintained LTS Node versions and user-space installs. Require explicit human approval before any privileged elevation. Use global npm/Appium mode unless the user explicitly asks for local `npx` mode.

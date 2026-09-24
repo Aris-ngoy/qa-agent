@@ -17,7 +17,6 @@ import {
 	useActiveDrivers,
 	useDriverCards,
 	useDriverMeta,
-	useProviderDriverCatalog,
 } from "./driver-meta";
 import { Stepper } from "./stepper";
 
@@ -89,7 +88,6 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 
 	const activeDrivers = useActiveDrivers(open);
 	const driverCards = useDriverCards(open);
-	const catalogQuery = useProviderDriverCatalog(open);
 	const meta = useDriverMeta(selectedKind ?? "anthropic", open && selectedKind != null);
 	const currentStep = stepIndex(step);
 
@@ -103,14 +101,6 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 			setError(null);
 		}
 	}, [open, reset]);
-
-	useEffect(() => {
-		if (!catalogQuery.isSuccess || !selectedKind) return;
-		if (!activeDrivers.some((driver) => driver.kind === selectedKind)) {
-			setSelectedKind(null);
-			setStep("driver");
-		}
-	}, [catalogQuery.isSuccess, activeDrivers, selectedKind]);
 
 	const probeMutation = useMutation({
 		mutationFn: async (input: { kind: ProviderKind; binaryPath?: string | null }) => {
@@ -154,13 +144,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 			serverUrl: "",
 			baseUrl: "",
 			defaultModel:
-				kind === "opencode"
-					? "mimo-v2.5-free"
-					: kind === "grok"
-						? "grok-2-vision-1212"
-						: kind === "jev"
-							? "jev-latest"
-							: "",
+				kind === "opencode" ? "mimo-v2.5-free" : kind === "grok" ? "grok-2-vision-1212" : "",
 			envRows: driver.envHints.slice(0, 1).map((key) => newEnvRow(key)),
 		});
 		setProbe(null);
@@ -224,7 +208,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 			defaultModel: values.defaultModel.trim() || null,
 			apiKey: values.apiKey.trim() || undefined,
 			env: Object.keys(env).length > 0 ? env : undefined,
-			setAsDefault: meta.capabilities?.vision === true,
+			setAsDefault: true,
 		};
 		createMutation.mutate(request);
 	};
@@ -280,42 +264,38 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 							</Stepper>
 
 							{step === "driver" ? (
-								catalogQuery.isPending ? (
-									<p className="text-body-sm text-on-surface-variant">Loading providers…</p>
-								) : (
-									<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-										{driverCards.map((driver) => {
-											const selected = selectedKind === driver.kind;
-											const disabled = Boolean(driver.comingSoon);
-											return (
-												<button
-													key={driver.kind}
-													className={[
-														"relative flex flex-col items-start gap-2 rounded-xl border p-3 text-left transition",
-														disabled
-															? "cursor-not-allowed border-outline-variant/50 opacity-50"
-															: selected
-																? "border-primary bg-primary/5"
-																: "border-outline-variant hover:border-primary/50",
-													].join(" ")}
-													disabled={disabled}
-													type="button"
-													onClick={() => selectDriver(driver)}
-												>
-													{driver.comingSoon || driver.earlyAccess ? (
-														<span className="absolute top-2 right-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-400">
-															{driver.comingSoon ? "Coming Soon" : "Early Access"}
-														</span>
-													) : null}
-													<DriverGlyph kind={driver.kind} />
-													<span className="text-body-sm font-semibold text-on-surface">
-														{driver.label}
+								<div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+									{driverCards.map((driver) => {
+										const selected = selectedKind === driver.kind;
+										const disabled = Boolean(driver.comingSoon);
+										return (
+											<button
+												key={driver.kind}
+												className={[
+													"relative flex flex-col items-start gap-2 rounded-xl border p-3 text-left transition",
+													disabled
+														? "cursor-not-allowed border-outline-variant/50 opacity-50"
+														: selected
+															? "border-primary bg-primary/5"
+															: "border-outline-variant hover:border-primary/50",
+												].join(" ")}
+												disabled={disabled}
+												type="button"
+												onClick={() => selectDriver(driver)}
+											>
+												{driver.comingSoon || driver.earlyAccess ? (
+													<span className="absolute top-2 right-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-400">
+														{driver.comingSoon ? "Coming Soon" : "Early Access"}
 													</span>
-												</button>
-											);
-										})}
-									</div>
-								)
+												) : null}
+												<DriverGlyph kind={driver.kind} />
+												<span className="text-body-sm font-semibold text-on-surface">
+													{driver.label}
+												</span>
+											</button>
+										);
+									})}
+								</div>
 							) : null}
 
 							{step === "identity" && meta && selectedKind ? (
@@ -447,22 +427,6 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 										</div>
 									) : null}
 
-									{selectedKind === "jev" ? (
-										<div>
-											<RhfTextField
-												control={control}
-												inputClassName={fieldInputClass}
-												label="Base URL (optional)"
-												name="baseUrl"
-												placeholder="https://api.typesafe.ai"
-											/>
-											<p className="mt-1.5 text-helper text-on-surface-variant">
-												Leave blank for TypeSafe. Use https://ai-gateway.vercel.sh/typesafe for
-												Vercel AI Gateway.
-											</p>
-										</div>
-									) : null}
-
 									<div>
 										<div className="mb-2 flex items-center justify-between">
 											<p className="text-body-sm text-on-surface">Environment variables</p>
@@ -511,11 +475,9 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 													? "mimo-v2.5-free"
 													: selectedKind === "grok"
 														? "grok-2-vision-1212"
-														: selectedKind === "jev"
-															? "jev-latest"
-															: selectedKind === "custom"
-																? "required for vision runs"
-																: "optional"
+														: selectedKind === "custom"
+															? "required for vision runs"
+															: "optional"
 											}
 										/>
 										{selectedKind === "opencode" ? (

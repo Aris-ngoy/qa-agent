@@ -10,8 +10,6 @@ import {
 	screenshotResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
-import { ArgentError } from "../../domains/argent/cli";
-import { SingleAppScopeError } from "../../domains/argent/session";
 import {
 	SessionBusyError,
 	abandonActiveSession,
@@ -19,16 +17,16 @@ import {
 	disconnectDevice,
 	getActiveSessionInfo,
 	isActiveSessionHeldByRun,
-	isMissingSessionError,
+	isMissingAppiumSessionError,
 	requireActiveSession,
 } from "../../domains/devices/active-session";
-import { FEED_BOUNDARY, pumpFeed } from "../../domains/devices/feed";
 import {
 	ActionNotFoundError,
 	ActionValidationError,
 	getScreen,
 	performAction,
 } from "../../domains/devices/interaction";
+import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 
 function sessionErrorResponse(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error);
@@ -38,7 +36,7 @@ function sessionErrorResponse(error: unknown) {
 			body: { error: error.message },
 		};
 	}
-	if (isMissingSessionError(error)) {
+	if (isMissingAppiumSessionError(error)) {
 		abandonActiveSession();
 		return {
 			status: 410 as const,
@@ -72,17 +70,7 @@ export function createSessionRoutes() {
 			const mapped = sessionErrorResponse(error);
 			if (mapped) return c.json(mapped.body, mapped.status);
 			const message = error instanceof Error ? error.message : String(error);
-			// Surface the machine-readable code (e.g. TOOL_MISSING) so clients
-			// can explain the fix.
-			const code = error instanceof ArgentError ? error.code : undefined;
-			return c.json(
-				{
-					error: "Failed to connect device",
-					...(code ? { code } : {}),
-					detail: message,
-				},
-				500,
-			);
+			return c.json({ error: "Failed to connect device", detail: message }, 500);
 		}
 	});
 
@@ -174,73 +162,56 @@ export function createSessionRoutes() {
 		}
 	});
 
-	app.get("/screenshot/stream", async (c) => {
+	app.get("/stream.mjpeg", async (c) => {
 		try {
-			const { session } = requireActiveSession();
-			const signal = c.req.raw.signal;
-			const stream = new ReadableStream<Uint8Array>({
-				async start(controller) {
-					const onAbort = () => {
-						try {
-							controller.close();
-						} catch {
-							// already closed
-						}
-					};
-					if (signal.aborted) {
-						onAbort();
-						return;
-					}
-					signal.addEventListener("abort", onAbort, { once: true });
-					try {
-						await pumpFeed(
-							session,
-							{
-								write: (chunk) => {
-									if (signal.aborted) throw new Error("aborted");
-									controller.enqueue(chunk);
-								},
-							},
-							signal,
-						);
-					} finally {
-						signal.removeEventListener("abort", onAbort);
-						try {
-							controller.close();
-						} catch {
-							// already closed
-						}
-					}
-				},
-				cancel() {
-					// Client went away — pumpFeed observes signal abort and stops.
-				},
-			});
-			return new Response(stream, {
+			const active = requireActiveSession();
+			if (!active.streamReady || !active.mjpegPort) {
+				return c.json(
+					{
+						error: "MJPEG stream not available",
+						detail: "Device connected without a reachable Appium MJPEG broadcaster",
+					},
+					503,
+				);
+			}
+			const proxyAbort = trackMjpegProxy();
+			let upstream: Response;
+			try {
+				upstream = await fetch(`http://127.0.0.1:${active.mjpegPort}/`, {
+					signal: proxyAbort.signal,
+					headers: { Accept: "multipart/x-mixed-replace,image/jpeg,*/*" },
+				});
+			} catch (error) {
+				if (proxyAbort.signal.aborted) {
+					return c.json({ error: "MJPEG proxy aborted" }, 503);
+				}
+				throw error;
+			}
+			if (!upstream.ok || !upstream.body) {
+				proxyAbort.abort();
+				return c.json(
+					{
+						error: "Upstream MJPEG unavailable",
+						detail: `HTTP ${upstream.status} from mjpeg port ${active.mjpegPort}`,
+					},
+					502,
+				);
+			}
+			const contentType =
+				upstream.headers.get("Content-Type") ??
+				"multipart/x-mixed-replace; boundary=--BoundaryLine--";
+			return new Response(upstream.body, {
 				status: 200,
 				headers: {
-					"Content-Type": `multipart/x-mixed-replace; boundary=${FEED_BOUNDARY}`,
+					"Content-Type": contentType,
 					"Cache-Control": "no-store",
-					Connection: "keep-alive",
+					Connection: "close",
 				},
 			});
 		} catch (error) {
-			const gone = sessionErrorResponse(error);
-			if (gone) return c.json(gone.body, gone.status);
 			const message = error instanceof Error ? error.message : String(error);
-			return c.json({ error: "Failed to start screenshot stream", detail: message }, 500);
+			return c.json({ error: "Failed to proxy MJPEG stream", detail: message }, 500);
 		}
-	});
-
-	app.get("/stream.mjpeg", async (c) => {
-		return c.json(
-			{
-				error: "Live MJPEG stream is not available",
-				detail:
-					"Use GET /screenshot/stream (multipart live feed) or poll GET /screenshot/image instead; screen recording is not available in this build",
-			},
-			410,
-		);
 	});
 
 	app.post("/action", async (c) => {
@@ -269,10 +240,6 @@ export function createSessionRoutes() {
 		} catch (error) {
 			const gone = sessionErrorResponse(error);
 			if (gone) return c.json(gone.body, gone.status);
-			if (error instanceof SingleAppScopeError) {
-				// Physical iPhone cross-app step: actionable 409, not a generic 500.
-				return c.json({ error: error.message }, 409);
-			}
 			if (error instanceof ActionValidationError) {
 				return c.json({ error: error.message }, 400);
 			}

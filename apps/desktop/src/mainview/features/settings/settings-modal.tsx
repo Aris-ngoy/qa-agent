@@ -10,7 +10,6 @@ import type {
 	XcodeInstallation,
 } from "../../../shared/ios-toolchain";
 import { ProvidersSection } from "./providers/providers-section";
-import { RunnerSigningRemoved } from "./runner-signing-removed";
 
 type SettingsSection = "ios" | "cli" | "provider";
 type IdentityFilter = "all" | SigningTier;
@@ -164,8 +163,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	const [tierFilter, setTierFilter] = useState<IdentityFilter>("all");
 	const [xcodeId, setXcodeId] = useState<string | null>(null);
 	const [signingId, setSigningId] = useState<string | null>(null);
-	const [bundleId, setBundleId] = useState("");
-	const [bundleFocused, setBundleFocused] = useState(false);
 
 	const toolchainQuery = useQuery({
 		queryKey: IOS_TOOLCHAIN_QUERY_KEY,
@@ -178,10 +175,7 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 		if (!toolchainQuery.data) return;
 		setXcodeId(toolchainQuery.data.preferences.xcodeDeveloperDir);
 		setSigningId(toolchainQuery.data.preferences.signingIdentityHash);
-		if (!bundleFocused) {
-			setBundleId(toolchainQuery.data.preferences.agentDeviceBundleId ?? "");
-		}
-	}, [toolchainQuery.data, bundleFocused]);
+	}, [toolchainQuery.data]);
 
 	const xcodes = toolchainQuery.data?.xcodes ?? [];
 	const identities = toolchainQuery.data?.identities ?? [];
@@ -209,7 +203,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	const persistSelection = async (next: {
 		xcodeDeveloperDir?: string | null;
 		signingIdentityHash?: string | null;
-		agentDeviceBundleId?: string | null;
 	}) => {
 		const preferences = await getDesktopRpc().request.setIosToolchainSelection(next);
 		queryClient.setQueryData<IosToolchainSnapshot>(IOS_TOOLCHAIN_QUERY_KEY, (current) => {
@@ -228,17 +221,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 		if (key == null) return;
 		setSigningId(key);
 		void persistSelection({ signingIdentityHash: key });
-	};
-
-	const teamId = selectedSigning?.teamId ?? toolchainQuery.data?.preferences.teamId ?? null;
-
-	const handleBundleBlur = () => {
-		setBundleFocused(false);
-		const trimmed = bundleId.trim();
-		const saved = toolchainQuery.data?.preferences.agentDeviceBundleId ?? "";
-		if (trimmed !== saved) {
-			void persistSelection({ agentDeviceBundleId: trimmed || null });
-		}
 	};
 
 	return (
@@ -406,17 +388,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 						</li>
 					</ul>
 				</div>
-			</section>
-
-			<section>
-				<RunnerSigningRemoved
-					bundleId={bundleId}
-					inputSurfaceClass="bg-surface-container-lowest"
-					onBundleBlur={handleBundleBlur}
-					onBundleChange={setBundleId}
-					onBundleFocus={() => setBundleFocused(true)}
-					teamId={teamId}
-				/>
 			</section>
 		</div>
 	);

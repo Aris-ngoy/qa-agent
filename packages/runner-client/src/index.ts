@@ -3,6 +3,7 @@ import {
 	type ActionResponse,
 	type ActiveDeviceResponse,
 	type AiProvider,
+	type AppiumDriver,
 	type Build,
 	type Capability,
 	type CaseFlowStep,
@@ -36,12 +37,7 @@ import {
 	type DoctorStep,
 	type EnsureRuntimeResponse,
 	type HealthResponse,
-	type IosRunnerAction,
-	type IosRunnerInstallRequest,
-	type IosRunnerInstallResponse,
-	type IosRunnerKind,
-	type IosRunnerStatusResponse,
-	type KeyboardAction,
+	type IosWdaAction,
 	type ListAppsResponse,
 	type ListBuildsResponse,
 	type ListCasesResponse,
@@ -76,7 +72,6 @@ import {
 	type ScreenResponse,
 	type ScreenshotRequest,
 	type ScreenshotResponse,
-	type ScrollDirection,
 	type ServerAction,
 	type ServerEntry,
 	type ServerKind,
@@ -95,6 +90,7 @@ import {
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	aiProviderSchema,
+	appiumDriverSchema,
 	buildSchema,
 	capabilitySchema,
 	caseFlowStepSchema,
@@ -125,12 +121,7 @@ import {
 	doctorReportSchema,
 	ensureRuntimeResponseSchema,
 	healthResponseSchema,
-	iosRunnerActionSchema,
-	iosRunnerInstallRequestSchema,
-	iosRunnerInstallResponseSchema,
-	iosRunnerKindSchema,
-	iosRunnerStatusResponseSchema,
-	keyboardActionSchema,
+	iosWdaActionSchema,
 	listAppsResponseSchema,
 	listBuildsResponseSchema,
 	listCasesResponseSchema,
@@ -164,7 +155,6 @@ import {
 	screenResponseSchema,
 	screenshotRequestSchema,
 	screenshotResponseSchema,
-	scrollDirectionSchema,
 	serverMutationResponseSchema,
 	setupPlatformErrorSchema,
 	setupPlatformRequestSchema,
@@ -179,13 +169,12 @@ import {
 } from "./schemas";
 import { type WaitForRunOptions, waitForRun } from "./wait-for-run";
 
-export { IOS_RUNNER_NOT_INSTALLED_CODE } from "./schemas";
-
 export {
 	actionRequestSchema,
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	aiProviderSchema,
+	appiumDriverSchema,
 	buildSchema,
 	capabilitySchema,
 	catalogAppSchema,
@@ -216,12 +205,6 @@ export {
 	doctorReportSchema,
 	ensureRuntimeResponseSchema,
 	healthResponseSchema,
-	iosRunnerActionSchema,
-	iosRunnerInstallRequestSchema,
-	iosRunnerInstallResponseSchema,
-	iosRunnerKindSchema,
-	iosRunnerStatusResponseSchema,
-	keyboardActionSchema,
 	listAppsResponseSchema,
 	listBuildsResponseSchema,
 	listCasesResponseSchema,
@@ -253,10 +236,10 @@ export {
 	runtimeCheckSchema,
 	runtimeStatusSchema,
 	screenResponseSchema,
-	scrollDirectionSchema,
 	screenshotRequestSchema,
 	screenshotResponseSchema,
 	serverMutationResponseSchema,
+	iosWdaActionSchema,
 	setupPlatformErrorSchema,
 	setupPlatformRequestSchema,
 	setupPlatformResponseSchema,
@@ -271,6 +254,7 @@ export {
 	type ActionResponse,
 	type ActiveDeviceResponse,
 	type AiProvider,
+	type AppiumDriver,
 	type Build,
 	type Capability,
 	type CatalogApp,
@@ -304,12 +288,7 @@ export {
 	type DoctorStep,
 	type EnsureRuntimeResponse,
 	type HealthResponse,
-	type IosRunnerAction,
-	type IosRunnerInstallRequest,
-	type IosRunnerInstallResponse,
-	type IosRunnerKind,
-	type IosRunnerStatusResponse,
-	type KeyboardAction,
+	type IosWdaAction,
 	type ListAppsResponse,
 	type ListBuildsResponse,
 	type ListCasesResponse,
@@ -342,7 +321,6 @@ export {
 	type RuntimeStatus,
 	type ScreenElement,
 	type ScreenResponse,
-	type ScrollDirection,
 	type ScreenshotRequest,
 	type ScreenshotResponse,
 	type ServerAction,
@@ -433,30 +411,6 @@ export type RunnerClientOptions = {
 };
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:7420";
-
-const RUNNER_NOT_INSTALLED_PATTERNS = [
-	/IOS_RUNNER_NOT_INSTALLED/,
-	/iOS runner not installed/,
-	/must be signed before commands can run/,
-	/requires a development team/,
-	/no profiles for/,
-	/provisioning profile/,
-	/AGENT_DEVICE_IOS_TEAM_ID/,
-];
-
-/**
- * True when a connect/run failure means the iOS runner (YoqaADRunner) must be
- * installed first — the UI should offer the install dialog instead of a toast.
- */
-export function isRunnerNotInstalledErrorText(text: string): boolean {
-	return RUNNER_NOT_INSTALLED_PATTERNS.some((re) => re.test(text));
-}
-
-/** Same check for thrown errors (matches against the message). */
-export function isRunnerNotInstalledError(error: unknown): boolean {
-	const message = error instanceof Error ? error.message : String(error ?? "");
-	return isRunnerNotInstalledErrorText(message);
-}
 
 function errorMessageFromBody(json: unknown, fallback: string): string {
 	const parsedError = setupPlatformErrorSchema.safeParse(json);
@@ -1055,38 +1009,6 @@ export class RunnerClient {
 		return activeDeviceResponseSchema.parse(json);
 	}
 
-	async getIosRunnerStatus(
-		deviceId: string,
-		kind: IosRunnerKind = "physical",
-		options: { signal?: AbortSignal } = {},
-	): Promise<IosRunnerStatusResponse> {
-		const params = new URLSearchParams({ deviceId, kind });
-		const json = await this.requestJson(
-			`/devices/ios-runner/status?${params.toString()}`,
-			{ signal: options.signal },
-			"Runner status failed",
-		);
-		return iosRunnerStatusResponseSchema.parse(json);
-	}
-
-	async installIosRunner(
-		request: IosRunnerInstallRequest,
-		options: { signal?: AbortSignal } = {},
-	): Promise<IosRunnerInstallResponse> {
-		const body = iosRunnerInstallRequestSchema.parse(request);
-		const json = await this.requestJson(
-			"/devices/ios-runner/install",
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(body),
-				signal: options.signal,
-			},
-			"Install runner failed",
-		);
-		return iosRunnerInstallResponseSchema.parse(json);
-	}
-
 	async getScreen(options: { full?: boolean; pauseMjpeg?: boolean } = {}): Promise<ScreenResponse> {
 		const params = new URLSearchParams();
 		if (options.full) params.set("full", "1");
@@ -1120,13 +1042,7 @@ export class RunnerClient {
 		return cacheBust != null ? `${url}?t=${cacheBust}` : url;
 	}
 
-	/** Multipart live-frame stream for `<img src>` (replaces per-frame polling). */
-	getScreenshotStreamUrl(cacheBust?: number): string {
-		const url = `${this.baseUrl}/screenshot/stream`;
-		return cacheBust != null ? `${url}?t=${cacheBust}` : url;
-	}
-
-	/** Legacy MJPEG stream URL — the runner returns 410; poll screenshots instead. */
+	/** Proxied Appium MJPEG stream for the Inspector live feed. */
 	getStreamMjpegUrl(): string {
 		return `${this.baseUrl}/stream.mjpeg`;
 	}

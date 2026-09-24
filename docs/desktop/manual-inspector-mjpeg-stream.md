@@ -1,83 +1,65 @@
-# Manual Inspector — live feed (poll transport)
+# Manual Inspector — MJPEG stream + live control
 
 ## Goal
 
-Make the Manual Inspector live feed as fast as Argent allows on **all platforms**
-(iOS sim, real iOS, Android), with optional **live device control** (drag on the mirror) —
-without depending on a video broadcaster.
-
-> History: this doc previously described an Appium MJPEG broadcaster (`mjpegServerPort`).
-> That backend is gone with Appium (see [Remove Appium](../devices/remove-appium.md)).
-> `GET /stream.mjpeg` now returns `410`; the feed is a fast screenshot poll.
+Make the Manual Inspector live feed as fast as Appium allows on **all platforms** (iOS sim, real iOS, Android), and add optional **live device control** (drag on the mirror), inspired by [serve-sim](https://github.com/EvanBacon/serve-sim)’s stream + control split—without depending on serve-sim or `simctl`.
 
 ## Plan summary
 
-- **Frames:** `GET /screenshot/stream` — a `multipart/x-mixed-replace` stream of PNG
-  frames rendered straight into `<img>`, backed by `argent run screenshot --no-stabilize`
-  (low-latency capture loop; persisted screenshots keep full quality). The server pumps
-  fresh captures back-to-back (~1 frame/s on sim — the `simctl` capture ceiling), so
-  delivery tracks the fastest the backend can capture with no per-frame HTTP overhead.
-- **Fallback:** if the stream errors, the Inspector degrades to `GET /screenshot/image`
-  poll at 500ms (server coalesces concurrent polls within a 150ms TTL). A **Poll** badge
-  marks degraded mode; **Live** marks the stream.
-- **Client:** frame delivery and tree refreshes are independent, so the feed never blocks
-  selection. Both pause while a script runs; tree warms 500ms after connect.
-- **Control:** Bun WebSocket `WS /ws/control` with JSON pointer `begin` / `move` / `end`
-  (0–1000 coords). Live gestures buffer locally and flush as one tap/swipe on pointer-up.
-- **Persistence:** live frames are in-memory only and never write `~/.yoqa/runs/screenshots/`.
-- **Fallback/degraded:** none needed — poll is the only transport. If the session drops,
-  Inspector clears the feed and prompts **Restart session** (no auto-reconnect).
-- Rejected: re-adding an MJPEG/H.264 broadcaster (Argent owns recording via `record`);
-  per-frame JPEG downscale (kept PNG so the 0–1000 grid maps 1:1; revisit if 180ms proves slow).
+- **Video:** Enable Appium’s built-in MJPEG broadcaster (`appium:mjpegServerPort` + settings) for XCUITest and UiAutomator2; proxy it through the runner at `GET /stream.mjpeg`.
+- **Control:** Bun WebSocket `WS /ws/control` with JSON pointer `begin` / `move` / `end` (0–1000 coords), coalesced moves, mutex vs script/`POST /action`.
+- **Persistence:** Split `captureFrame()` (no disk) from `screenshot()` (persists). Live feed never writes `~/.yoqa/runs/screenshots/`.
+- **Fallback:** If MJPEG is unreachable after connect, Inspector polls `GET /screenshot/image` (~250ms) and shows a **Poll** badge.
+- Rejected: vendoring serve-sim / Swift `simctl io` helper / H.264 (iOS-sim-only).
 
 ## What shipped
 
 **Runner**
 
-- `captureFrame()` passes `--no-stabilize` and shares one in-flight screenshot across
-  concurrent callers within a 150ms TTL (`services/runner/src/domains/devices/session.ts`);
-  stream pumps pass `{ fresh: true }` to pace on real captures.
-- `GET /screenshot/stream` pumps the multipart feed until abort or session death
-  (`domains/devices/feed.ts`); no session returns `410 Device session ended`.
-- `GET /screenshot/image` stays the one-shot endpoint (`Cache-Control: no-store`).
-- `GET /stream.mjpeg` stays `410` with a pointer to the stream + `record`.
-- `WS /ws/control` returns machine-readable error codes (`NO_SESSION`, `HELD_BY_RUN`,
-  `INVALID_JSON`, `INVALID_MESSAGE`, `POINTER_FAILED`) with the detail attached.
+- Allocates a free MJPEG port on connect; sets `mjpegServerPort` (not `mjpegScreenshotUrl`, which needs optional `mjpeg-consumer`)
+- Applies settings: framerate **60** (sim / Android) or **15** (physical iOS), JPEG quality 35/25, scaling 50/40
+- `appium:newCommandTimeout` **3600** so interactive Inspector sessions do not idle-out under WDA load
+- Physical iOS also sets `waitForIdleTimeout: 0` to reduce WDA work under stream
+- `GET /stream.mjpeg` proxies the Appium MJPEG body
+- `GET /screenshot/image` uses in-memory `captureFrame()`
+- `WS /ws/control` for live pointer; action gate blocks interleaving with scripts
+- Live gestures are **buffered** locally and flushed as one tap/drag on pointer-up (WDA cannot stream mid-gesture `performActions`)
+- Active device response includes `mjpegPort`, `streamReady`, `streamUrl`
 
 **Client (`@yoqa/runner-client`)**
 
-- `getScreenshotImageUrl()`, `fetchScreenshotBytes()`, `getControlWsUrl()`.
-- `getStreamMjpegUrl()` kept as a deprecated pointer (runner returns `410`).
-- `getScreen()` keeps the accepted-but-ignored `pauseMjpeg` option for wire compat.
+- `getStreamMjpegUrl()`, `getControlWsUrl()`
+- Extended `ActiveDeviceResponse` + `controlMessageSchema`
 
 **Desktop Inspector**
 
-- **Live** badge on the multipart stream, **Poll** badge on degraded poll; tree refresh 8s,
-  paused while a script runs.
-- **Cached Select Mode** unchanged: clicks/hover hit-test the cached cleaned tree locally.
-- **Live control** checkbox: pointer drag → WS; selection menu when off. Pointer failures
-  toast with the server detail (previously swallowed); dropped sockets reconnect with
-  backoff (3 tries) before toggling off.
-- **Restart session** in the toolbar: disconnect + reconnect + resume stream.
+- Primary feed: `<img src="/stream.mjpeg">` (no 150ms PNG poll)
+- **No automatic page-source while MJPEG is idle** — continuous source+stream dual-loads WDA and kills the session
+- **Cached Select Mode (Maestro-like):** tree warms when Live control is off / after commands / Refresh tree; clicks and hover hit-test the cache locally. Refresh still uses `GET /screen?pauseMjpeg=1` then remounts `/stream.mjpeg` — never per-click blocking under a warm cache
+- Live control still uses the continuous MJPEG feed (~60 FPS) without page-source
+- Tree also refreshes after script/commands (same pause+remount under Stream) and on the poll feed
+- **Live control** checkbox: pointer drag → WS; script select/menu when off
+- **Stream** vs **Poll** badge
+- **Restart session** in the toolbar: disconnect + reconnect and remount the MJPEG URL (manual only)
+- On unexpected session death: clear the feed and toast to use **Restart session** or **Connect** — no auto-reconnect. Background tree warm / stale-cache refresh do **not** tear down a still-live session.
+- Disconnect aborts open MJPEG proxies and time-bounds `deleteSession` so WebDriverAgentRunner can exit instead of hanging forever
 
 ## How to verify
 
-1. Connect a device in Inspector → badge **Live**; idle session does not grow
-   `~/.yoqa/runs/screenshots/`. Frames arrive ~1/s on sim (capture ceiling).
-2. Break the stream (disconnect the device) → badge flips to **Poll** and frames keep
-   coming at the degraded rate.
-3. Disable **Live control** → hover then click a control: highlight + menu without
-   per-click “Reading screen…”.
-4. Enable **Live control** → drag on the mirror moves content (no tree fetch);
-   disable → select again. With the device unplugged mid-drag, a toast names the
-   failure instead of silence.
-5. Run a script → feed pauses during the run, resumes after.
-6. If the session dies, Inspector prompts **Restart session** (no auto-reconnect).
+1. Connect an iOS Simulator (or real iOS / Android) in Inspector → badge **Stream**; idle connect does not grow `~/.yoqa/runs/screenshots/`.
+2. On a real iPhone, the live stream should stay up for minutes with no continuous tree polling in the background.
+3. Disable **Live control** → wait for tree warm (or **Refresh tree**) → hover then click a button/word: highlight + menu with `tap (id)` / `tap (label)` without per-click “Reading screen…”. Stream remounts only when the tree actually refreshes.
+4. Enable **Live control** → drag/swipe on the mirror (no page-source); disable → select again for commands.
+5. Explicit screenshot / script report still persists files.
+6. Disconnect closes the stream and control socket cleanly.
+7. If MJPEG fails to probe, badge shows **Poll** and the feed still updates.
+8. If WDA dies, Inspector stops the feed and prompts **Restart session** (no automatic reconnect).
 
 ## Follow-ups
 
-- Img `onError` retry with backoff mid-session.
-- Optional JPEG/scale query (`?format=jpeg&w=…`) if PNG poll proves slow on real devices.
-- Binary WS pointer protocol if JSON proves laggy.
-- Hardware home / rotate over the control channel (today: `yoqa action home`, no rotate).
-- Tune poll interval / frame TTL per platform from Settings.
+- Img `onError` auto-fallback from MJPEG → poll mid-session
+- Dedicated **type by id** command chip in the element menu
+- Binary WS pointer protocol (serve-sim-style) if JSON coalescing is not enough
+- Hardware home / rotate over the control channel
+- Tune framerate/quality per platform from Settings
+- Further soften physical-iOS MJPEG (quality / scaling) if WDA still flakes

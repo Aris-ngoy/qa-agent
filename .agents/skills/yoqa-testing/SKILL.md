@@ -13,9 +13,9 @@ commands in `references/`.
 
 ## Before you start
 
-1. **Check readiness** — `yoqa status` reports the runner, agent-device runtime, AI provider, and active device
+1. **Check readiness** — `yoqa status` reports the runner, Appium runtime, AI provider, and active device
    in one shot. Any command other than `yoqa serve` starts the local runner automatically, so you rarely
-   need to start it by hand. The device backend needs the agent-device CLI (`npm install -g agent-device@latest`).
+   need to start it by hand.
 2. **Find the app & its prefix** — run `yoqa apps list` and note the `PREFIX`. Most catalog commands take
    the prefix as their first argument. See [Apps, Cases & Flows](references/apps-cases-and-flows.md).
 3. **Configure a provider only if you need one** — `--description` grounding and agent runs require an AI
@@ -91,7 +91,7 @@ Not implemented yet — in development.
   a wedged connect):
   1. `yoqa doctor --fix` — applies the safe repairs and re-reports
   2. `yoqa status` to confirm what's still wrong
-  3. `yoqa runtime ensure` if the agent-device runtime is missing
+  3. `yoqa runtime ensure` if the Appium runtime or drivers are missing
   4. If a session is still stuck: `yoqa devices disconnect`, then reconnect
   5. Do not invent other start commands; if it still fails, ask the user to start the runner/desktop
      (`yoqa serve`, or `bun run desktop` from this repo)

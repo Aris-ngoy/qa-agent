@@ -111,7 +111,7 @@ export const githubCopilotDriver: DriverDefinition = {
 	envHints: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
 	loginInstructions:
 		"Paste a GitHub token with Copilot access (COPILOT_GITHUB_TOKEN). Device login requires a terminal: visit github.com/login/device after starting a Copilot device flow.",
-	capabilities: { vision: false, judge: false },
+	capabilities: { vision: false },
 	async probe() {
 		return {
 			found: true,
