@@ -461,11 +461,18 @@ export function isSparseResponseFormatBody(parsedBody: Record<string, unknown>):
 const GROQ_REASONING_MODEL_RE = /qwen3/i;
 
 /**
+ * Groq body rewrite for one outgoing request.
+ *
  * Groq rejects strict `json_schema` for decide (optional Action fields are
  * absent from `required`). Strip `response_format` only for sparse schemas so
  * decide asks for JSON in the prompt only; fully-required schemas (grounding)
  * keep structured-output mode. Model, messages, and screenshot payload pass
  * through untouched. Client-side Zod plus salvage/repair still validate.
+ *
+ * Returns the rewritten body, or `null` to send the original body unchanged —
+ * when nothing needed rewriting, or when the body is not parseable JSON this
+ * hook has no business judging. `null` is a sentinel, not an error: a transport
+ * failure must never be produced from here.
  */
 function rewriteGroqRequestBody(rawBody: string): string | null {
 	try {
@@ -489,6 +496,13 @@ function rewriteGroqRequestBody(rawBody: string): string | null {
 	}
 }
 
+/**
+ * Groq transport seam: rewrite the request body, then hand off to `fetch`.
+ *
+ * Body rewriting is isolated from the transport call so a request the hook
+ * cannot parse fails as a real transport error, exactly once, instead of being
+ * retried as if it were malformed request data.
+ */
 export function withGroqRequestHooks(opts: {
 	fetchImpl?: FetchFunction;
 }): FetchFunction {
