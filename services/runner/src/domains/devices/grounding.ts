@@ -6,7 +6,7 @@ import { AgentProviderError } from "../providers/vision-model";
 import { cleanPageSource } from "./screen";
 import type { DeviceSession } from "./session";
 
-const groundResultSchema = z.object({
+export const groundResultSchema = z.object({
 	x: z.number(),
 	y: z.number(),
 });
