@@ -33,4 +33,4 @@ Optional: agent run with OpenAI/Anthropic; Cursor CLI decide; Antigravity CLI Gr
 ## Follow-ups
 
 - Desktop `FALLBACK_ACTIVE_DRIVERS` still duplicates catalog facts (ADR-0002 leftover)
-- Per-driver `vision.completeObject` tests against recorded CLI/SDK fixtures
+- Per-driver `vision.completeObject` tests against recorded CLI/SDK fixtures — Groq now covered at the seam, see [groq-action-family-parity.md](./groq-action-family-parity.md)

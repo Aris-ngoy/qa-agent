@@ -97,6 +97,52 @@ async function captureSentBody(body: unknown): Promise<string> {
 	return sentBody;
 }
 
+type CatalogProbe = { urls: string[]; authorization: string | null };
+
+/** Stub the OpenAI-compatible `/models` catalog call the Groq driver uses for Settings. */
+async function withStubbedModelCatalog(
+	ids: string[],
+	run: (probe: CatalogProbe) => Promise<void>,
+): Promise<void> {
+	const realFetch = globalThis.fetch;
+	const probe: CatalogProbe = { urls: [], authorization: null };
+	globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+		probe.urls.push(String(input));
+		probe.authorization = new Headers(init?.headers).get("authorization");
+		return new Response(JSON.stringify({ object: "list", data: ids.map((id) => ({ id })) }), {
+			status: 200,
+			headers: { "content-type": "application/json" },
+		});
+	}) as typeof fetch;
+	try {
+		await run(probe);
+	} finally {
+		globalThis.fetch = realFetch;
+	}
+}
+
+const DRIVER_INPUT = {
+	apiKey: "test-groq-key",
+	baseUrl: null,
+	serverUrl: null,
+	binaryPath: null,
+	env: {},
+};
+
+/** Run `check` with a fetch that counts calls, so tests can assert the gateway was never hit. */
+async function withCountingGateway(onCall: () => void, check: () => Promise<void>): Promise<void> {
+	const realFetch = globalThis.fetch;
+	globalThis.fetch = (async (_input: unknown, _init?: RequestInit) => {
+		onCall();
+		return new Response("{}", { status: 200 });
+	}) as typeof fetch;
+	try {
+		await check();
+	} finally {
+		globalThis.fetch = realFetch;
+	}
+}
+
 describe("Groq decide works via prompt JSON (#138)", () => {
 	test("outgoing decide request carries no structured-output format marker", async () => {
 		const sent = await captureSentBody(decideBody());
@@ -261,6 +307,72 @@ describe("Groq unchanged surfaces (#140)", () => {
 		expect(typeof groqDriver.vision?.completeObject).toBe("function");
 		expect(typeof groqDriver.validate).toBe("function");
 		expect(typeof groqDriver.listModels).toBe("function");
+	});
+
+	test("model listing reads the Groq catalog and flags known vision families", async () => {
+		await withStubbedModelCatalog(
+			["meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b", "some-future-model"],
+			async (probe) => {
+				const result = await groqDriver.listModels(DRIVER_INPUT);
+
+				expect(probe.urls).toEqual(["https://api.groq.com/openai/v1/models"]);
+				expect(probe.authorization).toBe("Bearer test-groq-key");
+				expect(result.models).toEqual([
+					{
+						id: "meta-llama/llama-4-scout-17b-16e-instruct",
+						name: "meta-llama/llama-4-scout-17b-16e-instruct",
+						vision: true,
+					},
+					{ id: "qwen/qwen3-32b", name: "qwen/qwen3-32b", vision: false },
+					{ id: "some-future-model", name: "some-future-model" },
+				]);
+				expect(result.message).toBe("3 models available");
+			},
+		);
+	});
+
+	test("model listing needs a key and never calls the gateway without one", async () => {
+		let calls = 0;
+		await withCountingGateway(
+			() => {
+				calls += 1;
+			},
+			async () => {
+				const result = await groqDriver.listModels({ ...DRIVER_INPUT, apiKey: null });
+				expect(result).toEqual({ models: [], message: "API key required to list models" });
+				expect(calls).toBe(0);
+			},
+		);
+	});
+
+	test("Provider auth still validates the stored key against the Groq gateway", async () => {
+		await withStubbedModelCatalog(["meta-llama/llama-4-scout-17b-16e-instruct"], async (probe) => {
+			const result = await groqDriver.validate(DRIVER_INPUT);
+			expect(result).toEqual({
+				ok: true,
+				status: "connected",
+				message: "Groq credentials are valid",
+			});
+			expect(probe.urls).toEqual(["https://api.groq.com/openai/v1/models"]);
+		});
+	});
+
+	test("Provider auth reports a missing key without calling the gateway", async () => {
+		let calls = 0;
+		await withCountingGateway(
+			() => {
+				calls += 1;
+			},
+			async () => {
+				const result = await groqDriver.validate({ ...DRIVER_INPUT, apiKey: null });
+				expect(result).toEqual({
+					ok: false,
+					status: "invalid",
+					message: "Groq API key is required",
+				});
+				expect(calls).toBe(0);
+			},
+		);
 	});
 
 	test("screenshot preparation passes empty input through unchanged", async () => {

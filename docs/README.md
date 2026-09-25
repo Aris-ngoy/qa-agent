@@ -31,6 +31,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [providers/opencode-model-selection.md](./providers/opencode-model-selection.md) | OpenCode Free/Paid model picker + free default |
 | [providers/ai-sdk-settings-providers.md](./providers/ai-sdk-settings-providers.md) | Groq / Google / Vertex / Antigravity + Codex vision |
 | [providers/cursor-grok-custom-settings.md](./providers/cursor-grok-custom-settings.md) | Cursor Agent, xAI Grok, Custom OpenAI-compatible |
+| [providers/groq-action-family-parity.md](./providers/groq-action-family-parity.md) | Groq decide Action-family parity at the vision seam |
 | [cli/npm-publish.md](./cli/npm-publish.md) | Public `@yoqa/cli` npm package + release workflow |
 | [cli/github-actions.md](./cli/github-actions.md) | `yoqa report` + composite actions for GitHub Actions HTML reports |
 | [cli/github-actions-expo.md](./cli/github-actions-expo.md) | Expo demo app + GitHub Actions device smoke for `@yoqa/cli` |
