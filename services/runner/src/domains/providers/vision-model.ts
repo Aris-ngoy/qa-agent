@@ -467,47 +467,43 @@ const GROQ_REASONING_MODEL_RE = /qwen3/i;
  * keep structured-output mode. Model, messages, and screenshot payload pass
  * through untouched. Client-side Zod plus salvage/repair still validate.
  */
+function rewriteGroqRequestBody(rawBody: string): string | null {
+	try {
+		const parsed: unknown = JSON.parse(rawBody);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+
+		const parsedBody = { ...(parsed as Record<string, unknown>) };
+		let mutated = false;
+		if (typeof parsedBody.model === "string" && GROQ_REASONING_MODEL_RE.test(parsedBody.model)) {
+			// The runner owns this flag: thinking off for decide/ground on these families.
+			parsedBody.reasoning_effort = "none";
+			mutated = true;
+		}
+		if (isSparseResponseFormatBody(parsedBody)) {
+			const { response_format: _responseFormat, ...withoutFormat } = parsedBody;
+			return JSON.stringify(withoutFormat);
+		}
+		return mutated ? JSON.stringify(parsedBody) : null;
+	} catch {
+		return null;
+	}
+}
+
 export function withGroqRequestHooks(opts: {
 	fetchImpl?: FetchFunction;
 }): FetchFunction {
 	const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
 	return (async (input, init) => {
 		const headers = new Headers(init?.headers);
-		const rawBody = init?.body;
-		if (typeof rawBody !== "string") {
-			return fetchImpl(input, { ...init, headers });
+		const requestInit: RequestInit = { ...init, headers };
+		if (typeof init?.body === "string") {
+			const rewrittenBody = rewriteGroqRequestBody(init.body);
+			if (rewrittenBody !== null) requestInit.body = rewrittenBody;
 		}
-		try {
-			const parsed: unknown = JSON.parse(rawBody);
-			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-				return fetchImpl(input, { ...init, headers });
-			}
-			const parsedBody = { ...(parsed as Record<string, unknown>) };
-			let mutated = false;
-			if (typeof parsedBody.model === "string" && GROQ_REASONING_MODEL_RE.test(parsedBody.model)) {
-				// The runner owns this flag: thinking off for decide/ground on these families.
-				parsedBody.reasoning_effort = "none";
-				mutated = true;
-			}
-			if (isSparseResponseFormatBody(parsedBody)) {
-				const { response_format: _responseFormat, ...withoutFormat } = parsedBody;
-				return fetchImpl(input, {
-					...init,
-					headers,
-					body: JSON.stringify(withoutFormat),
-				});
-			}
-			if (!mutated) {
-				return fetchImpl(input, { ...init, headers });
-			}
-			return fetchImpl(input, {
-				...init,
-				headers,
-				body: JSON.stringify(parsedBody),
-			});
-		} catch {
-			return fetchImpl(input, { ...init, headers });
-		}
+
+		// Keep transport failures outside the JSON-rewrite boundary. A failed request
+		// must be surfaced once, not interpreted as malformed request data and sent again.
+		return fetchImpl(input, requestInit);
 	}) as FetchFunction;
 }
 

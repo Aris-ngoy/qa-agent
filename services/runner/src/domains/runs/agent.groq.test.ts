@@ -531,6 +531,36 @@ describe("Groq decide leaves its unchanged surfaces alone (#140)", () => {
 		}
 	});
 
+	test("turns a strict-schema 400 into concise guidance at the decide seam", async () => {
+		const realFetch = globalThis.fetch;
+		globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+			captured.push({
+				url: String(input),
+				body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>,
+				headers: new Headers(init?.headers),
+			});
+			return new Response(
+				JSON.stringify({
+					error: {
+						message:
+							"invalid JSON schema for response_format: required must include every key in properties: alertAction, appId, assertion",
+					},
+				}),
+				{ status: 400, headers: { "content-type": "application/json" } },
+			);
+		}) as typeof fetch;
+
+		try {
+			const message = await failureMessage(decideViaGroq(validReply));
+			expect(message).toContain("Groq rejected strict JSON schema mode");
+			expect(message).toContain("prompt JSON");
+			expect(message).not.toContain("alertAction");
+			expect(captured).toHaveLength(1);
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+	});
+
 	test("sends the prepared screenshot and the decide prompt unchanged", async () => {
 		await decideViaGroq(validReply);
 		const request = lastRequest();

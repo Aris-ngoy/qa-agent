@@ -186,6 +186,23 @@ describe("Groq decide works via prompt JSON (#138)", () => {
 		const sent = await captureSentBody("not-json{{{" as unknown as Record<string, unknown>);
 		expect(sent).toBe("not-json{{{");
 	});
+
+	test("transport failures are not retried by the request hook", async () => {
+		let calls = 0;
+		const fetchImpl = (() => {
+			calls += 1;
+			throw new Error("network down");
+		}) as unknown as typeof fetch;
+		const hooked = withGroqRequestHooks({ fetchImpl });
+
+		await expect(
+			hooked("https://api.groq.com/openai/v1/chat/completions", {
+				method: "POST",
+				body: JSON.stringify(decideBody()),
+			}),
+		).rejects.toThrow("network down");
+		expect(calls).toBe(1);
+	});
 });
 
 describe("Groq model vision metadata (#141)", () => {
