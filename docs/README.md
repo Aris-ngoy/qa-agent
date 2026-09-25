@@ -54,3 +54,4 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [ios/wda-reuse-on-select.md](./ios/wda-reuse-on-select.md) | Skip/rebuild WebDriverAgent on physical iOS select |
 | [sessions/2026-07-24-yoqa-testing-skill.md](./sessions/2026-07-24-yoqa-testing-skill.md) | Copied/rebranded `yoqa-testing` agent skill |
 | [sessions/2026-07-27-mintlify-docs-site.md](./sessions/2026-07-27-mintlify-docs-site.md) | Public Mintlify docs site at `apps/docs` |
+| [sessions/2026-09-25-android-emulator-sdk-setup.md](./sessions/2026-09-25-android-emulator-sdk-setup.md) | Android E2E `tools` package fix; job was never green |
