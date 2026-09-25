@@ -11,10 +11,10 @@ Dogfood unpublished `@yoqa/cli` against a real Expo binary on GitHub-hosted runn
 - Smoke uses a checked-in CaseScript ([`yoqa/smoke.yoqa.json`](../../examples/expo-demo/yoqa/smoke.yoqa.json)): `assert` + `tap --label` replayed with `yoqa runs create DEMO --cases 1 --mode script` (no `--description`, no agent). [`yoqa/ci-smoke.sh`](../../examples/expo-demo/yoqa/ci-smoke.sh) is the same steps on the device-connector CLI for local debugging.
 - Catalog runs write the same HTML as desktop **Export HTML**. Jobs upload `yoqa-expo-demo-*-report` (open the **run** summary → Artifacts, not the job log).
 - **iOS** on `macos-26` + Xcode **26.4.1** (Expo SDK 57 needs 26.4+; 26.5+ can fail ExpoModulesJSI SPM with an empty “Could not resolve package dependencies”). Simulator connect allows **600s** for the first WebDriverAgent compile and caches `~/.yoqa/wda-sim`. WDA is compiled on `yoqa devices connect` after `expo run:ios` (not in parallel). **Android** on `ubuntu-latest` + KVM (`x86_64` API 34). Path-filtered + `workflow_dispatch`. **Not** a required status check.
-- **The Android job is unproven, not merely advisory.** It had never passed as of 2026-09-25. The SDK-setup failure is addressed (below), but the `ci-android.sh` smoke path has never completed a run, so a green `Android Emulator` proves the SDK step only. Tracked in [#147](https://github.com/Aris-ngoy/qa-agent/issues/147); run history and postmortem in the [session note](../sessions/2026-09-25-android-emulator-sdk-setup.md).
-- **iOS is not a reliable counterweight.** It passed 10 of the 12 runs before 2026-09-25, then failed at `Connect Yoqa and smoke` on the run that first proved the Android fix — simulator boot timeout, then two `POST /session` timeouts ([#149](https://github.com/Aris-ngoy/qa-agent/issues/149)). Both platform jobs failing at the device/session layer on the same run means the shared connect path is the thing to look at, not Android CI config.
+- **The Android job works now, but is not yet reliable.** First green on 2026-09-26 ([run 36200906689](https://github.com/Aris-ngoy/qa-agent/actions/runs/36200906689)) — all 8 smoke actions passed in 10.6s — once `Setup Android SDK` stopped installing the retired `tools` package. Only two runs have carried that fix and one of them failed in the smoke step on a Pixel Launcher ANR dialog, so a red Android job is more likely flake than regression. Tracked in [#147](https://github.com/Aris-ngoy/qa-agent/issues/147).
+- **iOS flakes too.** It failed at `Connect Yoqa and smoke` on one of those same two runs and passed on the other ([#149](https://github.com/Aris-ngoy/qa-agent/issues/149)). Neither platform is dependable yet, so do not add this workflow to branch protection on the strength of a single green run — see the Follow-ups.
 - Native projects are generated in CI with **Expo CLI**: `npx expo prebuild` then `npx expo run:ios` / `npx expo run:android`. `ios/` and `android/` stay gitignored.
-- Rejected for this slice: separate public customer repo, making the job required. iOS being non-required *is* a real decision (booting a simulator on every PR is slow); Android being non-required is currently a side effect of it never having passed.
+- Rejected for this slice: separate public customer repo, making the job required. Requiredness stays a real decision rather than an accident — the workflow is now green, but only 1 run in 2 on each platform, so gating merges on it would gate them on flake.
 
 ## What shipped
 
@@ -47,8 +47,8 @@ Then install a build, `yoqa devices connect`, and run `examples/expo-demo/yoqa/s
 
 ## Follow-ups
 
-- Get the Android Emulator job green ([#147](https://github.com/Aris-ngoy/qa-agent/issues/147)) — SDK setup is addressed, `ci-android.sh` smoke path is unproven
-- Making this workflow a required check — gated on the above; do not force-add a red job to branch protection
+- Reduce E2E flake on both platforms ([#147](https://github.com/Aris-ngoy/qa-agent/issues/147) Android, [#149](https://github.com/Aris-ngoy/qa-agent/issues/149) iOS) before treating a green run as meaningful
+- Making this workflow a required check — gated on the above, not on a single green run
 - Catalog import/export so CI does not hand-seed `~/.yoqa/yoqa.db`
 - Agent mode in CI (provider secrets)
 - Extracting a standalone public example repo

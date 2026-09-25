@@ -207,9 +207,10 @@ jobs:
           if-no-files-found: ignore
 
   android:
-    # Unproven: as of 2026-09-25 this job had never passed. The SDK setup step is
-    # fixed, but a green run here proves only that step — the `ci-android.sh` smoke
-    # below has never completed. See docs/cli/github-actions-expo.md.
+    # First green on 2026-09-26 (run 36200906689), after `Setup Android SDK`
+    # stopped installing the retired `tools` package. Not reliable yet: 1 of the
+    # 2 runs carrying that fix failed the smoke step on a Pixel Launcher ANR
+    # dialog, so read red here as flake until shown otherwise. See #147.
     name: Android Emulator
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'both' || github.event.inputs.platform == 'android'
     runs-on: ubuntu-latest
