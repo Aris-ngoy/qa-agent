@@ -97,28 +97,40 @@ async function captureSentBody(body: unknown): Promise<string> {
 	return sentBody;
 }
 
-type CatalogProbe = { urls: string[]; authorization: string | null };
+type FetchProbe = { urls: string[]; authorization: string | null };
 
-/** Stub the OpenAI-compatible `/models` catalog call the Groq driver uses for Settings. */
-async function withStubbedModelCatalog(
-	ids: string[],
-	run: (probe: CatalogProbe) => Promise<void>,
+/** Run `check` with `globalThis.fetch` replaced, always restoring the real one. */
+async function withStubbedFetch(
+	respond: (probe: FetchProbe) => Response,
+	check: (probe: FetchProbe) => Promise<void>,
 ): Promise<void> {
 	const realFetch = globalThis.fetch;
-	const probe: CatalogProbe = { urls: [], authorization: null };
+	const probe: FetchProbe = { urls: [], authorization: null };
 	globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
 		probe.urls.push(String(input));
 		probe.authorization = new Headers(init?.headers).get("authorization");
-		return new Response(JSON.stringify({ object: "list", data: ids.map((id) => ({ id })) }), {
-			status: 200,
-			headers: { "content-type": "application/json" },
-		});
+		return respond(probe);
 	}) as typeof fetch;
 	try {
-		await run(probe);
+		await check(probe);
 	} finally {
 		globalThis.fetch = realFetch;
 	}
+}
+
+/** Stub the OpenAI-compatible `/models` catalog call the Groq driver uses for Settings. */
+function withStubbedModelCatalog(
+	ids: string[],
+	check: (probe: FetchProbe) => Promise<void>,
+): Promise<void> {
+	return withStubbedFetch(
+		() =>
+			new Response(JSON.stringify({ object: "list", data: ids.map((id) => ({ id })) }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			}),
+		check,
+	);
 }
 
 const DRIVER_INPUT = {
@@ -130,17 +142,14 @@ const DRIVER_INPUT = {
 };
 
 /** Run `check` with a fetch that counts calls, so tests can assert the gateway was never hit. */
-async function withCountingGateway(onCall: () => void, check: () => Promise<void>): Promise<void> {
-	const realFetch = globalThis.fetch;
-	globalThis.fetch = (async (_input: unknown, _init?: RequestInit) => {
+function withCountingGateway(
+	onCall: () => void,
+	check: (probe: FetchProbe) => Promise<void>,
+): Promise<void> {
+	return withStubbedFetch(() => {
 		onCall();
 		return new Response("{}", { status: 200 });
-	}) as typeof fetch;
-	try {
-		await check();
-	} finally {
-		globalThis.fetch = realFetch;
-	}
+	}, check);
 }
 
 describe("Groq decide works via prompt JSON (#138)", () => {

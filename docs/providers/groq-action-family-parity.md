@@ -16,18 +16,18 @@ The provider-side compensation already shipped in #138 (decide asks for JSON in 
 
 ## What shipped
 
-- [`agent.groq.test.ts`](../../services/runner/src/domains/runs/agent.groq.test.ts) — Action-family parity at the vision seam: 24 valid families (tap by coordinates / id / label / description, double-tap, long press, swipe by direction and by coordinates, drag, type, input, wait, alert accept and dismiss, activate / terminate / restart / background app, open-url, assert visible and not-visible, verify, done, fail), each also asserting `reason` and `thoughts` survive and that the outgoing request carries no structured-output marker.
-- Same file — cross-field rejections through the seam: swipe without direction or four coordinates, partial swipe coordinates, drag without a drop point, type/input without text, open-url without a URL, assert without text, missing or blank `reason`/`thoughts`, and an unknown type. Each asserts the not-a-valid-action message, exactly one JSON-only repair retry, and that the repair request re-asks for strict JSON.
-- Same file — repair flow: fenced single-quoted JSON and a lightly truncated reply still validate; a prose-only reply fails with what the model returned.
-- Same file — unchanged surfaces: default vision model fallback and configured override, `max_tokens: 2048` decide budget, bearer auth header, custom base URL, missing-key fast failure, and the prepared screenshot (PNG and JPEG) plus the JSON-only instruction travelling unchanged.
+- [`agent.groq.test.ts`](../../services/runner/src/domains/runs/agent.groq.test.ts) — Action-family parity at the vision seam: 27 valid families (tap by coordinates / id / label / description, double-tap, long press, swipe by direction and by coordinates, drag, type, input, wait, alert accept and dismiss, activate / terminate / restart / background app, open-url, assert visible, not-visible and text-only, verify, done, fail), each also asserting `reason` and `thoughts` survive and that the outgoing request carries no structured-output marker.
+- Same file — cross-field rejections through the seam: swipe without direction or four coordinates, partial swipe coordinates, drag without a drop point, type/input without text, open-url without a URL, assert without text, an alert action outside accept/dismiss, an assertion outside visible/not-visible, missing or blank `reason`/`thoughts`, and an unknown type. Each asserts the not-a-valid-action message, that the message is labelled `Groq`, exactly one JSON-only repair retry, and that the repair request re-asks for strict JSON.
+- Same file — repair flow: fenced single-quoted JSON and a lightly truncated reply still validate; a prose-only reply fails with what the model returned; a reply carrying only one explainer field is filled from the other, so a decision never reaches the Run with a blank reason or thoughts (documented salvage, see [runs/vision-json-salvage.md](../runs/vision-json-salvage.md)).
+- Same file — unchanged surfaces: default vision model fallback and configured override, `max_tokens: 2048` decide budget, bearer auth header, custom base URL, missing-key fast failure, the catalog app id offered when a lifecycle decision omits one, the reason/thoughts contract still sent in the system message, and screenshot preparation both from a pre-prepared screenshot (PNG and JPEG) and from a raw PNG the adapter prepares itself.
 - [`vision-model.groq.test.ts`](../../services/runner/src/domains/providers/vision-model.groq.test.ts) — model listing and Provider auth against a stubbed Groq catalog: vision flags, "N models available", bearer token on `/models`, and both no-key paths proving the gateway is not called.
-- [`grounding.test.ts`](../../services/runner/src/domains/devices/grounding.test.ts) + `groundResultSchema` export — Grounding through the same port keeps `response_format` (`required: [x, y]`) and still resolves coordinates, proving the hook only strips sparse decide schemas.
+- [`grounding.test.ts`](../../services/runner/src/domains/devices/grounding.test.ts) — Grounding through the same port keeps `response_format` (`required: [x, y]`) and still resolves coordinates, proving the hook only strips sparse decide schemas. That needs `groundResultSchema` exported from `grounding.ts`: the assertion is about the *real* grounding shape, and ADR-0002 keeps that schema owned by Grounding, so the export changes neither ownership nor runtime behavior.
 
 ## How to verify
 
 ```bash
 cd services/runner && bun test src/domains/runs/agent.groq.test.ts src/domains/providers/vision-model.groq.test.ts src/domains/devices/grounding.test.ts
-cd /Users/arisngoy/PROJECTS/qa-agent && bun run check && bun run lint:ci
+cd /Users/arisngoy/PROJECTS/qa-agent && bun run check && bun run lint:ci && bun run test
 ```
 
 Optional: run an agent-mode Test Case on Groq and check the Run timeline shows a `reason` for every step.
