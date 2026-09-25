@@ -207,6 +207,9 @@ jobs:
           if-no-files-found: ignore
 
   android:
+    # Unproven: as of 2026-09-25 this job had never passed. The SDK setup step is
+    # fixed, but a green run here proves only that step — the `ci-android.sh` smoke
+    # below has never completed. See docs/cli/github-actions-expo.md.
     name: Android Emulator
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'both' || github.event.inputs.platform == 'android'
     runs-on: ubuntu-latest
@@ -241,6 +244,12 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          # The action's default ("tools platform-tools") breaks: Google retired the
+          # legacy `tools` package, so `sdkmanager tools` exits 1 and fails this step.
+          # android-emulator-runner installs the emulator + system image itself.
+          # https://github.com/android-actions/setup-android/issues/537
+          packages: platform-tools
 
       - name: Install monorepo dependencies
         run: bun install --frozen-lockfile
