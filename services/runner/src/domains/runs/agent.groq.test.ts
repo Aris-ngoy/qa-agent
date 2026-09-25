@@ -19,6 +19,9 @@ const GROQ_DECIDE_MAX_TOKENS = 2048;
 const REASON = "Advance the current instruction";
 const THOUGHTS = "The target control is visible and the next case step is unambiguous.";
 const SHOT: VisionImage = { base64: "c2hvdA==", mediaType: "image/png" };
+/** A real 1×1 PNG, so the adapter's own screenshot preparation runs for it. */
+const TINY_PNG_BASE64 =
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 type CapturedRequest = { url: string; body: Record<string, unknown>; headers: Headers };
 
@@ -80,29 +83,42 @@ function lastRequest(): CapturedRequest {
 
 type MessagePart = { type: string; text?: string; image_url?: { url: string } };
 
-/** The decide user-message text, read from the request instead of a JSON dump. */
-function sentPrompt(request: CapturedRequest): string {
+/** The parts of the decide user message (screenshot + prompt) as sent. */
+function sentUserParts(request: CapturedRequest): MessagePart[] {
 	const messages = request.body.messages as Array<{ role: string; content: unknown }> | undefined;
 	const user = messages?.find((message) => message.role === "user");
-	const parts = (user?.content ?? []) as MessagePart[];
-	return parts.map((part) => part.text ?? part.image_url?.url ?? "").join("\n");
+	return (user?.content ?? []) as MessagePart[];
+}
+
+/** The decide user-message text, read from the request instead of a JSON dump. */
+function sentPrompt(request: CapturedRequest): string {
+	return sentUserParts(request)
+		.map((part) => part.text ?? part.image_url?.url ?? "")
+		.join("\n");
 }
 
 /** The screenshot data URL the request carried, or null when no image was attached. */
 function sentImageUrl(request: CapturedRequest): string | null {
-	const messages = request.body.messages as Array<{ role: string; content: unknown }> | undefined;
-	const user = messages?.find((message) => message.role === "user");
-	const parts = (user?.content ?? []) as MessagePart[];
-	return parts.find((part) => part.type === "image_url")?.image_url?.url ?? null;
+	return sentUserParts(request).find((part) => part.type === "image_url")?.image_url?.url ?? null;
 }
 
-/** One decide call through the real Groq vision port with a canned prompt-JSON reply. */
-async function decideViaGroq(
-	reply: string,
-	opts: { auth?: Partial<ActiveProviderAuth>; image?: VisionImage } = {},
-): Promise<AgentDecision> {
-	captured = [];
-	replies = [reply];
+/** The decide system message, which carries the reason/thoughts contract. */
+function sentSystemPrompt(request: CapturedRequest): string {
+	const messages = request.body.messages as Array<{ role: string; content: unknown }> | undefined;
+	const system = messages?.find((message) => message.role === "system");
+	return typeof system?.content === "string" ? system.content : "";
+}
+
+type DecideOptions = {
+	auth?: Partial<ActiveProviderAuth>;
+	image?: VisionImage;
+	imageBase64?: string;
+	/** Catalog app id offered to the model for activate/terminate/restart. */
+	defaultAppId?: string;
+	onDecideRetry?: () => void;
+};
+
+function runDecide(opts: DecideOptions): Promise<AgentDecision> {
 	return decideNextAction({
 		auth: groqAuth(opts.auth),
 		appContext: "Catalog",
@@ -110,9 +126,32 @@ async function decideViaGroq(
 		instructions: "Open the product detail",
 		expectedResult: "Product detail screen is visible",
 		stepIndex: 0,
-		imageBase64: "",
-		image: opts.image ?? SHOT,
+		imageBase64: opts.imageBase64 ?? "",
+		image: opts.image,
+		defaultAppId: opts.defaultAppId,
+		onDecideRetry: opts.onDecideRetry,
 	});
+}
+
+/** One decide call with a pre-prepared screenshot — the shape the Case executor sends. */
+function decideViaGroq(
+	reply: string,
+	opts: Omit<DecideOptions, "imageBase64"> = {},
+): Promise<AgentDecision> {
+	captured = [];
+	replies = [reply];
+	return runDecide({ image: opts.image ?? SHOT, ...opts });
+}
+
+/** One decide call from a raw screenshot, so the adapter's own preparation runs. */
+function decideFromRawScreenshot(
+	reply: string,
+	imageBase64: string,
+	opts: Omit<DecideOptions, "image" | "imageBase64"> = {},
+): Promise<AgentDecision> {
+	captured = [];
+	replies = [reply];
+	return runDecide({ imageBase64, ...opts });
 }
 
 async function failureMessage(promise: Promise<unknown>): Promise<string> {
@@ -231,6 +270,13 @@ describe("Groq decides every Action family at the vision seam (#140)", () => {
 			expected: { type: "background-app", seconds: 3 },
 		},
 		{
+			// appId is optional: the executor falls back to the catalog app id, which
+			// the prompt below proves the model was given.
+			name: "activate an app without an explicit app id",
+			reply: decision({ type: "activate-app" }),
+			expected: { type: "activate-app" },
+		},
+		{
 			name: "open a url",
 			reply: decision({ type: "open-url", url: "https://example.com" }),
 			expected: { type: "open-url", url: "https://example.com" },
@@ -244,6 +290,12 @@ describe("Groq decides every Action family at the vision seam (#140)", () => {
 			name: "assert hidden text",
 			reply: decision({ type: "assert", assertion: "not-visible", text: "Loading" }),
 			expected: { type: "assert", assertion: "not-visible", text: "Loading" },
+		},
+		{
+			// `assertion` is optional in the schema, so text alone still validates.
+			name: "assert text with no explicit assertion",
+			reply: decision({ type: "assert", text: "Welcome" }),
+			expected: { type: "assert", text: "Welcome" },
 		},
 		{
 			name: "verify",
@@ -327,24 +379,24 @@ describe("Groq rejects cross-field-invalid decisions at the vision seam (#140)",
 			reply: decision({ type: "scroll" }),
 			message: /not a valid action/,
 		},
+		{
+			name: "an alert with an action outside accept/dismiss",
+			reply: decision({ type: "alert", alertAction: "later" }),
+			message: /not a valid action/,
+		},
+		{
+			name: "an assert with an assertion outside visible/not-visible",
+			reply: decision({ type: "assert", assertion: "maybe", text: "Welcome" }),
+			message: /not a valid action/,
+		},
 	];
 
 	for (const entry of invalid) {
 		test(`${entry.name} fails as not-a-valid-action after one repair retry`, async () => {
 			let retries = 0;
-			captured = [];
-			replies = [entry.reply];
 
 			const message = await failureMessage(
-				decideNextAction({
-					auth: groqAuth(),
-					appContext: "Catalog",
-					caseTitle: "Browse products",
-					instructions: "Open the product detail",
-					expectedResult: "Product detail screen is visible",
-					stepIndex: 0,
-					imageBase64: "",
-					image: SHOT,
+				decideViaGroq(entry.reply, {
 					onDecideRetry: () => {
 						retries += 1;
 					},
@@ -352,6 +404,8 @@ describe("Groq rejects cross-field-invalid decisions at the vision seam (#140)",
 			);
 
 			expect(message).toMatch(entry.message);
+			// The label proves the Groq adapter produced this, not another Provider.
+			expect(message).toContain("Groq JSON was not a valid action");
 			expect(retries).toBe(1);
 			// First attempt plus exactly one JSON-only repair attempt.
 			expect(captured).toHaveLength(2);
@@ -380,19 +434,9 @@ describe("Groq repairable replies stay valid at the vision seam (#140)", () => {
 
 	test("a prose-only reply fails with what the model returned, after one retry", async () => {
 		let retries = 0;
-		captured = [];
-		replies = ["The user should probably tap the login button next."];
 
 		const message = await failureMessage(
-			decideNextAction({
-				auth: groqAuth(),
-				appContext: "Catalog",
-				caseTitle: "Browse products",
-				instructions: "Open the product detail",
-				expectedResult: "Product detail screen is visible",
-				stepIndex: 0,
-				imageBase64: "",
-				image: SHOT,
+			decideViaGroq("The user should probably tap the login button next.", {
 				onDecideRetry: () => {
 					retries += 1;
 				},
@@ -402,6 +446,16 @@ describe("Groq repairable replies stay valid at the vision seam (#140)", () => {
 		expect(message).toMatch(/did not return JSON \(got: The user should probably tap/);
 		expect(retries).toBe(1);
 		expect(captured).toHaveLength(2);
+	});
+
+	test("a reply with only one explainer field is filled so the timeline stays explainable", async () => {
+		// Documented salvage (see docs/runs/vision-json-salvage.md): the missing
+		// explainer field is copied from the one the model did send, so a decision
+		// never reaches the Run with a blank reason or thoughts.
+		const result = await decideViaGroq(
+			JSON.stringify({ type: "tap", x: 420, y: 780, reason: REASON }),
+		);
+		expect(result).toMatchObject({ type: "tap", reason: REASON, thoughts: REASON });
 	});
 });
 
@@ -429,7 +483,27 @@ describe("Groq decide leaves its unchanged surfaces alone (#140)", () => {
 
 	test("keeps the decide output-token budget", async () => {
 		await decideViaGroq(validReply);
+		// Pinned on purpose: any change to the Groq decide cap must be a conscious
+		// decision, not a silent drift.
 		expect(lastRequest().body.max_tokens).toBe(GROQ_DECIDE_MAX_TOKENS);
+	});
+
+	test("offers the catalog app id when a lifecycle decision omits one", async () => {
+		const result = await decideViaGroq(decision({ type: "activate-app" }), {
+			defaultAppId: "com.example.app",
+		});
+		expect(result.appId).toBeUndefined();
+		expect(sentPrompt(lastRequest())).toContain(
+			"Catalog app id (activate/terminate/restart): com.example.app",
+		);
+	});
+
+	test("prepares a raw screenshot and still attaches it to the decide request", async () => {
+		const result = await decideFromRawScreenshot(validReply, TINY_PNG_BASE64);
+		expect(result).toMatchObject({ type: "tap", x: 420, y: 780 });
+		// Preparation may resize to JPEG (macOS) or pass the PNG through; either way
+		// the model must receive a real, non-empty screenshot payload.
+		expect(sentImageUrl(lastRequest())).toMatch(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/);
 	});
 
 	test("sends the configured key as a bearer token", async () => {
@@ -467,6 +541,13 @@ describe("Groq decide leaves its unchanged surfaces alone (#140)", () => {
 		expect(sentPrompt(request)).toContain(
 			'Reply with ONLY the JSON action object, including non-empty "reason" and "thoughts".',
 		);
+	});
+
+	test("the decide system message still demands both explainer fields", async () => {
+		await decideViaGroq(validReply);
+		const system = sentSystemPrompt(lastRequest());
+		expect(system).toContain('"reason": one short sentence summarizing the action choice');
+		expect(system).toContain('"thoughts": 2–4 sentences');
 	});
 
 	test("passes a prepared JPEG screenshot through with its own media type", async () => {
