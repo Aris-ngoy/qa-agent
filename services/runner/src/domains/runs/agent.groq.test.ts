@@ -29,6 +29,8 @@ const realFetch = globalThis.fetch;
 let captured: CapturedRequest[] = [];
 /** Canned `message.content` per call; the last entry repeats for a repair retry. */
 let replies: string[] = [];
+/** Non-200 response to serve instead of a completion, for provider error paths. */
+let errorResponse: (() => Response) | null = null;
 
 function chatCompletion(content: string): unknown {
 	return {
@@ -52,6 +54,7 @@ function stubGroqFetch(): void {
 			body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>,
 			headers: new Headers(init?.headers),
 		});
+		if (errorResponse) return errorResponse();
 		const content = replies[Math.min(captured.length - 1, replies.length - 1)] ?? "";
 		return new Response(JSON.stringify(chatCompletion(content)), {
 			status: 200,
@@ -170,6 +173,7 @@ function decision(fields: Record<string, unknown>): string {
 beforeEach(() => {
 	captured = [];
 	replies = [];
+	errorResponse = null;
 	stubGroqFetch();
 });
 
@@ -533,33 +537,26 @@ describe("Groq decide leaves its unchanged surfaces alone (#140)", () => {
 	});
 
 	test("turns a strict-schema 400 into concise guidance at the decide seam", async () => {
-		const realFetch = globalThis.fetch;
-		globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
-			captured.push({
-				url: String(input),
-				body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>,
-				headers: new Headers(init?.headers),
+		// The raw gateway complaint, which must not reach the user verbatim.
+		const rawGatewayMessage =
+			"invalid JSON schema for response_format: required must include every key in properties: alertAction, appId, assertion";
+		errorResponse = () =>
+			new Response(JSON.stringify({ error: { message: rawGatewayMessage } }), {
+				status: 400,
+				headers: { "content-type": "application/json" },
 			});
-			return new Response(
-				JSON.stringify({
-					error: {
-						message:
-							"invalid JSON schema for response_format: required must include every key in properties: alertAction, appId, assertion",
-					},
-				}),
-				{ status: 400, headers: { "content-type": "application/json" } },
-			);
-		}) as typeof fetch;
 
-		try {
-			const message = await failureMessage(decideViaGroq(validReply));
-			expect(message).toContain("Groq rejected strict JSON schema mode");
-			expect(message).toContain("prompt JSON");
-			expect(message).not.toContain("alertAction");
-			expect(captured).toHaveLength(1);
-		} finally {
-			globalThis.fetch = realFetch;
-		}
+		const message = await failureMessage(decideViaGroq(validReply));
+		expect(message).toContain("Groq rejected strict JSON schema mode");
+		expect(message).toContain("prompt JSON");
+		// Concise means the gateway payload is gone, not just quoted once. The
+		// message may name the Groq API concept, but never the internal field list.
+		expect(message).not.toContain(rawGatewayMessage);
+		expect(message).not.toContain("invalid JSON schema");
+		expect(message).not.toContain("alertAction");
+		expect(message).not.toContain("assertion");
+		// A rejected schema is not a malformed reply: no repair retry.
+		expect(captured).toHaveLength(1);
 	});
 
 	test("sends the prepared screenshot and the decide prompt unchanged", async () => {
