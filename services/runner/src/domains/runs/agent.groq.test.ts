@@ -292,7 +292,8 @@ describe("Groq decides every Action family at the vision seam (#140)", () => {
 			expected: { type: "assert", assertion: "not-visible", text: "Loading" },
 		},
 		{
-			// `assertion` is optional in the schema, so text alone still validates.
+			// The shared Runs schema treats an omitted assertion as visible at the
+			// executor, matching the saved-script and ActionRequest defaults.
 			name: "assert text with no explicit assertion",
 			reply: decision({ type: "assert", text: "Welcome" }),
 			expected: { type: "assert", text: "Welcome" },
