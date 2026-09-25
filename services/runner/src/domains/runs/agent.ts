@@ -54,11 +54,12 @@ const agentDecisionSchema = z
 		/** For wait: milliseconds to pause before the next screenshot (clamped server-side). */
 		ms: z.number().optional(),
 		alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).optional(),
-		/** Bundle id / application id for activate/terminate/restart. */
+		/** Bundle id / application id for activate/terminate/restart; the executor falls back to the catalog id. */
 		appId: z.string().min(1).optional(),
 		url: z.string().min(1).optional(),
 		/** Background duration in seconds. */
 		seconds: z.number().optional(),
+		/** Omitted means visible at the executor, matching the saved-script/action default. */
 		assertion: z.union([z.literal("visible"), z.literal("not-visible")]).optional(),
 		timeoutMs: z.number().optional(),
 		/** One-sentence summary of the chosen action (shown collapsed in the run UI). */

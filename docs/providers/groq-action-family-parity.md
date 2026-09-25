@@ -13,6 +13,7 @@ The provider-side compensation shipped in #138 asks for JSON in the prompt only,
 - Parity is asserted as external behavior: canned Groq chat-completion reply in, validated domain decision (or a not-a-valid-action error) out. No internals are asserted beyond the bytes on the wire.
 - The "unchanged" criteria (Grounding, Provider auth, model listing, default model selection, screenshot preparation, token budget) are asserted on the same seam so a future change to the Groq adapter cannot quietly move them.
 - Rejected: a Groq-specific schema variant, a second retry, touching the Case executor or the decision-to-Action mapping, and per-family mocks of `generateObject` (they would prove the AI SDK, not the Groq path).
+- The shared Runs decision contract stays unchanged: an omitted `assertion` means `visible` in the Case executor, and omitted lifecycle `appId` is filled from the catalog id by the existing mapping. `background-app` intentionally has no app-id field because it backgrounds the current app. These are existing defaults, not Groq-specific behavior.
 - Parity with other Providers is structural, not duplicated per provider: all vision adapters share `completeWithAiSdk` and the same Runs-owned schema, and `vision.test.ts` already pins the `capabilities.vision === Boolean(driver.vision)` invariant across the catalog.
 
 ## What shipped
