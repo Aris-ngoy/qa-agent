@@ -3,6 +3,7 @@ import {
 	type ActionResponse,
 	type CaseScript,
 	type CatalogCase,
+	type RunScreenMode,
 	type ScreenElement,
 	type StepPhases,
 	formatActionShellLine,
@@ -21,20 +22,40 @@ import type { ActiveProviderAuth } from "../providers/application";
 import { type VisionImage, prepareVisionImage } from "../providers/vision-model";
 import {
 	type AgentDecision,
+	GRID_CELL_RETRY,
+	type InstructionVerdict,
+	NO_TREE_SNAPSHOT,
+	SCREENSHOT_POINT_RETRY,
+	applyGridPoint,
 	coerceScrollIntentToSwipe,
 	continueScrollingInsteadOfComplete,
 	decisionToActionRequest,
 	decideNextAction as defaultDecideNextAction,
 	flattenCaseInstructions,
+	forceScreenshotTap,
 	formatScreenSnapshot,
+	gridPointMissing,
 	isAbsurdNoScreenshotFail,
+	isCanvasScreen,
+	isGameApp,
+	isGameSurface,
+	isSystemPermissionLabel,
+	releaseCanvasPoint,
 	screenshotFingerprint,
+	screenshotPointMissing,
+	stuckWaitHint,
+	verifyInstruction,
 } from "./agent";
+import { overlayCoordGrid } from "./coord-grid";
 
 /** Max vision/action iterations for the current instruction (not the whole case). */
 export const MAX_STEPS_PER_CASE = 25;
 /** Let splash / nav transitions settle before the next screenshot. */
 export const POST_ACTION_SETTLE_MS = 800;
+/** Consecutive x,y taps that leave the screenshot unchanged before a case escalates to Grid mode. */
+export const GRID_ESCALATION_TAPS = 2;
+/** Consecutive waits on an unchanged screenshot before the agent is told to stop waiting. */
+export const STUCK_WAITS = 3;
 
 export type AppendCaseStep = (input: {
 	idx: number;
@@ -73,6 +94,10 @@ export type CaseDecideFn = (input: {
 	completedInstructions?: string[];
 	instructionOrdinal?: number;
 	instructionCount?: number;
+	/** The attached screenshot includes the labeled magenta coordinate grid. */
+	coordGrid?: boolean;
+	/** The accessibility tree was omitted. Tap from the screenshot. */
+	screenshotOnly?: boolean;
 }) => Promise<AgentDecision>;
 
 export type PerformActionFn = (
@@ -109,6 +134,13 @@ export type AgentCaseDeps = {
 	appendStep: AppendCaseStep;
 	setCurrentCommand?: SetCurrentCommand;
 	decide?: CaseDecideFn;
+	/**
+	 * What the agent sees. `vision` (default) sends only the screenshot and the
+	 * instruction; `tree` also attaches the accessibility tree (Screen).
+	 */
+	screenMode?: RunScreenMode;
+	/** When set, called after each decision. Production uses a vision verify when omitted. */
+	verify?: (input: Parameters<CaseDecideFn>[0]) => Promise<InstructionVerdict>;
 	performAction?: PerformActionFn;
 	readScreen?: (session: DeviceSession) => Promise<{ elements?: ScreenElement[] }>;
 	clock?: CaseExecutorClock;
@@ -183,6 +215,20 @@ async function runTextAssert(input: {
 		}
 		await input.clock.sleep(400);
 	}
+}
+
+/** An x,y tap on the screenshot. Label taps on system sheets are not counted. */
+function isPointTap(decision: AgentDecision): boolean {
+	return (
+		decision.type === "tap" &&
+		decision.x != null &&
+		decision.y != null &&
+		!isSystemPermissionLabel(decision.label)
+	);
+}
+
+function isDeviceDecision(decision: AgentDecision): boolean {
+	return decision.type !== "verify" && decision.type !== "done" && decision.type !== "fail";
 }
 
 function commandForDecision(decision: AgentDecision, defaultAppId?: string): string | null {
@@ -604,6 +650,9 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		completedInstructions: string[];
 		instructionOrdinal: number;
 		instructionCount: number;
+		screenElements: ScreenElement[];
+		coordGrid: boolean;
+		screenshotOnly: boolean;
 		onDecideRetry?: () => void;
 	}): Promise<AgentDecision> => {
 		const payload = {
@@ -623,8 +672,25 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 			completedInstructions: [...input.completedInstructions],
 			instructionOrdinal: input.instructionOrdinal,
 			instructionCount: input.instructionCount,
+			coordGrid: input.coordGrid,
+			screenshotOnly: input.screenshotOnly,
 			onDecideRetry: input.onDecideRetry,
 		};
+		const finish = (raw: AgentDecision): AgentDecision => {
+			let next = coerceScrollIntentToSwipe(raw);
+			next = continueScrollingInsteadOfComplete({
+				decision: next,
+				instructions: input.flow.instructions,
+				expectedResult: input.flow.expectedResult,
+				recentActions: input.recentActions,
+				lastSwipeMovedScreen: input.lastSwipeMovedScreen,
+			});
+			next = releaseCanvasPoint(next, input.screenElements);
+			if (input.screenshotOnly) next = forceScreenshotTap(next);
+			if (input.coordGrid) next = applyGridPoint(next);
+			return next;
+		};
+
 		let decision = await decide(payload);
 		if (isAbsurdNoScreenshotFail(decision)) {
 			input.onDecideRetry?.();
@@ -639,14 +705,16 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				};
 			}
 		}
-		decision = coerceScrollIntentToSwipe(decision);
-		decision = continueScrollingInsteadOfComplete({
-			decision,
-			instructions: input.flow.instructions,
-			expectedResult: input.flow.expectedResult,
-			recentActions: input.recentActions,
-			lastSwipeMovedScreen: input.lastSwipeMovedScreen,
-		});
+		decision = finish(decision);
+		if (input.coordGrid && gridPointMissing(decision)) {
+			input.onDecideRetry?.();
+			const retried = await decide({ ...payload, lastError: GRID_CELL_RETRY });
+			if (!isAbsurdNoScreenshotFail(retried)) decision = finish(retried);
+		} else if (input.screenshotOnly && !input.coordGrid && screenshotPointMissing(decision)) {
+			input.onDecideRetry?.();
+			const retried = await decide({ ...payload, lastError: SCREENSHOT_POINT_RETRY });
+			if (!isAbsurdNoScreenshotFail(retried)) decision = finish(retried);
+		}
 		if (
 			(decision.type === "activate-app" ||
 				decision.type === "terminate-app" ||
@@ -737,6 +805,73 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		const recentActions: AgentDecision[] = [];
 		const completedInstructions: string[] = [];
 		let prevFingerprint: string | null = null;
+		let lastVision: {
+			imageBase64: string;
+			image: VisionImage;
+			screenSnapshot: string;
+			coordGrid: boolean;
+			screenshotOnly: boolean;
+		} | null = null;
+		const screenMode: RunScreenMode = deps.screenMode ?? "vision";
+		// Grid mode: a labeled grid is drawn and the model names a cell. A game starts
+		// there. Any other case is escalated into it, and never leaves it.
+		let gridMode = isGameApp(deps.appContext, deps.appKnowledge);
+		let unchangedPointTaps = 0;
+		let unchangedWaits = 0;
+		const omitsTree = () => screenMode === "vision" || gridMode;
+
+		const verdictForDecision = async (
+			decision: AgentDecision,
+			input: Parameters<typeof decideOnce>[0],
+		): Promise<InstructionVerdict> => {
+			if (decision.type === "fail") {
+				return { type: "fail", reason: decision.reason, thoughts: decision.thoughts };
+			}
+			if (decision.type === "verify" || decision.type === "done") {
+				return { type: "verify", reason: decision.reason, thoughts: decision.thoughts };
+			}
+			if (deps.verify) {
+				return deps.verify({
+					auth: deps.auth,
+					appContext: deps.appContext,
+					appKnowledge: deps.appKnowledge,
+					caseTitle: deps.catalogCase.name,
+					instructions: input.flow.instructions,
+					expectedResult: input.flow.expectedResult,
+					stepIndex: stepIdx,
+					imageBase64: input.imageBase64,
+					image: input.image,
+					recentActions: input.recentActions,
+					screenSnapshot: input.screenSnapshot,
+					lastError: input.lastError,
+					defaultAppId: deps.defaultAppId,
+					completedInstructions: [...input.completedInstructions],
+					instructionOrdinal: input.instructionOrdinal,
+					instructionCount: input.instructionCount,
+					coordGrid: input.coordGrid,
+					screenshotOnly: input.screenshotOnly,
+					onDecideRetry: input.onDecideRetry,
+				});
+			}
+			if (deps.decide) {
+				return {
+					type: "continue",
+					reason: "Instruction still in progress",
+					thoughts: decision.thoughts,
+				};
+			}
+			return verifyInstruction({
+				auth: deps.auth,
+				caseTitle: deps.catalogCase.name,
+				instructions: input.flow.instructions,
+				expectedResult: input.flow.expectedResult,
+				imageBase64: input.imageBase64,
+				image: input.image,
+				instructionOrdinal: input.instructionOrdinal,
+				instructionCount: input.instructionCount,
+				onDecideRetry: input.onDecideRetry,
+			});
+		};
 
 		for (let instructionIndex = 0; instructionIndex < instructionQueue.length; instructionIndex++) {
 			const instruction = instructionQueue[instructionIndex];
@@ -747,6 +882,8 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 			}
 
 			let instructionDone = false;
+			let pending: AgentDecision | null = null;
+			let pendingElements: ScreenElement[] = [];
 			for (let attempt = 0; attempt < maxSteps && !instructionDone; attempt++) {
 				if (deps.isAborted()) {
 					caseStatus = "cancelled";
@@ -764,8 +901,86 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					decideRetries: 0,
 				};
 
-				// Rolling phase boundary: each advance() charges elapsed time to one phase,
-				// so the four phases always sum to the step's reported latency.
+				// Each step is action → screenshot → decision → verify.
+				// The action is the previous decision; the first step only looks.
+				let performed: AgentDecision | null = null;
+				if (pending && isDeviceDecision(pending)) {
+					const command = commandForDecision(pending, deps.defaultAppId);
+					try {
+						await withCurrentCommand(setCurrentCommand, command, async () => {
+							await applyDecision(pending as AgentDecision, phases, pendingElements);
+						});
+						performed = pending;
+					} catch (error) {
+						if (!isRetriableActionError(error) || deps.isAborted()) throw error;
+						const failed = pending;
+						const retryStarted = clock.now();
+						pending = await decideOnce({
+							flow: instruction,
+							imageBase64: lastVision?.imageBase64 ?? "",
+							image: lastVision?.image ?? { base64: "", mediaType: "image/png" },
+							recentActions: [...recentActions, failed],
+							screenSnapshot: lastVision?.screenSnapshot ?? "",
+							lastError: error instanceof Error ? error.message : String(error),
+							lastSwipeMovedScreen: false,
+							completedInstructions,
+							instructionOrdinal: instructionIndex + 1,
+							instructionCount: instructionQueue.length,
+							screenElements: pendingElements,
+							coordGrid: lastVision?.coordGrid ?? false,
+							screenshotOnly: lastVision?.screenshotOnly ?? omitsTree(),
+							onDecideRetry: () => {
+								phases.decideRetries += 1;
+							},
+						});
+						phases.decideMs += clock.now() - retryStarted;
+						if (!isDeviceDecision(pending)) {
+							performed = null;
+							const terminal = pending;
+							pending = null;
+							const outcome = terminal.type === "fail" ? "fail" : "done";
+							recentActions.push(terminal);
+							recordedDecisions.push(terminal);
+							await deps.appendStep({
+								idx: stepIdx,
+								action: {
+									...terminal,
+									cycle: {
+										action: failed,
+										decision: terminal,
+										verify: {
+											type: outcome === "fail" ? "fail" : "verify",
+											reason: terminal.reason,
+											thoughts: terminal.thoughts,
+										},
+									},
+								},
+								screenshotUri: lastScreenshotUri,
+								ok: outcome !== "fail",
+								latencyMs: clock.now() - retryStarted,
+								phases,
+								detail: terminal.reason,
+								command: commandForDecision(failed, deps.defaultAppId),
+							});
+							stepIdx += 1;
+							if (outcome === "fail") {
+								caseStatus = "errored";
+								caseError = terminal.reason ?? "Agent marked the instruction as failed";
+							} else {
+								completedInstructions.push(instruction.instructions);
+							}
+							instructionDone = true;
+							break;
+						}
+						const retryCommand = commandForDecision(pending, deps.defaultAppId);
+						await withCurrentCommand(setCurrentCommand, retryCommand, async () => {
+							await applyDecision(pending as AgentDecision, phases, pendingElements);
+						});
+						recentActions.push(pending);
+						performed = pending;
+					}
+				}
+
 				let phaseStartedAt = clock.now();
 				const shotStarted = phaseStartedAt;
 				inFlightPhases = phases;
@@ -777,11 +992,44 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					phaseStartedAt = now;
 				};
 				advance("captureMs");
-				const tree = await readCleanedTree(readScreen, deps.session);
-				advance("screenMs");
-				const image = await prepareVisionImage(shot.base64);
-				advance("prepareMs");
 				const fingerprint = screenshotFingerprint(shot.base64);
+				// Escalation: taps that keep leaving the screenshot unchanged are landing
+				// nowhere. Switch this case to Grid mode for good. Tree mode has ids instead.
+				let escalatedToGrid = false;
+				if (screenMode === "vision" && !gridMode && performed) {
+					if (isPointTap(performed) && prevFingerprint != null && fingerprint === prevFingerprint) {
+						unchangedPointTaps += 1;
+					} else {
+						unchangedPointTaps = 0;
+					}
+					if (unchangedPointTaps >= GRID_ESCALATION_TAPS) {
+						gridMode = true;
+						escalatedToGrid = true;
+					}
+				}
+				// Waiting on a screen that never changes is a stall, not progress. The model
+				// must be told, because a sheet the tree cannot see may be waiting for a tap.
+				if (performed?.type === "wait") {
+					unchangedWaits =
+						prevFingerprint != null && fingerprint === prevFingerprint ? unchangedWaits + 1 : 0;
+				} else if (performed) {
+					unchangedWaits = 0;
+				}
+				const stallHint = unchangedWaits >= STUCK_WAITS ? stuckWaitHint(unchangedWaits) : undefined;
+				let tree = omitsTree()
+					? { snapshot: NO_TREE_SNAPSHOT, elements: [] as ScreenElement[] }
+					: await readCleanedTree(readScreen, deps.session);
+				advance("screenMs");
+				const canvas = !omitsTree() && isCanvasScreen(tree.elements);
+				if (!omitsTree() && isGameSurface(tree.elements)) {
+					gridMode = true;
+					tree = { snapshot: NO_TREE_SNAPSHOT, elements: [] };
+				}
+				const screenshotOnly = omitsTree();
+				const gridded = gridMode || canvas ? overlayCoordGrid(shot.base64) : null;
+				const visionBase64 = gridded ?? shot.base64;
+				const image = await prepareVisionImage(visionBase64);
+				advance("prepareMs");
 				const lastAction = recentActions.at(-1);
 				const lastSwipeMovedScreen =
 					lastAction?.type === "swipe" &&
@@ -796,22 +1044,54 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 
 				const decideInput = {
 					flow: instruction,
-					imageBase64: shot.base64,
+					imageBase64: visionBase64,
 					image,
 					recentActions,
 					screenSnapshot: tree.snapshot,
+					lastError: stallHint,
 					lastSwipeMovedScreen,
 					completedInstructions,
 					instructionOrdinal: instructionIndex + 1,
 					instructionCount: instructionQueue.length,
+					screenElements: tree.elements,
+					coordGrid: gridded != null,
+					screenshotOnly,
 					onDecideRetry: () => {
 						phases.decideRetries += 1;
 					},
 				};
+				lastVision = {
+					imageBase64: visionBase64,
+					image,
+					screenSnapshot: tree.snapshot,
+					coordGrid: gridded != null,
+					screenshotOnly,
+				};
 
 				let decision = await decideOnce(decideInput);
-				advance("decideMs");
 				prevFingerprint = fingerprint;
+
+				let verdict = await verdictForDecision(decision, decideInput);
+				const guarded = continueScrollingInsteadOfComplete({
+					decision: {
+						type: "verify",
+						reason: verdict.reason,
+						thoughts: verdict.thoughts,
+					},
+					instructions: instruction.instructions,
+					expectedResult: instruction.expectedResult,
+					recentActions,
+					lastSwipeMovedScreen,
+				});
+				if (verdict.type === "verify" && guarded.type !== "verify" && guarded.type !== "done") {
+					verdict = {
+						type: "continue",
+						reason: guarded.reason,
+						thoughts: guarded.thoughts,
+					};
+					if (!isDeviceDecision(decision)) decision = guarded;
+				}
+				advance("decideMs");
 
 				const latencyMs = phaseStartedAt - shotStarted;
 				inFlightLatencyMs = latencyMs;
@@ -822,67 +1102,50 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					break;
 				}
 
-				const applyWithRetry = async (): Promise<"continue" | "done" | "fail"> => {
-					try {
-						return await applyDecision(decision, phases, tree.elements);
-					} catch (error) {
-						if (!isRetriableActionError(error) || deps.isAborted()) throw error;
-						const failed = decision;
-						const retryDecideStarted = clock.now();
-						decision = await decideOnce({
-							...decideInput,
-							recentActions: [...recentActions, failed],
-							lastError: error instanceof Error ? error.message : String(error),
-						});
-						phases.decideMs += clock.now() - retryDecideStarted;
-						const retryCommand = commandForDecision(decision, deps.defaultAppId);
-						await setCurrentCommand(retryCommand);
-						return await applyDecision(decision, phases, tree.elements);
-					}
-				};
-
-				const recordStep = async (
-					command: string | null,
-					outcome: "continue" | "done" | "fail",
-				) => {
-					recentActions.push(decision);
-					recordedDecisions.push(decision);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: decision,
-						screenshotUri: shot.path,
-						ok: outcome !== "fail",
-						latencyMs,
-						phases,
-						detail:
-							decision.type === "wait"
-								? (decision.reason ??
-									`wait ${Math.min(3000, Math.max(500, decision.ms ?? 1500))}ms`)
-								: (decision.reason ?? (outcome === "fail" ? "Agent failed the step" : null)),
-						command,
-					});
-				};
-
-				const initialCommand = commandForDecision(decision, deps.defaultAppId);
-				const outcome = initialCommand
-					? await withCurrentCommand(setCurrentCommand, initialCommand, async () => {
-							const result = await applyWithRetry();
-							await recordStep(commandForDecision(decision, deps.defaultAppId), result);
-							return result;
-						})
-					: await (async () => {
-							const result = await applyWithRetry();
-							await recordStep(null, result);
-							return result;
-						})();
+				const outcome =
+					verdict.type === "fail" ? "fail" : verdict.type === "verify" ? "done" : "continue";
+				const command = commandForDecision(performed ?? decision, deps.defaultAppId);
+				recentActions.push(decision);
+				recordedDecisions.push(decision);
+				await deps.appendStep({
+					idx: stepIdx,
+					action: {
+						...decision,
+						...(escalatedToGrid ? { escalatedToGrid: true } : {}),
+						cycle: {
+							action: performed,
+							decision,
+							verify: {
+								type: verdict.type,
+								reason: verdict.reason,
+								thoughts: verdict.thoughts,
+							},
+						},
+					},
+					screenshotUri: shot.path,
+					ok: outcome !== "fail",
+					latencyMs,
+					phases,
+					detail:
+						verdict.reason ||
+						(decision.type === "wait"
+							? (decision.reason ?? `wait ${Math.min(3000, Math.max(500, decision.ms ?? 1500))}ms`)
+							: (decision.reason ?? (outcome === "fail" ? "Agent failed the step" : null))),
+					command,
+				});
 
 				if (outcome === "done") {
 					instructionDone = true;
 					completedInstructions.push(instruction.instructions);
+					pending = null;
 				} else if (outcome === "fail") {
 					caseStatus = "errored";
-					caseError = decision.reason ?? "Agent marked the instruction as failed";
+					caseError = verdict.reason || decision.reason || "Agent marked the instruction as failed";
 					instructionDone = true;
+					pending = null;
+				} else {
+					pending = isDeviceDecision(decision) ? decision : null;
+					pendingElements = tree.elements;
 				}
 
 				stepIdx += 1;

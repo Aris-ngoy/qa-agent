@@ -12,6 +12,8 @@ export const runs = sqliteTable("runs", {
 	status: text("status").notNull(),
 	/** auto | script | agent — how cases should be executed */
 	executionMode: text("execution_mode").notNull().default("auto"),
+	/** vision | tree — what the agent sees. Rows from before Screen modes read as tree. */
+	screenMode: text("screen_mode").notNull().default("tree"),
 	error: text("error"),
 	createdAt: integer("created_at").notNull(),
 	startedAt: integer("started_at"),

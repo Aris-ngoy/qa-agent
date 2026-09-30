@@ -758,6 +758,14 @@ export const runExecutionModeSchema = z.union([
 ]);
 export type RunExecutionMode = z.infer<typeof runExecutionModeSchema>;
 
+/**
+ * What the agent sees when it decides.
+ * - `vision` (default): the screenshot and the instruction only; the agent names x,y.
+ * - `tree`: also attaches the accessibility tree (Screen), so the agent can target by id.
+ */
+export const runScreenModeSchema = z.union([z.literal("vision"), z.literal("tree")]);
+export type RunScreenMode = z.infer<typeof runScreenModeSchema>;
+
 export const createRunRequestSchema = z.object({
 	appId: z.string().min(1),
 	caseIds: z.array(z.string().min(1)).min(1),
@@ -772,6 +780,8 @@ export const createRunRequestSchema = z.object({
 	 * - `agent`: always use the AI agent
 	 */
 	executionMode: runExecutionModeSchema.optional(),
+	/** Agent runs only. Omitted means `vision`. */
+	screenMode: runScreenModeSchema.optional(),
 });
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 
@@ -828,6 +838,8 @@ export const runSchema = z.object({
 	buildId: z.string().nullable(),
 	status: runStatusSchema,
 	executionMode: runExecutionModeSchema,
+	/** Runs from before Screen modes existed read back as `tree`, which is how they ran. */
+	screenMode: runScreenModeSchema.optional(),
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	startedAt: z.number().int().nonnegative().nullable(),

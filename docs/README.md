@@ -45,6 +45,8 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [desktop/error-toast.md](./desktop/error-toast.md) | HeroUI danger toasts with summarized run errors |
 | [runs/wda-rebuild-skip.md](./runs/wda-rebuild-skip.md) | Runs panel Skip/Rebuild → iOS WDA `--force` |
 | [runs/vision-no-screenshot-fail.md](./runs/vision-no-screenshot-fail.md) | Harden agent against “no screenshot” hallucinations |
+| [runs/vision-first-screen-mode.md](./runs/vision-first-screen-mode.md) | Run agent decides from the screenshot and `x,y`; tree is opt-in (`screenMode`) |
+| [runs/game-tap-grid.md](./runs/game-tap-grid.md) | Coordinate grid so game taps use the screenshot point |
 | [runs/android-permission-alerts.md](./runs/android-permission-alerts.md) | Android Allow / permission dialog taps and agent alerts |
 | [devices/xml-entity-labels.md](./devices/xml-entity-labels.md) | Decode `&amp;` in screen labels so tap-by-label matches |
 | [devices/text-input.md](./devices/text-input.md) | WDA-safe typing via `mobile: type` + paired keyDown/keyUp |

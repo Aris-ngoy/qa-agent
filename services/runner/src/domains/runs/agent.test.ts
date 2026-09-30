@@ -2,17 +2,27 @@ import { describe, expect, test } from "bun:test";
 import { extractAgentJsonObject } from "../providers/agent-json";
 import {
 	SYSTEM_PROMPT,
+	VISION_SYSTEM_PROMPT,
+	applyGridPoint,
 	coerceScrollIntentToSwipe,
 	continueScrollingInsteadOfComplete,
 	decisionToActionRequest,
 	flattenCaseInstructions,
+	forceScreenshotTap,
 	formatDecidePrompt,
 	formatScreenSnapshot,
+	formatVerifyPrompt,
+	gridPointMissing,
+	isCanvasScreen,
+	isGameApp,
+	isGameSurface,
 	isScrollUntilEndGoal,
 	isSystemPermissionLabel,
 	parseAgentDecision,
 	prefersScreenshotTap,
+	releaseCanvasPoint,
 	resolveSwipeNorm,
+	screenshotPointMissing,
 	splitInstructionSteps,
 } from "./agent";
 
@@ -496,6 +506,335 @@ describe("formatScreenSnapshot", () => {
 		expect(formatScreenSnapshot([])).toBe("(empty tree)");
 		expect(formatScreenSnapshot(undefined)).toBe("(screen tree unavailable)");
 	});
+
+	test("hides a full-screen game surface so the model does not tap its centre", () => {
+		const snapshot = formatScreenSnapshot([
+			{
+				type: "View",
+				label: "UnityView",
+				id: "unity_surface",
+				x: 0,
+				y: 0,
+				width: 1000,
+				height: 1000,
+			},
+			{
+				type: "Button",
+				label: "Pause",
+				id: "pause",
+				x: 900,
+				y: 40,
+				width: 60,
+				height: 40,
+			},
+		]);
+		expect(snapshot).not.toContain("unity_surface");
+		expect(snapshot).toContain("id=pause");
+		expect(
+			formatScreenSnapshot([
+				{
+					type: "View",
+					label: "UnityView",
+					id: "unity_surface",
+					x: 0,
+					y: 0,
+					width: 1000,
+					height: 1000,
+				},
+			]),
+		).toContain("full-screen canvas");
+	});
+});
+
+describe("canvas screens", () => {
+	test("treats a game surface as a canvas and keeps a form as a native screen", () => {
+		expect(
+			isCanvasScreen([
+				{
+					type: "View",
+					label: "UnityView",
+					id: "unity_surface",
+					x: 0,
+					y: 0,
+					width: 1000,
+					height: 1000,
+				},
+			]),
+		).toBe(true);
+		expect(
+			isCanvasScreen([
+				{ type: "Field", label: "Email", id: "email", x: 100, y: 200, width: 800, height: 60 },
+				{
+					type: "Field",
+					label: "Password",
+					id: "password",
+					x: 100,
+					y: 300,
+					width: 800,
+					height: 60,
+				},
+				{ type: "Button", label: "Login", id: "login", x: 100, y: 400, width: 800, height: 60 },
+			]),
+		).toBe(false);
+	});
+
+	test("treats a full-screen surface as a game and keeps a labeled button", () => {
+		expect(
+			isGameSurface([
+				{
+					type: "View",
+					label: "UnityView",
+					id: "unity_surface",
+					x: 0,
+					y: 0,
+					width: 1000,
+					height: 1000,
+				},
+			]),
+		).toBe(true);
+		expect(
+			isGameSurface([
+				{
+					type: "Application",
+					label: "App",
+					x: 0,
+					y: 0,
+					width: 1000,
+					height: 1000,
+				},
+				{
+					type: "Button",
+					label: "Login",
+					id: "login_btn",
+					x: 100,
+					y: 400,
+					width: 120,
+					height: 40,
+				},
+			]),
+		).toBe(false);
+	});
+
+	test("keeps the screenshot point when the model also names the full-screen surface", () => {
+		const decision = releaseCanvasPoint(
+			{
+				type: "tap",
+				id: "unity_surface",
+				x: 180,
+				y: 640,
+				reason: "Tap play",
+				thoughts: "The play button is on the left of the board",
+			},
+			[
+				{
+					type: "View",
+					label: "UnityView",
+					id: "unity_surface",
+					x: 0,
+					y: 0,
+					width: 1000,
+					height: 1000,
+				},
+			],
+		);
+		expect(decision.id).toBeUndefined();
+		expect(decision.x).toBe(180);
+		expect(decision.y).toBe(640);
+	});
+
+	test("recognises a game from app context and drops tree targets", () => {
+		expect(isGameApp("Cash Giraffe is a mobile game. HUD: play is the green button.")).toBe(true);
+		expect(isGameApp("Rewards app", "Bottom nav: Discover / My Games / Rewards")).toBe(false);
+		const tap = forceScreenshotTap({
+			type: "tap",
+			id: "unity_surface",
+			label: "Play",
+			x: 180,
+			y: 640,
+			reason: "Tap play",
+			thoughts: "Play is on the left",
+		});
+		expect(tap.id).toBeUndefined();
+		expect(tap.label).toBeUndefined();
+		expect(tap.x).toBe(180);
+		expect(
+			forceScreenshotTap({
+				type: "tap",
+				label: "Allow",
+				reason: "Permission",
+				thoughts: "System dialog",
+			}).label,
+		).toBe("Allow");
+	});
+
+	test("computes the tap from the named cell and ignores a guessed point", () => {
+		const tap = applyGridPoint({
+			type: "tap",
+			x: 12,
+			y: 34,
+			col: 1,
+			row: 2,
+			qx: 0,
+			qy: 4,
+			reason: "Tap play",
+			thoughts: "Play is in cell 1-2",
+		});
+		expect(tap.x).toBe(110);
+		expect(tap.y).toBe(290);
+		expect(
+			applyGridPoint({
+				type: "tap",
+				x: 12,
+				y: 34,
+				col: 350,
+				row: 6,
+				reason: "Guessed",
+				thoughts: "col is not a cell",
+			}),
+		).toMatchObject({ x: 12, y: 34 });
+		expect(
+			gridPointMissing({
+				type: "tap",
+				x: 12,
+				y: 34,
+				reason: "Guessed",
+				thoughts: "no cell",
+			}),
+		).toBe(true);
+		expect(
+			gridPointMissing({
+				type: "tap",
+				label: "Allow",
+				reason: "Permission",
+				thoughts: "System dialog",
+			}),
+		).toBe(false);
+	});
+
+	test("a screenshot-only step sends no tree and asks for x,y", () => {
+		const prompt = formatDecidePrompt({
+			appContext: "Rewards app",
+			caseTitle: "Open settings",
+			instructions: "Tap the gear",
+			expectedResult: "Settings opens",
+			stepIndex: 0,
+			screenSnapshot: "(ignored)",
+			screenshotOnly: true,
+		});
+		expect(prompt).toContain("No accessibility tree is attached");
+		expect(prompt).toContain("x,y");
+		expect(prompt).toContain("Do not send id");
+		expect(prompt).not.toContain("Screen snapshot");
+		expect(prompt).not.toContain("(ignored)");
+		expect(prompt).not.toContain("magenta grid");
+	});
+
+	test("Grid mode adds the cell contract to a screenshot-only step", () => {
+		const prompt = formatDecidePrompt({
+			appContext: "This is a game",
+			caseTitle: "Level 1",
+			instructions: "Tap play",
+			expectedResult: "The level starts",
+			stepIndex: 0,
+			screenshotOnly: true,
+			coordGrid: true,
+		});
+		expect(prompt).toContain("Do not send x or y");
+		expect(prompt).toContain("col and row");
+		expect(prompt).not.toContain("Screen snapshot");
+	});
+
+	test("a tree step still attaches the Screen", () => {
+		const prompt = formatDecidePrompt({
+			appContext: "Rewards app",
+			caseTitle: "Open settings",
+			instructions: "Tap the gear",
+			expectedResult: "Settings opens",
+			stepIndex: 0,
+			screenSnapshot: "  10,  20  80x40 id=gear  Settings",
+		});
+		expect(prompt).toContain("Screen snapshot");
+		expect(prompt).toContain("id=gear");
+	});
+});
+
+describe("VISION_SYSTEM_PROMPT", () => {
+	test("offers x,y and system labels, and never the tree or ids", () => {
+		expect(VISION_SYSTEM_PROMPT).toContain('{"type":"tap","x":0-1000,"y":0-1000');
+		expect(VISION_SYSTEM_PROMPT).toContain('"label":"Allow"');
+		expect(VISION_SYSTEM_PROMPT).toContain("Do not send id");
+		expect(VISION_SYSTEM_PROMPT).not.toContain('"id":"');
+		expect(VISION_SYSTEM_PROMPT).not.toContain('"description":');
+		expect(VISION_SYSTEM_PROMPT).not.toContain("screen snapshots");
+		expect(VISION_SYSTEM_PROMPT).toContain("Textfield input and keyboard handling");
+		expect(VISION_SYSTEM_PROMPT).toContain("magenta grid");
+	});
+
+	test("the tree prompt keeps its structural guidance", () => {
+		expect(SYSTEM_PROMPT).toContain("Structural context (screen snapshot)");
+		expect(SYSTEM_PROMPT).not.toContain("magenta grid");
+	});
+});
+
+describe("screenshot points", () => {
+	test("a tap that lost its label to the screenshot rule has no point", () => {
+		const forced = forceScreenshotTap({
+			type: "tap",
+			label: "Login",
+			reason: "Tap login",
+			thoughts: "The button is labeled Login",
+		});
+		expect(screenshotPointMissing(forced)).toBe(true);
+		expect(
+			screenshotPointMissing({
+				type: "tap",
+				x: 500,
+				y: 800,
+				reason: "Tap login",
+				thoughts: "Button is low on the screen",
+			}),
+		).toBe(false);
+	});
+
+	test("system labels, swipes, and description taps do not need a point", () => {
+		expect(
+			screenshotPointMissing({
+				type: "tap",
+				label: "Allow",
+				reason: "Permission",
+				thoughts: "System sheet",
+			}),
+		).toBe(false);
+		expect(
+			screenshotPointMissing({
+				type: "swipe",
+				direction: "up",
+				reason: "Scroll",
+				thoughts: "More below",
+			}),
+		).toBe(false);
+		expect(
+			screenshotPointMissing({
+				type: "tap",
+				description: "the blue Login button",
+				reason: "Tap login",
+				thoughts: "Grounding",
+			}),
+		).toBe(false);
+	});
+
+	test("forceScreenshotTap drops a stray id from a vision tap", () => {
+		const tap = forceScreenshotTap({
+			type: "tap",
+			id: "login_btn",
+			x: 500,
+			y: 800,
+			reason: "Tap login",
+			thoughts: "Button",
+		});
+		expect(tap.id).toBeUndefined();
+		expect(tap).toMatchObject({ x: 500, y: 800 });
+	});
 });
 
 describe("decisionToActionRequest", () => {
@@ -590,6 +929,18 @@ describe("splitInstructionSteps", () => {
 			splitInstructionSteps("1. Open Settings then\n   find Dark mode.\n2. Toggle it on."),
 		).toEqual(["Open Settings then find Dark mode.", "Toggle it on."]);
 	});
+
+	test("keeps a wrapped paragraph as one instruction", () => {
+		expect(splitInstructionSteps("Tap the paypal button on\nthe rewards screen")).toEqual([
+			"Tap the paypal button on\nthe rewards screen",
+		]);
+	});
+
+	test("splits one instruction per line when they are not a wrapped paragraph", () => {
+		expect(
+			splitInstructionSteps("Open the Settings screen.\nToggle Dark mode on.\nReturn home."),
+		).toEqual(["Open the Settings screen.", "Toggle Dark mode on.", "Return home."]);
+	});
 });
 
 describe("flattenCaseInstructions", () => {
@@ -619,6 +970,22 @@ describe("flattenCaseInstructions", () => {
 	});
 });
 
+describe("formatVerifyPrompt", () => {
+	test("asks only whether the current instruction is satisfied", () => {
+		const prompt = formatVerifyPrompt({
+			caseTitle: "Payout",
+			instructions: "Tap confirm",
+			expectedResult: "Payout success",
+			instructionOrdinal: 3,
+			instructionCount: 3,
+		});
+		expect(prompt).toContain("Instruction to verify: Tap confirm");
+		expect(prompt).toContain("Payout success");
+		expect(prompt).toContain("Instruction 3 of 3");
+		expect(prompt).not.toContain("do ONLY this");
+	});
+});
+
 describe("formatDecidePrompt", () => {
 	test("sends only the current instruction and hides later ones", () => {
 		const prompt = formatDecidePrompt({
@@ -641,6 +1008,42 @@ describe("formatDecidePrompt", () => {
 		expect(prompt).toContain(
 			"Decide whether to use x,y coordinates or an id based on both sources.",
 		);
+	});
+
+	test("does not replay every earlier instruction once the case is long", () => {
+		const completed = Array.from(
+			{ length: 15 },
+			(_, index) => `Unique step ${index} secret-${index}`,
+		);
+		const prompt = formatDecidePrompt({
+			appContext: "Cash Giraffe",
+			caseTitle: "Payout",
+			instructions: "Tap confirm",
+			expectedResult: "Payout success",
+			stepIndex: 20,
+			instructionOrdinal: 16,
+			instructionCount: 20,
+			completedInstructions: completed,
+			screenSnapshot: "(empty tree)",
+			coordGrid: true,
+		});
+		expect(prompt).toContain("Current instruction (do ONLY this): Tap confirm");
+		expect(prompt).toContain("Again, do ONLY this: Tap confirm");
+		expect(prompt).toContain("Each cell is labeled in its top-left corner as column-row");
+		expect(prompt).toContain("Do not send x or y");
+		const withoutGrid = formatDecidePrompt({
+			appContext: "Cash Giraffe",
+			caseTitle: "Payout",
+			instructions: "Tap confirm",
+			expectedResult: "Payout success",
+			stepIndex: 0,
+			screenSnapshot: "(empty tree)",
+		});
+		expect(withoutGrid).not.toContain("magenta grid");
+		expect(prompt).toContain("12 earlier instructions already done");
+		expect(prompt).toContain("secret-14");
+		expect(prompt).not.toContain("secret-0");
+		expect(prompt).not.toContain("secret-11");
 	});
 
 	test("injects app knowledge when present and omits the section when absent", () => {

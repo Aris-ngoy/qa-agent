@@ -19,6 +19,10 @@ Keep case instructions at goal level: "Complete level 1" rather than pixel-perfe
 
 For coding-agent debug loops, `yoqa screen` may be sparse. Fall back to `yoqa screenshot` and description grounding more often than in native form-based apps.
 
+Autonomous runs are screenshot-first for every app: the agent sees the screenshot and the instruction, and names where to tap as `x,y`. It does not read the accessibility tree unless you start the run with `--screen-mode tree`.
+
+Say that the app is a game in app context (for example "This is a mobile game"). The run then starts with a labeled grid drawn on the screenshot, and the model names the cell (`col`, `row`) and where inside the cell the control sits (`qx`, `qy`). Even without that, a case that taps twice in a row with no visible change switches to the grid for the rest of the case. A full-screen game view is not used as a tap target.
+
 ## Timing
 
 Games animate quickly. Expect occasional misses on short-lived UI; add explicit waits in instructions ("wait until the reward chest appears") or break flows into smaller goals.

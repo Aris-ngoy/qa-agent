@@ -29,8 +29,20 @@ _Avoid_: Appium Runtime, WebDriver hub (generic)
 ### Screen & action
 
 **Screen**:
-A reading of the device UI for agents: cleaned element tree with relative coordinates 0–1000, or the raw accessibility tree when full fidelity is requested.
+A reading of the device UI for agents: cleaned element tree with relative coordinates 0–1000, or the raw accessibility tree when full fidelity is requested. The built-in Run agent does not see a Screen unless the Run opts into tree Screen mode.
 _Avoid_: page source (Appium term alone), DOM
+
+**Screen mode**:
+How a Run presents the device to the agent when it decides. _Vision_ (the default) shows only the screenshot with the instruction; the agent names points by x,y. _Tree_ (opt-in per Run) also attaches the Screen.
+_Avoid_: perception mode, input mode
+
+**Grid mode**:
+A way of presenting the screenshot in which a labeled grid is drawn on it and the agent names a cell and a position inside it instead of raw x,y. A case starts in Grid mode for a game, and is escalated into it from Vision when taps stop having any visible effect.
+_Avoid_: game mode (games are one trigger, not the definition), overlay
+
+**Escalation**:
+The one-way, per-case switch from plain x,y to Grid mode after two consecutive x,y taps leave the screenshot unchanged. It is recorded on the step that triggered it.
+_Avoid_: fallback (implies going back), retry
 
 **Grounding**:
 Mapping a natural-language element description to coordinates on the current Screen / screenshot.
@@ -51,7 +63,7 @@ A Provider that can decide the next Action or perform Grounding from a screensho
 _Avoid_: any Provider with an API key
 
 **Decide**:
-A single vision completion by a Vision-capable Provider that maps the current Screen, screenshot, and one instruction to the next Action.
+A single vision completion by a Vision-capable Provider that maps the current screenshot and one instruction (plus the Screen, only in tree Screen mode) to the next Action.
 _Avoid_: LLM call, inference, step (Run timeline)
 
 ### Catalog
