@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { homedir } from "node:os";
+import { mkdtemp, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RuntimeHost, SpawnedProcess } from "./host";
+import { type RuntimeHost, type SpawnedProcess, bunHost } from "./host";
 import { createAppiumRuntime } from "./runtime";
 
 const NODE = "/usr/local/bin/node";
@@ -56,6 +57,8 @@ type SystemWorld = {
 	paths: Set<string>;
 	spawned: boolean;
 	busyPorts: Set<number>;
+	systemAppium: boolean;
+	managedInstalled: boolean;
 };
 
 function systemHost(world: SystemWorld): RuntimeHost {
@@ -66,10 +69,20 @@ function systemHost(world: SystemWorld): RuntimeHost {
 				const name = rest[0];
 				if (name === "node") return commandResult(`${NODE}\n`);
 				if (name === "npm") return commandResult(`${NPM}\n`);
-				if (name === "appium") return commandResult(`${APPIUM}\n`);
+				if (name === "appium" && world.systemAppium) return commandResult(`${APPIUM}\n`);
 				return commandResult("", 1);
 			}
+			if (bin === NPM && rest[0] === "install") {
+				world.managedInstalled = true;
+				return commandResult("added appium");
+			}
+			const managedBin = join(homedir(), ".yoqa", "runtime", "node_modules", "appium", "index.js");
 			if (command.includes("-v") && !command.includes("driver")) {
+				if (command.includes(managedBin)) {
+					return world.managedInstalled
+						? commandResult("3.5.2\n")
+						: commandResult("", 127, "not found");
+				}
 				if (command.includes(APPIUM)) return commandResult("3.5.2\n");
 				if (command.includes(NODE) || bin === "node") return commandResult("v22.20.0\n");
 			}
@@ -147,6 +160,8 @@ function world(partial?: Partial<SystemWorld>): SystemWorld {
 		paths: new Set([NODE, NPM, XCODE]),
 		spawned: false,
 		busyPorts: new Set(),
+		systemAppium: true,
+		managedInstalled: false,
 		...partial,
 	};
 }
@@ -157,6 +172,16 @@ const pinned = {
 };
 
 describe("Appium Runtime", () => {
+	test("the real host treats a directory as present", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "yoqa-host-"));
+		try {
+			expect(await bunHost.exists(dir)).toBe(true);
+			expect(await bunHost.exists(join(dir, "missing"))).toBe(false);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
 	test("status is not ready when Node and Appium are missing", async () => {
 		const runtime = createAppiumRuntime(emptyHost());
 		const status = await runtime.getStatus();
@@ -250,6 +275,17 @@ describe("Appium Runtime", () => {
 		const prep = await runtime.readDevicePrep(deviceId);
 		expect(prep?.bundleId).toBe(bundleId);
 		expect(prep?.installedAt).toBe("2026-09-01T00:00:00.000Z");
+	});
+
+	test("ensure installs managed Appium when none is on PATH, then both drivers", async () => {
+		const runtime = createAppiumRuntime(systemHost(world({ systemAppium: false })));
+
+		const result = await runtime.ensure();
+
+		expect(result.ready).toBe(true);
+		expect(result.status.appiumSource).toBe("managed");
+		expect(result.status.appiumVersion).toBe("3.5.2");
+		expect(result.message).toBe("Installed missing Appium drivers");
 	});
 
 	test("ensure installs both platform drivers and reports ready", async () => {

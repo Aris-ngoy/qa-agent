@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { androidProcessEnv, ensureAndroidSdkEnv } from "./android-sdk";
 import { ensureHostToolPath } from "./host-path";
@@ -42,7 +42,8 @@ export type RuntimeHost = {
 
 async function pathExists(path: string): Promise<boolean> {
 	try {
-		return await Bun.file(path).exists();
+		await stat(path);
+		return true;
 	} catch {
 		return false;
 	}
