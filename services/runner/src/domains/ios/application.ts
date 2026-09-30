@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import wdaAppIconFile from "../../../assets/wda-icon-1024.png" with { type: "file" };
+import { currentHost } from "../appium/host-context";
 import {
 	type DevicePrepRecord,
 	type IosWdaInstallParams,
@@ -30,22 +31,7 @@ async function runCommand(
 	command: string[],
 	options?: { env?: Record<string, string>; cwd?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-	try {
-		const proc = Bun.spawn(command, {
-			cwd: options?.cwd,
-			env: options?.env ? { ...process.env, ...options.env } : process.env,
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-			proc.exited,
-		]);
-		return { stdout, stderr, exitCode };
-	} catch {
-		return { stdout: "", stderr: `failed to spawn: ${command[0]}`, exitCode: 127 };
-	}
+	return currentHost().run(command, options);
 }
 
 function tail(text: string, maxChars = 4_000): string {
@@ -72,12 +58,7 @@ function summarizeXcodebuildFailure(stdout: string, stderr: string): string {
 }
 
 async function pathExists(path: string): Promise<boolean> {
-	try {
-		await stat(path);
-		return true;
-	} catch {
-		return false;
-	}
+	return currentHost().exists(path);
 }
 
 /**
@@ -372,16 +353,17 @@ async function installWdaApp(deviceId: string, appPath: string): Promise<void> {
 }
 
 async function persistDevicePrep(record: DevicePrepRecord): Promise<void> {
-	await mkdir(DEVICE_PREP_DIR, { recursive: true });
+	await currentHost().mkdir(DEVICE_PREP_DIR);
 	const path = join(DEVICE_PREP_DIR, `${record.deviceId}.json`);
-	await writeFile(path, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+	await currentHost().writeText(path, `${JSON.stringify(record, null, 2)}\n`);
 }
 
 /** Load prep metadata written by {@link installWdaOnDevice}, if present. */
 export async function loadDevicePrep(deviceId: string): Promise<DevicePrepRecord | null> {
 	const path = join(DEVICE_PREP_DIR, `${deviceId}.json`);
 	try {
-		const text = await Bun.file(path).text();
+		const text = await currentHost().readText(path);
+		if (!text) return null;
 		const parsed = JSON.parse(text) as DevicePrepRecord;
 		if (!parsed?.deviceId || !parsed?.bundleId || !parsed?.derivedDataPath) return null;
 		return parsed;
@@ -436,7 +418,9 @@ export async function isWdaInstalledOnDevice(deviceId: string, bundleId: string)
 
 		let parsed: DevicectlAppsJson;
 		try {
-			parsed = JSON.parse(await Bun.file(jsonPath).text()) as DevicectlAppsJson;
+			const text = await currentHost().readText(jsonPath);
+			if (!text) return false;
+			parsed = JSON.parse(text) as DevicectlAppsJson;
 		} catch {
 			return false;
 		}

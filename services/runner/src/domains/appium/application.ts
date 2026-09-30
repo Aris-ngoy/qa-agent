@@ -1,9 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { DevicePlatform, SetupPlatformRequest } from "@yoqa/runner-client";
 import { installWdaOnDevice } from "../ios/application";
-import { ensureHostToolPath } from "./host-path";
+import { currentHost } from "./host-context";
 import {
 	type AppiumDriverName,
 	MANAGED_APPIUM_VERSION,
@@ -23,34 +22,14 @@ const MANAGED_APPIUM_BIN = join(MANAGED_RUNTIME_DIR, "node_modules", "appium", "
 const MANAGED_PACKAGE_JSON = join(MANAGED_RUNTIME_DIR, "package.json");
 
 async function pathExists(path: string): Promise<boolean> {
-	try {
-		return await Bun.file(path).exists();
-	} catch {
-		return false;
-	}
+	return currentHost().exists(path);
 }
 
 async function runCommand(
 	command: string[],
 	options?: { env?: Record<string, string>; cwd?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-	ensureHostToolPath();
-	try {
-		const proc = Bun.spawn(command, {
-			cwd: options?.cwd,
-			env: options?.env ? { ...process.env, ...options.env } : process.env,
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-			proc.exited,
-		]);
-		return { stdout, stderr, exitCode };
-	} catch {
-		return { stdout: "", stderr: `failed to spawn: ${command[0]}`, exitCode: 127 };
-	}
+	return currentHost().run(command, options);
 }
 
 async function which(bin: string): Promise<string | null> {
@@ -96,7 +75,6 @@ async function readNodeVersion(nodeBin: string): Promise<string | null> {
  * for a Node that Appium will accept (avoids silent attach to foreign Appium).
  */
 export async function resolveAppiumNodeBin(): Promise<string> {
-	ensureHostToolPath();
 	const home = homedir();
 	const candidates: string[] = [];
 
@@ -108,20 +86,12 @@ export async function resolveAppiumNodeBin(): Promise<string> {
 
 	const nvmDir = process.env.NVM_DIR ?? join(home, ".nvm");
 	const asdfDir = process.env.ASDF_DATA_DIR ?? join(home, ".asdf");
-	for (const root of [
+	const entries = await currentHost().listNodeBins([
 		join(nvmDir, "versions", "node"),
 		join(asdfDir, "installs", "nodejs"),
 		join(home, ".local", "share", "fnm", "node-versions"),
-	]) {
-		try {
-			const entries = await Array.fromAsync(
-				new Bun.Glob("*/bin/node").scan({ cwd: root, absolute: true }),
-			);
-			candidates.push(...entries);
-		} catch {
-			// directory may not exist
-		}
-	}
+	]);
+	candidates.push(...entries);
 
 	const seen = new Set<string>();
 	for (const candidate of candidates) {
@@ -176,7 +146,7 @@ async function writeManagedPackageJson(): Promise<void> {
 			appium: MANAGED_APPIUM_VERSION,
 		},
 	};
-	await writeFile(MANAGED_PACKAGE_JSON, `${JSON.stringify(body, null, 2)}\n`, "utf8");
+	await currentHost().writeText(MANAGED_PACKAGE_JSON, `${JSON.stringify(body, null, 2)}\n`);
 }
 
 function managedAppiumEnv(): Record<string, string> {
@@ -190,8 +160,8 @@ function managedAppiumEnv(): Record<string, string> {
 async function ensureManagedAppium(): Promise<ResolvedAppium> {
 	const nodeBin = await resolveAppiumNodeBin();
 	const npmBin = await resolveNpmBin(nodeBin);
-	await mkdir(MANAGED_RUNTIME_DIR, { recursive: true });
-	await mkdir(MANAGED_APPIUM_HOME, { recursive: true });
+	await currentHost().mkdir(MANAGED_RUNTIME_DIR);
+	await currentHost().mkdir(MANAGED_APPIUM_HOME);
 	await writeManagedPackageJson();
 
 	const env = managedAppiumEnv();
@@ -510,7 +480,6 @@ async function probeHostTools(): Promise<{ xcode: RuntimeCheck; adb: RuntimeChec
 
 /** Read-only readiness snapshot (does not install anything). */
 export async function getRuntimeStatus(): Promise<RuntimeStatus> {
-	ensureHostToolPath();
 	let nodePath: string | null = null;
 	let npmPath: string | null = null;
 	try {

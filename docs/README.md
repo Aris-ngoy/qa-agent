@@ -19,6 +19,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 |-----|--------|
 | [architecture/current-layout.md](./architecture/current-layout.md) | Runner domain layout + config stores |
 | [architecture/deepening.md](./architecture/deepening.md) | Device Session / Provider / Case executor deepen |
+| [architecture/appium-runtime.md](./architecture/appium-runtime.md) | Appium Runtime as one module |
 | [architecture/deepen-phases-3-5.md](./architecture/deepen-phases-3-5.md) | Provider catalog, case executor, script parse unify |
 | [adr/0001-device-session-ownership.md](./adr/0001-device-session-ownership.md) | Device Session under `devices/`, exclusive per device |
 | [adr/0002-provider-vision-capability.md](./adr/0002-provider-vision-capability.md) | Provider adapters + runner catalog |

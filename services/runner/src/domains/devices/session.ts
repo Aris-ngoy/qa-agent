@@ -4,8 +4,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 import { type Browser, remote } from "webdriverio";
-import { APPIUM_HOST, ensureAppiumServer } from "../appium/server";
-import { loadDevicePrep } from "../ios/application";
+import { ensureServer, readDevicePrep } from "../appium/runtime";
+import { APPIUM_HOST } from "../appium/server";
 import { resolveNativeAlert } from "./android-alerts";
 import {
 	type PointerSize,
@@ -275,7 +275,7 @@ async function buildW3cCapabilities(
 		}
 		const physical = looksLikePhysicalIosUdid(options.deviceId);
 		if (physical) {
-			const prep = await loadDevicePrep(options.deviceId);
+			const prep = await readDevicePrep(options.deviceId);
 			if (!prep) {
 				throw new Error(
 					`iOS device ${options.deviceId} is not prepared. Run device setup so WebDriverAgent is installed before starting a run.`,
@@ -576,7 +576,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 export async function createDeviceSession(options: SessionOptions): Promise<DeviceSession> {
 	await releaseExistingSession(options.deviceId);
 
-	const port = await ensureAppiumServer();
+	const port = await ensureServer();
 	const mjpegPort = await pickMjpegPort();
 	const capabilities = await buildW3cCapabilities(options, mjpegPort);
 

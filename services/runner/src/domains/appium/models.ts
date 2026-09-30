@@ -66,6 +66,25 @@ export type RuntimeEnsureResult = {
 	message: string;
 };
 
+export type ManagedAppiumInfo = {
+	id: string;
+	kind: "appium";
+	ownership: "managed";
+	pid: number;
+	port: number;
+	startedAt: number;
+	status: "running";
+};
+
+export type ForeignAppiumInfo = {
+	id: string;
+	kind: "appium";
+	ownership: "foreign";
+	pid: number;
+	port: number;
+	status: "running";
+};
+
 export function driverForPlatform(platform: DevicePlatform): AppiumDriverName {
 	return platform === "ios" ? "xcuitest" : "uiautomator2";
 }

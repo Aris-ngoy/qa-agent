@@ -7,8 +7,8 @@ Target layout after the architecture grill (2026-08). See `CONTEXT.md` for vocab
 | Domain | Owns |
 |--------|------|
 | `devices/` | Device listing/prep, **Device Session** (create + Active Session), Screen (`getScreen`), Action (`performAction` + Grounding), MJPEG proxy |
-| `appium/` | Appium Runtime install + **Appium Server** `ensureServer` |
-| `ios/` | WDA / signing prep used when creating sessions |
+| `appium/` | **Appium Runtime** (status, ensure, platform setup, physical iOS prep, listening Appium Server). Device Session only attaches |
+| `ios/` | WebDriverAgent build steps used inside Appium Runtime |
 | `providers/` | Provider adapters (settings + optional `vision.completeObject`), secrets, catalog for UI |
 | `runs/` | Run orchestration, **Case executor**, agent prompts/schema, Case Script parse consumers |
 | `catalog/` | Apps, cases, flows, tags |
