@@ -1,0 +1,23 @@
+{
+	"name": "yoqa-video",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Yoqa product walkthrough rendered with Remotion.",
+	"scripts": {
+		"studio": "remotion studio src/index.ts",
+		"render": "remotion render src/index.ts YoqaWalkthrough out/yoqa-walkthrough.mp4"
+	},
+	"dependencies": {
+		"@remotion/cli": "4.0.530",
+		"@remotion/google-fonts": "4.0.530",
+		"react": "19.2.8",
+		"react-dom": "19.2.8",
+		"remotion": "4.0.530"
+	},
+	"devDependencies": {
+		"@types/react": "19.2.7",
+		"@types/react-dom": "19.2.3",
+		"ffmpeg-static": "5.2.0",
+		"typescript": "5.9.3"
+	}
+}
