@@ -1522,6 +1522,10 @@ runsCmd
 	.option("--build-id <id>", "Registered build id to install before run")
 	.option("--build-path <path>", "Absolute build path to register + install")
 	.option("--mode <mode>", "auto | script | agent (default: auto)")
+	.option(
+		"--screen-mode <mode>",
+		"vision | tree — what the agent sees: screenshot only, or also the accessibility tree (default: vision)",
+	)
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.option("--wait", "Wait until the run finishes (passed / errored / cancelled)")
@@ -1543,6 +1547,7 @@ runsCmd
 				buildId?: string;
 				buildPath?: string;
 				mode?: string;
+				screenMode?: string;
 				json?: boolean;
 				wait?: boolean;
 				timeout?: string;
@@ -1590,6 +1595,14 @@ runsCmd
 					throw new Error("--mode must be auto, script, or agent");
 				}
 
+				const screenMode =
+					options.screenMode === "vision" || options.screenMode === "tree"
+						? options.screenMode
+						: undefined;
+				if (options.screenMode && !screenMode) {
+					throw new Error("--screen-mode must be vision or tree");
+				}
+
 				let run = await c.createRun({
 					appId: resolved.id,
 					caseIds,
@@ -1598,6 +1611,7 @@ runsCmd
 					buildId: options.buildId,
 					buildPath: options.buildPath,
 					executionMode,
+					screenMode,
 				});
 				if (options.wait) {
 					try {

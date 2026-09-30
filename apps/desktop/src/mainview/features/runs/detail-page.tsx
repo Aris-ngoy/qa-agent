@@ -19,6 +19,7 @@ import {
 	formatRunReportHtml,
 	formatRunReportMarkdown,
 	formatStepCommand,
+	readStepCycle,
 	actionSummary as reportActionSummary,
 	stepReasoning as reportStepReasoning,
 	suggestedRunReportBasename,
@@ -141,6 +142,40 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 const TERMINAL_STATUSES = new Set<RunStatus>(["passed", "errored", "cancelled"]);
+
+function verifyLabel(type: string): string {
+	if (type === "verify") return "Passed";
+	if (type === "fail") return "Failed";
+	return "Not yet";
+}
+
+function StepCycle({ action }: { action: unknown }) {
+	const cycle = readStepCycle(action);
+	if (!cycle) return null;
+	const decision = cycle.decision ? actionSummary(cycle.decision) : "—";
+	const decisionReason =
+		typeof cycle.decision?.reason === "string" && cycle.decision.reason.trim()
+			? cycle.decision.reason.trim()
+			: null;
+	return (
+		<div className="mt-1.5 space-y-1 text-body-sm text-on-surface-variant">
+			<p>
+				<span className="font-medium text-on-surface">Action. </span>
+				{cycle.action ? actionSummary(cycle.action) : "Look at the screen"}
+			</p>
+			<p>
+				<span className="font-medium text-on-surface">Decision. </span>
+				{decision}
+				{decisionReason ? ` — ${decisionReason}` : ""}
+			</p>
+			<p>
+				<span className="font-medium text-on-surface">Verify. </span>
+				{verifyLabel(cycle.verify.type)}
+				{cycle.verify.reason ? ` — ${cycle.verify.reason}` : ""}
+			</p>
+		</div>
+	);
+}
 
 function StepAiThoughts({ reason, thoughts }: { reason: string | null; thoughts: string | null }) {
 	const [open, setOpen] = useState(false);
@@ -643,6 +678,7 @@ export function RunDetailPage() {
 									{testSteps.map((step) => {
 										const isSelected = reviewMode && selectedStepId === step.id;
 										const { reason, thoughts } = stepReasoning(step);
+										const cycle = readStepCycle(step.action);
 
 										if (reviewMode) {
 											return (
@@ -676,7 +712,8 @@ export function RunDetailPage() {
 														</button>
 													</div>
 													<div className="ml-9">
-														<StepAiThoughts reason={reason} thoughts={thoughts} />
+														<StepCycle action={step.action} />
+														<StepAiThoughts reason={cycle ? null : reason} thoughts={thoughts} />
 													</div>
 												</li>
 											);
@@ -691,7 +728,8 @@ export function RunDetailPage() {
 													</p>
 													<StepCommand command={stepCommandText(step)} />
 													<StepStatusLabel status={step.ok ? "completed" : "failed"} />
-													<StepAiThoughts reason={reason} thoughts={thoughts} />
+													<StepCycle action={step.action} />
+													<StepAiThoughts reason={cycle ? null : reason} thoughts={thoughts} />
 												</div>
 											</li>
 										);
@@ -719,7 +757,7 @@ export function RunDetailPage() {
 				</section>
 
 				<aside className="flex min-h-[20rem] flex-col gap-3 rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-4 shadow-soft">
-					<p className="text-helper font-medium text-on-surface-variant">Step screenshot</p>
+					<p className="text-helper font-medium text-on-surface-variant">Screenshot</p>
 					<div className="flex min-h-0 flex-1 items-start justify-center">
 						{screenshotUrl ? (
 							<img

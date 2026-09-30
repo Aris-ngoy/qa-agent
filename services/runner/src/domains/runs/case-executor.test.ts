@@ -4,6 +4,7 @@ import type { DeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import type { AgentDecision } from "./agent";
 import { executeAgentCase, executeScriptCase } from "./case-executor";
+import { encodeRgbaPng } from "./coord-grid";
 
 function fakeSession(shotCount = { n: 0 }): DeviceSession {
 	return {
@@ -342,12 +343,15 @@ describe("executeAgentCase", () => {
 
 		expect(result.status).toBe("passed");
 		expect(timeline).toEqual([
+			"append:yoqa action tap --label 'Allow'",
 			"yoqa action tap --label 'Allow'",
 			"perform:tap",
-			"append:yoqa action tap --label 'Allow'",
 			"null",
-			"append:null",
+			"append:yoqa action tap --label 'Allow'",
 		]);
+		expect(timeline.indexOf("yoqa action tap --label 'Allow'")).toBeLessThan(
+			timeline.indexOf("perform:tap"),
+		);
 	});
 
 	it("taps by label and accepts alerts without guessed coordinates", async () => {
@@ -602,6 +606,7 @@ describe("executeAgentCase", () => {
 			catalogCase: emptyCase(),
 			appContext: "demo",
 			auth: fakeAuth(),
+			screenMode: "tree",
 			session: fakeSession(),
 			isAborted: () => false,
 			appendStep: async () => {},
@@ -658,7 +663,7 @@ describe("executeAgentCase", () => {
 		expect(snapshots[0]).toContain("id=login_btn");
 		expect(errors[1]).toContain("missing_id");
 		expect(performed).toEqual([{ kind: "tap", id: "login_btn" }]);
-		expect(result.decisions[0]?.id).toBe("login_btn");
+		expect(result.decisions[0]?.id).toBe("missing_id");
 		expect(result.decisions.map((decision) => decision.type)).toContain("done");
 	});
 
@@ -781,6 +786,7 @@ describe("executeAgentCase", () => {
 			catalogCase: emptyCase(),
 			appContext: "demo",
 			auth: fakeAuth(),
+			screenMode: "tree",
 			session,
 			isAborted: () => false,
 			appendStep: async () => {},
@@ -1093,6 +1099,7 @@ describe("executeAgentCase", () => {
 			}),
 			appContext: "demo",
 			auth: fakeAuth(),
+			screenMode: "tree",
 			session: fakeSession(),
 			isAborted: () => false,
 			appendStep: async () => {},
@@ -1183,6 +1190,7 @@ describe("executeAgentCase", () => {
 			catalogCase: emptyCase(),
 			appContext: "demo",
 			auth: fakeAuth(),
+			screenMode: "tree",
 			session: fakeSession(),
 			isAborted: () => false,
 			appendStep: async () => {},
@@ -1216,5 +1224,717 @@ describe("executeAgentCase", () => {
 
 		expect(result.status).toBe("passed");
 		expect(performed).toEqual([{ kind: "input", id: "search_input", text: "my query\n" }]);
+	});
+
+	it("taps the screenshot point on a game instead of the full-screen surface", async () => {
+		const performed: ActionRequest[] = [];
+		let calls = 0;
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => ({
+				elements: [
+					{
+						type: "View",
+						label: "UnityView",
+						id: "unity_surface",
+						x: 0,
+						y: 0,
+						width: 1000,
+						height: 1000,
+					},
+				],
+			}),
+			decide: async () => {
+				calls += 1;
+				if (calls === 1) {
+					return {
+						type: "tap",
+						id: "unity_surface",
+						x: 180,
+						y: 640,
+						reason: "Tap play",
+						thoughts: "Play is on the left of the board",
+					};
+				}
+				return { type: "done", reason: "done", thoughts: "level started" };
+			},
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(performed).toEqual([{ kind: "tap", x: 180, y: 640 }]);
+	});
+
+	it("screenshots a game and taps x,y without reading yoqa screen", async () => {
+		const performed: ActionRequest[] = [];
+		let screenReads = 0;
+		let calls = 0;
+		let snapshot = "";
+
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "This is a mobile game. Tap the green play button.",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => {
+				screenReads += 1;
+				return {
+					elements: [
+						{
+							type: "Button",
+							label: "Play",
+							id: "play_btn",
+							x: 100,
+							y: 400,
+							width: 200,
+							height: 80,
+						},
+					],
+				};
+			},
+			decide: async (input) => {
+				calls += 1;
+				snapshot = input.screenSnapshot ?? "";
+				if (calls === 1) {
+					return {
+						type: "tap",
+						id: "play_btn",
+						label: "Play",
+						x: 220,
+						y: 610,
+						reason: "Tap play",
+						thoughts: "The green button is left of centre",
+					};
+				}
+				return { type: "done", reason: "done", thoughts: "level started" };
+			},
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(screenReads).toBe(0);
+		expect(snapshot).toContain("no accessibility tree");
+		expect(performed).toEqual([{ kind: "tap", x: 220, y: 610 }]);
+	});
+
+	it("verifies after the decision and does not perform the tap when the instruction already passed", async () => {
+		const order: string[] = [];
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => {
+				order.push("decision");
+				return {
+					type: "tap",
+					x: 180,
+					y: 640,
+					reason: "Tap play",
+					thoughts: "Play is visible",
+				};
+			},
+			verify: async () => {
+				order.push("verify");
+				return {
+					type: "verify",
+					reason: "The level already started",
+					thoughts: "Success text is on screen",
+				};
+			},
+			performAction: async () => {
+				order.push("perform");
+				return { ok: true, kind: "tap" };
+			},
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(order).toEqual(["decision", "verify"]);
+	});
+
+	it("performs the previous decision before the next screenshot, decision, and verify", async () => {
+		const order: string[] = [];
+		let verifyCalls = 0;
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			decide: async () => {
+				order.push("decision");
+				return {
+					type: "tap",
+					x: 10,
+					y: 20,
+					reason: "Tap",
+					thoughts: "button",
+				};
+			},
+			verify: async () => {
+				verifyCalls += 1;
+				order.push("verify");
+				return verifyCalls === 1
+					? { type: "continue", reason: "Not done", thoughts: "Still on the menu" }
+					: { type: "verify", reason: "Done", thoughts: "Result is visible" };
+			},
+			performAction: async () => {
+				order.push("perform");
+				return { ok: true, kind: "tap" };
+			},
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(order).toEqual(["decision", "verify", "perform", "decision", "verify"]);
+	});
+
+	it("sends a coordinate grid when the screen is a canvas", async () => {
+		const png = encodeRgbaPng({
+			width: 40,
+			height: 80,
+			rgba: new Uint8Array(40 * 80 * 4).fill(255),
+		}).toString("base64");
+		let coordGrid = false;
+		let imageBase64 = "";
+		let calls = 0;
+
+		await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			screenMode: "tree",
+			session: {
+				screenshot: async () => ({ path: "/tmp/game.png", base64: png }),
+			} as unknown as DeviceSession,
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => ({ elements: [] }),
+			decide: async (input) => {
+				calls += 1;
+				coordGrid = input.coordGrid === true;
+				imageBase64 = input.imageBase64;
+				return { type: "done", reason: "done", thoughts: "nothing to tap" };
+			},
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(calls).toBe(1);
+		expect(coordGrid).toBe(true);
+		expect(imageBase64).not.toBe(png);
+	});
+
+	it("taps the point computed from the grid cell, not the model's x,y", async () => {
+		const png = encodeRgbaPng({
+			width: 40,
+			height: 80,
+			rgba: new Uint8Array(40 * 80 * 4).fill(255),
+		}).toString("base64");
+		const performed: ActionRequest[] = [];
+		let decides = 0;
+
+		await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "This is a mobile game.",
+			auth: fakeAuth(),
+			session: {
+				screenshot: async () => ({ path: "/tmp/game.png", base64: png }),
+			} as unknown as DeviceSession,
+			isAborted: () => false,
+			appendStep: async () => {},
+			readScreen: async () => ({ elements: [] }),
+			decide: async (input) => {
+				decides += 1;
+				if (input.lastError?.includes("col and row")) {
+					return {
+						type: "tap",
+						col: 1,
+						row: 2,
+						qx: 0,
+						qy: 4,
+						reason: "Tap play",
+						thoughts: "Play is in cell 1-2, low in the cell",
+					};
+				}
+				if (decides > 1) {
+					return { type: "done", reason: "done", thoughts: "The level started" };
+				}
+				return {
+					type: "tap",
+					x: 12,
+					y: 34,
+					reason: "Tap play",
+					thoughts: "Guessed a point on the left",
+				};
+			},
+			verify: async () =>
+				decides < 3
+					? { type: "continue", reason: "Not done", thoughts: "Still on the menu" }
+					: { type: "verify", reason: "Done", thoughts: "The level started" },
+			performAction: async (_session, body) => {
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(performed[0]).toMatchObject({ kind: "tap", x: 110, y: 290 });
+	});
+
+	describe("Screen modes", () => {
+		const plainPng = (fill: number) =>
+			encodeRgbaPng({
+				width: 40,
+				height: 80,
+				rgba: new Uint8Array(40 * 80 * 4).fill(fill),
+			}).toString("base64");
+
+		const tapAt = (x: number, y: number): AgentDecision => ({
+			type: "tap",
+			x,
+			y,
+			reason: "Tap the control",
+			thoughts: "The control is at this point",
+		});
+
+		it("defaults to vision: no Screen is read or sent, and the tap runs from x,y", async () => {
+			const performed: ActionRequest[] = [];
+			let screenReads = 0;
+			let calls = 0;
+			const seen: Array<{ screenshotOnly?: boolean; coordGrid?: boolean; snapshot?: string }> = [];
+
+			const result = await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "Rewards app",
+				auth: fakeAuth(),
+				session: fakeSession(),
+				isAborted: () => false,
+				appendStep: async () => {},
+				readScreen: async () => {
+					screenReads += 1;
+					return {
+						elements: [
+							{
+								type: "Button",
+								label: "Login",
+								id: "login_btn",
+								x: 100,
+								y: 400,
+								width: 200,
+								height: 80,
+							},
+						],
+					};
+				},
+				decide: async (input) => {
+					calls += 1;
+					seen.push({
+						screenshotOnly: input.screenshotOnly,
+						coordGrid: input.coordGrid,
+						snapshot: input.screenSnapshot,
+					});
+					if (calls === 1) {
+						return {
+							type: "tap",
+							id: "login_btn",
+							label: "Login",
+							x: 200,
+							y: 440,
+							reason: "Tap login",
+							thoughts: "Login is the blue button",
+						};
+					}
+					return { type: "done", reason: "done", thoughts: "Logged in" };
+				},
+				performAction: async (_session, body) => {
+					performed.push(body);
+					return { ok: true, kind: body.kind };
+				},
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			expect(result.status).toBe("passed");
+			expect(screenReads).toBe(0);
+			expect(seen[0]?.screenshotOnly).toBe(true);
+			expect(seen[0]?.coordGrid).toBe(false);
+			expect(seen[0]?.snapshot).not.toContain("login_btn");
+			expect(performed).toEqual([{ kind: "tap", x: 200, y: 440 }]);
+		});
+
+		it("tree mode reads the Screen every step and still allows id taps", async () => {
+			const performed: ActionRequest[] = [];
+			let screenReads = 0;
+			let calls = 0;
+			let snapshot = "";
+
+			await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "Rewards app",
+				auth: fakeAuth(),
+				screenMode: "tree",
+				session: fakeSession(),
+				isAborted: () => false,
+				appendStep: async () => {},
+				readScreen: async () => {
+					screenReads += 1;
+					return {
+						elements: [
+							{
+								type: "Button",
+								label: "Login",
+								id: "login_btn",
+								x: 100,
+								y: 400,
+								width: 200,
+								height: 80,
+							},
+							{
+								type: "Button",
+								label: "Help",
+								id: "help_btn",
+								x: 100,
+								y: 500,
+								width: 200,
+								height: 80,
+							},
+							{
+								type: "Button",
+								label: "Back",
+								id: "back_btn",
+								x: 100,
+								y: 600,
+								width: 200,
+								height: 80,
+							},
+						],
+					};
+				},
+				decide: async (input) => {
+					calls += 1;
+					snapshot = input.screenSnapshot ?? "";
+					if (calls === 1) {
+						return {
+							type: "tap",
+							id: "login_btn",
+							reason: "Tap login",
+							thoughts: "Login has an id",
+						};
+					}
+					return { type: "done", reason: "done", thoughts: "Logged in" };
+				},
+				performAction: async (_session, body) => {
+					performed.push(body);
+					return { ok: true, kind: body.kind };
+				},
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			expect(screenReads).toBeGreaterThan(0);
+			expect(snapshot).toContain("id=login_btn");
+			expect(performed).toEqual([{ kind: "tap", id: "login_btn" }]);
+		});
+
+		it("asks again when a vision tap names a control but gives no point", async () => {
+			const performed: ActionRequest[] = [];
+			const errors: Array<string | undefined> = [];
+			let calls = 0;
+
+			await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "Rewards app",
+				auth: fakeAuth(),
+				session: fakeSession(),
+				isAborted: () => false,
+				appendStep: async () => {},
+				decide: async (input) => {
+					calls += 1;
+					errors.push(input.lastError);
+					if (calls === 1) {
+						return {
+							type: "tap",
+							label: "Login",
+							reason: "Tap login",
+							thoughts: "The button says Login",
+						};
+					}
+					if (calls === 2) return tapAt(300, 700);
+					return { type: "done", reason: "done", thoughts: "Logged in" };
+				},
+				performAction: async (_session, body) => {
+					performed.push(body);
+					return { ok: true, kind: body.kind };
+				},
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			expect(errors[1]).toContain("Send x and y");
+			expect(performed).toEqual([{ kind: "tap", x: 300, y: 700 }]);
+		});
+
+		it("starts a game app in Grid mode without escalating", async () => {
+			const steps: Array<{ action: unknown }> = [];
+			let coordGrid: boolean | undefined;
+			const png = plainPng(255);
+
+			await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "This is a mobile game.",
+				auth: fakeAuth(),
+				session: {
+					screenshot: async () => ({ path: "/tmp/game.png", base64: png }),
+				} as unknown as DeviceSession,
+				isAborted: () => false,
+				appendStep: async (step) => {
+					steps.push(step);
+				},
+				decide: async (input) => {
+					coordGrid = input.coordGrid;
+					return { type: "done", reason: "done", thoughts: "Nothing to do" };
+				},
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			expect(coordGrid).toBe(true);
+			expect(JSON.stringify(steps[0]?.action)).not.toContain("escalatedToGrid");
+		});
+
+		it("escalates to Grid mode after two x,y taps leave the screenshot unchanged, and stays there", async () => {
+			const steps: Array<{ idx: number; action: unknown }> = [];
+			const grids: boolean[] = [];
+			const png = plainPng(255);
+			let calls = 0;
+
+			const result = await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "Rewards app",
+				auth: fakeAuth(),
+				session: {
+					screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+				} as unknown as DeviceSession,
+				isAborted: () => false,
+				appendStep: async (step) => {
+					steps.push(step);
+				},
+				decide: async (input) => {
+					calls += 1;
+					grids.push(input.coordGrid === true);
+					if (calls <= 3) return tapAt(500, 500);
+					return { type: "done", reason: "done", thoughts: "Finished" };
+				},
+				verify: async () => ({
+					type: "continue",
+					reason: "Not done",
+					thoughts: "Still on the same screen",
+				}),
+				performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			expect(result.status).toBe("passed");
+			// Taps 1 and 2 changed nothing, so decide 3 is the first one with the grid, and later ones keep it.
+			expect(grids.slice(0, 4)).toEqual([false, false, true, true]);
+			const flagged = steps.filter((step) =>
+				JSON.stringify(step.action).includes('"escalatedToGrid":true'),
+			);
+			expect(flagged.map((step) => step.idx)).toEqual([2]);
+		});
+
+		it("does not escalate when taps change the screenshot", async () => {
+			const grids: boolean[] = [];
+			const shots = [plainPng(255), plainPng(200), plainPng(150), plainPng(100), plainPng(50)];
+			let shotIndex = 0;
+			let calls = 0;
+
+			await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "Rewards app",
+				auth: fakeAuth(),
+				session: {
+					screenshot: async () => {
+						const base64 = shots[Math.min(shotIndex, shots.length - 1)] ?? shots[0] ?? "";
+						shotIndex += 1;
+						return { path: "/tmp/changing.png", base64 };
+					},
+				} as unknown as DeviceSession,
+				isAborted: () => false,
+				appendStep: async () => {},
+				decide: async (input) => {
+					calls += 1;
+					grids.push(input.coordGrid === true);
+					if (calls <= 3) return tapAt(500, 500);
+					return { type: "done", reason: "done", thoughts: "Finished" };
+				},
+				verify: async () => ({
+					type: "continue",
+					reason: "Not done",
+					thoughts: "Progressing",
+				}),
+				performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			expect(grids.every((grid) => grid === false)).toBe(true);
+		});
+
+		it("does not count a swipe between two unchanged taps as consecutive taps", async () => {
+			const grids: boolean[] = [];
+			const png = plainPng(255);
+			const plan: AgentDecision[] = [
+				tapAt(500, 500),
+				{ type: "swipe", direction: "up", reason: "Scroll", thoughts: "More below" },
+				tapAt(500, 500),
+			];
+			let calls = 0;
+
+			await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "Rewards app",
+				auth: fakeAuth(),
+				session: {
+					screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+				} as unknown as DeviceSession,
+				isAborted: () => false,
+				appendStep: async () => {},
+				decide: async (input) => {
+					grids.push(input.coordGrid === true);
+					const next = plan[calls];
+					calls += 1;
+					return next ?? { type: "done", reason: "done", thoughts: "Finished" };
+				},
+				verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
+				performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			expect(grids.every((grid) => grid === false)).toBe(true);
+		});
+
+		it("hints after three waits on an unchanged screen, and not while the screen moves", async () => {
+			const png = plainPng(255);
+			const waitDecision: AgentDecision = {
+				type: "wait",
+				ms: 1000,
+				reason: "Still loading",
+				thoughts: "Preparing to download",
+			};
+
+			const run = async (shots: string[]) => {
+				const errors: Array<string | undefined> = [];
+				let shotIndex = 0;
+				let calls = 0;
+				await executeAgentCase({
+					catalogCase: emptyCase(),
+					appContext: "Rewards app",
+					auth: fakeAuth(),
+					session: {
+						screenshot: async () => {
+							const base64 = shots[Math.min(shotIndex, shots.length - 1)] ?? "";
+							shotIndex += 1;
+							return { path: "/tmp/wait.png", base64 };
+						},
+					} as unknown as DeviceSession,
+					isAborted: () => false,
+					appendStep: async () => {},
+					decide: async (input) => {
+						calls += 1;
+						errors.push(input.lastError);
+						return calls <= 6
+							? waitDecision
+							: { type: "done", reason: "done", thoughts: "Finished" };
+					},
+					verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Waiting" }),
+					performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+					clock: { sleep: async () => {}, now: () => 1 },
+					settleMs: 0,
+				});
+				return errors;
+			};
+
+			const stuck = await run([png]);
+			expect(stuck.slice(0, 3)).toEqual([undefined, undefined, undefined]);
+			expect(stuck[3]).toContain("has not changed after 3 waits");
+			expect(stuck[4]).toContain("has not changed after 4 waits");
+
+			const moving = await run([
+				plainPng(255),
+				plainPng(200),
+				plainPng(150),
+				plainPng(100),
+				plainPng(50),
+				plainPng(25),
+				plainPng(10),
+			]);
+			expect(moving.every((error) => error === undefined)).toBe(true);
+		});
+
+		it("tree mode never escalates on unchanged taps", async () => {
+			const grids: boolean[] = [];
+			const png = plainPng(255);
+			let calls = 0;
+
+			await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "Rewards app",
+				auth: fakeAuth(),
+				screenMode: "tree",
+				session: {
+					screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+				} as unknown as DeviceSession,
+				isAborted: () => false,
+				appendStep: async () => {},
+				readScreen: async () => ({
+					elements: [
+						{ type: "Button", label: "A", id: "a", x: 100, y: 100, width: 200, height: 80 },
+						{ type: "Button", label: "B", id: "b", x: 100, y: 200, width: 200, height: 80 },
+						{ type: "Button", label: "C", id: "c", x: 100, y: 300, width: 200, height: 80 },
+					],
+				}),
+				decide: async (input) => {
+					calls += 1;
+					grids.push(input.coordGrid === true);
+					if (calls <= 4) return tapAt(500, 500);
+					return { type: "done", reason: "done", thoughts: "Finished" };
+				},
+				verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
+				performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			expect(grids.every((grid) => grid === false)).toBe(true);
+		});
 	});
 });

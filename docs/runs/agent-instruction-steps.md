@@ -6,9 +6,9 @@ Stop the vision agent from hallucinating on long catalog cases (e.g. **#8 Payout
 
 ## Plan summary
 
-- Flatten catalog flows into a queue of atomic instructions (numbered / bulleted lists split; a single paragraph stays one step).
-- Each vision call gets **only the current instruction**, completed ones as a short list, and a remaining count. Later instruction text is hidden.
-- `verify` / `done` finishes the current instruction and advances the queue — it does not pass the whole case.
+- Flatten catalog flows into a queue of atomic instructions (numbered / bulleted lists and one line per instruction split; a wrapped paragraph stays one step).
+- Each vision call gets **only the current instruction**, the last three completed instructions, and a remaining count. Earlier finished instructions are counted and omitted so a long case does not replay the whole script. Later instruction text is hidden. The current instruction is repeated after the screen snapshot (tree mode) or the screenshot-only note (the default vision mode).
+- Each step is **action → screenshot → decision → verify**. The action is the previous decision (the first step only looks). The screenshot is taken after that action. The decision chooses the next action from that screenshot. Verify then says whether this instruction is satisfied; a pass does not run the new decision.
 - Rejected: concatenating all flow text into one prompt; treating `verify` as “the test is over”.
 
 ## What shipped

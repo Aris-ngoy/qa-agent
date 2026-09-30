@@ -6,9 +6,37 @@ import {
 	formatRunReportHtml,
 	formatRunReportMarkdown,
 	formatStepCommand,
+	readStepCycle,
 	stepReasoning,
 	suggestedRunReportBasename,
 } from "./run-report";
+
+describe("readStepCycle", () => {
+	test("reads action, decision, and verify off a step", () => {
+		const cycle = readStepCycle({
+			type: "done",
+			reason: "home visible",
+			thoughts: "ok",
+			cycle: {
+				action: { type: "tap", x: 10, y: 20, reason: "Tap play", thoughts: "button" },
+				decision: { type: "done", reason: "home visible", thoughts: "ok" },
+				verify: { type: "verify", reason: "Success text is visible", thoughts: "done" },
+			},
+		});
+		expect(cycle?.action).toMatchObject({ type: "tap", x: 10 });
+		expect(cycle?.verify.type).toBe("verify");
+		expect(
+			actionSummary({
+				type: "done",
+				cycle: {
+					action: { type: "tap", label: "Play" },
+					decision: { type: "done" },
+					verify: { type: "verify", reason: "ok", thoughts: "ok" },
+				},
+			}),
+		).toBe("Tap: Play");
+	});
+});
 
 describe("actionSummary", () => {
 	test("maps known action types", () => {
@@ -256,6 +284,21 @@ describe("per-phase step timing", () => {
 		const markdown = formatRunReportMarkdown(sampleDoc());
 		expect(markdown).not.toContain("Phases:");
 		expect(formatRunReportHtml(sampleDoc())).not.toContain("capture ");
+	});
+});
+
+describe("Screen mode in the report", () => {
+	test("shows the Screen mode of a catalog run in every format", () => {
+		const doc: RunReportDocument = { ...sampleDoc(), screenMode: "vision" };
+		expect(formatRunReportMarkdown(doc)).toContain("| Screen | vision |");
+		expect(formatRunReportGithubSummary(doc)).toContain("| Screen | vision |");
+		expect(formatRunReportHtml(doc)).toContain("Screen");
+		expect(formatRunReportHtml(doc)).toContain("vision");
+	});
+
+	test("omits the Screen row when the run has no Screen mode", () => {
+		expect(formatRunReportMarkdown(sampleDoc())).not.toContain("| Screen |");
+		expect(formatRunReportGithubSummary(sampleDoc())).not.toContain("| Screen |");
 	});
 });
 

@@ -3,6 +3,7 @@ import type {
 	CreateRunRequest,
 	Run,
 	RunExecutionMode,
+	RunScreenMode,
 	RunStatus,
 	RunStep,
 	RunTest,
@@ -100,6 +101,11 @@ function parseRunExecutionMode(value: string | null | undefined): RunExecutionMo
 	return "auto";
 }
 
+/** Rows from before Screen modes existed ran with the tree. */
+function parseRunScreenMode(value: string | null | undefined): RunScreenMode {
+	return value === "vision" ? "vision" : "tree";
+}
+
 function resolveCaseExecutionMode(
 	runMode: RunExecutionMode,
 	hasScript: boolean,
@@ -159,6 +165,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 		buildId: runRow.buildId,
 		status: runRow.status as RunStatus,
 		executionMode: parseRunExecutionMode(runRow.executionMode),
+		screenMode: parseRunScreenMode(runRow.screenMode),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -279,6 +286,7 @@ async function executeAgentCase(input: {
 	appKnowledge?: string;
 	session: DeviceSession;
 	auth: ActiveProviderAuth;
+	screenMode: RunScreenMode;
 	defaultAppId?: string;
 }): Promise<{
 	status: "passed" | "errored" | "cancelled";
@@ -307,6 +315,7 @@ async function executeAgentCase(input: {
 			await setCurrentCommand(input.runTestId, command);
 		},
 		decide: decideNextAction,
+		screenMode: input.screenMode,
 		clock: { sleep, now: () => Date.now() },
 		defaultAppId: input.defaultAppId,
 	});
@@ -321,6 +330,7 @@ async function executeCase(input: {
 	session: DeviceSession;
 	auth: ActiveProviderAuth | null;
 	caseMode: "script" | "agent";
+	screenMode: RunScreenMode;
 	defaultAppId?: string;
 }): Promise<"passed" | "errored" | "cancelled"> {
 	const db = getCatalogDb();
@@ -369,6 +379,7 @@ async function executeCase(input: {
 			appKnowledge: input.appKnowledge,
 			session: input.session,
 			auth: input.auth,
+			screenMode: input.screenMode,
 			defaultAppId: input.defaultAppId,
 		});
 		caseStatus = result.status;
@@ -518,6 +529,7 @@ export async function executeRun(runId: string): Promise<void> {
 				session,
 				auth,
 				caseMode,
+				screenMode: run.screenMode ?? "tree",
 				defaultAppId:
 					run.platform === "ios"
 						? app.iosBundleId || undefined
@@ -604,6 +616,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 	}
 
 	const executionMode: RunExecutionMode = input.executionMode ?? "auto";
+	const screenMode: RunScreenMode = input.screenMode ?? "vision";
 	const catalogCases = [];
 	for (const caseId of uniqueCaseIds) {
 		const catalogCase = await getCase(caseId);
@@ -652,6 +665,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		buildId,
 		status: "queued",
 		executionMode,
+		screenMode,
 		error: null,
 		createdAt: now,
 		startedAt: null,
@@ -737,6 +751,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		buildId: runRow.buildId,
 		status: runRow.status as RunStatus,
 		executionMode: parseRunExecutionMode(runRow.executionMode),
+		screenMode: parseRunScreenMode(runRow.screenMode),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,

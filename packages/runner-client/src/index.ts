@@ -62,6 +62,7 @@ import {
 	type Run,
 	type RunError,
 	type RunExecutionMode,
+	type RunScreenMode,
 	type RunStatus,
 	type RunStep,
 	type RunTest,
@@ -147,6 +148,7 @@ import {
 	runErrorSchema,
 	runExecutionModeSchema,
 	runSchema,
+	runScreenModeSchema,
 	runStatusSchema,
 	runStepSchema,
 	runTestSchema,
@@ -231,6 +233,7 @@ export {
 	runErrorSchema,
 	runExecutionModeSchema,
 	runSchema,
+	runScreenModeSchema,
 	runStatusSchema,
 	runStepSchema,
 	stepPhasesSchema,
@@ -316,6 +319,7 @@ export {
 	type Run,
 	type RunError,
 	type RunExecutionMode,
+	type RunScreenMode,
 	type RunStatus,
 	type RunStep,
 	type StepPhases,
@@ -358,6 +362,7 @@ export {
 	formatRunReportHtml,
 	formatRunReportMarkdown,
 	formatStepCommand,
+	readStepCycle,
 	stepReasoning,
 	suggestedRunReportBasename,
 	type CatalogRunReportMeta,
@@ -366,6 +371,7 @@ export {
 	type RunReportStatus,
 	type RunReportStep,
 	type RunReportTest,
+	type StepCycleView,
 } from "./run-report";
 
 export {

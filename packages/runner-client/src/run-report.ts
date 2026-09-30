@@ -41,6 +41,8 @@ export type RunReportDocument = {
 	deviceLabel: string | null;
 	platform: string | null;
 	executionMode: string | null;
+	/** vision | tree for catalog runs; null for Inspector scripts. */
+	screenMode?: string | null;
 	error: string | null;
 	createdAt: number;
 	startedAt: number | null;
@@ -78,9 +80,34 @@ export type InspectorRunReportInput = {
 	}>;
 };
 
-export function actionSummary(action: unknown): string {
-	if (!action || typeof action !== "object") return "Step";
-	const record = action as Record<string, unknown>;
+export type StepCycleView = {
+	action: Record<string, unknown> | null;
+	decision: Record<string, unknown> | null;
+	verify: { type: string; reason: string | null; thoughts: string | null };
+};
+
+/** Action, decision, and verify stored on one agent step. */
+export function readStepCycle(action: unknown): StepCycleView | null {
+	if (!action || typeof action !== "object" || !("cycle" in action)) return null;
+	const cycle = (action as { cycle?: unknown }).cycle;
+	if (!cycle || typeof cycle !== "object") return null;
+	const record = cycle as Record<string, unknown>;
+	const asRecord = (value: unknown): Record<string, unknown> | null =>
+		value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+	const verify = asRecord(record.verify);
+	if (!verify || typeof verify.type !== "string" || !verify.type) return null;
+	return {
+		action: asRecord(record.action),
+		decision: asRecord(record.decision),
+		verify: {
+			type: verify.type,
+			reason: typeof verify.reason === "string" ? verify.reason : null,
+			thoughts: typeof verify.thoughts === "string" ? verify.thoughts : null,
+		},
+	};
+}
+
+function summarizeActionRecord(record: Record<string, unknown>): string {
 	const type = typeof record.type === "string" ? record.type : "step";
 	if (type === "tap") {
 		if (typeof record.label === "string" && record.label.trim()) return `Tap: ${record.label}`;
@@ -135,6 +162,14 @@ export function actionSummary(action: unknown): string {
 			: "Open URL";
 	}
 	return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+export function actionSummary(action: unknown): string {
+	if (!action || typeof action !== "object") return "Step";
+	const cycle = readStepCycle(action);
+	if (cycle?.action) return summarizeActionRecord(cycle.action);
+	if (cycle?.decision) return summarizeActionRecord(cycle.decision);
+	return summarizeActionRecord(action as Record<string, unknown>);
 }
 
 function optionalTrimmedString(value: unknown): string | undefined {
@@ -310,6 +345,7 @@ export function buildRunReportFromCatalogRun(
 		deviceLabel: meta.deviceLabel ?? null,
 		platform: run.platform,
 		executionMode: run.executionMode,
+		screenMode: run.screenMode ?? null,
 		error: run.error,
 		createdAt: run.createdAt,
 		startedAt: run.startedAt,
@@ -416,6 +452,7 @@ function pngDataUri(base64: string): string {
 
 export function formatRunReportHtml(doc: RunReportDocument): string {
 	const accent = statusAccent(doc.status);
+	const screenRows: Array<[string, string]> = doc.screenMode ? [["Screen", doc.screenMode]] : [];
 	const metaRows: Array<[string, string]> = [
 		["Status", accent.label],
 		["Source", doc.source === "catalog" ? "Catalog run" : "Manual Inspector"],
@@ -423,6 +460,7 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 		["Device", doc.deviceLabel ?? "—"],
 		["Platform", doc.platform ?? "—"],
 		["Mode", doc.executionMode ?? "—"],
+		...screenRows,
 		["Started", formatWhen(doc.startedAt ?? doc.createdAt)],
 		["Finished", formatWhen(doc.finishedAt)],
 		["Duration", formatDuration(doc.startedAt ?? doc.createdAt, doc.finishedAt)],
@@ -573,6 +611,7 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 		`| Device | ${escapeMd(doc.deviceLabel ?? "—")} |`,
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
+		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		`| Started | ${escapeMd(formatWhen(doc.startedAt ?? doc.createdAt))} |`,
 		`| Finished | ${escapeMd(formatWhen(doc.finishedAt))} |`,
 		`| Duration | ${escapeMd(formatDuration(doc.startedAt ?? doc.createdAt, doc.finishedAt))} |`,
@@ -655,6 +694,7 @@ export function formatRunReportGithubSummary(doc: RunReportDocument): string {
 		`| Device | ${escapeMd(doc.deviceLabel ?? "—")} |`,
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
+		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		`| Duration | ${escapeMd(formatDuration(doc.startedAt ?? doc.createdAt, doc.finishedAt))} |`,
 		`| Run ID | \`${doc.id}\` |`,
 		"",

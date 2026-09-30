@@ -110,6 +110,7 @@ function ensureSchema(sqlite: Database): void {
 			build_id TEXT,
 			status TEXT NOT NULL,
 			execution_mode TEXT NOT NULL DEFAULT 'auto',
+			screen_mode TEXT NOT NULL DEFAULT 'tree',
 			error TEXT,
 			created_at INTEGER NOT NULL,
 			started_at INTEGER,
@@ -159,6 +160,7 @@ function ensureSchema(sqlite: Database): void {
 	migrateAppsKnowledge(sqlite);
 	migrateCaseScripts(sqlite);
 	migrateRunExecutionMode(sqlite);
+	migrateRunScreenMode(sqlite);
 	migrateRunCommands(sqlite);
 	migrateRunStepPhases(sqlite);
 }
@@ -201,6 +203,20 @@ function migrateRunExecutionMode(sqlite: Database): void {
 	const testCols = tableColumns(sqlite, "run_tests");
 	if (testCols.size > 0) {
 		addColumnIfMissing(sqlite, "run_tests", "execution_mode", "execution_mode TEXT", testCols);
+	}
+}
+
+/** Rows from before Screen modes existed ran with the tree, so they read back as `tree`. */
+function migrateRunScreenMode(sqlite: Database): void {
+	const runCols = tableColumns(sqlite, "runs");
+	if (runCols.size > 0) {
+		addColumnIfMissing(
+			sqlite,
+			"runs",
+			"screen_mode",
+			"screen_mode TEXT NOT NULL DEFAULT 'tree'",
+			runCols,
+		);
 	}
 }
 
