@@ -12,7 +12,8 @@
 			"**/.turbo/**",
 			"**/build/**",
 			"**/view-transition-types.css",
-			"examples/expo-demo/**"
+			"examples/expo-demo/**",
+			"apps/video/**"
 		]
 	},
 	"formatter": {

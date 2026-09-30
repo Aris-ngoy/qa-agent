@@ -43,6 +43,10 @@ examples/expo-demo/android/
 examples/expo-demo/.expo/
 examples/expo-demo/dist/
 
+# Remotion walkthrough (render output + untrimmed captures)
+apps/video/out/
+apps/video/.capture-scratch/
+
 .cursor/
 .agents/
 .claude/
