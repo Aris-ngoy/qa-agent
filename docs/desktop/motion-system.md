@@ -23,6 +23,7 @@ Add a CSS-first motion system across the Yoqa desktop app: route page transition
 - BootGate splash opacity crossfade before unmount
 - Side menu sliding active pill + badge scale-in
 - Test Cases / Runs list fade-up stagger (first load only)
+- Run detail screenshot crossfade ([`screenshot-crossfade.tsx`](../../apps/desktop/src/mainview/features/runs/screenshot-crossfade.tsx)): a new step's screenshot fades in over the previous one once loaded, instead of remounting from empty. Verify by selecting steps in a finished run, or watching a live run.
 - Play button press scale; live dots use `motion-live-dot` (respects reduced motion)
 
 ## How to verify
