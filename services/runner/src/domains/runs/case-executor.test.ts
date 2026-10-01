@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import type { ActionRequest, CaseScript, CatalogCase, StepPhases } from "@yoqa/runner-client";
+import type {
+	ActionRequest,
+	CaseScript,
+	CatalogCase,
+	ScreenElement,
+	StepPhases,
+} from "@yoqa/runner-client";
 import type { DeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import type { AgentDecision } from "./agent";
@@ -1898,6 +1904,64 @@ describe("executeAgentCase", () => {
 				plainPng(10),
 			]);
 			expect(moving.every((error) => error === undefined)).toBe(true);
+		});
+
+		it("lets a label tap read the tree itself when the step did not (vision and Grid mode)", async () => {
+			const png = plainPng(255);
+			const run = async (extra: { screenMode?: "tree"; appContext?: string }) => {
+				const seen: Array<ScreenElement[] | undefined> = [];
+				let calls = 0;
+				await executeAgentCase({
+					catalogCase: emptyCase(),
+					appContext: extra.appContext ?? "Rewards app",
+					screenMode: extra.screenMode,
+					auth: fakeAuth(),
+					session: {
+						screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+					} as unknown as DeviceSession,
+					isAborted: () => false,
+					appendStep: async () => {},
+					readScreen: async () => ({
+						elements: [
+							{
+								type: "Button",
+								label: "Allow",
+								id: "Allow",
+								x: 400,
+								y: 640,
+								width: 200,
+								height: 80,
+							},
+						],
+					}),
+					decide: async () => {
+						calls += 1;
+						return calls === 1
+							? {
+									type: "tap",
+									label: "Allow",
+									reason: "Dismiss the tracking dialog",
+									thoughts: "System dialog",
+								}
+							: { type: "done", reason: "done", thoughts: "Finished" };
+					},
+					verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
+					performAction: async (_session, body, options) => {
+						seen.push(options?.screenElements);
+						return { ok: true, kind: body.kind };
+					},
+					clock: { sleep: async () => {}, now: () => 1 },
+					settleMs: 0,
+				});
+				return seen;
+			};
+
+			// No tree was read, so no list may be passed: an empty one makes every label "not found".
+			expect(await run({})).toEqual([undefined]);
+			expect(await run({ appContext: "This is a mobile game." })).toEqual([undefined]);
+			// Tree mode did read it, and that list is reused.
+			const tree = await run({ screenMode: "tree" });
+			expect(tree[0]?.[0]?.label).toBe("Allow");
 		});
 
 		it("hints when the same spot is tapped twice with no change, and not for different spots", async () => {
