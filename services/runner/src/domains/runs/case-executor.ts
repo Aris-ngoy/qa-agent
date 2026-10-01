@@ -772,7 +772,11 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		}
 		const actionStarted = clock.now();
 		try {
-			await perform(deps.session, body, { screenElements });
+			// An empty list means the tree was not read this step (vision / Grid mode), not that the
+			// screen has no elements. Passing it would make every label tap fail as "not found".
+			await perform(deps.session, body, {
+				screenElements: screenElements.length > 0 ? screenElements : undefined,
+			});
 		} catch (error) {
 			if (
 				error instanceof ActionNotFoundError &&
