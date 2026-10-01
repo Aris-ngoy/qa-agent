@@ -39,7 +39,7 @@
 		"@ai-sdk/google-vertex": "^5.0.28",
 		"@ai-sdk/groq": "^4.0.13",
 		"@ai-sdk/openai": "^4.0.30",
-		"@ai-sdk/xai": "^4",
+		"@ai-sdk/xai": "^5",
 		"ai": "^7.0.37",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.13.0",
