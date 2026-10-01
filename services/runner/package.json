@@ -51,7 +51,7 @@
 		"@types/bun": "^1.2.18",
 		"@yoqa/runner-client": "workspace:*",
 		"@yoqa/typescript-config": "workspace:*",
-		"drizzle-kit": "^0.31.10",
+		"drizzle-kit": "^0.31.11",
 		"typescript": "^5.9.3"
 	},
 	"publishConfig": {
