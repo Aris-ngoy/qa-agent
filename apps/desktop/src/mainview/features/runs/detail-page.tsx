@@ -571,7 +571,7 @@ export function RunDetailPage() {
 	}
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col gap-5">
+		<div className="flex h-full min-h-0 flex-1 flex-col gap-5">
 			<div className="motion-fade-up flex flex-wrap items-center justify-between gap-3">
 				<p className="text-body-sm text-on-surface-variant">
 					<Link
@@ -645,7 +645,7 @@ export function RunDetailPage() {
 				</p>
 			) : null}
 
-			<div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
+			<div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] lg:grid-rows-[minmax(0,1fr)]">
 				<section className="min-h-0 overflow-y-auto rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-5 shadow-soft">
 					{run.tests.map((test, testIndex) => {
 						const caseLabel = formatCaseLabel(caseNameById.get(test.caseId), test.caseId);
@@ -756,7 +756,7 @@ export function RunDetailPage() {
 					) : null}
 				</section>
 
-				<aside className="flex min-h-[20rem] flex-col gap-3 rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-4 shadow-soft">
+				<aside className="flex min-h-[20rem] flex-col gap-3 lg:overflow-hidden rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-4 shadow-soft">
 					<p className="text-helper font-medium text-on-surface-variant">Screenshot</p>
 					<div className="flex min-h-0 flex-1 items-start justify-center">
 						{screenshotUrl ? (
@@ -766,7 +766,7 @@ export function RunDetailPage() {
 										? "Device screenshot for the selected step"
 										: "Latest device screenshot from the run"
 								}
-								className="motion-fade-in max-h-[min(70vh,40rem)] w-auto max-w-full rounded-2xl object-contain shadow-card"
+								className="motion-fade-in max-h-[min(70vh,40rem)] w-auto max-w-full lg:max-h-full rounded-2xl object-contain shadow-card"
 								key={screenshotUrl}
 								src={screenshotUrl}
 							/>
