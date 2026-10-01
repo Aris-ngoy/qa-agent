@@ -1,6 +1,6 @@
 # Yoqa — Feature Spec & Build Architecture
 
-**Product:** Yoqa (`yoqa.ai`) · **Code name:** `qa-agent`
+**Product:** Yoqa (`yoqa.arisn.dev`) · **Code name:** `qa-agent`
 
 This document is the product design and build architecture for Yoqa: desktop + local runner + Appium + agent skill, with optional cloud later.
 
@@ -584,5 +584,5 @@ Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done
 - [CLI for agents](https://yoqa.arisn.dev/guide/cli-for-agents)
 - [Writing good test cases](https://yoqa.arisn.dev/guide/writing-test-cases)
 - [Docs index](https://yoqa.arisn.dev/llms.txt)
-- [Product site](https://yoqa.ai/)
+- [Product site](https://yoqa.arisn.dev/)
 - Local: [`apps/docs/`](apps/docs/), [`docs/`](docs/)
