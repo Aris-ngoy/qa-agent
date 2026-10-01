@@ -1734,7 +1734,7 @@ describe("executeAgentCase", () => {
 			expect(JSON.stringify(steps[0]?.action)).not.toContain("escalatedToGrid");
 		});
 
-		it("escalates to Grid mode after two x,y taps leave the screenshot unchanged, and stays there", async () => {
+		it("escalates to Grid mode after four x,y taps leave the screenshot unchanged, and stays there", async () => {
 			const steps: Array<{ idx: number; action: unknown }> = [];
 			const grids: boolean[] = [];
 			const png = plainPng(255);
@@ -1754,7 +1754,7 @@ describe("executeAgentCase", () => {
 				decide: async (input) => {
 					calls += 1;
 					grids.push(input.coordGrid === true);
-					if (calls <= 3) return tapAt(500, 500);
+					if (calls <= 5) return tapAt(500, 500);
 					return { type: "done", reason: "done", thoughts: "Finished" };
 				},
 				verify: async () => ({
@@ -1768,12 +1768,12 @@ describe("executeAgentCase", () => {
 			});
 
 			expect(result.status).toBe("passed");
-			// Taps 1 and 2 changed nothing, so decide 3 is the first one with the grid, and later ones keep it.
-			expect(grids.slice(0, 4)).toEqual([false, false, true, true]);
+			// Taps 1–4 changed nothing, so decide 5 is the first one with the grid, and later ones keep it.
+			expect(grids.slice(0, 6)).toEqual([false, false, false, false, true, true]);
 			const flagged = steps.filter((step) =>
 				JSON.stringify(step.action).includes('"escalatedToGrid":true'),
 			);
-			expect(flagged.map((step) => step.idx)).toEqual([2]);
+			expect(flagged.map((step) => step.idx)).toEqual([4]);
 		});
 
 		it("does not escalate when taps change the screenshot", async () => {
@@ -1904,6 +1904,89 @@ describe("executeAgentCase", () => {
 				plainPng(10),
 			]);
 			expect(moving.every((error) => error === undefined)).toBe(true);
+		});
+
+		it("adds the screen tree after two actions that leave the screenshot unchanged", async () => {
+			const buttons = [
+				{ type: "Button", label: "Allow", id: "Allow", x: 400, y: 640, width: 200, height: 80 },
+				{ type: "Button", label: "Close", id: "close", x: 60, y: 90, width: 80, height: 60 },
+			];
+			const run = async (opts: { shots: string[]; appContext?: string; plan: AgentDecision[] }) => {
+				const seen: Array<{ tree: boolean; snapshot: string; error?: string }> = [];
+				const steps: Array<{ action: unknown }> = [];
+				let shotIndex = 0;
+				let calls = 0;
+				await executeAgentCase({
+					catalogCase: emptyCase(),
+					appContext: opts.appContext ?? "Rewards app",
+					auth: fakeAuth(),
+					session: {
+						screenshot: async () => {
+							const base64 = opts.shots[Math.min(shotIndex, opts.shots.length - 1)] ?? "";
+							shotIndex += 1;
+							return { path: "/tmp/assist.png", base64 };
+						},
+					} as unknown as DeviceSession,
+					isAborted: () => false,
+					appendStep: async (step) => {
+						steps.push(step);
+					},
+					readScreen: async () => ({ elements: buttons }),
+					decide: async (input) => {
+						seen.push({
+							tree: input.screenshotOnly !== true,
+							snapshot: input.screenSnapshot ?? "",
+							error: input.lastError,
+						});
+						const next = opts.plan[calls];
+						calls += 1;
+						return next ?? { type: "done", reason: "done", thoughts: "Finished" };
+					},
+					verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
+					performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+					clock: { sleep: async () => {}, now: () => 1 },
+					settleMs: 0,
+				});
+				return { seen, steps };
+			};
+			const swipe: AgentDecision = {
+				type: "swipe",
+				direction: "up",
+				reason: "Scroll",
+				thoughts: "More",
+			};
+
+			// Two unchanged actions of any kind, then the tree arrives with the screenshot.
+			const stuck = await run({ shots: [plainPng(255)], plan: [swipe, swipe, swipe, swipe] });
+			expect(stuck.seen.map((s) => s.tree)).toEqual([false, false, true, true, true]);
+			expect(stuck.seen[2]?.snapshot).toContain("Allow");
+			expect(JSON.stringify(stuck.steps[2]?.action)).toContain('"treeAssist":true');
+
+			// A same-spot tap also gets the repeat hint, worded for the tree.
+			const taps = await run({
+				shots: [plainPng(255)],
+				plan: [tapAt(50, 150), tapAt(50, 150), tapAt(50, 150)],
+			});
+			expect(taps.seen[2]?.tree).toBe(true);
+			expect(taps.seen[2]?.error).toContain("tap it by its id");
+
+			// The screen moving resets the count, and a wait neither counts nor resets it.
+			const moving = await run({
+				shots: [plainPng(255), plainPng(200), plainPng(150), plainPng(100), plainPng(50)],
+				plan: [swipe, swipe, swipe, swipe],
+			});
+			expect(moving.seen.every((s) => !s.tree)).toBe(true);
+			const wait: AgentDecision = { type: "wait", ms: 500, reason: "Load", thoughts: "Loading" };
+			const waited = await run({ shots: [plainPng(255)], plan: [swipe, wait, swipe, swipe] });
+			expect(waited.seen.map((s) => s.tree)).toEqual([false, false, false, true, true]);
+
+			// A known game has no useful tree, so it keeps the grid and never gets one.
+			const game = await run({
+				shots: [plainPng(255)],
+				appContext: "This is a mobile game.",
+				plan: [swipe, swipe, swipe, swipe],
+			});
+			expect(game.seen.every((s) => !s.tree)).toBe(true);
 		});
 
 		it("lets a label tap read the tree itself when the step did not (vision and Grid mode)", async () => {

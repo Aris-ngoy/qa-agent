@@ -242,11 +242,19 @@ export function screenshotPointMissing(decision: AgentDecision): boolean {
  * snaps to the middle of a cell, which can sit far from a small control that is
  * near the cell's edge (run 99fd66c2 tapped 50,150 seven times for a close X at 97,114).
  */
-export function repeatTapHint(x: number, y: number, taps: number, grid: boolean): string {
+export function repeatTapHint(
+	x: number,
+	y: number,
+	taps: number,
+	mode: "vision" | "grid" | "tree",
+): string {
 	const where = `${Math.round(x)},${Math.round(y)}`;
-	const advice = grid
-		? "The control probably sits near the edge of the cell: pick the neighbouring cell, or qx/qy 0 or 4, so the point moves toward it."
-		: "Re-read the screenshot and aim at the exact centre of the control; a small control such as a close X is easy to miss by a few percent.";
+	const advice =
+		mode === "tree"
+			? "A screen snapshot is attached this time: if it lists the control, tap it by its id instead of guessing a point. If it does not, trust the screenshot."
+			: mode === "grid"
+				? "The control probably sits near the edge of the cell: pick the neighbouring cell, or qx/qy 0 or 4, so the point moves toward it."
+				: "Re-read the screenshot and aim at the exact centre of the control; a small control such as a close X is easy to miss by a few percent.";
 	return `You tapped ${where} ${taps} times and the screen did not change, so that point is not on the control. Do not tap it again. ${advice}`;
 }
 
@@ -876,6 +884,7 @@ export function formatDecidePrompt(input: {
 					"Name the centre of the control on that screenshot as x,y (0–1000). Do not send id. Send label only for a system permission or notification button.",
 				]
 			: [
+					"The screenshot is the ground truth. The tree below can miss a system sheet or dialog that covers the app, and can describe the screen underneath it. If they disagree, trust the screenshot.",
 					"Screen snapshot (cleaned accessibility tree, 0–1000 grid, x,y is top-left):",
 					input.screenSnapshot || "(unavailable)",
 					"Look at the attached screenshot image AND the screen snapshot and decide the next action. Decide whether to use x,y coordinates or an id based on both sources. A screenshot is attached.",

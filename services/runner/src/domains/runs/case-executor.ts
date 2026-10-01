@@ -54,7 +54,16 @@ export const MAX_STEPS_PER_CASE = 25;
 /** Let splash / nav transitions settle before the next screenshot. */
 export const POST_ACTION_SETTLE_MS = 800;
 /** Consecutive x,y taps that leave the screenshot unchanged before a case escalates to Grid mode. */
-export const GRID_ESCALATION_TAPS = 2;
+/**
+ * Unchanged x,y taps in a row before Grid mode is switched on for good. Grid is the last
+ * resort: it comes after the tree assist below has had its two steps.
+ */
+export const GRID_ESCALATION_TAPS = 4;
+/**
+ * Unchanged actions in a row (waits aside) before the next decide also gets the screen tree,
+ * on top of the screenshot. Vision mode only: tree mode always has it.
+ */
+export const TREE_ASSIST_ACTIONS = 2;
 /** Consecutive waits on an unchanged screenshot before the agent is told to stop waiting. */
 export const STUCK_WAITS = 3;
 /** Unchanged taps near one spot before the model is told that spot is wrong. */
@@ -824,7 +833,9 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		const screenMode: RunScreenMode = deps.screenMode ?? "vision";
 		// Grid mode: a labeled grid is drawn and the model names a cell. A game starts
 		// there. Any other case is escalated into it, and never leaves it.
-		let gridMode = isGameApp(deps.appContext, deps.appKnowledge);
+		const gameApp = isGameApp(deps.appContext, deps.appKnowledge);
+		let gridMode = gameApp;
+		let unchangedActions = 0;
 		let unchangedPointTaps = 0;
 		let unchangedWaits = 0;
 		let repeatTaps = 0;
@@ -1018,6 +1029,16 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 						escalatedToGrid = true;
 					}
 				}
+				// Any action that leaves the screenshot unchanged counts, whatever it was. A wait is
+				// neither: it is expected not to change the screen, and has its own hint below.
+				if (performed && performed.type !== "wait") {
+					unchangedActions =
+						prevFingerprint != null && fingerprint === prevFingerprint ? unchangedActions + 1 : 0;
+				}
+				// Second opinion: the tree can name a control the screenshot guess keeps missing. A known
+				// game has no useful tree, so it keeps the grid instead.
+				const treeAssist =
+					screenMode === "vision" && !gameApp && unchangedActions >= TREE_ASSIST_ACTIONS;
 				// Waiting on a screen that never changes is a stall, not progress. The model
 				// must be told, because a sheet the tree cannot see may be waiting for a tap.
 				if (performed?.type === "wait") {
@@ -1039,23 +1060,31 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					repeatTaps = 0;
 					lastTapPoint = null;
 				}
+				let tree =
+					omitsTree() && !treeAssist
+						? { snapshot: NO_TREE_SNAPSHOT, elements: [] as ScreenElement[] }
+						: await readCleanedTree(readScreen, deps.session);
+				advance("screenMs");
+				const canvas = !omitsTree() && isCanvasScreen(tree.elements);
+				if ((!omitsTree() || treeAssist) && isGameSurface(tree.elements)) {
+					gridMode = true;
+					tree = { snapshot: NO_TREE_SNAPSHOT, elements: [] };
+				}
+				// Vision step that borrowed the tree. An empty tree or a game surface gives nothing to add.
+				const assisted = treeAssist && tree.elements.length > 0;
+				const screenshotOnly = omitsTree() && !assisted;
+				const gridded = (gridMode && !assisted) || canvas ? overlayCoordGrid(shot.base64) : null;
 				const stallHint =
 					unchangedWaits >= STUCK_WAITS
 						? stuckWaitHint(unchangedWaits)
 						: repeatTaps >= REPEAT_TAPS && lastTapPoint
-							? repeatTapHint(lastTapPoint.x, lastTapPoint.y, repeatTaps, gridMode)
+							? repeatTapHint(
+									lastTapPoint.x,
+									lastTapPoint.y,
+									repeatTaps,
+									assisted ? "tree" : gridMode ? "grid" : "vision",
+								)
 							: undefined;
-				let tree = omitsTree()
-					? { snapshot: NO_TREE_SNAPSHOT, elements: [] as ScreenElement[] }
-					: await readCleanedTree(readScreen, deps.session);
-				advance("screenMs");
-				const canvas = !omitsTree() && isCanvasScreen(tree.elements);
-				if (!omitsTree() && isGameSurface(tree.elements)) {
-					gridMode = true;
-					tree = { snapshot: NO_TREE_SNAPSHOT, elements: [] };
-				}
-				const screenshotOnly = omitsTree();
-				const gridded = gridMode || canvas ? overlayCoordGrid(shot.base64) : null;
 				const visionBase64 = gridded ?? shot.base64;
 				const image = await prepareVisionImage(visionBase64);
 				advance("prepareMs");
@@ -1141,6 +1170,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					action: {
 						...decision,
 						...(escalatedToGrid ? { escalatedToGrid: true } : {}),
+						...(assisted ? { treeAssist: true } : {}),
 						cycle: {
 							action: performed,
 							decision,
