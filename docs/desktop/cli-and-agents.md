@@ -45,7 +45,7 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
    ```bash
    yoqa devices ios --booted-only
    yoqa devices connect <udid> --platform ios
-   yoqa screen
+   yoqa screenshot /tmp/screen.png
    yoqa action tap --x 500 --y 500
    ```
 4. Catalog: `yoqa apps list`, `yoqa cases list <prefix>`

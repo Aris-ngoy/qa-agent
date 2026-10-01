@@ -111,12 +111,12 @@ yoqa devices disconnect
 ## Inspect the screen
 
 ```bash
+yoqa screenshot ./shot.png                   # save a PNG — look at it first
 yoqa screen                                  # cleaned element tree + relative coords (0–1000)
 yoqa screen --full                           # raw Appium accessibility tree
-yoqa screenshot ./shot.png                   # save a PNG
 ```
 
-Prefer `yoqa screen` in agent loops — fewer tokens than a screenshot or `--full`. Details: [CLI for agents](/guide/cli-for-agents).
+In agent loops, look at a screenshot first and tap the centre of the control with `--x` / `--y`. Use `yoqa screen` as the fallback for exact ids and labels. Details: [CLI for agents](/guide/cli-for-agents).
 
 ## Actions
 

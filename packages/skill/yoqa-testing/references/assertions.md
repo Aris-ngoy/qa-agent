@@ -1,8 +1,8 @@
 # Assertions
 
 `yoqa assert` checks that text is (or is not) on screen and **exits non-zero when it isn't**. Use it as
-the verify step of the debug loop instead of re-reading `yoqa screen` and judging by eye — it waits for
-the condition, so it also absorbs animation and network delay.
+the verify step of the debug loop for text, alongside a screenshot — it waits for the condition, so it
+also absorbs animation and network delay.
 
 ```bash
 yoqa assert visible -t "<text>" [--timeout <seconds>]

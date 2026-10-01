@@ -1,5 +1,7 @@
 # Agent CLI action parity + screenshot + tree
 
+> **Superseded in part:** the Run agent now decides from the screenshot alone by default; the tree is opt-in (`screenMode: tree`). See [Vision-first screen mode](vision-first-screen-mode.md). The action parity table below still holds.
+
 ## Goal
 
 The catalog AI agent should be able to take every action `yoqa action` / `yoqa assert` can, and should decide using **both** the screenshot image and the cleaned screen snapshot (`yoqa screen` tree). If a tap or other locator action misses, retry with that combined view instead of guessing the same target.

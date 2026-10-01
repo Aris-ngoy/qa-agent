@@ -1,10 +1,11 @@
 # Workflow: Debug Directly on Device
 
-You drive the device yourself — inspect, act, verify. Target elements by `--id` or `--label` read off
-the screen tree ([Targeting elements](../references/actions-grounding.md)); those are deterministic and
-need no AI provider. Fall back to `--description` grounding when there's nothing stable to match, and to
-explicit relative coordinates for swipe/drag or unlabeled elements
-([Actions by coordinates](../references/actions-coordinates.md)).
+You drive the device yourself — look, act, verify. **Look at a screenshot and act by `--x` / `--y`**
+([Actions by coordinates](../references/actions-coordinates.md)); that works on every control, including
+custom-drawn UI, games, and system sheets. Fall back to `--id` or `--label`
+([Targeting elements](../references/actions-grounding.md)) when you know the identifier or coordinates
+keep missing, and to `--description` grounding when there's nothing stable to match. Swipe and drag are
+always coordinates.
 
 ### 1. Connect a device
 
@@ -33,32 +34,32 @@ To get the app onto the device:
 **Launch the app** — `yoqa action activate-app --app-id <bundle-id>`. See
 [Inspect & App Control](../references/inspect-and-app-control.md).
 
-### 3. Inspect → act → assert
+### 3. Screenshot → act → verify
 
 Drive the UI as a loop — never fire an action blind:
 
-1. **Inspect** — `yoqa screen` to confirm the target is present and the UI is in the expected state.
-   Add `--json` when you need element ids. See
+1. **Look** — `yoqa screenshot /tmp/screen.png`, then open the image to confirm the target is visible
+   and the UI is in the expected state. See
    [Inspect & App Control](../references/inspect-and-app-control.md).
-2. **Act** — perform one action, targeting by `--id` or `--label` from what you just read; fall back to
-   `--description`, then coordinates. Swipe and drag are always coordinates.
-3. **Verify** — `yoqa assert visible -t "<expected text>"` (or `not-visible`). It waits for the condition
-   and exits non-zero if it never holds, which is a real check rather than an eyeball on a tree dump. See
-   [Assertions](../references/assertions.md). Take a `yoqa screenshot` as well when the thing you need to
-   confirm is visual (layout, images, custom drawing).
+2. **Act** — perform one action at the **centre of the control** you see, with `--x` / `--y`. Use
+   `--id` or `--label` only when you already know the identifier (see step above for the fallbacks).
+3. **Verify** — take a fresh screenshot and look at it. For text that must appear, also run
+   `yoqa assert visible -t "<expected text>"` (or `not-visible`); it waits for the condition and exits
+   non-zero if it never holds. See [Assertions](../references/assertions.md).
 4. Repeat for the next action.
 
 A worked step:
 
 ```bash
-yoqa screen
-yoqa action tap --label "Login"
+yoqa screenshot /tmp/screen.png                 # open it: the Login button is centred near y 860
+yoqa action tap --x 500 --y 860
+yoqa screenshot /tmp/screen.png                 # open it: the Welcome screen is showing
 yoqa assert visible -t "Welcome back"
 ```
 
-If a target isn't found, don't retry the same selector — re-run `yoqa screen` and pick a selector from
-the fresh output. The element may be offscreen (scroll to it first), unlabeled (use `--id` or
-coordinates), or on a screen you haven't reached.
+If a tap changes nothing, don't repeat the same point — take a fresh screenshot and adjust. The target
+may be offscreen (scroll to it first), covered by a system sheet or dialog (act on the sheet), or on a
+screen you haven't reached. After two misses, read `yoqa screen --json` and use `--id` or `--label`.
 
 App lifecycle, `open-url`, and alert handling are covered in
 [Inspect & App Control](../references/inspect-and-app-control.md).

@@ -1,25 +1,39 @@
 # Inspect & App Control
 
-Shared debug commands: screen inspection, app lifecycle, and alerts. To act on an element, target it
-by `--id`/`--label`/`--description` — see [Targeting elements](actions-grounding.md) — or by explicit
-relative coordinates — see [Actions by coordinates](actions-coordinates.md).
+Shared debug commands: screenshots, screen inspection, app lifecycle, and alerts. Act by explicit
+relative coordinates read off a screenshot — see [Actions by coordinates](actions-coordinates.md).
+`--id` / `--label` / `--description` are the fallback — see [Targeting elements](actions-grounding.md).
 
-## Screen inspection
+## Screenshot first
 
 ```bash
-yoqa screen                        # cleaned element list (primary way to read the screen)
-yoqa screen --json                 # same list as JSON — includes each element's id, type, enabled, visible
-yoqa screen --full                 # raw Appium page source (JSON-wrapped, very long)
-yoqa screenshot /tmp/screen.png    # save a screenshot to file, to visually verify
+yoqa screenshot /tmp/screen.png    # save a screenshot to file, then open the image and look at it
 ```
 
-**Always inspect before and after any action to verify the actual UI state.**
+**Always take a screenshot before and after any action to verify the actual UI state.**
 
-**Prefer `yoqa screen` first — it is the primary way to read the screen.** The element list is far
-cheaper in tokens than an image and is enough to understand the UI in most cases. Only fall back to
-`yoqa screenshot` when the list is not enough: it comes back empty, it lacks the information you need,
-or you can't tell what's actually rendered (custom drawing, images, visual layout/overlap). Use the
-screenshot to fill that gap, not as the default way to look at the screen.
+**Look at the screenshot first — it is the primary way to read the screen.** It shows what the user
+sees: layout, icons, canvas and game controls, overlays, the soft keyboard, and **system sheets and
+dialogs** (App Store "Install", permission prompts, share sheets). Decide from the image, then act with
+`--x` / `--y`. The command prints the saved path; open that file as an image — do not try to read it as
+text.
+
+Do not trust the element list over the screenshot. The element list can miss a system sheet that is
+covering the app and keep describing the screen underneath it, so a tree that says "Preparing to
+download" can sit under a sheet whose only button is "Install". When the two disagree, the screenshot
+is right.
+
+## Screen inspection (fallback)
+
+```bash
+yoqa screen                        # cleaned element list
+yoqa screen --json                 # same list as JSON — includes each element's id, type, enabled, visible
+yoqa screen --full                 # raw Appium page source (JSON-wrapped, very long)
+```
+
+Use `yoqa screen` when the screenshot is not enough: you need an exact label or `--id` to target
+deterministically, text is too small to read, or you want the list of everything on a long screen. It
+costs fewer tokens than an image but sees only the app's own accessibility tree.
 
 Call `yoqa screen` directly — do not pipe through `grep`, `awk`, or any other filter. Parse the raw
 output yourself. Filtering can hide elements you need.

@@ -12,7 +12,8 @@ Vocabulary: **Screen mode**, **Grid mode**, and **Escalation** in [`CONTEXT.md`]
 - **Default prompt** offers `x,y` for in-app taps and `label` only for system permission / notification sheets. `id` and `description` are not offered. The decision schema still parses them, so `tree` mode and saved runs keep working. If a reply names a control with no point, it is asked once for `x,y`, because an unresolved tap would land in the middle of the screen.
 - **Grid mode** (labeled grid, model names `col`, `row`, `qx`, `qy`) still exists, for the case where plain `x,y` is known to miss: a game starts in it, and any other case is **escalated** into it. See [game-tap-grid.md](./game-tap-grid.md).
 - **Escalation** fires after 2 consecutive `x,y` taps that leave the screenshot fingerprint unchanged. It is sticky for the rest of the case and is recorded on the step that triggered it (`escalatedToGrid: true` in the step action). Any other action in between (swipe, wait) resets the count. `tree` mode never escalates.
-- **Out of scope:** the `yoqa screen` CLI command, the `yoqa-testing` skill, the Inspector, and the settings / catalog UI. The executor still reads the tree for `assert` steps, which are not model-visible.
+- **Skill and docs follow the same default.** The `yoqa-testing` skill and the public CLI docs tell external coding agents to take `yoqa screenshot` first and tap with `--x` / `--y` (centre of the control, 0–1000). `yoqa screen`, `--id`, and `--label` are the fallback: when the identifier is known from the code, or after two missed taps. The CLI commands themselves are unchanged. Scope was widened from "Run agent only" at the user's request.
+- **Out of scope:** the `yoqa screen` CLI command itself, the Inspector, and the settings / catalog UI. The executor still reads the tree for `assert` steps, which are not model-visible.
 - Rejected: deleting the tree code (executor-side `assert` and label resolution need it, and `tree` is a useful escape hatch); an env var as the only switch (global, not visible in run reports); a per-app setting (needs catalog schema and UI); a lazy tree fallback when taps fail (complicated, and Grid mode already covers the failure it would address); game detection from the tree (needs the tree read the default mode removes).
 - No ADR: the default is easy to flip back with `screenMode`, so it fails the "hard to reverse" test.
 
@@ -26,6 +27,7 @@ Vocabulary: **Screen mode**, **Grid mode**, and **Escalation** in [`CONTEXT.md`]
 - CLI: `yoqa runs create --screen-mode vision|tree`.
 - Run report: a **Screen** row in the HTML, Markdown, and GitHub summary tables for catalog runs.
 - **Stuck-wait hint:** after 3 consecutive waits on an unchanged screenshot (`STUCK_WAITS`), the next decide is told to stop waiting and act on what is visible. It repeats while the screen stays unchanged. Waits still count toward the 25-step cap. Motivation: run `run_095e7779` (#7 Adjoe Tests, old tree mode) waited 14 steps behind an App Store "Install" sheet that the accessibility tree did not contain, and the tree's "Preparing to download" text overrode what the screenshot plainly showed.
+- [`yoqa-testing` skill](../../packages/skill/yoqa-testing/SKILL.md) (SKILL, inspect, coordinates, grounding, assertions, debug-on-device) and the `apps/docs` guides (`cli-for-agents`, `cli`, `overview`, `introduction`, non-native UI, games): screenshot → act by x,y → verify, with `yoqa screen` as the fallback and a warning that the tree cannot see system sheets.
 - Also fixed: a TypeScript narrowing error in `readStepCycle` that failed the typecheck gate.
 
 ## How to verify
@@ -35,7 +37,8 @@ Vocabulary: **Screen mode**, **Grid mode**, and **Escalation** in [`CONTEXT.md`]
 3. Run the same case with `--screen-mode tree`. The report shows `Screen | tree`, the tree is read each step, and `id` taps work as before.
 4. On a screen where the tap lands nowhere (for example a canvas not marked as a game), two consecutive `x,y` taps with no visible change turn the grid on for the next decide. The step that triggered it has `escalatedToGrid: true`.
 5. Put a system sheet over an app (for example the App Store Install sheet) and run a case that needs it tapped: vision mode taps it by `x,y`. If a model still waits, the third unchanged wait adds the hint to the next prompt.
-6. Tests: `bun test services/runner/src/domains/runs packages/runner-client/src/run-report.test.ts`.
+6. Skill: install it (Settings → CLI & Agents) and ask a coding agent to tap a button on a connected device. It should call `yoqa screenshot`, open the image, and use `yoqa action tap --x --y`, not `yoqa screen`.
+7. Tests: `bun test services/runner/src/domains/runs packages/runner-client/src/run-report.test.ts`.
 
 ## Follow-ups
 
