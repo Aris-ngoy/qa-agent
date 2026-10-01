@@ -43,7 +43,7 @@ const agentDecisionSchema = z
 		col: z.number().optional(),
 		/** Labeled grid row 0–9. The runner computes y from this, not from a guessed y. */
 		row: z.number().optional(),
-		/** Where inside the cell, 0–4. 2 is the middle. */
+		/** Where inside the cell, 0–9 (10 units each). 0 is the left or top, 9 the right or bottom. */
 		qx: z.number().optional(),
 		qy: z.number().optional(),
 		/** End cell for a drag. */
@@ -209,6 +209,68 @@ export function releaseCanvasPoint(
 	return point;
 }
 
+/** Furthest a missed tap is moved to reach a control, on the 0–1000 grid (10% of the screen). */
+export const SNAP_RADIUS = 100;
+
+const TAPPABLE_ROLE_RE =
+	/button|link|cell|switch|checkbox|radio|tab|toggle|textfield|searchfield|segment|menuitem|stepper|slider|picker/i;
+
+/** A control a tap can mean: named, enabled, visible, not a full-screen surface. */
+function isTappableElement(element: ScreenElement): boolean {
+	if (isFullBleedElement(element)) return false;
+	if (element.enabled === false || element.visible === false) return false;
+	if (!element.label.trim() && !element.id?.trim()) return false;
+	return TAPPABLE_ROLE_RE.test(element.type);
+}
+
+/** Distance from a point to a rectangle: 0 when the point is inside it. */
+function distanceToElement(element: ScreenElement, x: number, y: number): number {
+	const dx = Math.max(element.x - x, 0, x - (element.x + element.width));
+	const dy = Math.max(element.y - y, 0, y - (element.y + element.height));
+	return Math.hypot(dx, dy);
+}
+
+/**
+ * A tap point that missed twice is moved onto the nearest control in the tree, within
+ * SNAP_RADIUS. An element with a unique id is tapped by id (resolved against the window,
+ * like `--id`). Otherwise the point becomes the element's centre. Nothing near enough, or
+ * any tap that already names its target, is left alone. Runs only when the tree was read
+ * for the step (the Tree assist), so it never costs an extra read.
+ */
+export function snapTapToElement(
+	decision: AgentDecision,
+	elements: ScreenElement[],
+): { decision: AgentDecision; element: ScreenElement | null } {
+	const none = { decision, element: null };
+	if (decision.type !== "tap" || decision.x == null || decision.y == null) return none;
+	if (decision.id || decision.label || decision.description) return none;
+	let best: { element: ScreenElement; distance: number } | null = null;
+	for (const element of elements) {
+		if (!isTappableElement(element)) continue;
+		const distance = distanceToElement(element, decision.x, decision.y);
+		if (distance > SNAP_RADIUS) continue;
+		const smaller =
+			best != null &&
+			distance === best.distance &&
+			element.width * element.height < best.element.width * best.element.height;
+		if (best == null || distance < best.distance || smaller) best = { element, distance };
+	}
+	if (!best) return none;
+	const { element } = best;
+	const id = element.id?.trim();
+	if (id && elements.filter((other) => other.id === element.id).length === 1) {
+		return { decision: { ...decision, id, label: element.label.trim() || undefined }, element };
+	}
+	return {
+		decision: {
+			...decision,
+			x: Math.round(element.x + element.width / 2),
+			y: Math.round(element.y + element.height / 2),
+		},
+		element,
+	};
+}
+
 /** Games tap from the screenshot. Drop tree id/label so the point is what runs. */
 export function forceScreenshotTap(decision: AgentDecision): AgentDecision {
 	if (decision.type !== "tap" && decision.type !== "type" && decision.type !== "input") {
@@ -253,7 +315,7 @@ export function repeatTapHint(
 		mode === "tree"
 			? "A screen snapshot is attached this time: if it lists the control, tap it by its id instead of guessing a point. If it does not, trust the screenshot."
 			: mode === "grid"
-				? "The control probably sits near the edge of the cell: pick the neighbouring cell, or qx/qy 0 or 4, so the point moves toward it."
+				? "The control probably sits near the edge of the cell: pick the neighbouring cell, or qx/qy 0–1 or 8–9, so the point moves toward it."
 				: "Re-read the screenshot and aim at the exact centre of the control; a small control such as a close X is easy to miss by a few percent.";
 	return `You tapped ${where} ${taps} times and the screen did not change, so that point is not on the control. Do not tap it again. ${advice}`;
 }
@@ -272,7 +334,7 @@ function namedGridIndex(value: number | undefined, max: number): number | null {
 
 /** Shown when a gridded step comes back with a guessed x,y and no cell. */
 export const GRID_CELL_RETRY =
-	"Send col and row (0–9) of the labeled cell that contains the centre of the control, and qx and qy (0–4) for where inside that cell it sits. Do not send x or y.";
+	"Send col and row (0–9) of the labeled cell that contains the centre of the control, and qx and qy (0–9) for where inside that cell it sits, in tenths of the cell. Do not send x or y.";
 
 /**
  * True when this action needs a point and the model did not name a grid cell.
@@ -657,7 +719,7 @@ Targeting:
 - System permission / notification dialogs: {"type":"tap","label":"Allow"} or {"type":"alert","alertAction":"accept"}. Never guess coordinates for these.
 - Visual context is all you have: read layout, colors, icons, canvas controls, modal overlays, and soft keyboard visibility from the screenshot.
 - If a previous action failed (see Last action error), pick a different point on the screenshot — do not repeat the same point.
-- If a magenta grid is drawn on the screenshot, each cell is labeled column-row in its top-left (0-0 through 9-9). Then send col, row, qx, and qy for the centre of the control, and do not send x or y. qx and qy are 0–4 (2 is the middle of the cell). The tap point is computed from that cell.
+- If a magenta grid is drawn on the screenshot, each cell is labeled column-row in its top-left (0-0 through 9-9). Then send col, row, qx, and qy for the centre of the control, and do not send x or y. qx and qy are 0–9, tenths of the cell from its left and top (4 or 5 is the middle). A small control near a cell edge needs qx or qy near 0 or 9, so do not default to the middle. The tap point is computed from that cell.
 
 ${KEYBOARD_GUIDANCE}
 
@@ -891,7 +953,7 @@ export function formatDecidePrompt(input: {
 				]),
 		...(input.coordGrid
 			? [
-					"A magenta grid is drawn on the screenshot. Each cell is labeled in its top-left corner as column-row (0-0 is the top-left cell, 9-9 is the bottom-right). Do not send x or y. Send col and row (0–9) of the cell that contains the centre of the control, and qx and qy (0–4) for where inside that cell the centre sits: 0 is the left or top, 2 is the middle, 4 is the right or bottom. The tap point is computed from those values. For a drag, also send col2, row2, qx2, and qy2 for the end.",
+					"A magenta grid is drawn on the screenshot. Each cell is labeled in its top-left corner as column-row (0-0 is the top-left cell, 9-9 is the bottom-right). Do not send x or y. Send col and row (0–9) of the cell that contains the centre of the control, and qx and qy (0–9) for where inside that cell the centre sits, in tenths of the cell: 0 is the left or top edge, 4 or 5 is the middle, 9 is the right or bottom edge. A small control near a cell edge needs qx or qy near 0 or 9, so do not default to the middle. The tap point is computed from those values. For a drag, also send col2, row2, qx2, and qy2 for the end.",
 				]
 			: []),
 		`Again, do ONLY this: ${input.instructions || "(none)"}`,

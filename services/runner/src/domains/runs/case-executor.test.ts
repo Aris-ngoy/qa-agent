@@ -1482,7 +1482,7 @@ describe("executeAgentCase", () => {
 						col: 1,
 						row: 2,
 						qx: 0,
-						qy: 4,
+						qy: 9,
 						reason: "Tap play",
 						thoughts: "Play is in cell 1-2, low in the cell",
 					};
@@ -1510,7 +1510,7 @@ describe("executeAgentCase", () => {
 			settleMs: 0,
 		});
 
-		expect(performed[0]).toMatchObject({ kind: "tap", x: 110, y: 290 });
+		expect(performed[0]).toMatchObject({ kind: "tap", x: 105, y: 295 });
 	});
 
 	describe("Screen modes", () => {
@@ -1987,6 +1987,52 @@ describe("executeAgentCase", () => {
 				plan: [swipe, swipe, swipe, swipe],
 			});
 			expect(game.seen.every((s) => !s.tree)).toBe(true);
+		});
+
+		it("snaps a tap that keeps missing onto the nearest control from the tree", async () => {
+			const png = plainPng(255);
+			const performed: ActionRequest[] = [];
+			const steps: Array<{ action: unknown }> = [];
+			let calls = 0;
+			await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "Rewards app",
+				auth: fakeAuth(),
+				session: {
+					screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+				} as unknown as DeviceSession,
+				isAborted: () => false,
+				appendStep: async (step) => {
+					steps.push(step);
+				},
+				readScreen: async () => ({
+					elements: [
+						{ type: "Button", label: "Close", id: "close", x: 70, y: 90, width: 60, height: 50 },
+					],
+				}),
+				// The model aims at 50,150 every time. The first two are plain taps.
+				decide: async () => {
+					calls += 1;
+					return calls <= 4
+						? tapAt(50, 150)
+						: { type: "done", reason: "done", thoughts: "Finished" };
+				},
+				verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
+				performAction: async (_session, body) => {
+					performed.push(body);
+					return { ok: true, kind: body.kind };
+				},
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			// Taps 1 and 2 go where the model aimed. After two misses the tree is read and tap 3 is
+			// moved onto the Close button, which is tapped by id.
+			expect(performed[0]).toMatchObject({ kind: "tap", x: 50, y: 150 });
+			expect(performed[1]).toMatchObject({ kind: "tap", x: 50, y: 150 });
+			expect(performed[2]).toMatchObject({ kind: "tap", id: "close" });
+			expect(JSON.stringify(steps[2]?.action)).toContain('"snappedTo":"close"');
+			expect(JSON.stringify(steps[1]?.action)).not.toContain("snappedTo");
 		});
 
 		it("lets a label tap read the tree itself when the step did not (vision and Grid mode)", async () => {

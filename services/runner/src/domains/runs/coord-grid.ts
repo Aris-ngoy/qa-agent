@@ -146,8 +146,11 @@ const GLYPHS: Record<string, readonly string[]> = {
 	"-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
 };
 
-/** Where inside a cell the centre sits. 2 is the middle. */
-const GRID_SLOT = [10, 30, 50, 70, 90] as const;
+/**
+ * Where inside a cell the centre sits: ten slots of 10 units, 0 at the left or top. Five slots
+ * (20 units) missed small controls near a cell edge, such as a close X at 97,114.
+ */
+const GRID_SLOT = [5, 15, 25, 35, 45, 55, 65, 75, 85, 95] as const;
 
 function clampCell(value: number, max: number): number {
 	if (!Number.isFinite(value)) return 0;
@@ -156,7 +159,7 @@ function clampCell(value: number, max: number): number {
 
 /**
  * Tap point for a labeled cell. Columns and rows are 0–9.
- * `qx` / `qy` are 0–4 (left/top to right/bottom). Omitted or out of range means the middle.
+ * `qx` / `qy` are 0–9 (left/top to right/bottom). Omitted or out of range means the middle (50).
  */
 export function pointFromGridCell(cell: {
 	col: number;
@@ -165,13 +168,13 @@ export function pointFromGridCell(cell: {
 	qy?: number;
 }): { x: number; y: number } {
 	const slot = (value: number | undefined): number => {
-		if (value == null || !Number.isFinite(value)) return 2;
+		if (value == null || !Number.isFinite(value)) return 50;
 		const rounded = Math.round(value);
-		if (rounded < 0 || rounded > 4) return 2;
-		return rounded;
+		if (rounded < 0 || rounded > 9) return 50;
+		return GRID_SLOT[rounded] ?? 50;
 	};
-	const qx = GRID_SLOT[slot(cell.qx)] ?? 50;
-	const qy = GRID_SLOT[slot(cell.qy)] ?? 50;
+	const qx = slot(cell.qx);
+	const qy = slot(cell.qy);
 	return {
 		x: clampCell(cell.col, 9) * 100 + qx,
 		y: clampCell(cell.row, 9) * 100 + qy,
