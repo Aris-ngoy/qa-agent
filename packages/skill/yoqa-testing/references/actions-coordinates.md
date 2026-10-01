@@ -1,19 +1,23 @@
 # Actions by Coordinates
 
 Coordinates are relative, `0–1000` on both axes. X increases left→right, Y increases top→bottom, and
-`0,0` is the top-left of the screen. Read them from `yoqa screen` — see
-[Inspect & App Control](inspect-and-app-control.md). Remember the listed `x,y` is the element's
-**top-left corner**, so aim at its centre: `x + width / 2`, `y + height / 2`.
+`0,0` is the top-left of the screen, `1000,1000` the bottom-right. **This is the default way to act.**
 
-**Always `yoqa screen` first** to locate the element and compute its centre; never guess coordinates.
+**Take a `yoqa screenshot` first**, look at the image, and send the **centre of the control** you want
+to hit: halfway between its left and right edges, halfway between its top and bottom edges. See
+[Inspect & App Control](inspect-and-app-control.md). Read the point off the image — never reuse a point
+from an earlier screen.
 
-For **tap** and **input**, prefer [`--id` / `--label` / `--description`](actions-grounding.md) — you
-don't compute anything and the command re-reads the tree itself. Use coordinates for tap/input when
-the element has no label and no id, or when you already know the exact spot (a point on a map or
-canvas with no distinct element to target).
+Coordinates work on everything the screenshot shows, including custom-drawn controls, games, canvases,
+and system sheets that have no accessibility element. If a tap changes nothing, take a fresh screenshot
+and adjust the point — do not repeat the same one. After two misses in a row, switch to
+[`--id` / `--label`](actions-grounding.md) from `yoqa screen --json`.
 
 For **swipe** and **drag** coordinates are the only option — those two commands do not accept
 `--id`, `--label`, or `--description`.
+
+If you are reading `yoqa screen` instead of a screenshot, its listed `x,y` is the element's
+**top-left corner**, so aim at its centre: `x + width / 2`, `y + height / 2`.
 
 ### Tap
 

@@ -1,9 +1,9 @@
 ---
 title: CLI for agents
-description: Let a coding agent drive the Yoqa CLI — read the screen, debug on device, and author test cases.
+description: Let a coding agent drive the Yoqa CLI — look at the screen, debug on device, and author test cases.
 ---
 
-The [`yoqa` CLI](/docs/cli) is plain commands in, structured output out — a natural tool for Cursor, Claude Code, Codex, and similar agents. Instead of clicking through the UI, your coding agent can inspect the screen, drive the device, and maintain cases as part of the normal loop: change code → ask it to test → get pass/fail with screenshots.
+The [`yoqa` CLI](/docs/cli) is plain commands in, structured output out — a natural tool for Cursor, Claude Code, Codex, and similar agents. Instead of clicking through the UI, your coding agent can look at the screen, drive the device, and maintain cases as part of the normal loop: change code → ask it to test → get pass/fail with screenshots.
 
 ## Install the CLI and skill
 
@@ -30,9 +30,9 @@ No cloud sign-in for these Phase 1 workflows.
 1. **Connect** — `yoqa devices connect <device-id>`.
 2. **Ensure the app is on device** — install a [build](/docs/local-builds) or launch an already-installed app.
 3. **Loop one step at a time:**
-   - **Inspect** — `yoqa screen` (prefer over screenshot / `--full`).
-   - **Act** — one `yoqa action …`, preferably `-d "…"`.
-   - **Verify** — `yoqa screen` again (or `yoqa screenshot` for a visual check).
+   - **Look** — `yoqa screenshot /tmp/screen.png`, then open the image.
+   - **Act** — one `yoqa action tap --x … --y …` at the centre of the control you see (0–1000). Use `--id` / `--label` only when you already know the identifier, or after two missed taps.
+   - **Verify** — another `yoqa screenshot`, plus `yoqa assert visible -t "…"` for text.
 
 Never fire an action blind.
 
@@ -40,9 +40,11 @@ Never fire an action blind.
 
 | Approach | Relative cost | Use when |
 | -------- | ------------- | -------- |
-| `yoqa screen` | ~1× | Default — cleaned tree + coords |
-| Screenshot | ~2× | Tree empty / visual-only UI |
+| Screenshot | ~2× | Default — sees everything on screen, including system sheets |
+| `yoqa screen` | ~1× | Fallback — exact ids and labels, or text too small to read |
 | `yoqa screen --full` | ~7× | Rare — need raw Appium dump |
+
+The element list only sees the app's own accessibility tree. A system sheet (App Store install, permission prompt) can cover the app while the list keeps describing the screen underneath, so trust the screenshot when they disagree. The built-in Yoqa agent works the same way: [vision-first](/guide/best-practices-games) by default, tree opt-in with `--screen-mode tree`.
 
 ## Hand off to the Yoqa agent
 

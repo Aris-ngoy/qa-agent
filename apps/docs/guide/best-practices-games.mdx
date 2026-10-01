@@ -17,7 +17,7 @@ Keep case instructions at goal level: "Complete level 1" rather than pixel-perfe
 
 ## Prefer screenshots over trees
 
-For coding-agent debug loops, `yoqa screen` may be sparse. Fall back to `yoqa screenshot` and description grounding more often than in native form-based apps.
+For coding-agent debug loops, stay on `yoqa screenshot` and `--x` / `--y`; `yoqa screen` is often sparse for games.
 
 Autonomous runs are screenshot-first for every app: the agent sees the screenshot and the instruction, and names where to tap as `x,y`. It does not read the accessibility tree unless you start the run with `--screen-mode tree`.
 
