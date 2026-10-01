@@ -10,6 +10,7 @@ import {
 	screenshotResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
+import { performActionWithScreenshot } from "../../domains/devices/action-result";
 import {
 	SessionBusyError,
 	abandonActiveSession,
@@ -235,7 +236,9 @@ export function createSessionRoutes() {
 					409,
 				);
 			}
-			const result = await performAction(session, parsed.data);
+			const result = parsed.data.screenshot
+				? await performActionWithScreenshot(session, parsed.data)
+				: await performAction(session, parsed.data);
 			return c.json(actionResponseSchema.parse(result));
 		} catch (error) {
 			const gone = sessionErrorResponse(error);

@@ -55,6 +55,14 @@ _Avoid_: locator, find element (when meaning description→coords)
 A single device gesture or app-lifecycle command (tap, swipe, type, open URL, etc.), optionally grounded from a description.
 _Avoid_: step (Run timeline), command (CLI)
 
+**Settle**:
+Waiting after an Action until the screenshot stops changing, bounded by a cap. An animating screen (typically a game) may never settle; the result then says it did not, and the latest frame is returned anyway.
+_Avoid_: idle wait, sleep (a fixed delay is not a Settle)
+
+**Result screenshot**:
+The screenshot returned with an Action after it has settled, so the caller sees the effect of that Action without a separate capture. It is the raw device image; an annotated copy marks where the Action landed.
+_Avoid_: post-action capture, verification screenshot
+
 ### Providers
 
 **Provider**:

@@ -142,6 +142,11 @@ yoqa action swipe --x 500 --y 800 --x2 500 --y2 200
 yoqa action drag --x 300 --y 500 --x2 700 --y2 500
 yoqa action input --x 500 --y 640 --text "hi@yoqa.ai"
 
+# See the result: wait for the screen to settle, then print the screenshot paths
+# (raw + a copy with a ring where the tap landed), `settled`, and `changed`.
+yoqa action tap --x 500 --y 320 --screenshot
+yoqa action tap --x 500 --y 320 --screenshot --settle 3000   # longest wait, ms (default 1500)
+
 # Assertions
 yoqa assert visible -t "Welcome back"
 yoqa assert not-visible -t "Loading" --timeout 10

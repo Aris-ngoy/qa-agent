@@ -958,8 +958,25 @@ export const actionRequestSchema = z.object({
 	url: z.string().optional(),
 	alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).optional(),
 	seconds: z.number().optional(),
+	/** Settle after the Action and return the Result screenshot. */
+	screenshot: z.boolean().optional(),
+	/** Cap, in ms, on how long to wait for the screen to settle (default 1500, max 10000). */
+	settleMs: z.number().int().min(0).max(10_000).optional(),
 });
 export type ActionRequest = z.infer<typeof actionRequestSchema>;
+
+export const actionResultScreenshotSchema = z.object({
+	/** Raw device image after the Action settled (or the cap passed). */
+	path: z.string().min(1),
+	/** Copy with a marker where a tap or swipe landed. Absent for Actions with no point. */
+	annotatedPath: z.string().min(1).optional(),
+	/** False when the screen was still changing at the cap (animation, games). */
+	settled: z.boolean(),
+	waitedMs: z.number(),
+	/** Whether the screen differs from before the Action. Null when it never settled. */
+	changed: z.boolean().nullable(),
+});
+export type ActionResultScreenshot = z.infer<typeof actionResultScreenshotSchema>;
 
 export const actionResponseSchema = z.object({
 	ok: z.literal(true),
@@ -970,6 +987,7 @@ export const actionResponseSchema = z.object({
 			y: z.number().optional(),
 		})
 		.optional(),
+	screenshot: actionResultScreenshotSchema.optional(),
 });
 export type ActionResponse = z.infer<typeof actionResponseSchema>;
 
