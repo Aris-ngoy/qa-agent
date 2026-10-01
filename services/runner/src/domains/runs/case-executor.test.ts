@@ -1900,6 +1900,44 @@ describe("executeAgentCase", () => {
 			expect(moving.every((error) => error === undefined)).toBe(true);
 		});
 
+		it("hints when the same spot is tapped twice with no change, and not for different spots", async () => {
+			const png = plainPng(255);
+			const run = async (plan: AgentDecision[]) => {
+				const errors: Array<string | undefined> = [];
+				let calls = 0;
+				await executeAgentCase({
+					catalogCase: emptyCase(),
+					appContext: "Rewards app",
+					auth: fakeAuth(),
+					session: {
+						screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+					} as unknown as DeviceSession,
+					isAborted: () => false,
+					appendStep: async () => {},
+					decide: async (input) => {
+						errors.push(input.lastError);
+						const next = plan[calls];
+						calls += 1;
+						return next ?? { type: "done", reason: "done", thoughts: "Finished" };
+					},
+					verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
+					performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+					clock: { sleep: async () => {}, now: () => 1 },
+					settleMs: 0,
+				});
+				return errors;
+			};
+
+			const same = await run([tapAt(50, 150), tapAt(50, 150), tapAt(52, 148)]);
+			expect(same[0]).toBeUndefined();
+			expect(same[1]).toBeUndefined();
+			expect(same[2]).toContain("tapped 50,150 2 times");
+			expect(same[2]).toContain("Do not tap it again");
+
+			const apart = await run([tapAt(100, 100), tapAt(700, 700), tapAt(100, 700)]);
+			expect(apart.some((error) => error?.includes("screen did not change"))).toBe(false);
+		});
+
 		it("tree mode never escalates on unchanged taps", async () => {
 			const grids: boolean[] = [];
 			const png = plainPng(255);

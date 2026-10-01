@@ -236,6 +236,20 @@ export function screenshotPointMissing(decision: AgentDecision): boolean {
 }
 
 /** Shown when the agent keeps waiting and the screenshot never changes. */
+/**
+ * The same point was tapped again and again and the screenshot never changed, so
+ * the control is not there. Without this the model repeats the point: Grid mode
+ * snaps to the middle of a cell, which can sit far from a small control that is
+ * near the cell's edge (run 99fd66c2 tapped 50,150 seven times for a close X at 97,114).
+ */
+export function repeatTapHint(x: number, y: number, taps: number, grid: boolean): string {
+	const where = `${Math.round(x)},${Math.round(y)}`;
+	const advice = grid
+		? "The control probably sits near the edge of the cell: pick the neighbouring cell, or qx/qy 0 or 4, so the point moves toward it."
+		: "Re-read the screenshot and aim at the exact centre of the control; a small control such as a close X is easy to miss by a few percent.";
+	return `You tapped ${where} ${taps} times and the screen did not change, so that point is not on the control. Do not tap it again. ${advice}`;
+}
+
 export function stuckWaitHint(waits: number): string {
 	return `The screen has not changed after ${waits} waits. Stop waiting and act on what is visible in the screenshot; a system sheet or dialog may be waiting for a tap.`;
 }

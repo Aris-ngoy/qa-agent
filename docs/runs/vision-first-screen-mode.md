@@ -28,6 +28,7 @@ Vocabulary: **Screen mode**, **Grid mode**, and **Escalation** in [`CONTEXT.md`]
 - Run report: a **Screen** row in the HTML, Markdown, and GitHub summary tables for catalog runs.
 - **Stuck-wait hint:** after 3 consecutive waits on an unchanged screenshot (`STUCK_WAITS`), the next decide is told to stop waiting and act on what is visible. It repeats while the screen stays unchanged. Waits still count toward the 25-step cap. Motivation: run `run_095e7779` (#7 Adjoe Tests, old tree mode) waited 14 steps behind an App Store "Install" sheet that the accessibility tree did not contain, and the tree's "Preparing to download" text overrode what the screenshot plainly showed.
 - [`yoqa-testing` skill](../../packages/skill/yoqa-testing/SKILL.md) (SKILL, inspect, coordinates, grounding, assertions, debug-on-device) and the `apps/docs` guides (`cli-for-agents`, `cli`, `overview`, `introduction`, non-native UI, games): screenshot → act by x,y → verify, with `yoqa screen` as the fallback and a warning that the tree cannot see system sheets.
+- **Repeat-tap hint:** after 2 taps within 30 units of each other that leave the screenshot unchanged (`REPEAT_TAPS`), the next decide is told that point is not on the control and not to tap it again (`repeatTapHint`). In Grid mode it also says to move to the neighbouring cell or `qx`/`qy` 0 or 4. Motivation: run `run_99fd66c2` tapped `50,150` seven times for a close X that the Inspector put at `97,114`. Grid mode snaps to the middle of a `qx`/`qy` slot (20 units wide), so a small control near a cell edge is missed every time, and the model kept choosing `qx=2, qy=2`. Plain `x,y` and the Grid answer are unchanged; only the retry prompt is new.
 - Also fixed: a TypeScript narrowing error in `readStepCycle` that failed the typecheck gate.
 
 ## How to verify
@@ -44,4 +45,5 @@ Vocabulary: **Screen mode**, **Grid mode**, and **Escalation** in [`CONTEXT.md`]
 
 - Desktop Runs panel control for Screen mode (only the API and CLI expose it today).
 - A catalog-app default for Screen mode, if teams want `tree` on specific apps without a flag.
+- Grid mode is coarse for small controls (20-unit `qx`/`qy` slots). If the repeat-tap hint is not enough, options are finer slots, or snapping a missed tap to the nearest clickable node from a one-off tree read.
 - Tune `GRID_ESCALATION_TAPS` from real runs. Animated screens change the fingerprint every frame and will not escalate, which is why games start in Grid mode.
