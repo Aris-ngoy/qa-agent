@@ -37,11 +37,14 @@ How a Run presents the device to the agent when it decides. _Vision_ (the defaul
 _Avoid_: perception mode, input mode
 
 **Grid mode**:
-A way of presenting the screenshot in which a labeled grid is drawn on it and the agent names a cell and a position inside it instead of raw x,y. A case starts in Grid mode for a game, and is escalated into it from Vision when taps stop having any visible effect.
+A way of presenting the screenshot in which a labeled grid is drawn on it and the agent names a cell and a position inside it instead of raw x,y. A case starts in Grid mode for a game, and is escalated into it from Vision when taps keep having no visible effect, after a Tree assist has had its chance.
 _Avoid_: game mode (games are one trigger, not the definition), overlay
 
 **Escalation**:
-The one-way, per-case switch from plain x,y to Grid mode after two consecutive x,y taps leave the screenshot unchanged. It is recorded on the step that triggered it.
+The one-way, per-case switch from plain x,y to Grid mode after four consecutive x,y taps leave the screenshot unchanged. It is recorded on the step that triggered it.
+
+**Tree assist**:
+A Vision-mode step that also gets the Screen tree, because the two actions before it left the screenshot unchanged (waits aside). It lasts while the screen stays unchanged, is recorded as `treeAssist` on the step, and is not used for a known game. The screenshot stays the ground truth.
 _Avoid_: fallback (implies going back), retry
 
 **Grounding**:
