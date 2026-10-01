@@ -2,7 +2,7 @@
 
 Build notes and feature write-ups produced after **plan → build** work.
 
-**Public product docs (Mintlify):** [`apps/docs`](../apps/docs) — run `bun run docs` (preview at http://localhost:3000). Hosted target: `https://docs.yoqa.ai`.
+**Public product docs (Mintlify):** [`apps/docs`](../apps/docs) — run `bun run docs` (preview at http://localhost:3000). Hosted target: `https://yoqa.arisn.dev`.
 
 | Folder | Use for |
 |--------|---------|

@@ -57,7 +57,7 @@ export function YoqaWalkthrough() {
 			</Sequence>
 			<Sequence durationInFrames={CLOSE_FRAMES} from={closeAt}>
 				<TitleCard
-					subtitle="yoqa.mintlify.site/docs/quickstart"
+					subtitle="yoqa.arisn.dev/docs/quickstart"
 					title="Run it locally"
 				/>
 			</Sequence>

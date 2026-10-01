@@ -20,7 +20,7 @@
 		"url": "git+https://github.com/Aris-ngoy/qa-agent.git",
 		"directory": "services/runner"
 	},
-	"homepage": "https://yoqa.mintlify.app/docs/cli",
+	"homepage": "https://yoqa.arisn.dev/docs/cli",
 	"bugs": {
 		"url": "https://github.com/Aris-ngoy/qa-agent/issues"
 	},

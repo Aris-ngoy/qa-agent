@@ -14,7 +14,7 @@ Rejected: motion-graphics stand-ins for the device or the desktop. Full-screen f
 
 ## What shipped
 
-- `apps/video` — Remotion 4 composition `YoqaWalkthrough` (`src/YoqaWalkthrough.tsx`). Scenes: open (mark, “Local-first agentic mobile QA”), desktop, test case, “Perceive, decide, act” card, split run (desktop Runs + phone frame), CLI, close (`yoqa.mintlify.site/docs/quickstart`). Shared pieces: `YoqaMark`, `TitleCard`, `LowerThird`, `ClipStage`, `SplitStage`. The mark is copied from the desktop splash (ink `#14131c`, lavender `#e3dbf7`, Inter).
+- `apps/video` — Remotion 4 composition `YoqaWalkthrough` (`src/YoqaWalkthrough.tsx`). Scenes: open (mark, “Local-first agentic mobile QA”), desktop, test case, “Perceive, decide, act” card, split run (desktop Runs + phone frame), CLI, close (`yoqa.arisn.dev/docs/quickstart`). Shared pieces: `YoqaMark`, `TitleCard`, `LowerThird`, `ClipStage`, `SplitStage`. The mark is copied from the desktop splash (ink `#14131c`, lavender `#e3dbf7`, Inter).
 - Source clips in `apps/video/public/captures/`: `desktop.mp4`, `test-case.mp4`, `run-desktop.mp4`, `simulator.mp4`, `cli.mp4`.
 - Render output `apps/video/out/yoqa-walkthrough.mp4` is gitignored, along with `apps/video/.capture-scratch/`.
 - The cut is about 75 seconds. Scene lengths follow the clips (`src/theme.ts`).

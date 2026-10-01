@@ -15,7 +15,7 @@ import {
 	useState,
 } from "react";
 
-const DOCS_URL = "https://yoqa.mintlify.site/docs/quickstart";
+const DOCS_URL = "https://yoqa.arisn.dev/docs/quickstart";
 
 function NavIcon(props: SVGProps<SVGSVGElement>) {
 	return (
