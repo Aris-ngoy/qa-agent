@@ -41,6 +41,7 @@ import {
 	isGameSurface,
 	isSystemPermissionLabel,
 	releaseCanvasPoint,
+	repeatTapHint,
 	screenshotFingerprint,
 	screenshotPointMissing,
 	stuckWaitHint,
@@ -56,6 +57,10 @@ export const POST_ACTION_SETTLE_MS = 800;
 export const GRID_ESCALATION_TAPS = 2;
 /** Consecutive waits on an unchanged screenshot before the agent is told to stop waiting. */
 export const STUCK_WAITS = 3;
+/** Unchanged taps near one spot before the model is told that spot is wrong. */
+export const REPEAT_TAPS = 2;
+/** Two taps this close on the 0–1000 grid count as the same spot. */
+const REPEAT_TAP_RADIUS = 30;
 
 export type AppendCaseStep = (input: {
 	idx: number;
@@ -818,6 +823,8 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		let gridMode = isGameApp(deps.appContext, deps.appKnowledge);
 		let unchangedPointTaps = 0;
 		let unchangedWaits = 0;
+		let repeatTaps = 0;
+		let lastTapPoint: { x: number; y: number } | null = null;
 		const omitsTree = () => screenMode === "vision" || gridMode;
 
 		const verdictForDecision = async (
@@ -1015,7 +1022,25 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				} else if (performed) {
 					unchangedWaits = 0;
 				}
-				const stallHint = unchangedWaits >= STUCK_WAITS ? stuckWaitHint(unchangedWaits) : undefined;
+				// Tapping the same spot over and over while nothing changes: that spot is wrong.
+				if (performed && isPointTap(performed)) {
+					const point = { x: performed.x as number, y: performed.y as number };
+					const unchanged = prevFingerprint != null && fingerprint === prevFingerprint;
+					const sameSpot =
+						lastTapPoint != null &&
+						Math.hypot(point.x - lastTapPoint.x, point.y - lastTapPoint.y) <= REPEAT_TAP_RADIUS;
+					repeatTaps = unchanged ? (sameSpot ? repeatTaps + 1 : 1) : 0;
+					lastTapPoint = point;
+				} else if (performed) {
+					repeatTaps = 0;
+					lastTapPoint = null;
+				}
+				const stallHint =
+					unchangedWaits >= STUCK_WAITS
+						? stuckWaitHint(unchangedWaits)
+						: repeatTaps >= REPEAT_TAPS && lastTapPoint
+							? repeatTapHint(lastTapPoint.x, lastTapPoint.y, repeatTaps, gridMode)
+							: undefined;
 				let tree = omitsTree()
 					? { snapshot: NO_TREE_SNAPSHOT, elements: [] as ScreenElement[] }
 					: await readCleanedTree(readScreen, deps.session);
