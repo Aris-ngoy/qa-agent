@@ -1,6 +1,7 @@
 import {
 	type ActionRequest,
 	type ActionResponse,
+	type ActionResultScreenshot,
 	type ActiveDeviceResponse,
 	type AiProvider,
 	type AppiumDriver,
@@ -258,6 +259,7 @@ export {
 	yoqaStatusResponseSchema,
 	type ActionRequest,
 	type ActionResponse,
+	type ActionResultScreenshot,
 	type ActiveDeviceResponse,
 	type AiProvider,
 	type AppiumDriver,

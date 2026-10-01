@@ -13,6 +13,25 @@ and system sheets that have no accessibility element. If a tap changes nothing, 
 and adjust the point — do not repeat the same one. After two misses in a row, switch to
 [`--id` / `--label`](actions-grounding.md) from `yoqa screen --json`.
 
+### See the result: `--screenshot`
+
+Add `--screenshot` to any `yoqa action` and the action waits for the screen to settle, then prints the
+**result screenshot** — no separate `yoqa screenshot` needed. **Always pass it on games and canvases.**
+
+```bash
+yoqa action tap --x 500 --y 926 --screenshot [--settle <ms>]
+# ok tap
+# screenshot /…/result_….png        raw image: open this to read the next point from
+# marked /…/result_marked_….png     same image with a ring where the tap landed (line for swipe/drag)
+# settled true (500ms)
+# changed true
+```
+
+- Open `marked` to check **where** the tap landed relative to the control. Read the next point off the raw `screenshot`.
+- `changed false` on a settled screen means the tap did nothing: move the point, do not repeat it.
+- `settled false` / `changed unknown` means the screen was still animating at the cap (default 1500ms, `--settle <ms>` to change). That is normal on games with looping backgrounds. Judge from the image and the marker, not from `changed`.
+- A game that animates constantly cannot be tapped on a moving target this way (a round trip takes seconds). Use a Case Script for timing-sensitive play.
+
 For **swipe** and **drag** coordinates are the only option — those two commands do not accept
 `--id`, `--label`, or `--description`.
 

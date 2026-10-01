@@ -23,6 +23,16 @@ Autonomous runs are screenshot-first for every app: the agent sees the screensho
 
 Say that the app is a game in app context (for example "This is a mobile game"). The run then starts with a labeled grid drawn on the screenshot, and the model names the cell (`col`, `row`) and where inside the cell the control sits (`qx`, `qy`). Even without that, a case that taps twice in a row with no visible change switches to the grid for the rest of the case. A full-screen game view is not used as a tap target.
 
+## Act, then see the result
+
+In a coding-agent debug loop, add `--screenshot` to every action:
+
+```bash
+yoqa action tap --x 500 --y 926 --screenshot
+```
+
+The command waits for the screen to settle and prints the result screenshot, plus a copy with a ring where the tap landed (a line for swipe and drag). `changed false` on a settled screen means the tap hit nothing. Games with looping backgrounds or particles may never settle: the latest frame is still returned, with `settled false` and `changed unknown`, so judge from the image and the ring. Taps on a moving target are out of reach for a loop that takes seconds per step; use a saved script for those.
+
 ## Timing
 
 Games animate quickly. Expect occasional misses on short-lived UI; add explicit waits in instructions ("wait until the reward chest appears") or break flows into smaller goals.

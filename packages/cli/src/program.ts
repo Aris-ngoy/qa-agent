@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import {
 	type ActionRequest,
+	type ActionResponse,
 	type DevicePlatform,
 	WaitForRunTimeoutError,
 	caseScriptSchema,
@@ -423,7 +424,25 @@ function addActionOptions(cmd: Command) {
 		.option("--text <text>", "Text to type")
 		.option("--app-id <id>", "Bundle id / application id")
 		.option("--url <url>", "URL to open")
-		.option("--seconds <n>", "Background seconds", (v) => Number(v));
+		.option("--seconds <n>", "Background seconds", (v) => Number(v))
+		.option(
+			"--screenshot",
+			"Wait for the screen to settle, then return the result screenshot (and a copy marking where the tap or swipe landed)",
+		)
+		.option(
+			"--settle <ms>",
+			"With --screenshot: longest wait for the screen to settle (default 1500)",
+			(v) => Number(v),
+		);
+}
+
+function printResultScreenshot(shot: NonNullable<ActionResponse["screenshot"]>): void {
+	console.log(`screenshot ${shot.path}`);
+	if (shot.annotatedPath) console.log(`marked ${shot.annotatedPath}`);
+	console.log(`settled ${shot.settled} (${Math.round(shot.waitedMs)}ms)`);
+	console.log(
+		`changed ${shot.changed === null ? "unknown (screen still animating)" : shot.changed}`,
+	);
 }
 
 for (const kind of [
@@ -455,6 +474,8 @@ for (const kind of [
 					appId: options.appId as string | undefined,
 					url: options.url as string | undefined,
 					seconds: options.seconds as number | undefined,
+					screenshot: options.screenshot === true ? true : undefined,
+					settleMs: options.settle as number | undefined,
 				});
 				if (options.json) {
 					console.log(JSON.stringify(body, null, 2));
@@ -464,6 +485,7 @@ for (const kind of [
 				if (body.resolved?.x != null && body.resolved?.y != null) {
 					console.log(`resolved ${body.resolved.x},${body.resolved.y}`);
 				}
+				if (body.screenshot) printResultScreenshot(body.screenshot);
 			} catch (error) {
 				fail(`action ${kind}`, error);
 			}
@@ -481,12 +503,15 @@ addActionOptions(
 		const body = await client(String(options.baseUrl)).performAction({
 			kind: "alert",
 			alertAction: options.dismiss ? "dismiss" : "accept",
+			screenshot: options.screenshot === true ? true : undefined,
+			settleMs: options.settle as number | undefined,
 		});
 		if (options.json) {
 			console.log(JSON.stringify(body, null, 2));
 			return;
 		}
 		console.log(`ok ${body.kind}`);
+		if (body.screenshot) printResultScreenshot(body.screenshot);
 	} catch (error) {
 		fail("action alert", error);
 	}

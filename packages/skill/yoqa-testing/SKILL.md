@@ -39,6 +39,8 @@ Cloud sign-in and credits are not required for local workflows.
   `yoqa screenshot` and aim at the centre of the control.
 - Look at a screenshot first. `yoqa screen` is the fallback (exact ids and labels), and it cannot see
   system sheets.
+- Add `--screenshot` to an action to get the result screenshot in the same call (it waits for the
+  screen to settle, and a second image marks where the tap landed). Always use it on games.
 - `--duration` on an action is in **milliseconds**; `--timeout` on `assert` / `runs wait` is in **seconds**.
 
 See [Environment, Diagnostics & Conventions](references/environment.md).
