@@ -111,4 +111,4 @@ Not implemented yet — in development.
 - **Confirm before any write or delete** in the catalog (`apps update`, `cases create/update/delete`,
   `flows update/delete`, `builds delete`, `runs delete`) — show exactly what you intend to send.
 - If you need more information about Yoqa that isn't covered in this skill, refer to the documentation at
-  https://docs.yoqa.ai/llms.txt
+  https://yoqa.arisn.dev/llms.txt

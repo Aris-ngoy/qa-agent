@@ -7,7 +7,7 @@ Make the desktop side menu a bit narrower and point Docs (and related Help / in-
 ## Plan summary
 
 - Shrink via shared `--spacing-sidebar` token plus tighter padding/chrome in the side menu — no nav restructuring
-- Use the live Mintlify docs host: [`https://yoqa.mintlify.site/docs/quickstart`](https://yoqa.mintlify.site/docs/quickstart)
+- Use the live Mintlify docs host: [`https://yoqa.arisn.dev/docs/quickstart`](https://yoqa.arisn.dev/docs/quickstart)
 
 ## What shipped
 
@@ -19,13 +19,13 @@ Make the desktop side menu a bit narrower and point Docs (and related Help / in-
 ## How to verify
 
 1. Run the desktop app and confirm the sidebar is narrower (~220px) with slightly denser chrome.
-2. Click **Docs** in the side menu footer — browser opens [https://yoqa.mintlify.site/docs/quickstart](https://yoqa.mintlify.site/docs/quickstart).
+2. Click **Docs** in the side menu footer — browser opens [https://yoqa.arisn.dev/docs/quickstart](https://yoqa.arisn.dev/docs/quickstart).
 3. macOS menu **Help → Documentation** opens the same URL.
-4. On a test case detail page, the writing-guide link opens `https://yoqa.mintlify.site/guide/writing-test-cases`.
+4. On a test case detail page, the writing-guide link opens `https://yoqa.arisn.dev/guide/writing-test-cases`.
 
 ## Follow-ups
 
-- Switch links to `docs.yoqa.ai` when the custom domain is connected
+- Done later: all docs links now point at `yoqa.arisn.dev` (the custom domain)
 - None required for sidebar density unless visual QA asks for further tweaks
 
 ## Fix: Docs opens in system browser

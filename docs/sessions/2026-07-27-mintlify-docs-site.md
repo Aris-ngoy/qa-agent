@@ -31,6 +31,6 @@ Prefer Node 20–24 (see `apps/docs/.nvmrc`). Confirm sidebar groups, Overview s
 
 ## Follow-ups
 
-- Connect Mintlify hosting + custom domain `docs.yoqa.ai` (skill already points at `llms.txt`)
+- Connect Mintlify hosting + custom domain `yoqa.arisn.dev` (skill already points at `llms.txt`)
 - Product screenshots for desktop/inspector pages
 - Cloud / CI / OpenAPI tabs when those features land

@@ -18,7 +18,7 @@ import {
 	stopRunnerSidecar,
 } from "./features/runner-sidecar";
 
-const DOCS_QUICKSTART_URL = "https://yoqa.mintlify.site/docs/quickstart";
+const DOCS_QUICKSTART_URL = "https://yoqa.arisn.dev/docs/quickstart";
 
 async function getMainViewUrl(): Promise<string> {
 	const viteUrl = "http://localhost:5173";

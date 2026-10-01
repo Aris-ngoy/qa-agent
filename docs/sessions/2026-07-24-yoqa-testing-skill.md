@@ -29,4 +29,4 @@ Open either `SKILL.md` and confirm workflows link to relative `references/` / `c
 
 - Wire skill install into desktop Settings (ARCHITECTURE §2.1 / §2.9) when shipping the app.
 - Update skill docs as `yoqa` CLI gains `screen` / `action` / `apps` / `cases` / `runs` (and drop aspirational commands that diverge).
-- Confirm `https://docs.yoqa.ai/llms.txt` exists when docs site is live.
+- Confirm `https://yoqa.arisn.dev/llms.txt` exists when docs site is live.

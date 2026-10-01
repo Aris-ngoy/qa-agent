@@ -426,10 +426,10 @@ function InstructionsPanel({
 				</p>
 				<a
 					className="inline-flex items-center gap-1.5 text-body-sm font-medium text-on-surface underline-offset-2 hover:underline"
-					href="https://yoqa.mintlify.site/guide/writing-test-cases"
+					href="https://yoqa.arisn.dev/guide/writing-test-cases"
 					onClick={(event) => {
 						event.preventDefault();
-						void openExternalUrl("https://yoqa.mintlify.site/guide/writing-test-cases");
+						void openExternalUrl("https://yoqa.arisn.dev/guide/writing-test-cases");
 					}}
 					rel="noreferrer"
 				>
