@@ -23,6 +23,7 @@ import {
 	releaseCanvasPoint,
 	resolveSwipeNorm,
 	screenshotPointMissing,
+	snapTapToElement,
 	splitInstructionSteps,
 } from "./agent";
 
@@ -675,12 +676,12 @@ describe("canvas screens", () => {
 			col: 1,
 			row: 2,
 			qx: 0,
-			qy: 4,
+			qy: 9,
 			reason: "Tap play",
 			thoughts: "Play is in cell 1-2",
 		});
-		expect(tap.x).toBe(110);
-		expect(tap.y).toBe(290);
+		expect(tap.x).toBe(105);
+		expect(tap.y).toBe(295);
 		expect(
 			applyGridPoint({
 				type: "tap",
@@ -1131,5 +1132,74 @@ describe("decisionToActionRequest for keyboard and field actions", () => {
 			thoughts: "Entering query and pressing enter via newline",
 		});
 		expect(req).toEqual({ kind: "input", id: "search_input", text: "my query\n" });
+	});
+});
+
+describe("snapTapToElement", () => {
+	const close = {
+		type: "Button",
+		label: "Close",
+		id: "close",
+		x: 70,
+		y: 90,
+		width: 60,
+		height: 50,
+	};
+	const allow = { type: "Button", label: "Allow", x: 400, y: 640, width: 200, height: 80 };
+	const title = { type: "StaticText", label: "Offer", x: 40, y: 150, width: 300, height: 40 };
+	const elements = [close, allow, title];
+	const tap = (x: number, y: number) =>
+		({ type: "tap", x, y, reason: "Close", thoughts: "X is top left" }) as const;
+
+	test("moves a tap that missed a control onto it, by id when the id is unique", () => {
+		const { decision, element } = snapTapToElement(tap(50, 150), elements);
+		expect(element?.id).toBe("close");
+		expect(decision).toMatchObject({ type: "tap", id: "close", label: "Close", x: 50, y: 150 });
+		expect(decisionToActionRequest(decision)).toMatchObject({ kind: "tap", id: "close" });
+	});
+
+	test("uses the element centre when it has no unique id", () => {
+		const { decision } = snapTapToElement(tap(470, 750), elements);
+		expect(decision).toMatchObject({ type: "tap", x: 500, y: 680 });
+		expect(decision.id).toBeUndefined();
+		const twin = [{ ...close }, { ...close, y: 700 }];
+		expect(snapTapToElement(tap(50, 150), twin).decision.id).toBeUndefined();
+	});
+
+	test("leaves a tap alone when nothing tappable is near, or it already names its target", () => {
+		expect(snapTapToElement(tap(900, 300), elements).element).toBeNull();
+		// Static text and full-screen surfaces are not controls.
+		expect(snapTapToElement(tap(100, 160), [title]).element).toBeNull();
+		const surface = {
+			type: "Other",
+			label: "Game",
+			id: "game",
+			x: 0,
+			y: 0,
+			width: 1000,
+			height: 1000,
+		};
+		expect(snapTapToElement(tap(500, 500), [surface]).element).toBeNull();
+		expect(snapTapToElement({ ...tap(50, 150), id: "x" }, elements).element).toBeNull();
+		expect(snapTapToElement({ ...tap(50, 150), label: "Play" }, elements).element).toBeNull();
+		expect(
+			snapTapToElement({ type: "swipe", direction: "up", reason: "s", thoughts: "t" }, elements)
+				.element,
+		).toBeNull();
+	});
+
+	test("skips disabled and hidden controls, and prefers the nearer one", () => {
+		const off = { ...close, enabled: false };
+		expect(snapTapToElement(tap(50, 150), [off]).element).toBeNull();
+		const near = {
+			type: "Button",
+			label: "Near",
+			id: "near",
+			x: 40,
+			y: 140,
+			width: 40,
+			height: 40,
+		};
+		expect(snapTapToElement(tap(50, 150), [close, near]).element?.id).toBe("near");
 	});
 });

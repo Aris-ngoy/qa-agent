@@ -44,7 +44,7 @@ _Avoid_: game mode (games are one trigger, not the definition), overlay
 The one-way, per-case switch from plain x,y to Grid mode after four consecutive x,y taps leave the screenshot unchanged. It is recorded on the step that triggered it.
 
 **Tree assist**:
-A Vision-mode step that also gets the Screen tree, because the two actions before it left the screenshot unchanged (waits aside). It lasts while the screen stays unchanged, is recorded as `treeAssist` on the step, and is not used for a known game. The screenshot stays the ground truth.
+A Vision-mode step that also gets the Screen tree, because the two actions before it left the screenshot unchanged (waits aside). It lasts while the screen stays unchanged, is recorded as `treeAssist` on the step, and is not used for a known game. The screenshot stays the ground truth. On such a step a plain x,y tap is snapped onto the nearest tappable control within 100 units (`snappedTo` on the step).
 _Avoid_: fallback (implies going back), retry
 
 **Grounding**:

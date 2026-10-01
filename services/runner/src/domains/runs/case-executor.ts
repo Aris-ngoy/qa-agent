@@ -44,6 +44,7 @@ import {
 	repeatTapHint,
 	screenshotFingerprint,
 	screenshotPointMissing,
+	snapTapToElement,
 	stuckWaitHint,
 	verifyInstruction,
 } from "./agent";
@@ -1128,6 +1129,13 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 
 				let decision = await decideOnce(decideInput);
 				prevFingerprint = fingerprint;
+				// The model's point missed twice. The tree is already here: move the tap onto the nearest control.
+				let snappedTo: ScreenElement | null = null;
+				if (assisted) {
+					const snapped = snapTapToElement(decision, tree.elements);
+					decision = snapped.decision;
+					snappedTo = snapped.element;
+				}
 
 				let verdict = await verdictForDecision(decision, decideInput);
 				const guarded = continueScrollingInsteadOfComplete({
@@ -1171,6 +1179,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 						...decision,
 						...(escalatedToGrid ? { escalatedToGrid: true } : {}),
 						...(assisted ? { treeAssist: true } : {}),
+						...(snappedTo ? { snappedTo: snappedTo.id?.trim() || snappedTo.label } : {}),
 						cycle: {
 							action: performed,
 							decision,

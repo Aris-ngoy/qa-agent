@@ -57,6 +57,6 @@ describe("pointFromGridCell", () => {
 	});
 
 	test("computes a corner of the cell from qx and qy", () => {
-		expect(pointFromGridCell({ col: 1, row: 2, qx: 0, qy: 4 })).toEqual({ x: 110, y: 290 });
+		expect(pointFromGridCell({ col: 1, row: 2, qx: 0, qy: 9 })).toEqual({ x: 105, y: 295 });
 	});
 });
