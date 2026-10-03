@@ -7,8 +7,12 @@ Local-first agentic mobile QA: devices under Appium, runs driven by scripts or t
 ### Device layer
 
 **Device Session**:
-A live connection to one device (or simulator/emulator) through Appium, including gestures, screenshots, and app lifecycle control. At most one Device Session may exist per device id at a time.
+A live connection to one device (or simulator/emulator) through one Lane, including gestures, screenshots, and app lifecycle control. At most one Device Session may exist per device id at a time.
 _Avoid_: Active session handle alone, WebDriver session (implementation detail), runner session
+
+**Lane**:
+The control path a Device Session uses to drive its device: the _Appium lane_ (through the Appium Server) or a _Direct lane_ (straight to the platform tooling, bypassing Appium, for speed). A Device Session has exactly one Lane for its whole life. A Case or App that sets custom Appium capabilities always gets the Appium lane. The Run report names the Lane that ran.
+_Avoid_: driver (Provider drivers), backend (runner / cloud), transport, engine
 
 **Active Session**:
 The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes; it stays live until the user disconnects or connects another device.
@@ -60,8 +64,12 @@ Waiting after an Action until the screenshot stops changing, bounded by a cap. A
 _Avoid_: idle wait, sleep (a fixed delay is not a Settle)
 
 **Result screenshot**:
-The screenshot returned with an Action after it has settled, so the caller sees the effect of that Action without a separate capture. It is the raw device image; an annotated copy marks where the Action landed.
+The screenshot captured after an Action has settled, so the effect of that Action is seen without a separate capture. It is the raw device image and the stored ground truth (reports, assertions, replay). A connector caller is handed an Agent image of it by default; an annotated copy marks where the Action landed.
 _Avoid_: post-action capture, verification screenshot
+
+**Agent image**:
+A reduced-size copy of a screenshot prepared for a model: what Decide sends to a Vision-capable Provider, and what a connector caller receives by default after an Action. Never the stored original; the raw frame is always kept.
+_Avoid_: thumbnail, preview, compressed screenshot
 
 ### Providers
 
