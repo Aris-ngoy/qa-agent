@@ -8,8 +8,7 @@ function fakeSession(deviceId: string): unknown {
 		deviceId,
 		quitCalls: 0,
 		healthy: true,
-		mjpegPort: 9100,
-		streamReady: true,
+		stream: { ready: true, port: 9100, upstreamUrl: "http://127.0.0.1:9100/" },
 		getWindowSize: async () => {
 			if (!session.healthy) {
 				throw new Error("invalid session id");
