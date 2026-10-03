@@ -6,7 +6,8 @@ export type ActiveSessionInfo = {
 	deviceId: string;
 	platform: DevicePlatform;
 	connectedAt: number;
-	mjpegPort: number;
+	/** Port of the live MJPEG broadcaster, when the Lane offers one. */
+	mjpegPort?: number;
 	streamReady: boolean;
 	/** Relative path on the runner for the MJPEG proxy. */
 	streamUrl: string;
@@ -18,8 +19,6 @@ type ActiveSession = {
 	deviceId: string;
 	platform: DevicePlatform;
 	connectedAt: number;
-	mjpegPort: number;
-	streamReady: boolean;
 	/** Relative path on the runner for the MJPEG proxy. */
 	streamUrl: string;
 	session: DeviceSession;
@@ -45,8 +44,8 @@ function toInfo(current: ActiveSession): ActiveSessionInfo {
 		deviceId: current.deviceId,
 		platform: current.platform,
 		connectedAt: current.connectedAt,
-		mjpegPort: current.mjpegPort,
-		streamReady: current.streamReady,
+		mjpegPort: current.session.stream?.port,
+		streamReady: current.session.stream?.ready ?? false,
 		streamUrl: current.streamUrl,
 		heldByRun: current.heldByRunId != null,
 	};
@@ -113,8 +112,6 @@ async function createAndRegister(options: {
 		deviceId: options.deviceId,
 		platform: options.platform,
 		connectedAt: Date.now(),
-		mjpegPort: session.mjpegPort,
-		streamReady: session.streamReady,
 		streamUrl: "/stream.mjpeg",
 		session,
 		heldByRunId: options.heldByRunId,

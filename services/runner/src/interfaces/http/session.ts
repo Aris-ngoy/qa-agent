@@ -166,7 +166,8 @@ export function createSessionRoutes() {
 	app.get("/stream.mjpeg", async (c) => {
 		try {
 			const active = requireActiveSession();
-			if (!active.streamReady || !active.mjpegPort) {
+			const stream = active.session.stream;
+			if (!stream?.ready) {
 				return c.json(
 					{
 						error: "MJPEG stream not available",
@@ -178,7 +179,7 @@ export function createSessionRoutes() {
 			const proxyAbort = trackMjpegProxy();
 			let upstream: Response;
 			try {
-				upstream = await fetch(`http://127.0.0.1:${active.mjpegPort}/`, {
+				upstream = await fetch(stream.upstreamUrl, {
 					signal: proxyAbort.signal,
 					headers: { Accept: "multipart/x-mixed-replace,image/jpeg,*/*" },
 				});
@@ -193,7 +194,7 @@ export function createSessionRoutes() {
 				return c.json(
 					{
 						error: "Upstream MJPEG unavailable",
-						detail: `HTTP ${upstream.status} from mjpeg port ${active.mjpegPort}`,
+						detail: `HTTP ${upstream.status} from mjpeg port ${stream.port}`,
 					},
 					502,
 				);
