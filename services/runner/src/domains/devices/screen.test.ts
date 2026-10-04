@@ -113,6 +113,46 @@ describe("cleanPageSource", () => {
 		});
 	});
 
+	test("keeps an idb system modal and axbridge buttons on the Screen", () => {
+		const complete = JSON.stringify({
+			backend: "axbridge-exclusive",
+			modal: {
+				kind: "system",
+				element_type: "_UIAlertControllerPhoneTVMacView",
+				label: "Allow “Maps” to use your location?",
+			},
+			elements: [
+				{
+					type: "Other",
+					label: "Maps",
+					frame: { x: 0, y: 0, width: 402, height: 874 },
+					children: [
+						{
+							type: "Button",
+							label: "Allow While Using App",
+							frame: { x: 24, y: 420, width: 354, height: 44 },
+							enabled: true,
+						},
+						{
+							type: "Button",
+							label: "Don’t Allow",
+							frame: { x: 24, y: 470, width: 354, height: 44 },
+							enabled: true,
+						},
+					],
+				},
+			],
+		});
+		const cleaned = cleanPageSource(complete, { width: 402, height: 874 });
+		const labels = cleaned.elements.map((el) => el.label);
+		expect(labels).toContain("Allow “Maps” to use your location?");
+		expect(labels).toContain("Allow While Using App");
+		expect(labels).toContain("Don’t Allow");
+		expect(cleaned.elements.find((el) => el.label === "Allow While Using App")).toMatchObject({
+			type: "Button",
+		});
+	});
+
 	test("decodes XML entities in Android text and iOS label", () => {
 		const android = cleanPageSource(
 			`

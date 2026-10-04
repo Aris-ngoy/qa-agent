@@ -125,4 +125,21 @@ describe("getScreen", () => {
 		const screen = await getScreen(session, { pauseMjpeg: false });
 		expect(screen.elements?.some((el) => el.label === "Wait")).toBe(true);
 	});
+
+	test("includes an idb system modal on the Screen", async () => {
+		const session = {
+			pageSource: async () =>
+				JSON.stringify({
+					backend: "axbridge-exclusive",
+					modal: {
+						kind: "system",
+						label: "Allow “Maps” to use your location?",
+					},
+					elements: [],
+				}),
+			getWindowSize: async () => ({ width: 402, height: 874 }),
+		} as unknown as DeviceSession;
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		expect(screen.elements?.some((el) => el.label.includes("Maps"))).toBe(true);
+	});
 });
