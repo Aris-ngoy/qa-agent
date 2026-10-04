@@ -19,7 +19,7 @@ Ship the three product tickets that do not wait on a hardware benchmark: name th
 
 ## How to verify
 
-1. `yoqa devices connect <id> --platform ios --lane direct` — connects on Appium, prints `lane warning: Direct lane is not available; fell back to Appium`.
+1. `yoqa devices connect <id> --platform ios --lane direct` — Direct when `idb_companion` is installed (see [ios-direct-lane.md](./ios-direct-lane.md)); otherwise Appium with `lane warning: Direct lane failed to start`.
 2. `yoqa action tap --x 500 --y 500 --screenshot` — `screenshot` is the Agent image; on macOS a `raw` line appears when sips downscaled.
 3. `printf '{"steps":[{"kind":"tap","x":100,"y":100},{"kind":"tap","x":200,"y":200}]}' | yoqa action batch --screenshot` — one screenshot after both taps.
 4. A batch step with `"description":"…"` is rejected before anything runs.

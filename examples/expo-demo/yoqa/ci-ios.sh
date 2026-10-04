@@ -40,7 +40,7 @@ trap capture_failure ERR
 connect_device() {
 	local attempt
 	for attempt in 1 2 3; do
-		if yoqa devices connect "$UDID" --platform ios --bundle-id ai.yoqa.demo; then
+		if yoqa devices connect "$UDID" --platform ios --bundle-id ai.yoqa.demo --lane appium; then
 			return 0
 		fi
 		echo "devices connect attempt ${attempt} failed; retrying"
@@ -57,6 +57,6 @@ connect_device
 # A reboot between attempts closes the app — bring it back to the foreground.
 xcrun simctl launch "$UDID" ai.yoqa.demo >/dev/null 2>&1 || true
 
-yoqa devices connect "$UDID" --platform ios --bundle-id ai.yoqa.demo
+yoqa devices connect "$UDID" --platform ios --bundle-id ai.yoqa.demo --lane appium
 bash examples/expo-demo/yoqa/seed-catalog.sh
 yoqa runs create DEMO --cases 1 --mode script --wait --github-output

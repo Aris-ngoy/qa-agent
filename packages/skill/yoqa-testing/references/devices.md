@@ -28,7 +28,8 @@ already running. Use the full id on the second line to connect.
 yoqa devices connect <device_id> --platform ios
 yoqa devices connect <device_id> --platform android
 # Android auto-picks the Direct (adb) lane when the App has no custom capabilities.
-# Pin Appium with --lane appium. iOS stays on Appium.
+# iOS simulators auto-pick Direct (idb_companion) when the official binary is present.
+# Physical iOS stays on Appium. Pin Appium with --lane appium.
 ```
 
 Optionally launch an app as part of connecting:

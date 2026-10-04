@@ -26,9 +26,9 @@ function fakeLane(): { factory: LaneFactory; created: FakeLaneSession[] } {
 }
 
 describe("openDeviceSession (lane dispatcher)", () => {
-	test("Android defaults include Direct; iOS does not", () => {
+	test("Android and iOS defaults include Direct", () => {
 		expect(defaultLanesFor("android").direct).toBeTruthy();
-		expect(defaultLanesFor("ios").direct).toBeUndefined();
+		expect(defaultLanesFor("ios").direct).toBeTruthy();
 	});
 
 	test("creates the session through the Appium lane factory", async () => {
