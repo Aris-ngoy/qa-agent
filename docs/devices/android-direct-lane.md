@@ -13,7 +13,7 @@ Run a Case with no custom Appium capabilities on an Android emulator or device w
 ## What shipped
 
 - `createAndroidDirectSession` in `services/runner/src/domains/devices/android-direct-lane.ts`
-- `defaultLanesFor("android")` includes Direct; iOS stays Appium-only
+- `defaultLanesFor("android")` includes Direct; iOS simulators use a separate factory ([ios-direct-lane.md](./ios-direct-lane.md))
 - Tests inject a fake `adb` so CI does not need an emulator
 
 ## How to verify

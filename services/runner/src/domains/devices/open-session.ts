@@ -1,17 +1,19 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
 import { createAndroidDirectSession } from "./android-direct-lane";
 import { createAppiumSession } from "./appium-lane";
+import { createIosDirectSession } from "./ios-direct-lane";
 import type { DeviceSession, LaneFactory, LaneName, SessionOptions } from "./lane";
 import { availableLanes, selectLane } from "./select-lane";
 
 /** At most one Device Session per device id (Active Session or Run). */
 const openByDeviceId = new Map<string, DeviceSession>();
 
-/** Direct is Android-only; iOS stays on Appium until an iOS Direct factory exists. */
+/** Direct: Android over adb, iOS simulator over idb_companion. Physical iOS stays Appium. */
 export function defaultLanesFor(platform: DevicePlatform): Partial<Record<LaneName, LaneFactory>> {
 	return {
 		appium: createAppiumSession,
 		...(platform === "android" ? { direct: createAndroidDirectSession } : {}),
+		...(platform === "ios" ? { direct: createIosDirectSession } : {}),
 	};
 }
 

@@ -81,7 +81,7 @@ bun packages/cli/src/main.ts benchmark --device <udid> --platform ios --lane app
 
 ## Follow-ups
 
-- [#198](https://github.com/Aris-ngoy/qa-agent/issues/198): iOS-simulator Direct lane over companion (vendor the official binary; no `brew trust` requirement).
+- [#198](https://github.com/Aris-ngoy/qa-agent/issues/198): iOS-simulator Direct lane — [ios-direct-lane.md](./ios-direct-lane.md).
 - [#199](https://github.com/Aris-ngoy/qa-agent/issues/199): axbridge + `modal` on the Screen, Settle on companion frames, vs-Appium (and vs-Argent when that harness exists).
 - Physical iOS stays Appium. Companion talking to a plugged-in iPhone is out of scope.
 - Parked [#174](https://github.com/Aris-ngoy/qa-agent/issues/174)–[#178](https://github.com/Aris-ngoy/qa-agent/issues/178) stay parked.

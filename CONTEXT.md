@@ -11,7 +11,7 @@ A live connection to one device (or simulator/emulator) through one Lane, includ
 _Avoid_: Active session handle alone, WebDriver session (implementation detail), runner session
 
 **Lane**:
-The control path a Device Session uses to drive its device: the _Appium lane_ (through the Appium Server) or a _Direct lane_ (straight to the platform tooling, bypassing Appium, for speed). Android auto-picks Direct over adb when there are no custom capabilities; iOS stays on Appium until an iOS Direct factory exists. A Device Session has exactly one Lane for its whole life. A Case or App that sets custom Appium capabilities always gets the Appium lane. The Run report names the Lane that ran.
+The control path a Device Session uses to drive its device: the _Appium lane_ (through the Appium Server) or a _Direct lane_ (straight to the platform tooling, bypassing Appium, for speed). Android auto-picks Direct over adb when there are no custom capabilities; iOS simulators auto-pick Direct over idb_companion when the official binary is present (physical iOS stays Appium). A Device Session has exactly one Lane for its whole life. A Case or App that sets custom Appium capabilities always gets the Appium lane. The Run report names the Lane that ran.
 _Avoid_: driver (Provider drivers), backend (runner / cloud), transport, engine
 
 **Active Session**:
