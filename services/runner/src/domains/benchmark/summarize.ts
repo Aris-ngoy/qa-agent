@@ -9,12 +9,20 @@ export type SampleSummary = {
 	samples: number[];
 };
 
+export type RateSummary = {
+	hits: number;
+	n: number;
+	rate: number;
+};
+
 export type LatencyRunInput = {
 	tool: BenchmarkTool;
 	platform: BenchmarkPlatform;
 	tapToResult: number[];
 	screenRead: number[];
 	coldStart: number[];
+	tapHits?: boolean[];
+	casePasses?: boolean[];
 	phases?: {
 		capture?: number[];
 		action?: number[];
@@ -25,10 +33,13 @@ export type LatencyRunInput = {
 export type LatencyReport = {
 	recordedAt: string;
 	repeats: number;
+	suiteVersion?: number;
 	results: Array<{
 		tool: BenchmarkTool;
 		platform: BenchmarkPlatform;
 		metrics: Record<BenchmarkMetric, SampleSummary>;
+		accuracy?: RateSummary;
+		passRate?: RateSummary;
 		phases?: { capture?: number; action?: number; settle?: number };
 	}>;
 };
@@ -55,14 +66,23 @@ function mean(samples: readonly number[] | undefined): number | undefined {
 	return samples.reduce((sum, n) => sum + n, 0) / samples.length;
 }
 
+export function summarizeRate(hits: readonly boolean[] | undefined): RateSummary | undefined {
+	if (!hits || hits.length === 0) return undefined;
+	const n = hits.length;
+	const count = hits.filter(Boolean).length;
+	return { hits: count, n, rate: count / n };
+}
+
 export function summarizeLatency(input: {
 	recordedAt: string;
 	repeats: number;
+	suiteVersion?: number;
 	runs: LatencyRunInput[];
 }): LatencyReport {
 	return {
 		recordedAt: input.recordedAt,
 		repeats: input.repeats,
+		...(input.suiteVersion != null ? { suiteVersion: input.suiteVersion } : {}),
 		results: input.runs.map((run) => {
 			const capture = mean(run.phases?.capture);
 			const action = mean(run.phases?.action);
@@ -75,6 +95,8 @@ export function summarizeLatency(input: {
 							...(settle != null ? { settle } : {}),
 						}
 					: undefined;
+			const accuracy = summarizeRate(run.tapHits);
+			const passRate = summarizeRate(run.casePasses);
 			return {
 				tool: run.tool,
 				platform: run.platform,
@@ -83,6 +105,8 @@ export function summarizeLatency(input: {
 					screenRead: summarizeSamples(run.screenRead),
 					coldStart: summarizeSamples(run.coldStart),
 				},
+				...(accuracy ? { accuracy } : {}),
+				...(passRate ? { passRate } : {}),
 				...(phases ? { phases } : {}),
 			};
 		}),
@@ -110,6 +134,30 @@ export function formatLatencyTable(report: LatencyReport): string {
 					String(Math.round(s.p50)).padStart(8),
 					String(Math.round(s.p95)).padStart(8),
 					String(s.n).padStart(4),
+				].join(" "),
+			);
+		}
+		if (row.accuracy) {
+			lines.push(
+				[
+					row.tool.padEnd(8),
+					row.platform.padEnd(10),
+					"tapAccuracy".padEnd(14),
+					row.accuracy.rate.toFixed(2).padStart(8),
+					"".padStart(8),
+					String(row.accuracy.n).padStart(4),
+				].join(" "),
+			);
+		}
+		if (row.passRate) {
+			lines.push(
+				[
+					row.tool.padEnd(8),
+					row.platform.padEnd(10),
+					"casePassRate".padEnd(14),
+					row.passRate.rate.toFixed(2).padStart(8),
+					"".padStart(8),
+					String(row.passRate.n).padStart(4),
 				].join(" "),
 			);
 		}

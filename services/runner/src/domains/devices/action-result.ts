@@ -9,8 +9,10 @@ import type { DeviceSession } from "./session";
 
 /** Default cap on how long to wait for the screen to settle. */
 export const DEFAULT_SETTLE_CAP_MS = 1500;
-/** Gap between frames while settling. Also the lead-in, so a tap's reaction has started. */
-export const SETTLE_POLL_MS = 250;
+/** Gap between frames while settling. No fixed lead-in — the first frame is taken immediately. */
+export const SETTLE_POLL_MS = 80;
+/** Identical frames must hold at least this long before the screen is settled. */
+export const SETTLE_STABLE_WINDOW_MS = 160;
 
 type SettleClock = {
 	now: () => number;
@@ -30,32 +32,44 @@ function frameHash(base64: string): string {
 }
 
 /**
- * Poll the screen until two consecutive frames are identical, or `capMs` passes.
- * An animating screen (a game) never settles; the latest frame is returned with `settled: false`.
+ * Poll a cheap frame source until the same frame holds for `stableWindowMs`, or `capMs` passes.
+ * The first frame is taken immediately (no lead-in). An animating screen never settles;
+ * the latest frame is returned with `settled: false`.
  */
 export async function settleScreen(
 	capture: () => Promise<{ base64: string }>,
-	options: { capMs?: number; pollMs?: number; clock?: SettleClock } = {},
+	options: { capMs?: number; pollMs?: number; stableWindowMs?: number; clock?: SettleClock } = {},
 ): Promise<SettleResult> {
 	const capMs = options.capMs ?? DEFAULT_SETTLE_CAP_MS;
 	const pollMs = options.pollMs ?? SETTLE_POLL_MS;
+	const stableWindowMs = options.stableWindowMs ?? SETTLE_STABLE_WINDOW_MS;
 	const clock = options.clock ?? realClock;
 	const started = clock.now();
 
-	let latest: string | undefined;
-	let previousHash: string | undefined;
+	let latest = (await capture()).base64;
+	let lastHash = frameHash(latest);
+	let stableSince = started;
+	if (capMs <= 0) {
+		return { base64: latest, settled: false, waitedMs: clock.now() - started };
+	}
+
 	for (;;) {
 		const elapsed = clock.now() - started;
-		if (latest !== undefined && elapsed >= capMs) {
+		if (elapsed >= capMs) {
 			return { base64: latest, settled: false, waitedMs: elapsed };
 		}
 		await clock.sleep(Math.max(0, Math.min(pollMs, capMs - elapsed)));
 		latest = (await capture()).base64;
 		const hash = frameHash(latest);
-		if (previousHash === hash) {
-			return { base64: latest, settled: true, waitedMs: clock.now() - started };
+		const now = clock.now();
+		if (hash === lastHash) {
+			if (now - stableSince >= stableWindowMs) {
+				return { base64: latest, settled: true, waitedMs: now - started };
+			}
+		} else {
+			lastHash = hash;
+			stableSince = now;
 		}
-		previousHash = hash;
 	}
 }
 
@@ -90,13 +104,18 @@ async function writePng(dir: string, base64: string, label: string): Promise<str
 	return writeImage(dir, base64, label, "png");
 }
 
+const lastFrameBySession = new WeakMap<DeviceSession, string>();
+
 type ResultDeps = {
 	perform?: typeof performAction;
 	clock?: SettleClock;
 	pollMs?: number;
+	stableWindowMs?: number;
 	/** Where the images are written (default: the shared screenshot folder). */
 	dir?: string;
 	prepareImage?: (png: string, options?: { full?: boolean; scale?: number }) => Promise<AgentImage>;
+	/** Previous Result frame (base64). Tests inject this; live callers reuse the last Result. */
+	previousFrame?: string;
 };
 
 /**
@@ -109,16 +128,18 @@ export async function performActionWithScreenshot(
 	deps: ResultDeps = {},
 ): Promise<ActionResponse> {
 	const perform = deps.perform ?? performAction;
-	const before = await session.captureFrame().then(
-		(frame) => frame.base64,
-		() => undefined,
-	);
+	const clock = deps.clock ?? realClock;
+	const previousFrame = deps.previousFrame ?? lastFrameBySession.get(session);
+	const tAction = clock.now();
 	const response = await perform(session, body);
+	const actionMs = clock.now() - tAction;
 	const settle = await settleScreen(() => session.captureFrame(), {
 		capMs: body.settleMs,
 		pollMs: deps.pollMs,
-		clock: deps.clock,
+		stableWindowMs: deps.stableWindowMs,
+		clock,
 	});
+	lastFrameBySession.set(session, settle.base64);
 
 	const dir = deps.dir ?? SCREENSHOT_DIR;
 	const rawPath = await writePng(dir, settle.base64, "result");
@@ -142,9 +163,17 @@ export async function performActionWithScreenshot(
 		settled: settle.settled,
 		waitedMs: settle.waitedMs,
 		changed:
-			settle.settled && before !== undefined
-				? frameHash(before) !== frameHash(settle.base64)
+			settle.settled && previousFrame !== undefined
+				? frameHash(previousFrame) !== frameHash(settle.base64)
 				: null,
 	};
-	return { ...response, screenshot };
+	return {
+		...response,
+		screenshot,
+		phases: {
+			captureMs: 0,
+			actionMs,
+			settleMs: settle.waitedMs,
+		},
+	};
 }

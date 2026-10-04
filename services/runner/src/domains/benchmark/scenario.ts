@@ -1,3 +1,4 @@
+import type { BenchmarkSuite } from "./suite";
 import type { BenchmarkPlatform, BenchmarkTool, LatencyRunInput } from "./summarize";
 
 export type ScenarioClock = {
@@ -12,7 +13,12 @@ export type BenchmarkDriver = {
 	tapToResult: (
 		x: number,
 		y: number,
-	) => Promise<{ phases?: { capture?: number; action?: number; settle?: number } }>;
+		expect?: { id?: string; label?: string },
+	) => Promise<{
+		phases?: { capture?: number; action?: number; settle?: number };
+		hit?: boolean;
+	}>;
+	runCase?: (caseId: string) => Promise<boolean>;
 	disconnect: () => Promise<void>;
 };
 
@@ -28,16 +34,18 @@ export async function runLatencyScenario(
 		platform?: BenchmarkPlatform;
 		x?: number;
 		y?: number;
+		suite?: BenchmarkSuite;
 		clock?: ScenarioClock;
 		advance?: (ms: number) => void;
 	},
 ): Promise<LatencyRunInput> {
 	const clock = options.clock ?? { now: () => Date.now() };
-	const x = options.x ?? 500;
-	const y = options.y ?? 500;
+	const taps = options.suite?.taps ?? [{ x: options.x ?? 500, y: options.y ?? 500 }];
 	const tapToResult: number[] = [];
 	const screenRead: number[] = [];
 	const coldStart: number[] = [];
+	const tapHits: boolean[] = [];
+	const casePasses: boolean[] = [];
 	const captures: number[] = [];
 	const actions: number[] = [];
 	const settles: number[] = [];
@@ -53,13 +61,28 @@ export async function runLatencyScenario(
 	screenRead.push(clock.now() - tScreen);
 
 	for (let i = 0; i < options.repeats; i++) {
+		const tap = taps[i % taps.length];
+		if (!tap) continue;
 		const tTap = clock.now();
-		const result = await driver.tapToResult(x, y);
+		const result = await driver.tapToResult(tap.x, tap.y, {
+			id: tap.id,
+			label: tap.label,
+		});
 		options.advance?.(30);
 		tapToResult.push(clock.now() - tTap);
+		if (result.hit != null) tapHits.push(result.hit);
 		if (result.phases?.capture != null) captures.push(result.phases.capture);
 		if (result.phases?.action != null) actions.push(result.phases.action);
 		if (result.phases?.settle != null) settles.push(result.phases.settle);
+	}
+
+	if (driver.runCase && options.suite) {
+		const times = options.suite.passRepeats;
+		for (let i = 0; i < times; i++) {
+			for (const item of options.suite.cases) {
+				casePasses.push(await driver.runCase(item.caseId));
+			}
+		}
 	}
 
 	await driver.disconnect();
@@ -79,6 +102,8 @@ export async function runLatencyScenario(
 		tapToResult,
 		screenRead,
 		coldStart,
+		...(tapHits.length ? { tapHits } : {}),
+		...(casePasses.length ? { casePasses } : {}),
 		...(phases ? { phases } : {}),
 	};
 }

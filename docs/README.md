@@ -53,7 +53,8 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/text-input.md](./devices/text-input.md) | WDA-safe typing via `mobile: type` + paired keyDown/keyUp |
 | [devices/device-session-lane-seam.md](./devices/device-session-lane-seam.md) | `DeviceSession` is a lane-neutral interface; Appium is one Lane behind it |
 | [devices/connector-speed.md](./devices/connector-speed.md) | Lane selection, Agent image, `yoqa action batch` |
-| [devices/benchmark.md](./devices/benchmark.md) | Yoqa vs Argent tap-to-result harness |
+| [devices/benchmark.md](./devices/benchmark.md) | Yoqa vs Argent latency + accuracy harness |
+| [devices/appium-lane-wins.md](./devices/appium-lane-wins.md) | Adaptive Settle, cached window size, connector phases |
 | [runs/saved-scripts.md](./runs/saved-scripts.md) | Save script after pass; script vs AI run prompt |
 | [runs/report-export.md](./runs/report-export.md) | HTML/Markdown E2E report export (runs + inspector) |
 | [runs/agent-step-latency-and-knowledge.md](./runs/agent-step-latency-and-knowledge.md) | Decide latency, per-phase step timing, App Knowledge, retention |

@@ -14,7 +14,9 @@ function fakeDriver(name: "yoqa" | "argent"): BenchmarkDriver & { calls: string[
 		},
 		tapToResult: async () => {
 			calls.push("tap");
-			return name === "yoqa" ? { phases: { capture: 5, action: 10, settle: 15 } } : {};
+			return name === "yoqa"
+				? { phases: { capture: 5, action: 10, settle: 15 }, hit: true }
+				: { hit: true };
 		},
 		disconnect: async () => {
 			calls.push("disconnect");
@@ -41,5 +43,6 @@ describe("runLatencyScenario", () => {
 		expect(result.screenRead).toHaveLength(1);
 		expect(result.tapToResult).toHaveLength(3);
 		expect(result.phases?.action).toEqual([10, 10, 10]);
+		expect(result.tapHits).toEqual([true, true, true]);
 	});
 });

@@ -17,6 +17,10 @@ import { Command } from "commander";
 import { yoqaBenchmarkDriver } from "../../../services/runner/src/domains/benchmark/drivers";
 import { runLatencyScenario } from "../../../services/runner/src/domains/benchmark/scenario";
 import {
+	DEFAULT_BENCHMARK_SUITE,
+	parseBenchmarkSuite,
+} from "../../../services/runner/src/domains/benchmark/suite";
+import {
 	type LatencyRunInput,
 	formatLatencyTable,
 	summarizeLatency,
@@ -471,6 +475,12 @@ function printResultScreenshot(shot: NonNullable<ActionResponse["screenshot"]>):
 	);
 }
 
+function printActionPhases(phases: NonNullable<ActionResponse["phases"]>): void {
+	console.log(
+		`phases capture=${phases.captureMs} action=${phases.actionMs} settle=${phases.settleMs}`,
+	);
+}
+
 for (const kind of [
 	"tap",
 	"swipe",
@@ -514,6 +524,7 @@ for (const kind of [
 					console.log(`resolved ${body.resolved.x},${body.resolved.y}`);
 				}
 				if (body.screenshot) printResultScreenshot(body.screenshot);
+				if (body.phases) printActionPhases(body.phases);
 			} catch (error) {
 				fail(`action ${kind}`, error);
 			}
@@ -1937,7 +1948,8 @@ program
 	.description("Compare Yoqa (and Argent, when installed) tap-to-result latency on one device")
 	.requiredOption("--device <id>", "Device UDID / serial")
 	.requiredOption("--platform <platform>", "ios | android")
-	.option("--repeats <n>", "Tap-to-result repeats (default 5)", (v) => Number(v), 5)
+	.option("--repeats <n>", "Tap-to-result repeats (default: suite repeats)", (v) => Number(v))
+	.option("--suite <path>", "Versioned suite JSON (default: built-in v1)")
 	.option("--tools <list>", "Comma-separated: yoqa,argent (default: yoqa)", "yoqa")
 	.option("--lane <lane>", "Yoqa Lane: appium | direct | auto", "auto")
 	.option("--out <path>", "Write the JSON report to this path")
@@ -1947,7 +1959,8 @@ program
 		async (options: {
 			device: string;
 			platform: string;
-			repeats: number;
+			repeats?: number;
+			suite?: string;
 			tools: string;
 			lane: string;
 			out?: string;
@@ -1964,6 +1977,10 @@ program
 						? options.lane
 						: undefined;
 				if (options.lane && !lane) throw new Error("--lane must be appium, direct, or auto");
+				const suite = options.suite
+					? parseBenchmarkSuite(JSON.parse(await readFile(options.suite, "utf8")))
+					: DEFAULT_BENCHMARK_SUITE;
+				const repeats = options.repeats && options.repeats > 0 ? options.repeats : suite.repeats;
 				const tools = options.tools.split(",").map((t) => t.trim());
 				const c = client(options.baseUrl);
 				const runs: LatencyRunInput[] = [];
@@ -1971,7 +1988,7 @@ program
 					runs.push(
 						await runLatencyScenario(
 							yoqaBenchmarkDriver(c, { deviceId: options.device, platform, lane }),
-							{ repeats: options.repeats, platform },
+							{ repeats, platform, suite },
 						),
 					);
 				}
@@ -1980,7 +1997,8 @@ program
 				}
 				const report = summarizeLatency({
 					recordedAt: new Date().toISOString(),
-					repeats: options.repeats,
+					repeats,
+					suiteVersion: suite.version,
 					runs,
 				});
 				if (options.out) {

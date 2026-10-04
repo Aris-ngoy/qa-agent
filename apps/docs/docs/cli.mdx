@@ -201,7 +201,8 @@ yoqa runs get <run-id>
 yoqa runs create APP --cases 1,2 --wait   # start cases; --wait blocks until finished
 yoqa runs create APP --cases 1 --lane auto
 yoqa runs wait <run-id>
-yoqa benchmark --device <id> --platform ios --repeats 5
+yoqa benchmark --device <id> --platform ios
+yoqa benchmark --device <id> --platform ios --suite docs/devices/benchmark-suite.json
 yoqa report <run-id>                      # HTML / Markdown (same as desktop Export)
 yoqa runs report <run-id>                 # alias of yoqa report
 yoqa runs delete <run-id>

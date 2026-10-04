@@ -29,22 +29,39 @@ function solidPng(width: number, height: number, shade: number): string {
 }
 
 describe("settleScreen", () => {
-	test("settles once two consecutive frames match", async () => {
-		const frames = ["a", "b", "b", "never"];
+	test("settles once the same frame holds for the stable window", async () => {
+		const frames = ["a", "b", "b", "b", "never"];
 		let call = 0;
 		const result = await settleScreen(async () => ({ base64: frames[call++] ?? "end" }), {
 			clock: fakeClock(),
+			pollMs: 80,
+			stableWindowMs: 160,
 		});
 		expect(result.settled).toBe(true);
 		expect(result.base64).toBe("b");
-		expect(call).toBe(3);
+		expect(result.waitedMs).toBe(240);
+		expect(call).toBe(4);
+	});
+
+	test("a changing frame resets the stable window", async () => {
+		const frames = ["a", "a", "b", "b", "b"];
+		let call = 0;
+		const result = await settleScreen(async () => ({ base64: frames[call++] ?? "end" }), {
+			clock: fakeClock(),
+			pollMs: 80,
+			stableWindowMs: 160,
+		});
+		expect(result.settled).toBe(true);
+		expect(result.base64).toBe("b");
+		expect(call).toBe(5);
 	});
 
 	test("an animating screen hits the cap and returns the latest frame", async () => {
 		let call = 0;
 		const result = await settleScreen(async () => ({ base64: `frame-${call++}` }), {
 			capMs: 1000,
-			pollMs: 250,
+			pollMs: 80,
+			stableWindowMs: 160,
 			clock: fakeClock(),
 		});
 		expect(result.settled).toBe(false);
@@ -97,13 +114,25 @@ describe("performActionWithScreenshot", () => {
 		kind: body.kind,
 	});
 
-	test("reports changed=true and writes raw plus marked images when the screen changed", async () => {
+	test("the first Action has changed=null because there is no previous Result fingerprint", async () => {
+		const same = solidPng(16, 16, 40);
+		const result = await performActionWithScreenshot(
+			session([same, same, same]),
+			{ kind: "tap", x: 100, y: 100, screenshot: true },
+			{ perform, clock: fakeClock(), dir },
+		);
+		expect(result.screenshot?.changed).toBeNull();
+		expect(result.phases?.captureMs).toBe(0);
+		expect(result.phases?.settleMs).toBeGreaterThan(0);
+	});
+
+	test("reports changed=true from the previous Result fingerprint, including an out-of-band change", async () => {
 		const before = solidPng(40, 40, 10);
 		const after = solidPng(40, 40, 200);
 		const result = await performActionWithScreenshot(
-			session([before, after, after]),
+			session([after, after, after]),
 			{ kind: "tap", x: 500, y: 500, screenshot: true },
-			{ perform, clock: fakeClock(), dir },
+			{ perform, clock: fakeClock(), dir, previousFrame: before },
 		);
 		const shot = result.screenshot;
 		expect(shot?.settled).toBe(true);
@@ -121,10 +150,12 @@ describe("performActionWithScreenshot", () => {
 		const result = await performActionWithScreenshot(
 			session([same, same, same]),
 			{ kind: "tap", x: 100, y: 100, screenshot: true },
-			{ perform, clock: fakeClock(), dir },
+			{ perform, clock: fakeClock(), dir, previousFrame: same },
 		);
 		expect(result.screenshot?.settled).toBe(true);
 		expect(result.screenshot?.changed).toBe(false);
+		expect(result.phases?.actionMs).toBeGreaterThanOrEqual(0);
+		expect(result.phases?.captureMs).toBe(0);
 	});
 
 	test("changed is null when the screen never settles", async () => {

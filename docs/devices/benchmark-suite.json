@@ -1,0 +1,7 @@
+{
+	"version": 1,
+	"repeats": 5,
+	"passRepeats": 3,
+	"taps": [{ "x": 500, "y": 500 }],
+	"cases": []
+}
