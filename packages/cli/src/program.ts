@@ -18,11 +18,13 @@ import { yoqaBenchmarkDriver } from "../../../services/runner/src/domains/benchm
 import { runLatencyScenario } from "../../../services/runner/src/domains/benchmark/scenario";
 import {
 	DEFAULT_BENCHMARK_SUITE,
+	parseBenchmarkArms,
 	parseBenchmarkSuite,
 } from "../../../services/runner/src/domains/benchmark/suite";
 import {
 	type LatencyRunInput,
 	formatLatencyTable,
+	recommendScreenDefault,
 	summarizeLatency,
 } from "../../../services/runner/src/domains/benchmark/summarize";
 import packageJson from "../package.json" with { type: "json" };
@@ -1952,6 +1954,8 @@ program
 	.option("--suite <path>", "Versioned suite JSON (default: built-in v1)")
 	.option("--tools <list>", "Comma-separated: yoqa,argent (default: yoqa)", "yoqa")
 	.option("--lane <lane>", "Yoqa Lane: appium | direct | auto", "auto")
+	.option("--arms <list>", "Yoqa Screen arms: vision,tree (default: suite arms)")
+	.option("--app <id>", "Catalog App id for Case arms (required when the suite has cases)")
 	.option("--out <path>", "Write the JSON report to this path")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print JSON instead of the table")
@@ -1963,6 +1967,8 @@ program
 			suite?: string;
 			tools: string;
 			lane: string;
+			arms?: string;
+			app?: string;
 			out?: string;
 			baseUrl: string;
 			json?: boolean;
@@ -1980,17 +1986,28 @@ program
 				const suite = options.suite
 					? parseBenchmarkSuite(JSON.parse(await readFile(options.suite, "utf8")))
 					: DEFAULT_BENCHMARK_SUITE;
+				const arms = options.arms
+					? parseBenchmarkArms(options.arms.split(",").map((item) => item.trim()))
+					: suite.arms;
 				const repeats = options.repeats && options.repeats > 0 ? options.repeats : suite.repeats;
 				const tools = options.tools.split(",").map((t) => t.trim());
 				const c = client(options.baseUrl);
 				const runs: LatencyRunInput[] = [];
 				if (tools.includes("yoqa")) {
-					runs.push(
-						await runLatencyScenario(
-							yoqaBenchmarkDriver(c, { deviceId: options.device, platform, lane }),
-							{ repeats, platform, suite },
-						),
-					);
+					for (const screenMode of arms) {
+						runs.push(
+							await runLatencyScenario(
+								yoqaBenchmarkDriver(c, {
+									deviceId: options.device,
+									platform,
+									lane,
+									screenMode,
+									appId: options.app,
+								}),
+								{ repeats, platform, suite, screenMode },
+							),
+						);
+					}
 				}
 				if (tools.includes("argent")) {
 					console.error("Argent driver: install the argent CLI and re-run; skipping for now.");
@@ -2001,11 +2018,23 @@ program
 					suiteVersion: suite.version,
 					runs,
 				});
+				const recommendation = recommendScreenDefault(
+					report.results.find((row) => row.screenMode === "vision"),
+					report.results.find((row) => row.screenMode === "tree"),
+				);
 				if (options.out) {
-					await writeFile(options.out, `${JSON.stringify(report, null, 2)}\n`);
+					await writeFile(
+						options.out,
+						`${JSON.stringify({ ...report, recommendation }, null, 2)}\n`,
+					);
 				}
-				if (options.json) console.log(JSON.stringify(report, null, 2));
-				else console.log(formatLatencyTable(report));
+				if (options.json) console.log(JSON.stringify({ ...report, recommendation }, null, 2));
+				else {
+					console.log(formatLatencyTable(report));
+					if (arms.includes("tree")) {
+						console.log(`default ${recommendation.screenMode} — ${recommendation.reason}`);
+					}
+				}
 			} catch (error) {
 				fail("benchmark", error);
 			}

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { formatLatencyTable, percentile, summarizeLatency, summarizeSamples } from "./summarize";
+import {
+	formatLatencyTable,
+	percentile,
+	recommendScreenDefault,
+	summarizeLatency,
+	summarizeSamples,
+} from "./summarize";
 
 describe("percentile", () => {
 	test("p50 and p95 of a known series", () => {
@@ -94,6 +100,66 @@ describe("formatLatencyTable", () => {
 		expect(table).toContain("tapToResult");
 		expect(table).toContain("180");
 		expect(table).toContain("240");
+	});
+});
+
+describe("recommendScreenDefault", () => {
+	test("keeps vision when a tree arm has no Case pass-rate samples", () => {
+		const report = summarizeLatency({
+			recordedAt: "2026-10-04T00:00:00.000Z",
+			repeats: 3,
+			runs: [
+				{
+					tool: "yoqa",
+					platform: "android",
+					screenMode: "vision",
+					tapToResult: [100],
+					screenRead: [40],
+					coldStart: [800],
+					tapHits: [true, true],
+				},
+				{
+					tool: "yoqa",
+					platform: "android",
+					screenMode: "tree",
+					tapToResult: [140],
+					screenRead: [80],
+					coldStart: [800],
+					tapHits: [true, true],
+				},
+			],
+		});
+		expect(recommendScreenDefault(report.results[0], report.results[1])).toEqual({
+			screenMode: "vision",
+			reason: "No Case pass-rate samples; keep vision-first",
+		});
+		expect(formatLatencyTable(report)).toContain("yoqa/tree");
+	});
+
+	test("picks tree only when it wins pass rate without losing accuracy", () => {
+		const vision = {
+			tool: "yoqa" as const,
+			platform: "android" as const,
+			screenMode: "vision" as const,
+			metrics: {
+				tapToResult: { p50: 100, p95: 100, n: 1, samples: [100] },
+				screenRead: { p50: 40, p95: 40, n: 1, samples: [40] },
+				coldStart: { p50: 800, p95: 800, n: 1, samples: [800] },
+			},
+			accuracy: { hits: 4, n: 5, rate: 0.8 },
+			passRate: { hits: 1, n: 3, rate: 1 / 3 },
+		};
+		const tree = {
+			...vision,
+			screenMode: "tree" as const,
+			accuracy: { hits: 4, n: 5, rate: 0.8 },
+			passRate: { hits: 3, n: 3, rate: 1 },
+		};
+		expect(recommendScreenDefault(vision, tree).screenMode).toBe("tree");
+		expect(
+			recommendScreenDefault(vision, { ...tree, accuracy: { hits: 2, n: 5, rate: 0.4 } })
+				.screenMode,
+		).toBe("vision");
 	});
 });
 

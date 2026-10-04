@@ -48,6 +48,7 @@ Vocabulary: **Screen mode**, **Grid mode**, and **Escalation** in [`CONTEXT.md`]
 
 ## Follow-ups
 
+- Hybrid vs vision-first numbers: [hybrid-screen-arm.md](../devices/hybrid-screen-arm.md). Default stays vision.
 - Desktop Runs panel control for Screen mode (only the API and CLI expose it today).
 - A catalog-app default for Screen mode, if teams want `tree` on specific apps without a flag.
 - Grid mode is coarse for small controls (20-unit `qx`/`qy` slots). If the repeat-tap hint is not enough, options are finer slots, or snapping a missed tap to the nearest clickable node from a one-off tree read.
