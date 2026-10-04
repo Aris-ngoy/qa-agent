@@ -15,7 +15,7 @@ Every Action goes through Appium (WebDriverAgent / UiAutomator2 over HTTP), whic
 
 - **Appium only**, optimized in place: lowest risk, but cannot reach Argent's latency because the HTTP/WDA hop is the floor.
 - **Replace Appium everywhere** (including a physical-iOS XCUITest runner): largest rewrite, loses custom capabilities and the Appium ecosystem, for no gain on physical iOS where Argent also uses XCUITest.
-- **Direct lane first on iOS simulators:** biggest gap, but no copyable implementation and unverified tooling (idb_companion) — hence the spike gate.
+- **Direct lane first on iOS simulators:** biggest gap, but no copyable implementation and unverified tooling (idb_companion) — hence the spike gate. The spike ([#188](https://github.com/Aris-ngoy/qa-agent/issues/188), [idb-companion-spike.md](../devices/idb-companion-spike.md)) recommends **adopt** on simulators: companion v1.6.5 beat Appium/WDA tap-to-result (~8×) and screen read (~25×) on the same iOS 26.5 sim. vs-Argent is still unmeasured (public Argent CLI is not a tap harness).
 - **Translate a subset of Appium capabilities** into the Direct lane, or ignore them with a warning: rejected as silent behaviour drift.
 
 ## Consequences

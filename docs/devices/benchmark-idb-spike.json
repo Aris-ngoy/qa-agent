@@ -1,0 +1,68 @@
+{
+	"recordedAt": "2026-10-04T11:29:11.143Z",
+	"status": "hardware",
+	"note": "Same iPhone 17 Pro / iOS 26.5 simulator. idb rows are CLI timings against idb_companion v1.6.5 (fb-idb 1.6.5). yoqaAppium is yoqa benchmark --lane appium --repeats 3 on that UDID.",
+	"device": {
+		"udid": "B75001FB-B91D-4F94-80A7-3E371A641D27",
+		"name": "iPhone 17 Pro",
+		"platform": "ios",
+		"osVersion": "iOS 26.5",
+		"xcode": "27.0 (27A266a)"
+	},
+	"companion": {
+		"version": "1.6.5",
+		"buildDate": "Oct 2 2026",
+		"buildTime": "16:44:28",
+		"client": "fb-idb==1.6.5",
+		"grpcPort": 10882,
+		"install": "GitHub release idb_companion.macos-arm64.tar.gz; Homebrew facebook/fb tap refused (untrusted)"
+	},
+	"idb": {
+		"screenshot": {
+			"p50": 151,
+			"p95": 152,
+			"n": 5,
+			"samples": [149.2, 149.7, 150.5, 152.5, 205.8]
+		},
+		"treeAx": { "p50": 151, "p95": 158, "n": 5, "samples": [142.6, 148.1, 150.7, 157.8, 422.0] },
+		"treeAxbridgeComplete": {
+			"p50": 204,
+			"p95": 213,
+			"n": 5,
+			"samples": [933.0, 187.9, 212.5, 204.0, 190.7]
+		},
+		"tapHid": { "p50": 247, "p95": 248, "n": 5, "samples": [240.5, 246.7, 246.9, 247.9, 736.8] },
+		"tapToResult": {
+			"p50": 396,
+			"p95": 400,
+			"n": 5,
+			"samples": [407.7, 377.8, 380.8, 395.5, 399.8]
+		},
+		"quietMs": 387,
+		"systemModal": {
+			"kind": "system",
+			"elementType": "_UIAlertControllerPhoneTVMacView",
+			"label": "Allow “Maps” to use your location?"
+		}
+	},
+	"yoqaAppium": {
+		"recordedAt": "2026-10-04T11:29:11.143Z",
+		"repeats": 3,
+		"suiteVersion": 1,
+		"results": [
+			{
+				"tool": "yoqa",
+				"platform": "ios",
+				"screenMode": "vision",
+				"metrics": {
+					"tapToResult": { "p50": 3137, "p95": 3454, "n": 3, "samples": [3454, 3095, 3137] },
+					"screenRead": { "p50": 5243, "p95": 5243, "n": 1, "samples": [5243] },
+					"coldStart": { "p50": 84996, "p95": 84996, "n": 1, "samples": [84996] }
+				},
+				"accuracy": { "hits": 3, "n": 3, "rate": 1 },
+				"phases": { "capture": 0, "action": 0, "settle": 770.6666666666666 }
+			}
+		]
+	},
+	"recommendation": "adopt"
+}
