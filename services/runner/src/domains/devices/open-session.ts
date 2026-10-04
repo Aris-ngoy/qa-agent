@@ -1,3 +1,5 @@
+import type { DevicePlatform } from "@yoqa/runner-client";
+import { createAndroidDirectSession } from "./android-direct-lane";
 import { createAppiumSession } from "./appium-lane";
 import type { DeviceSession, LaneFactory, LaneName, SessionOptions } from "./lane";
 import { availableLanes, selectLane } from "./select-lane";
@@ -5,9 +7,26 @@ import { availableLanes, selectLane } from "./select-lane";
 /** At most one Device Session per device id (Active Session or Run). */
 const openByDeviceId = new Map<string, DeviceSession>();
 
-const defaultLanes: Partial<Record<LaneName, LaneFactory>> = {
-	appium: createAppiumSession,
-};
+/** Direct is Android-only; iOS stays on Appium until an iOS Direct factory exists. */
+export function defaultLanesFor(platform: DevicePlatform): Partial<Record<LaneName, LaneFactory>> {
+	return {
+		appium: createAppiumSession,
+		...(platform === "android" ? { direct: createAndroidDirectSession } : {}),
+	};
+}
+
+function mergeLanes(
+	platform: DevicePlatform,
+	lanes: Partial<Record<LaneName, LaneFactory | undefined>>,
+): Partial<Record<LaneName, LaneFactory>> {
+	const defaults = defaultLanesFor(platform);
+	const merged =
+		Object.keys(lanes).length > 0 ? { appium: defaults.appium, ...lanes } : { ...defaults };
+	const out: Partial<Record<LaneName, LaneFactory>> = {};
+	if (merged.appium) out.appium = merged.appium;
+	if (merged.direct) out.direct = merged.direct;
+	return out;
+}
 
 async function releaseExistingSession(deviceId: string): Promise<void> {
 	const existing = openByDeviceId.get(deviceId);
@@ -28,7 +47,7 @@ async function openOnLane(
 	options: SessionOptions,
 	lanes: Partial<Record<LaneName, LaneFactory>>,
 ): Promise<DeviceSession> {
-	const factory = lanes[laneName] ?? defaultLanes[laneName];
+	const factory = lanes[laneName] ?? defaultLanesFor(options.platform)[laneName];
 	if (!factory) {
 		throw new Error(`No factory registered for the ${laneName} lane`);
 	}
@@ -46,7 +65,7 @@ export async function openDeviceSession(
 ): Promise<DeviceSession> {
 	await releaseExistingSession(options.deviceId);
 
-	const merged: Partial<Record<LaneName, LaneFactory>> = { ...defaultLanes, ...lanes };
+	const merged = mergeLanes(options.platform, lanes);
 	const choice = selectLane({
 		requested: options.requestedLane ?? "auto",
 		available: availableLanes(merged),
