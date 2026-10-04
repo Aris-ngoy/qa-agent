@@ -113,4 +113,16 @@ describe("getScreen", () => {
 		expect(screen.full).toBe(false);
 		expect(screen.elements?.[0]).toMatchObject({ label: "Allow" });
 	});
+
+	test("includes system dialogs from a uiautomator node dump", async () => {
+		const session = {
+			pageSource: async () => `<?xml version="1.0"?>
+<hierarchy>
+  <node bounds="[70,1296][1010,1422]" class="android.widget.Button" package="android" resource-id="android:id/aerr_wait" text="Wait" enabled="true" />
+</hierarchy>`,
+			getWindowSize: async () => ({ width: 1080, height: 2400 }),
+		} as unknown as DeviceSession;
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		expect(screen.elements?.some((el) => el.label === "Wait")).toBe(true);
+	});
 });

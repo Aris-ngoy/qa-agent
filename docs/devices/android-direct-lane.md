@@ -7,7 +7,7 @@ Run a Case with no custom Appium capabilities on an Android emulator or device w
 ## Plan summary
 
 - The Direct factory is registered only for Android. Auto-pick and `--lane direct` use it; custom capabilities still pin Appium. A failed adb connect falls back once (existing dispatcher).
-- Gestures and screenshots go through `adb` (`input tap` / `swipe`, `screencap`, `wm size`). App launch uses `monkey`; stop uses `am force-stop`. Tree reads use `uiautomator dump` so id/label taps keep working. No MJPEG (`stream: null`).
+- Gestures and screenshots go through `adb` (`input tap` / `swipe`, `screencap`, `wm size`). App launch uses `monkey`; stop uses `am force-stop`. Tree reads dump to `/sdcard/yoqa-window.xml` (system-wide, including dialogs). No MJPEG (`stream: null`).
 - Rejected: translating Appium capabilities onto adb, and switching Lane mid-session.
 
 ## What shipped
@@ -25,5 +25,5 @@ Run a Case with no custom Appium capabilities on an Android emulator or device w
 
 ## Follow-ups
 
-- [#190](https://github.com/Aris-ngoy/qa-agent/issues/190): system-wide tree, adaptive Settle on this frame source, benchmark gate vs Argent.
+- [#190](https://github.com/Aris-ngoy/qa-agent/issues/190): see [android-direct-tree-settle.md](./android-direct-tree-settle.md).
 - Hardware Case on an emulator to tick the “sample Case end to end” box in #189.

@@ -30,3 +30,4 @@ A repo-local harness drives the same connector scenario through Yoqa (and Argent
 - A real Argent CLI adapter (the skip message goes away).
 - Record a hardware baseline on the Appium lane and commit it over the fixture.
 - Fill suite `cases` once a catalog App is part of the gate.
+- Android Direct vs-Argent gate: [android-direct-tree-settle.md](./android-direct-tree-settle.md) (unmeasured until a live `--tools yoqa,argent` run).

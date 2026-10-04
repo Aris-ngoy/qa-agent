@@ -56,6 +56,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/benchmark.md](./devices/benchmark.md) | Yoqa vs Argent latency + accuracy harness |
 | [devices/appium-lane-wins.md](./devices/appium-lane-wins.md) | Adaptive Settle, cached window size, connector phases |
 | [devices/android-direct-lane.md](./devices/android-direct-lane.md) | Android Direct lane over adb |
+| [devices/android-direct-tree-settle.md](./devices/android-direct-tree-settle.md) | Direct system-wide tree, Settle, vs-Argent gate |
 | [runs/saved-scripts.md](./runs/saved-scripts.md) | Save script after pass; script vs AI run prompt |
 | [runs/report-export.md](./runs/report-export.md) | HTML/Markdown E2E report export (runs + inspector) |
 | [runs/agent-step-latency-and-knowledge.md](./runs/agent-step-latency-and-knowledge.md) | Decide latency, per-phase step timing, App Knowledge, retention |

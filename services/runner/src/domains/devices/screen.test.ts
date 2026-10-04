@@ -94,6 +94,25 @@ describe("cleanPageSource", () => {
 		expect(cleaned.elements.every((el) => el.label !== el.type)).toBe(true);
 	});
 
+	test("keeps system dialogs from a uiautomator <node> dump", () => {
+		const xml = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node bounds="[28,979][1052,1485]" class="android.widget.FrameLayout" package="android" text="" />
+  <node bounds="[133,1068][947,1131]" class="android.widget.TextView" package="android" resource-id="android:id/alertTitle" text="Pixel Launcher isn't responding" />
+  <node bounds="[70,1170][1010,1296]" class="android.widget.Button" package="android" resource-id="android:id/aerr_close" text="Close app" clickable="true" enabled="true" />
+  <node bounds="[70,1296][1010,1422]" class="android.widget.Button" package="android" resource-id="android:id/aerr_wait" text="Wait" clickable="true" enabled="true" />
+</hierarchy>`;
+		const cleaned = cleanPageSource(xml, { width: 1080, height: 2400 });
+		const labels = cleaned.elements.map((el) => el.label);
+		expect(labels).toContain("Pixel Launcher isn't responding");
+		expect(labels).toContain("Close app");
+		expect(labels).toContain("Wait");
+		expect(cleaned.elements.find((el) => el.label === "Wait")).toMatchObject({
+			type: "android.widget.Button",
+			id: "android:id/aerr_wait",
+		});
+	});
+
 	test("decodes XML entities in Android text and iOS label", () => {
 		const android = cleanPageSource(
 			`

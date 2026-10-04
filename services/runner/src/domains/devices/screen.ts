@@ -146,6 +146,7 @@ export function cleanPageSource(
 		const full = match[0];
 		if (!full || full.startsWith("</")) continue;
 		const { name, attrs } = attrsFromTag(full);
+		const type = name === "node" && attrs.class ? attrs.class : name;
 
 		const rect = parseBoundsAndroid(attrs.bounds ?? null) ?? parseIosFrame(attrs);
 		if (!rect) continue;
@@ -161,8 +162,8 @@ export function cleanPageSource(
 			continue;
 		}
 
-		const label = labelFromAttrs(attrs, name);
-		if (isLayoutOnly(name, label)) continue;
+		const label = labelFromAttrs(attrs, type);
+		if (isLayoutOnly(type, label)) continue;
 
 		const visible =
 			attrs.visible === undefined ? undefined : attrs.visible === "true" || attrs.visible === "1";
@@ -171,10 +172,10 @@ export function cleanPageSource(
 		const enabled =
 			attrs.enabled === undefined ? undefined : attrs.enabled === "true" || attrs.enabled === "1";
 
-		const id = idFromAttrs(attrs, name);
+		const id = idFromAttrs(attrs, type);
 
 		elements.push({
-			type: name,
+			type,
 			label,
 			...(id ? { id } : {}),
 			x: Math.round((rect.x / window.width) * 1000),

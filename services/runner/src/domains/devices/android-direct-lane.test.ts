@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { encodeRgbaPng } from "../runs/coord-grid";
+import { settleScreen } from "./action-result";
 import type { AdbExec, AdbResult } from "./android-direct-lane";
 import { createAndroidDirectSession } from "./android-direct-lane";
 import type { SessionOptions } from "./lane";
@@ -34,7 +35,8 @@ function recordingAdb(): { adb: AdbExec; calls: string[][] } {
 		if (joined.includes("wm size")) return ok("Physical size: 1000x2000\n");
 		if (joined.includes("screencap")) return ok("", png);
 		if (joined.includes("uiautomator dump"))
-			return ok(`UI hierchary dumped to: /dev/tty\n${dump}\n`);
+			return ok("UI hierchary dumped to: /sdcard/yoqa-window.xml\n");
+		if (joined.includes("cat") && joined.includes("yoqa-window.xml")) return ok(`${dump}\n`);
 		return ok();
 	};
 	return { adb, calls };
@@ -117,6 +119,40 @@ describe("createAndroidDirectSession", () => {
 		const xml = await session.pageSource();
 		expect(xml).toContain("<hierarchy");
 		expect(xml).not.toContain("UI hierchary");
+		await session.quit();
+	});
+
+	test("adaptive Settle uses the Direct screencap frame", async () => {
+		const { adb } = recordingAdb();
+		const session = await createAndroidDirectSession(options(), {
+			adb,
+			resolveSerial: async () => "emulator-5554",
+		});
+		const result = await settleScreen(() => session.captureFrame(), {
+			capMs: 400,
+			pollMs: 20,
+			stableWindowMs: 40,
+		});
+		expect(result.settled).toBe(true);
+		expect(result.base64.length).toBeGreaterThan(0);
+		await session.quit();
+	});
+
+	test("pageSource fails clearly when the dump has no XML", async () => {
+		const adb: AdbExec = async (args) => {
+			const joined = args.join(" ");
+			if (joined.includes("get-state")) return ok("device\n");
+			if (joined.includes("wm size")) return ok("Physical size: 1000x2000\n");
+			if (joined.includes("uiautomator dump")) return ok("ERROR: null root node\n");
+			if (joined.includes("cat") && joined.includes("yoqa-window.xml"))
+				return ok("ERROR: null root node\n");
+			return ok();
+		};
+		const session = await createAndroidDirectSession(options(), {
+			adb,
+			resolveSerial: async () => "emulator-5554",
+		});
+		await expect(session.pageSource()).rejects.toThrow(/no tree/);
 		await session.quit();
 	});
 });
