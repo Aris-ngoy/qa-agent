@@ -45,4 +45,24 @@ describe("runLatencyScenario", () => {
 		expect(result.phases?.action).toEqual([10, 10, 10]);
 		expect(result.tapHits).toEqual([true, true, true]);
 	});
+
+	test("stamps the Screen arm and records Case step counts", async () => {
+		const driver = fakeDriver("yoqa");
+		driver.runCase = async () => ({ passed: true, steps: 8 });
+		const result = await runLatencyScenario(driver, {
+			repeats: 1,
+			screenMode: "tree",
+			suite: {
+				version: 1,
+				repeats: 1,
+				taps: [{ x: 500, y: 500 }],
+				cases: [{ caseId: "case_1" }],
+				passRepeats: 1,
+				arms: ["tree"],
+			},
+		});
+		expect(result.screenMode).toBe("tree");
+		expect(result.casePasses).toEqual([true]);
+		expect(result.stepCounts).toEqual([8]);
+	});
 });

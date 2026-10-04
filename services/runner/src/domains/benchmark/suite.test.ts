@@ -9,4 +9,13 @@ describe("parseBenchmarkSuite", () => {
 	test("rejects a suite with no taps", () => {
 		expect(() => parseBenchmarkSuite({ version: 1, repeats: 3, taps: [] })).toThrow(/tap/);
 	});
+
+	test("defaults arms to vision and rejects unknown names", () => {
+		expect(parseBenchmarkSuite({ version: 1, repeats: 1, taps: [{ x: 1, y: 1 }] }).arms).toEqual([
+			"vision",
+		]);
+		expect(() =>
+			parseBenchmarkSuite({ version: 1, repeats: 1, taps: [{ x: 1, y: 1 }], arms: ["hybrid"] }),
+		).toThrow(/vision or tree/);
+	});
 });

@@ -3,5 +3,6 @@
 	"repeats": 5,
 	"passRepeats": 3,
 	"taps": [{ "x": 500, "y": 500 }],
-	"cases": []
+	"cases": [],
+	"arms": ["vision"]
 }

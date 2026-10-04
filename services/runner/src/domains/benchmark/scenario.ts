@@ -18,7 +18,7 @@ export type BenchmarkDriver = {
 		phases?: { capture?: number; action?: number; settle?: number };
 		hit?: boolean;
 	}>;
-	runCase?: (caseId: string) => Promise<boolean>;
+	runCase?: (caseId: string) => Promise<boolean | { passed: boolean; steps?: number }>;
 	disconnect: () => Promise<void>;
 };
 
@@ -35,6 +35,7 @@ export async function runLatencyScenario(
 		x?: number;
 		y?: number;
 		suite?: BenchmarkSuite;
+		screenMode?: "vision" | "tree";
 		clock?: ScenarioClock;
 		advance?: (ms: number) => void;
 	},
@@ -46,6 +47,7 @@ export async function runLatencyScenario(
 	const coldStart: number[] = [];
 	const tapHits: boolean[] = [];
 	const casePasses: boolean[] = [];
+	const stepCounts: number[] = [];
 	const captures: number[] = [];
 	const actions: number[] = [];
 	const settles: number[] = [];
@@ -80,7 +82,12 @@ export async function runLatencyScenario(
 		const times = options.suite.passRepeats;
 		for (let i = 0; i < times; i++) {
 			for (const item of options.suite.cases) {
-				casePasses.push(await driver.runCase(item.caseId));
+				const outcome = await driver.runCase(item.caseId);
+				const passed = typeof outcome === "boolean" ? outcome : outcome.passed;
+				casePasses.push(passed);
+				if (typeof outcome !== "boolean" && outcome.steps != null) {
+					stepCounts.push(outcome.steps);
+				}
 			}
 		}
 	}
@@ -99,11 +106,13 @@ export async function runLatencyScenario(
 	return {
 		tool: driver.name,
 		platform: options.platform ?? "ios",
+		...(options.screenMode ? { screenMode: options.screenMode } : {}),
 		tapToResult,
 		screenRead,
 		coldStart,
 		...(tapHits.length ? { tapHits } : {}),
 		...(casePasses.length ? { casePasses } : {}),
+		...(stepCounts.length ? { stepCounts } : {}),
 		...(phases ? { phases } : {}),
 	};
 }

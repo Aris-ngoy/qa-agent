@@ -18,11 +18,14 @@ export type RateSummary = {
 export type LatencyRunInput = {
 	tool: BenchmarkTool;
 	platform: BenchmarkPlatform;
+	/** Which Screen the Agent (or this arm) used. Omitted on Argent rows. */
+	screenMode?: "vision" | "tree";
 	tapToResult: number[];
 	screenRead: number[];
 	coldStart: number[];
 	tapHits?: boolean[];
 	casePasses?: boolean[];
+	stepCounts?: number[];
 	phases?: {
 		capture?: number[];
 		action?: number[];
@@ -37,9 +40,11 @@ export type LatencyReport = {
 	results: Array<{
 		tool: BenchmarkTool;
 		platform: BenchmarkPlatform;
+		screenMode?: "vision" | "tree";
 		metrics: Record<BenchmarkMetric, SampleSummary>;
 		accuracy?: RateSummary;
 		passRate?: RateSummary;
+		steps?: SampleSummary;
 		phases?: { capture?: number; action?: number; settle?: number };
 	}>;
 };
@@ -97,9 +102,11 @@ export function summarizeLatency(input: {
 					: undefined;
 			const accuracy = summarizeRate(run.tapHits);
 			const passRate = summarizeRate(run.casePasses);
+			const steps = run.stepCounts?.length ? summarizeSamples(run.stepCounts) : undefined;
 			return {
 				tool: run.tool,
 				platform: run.platform,
+				...(run.screenMode ? { screenMode: run.screenMode } : {}),
 				metrics: {
 					tapToResult: summarizeSamples(run.tapToResult),
 					screenRead: summarizeSamples(run.screenRead),
@@ -107,6 +114,7 @@ export function summarizeLatency(input: {
 				},
 				...(accuracy ? { accuracy } : {}),
 				...(passRate ? { passRate } : {}),
+				...(steps ? { steps } : {}),
 				...(phases ? { phases } : {}),
 			};
 		}),
@@ -115,7 +123,7 @@ export function summarizeLatency(input: {
 
 export function formatLatencyTable(report: LatencyReport): string {
 	const header = [
-		"tool".padEnd(8),
+		"tool".padEnd(12),
 		"platform".padEnd(10),
 		"metric".padEnd(14),
 		"p50".padStart(8),
@@ -124,11 +132,12 @@ export function formatLatencyTable(report: LatencyReport): string {
 	].join(" ");
 	const lines = [header];
 	for (const row of report.results) {
+		const tool = row.screenMode ? `${row.tool}/${row.screenMode}` : row.tool;
 		for (const metric of ["tapToResult", "screenRead", "coldStart"] as const) {
 			const s = row.metrics[metric];
 			lines.push(
 				[
-					row.tool.padEnd(8),
+					tool.padEnd(12),
 					row.platform.padEnd(10),
 					metric.padEnd(14),
 					String(Math.round(s.p50)).padStart(8),
@@ -140,7 +149,7 @@ export function formatLatencyTable(report: LatencyReport): string {
 		if (row.accuracy) {
 			lines.push(
 				[
-					row.tool.padEnd(8),
+					tool.padEnd(12),
 					row.platform.padEnd(10),
 					"tapAccuracy".padEnd(14),
 					row.accuracy.rate.toFixed(2).padStart(8),
@@ -152,12 +161,24 @@ export function formatLatencyTable(report: LatencyReport): string {
 		if (row.passRate) {
 			lines.push(
 				[
-					row.tool.padEnd(8),
+					tool.padEnd(12),
 					row.platform.padEnd(10),
 					"casePassRate".padEnd(14),
 					row.passRate.rate.toFixed(2).padStart(8),
 					"".padStart(8),
 					String(row.passRate.n).padStart(4),
+				].join(" "),
+			);
+		}
+		if (row.steps) {
+			lines.push(
+				[
+					tool.padEnd(12),
+					row.platform.padEnd(10),
+					"stepCount".padEnd(14),
+					String(Math.round(row.steps.p50)).padStart(8),
+					String(Math.round(row.steps.p95)).padStart(8),
+					String(row.steps.n).padStart(4),
 				].join(" "),
 			);
 		}
@@ -167,4 +188,38 @@ export function formatLatencyTable(report: LatencyReport): string {
 		}
 	}
 	return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Vision-first stays the default unless the tree arm beats it on Case pass rate
+ * and does not lose tap accuracy. No samples → keep vision (ADR-0004).
+ */
+export function recommendScreenDefault(
+	vision: LatencyReport["results"][number] | undefined,
+	tree: LatencyReport["results"][number] | undefined,
+): { screenMode: "vision" | "tree"; reason: string } {
+	if (!vision || !tree) {
+		return {
+			screenMode: "vision",
+			reason: "Need both vision and tree arms before flipping the default",
+		};
+	}
+	if (!vision.passRate || !tree.passRate) {
+		return {
+			screenMode: "vision",
+			reason: "No Case pass-rate samples; keep vision-first",
+		};
+	}
+	const visionAcc = vision.accuracy?.rate ?? 0;
+	const treeAcc = tree.accuracy?.rate ?? 0;
+	if (tree.passRate.rate > vision.passRate.rate && treeAcc >= visionAcc) {
+		return {
+			screenMode: "tree",
+			reason: "Tree arm won Case pass rate without losing tap accuracy",
+		};
+	}
+	return {
+		screenMode: "vision",
+		reason: "Tree arm did not beat vision on pass rate and accuracy; keep vision-first",
+	};
 }

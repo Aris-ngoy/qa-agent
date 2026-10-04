@@ -14,7 +14,7 @@ A repo-local harness drives the same connector scenario through Yoqa (and Argent
 
 ## What shipped
 
-- `yoqa benchmark --device <id> --platform ios|android [--repeats N] [--suite path] [--tools yoqa,argent] [--lane auto] [--out report.json] [--json]`
+- `yoqa benchmark --device <id> --platform ios|android [--repeats N] [--suite path] [--tools yoqa,argent] [--lane auto] [--arms vision,tree] [--app id] [--out report.json] [--json]`
 - Versioned suite: [`benchmark-suite.json`](./benchmark-suite.json) (`version: 1`). `--repeats` overrides `repeats`; bump `version` when taps or cases change.
 - JSON report plus a text table. Yoqa rows include mean `action` / `settle` phases, `tapAccuracy`, and `casePassRate` when those samples exist.
 - Format fixture: [`benchmark-baseline.json`](./benchmark-baseline.json) (synthetic Appium-lane series). Replace it with a hardware run via `--out docs/devices/benchmark-baseline.json`.
@@ -31,3 +31,4 @@ A repo-local harness drives the same connector scenario through Yoqa (and Argent
 - Record a hardware baseline on the Appium lane and commit it over the fixture.
 - Fill suite `cases` once a catalog App is part of the gate.
 - Android Direct vs-Argent gate: [android-direct-tree-settle.md](./android-direct-tree-settle.md) (unmeasured until a live `--tools yoqa,argent` run).
+- Hybrid Screen arm: [hybrid-screen-arm.md](./hybrid-screen-arm.md). Default stays vision.

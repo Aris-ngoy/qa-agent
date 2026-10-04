@@ -7,6 +7,8 @@ export type BenchmarkTap = {
 	label?: string;
 };
 
+export type BenchmarkScreenArm = "vision" | "tree";
+
 export type BenchmarkSuite = {
 	/** Bump when taps or cases change so JSON runs stay comparable. */
 	version: number;
@@ -14,6 +16,8 @@ export type BenchmarkSuite = {
 	taps: BenchmarkTap[];
 	cases: Array<{ caseId: string }>;
 	passRepeats: number;
+	/** Vision-first is the default arm. `tree` is screenshot + Screen every Agent step. */
+	arms: BenchmarkScreenArm[];
 };
 
 /** Versioned Appium-lane gate suite. Hardware runs should keep this version. */
@@ -23,6 +27,7 @@ export const DEFAULT_BENCHMARK_SUITE: BenchmarkSuite = {
 	taps: [{ x: 500, y: 500 }],
 	cases: [],
 	passRepeats: 3,
+	arms: ["vision"],
 };
 
 export function parseBenchmarkSuite(raw: unknown): BenchmarkSuite {
@@ -72,5 +77,21 @@ export function parseBenchmarkSuite(raw: unknown): BenchmarkSuite {
 		taps,
 		cases,
 		passRepeats: Number.isInteger(passRepeats) ? passRepeats : 3,
+		arms: parseBenchmarkArms(value.arms),
 	};
+}
+
+export function parseBenchmarkArms(raw: unknown): BenchmarkScreenArm[] {
+	if (raw == null) return ["vision"];
+	if (!Array.isArray(raw) || raw.length === 0) {
+		throw new Error("Benchmark suite arms must be a non-empty list of vision | tree");
+	}
+	const arms: BenchmarkScreenArm[] = [];
+	for (const item of raw) {
+		if (item !== "vision" && item !== "tree") {
+			throw new Error("Benchmark suite arms must be vision or tree");
+		}
+		if (!arms.includes(item)) arms.push(item);
+	}
+	return arms;
 }
