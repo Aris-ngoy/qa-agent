@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { encodeRgbaPng } from "../runs/coord-grid";
+import { settleScreen } from "./action-result";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
 import type { SessionOptions } from "./lane";
@@ -46,7 +47,23 @@ function recordingIdb(): { idb: IdbExec; calls: string[][] } {
 		if (args[0] === "describe") return ok(DESCRIBE);
 		if (args[0] === "screenshot") return ok("", png);
 		if (args[0] === "ui" && args[1] === "describe-all") {
-			return ok(JSON.stringify({ backend: "axbridge-exclusive", elements: [], modal: null }));
+			return ok(
+				JSON.stringify({
+					backend: "axbridge-exclusive",
+					modal: {
+						kind: "system",
+						label: "Allow “Maps” to use your location?",
+					},
+					elements: [
+						{
+							type: "Button",
+							label: "Allow While Using App",
+							frame: { x: 24, y: 420, width: 354, height: 44 },
+							enabled: true,
+						},
+					],
+				}),
+			);
 		}
 		return ok();
 	};
@@ -121,6 +138,46 @@ describe("createIosDirectSession", () => {
 		};
 		const session = await createIosDirectSession(options(), { idb: wrapped });
 		await expect(session.pageSource()).rejects.toThrow(/no tree/);
+		await session.quit();
+	});
+
+	test("adaptive Settle uses the companion screenshot frame", async () => {
+		const { idb } = recordingIdb();
+		const session = await createIosDirectSession(options(), { idb });
+		const result = await settleScreen(() => session.captureFrame(), {
+			capMs: 400,
+			pollMs: 20,
+			stableWindowMs: 40,
+		});
+		expect(result.settled).toBe(true);
+		expect(result.base64.length).toBeGreaterThan(0);
+		await session.quit();
+	});
+
+	test("captureFrame falls back to simctl when companion screenshot fails", async () => {
+		const png = tinyPng();
+		const { idb } = recordingIdb();
+		const wrapped: IdbExec = async (args) => {
+			if (args[0] === "screenshot") {
+				return { stdout: "", stderr: "Failed to capture a screenshot", exitCode: 1 };
+			}
+			return idb(args);
+		};
+		const session = await createIosDirectSession(options(), {
+			idb: wrapped,
+			screenshotFallback: async () => png,
+		});
+		const frame = await session.captureFrame();
+		expect(frame.mime).toBe("image/png");
+		expect(frame.base64.length).toBeGreaterThan(0);
+		await session.quit();
+	});
+
+	test("acceptAlert taps Allow from the axbridge tree", async () => {
+		const { idb, calls } = recordingIdb();
+		const session = await createIosDirectSession(options(), { idb });
+		await session.acceptAlert();
+		expect(calls.some((c) => c[0] === "ui" && c[1] === "tap")).toBe(true);
 		await session.quit();
 	});
 });

@@ -60,6 +60,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/hybrid-screen-arm.md](./devices/hybrid-screen-arm.md) | Screenshot + tree every Agent step as a benchmark arm |
 | [devices/idb-companion-spike.md](./devices/idb-companion-spike.md) | idb_companion vs WDA on one simulator; adopt for iOS Direct |
 | [devices/ios-direct-lane.md](./devices/ios-direct-lane.md) | iOS-simulator Direct lane over idb_companion |
+| [devices/ios-direct-tree-settle.md](./devices/ios-direct-tree-settle.md) | iOS Direct axbridge Screen, system modal, Settle |
 | [runs/saved-scripts.md](./runs/saved-scripts.md) | Save script after pass; script vs AI run prompt |
 | [runs/report-export.md](./runs/report-export.md) | HTML/Markdown E2E report export (runs + inspector) |
 | [runs/agent-step-latency-and-knowledge.md](./runs/agent-step-latency-and-knowledge.md) | Decide latency, per-phase step timing, App Knowledge, retention |

@@ -1,0 +1,46 @@
+{
+	"recordedAt": "2026-10-04T13:50:54.638Z",
+	"repeats": 3,
+	"suiteVersion": 1,
+	"results": [
+		{
+			"tool": "yoqa",
+			"platform": "ios",
+			"screenMode": "vision",
+			"metrics": {
+				"tapToResult": {
+					"p50": 2044,
+					"p95": 3195,
+					"n": 3,
+					"samples": [3195, 2044, 2041]
+				},
+				"screenRead": {
+					"p50": 528,
+					"p95": 528,
+					"n": 1,
+					"samples": [528]
+				},
+				"coldStart": {
+					"p50": 676,
+					"p95": 676,
+					"n": 1,
+					"samples": [676]
+				}
+			},
+			"accuracy": {
+				"hits": 3,
+				"n": 3,
+				"rate": 1
+			},
+			"phases": {
+				"capture": 0,
+				"action": 616.6666666666666,
+				"settle": 1352
+			}
+		}
+	],
+	"recommendation": {
+		"screenMode": "vision",
+		"reason": "Need both vision and tree arms before flipping the default"
+	}
+}

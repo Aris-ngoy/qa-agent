@@ -6,7 +6,11 @@ import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { requireIdbBins } from "./idb-companion";
 import type { DeviceSession, PointerPhase, SessionOptions } from "./lane";
 import { remember } from "./once";
+import { cleanPageSource } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
+
+const IOS_ACCEPT_LABELS = ["Allow While Using App", "Allow Once", "Allow", "OK"] as const;
+const IOS_DISMISS_LABELS = ["Don't Allow", "Don’t Allow", "Don't allow"] as const;
 
 export type IdbResult = {
 	stdout: string;
@@ -19,6 +23,8 @@ export type IdbExec = (args: string[]) => Promise<IdbResult>;
 
 export type IosDirectDeps = {
 	idb?: IdbExec;
+	/** When companion screenshot fails (“no active display”), use simctl. */
+	screenshotFallback?: (udid: string) => Promise<Uint8Array>;
 };
 
 function fail(result: IdbResult, label: string): never {
@@ -109,6 +115,19 @@ function defaultIdb(): IdbExec {
 	return createIdbExec(bins.client, bins.companion);
 }
 
+export async function captureViaSimctl(udid: string): Promise<Uint8Array> {
+	const dest = join(tmpdir(), `yoqa-simctl-${crypto.randomUUID()}.png`);
+	const proc = Bun.spawn(["xcrun", "simctl", "io", udid, "screenshot", dest], {
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+	if (exitCode !== 0) {
+		throw new Error(`simctl screenshot: ${stderr.trim() || `exit ${exitCode}`}`);
+	}
+	return new Uint8Array(await readFile(dest));
+}
+
 /**
  * iOS-simulator Device Session over idb_companion — no Appium server.
  * Android and physical iOS are rejected so connect can fall back to Appium (ADR-0004).
@@ -143,12 +162,18 @@ export async function createIosDirectSession(
 
 	const captureFrame = async () => {
 		const dest = join(tmpdir(), `yoqa-idb-${crypto.randomUUID()}.png`);
-		const result = await run(["screenshot", dest, "--udid", udid], "idb screenshot");
-		const bytes =
-			result.stdoutBytes && result.stdoutBytes.byteLength > 8
-				? result.stdoutBytes
-				: new Uint8Array(await readFile(dest));
-		if (bytes.byteLength === 0) throw new Error("idb screenshot returned an empty frame");
+		let bytes: Uint8Array;
+		try {
+			const result = await run(["screenshot", dest, "--udid", udid], "idb screenshot");
+			bytes =
+				result.stdoutBytes && result.stdoutBytes.byteLength > 8
+					? result.stdoutBytes
+					: new Uint8Array(await readFile(dest));
+			if (bytes.byteLength === 0) throw new Error("idb screenshot returned an empty frame");
+		} catch {
+			bytes = await (deps.screenshotFallback ?? captureViaSimctl)(udid);
+			if (bytes.byteLength === 0) throw new Error("simctl screenshot returned an empty frame");
+		}
 		const base64 = Buffer.from(bytes).toString("base64");
 		lastShotSize = pngSizeFromBase64(base64) ?? lastShotSize;
 		return { base64, mime: "image/png" as const };
@@ -259,6 +284,22 @@ export async function createIosDirectSession(
 		});
 	};
 
+	const resolveAlert = async (action: "accept" | "dismiss") => {
+		const raw = await pageSource();
+		const window = await getWindowSize();
+		const labels = action === "accept" ? IOS_ACCEPT_LABELS : IOS_DISMISS_LABELS;
+		const hit = cleanPageSource(raw, window).elements.find((el) =>
+			labels.some((label) => el.label === label),
+		);
+		if (!hit) {
+			throw new Error(`No ${action} alert button in the idb Screen`);
+		}
+		await tapPx(
+			toPx(hit.x + hit.width / 2, window.width),
+			toPx(hit.y + hit.height / 2, window.height),
+		);
+	};
+
 	const session: DeviceSession = {
 		lane: "direct",
 		stream: null,
@@ -275,12 +316,8 @@ export async function createIosDirectSession(
 		terminateApp,
 		backgroundApp,
 		openUrl,
-		acceptAlert: async () => {
-			throw new Error("iOS Direct acceptAlert lands with the Screen/modal work (#199)");
-		},
-		dismissAlert: async () => {
-			throw new Error("iOS Direct dismissAlert lands with the Screen/modal work (#199)");
-		},
+		acceptAlert: () => lock.withLock(() => resolveAlert("accept")),
+		dismissAlert: () => lock.withLock(() => resolveAlert("dismiss")),
 		withActionLock: (fn) => lock.withLock(fn),
 		pointerEvent: async (phase: PointerPhase, xNorm: number, yNorm: number) => {
 			const size = await pointerSize("screenshot");

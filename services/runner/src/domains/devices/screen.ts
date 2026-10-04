@@ -131,14 +131,146 @@ function isLayoutOnly(name: string, label: string): boolean {
 		lower === "xcuielementtypewebview" ||
 		lower === "hierarchy" ||
 		lower === "android.widget.framelayout" ||
-		lower === "android.view.view"
+		lower === "android.view.view" ||
+		lower === "other" ||
+		lower === "application" ||
+		lower === "rctview" ||
+		lower === "axgenericelement" ||
+		lower === "genericelement"
 	);
+}
+
+type IdbFrame = { x?: number; y?: number; width?: number; height?: number };
+
+type IdbNode = {
+	type?: string;
+	role?: string;
+	label?: string;
+	AXLabel?: string;
+	title?: string;
+	identifier?: string;
+	AXUniqueId?: string;
+	enabled?: boolean | null;
+	frame?: IdbFrame;
+	children?: IdbNode[];
+};
+
+type IdbComplete = {
+	modal?: {
+		kind?: string;
+		label?: string;
+		element_type?: string;
+		frame?: IdbFrame;
+	} | null;
+	elements?: IdbNode[];
+	screen?: { width?: number; height?: number };
+};
+
+function idbFrame(frame: IdbFrame | undefined): {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+} | null {
+	if (!frame) return null;
+	const x = Number(frame.x);
+	const y = Number(frame.y);
+	const width = Number(frame.width);
+	const height = Number(frame.height);
+	if ([x, y, width, height].some((n) => Number.isNaN(n))) return null;
+	if (width <= 0 || height <= 0) return null;
+	return { x, y, width, height };
+}
+
+function pushNormalized(
+	elements: ScreenElement[],
+	window: { width: number; height: number },
+	input: {
+		type: string;
+		label: string;
+		id?: string;
+		rect: { x: number; y: number; width: number; height: number };
+		enabled?: boolean;
+	},
+): void {
+	if (
+		input.rect.x + input.rect.width < 0 ||
+		input.rect.y + input.rect.height < 0 ||
+		input.rect.x > window.width ||
+		input.rect.y > window.height
+	) {
+		return;
+	}
+	if (isLayoutOnly(input.type, input.label)) return;
+	elements.push({
+		type: input.type,
+		label: input.label,
+		...(input.id ? { id: input.id } : {}),
+		x: Math.round((input.rect.x / window.width) * 1000),
+		y: Math.round((input.rect.y / window.height) * 1000),
+		width: Math.round((input.rect.width / window.width) * 1000),
+		height: Math.round((input.rect.height / window.height) * 1000),
+		enabled: input.enabled,
+	});
+}
+
+function walkIdbNodes(
+	nodes: IdbNode[] | undefined,
+	window: { width: number; height: number },
+	elements: ScreenElement[],
+): void {
+	if (!nodes) return;
+	for (const node of nodes) {
+		const type = node.type || node.role || "Other";
+		const label = firstUsableAttr([node.label, node.AXLabel, node.title], type);
+		const id = firstUsableAttr([node.identifier, node.AXUniqueId], type);
+		const rect = idbFrame(node.frame);
+		if (rect) {
+			pushNormalized(elements, window, {
+				type,
+				label,
+				id: id || undefined,
+				rect,
+				enabled: node.enabled === null ? undefined : (node.enabled ?? undefined),
+			});
+		}
+		walkIdbNodes(node.children, window, elements);
+	}
+}
+
+/** idb `--format complete` (and a bare element array) into the same Screen as Appium XML. */
+export function cleanIdbCompleteSource(
+	raw: string,
+	window: { width: number; height: number },
+): CleanedScreen {
+	const parsed: unknown = JSON.parse(raw);
+	const doc: IdbComplete = Array.isArray(parsed)
+		? { elements: parsed as IdbNode[] }
+		: (parsed as IdbComplete);
+	const elements: ScreenElement[] = [];
+	walkIdbNodes(doc.elements, window, elements);
+	const modal = doc.modal;
+	if (modal?.label) {
+		const type = modal.element_type || "XCUIElementTypeAlert";
+		const rect = idbFrame(modal.frame) ?? {
+			x: Math.round(window.width * 0.08),
+			y: Math.round(window.height * 0.28),
+			width: Math.round(window.width * 0.84),
+			height: Math.round(window.height * 0.22),
+		};
+		pushNormalized(elements, window, { type, label: modal.label, rect });
+	}
+	return { elements, window };
 }
 
 export function cleanPageSource(
 	xml: string,
 	window: { width: number; height: number },
 ): CleanedScreen {
+	const trimmed = xml.trim();
+	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+		return cleanIdbCompleteSource(trimmed, window);
+	}
 	const elements: ScreenElement[] = [];
 	const tagRe = /<([A-Za-z0-9_.-]+)([^>]*)\/?>/g;
 
