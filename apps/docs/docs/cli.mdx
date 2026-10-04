@@ -104,7 +104,8 @@ In the desktop app: **Servers** button next to Play, and **Settings → Diagnost
 yoqa devices ios                             # list devices & simulators (--all for every simulator)
 yoqa devices android                         # list devices & emulators (--all for every emulator)
 yoqa devices connect <device-id>             # open a session (full id from the list)
-yoqa devices active                          # show the connected device
+yoqa devices connect <device-id> --lane auto # appium | direct | auto (default auto)
+yoqa devices active                          # show the connected device (includes Lane)
 yoqa devices disconnect
 ```
 
@@ -142,10 +143,14 @@ yoqa action swipe --x 500 --y 800 --x2 500 --y2 200
 yoqa action drag --x 300 --y 500 --x2 700 --y2 500
 yoqa action input --x 500 --y 640 --text "hi@yoqa.arisn.dev"
 
-# See the result: wait for the screen to settle, then print the screenshot paths
-# (raw + a copy with a ring where the tap landed), `settled`, and `changed`.
+# See the result: wait for the screen to settle, then print the Agent image path
+# (downscaled for models). `raw` is the full Result screenshot; `marked` has the tap ring.
 yoqa action tap --x 500 --y 320 --screenshot
 yoqa action tap --x 500 --y 320 --screenshot --settle 3000   # longest wait, ms (default 1500)
+yoqa action tap --x 500 --y 320 --screenshot --full          # raw Result screenshot, not the Agent image
+yoqa action tap --x 500 --y 320 --screenshot --scale 0.5
+# Known coordinate / id / label steps only — no -d / description (Grounding needs a fresh screen)
+printf '{"steps":[{"kind":"tap","x":100,"y":100},{"kind":"tap","x":200,"y":200}]}' | yoqa action batch
 
 # Assertions
 yoqa assert visible -t "Welcome back"
@@ -194,7 +199,9 @@ yoqa builds create /abs/path/MyApp.app --app APP     # path is positional and fi
 yoqa runs list APP
 yoqa runs get <run-id>
 yoqa runs create APP --cases 1,2 --wait   # start cases; --wait blocks until finished
+yoqa runs create APP --cases 1 --lane auto
 yoqa runs wait <run-id>
+yoqa benchmark --device <id> --platform ios --repeats 5
 yoqa report <run-id>                      # HTML / Markdown (same as desktop Export)
 yoqa runs report <run-id>                 # alias of yoqa report
 yoqa runs delete <run-id>

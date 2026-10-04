@@ -1,6 +1,8 @@
 import { mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
+	actionBatchRequestSchema,
+	actionBatchResponseSchema,
 	actionRequestSchema,
 	actionResponseSchema,
 	activeDeviceResponseSchema,
@@ -21,6 +23,7 @@ import {
 	isMissingAppiumSessionError,
 	requireActiveSession,
 } from "../../domains/devices/active-session";
+import { performActionBatch } from "../../domains/devices/batch";
 import {
 	ActionNotFoundError,
 	ActionValidationError,
@@ -65,7 +68,10 @@ export function createSessionRoutes() {
 			return c.json({ error: "Body must include deviceId and platform" }, 400);
 		}
 		try {
-			const info = await connectDevice(parsed.data);
+			const info = await connectDevice({
+				...parsed.data,
+				requestedLane: parsed.data.lane,
+			});
 			return c.json(activeDeviceResponseSchema.parse(info));
 		} catch (error) {
 			const mapped = sessionErrorResponse(error);
@@ -213,6 +219,47 @@ export function createSessionRoutes() {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Failed to proxy MJPEG stream", detail: message }, 500);
+		}
+	});
+
+	app.post("/action/batch", async (c) => {
+		let json: unknown;
+		try {
+			json = await c.req.json();
+		} catch {
+			return c.json({ error: "Request body must be JSON" }, 400);
+		}
+		const parsed = actionBatchRequestSchema.safeParse(json);
+		if (!parsed.success) {
+			return c.json({ error: "Invalid action batch", detail: parsed.error.message }, 400);
+		}
+		try {
+			const { session } = requireActiveSession();
+			if (isActiveSessionHeldByRun()) {
+				return c.json(
+					{
+						error: "A run is using this device session. Cancel the run to interact manually.",
+					},
+					409,
+				);
+			}
+			const result = await performActionBatch(session, {
+				steps: parsed.data.steps.map((step) => ({
+					...step,
+					fullImage: parsed.data.fullImage ?? step.fullImage,
+					imageScale: parsed.data.imageScale ?? step.imageScale,
+				})),
+				settleMs: parsed.data.settleMs,
+			});
+			return c.json(actionBatchResponseSchema.parse(result), result.ok ? 200 : 422);
+		} catch (error) {
+			const gone = sessionErrorResponse(error);
+			if (gone) return c.json(gone.body, gone.status);
+			if (error instanceof ActionValidationError) {
+				return c.json({ error: error.message }, 400);
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			return c.json({ error: "Action batch failed", detail: message }, 500);
 		}
 	});
 

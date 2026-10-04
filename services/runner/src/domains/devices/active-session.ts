@@ -13,6 +13,8 @@ export type ActiveSessionInfo = {
 	streamUrl: string;
 	/** A Run currently owns this session for test execution (interactive actions are view-only). */
 	heldByRun: boolean;
+	lane: import("./lane").LaneName;
+	laneWarning?: string;
 };
 
 type ActiveSession = {
@@ -48,6 +50,8 @@ function toInfo(current: ActiveSession): ActiveSessionInfo {
 		streamReady: current.session.stream?.ready ?? false,
 		streamUrl: current.streamUrl,
 		heldByRun: current.heldByRunId != null,
+		lane: current.session.lane,
+		...(current.session.laneWarning ? { laneWarning: current.session.laneWarning } : {}),
 	};
 }
 
@@ -94,6 +98,7 @@ async function createAndRegister(options: {
 	caseCaps?: Capability[];
 	bundleId?: string;
 	appPackage?: string;
+	requestedLane?: import("./lane").LaneName | "auto";
 	heldByRunId: string | null;
 }): Promise<DeviceSession> {
 	const session = await createDeviceSession({
@@ -103,6 +108,7 @@ async function createAndRegister(options: {
 		caseCaps: options.caseCaps ?? [],
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
+		requestedLane: options.requestedLane,
 		onSessionDead: () => {
 			abandonActiveSession();
 		},
@@ -129,6 +135,9 @@ export async function connectDevice(options: {
 	platform: DevicePlatform;
 	bundleId?: string;
 	appPackage?: string;
+	appCaps?: Capability[];
+	caseCaps?: Capability[];
+	requestedLane?: import("./lane").LaneName | "auto";
 }): Promise<ActiveSessionInfo> {
 	if (isActiveSessionHeldByRun()) {
 		throw new SessionBusyError(
@@ -184,6 +193,7 @@ export async function acquireSessionForRun(options: {
 	caseCaps?: Capability[];
 	bundleId?: string;
 	appPackage?: string;
+	requestedLane?: import("./lane").LaneName | "auto";
 }): Promise<{ session: DeviceSession; shared: boolean }> {
 	const current = active;
 
@@ -195,6 +205,7 @@ export async function acquireSessionForRun(options: {
 			caseCaps: options.caseCaps ?? [],
 			bundleId: options.bundleId,
 			appPackage: options.appPackage,
+			requestedLane: options.requestedLane,
 			onSessionDead: () => undefined,
 		});
 		return { session, shared: false };

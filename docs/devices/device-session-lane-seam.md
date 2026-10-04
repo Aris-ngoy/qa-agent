@@ -30,5 +30,5 @@ All under `services/runner/src/domains/devices/`:
 
 ## Follow-ups
 
-- [#187](https://github.com/Aris-ngoy/qa-agent/issues/187): Lane selection, `--lane`, capability pin, fallback, Lane in the report. `lane` is already on the session but is not surfaced in any output yet.
+- [#187](https://github.com/Aris-ngoy/qa-agent/issues/187): Lane selection is implemented; see [connector-speed.md](./connector-speed.md).
 - The `/stream.mjpeg` 503 message still says "Appium MJPEG broadcaster"; reword when a second lane exists.

@@ -141,6 +141,28 @@ describe("performActionWithScreenshot", () => {
 		expect(result.screenshot?.changed).toBeNull();
 	});
 
+	test("hands the caller an Agent image and keeps the raw Result screenshot", async () => {
+		const same = solidPng(40, 40, 90);
+		const result = await performActionWithScreenshot(
+			session([same, same, same]),
+			{ kind: "tap", x: 100, y: 100, screenshot: true },
+			{
+				perform,
+				clock: fakeClock(),
+				dir,
+				prepareImage: async () => ({
+					base64: solidPng(8, 8, 1),
+					mediaType: "image/png",
+					downscaled: true,
+				}),
+			},
+		);
+		expect(result.screenshot?.rawPath).toBeTruthy();
+		expect(result.screenshot?.path).not.toBe(result.screenshot?.rawPath);
+		expect(result.screenshot && existsSync(result.screenshot.path)).toBe(true);
+		expect(result.screenshot?.rawPath && existsSync(result.screenshot.rawPath)).toBe(true);
+	});
+
 	test("an action with no point has no marked copy", async () => {
 		const same = solidPng(8, 8, 90);
 		const result = await performActionWithScreenshot(

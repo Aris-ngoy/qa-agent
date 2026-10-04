@@ -161,6 +161,7 @@ function ensureSchema(sqlite: Database): void {
 	migrateCaseScripts(sqlite);
 	migrateRunExecutionMode(sqlite);
 	migrateRunScreenMode(sqlite);
+	migrateRunLane(sqlite);
 	migrateRunCommands(sqlite);
 	migrateRunStepPhases(sqlite);
 }
@@ -204,6 +205,14 @@ function migrateRunExecutionMode(sqlite: Database): void {
 	if (testCols.size > 0) {
 		addColumnIfMissing(sqlite, "run_tests", "execution_mode", "execution_mode TEXT", testCols);
 	}
+}
+
+function migrateRunLane(sqlite: Database): void {
+	const runCols = tableColumns(sqlite, "runs");
+	if (runCols.size === 0) return;
+	addColumnIfMissing(sqlite, "runs", "requested_lane", "requested_lane TEXT", runCols);
+	addColumnIfMissing(sqlite, "runs", "lane", "lane TEXT", runCols);
+	addColumnIfMissing(sqlite, "runs", "lane_warning", "lane_warning TEXT", runCols);
 }
 
 /** Rows from before Screen modes existed ran with the tree, so they read back as `tree`. */

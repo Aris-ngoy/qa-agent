@@ -2,9 +2,9 @@ import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 
 /**
  * The control path a Device Session uses (see `Lane` in CONTEXT.md and ADR-0004).
- * Only `appium` exists today; a Direct lane is added behind the same interface.
+ * `appium` is the only factory today; `direct` is selected when a factory is registered.
  */
-export type LaneName = "appium";
+export type LaneName = "appium" | "direct";
 
 export type SessionOptions = {
 	platform: DevicePlatform;
@@ -13,6 +13,8 @@ export type SessionOptions = {
 	caseCaps: Capability[];
 	bundleId?: string;
 	appPackage?: string;
+	/** User-requested Lane. `auto` (default) picks Direct when that factory exists. */
+	requestedLane?: LaneName | "auto";
 	/** Called once when the lane reports the session is gone. */
 	onSessionDead?: () => void;
 };
@@ -40,6 +42,8 @@ export type LiveStream = {
 export type DeviceSession = {
 	/** Which Lane drives this session. Fixed for the session's whole life. */
 	lane: LaneName;
+	/** Why this session is not on the requested Lane, when it fell back or was pinned. */
+	laneWarning?: string;
 	stream: LiveStream | null;
 	quit: () => Promise<void>;
 	/** In-memory frame for live feed / grounding — never writes disk. */

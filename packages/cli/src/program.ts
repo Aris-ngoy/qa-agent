@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import {
 	type ActionRequest,
 	type ActionResponse,
@@ -14,6 +14,13 @@ import {
 	waitForRun,
 } from "@yoqa/runner-client";
 import { Command } from "commander";
+import { yoqaBenchmarkDriver } from "../../../services/runner/src/domains/benchmark/drivers";
+import { runLatencyScenario } from "../../../services/runner/src/domains/benchmark/scenario";
+import {
+	type LatencyRunInput,
+	formatLatencyTable,
+	summarizeLatency,
+} from "../../../services/runner/src/domains/benchmark/summarize";
 import packageJson from "../package.json" with { type: "json" };
 import { findCatalogApp } from "./catalog-app";
 import { formatDoctorReport } from "./doctor-table";
@@ -281,12 +288,13 @@ for (const platform of ["ios", "android"] as const) {
 
 devices
 	.command("connect")
-	.description("Open an Appium session on a device")
+	.description("Open a Device Session on a device")
 	.argument("<deviceId>", "Device UDID / serial")
 	.requiredOption("--platform <platform>", "ios | android")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
+	.option("--lane <lane>", "appium | direct | auto (default: auto)")
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
@@ -296,6 +304,7 @@ devices
 				platform: string;
 				bundleId?: string;
 				appPackage?: string;
+				lane?: string;
 				json?: boolean;
 			},
 		) => {
@@ -304,17 +313,23 @@ devices
 				if (platform !== "ios" && platform !== "android") {
 					throw new Error("--platform must be ios or android");
 				}
+				const lane = options.lane;
+				if (lane != null && lane !== "appium" && lane !== "direct" && lane !== "auto") {
+					throw new Error("--lane must be appium, direct, or auto");
+				}
 				const body = await client(options.baseUrl).connectDevice({
 					deviceId,
 					platform,
 					bundleId: options.bundleId,
 					appPackage: options.appPackage,
+					lane,
 				});
 				if (options.json) {
 					console.log(JSON.stringify(body, null, 2));
 					return;
 				}
-				console.log(`connected ${body.platform} ${body.deviceId}`);
+				console.log(`connected ${body.platform} ${body.deviceId} lane ${body.lane ?? "appium"}`);
+				if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 			} catch (error) {
 				fail("devices connect", error);
 			}
@@ -338,7 +353,8 @@ devices
 				console.log(JSON.stringify(body, null, 2));
 				return;
 			}
-			console.log(`${body.platform} ${body.deviceId}`);
+			console.log(`${body.platform} ${body.deviceId} lane ${body.lane ?? "appium"}`);
+			if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 		} catch (error) {
 			fail("devices active", error);
 		}
@@ -433,11 +449,21 @@ function addActionOptions(cmd: Command) {
 			"--settle <ms>",
 			"With --screenshot: longest wait for the screen to settle (default 1500)",
 			(v) => Number(v),
+		)
+		.option(
+			"--full",
+			"With --screenshot: return the raw Result screenshot instead of the Agent image",
+		)
+		.option(
+			"--scale <n>",
+			"With --screenshot: Agent image scale 0.01–1 (default: long edge ~1000 px)",
+			(v) => Number(v),
 		);
 }
 
 function printResultScreenshot(shot: NonNullable<ActionResponse["screenshot"]>): void {
 	console.log(`screenshot ${shot.path}`);
+	if (shot.rawPath) console.log(`raw ${shot.rawPath}`);
 	if (shot.annotatedPath) console.log(`marked ${shot.annotatedPath}`);
 	console.log(`settled ${shot.settled} (${Math.round(shot.waitedMs)}ms)`);
 	console.log(
@@ -476,6 +502,8 @@ for (const kind of [
 					seconds: options.seconds as number | undefined,
 					screenshot: options.screenshot === true ? true : undefined,
 					settleMs: options.settle as number | undefined,
+					fullImage: options.full === true ? true : undefined,
+					imageScale: options.scale as number | undefined,
 				});
 				if (options.json) {
 					console.log(JSON.stringify(body, null, 2));
@@ -505,6 +533,8 @@ addActionOptions(
 			alertAction: options.dismiss ? "dismiss" : "accept",
 			screenshot: options.screenshot === true ? true : undefined,
 			settleMs: options.settle as number | undefined,
+			fullImage: options.full === true ? true : undefined,
+			imageScale: options.scale as number | undefined,
 		});
 		if (options.json) {
 			console.log(JSON.stringify(body, null, 2));
@@ -514,6 +544,54 @@ addActionOptions(
 		if (body.screenshot) printResultScreenshot(body.screenshot);
 	} catch (error) {
 		fail("action alert", error);
+	}
+});
+
+addActionOptions(
+	action
+		.command("batch")
+		.description(
+			"Run known Actions from a JSON file or stdin (one Settle and Result screenshot at the end). Description-grounded steps are rejected.",
+		)
+		.argument("[file]", "JSON file of { steps: Action[] } or an Action array. Omit to read stdin."),
+).action(async (file: string | undefined, options: Record<string, unknown>) => {
+	try {
+		const raw = file
+			? await readFile(file, "utf8")
+			: await new Promise<string>((resolve, reject) => {
+					const chunks: Buffer[] = [];
+					process.stdin.on("data", (chunk) => {
+						chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+					});
+					process.stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+					process.stdin.on("error", reject);
+				});
+		const parsed: unknown = JSON.parse(raw);
+		const steps = Array.isArray(parsed)
+			? parsed
+			: parsed && typeof parsed === "object" && "steps" in parsed
+				? (parsed as { steps: unknown }).steps
+				: null;
+		if (!Array.isArray(steps) || steps.length === 0) {
+			throw new Error("Batch JSON must be an Action array or { steps: Action[] }");
+		}
+		const body = await client(String(options.baseUrl)).performActionBatch({
+			steps: steps as ActionRequest[],
+			settleMs: options.settle as number | undefined,
+			fullImage: options.full === true ? true : undefined,
+			imageScale: options.scale as number | undefined,
+		});
+		if (options.json) {
+			console.log(JSON.stringify(body, null, 2));
+			return;
+		}
+		console.log(`batch ${body.ok ? "ok" : "failed"} ${body.completed}/${body.total}`);
+		if (body.failedIndex != null) console.log(`failedIndex ${body.failedIndex}`);
+		if (body.error) console.log(body.error);
+		if (body.screenshot) printResultScreenshot(body.screenshot);
+		if (!body.ok) process.exitCode = 1;
+	} catch (error) {
+		fail("action batch", error);
 	}
 });
 
@@ -1551,6 +1629,7 @@ runsCmd
 		"--screen-mode <mode>",
 		"vision | tree — what the agent sees: screenshot only, or also the accessibility tree (default: vision)",
 	)
+	.option("--lane <lane>", "appium | direct | auto — Device Session Lane (default: auto)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.option("--wait", "Wait until the run finishes (passed / errored / cancelled)")
@@ -1573,6 +1652,7 @@ runsCmd
 				buildPath?: string;
 				mode?: string;
 				screenMode?: string;
+				lane?: string;
 				json?: boolean;
 				wait?: boolean;
 				timeout?: string;
@@ -1628,6 +1708,14 @@ runsCmd
 					throw new Error("--screen-mode must be vision or tree");
 				}
 
+				const lane =
+					options.lane === "appium" || options.lane === "direct" || options.lane === "auto"
+						? options.lane
+						: undefined;
+				if (options.lane && !lane) {
+					throw new Error("--lane must be appium, direct, or auto");
+				}
+
 				let run = await c.createRun({
 					appId: resolved.id,
 					caseIds,
@@ -1637,6 +1725,7 @@ runsCmd
 					buildPath: options.buildPath,
 					executionMode,
 					screenMode,
+					lane,
 				});
 				if (options.wait) {
 					try {
@@ -1842,6 +1931,68 @@ scriptCmd
 			fail("script run", error);
 		}
 	});
+
+program
+	.command("benchmark")
+	.description("Compare Yoqa (and Argent, when installed) tap-to-result latency on one device")
+	.requiredOption("--device <id>", "Device UDID / serial")
+	.requiredOption("--platform <platform>", "ios | android")
+	.option("--repeats <n>", "Tap-to-result repeats (default 5)", (v) => Number(v), 5)
+	.option("--tools <list>", "Comma-separated: yoqa,argent (default: yoqa)", "yoqa")
+	.option("--lane <lane>", "Yoqa Lane: appium | direct | auto", "auto")
+	.option("--out <path>", "Write the JSON report to this path")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print JSON instead of the table")
+	.action(
+		async (options: {
+			device: string;
+			platform: string;
+			repeats: number;
+			tools: string;
+			lane: string;
+			out?: string;
+			baseUrl: string;
+			json?: boolean;
+		}) => {
+			try {
+				const platform = options.platform as DevicePlatform;
+				if (platform !== "ios" && platform !== "android") {
+					throw new Error("--platform must be ios or android");
+				}
+				const lane =
+					options.lane === "appium" || options.lane === "direct" || options.lane === "auto"
+						? options.lane
+						: undefined;
+				if (options.lane && !lane) throw new Error("--lane must be appium, direct, or auto");
+				const tools = options.tools.split(",").map((t) => t.trim());
+				const c = client(options.baseUrl);
+				const runs: LatencyRunInput[] = [];
+				if (tools.includes("yoqa")) {
+					runs.push(
+						await runLatencyScenario(
+							yoqaBenchmarkDriver(c, { deviceId: options.device, platform, lane }),
+							{ repeats: options.repeats, platform },
+						),
+					);
+				}
+				if (tools.includes("argent")) {
+					console.error("Argent driver: install the argent CLI and re-run; skipping for now.");
+				}
+				const report = summarizeLatency({
+					recordedAt: new Date().toISOString(),
+					repeats: options.repeats,
+					runs,
+				});
+				if (options.out) {
+					await writeFile(options.out, `${JSON.stringify(report, null, 2)}\n`);
+				}
+				if (options.json) console.log(JSON.stringify(report, null, 2));
+				else console.log(formatLatencyTable(report));
+			} catch (error) {
+				fail("benchmark", error);
+			}
+		},
+	);
 
 /** The fully built command tree. Exported so tests can introspect it without running the CLI. */
 export function buildProgram(): Command {
