@@ -12,6 +12,9 @@ export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export const devicePlatformSchema = z.union([z.literal("ios"), z.literal("android")]);
 export type DevicePlatform = z.infer<typeof devicePlatformSchema>;
 
+export const laneNameSchema = z.union([z.literal("appium"), z.literal("direct")]);
+export type LaneName = z.infer<typeof laneNameSchema>;
+
 export const deviceKindSchema = z.union([
 	z.literal("physical"),
 	z.literal("simulator"),
@@ -782,6 +785,8 @@ export const createRunRequestSchema = z.object({
 	executionMode: runExecutionModeSchema.optional(),
 	/** Agent runs only. Omitted means `vision`. */
 	screenMode: runScreenModeSchema.optional(),
+	/** Lane override for the Device Session this Run opens. */
+	lane: z.union([laneNameSchema, z.literal("auto")]).optional(),
 });
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 
@@ -840,6 +845,8 @@ export const runSchema = z.object({
 	executionMode: runExecutionModeSchema,
 	/** Runs from before Screen modes existed read back as `tree`, which is how they ran. */
 	screenMode: runScreenModeSchema.optional(),
+	lane: laneNameSchema.optional(),
+	laneWarning: z.string().min(1).optional(),
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	startedAt: z.number().int().nonnegative().nullable(),
@@ -866,6 +873,7 @@ export const connectDeviceRequestSchema = z.object({
 	platform: devicePlatformSchema,
 	bundleId: z.string().min(1).optional(),
 	appPackage: z.string().min(1).optional(),
+	lane: z.union([laneNameSchema, z.literal("auto")]).optional(),
 });
 export type ConnectDeviceRequest = z.infer<typeof connectDeviceRequestSchema>;
 
@@ -879,6 +887,8 @@ export const activeDeviceResponseSchema = z.object({
 	streamUrl: z.string().min(1).optional(),
 	/** A Run currently owns this session (interactive actions are view-only). */
 	heldByRun: z.boolean().optional(),
+	lane: laneNameSchema.optional(),
+	laneWarning: z.string().min(1).optional(),
 });
 export type ActiveDeviceResponse = z.infer<typeof activeDeviceResponseSchema>;
 
@@ -962,12 +972,18 @@ export const actionRequestSchema = z.object({
 	screenshot: z.boolean().optional(),
 	/** Cap, in ms, on how long to wait for the screen to settle (default 1500, max 10000). */
 	settleMs: z.number().int().min(0).max(10_000).optional(),
+	/** Return the raw Result screenshot instead of the Agent image. */
+	fullImage: z.boolean().optional(),
+	/** Scale the Agent image (0.01–1). Ignored when fullImage is set. */
+	imageScale: z.number().min(0.01).max(1).optional(),
 });
 export type ActionRequest = z.infer<typeof actionRequestSchema>;
 
 export const actionResultScreenshotSchema = z.object({
-	/** Raw device image after the Action settled (or the cap passed). */
+	/** Image handed to the caller (Agent image by default). */
 	path: z.string().min(1),
+	/** Raw Result screenshot kept as ground truth when `path` is a downscaled copy. */
+	rawPath: z.string().min(1).optional(),
 	/** Copy with a marker where a tap or swipe landed. Absent for Actions with no point. */
 	annotatedPath: z.string().min(1).optional(),
 	/** False when the screen was still changing at the cap (animation, games). */
@@ -990,6 +1006,25 @@ export const actionResponseSchema = z.object({
 	screenshot: actionResultScreenshotSchema.optional(),
 });
 export type ActionResponse = z.infer<typeof actionResponseSchema>;
+
+export const actionBatchRequestSchema = z.object({
+	steps: z.array(actionRequestSchema).min(1),
+	settleMs: z.number().int().min(0).max(10_000).optional(),
+	fullImage: z.boolean().optional(),
+	imageScale: z.number().min(0.01).max(1).optional(),
+});
+export type ActionBatchRequest = z.infer<typeof actionBatchRequestSchema>;
+
+export const actionBatchResponseSchema = z.object({
+	ok: z.boolean(),
+	completed: z.number().int().nonnegative(),
+	total: z.number().int().nonnegative(),
+	failedIndex: z.number().int().nonnegative().optional(),
+	error: z.string().optional(),
+	screenshot: actionResultScreenshotSchema.optional(),
+	steps: z.array(actionResponseSchema),
+});
+export type ActionBatchResponse = z.infer<typeof actionBatchResponseSchema>;
 
 export const yoqaStatusResponseSchema = z.object({
 	runner: z.object({

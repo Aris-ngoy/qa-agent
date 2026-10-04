@@ -43,6 +43,8 @@ export type RunReportDocument = {
 	executionMode: string | null;
 	/** vision | tree for catalog runs; null for Inspector scripts. */
 	screenMode?: string | null;
+	lane?: string | null;
+	laneWarning?: string | null;
 	error: string | null;
 	createdAt: number;
 	startedAt: number | null;
@@ -346,6 +348,8 @@ export function buildRunReportFromCatalogRun(
 		platform: run.platform,
 		executionMode: run.executionMode,
 		screenMode: run.screenMode ?? null,
+		lane: run.lane ?? null,
+		laneWarning: run.laneWarning ?? null,
 		error: run.error,
 		createdAt: run.createdAt,
 		startedAt: run.startedAt,
@@ -452,7 +456,11 @@ function pngDataUri(base64: string): string {
 
 export function formatRunReportHtml(doc: RunReportDocument): string {
 	const accent = statusAccent(doc.status);
-	const screenRows: Array<[string, string]> = doc.screenMode ? [["Screen", doc.screenMode]] : [];
+	const screenRows: Array<[string, string]> = [
+		...(doc.screenMode ? ([["Screen", doc.screenMode]] as Array<[string, string]>) : []),
+		...(doc.lane ? ([["Lane", doc.lane]] as Array<[string, string]>) : []),
+		...(doc.laneWarning ? ([["Lane warning", doc.laneWarning]] as Array<[string, string]>) : []),
+	];
 	const metaRows: Array<[string, string]> = [
 		["Status", accent.label],
 		["Source", doc.source === "catalog" ? "Catalog run" : "Manual Inspector"],
@@ -612,6 +620,8 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
+		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),
+		...(doc.laneWarning ? [`| Lane warning | ${escapeMd(doc.laneWarning)} |`] : []),
 		`| Started | ${escapeMd(formatWhen(doc.startedAt ?? doc.createdAt))} |`,
 		`| Finished | ${escapeMd(formatWhen(doc.finishedAt))} |`,
 		`| Duration | ${escapeMd(formatDuration(doc.startedAt ?? doc.createdAt, doc.finishedAt))} |`,
@@ -695,6 +705,8 @@ export function formatRunReportGithubSummary(doc: RunReportDocument): string {
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
+		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),
+		...(doc.laneWarning ? [`| Lane warning | ${escapeMd(doc.laneWarning)} |`] : []),
 		`| Duration | ${escapeMd(formatDuration(doc.startedAt ?? doc.createdAt, doc.finishedAt))} |`,
 		`| Run ID | \`${doc.id}\` |`,
 		"",

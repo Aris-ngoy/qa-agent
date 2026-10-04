@@ -40,7 +40,11 @@ Cloud sign-in and credits are not required for local workflows.
 - Look at a screenshot first. `yoqa screen` is the fallback (exact ids and labels), and it cannot see
   system sheets.
 - Add `--screenshot` to an action to get the result screenshot in the same call (it waits for the
-  screen to settle, and a second image marks where the tap landed). Always use it on games.
+  screen to settle, and a second image marks where the tap landed). The path is an Agent image
+  (downscaled for models); `raw` is the full Result screenshot. `--full` or `--scale 0.5` override.
+  Always use `--screenshot` on games.
+- When every next Action is known and you do not need to look between them, use `yoqa action batch`
+  with a JSON list of coordinate / id / label steps. Do not put `-d` / `description` steps in a batch.
 - `--duration` on an action is in **milliseconds**; `--timeout` on `assert` / `runs wait` is in **seconds**.
 
 See [Environment, Diagnostics & Conventions](references/environment.md).

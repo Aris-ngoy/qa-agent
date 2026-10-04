@@ -63,7 +63,74 @@ describe("openDeviceSession (lane dispatcher)", () => {
 		await second.quit();
 	});
 
-	test("a failing lane factory registers nothing and surfaces the error", async () => {
+	test("auto-picks Direct when that factory exists and there are no custom capabilities", async () => {
+		const { factory: appium, created: appiumCreated } = fakeLane();
+		const created: FakeLaneSession[] = [];
+		const direct: LaneFactory = async () => {
+			const session = {
+				lane: "direct",
+				stream: null,
+				quitCalls: 0,
+				quit: async () => {
+					session.quitCalls += 1;
+				},
+			} as unknown as FakeLaneSession;
+			created.push(session);
+			return session;
+		};
+		const session = await openDeviceSession(options("dev-lane-auto-direct"), { appium, direct });
+		expect(created).toHaveLength(1);
+		expect(appiumCreated).toHaveLength(0);
+		expect(session.lane).toBe("direct");
+		await session.quit();
+	});
+
+	test("Direct start failure falls back to Appium and records a warning", async () => {
+		const { factory: appium, created } = fakeLane();
+		const direct: LaneFactory = async () => {
+			throw new Error("idb companion refused");
+		};
+		const session = await openDeviceSession(
+			{ ...options("dev-lane-direct-fail"), requestedLane: "direct" },
+			{ appium, direct },
+		);
+		expect(created).toHaveLength(1);
+		expect(session.lane).toBe("appium");
+		expect(session.laneWarning).toMatch(/failed to start/);
+		await session.quit();
+	});
+
+	test("forced Direct with no factory falls back to Appium and records a warning", async () => {
+		const { factory, created } = fakeLane();
+		const session = await openDeviceSession(
+			{ ...options("dev-lane-direct"), requestedLane: "direct" },
+			{ appium: factory },
+		);
+		expect(created).toHaveLength(1);
+		expect(session.lane).toBe("appium");
+		expect(session.laneWarning).toMatch(/fell back to Appium/);
+		await session.quit();
+	});
+
+	test("custom capabilities pin Appium even when Direct is requested and available", async () => {
+		const { factory: appium, created: appiumCreated } = fakeLane();
+		const { factory: direct, created: directCreated } = fakeLane();
+		const session = await openDeviceSession(
+			{
+				...options("dev-lane-pin"),
+				requestedLane: "direct",
+				appCaps: [{ id: "cap-1", key: "appium:autoLaunch", value: "false" }],
+			},
+			{ appium, direct },
+		);
+		expect(directCreated).toHaveLength(0);
+		expect(appiumCreated).toHaveLength(1);
+		expect(session.lane).toBe("appium");
+		expect(session.laneWarning).toMatch(/pin the Appium lane/);
+		await session.quit();
+	});
+
+	test("a failing Appium factory registers nothing and surfaces the error", async () => {
 		const failing: LaneFactory = async () => {
 			throw new Error("appium refused");
 		};

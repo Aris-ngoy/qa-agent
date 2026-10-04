@@ -166,6 +166,8 @@ async function loadRun(runId: string): Promise<Run | null> {
 		status: runRow.status as RunStatus,
 		executionMode: parseRunExecutionMode(runRow.executionMode),
 		screenMode: parseRunScreenMode(runRow.screenMode),
+		lane: runRow.lane === "direct" || runRow.lane === "appium" ? runRow.lane : undefined,
+		laneWarning: runRow.laneWarning ?? undefined,
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -476,6 +478,8 @@ export async function executeRun(runId: string): Promise<void> {
 		}
 
 		const firstCase = run.tests[0] ? await getCase(run.tests[0].caseId) : null;
+		const runRow = (await db.select().from(runs).where(eq(runs.id, runId)))[0];
+		const requestedLane = runRow?.requestedLane;
 		// Adopt the shared Active Session when it already targets this device;
 		// otherwise connect (replacing any unheld session) and keep it live after.
 		const acquired = await acquireSessionForRun({
@@ -486,9 +490,20 @@ export async function executeRun(runId: string): Promise<void> {
 			caseCaps: firstCase?.capabilities ?? [],
 			bundleId: app.iosBundleId || undefined,
 			appPackage: app.androidApplicationId || undefined,
+			requestedLane:
+				requestedLane === "direct" || requestedLane === "appium" || requestedLane === "auto"
+					? requestedLane
+					: undefined,
 		});
 		session = acquired.session;
 		sharedSession = acquired.shared;
+		await db
+			.update(runs)
+			.set({
+				lane: session.lane,
+				laneWarning: session.laneWarning ?? null,
+			})
+			.where(eq(runs.id, runId));
 
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
@@ -666,6 +681,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		status: "queued",
 		executionMode,
 		screenMode,
+		requestedLane: input.lane ?? null,
 		error: null,
 		createdAt: now,
 		startedAt: null,
@@ -752,6 +768,8 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		status: runRow.status as RunStatus,
 		executionMode: parseRunExecutionMode(runRow.executionMode),
 		screenMode: parseRunScreenMode(runRow.screenMode),
+		lane: runRow.lane === "direct" || runRow.lane === "appium" ? runRow.lane : undefined,
+		laneWarning: runRow.laneWarning ?? undefined,
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,

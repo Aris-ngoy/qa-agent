@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { ActionRequest, ActionResponse, ActionResultScreenshot } from "@yoqa/runner-client";
 import { type ActionMark, overlayActionMarks } from "../runs/coord-grid";
+import { type AgentImage, prepareAgentImage } from "./agent-image";
 import { performAction } from "./interaction";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 import type { DeviceSession } from "./session";
@@ -73,11 +74,20 @@ export function actionMarks(
 	return [];
 }
 
-async function writePng(dir: string, base64: string, label: string): Promise<string> {
+async function writeImage(
+	dir: string,
+	base64: string,
+	label: string,
+	ext: "png" | "jpg",
+): Promise<string> {
 	await mkdir(dir, { recursive: true });
-	const path = join(dir, `${label}_${Date.now()}_${crypto.randomUUID()}.png`);
+	const path = join(dir, `${label}_${Date.now()}_${crypto.randomUUID()}.${ext}`);
 	await Bun.write(path, Uint8Array.from(Buffer.from(base64, "base64")));
 	return path;
+}
+
+async function writePng(dir: string, base64: string, label: string): Promise<string> {
+	return writeImage(dir, base64, label, "png");
 }
 
 type ResultDeps = {
@@ -86,6 +96,7 @@ type ResultDeps = {
 	pollMs?: number;
 	/** Where the images are written (default: the shared screenshot folder). */
 	dir?: string;
+	prepareImage?: (png: string, options?: { full?: boolean; scale?: number }) => Promise<AgentImage>;
 };
 
 /**
@@ -110,13 +121,23 @@ export async function performActionWithScreenshot(
 	});
 
 	const dir = deps.dir ?? SCREENSHOT_DIR;
-	const path = await writePng(dir, settle.base64, "result");
+	const rawPath = await writePng(dir, settle.base64, "result");
 	const marks = actionMarks(body, response.resolved);
-	const annotated = overlayActionMarks(settle.base64, marks);
-	const annotatedPath = annotated ? await writePng(dir, annotated, "result_marked") : undefined;
+	const marked = overlayActionMarks(settle.base64, marks);
+	const annotatedPath = marked ? await writePng(dir, marked, "result_marked") : undefined;
+	const prepare = deps.prepareImage ?? prepareAgentImage;
+	const agent = await prepare(marked ?? settle.base64, {
+		full: body.fullImage,
+		scale: body.imageScale,
+	});
+	const ext = agent.mediaType === "image/jpeg" ? "jpg" : "png";
+	const agentPath = agent.downscaled
+		? await writeImage(dir, agent.base64, "result_agent", ext)
+		: (annotatedPath ?? rawPath);
 
 	const screenshot: ActionResultScreenshot = {
-		path,
+		path: agentPath,
+		...(agent.downscaled ? { rawPath } : {}),
 		...(annotatedPath ? { annotatedPath } : {}),
 		settled: settle.settled,
 		waitedMs: settle.waitedMs,

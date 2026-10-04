@@ -1,4 +1,6 @@
 import {
+	type ActionBatchRequest,
+	type ActionBatchResponse,
 	type ActionRequest,
 	type ActionResponse,
 	type ActionResultScreenshot,
@@ -39,6 +41,7 @@ import {
 	type EnsureRuntimeResponse,
 	type HealthResponse,
 	type IosWdaAction,
+	type LaneName,
 	type ListAppsResponse,
 	type ListBuildsResponse,
 	type ListCasesResponse,
@@ -89,6 +92,8 @@ import {
 	type UpdateProviderRequest,
 	type ValidateProviderResponse,
 	type YoqaStatusResponse,
+	actionBatchRequestSchema,
+	actionBatchResponseSchema,
 	actionRequestSchema,
 	actionResponseSchema,
 	activeDeviceResponseSchema,
@@ -125,6 +130,7 @@ import {
 	ensureRuntimeResponseSchema,
 	healthResponseSchema,
 	iosWdaActionSchema,
+	laneNameSchema,
 	listAppsResponseSchema,
 	listBuildsResponseSchema,
 	listCasesResponseSchema,
@@ -175,6 +181,8 @@ import {
 import { type WaitForRunOptions, waitForRun } from "./wait-for-run";
 
 export {
+	actionBatchRequestSchema,
+	actionBatchResponseSchema,
 	actionRequestSchema,
 	actionResponseSchema,
 	activeDeviceResponseSchema,
@@ -210,6 +218,8 @@ export {
 	doctorReportSchema,
 	ensureRuntimeResponseSchema,
 	healthResponseSchema,
+	iosWdaActionSchema,
+	laneNameSchema,
 	listAppsResponseSchema,
 	listBuildsResponseSchema,
 	listCasesResponseSchema,
@@ -246,7 +256,6 @@ export {
 	screenshotRequestSchema,
 	screenshotResponseSchema,
 	serverMutationResponseSchema,
-	iosWdaActionSchema,
 	setupPlatformErrorSchema,
 	setupPlatformRequestSchema,
 	setupPlatformResponseSchema,
@@ -257,6 +266,8 @@ export {
 	updateProviderRequestSchema,
 	validateProviderResponseSchema,
 	yoqaStatusResponseSchema,
+	type ActionBatchRequest,
+	type ActionBatchResponse,
 	type ActionRequest,
 	type ActionResponse,
 	type ActionResultScreenshot,
@@ -297,6 +308,7 @@ export {
 	type EnsureRuntimeResponse,
 	type HealthResponse,
 	type IosWdaAction,
+	type LaneName,
 	type ListAppsResponse,
 	type ListBuildsResponse,
 	type ListCasesResponse,
@@ -1086,6 +1098,20 @@ export class RunnerClient {
 			"Action failed",
 		);
 		return actionResponseSchema.parse(json);
+	}
+
+	async performActionBatch(request: ActionBatchRequest): Promise<ActionBatchResponse> {
+		const body = actionBatchRequestSchema.parse(request);
+		const json = await this.requestJson(
+			"/action/batch",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			},
+			"Action batch failed",
+		);
+		return actionBatchResponseSchema.parse(json);
 	}
 
 	async getStatus(): Promise<YoqaStatusResponse> {

@@ -8,6 +8,7 @@ function fakeSession(deviceId: string): unknown {
 		deviceId,
 		quitCalls: 0,
 		healthy: true,
+		lane: "appium",
 		stream: { ready: true, port: 9100, upstreamUrl: "http://127.0.0.1:9100/" },
 		getWindowSize: async () => {
 			if (!session.healthy) {
