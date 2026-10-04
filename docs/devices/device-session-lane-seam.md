@@ -31,4 +31,5 @@ All under `services/runner/src/domains/devices/`:
 ## Follow-ups
 
 - [#187](https://github.com/Aris-ngoy/qa-agent/issues/187): Lane selection is implemented; see [connector-speed.md](./connector-speed.md).
-- The `/stream.mjpeg` 503 message still says "Appium MJPEG broadcaster"; reword when a second lane exists.
+- [#189](https://github.com/Aris-ngoy/qa-agent/issues/189): Android Direct lane; see [android-direct-lane.md](./android-direct-lane.md).
+- The `/stream.mjpeg` 503 message still says "Appium MJPEG broadcaster"; reword for a Direct session (`stream: null`).

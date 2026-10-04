@@ -27,6 +27,8 @@ already running. Use the full id on the second line to connect.
 ```bash
 yoqa devices connect <device_id> --platform ios
 yoqa devices connect <device_id> --platform android
+# Android auto-picks the Direct (adb) lane when the App has no custom capabilities.
+# Pin Appium with --lane appium. iOS stays on Appium.
 ```
 
 Optionally launch an app as part of connecting:
@@ -39,7 +41,7 @@ yoqa devices connect <device_id> --platform android --app-package com.example.ap
 ## Disconnect
 
 ```bash
-yoqa devices disconnect            # close the active Appium session
+yoqa devices disconnect            # close the active Device Session
 ```
 
 **Only one session exists at a time.** Check `yoqa devices active` before connecting; connecting again

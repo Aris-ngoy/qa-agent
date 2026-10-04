@@ -2,7 +2,7 @@ import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 
 /**
  * The control path a Device Session uses (see `Lane` in CONTEXT.md and ADR-0004).
- * `appium` is the only factory today; `direct` is selected when a factory is registered.
+ * `appium` is always registered. `direct` is registered for Android (adb).
  */
 export type LaneName = "appium" | "direct";
 

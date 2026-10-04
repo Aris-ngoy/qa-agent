@@ -298,7 +298,7 @@ devices
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
-	.option("--lane <lane>", "appium | direct | auto (default: auto)")
+	.option("--lane <lane>", "appium | direct | auto (Android auto → Direct)")
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
@@ -1640,7 +1640,7 @@ runsCmd
 		"--screen-mode <mode>",
 		"vision | tree — what the agent sees: screenshot only, or also the accessibility tree (default: vision)",
 	)
-	.option("--lane <lane>", "appium | direct | auto — Device Session Lane (default: auto)")
+	.option("--lane <lane>", "appium | direct | auto — Android auto → Direct")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.option("--wait", "Wait until the run finishes (passed / errored / cancelled)")

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DeviceSession, LaneFactory, SessionOptions } from "./lane";
-import { openDeviceSession } from "./open-session";
+import { defaultLanesFor, openDeviceSession } from "./open-session";
 
 function options(deviceId: string): SessionOptions {
 	return { platform: "android", deviceId, appCaps: [], caseCaps: [] };
@@ -26,6 +26,11 @@ function fakeLane(): { factory: LaneFactory; created: FakeLaneSession[] } {
 }
 
 describe("openDeviceSession (lane dispatcher)", () => {
+	test("Android defaults include Direct; iOS does not", () => {
+		expect(defaultLanesFor("android").direct).toBeTruthy();
+		expect(defaultLanesFor("ios").direct).toBeUndefined();
+	});
+
 	test("creates the session through the Appium lane factory", async () => {
 		const { factory, created } = fakeLane();
 		const session = await openDeviceSession(options("dev-lane-1"), { appium: factory });

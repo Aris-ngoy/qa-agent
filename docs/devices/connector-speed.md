@@ -6,7 +6,7 @@ Ship the three product tickets that do not wait on a hardware benchmark: name th
 
 ## Plan summary
 
-- Lane selection is a pure function. Custom Appium capabilities pin Appium. Forced Direct with no factory (today: always) falls back once and says so. The session never switches Lane afterwards.
+- Lane selection is a pure function. Custom Appium capabilities pin Appium. Android auto-picks Direct when that factory is registered; a failed Direct start or a forced Direct with no factory falls back once and says so. The session never switches Lane afterwards.
 - The raw Result screenshot stays on disk. The caller gets a downscaled Agent image by default (`--full` / `--scale` override).
 - A batch is coordinate / id / label only. Description-grounded steps are rejected up front. One Settle and one screenshot at the end.
 
@@ -27,5 +27,5 @@ Ship the three product tickets that do not wait on a hardware benchmark: name th
 
 ## Follow-ups
 
-- A Direct lane factory ([#189](https://github.com/Aris-ngoy/qa-agent/issues/189)) makes `--lane auto` pick Direct when there are no custom capabilities.
+- Android Direct lane ([#189](https://github.com/Aris-ngoy/qa-agent/issues/189)): `--lane auto` picks Direct on Android when there are no custom capabilities.
 - Hardware baseline for [#181](https://github.com/Aris-ngoy/qa-agent/issues/181).
