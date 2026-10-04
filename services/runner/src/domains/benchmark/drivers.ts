@@ -1,4 +1,5 @@
-import type { DevicePlatform } from "@yoqa/runner-client";
+import type { DevicePlatform, ScreenElement } from "@yoqa/runner-client";
+import { tapHitsElement } from "./accuracy";
 import type { BenchmarkDriver } from "./scenario";
 
 export type YoqaBenchmarkClient = {
@@ -7,13 +8,16 @@ export type YoqaBenchmarkClient = {
 		platform: DevicePlatform;
 		lane?: "appium" | "direct" | "auto";
 	}) => Promise<unknown>;
-	getScreen: () => Promise<unknown>;
+	getScreen: () => Promise<{ elements?: ScreenElement[] }>;
 	performAction: (request: {
 		kind: "tap";
 		x: number;
 		y: number;
 		screenshot: true;
-	}) => Promise<{ screenshot?: { waitedMs?: number } }>;
+	}) => Promise<{
+		screenshot?: { waitedMs?: number };
+		phases?: { captureMs?: number; actionMs?: number; settleMs?: number };
+	}>;
 	disconnectDevice: () => Promise<unknown>;
 };
 
@@ -33,15 +37,16 @@ export function yoqaBenchmarkDriver(
 		screen: async () => {
 			await client.getScreen();
 		},
-		tapToResult: async (x, y) => {
-			const started = Date.now();
+		tapToResult: async (x, y, expect) => {
 			const result = await client.performAction({ kind: "tap", x, y, screenshot: true });
-			const settle = result.screenshot?.waitedMs ?? 0;
-			const total = Date.now() - started;
+			const tree = await client.getScreen().catch(() => ({ elements: [] }));
+			const hit = tapHitsElement(tree.elements ?? [], x, y, expect);
 			return {
+				hit,
 				phases: {
-					action: Math.max(0, total - settle),
-					settle,
+					capture: result.phases?.captureMs ?? 0,
+					action: result.phases?.actionMs ?? 0,
+					settle: result.phases?.settleMs ?? result.screenshot?.waitedMs ?? 0,
 				},
 			};
 		},

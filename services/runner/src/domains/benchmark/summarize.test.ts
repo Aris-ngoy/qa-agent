@@ -44,6 +44,32 @@ describe("summarizeLatency", () => {
 		expect(report.results[1]?.tool).toBe("argent");
 		expect(report.results[1]?.phases).toBeUndefined();
 	});
+
+	test("accuracy and pass-rate rows use hits over n", () => {
+		const report = summarizeLatency({
+			recordedAt: "2026-10-04T00:00:00.000Z",
+			repeats: 5,
+			suiteVersion: 1,
+			runs: [
+				{
+					tool: "yoqa",
+					platform: "ios",
+					tapToResult: [100],
+					screenRead: [40],
+					coldStart: [800],
+					tapHits: [true, true, true, false, true],
+					casePasses: [true, true, false],
+				},
+			],
+		});
+		expect(report.suiteVersion).toBe(1);
+		expect(report.results[0]?.accuracy).toEqual({ hits: 4, n: 5, rate: 0.8 });
+		expect(report.results[0]?.passRate).toEqual({ hits: 2, n: 3, rate: 2 / 3 });
+		const table = formatLatencyTable(report);
+		expect(table).toContain("tapAccuracy");
+		expect(table).toContain("casePassRate");
+		expect(table).toContain("0.80");
+	});
 });
 
 describe("formatLatencyTable", () => {

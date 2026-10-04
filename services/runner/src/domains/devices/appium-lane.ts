@@ -21,6 +21,7 @@ import { resolveAndroidAppiumIdentity } from "./application";
 import { typeText } from "./keyboard";
 import type { CapturedFrame, DeviceSession, PointerPhase, SessionOptions } from "./lane";
 import { isDeadSessionError } from "./lane";
+import { remember } from "./once";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
 const YOQA_ROOT = join(homedir(), ".yoqa");
@@ -547,7 +548,7 @@ export async function createAppiumSession(options: SessionOptions): Promise<Devi
 		}
 	};
 
-	const getWindowSize = async () => guard(() => browser.getWindowSize());
+	const getWindowSize = remember(() => guard(() => browser.getWindowSize()));
 	let lastShotSize: PointerSize | null = null;
 	const getPointerSize = async (): Promise<PointerSize> => {
 		const window = await getWindowSize();

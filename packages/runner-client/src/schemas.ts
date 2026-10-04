@@ -994,6 +994,14 @@ export const actionResultScreenshotSchema = z.object({
 });
 export type ActionResultScreenshot = z.infer<typeof actionResultScreenshotSchema>;
 
+export const actionPhasesSchema = z.object({
+	/** Always 0 on the connector path — the previous Result fingerprint is reused. */
+	captureMs: z.number().nonnegative(),
+	actionMs: z.number().nonnegative(),
+	settleMs: z.number().nonnegative(),
+});
+export type ActionPhases = z.infer<typeof actionPhasesSchema>;
+
 export const actionResponseSchema = z.object({
 	ok: z.literal(true),
 	kind: actionKindSchema,
@@ -1004,6 +1012,7 @@ export const actionResponseSchema = z.object({
 		})
 		.optional(),
 	screenshot: actionResultScreenshotSchema.optional(),
+	phases: actionPhasesSchema.optional(),
 });
 export type ActionResponse = z.infer<typeof actionResponseSchema>;
 
