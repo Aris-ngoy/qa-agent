@@ -29,4 +29,4 @@ Rejected: baking tree stability into Settle (vision-first default), and translat
 
 - Hardware Appium baseline to replace the synthetic [`benchmark-baseline.json`](./benchmark-baseline.json) (needed to claim a measured tap-to-result win on device).
 - Case pass-rate needs suite `cases` plus a live catalog App; v1 ships `cases: []`.
-- Android Direct tree + Settle [#190](https://github.com/Aris-ngoy/qa-agent/issues/190): see [android-direct-tree-settle.md](./android-direct-tree-settle.md). idb spike [#188](https://github.com/Aris-ngoy/qa-agent/issues/188) still needs a simulator.
+- Android Direct tree + Settle [#190](https://github.com/Aris-ngoy/qa-agent/issues/190): see [android-direct-tree-settle.md](./android-direct-tree-settle.md). idb spike [#188](https://github.com/Aris-ngoy/qa-agent/issues/188): [idb-companion-spike.md](./idb-companion-spike.md) (adopt).

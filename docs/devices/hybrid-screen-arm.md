@@ -26,4 +26,4 @@ Expose a Run option and a harness arm that send the screenshot **and** the Scree
 ## Follow-ups
 
 - Record a live Direct-lane comparison (pass rate, tap accuracy, step count) over the fixture once a catalog App is in the suite.
-- [#188](https://github.com/Aris-ngoy/qa-agent/issues/188) idb spike still needs a simulator.
+- [#188](https://github.com/Aris-ngoy/qa-agent/issues/188) idb spike: [idb-companion-spike.md](./idb-companion-spike.md) (adopt).
