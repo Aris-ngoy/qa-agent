@@ -33,7 +33,7 @@ _Avoid_: Appium Runtime, WebDriver hub (generic)
 ### Screen & action
 
 **Screen**:
-A reading of the device UI for agents: cleaned element tree with relative coordinates 0–1000, or the raw accessibility tree when full fidelity is requested. The built-in Run agent does not see a Screen unless the Run opts into tree Screen mode.
+A reading of the device UI for agents: cleaned element tree with relative coordinates 0–1000, or the raw accessibility tree when full fidelity is requested. On the Android Direct lane the tree is system-wide (permission sheets, ANR dialogs). The built-in Run agent does not see a Screen unless the Run opts into tree Screen mode.
 _Avoid_: page source (Appium term alone), DOM
 
 **Screen mode**:

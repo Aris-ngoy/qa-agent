@@ -159,8 +159,13 @@ export async function createAndroidDirectSession(
 	};
 
 	const pageSource = async () => {
-		const result = await shell(["uiautomator", "dump", "/dev/tty"], "uiautomator dump");
-		return stripUiautomatorDump(result.stdout);
+		await shell(["uiautomator", "dump", "/sdcard/yoqa-window.xml"], "uiautomator dump");
+		const result = await shell(["cat", "/sdcard/yoqa-window.xml"], "cat window dump");
+		const xml = stripUiautomatorDump(result.stdout);
+		if (!xml.includes("<")) {
+			throw new Error("uiautomator dump returned no tree");
+		}
+		return xml;
 	};
 
 	const pointerSize = async (coordSpace?: "window" | "screenshot"): Promise<PointerSize> => {

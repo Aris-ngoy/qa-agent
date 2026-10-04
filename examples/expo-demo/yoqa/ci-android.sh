@@ -82,6 +82,8 @@ for _ in $(seq 1 30); do
 	sleep 2
 done
 
-yoqa devices connect "$SERIAL" --platform android --app-package ai.yoqa.demo
+# Pin Appium so a Pixel Launcher ANR (system tree) cannot hide "Yoqa Demo" (#147).
+# Direct is the Android default; this smoke stays on the Appium lane on purpose.
+yoqa devices connect "$SERIAL" --platform android --app-package ai.yoqa.demo --lane appium
 bash examples/expo-demo/yoqa/seed-catalog.sh
 yoqa runs create DEMO --cases 1 --mode script --wait --github-output
