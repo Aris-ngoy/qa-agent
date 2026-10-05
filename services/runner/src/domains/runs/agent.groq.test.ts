@@ -9,11 +9,12 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ActiveProviderAuth } from "../providers/application";
+import { GROQ_DEFAULT_VISION_MODEL } from "../providers/drivers/groq";
 import type { VisionImage } from "../providers/vision-model";
 import type { AgentDecision } from "./agent";
 import { decideNextAction } from "./agent";
 
-const GROQ_DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+const GROQ_DEFAULT_MODEL = GROQ_DEFAULT_VISION_MODEL;
 /** Groq decide cap (see #141) — a runaway thinking trace must fail fast. */
 const GROQ_DECIDE_MAX_TOKENS = 2048;
 const REASON = "Advance the current instruction";
@@ -476,9 +477,40 @@ describe("Groq decide leaves its unchanged surfaces alone (#140)", () => {
 
 	test("a configured default model wins over the driver default", async () => {
 		await decideViaGroq(validReply, {
-			auth: { defaultModel: "meta-llama/llama-4-maverick-17b-128e-instruct" },
+			auth: { defaultModel: "qwen/qwen3.6-27b" },
 		});
-		expect(lastRequest().body.model).toBe("meta-llama/llama-4-maverick-17b-128e-instruct");
+		expect(lastRequest().body.model).toBe("qwen/qwen3.6-27b");
+	});
+
+	test("known text-only models fail before the gateway", async () => {
+		const message = await failureMessage(
+			decideViaGroq(validReply, { auth: { defaultModel: "openai/gpt-oss-120b" } }),
+		);
+		expect(message).toContain("cannot read screenshots");
+		expect(message).toContain("openai/gpt-oss-120b");
+		expect(message).toContain(GROQ_DEFAULT_MODEL);
+		expect(captured).toHaveLength(0);
+	});
+
+	test("turns a content-must-be-string 400 into vision-model guidance", async () => {
+		errorResponse = () =>
+			new Response(
+				JSON.stringify({
+					error: {
+						message: "messages[1].content must be a string",
+						type: "invalid_request_error",
+						param: "messages[1].content",
+					},
+				}),
+				{ status: 400, headers: { "content-type": "application/json" } },
+			);
+
+		const message = await failureMessage(decideViaGroq(validReply));
+		expect(message).toContain("cannot read screenshots");
+		expect(message).toContain(GROQ_DEFAULT_MODEL);
+		expect(message).not.toContain("invalid_request_error");
+		expect(message).not.toContain("messages[1]");
+		expect(captured).toHaveLength(1);
 	});
 
 	test("a blank configured model falls back to the Groq default", async () => {

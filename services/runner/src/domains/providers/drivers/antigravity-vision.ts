@@ -10,10 +10,9 @@ import {
 	prepareVisionImage,
 	resolveGoogleKey,
 } from "../vision-model";
+import { resolveAgyModelId } from "./antigravity-models";
 import { resolveBinary, runCommand } from "./probe";
 import type { VisionCompleteInput, VisionPort } from "./types";
-
-const ANTIGRAVITY_DEFAULT_VISION_MODEL = "gemini-3.5-flash-medium";
 
 const JSON_REPAIR_PROMPT =
 	"Your previous reply was not valid JSON for this task. Reply again with ONLY one strict JSON object using double quotes for every key and string (no single quotes, no markdown, no prose).";
@@ -31,7 +30,7 @@ async function completeWithAgyCli<T>(
 	}
 
 	const image = input.image ?? (await prepareVisionImage(input.imageBase64));
-	const model = input.auth.defaultModel?.trim() || ANTIGRAVITY_DEFAULT_VISION_MODEL;
+	const model = resolveAgyModelId(input.auth.defaultModel);
 	const ext = image.mediaType === "image/jpeg" ? "jpg" : "png";
 	const dir = await mkdtemp(join(tmpdir(), "yoqa-agy-"));
 	const shotPath = join(dir, `shot.${ext}`);
@@ -94,7 +93,7 @@ export const antigravityVision: VisionPort = {
 	async completeObject<T>(input: VisionCompleteInput<T>): Promise<T> {
 		const apiKey = resolveGoogleKey(input.auth);
 		if (apiKey) {
-			const requested = input.auth.defaultModel?.trim() || ANTIGRAVITY_DEFAULT_VISION_MODEL;
+			const requested = resolveAgyModelId(input.auth.defaultModel);
 			const googleModelId =
 				requested.startsWith("gemini-1.") || requested.startsWith("gemini-2.")
 					? requested

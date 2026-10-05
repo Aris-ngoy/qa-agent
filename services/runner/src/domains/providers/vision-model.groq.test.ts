@@ -209,7 +209,8 @@ describe("Groq model vision metadata (#141)", () => {
 	test("flags known vision and text-only families, leaves unknown models unflagged", () => {
 		expect(groqModelVision("meta-llama/llama-4-scout-17b-16e-instruct")).toBe(true);
 		expect(groqModelVision("meta-llama/llama-4-maverick-17b-128e-instruct")).toBe(true);
-		expect(groqModelVision("qwen/qwen3.8-27b")).toBe(false);
+		expect(groqModelVision("qwen/qwen3.8-27b")).toBe(true);
+		expect(groqModelVision("qwen/qwen3.6-27b")).toBe(true);
 		expect(groqModelVision("qwen/qwen3-32b")).toBe(false);
 		expect(groqModelVision("llama-3.3-70b-versatile")).toBe(false);
 		expect(groqModelVision("openai/gpt-oss-120b")).toBe(false);
@@ -337,18 +338,14 @@ describe("Groq unchanged surfaces (#140)", () => {
 
 	test("model listing reads the Groq catalog and flags known vision families", async () => {
 		await withStubbedModelCatalog(
-			["meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b", "some-future-model"],
+			["qwen/qwen3.8-27b", "qwen/qwen3-32b", "some-future-model"],
 			async (probe) => {
 				const result = await groqDriver.listModels(DRIVER_INPUT);
 
 				expect(probe.urls).toEqual(["https://api.groq.com/openai/v1/models"]);
 				expect(probe.authorization).toBe("Bearer test-groq-key");
 				expect(result.models).toEqual([
-					{
-						id: "meta-llama/llama-4-scout-17b-16e-instruct",
-						name: "meta-llama/llama-4-scout-17b-16e-instruct",
-						vision: true,
-					},
+					{ id: "qwen/qwen3.8-27b", name: "qwen/qwen3.8-27b", vision: true },
 					{ id: "qwen/qwen3-32b", name: "qwen/qwen3-32b", vision: false },
 					{ id: "some-future-model", name: "some-future-model" },
 				]);

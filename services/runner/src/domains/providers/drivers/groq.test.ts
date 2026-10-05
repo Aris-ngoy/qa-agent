@@ -19,6 +19,21 @@ describe("Groq strict-schema error mapping", () => {
 		expect(message).not.toContain(STRICT_SCHEMA_BODY.slice(0, 20));
 	});
 
+	test("text-only content-shape 400 maps to vision-model guidance without echoing the payload", () => {
+		const body = JSON.stringify({
+			error: {
+				message: "messages[1].content must be a string",
+				type: "invalid_request_error",
+				param: "messages[1].content",
+			},
+		});
+		const message = formatProviderHttpError("Groq", 400, body);
+		expect(message.toLowerCase()).toContain("screenshot");
+		expect(message).toContain("qwen/qwen3.8-27b");
+		expect(message).not.toContain("invalid_request_error");
+		expect(message).not.toContain("messages[1]");
+	});
+
 	test("non-strict Groq errors keep status prefix and body", () => {
 		const body = JSON.stringify({ error: { message: "rate limit exceeded" } });
 		const message = formatProviderHttpError("Groq", 429, body);

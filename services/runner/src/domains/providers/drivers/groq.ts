@@ -10,11 +10,14 @@ import type { DriverDefinition } from "./types";
 
 const DEFAULT_BASE = "https://api.groq.com/openai/v1";
 
+/** Current Groq vision model (Llama 4 Scout shut down 2026-07-17). */
+export const GROQ_DEFAULT_VISION_MODEL = "qwen/qwen3.8-27b";
+
 /** Groq model families known to accept screenshots. */
-const GROQ_VISION_MODEL_RE = /llama-4-(scout|maverick)/i;
+const GROQ_VISION_MODEL_RE = /llama-4-(scout|maverick)|qwen\/qwen3\.[6-9]/i;
 /** Groq model families known to be text-only (a blind agent footgun — see #141). */
 const GROQ_TEXT_ONLY_MODEL_RE =
-	/^(qwen|deepseek|llama-3|gemma|mixtral|whisper|openai\/gpt-oss|compound-beta)/i;
+	/^(qwen|deepseek|llama-3|gemma|mixtral|whisper|openai\/gpt-oss|compound-beta|kimi)/i;
 
 /** Tri-state vision capability for a model id: true / false / undefined (unknown). */
 export function groqModelVision(modelId: string): boolean | undefined {
@@ -28,7 +31,7 @@ export function groqModelVision(modelId: string): boolean | undefined {
 export const groqDriver: DriverDefinition = {
 	kind: "groq",
 	label: "Groq",
-	description: "Groq API via @ai-sdk/groq (fast Llama / vision-capable scout models).",
+	description: "Groq API via @ai-sdk/groq (Qwen 3.8 vision; Llama 4 Scout is shut down).",
 	defaultBinary: null,
 	authModes: ["api_key"],
 	envHints: ["GROQ_API_KEY"],
@@ -36,7 +39,7 @@ export const groqDriver: DriverDefinition = {
 	capabilities: { vision: true },
 	vision: createSdkVisionPort({
 		label: "Groq",
-		defaultModel: "meta-llama/llama-4-scout-17b-16e-instruct",
+		defaultModel: GROQ_DEFAULT_VISION_MODEL,
 		// Decide output is one small JSON Action; a runaway thinking trace should
 		// fail fast instead of burning the full budget (see #141).
 		maxOutputTokens: 2048,
@@ -44,6 +47,11 @@ export const groqDriver: DriverDefinition = {
 			const apiKey = resolveGroqKey(auth);
 			if (!apiKey) {
 				throw new AgentProviderError("Groq provider has no API key");
+			}
+			if (groqModelVision(modelId) === false) {
+				throw new AgentProviderError(
+					`This Groq model (${modelId}) cannot read screenshots (text-only). In Settings → Provider, set the default model to ${GROQ_DEFAULT_VISION_MODEL}.`,
+				);
 			}
 			const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || DEFAULT_BASE;
 			return createGroq({ apiKey, baseURL, fetch: withGroqRequestHooks({}) })(modelId);
