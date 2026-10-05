@@ -18,7 +18,7 @@ From spec: [#141](https://github.com/Aris-ngoy/qa-agent/issues/141).
 - A free-form, per-app notes document (2 KB cap), editable in desktop Settings → Configuration, via `yoqa apps update --knowledge`, or `PATCH /apps/:id`. Injected into every agent decide prompt under an "App knowledge" header; absent → prompt is byte-identical to before. Good for facts like "cold start shows a verification splash — tap Continue" or tab-bar order.
 
 **Provider guardrails**
-- Provider model lists can carry a tri-state vision flag (`true` / `false` / unknown). Groq tags known vision (`llama-4-scout|maverick`) and known text-only families (qwen, deepseek, llama-3, gemma, mixtral, gpt-oss, whisper). Settings shows a non-blocking warning when the chosen default model is known to be blind; unknown models never false-warn.
+- Provider model lists can carry a tri-state vision flag (`true` / `false` / unknown). Groq tags known vision (`qwen/qwen3.6+`, `llama-4-scout|maverick`) and known text-only families (older qwen3, deepseek, llama-3, gemma, mixtral, gpt-oss, whisper, kimi). Settings shows a non-blocking warning when the chosen default model is known to be blind; unknown models never false-warn. Known text-only models fail before the gateway; a Groq `content must be a string` 400 maps to the same vision-model guidance.
 
 **Screenshot retention**
 - Step screenshots older than `YOQA_SCREENSHOT_RETENTION_DAYS` (default 7, `0` disables) are pruned at run start, best-effort in the background. Age-based pruning never touches screenshots of runs in progress (they are always fresh).
@@ -28,7 +28,7 @@ From spec: [#141](https://github.com/Aris-ngoy/qa-agent/issues/141).
 Before/after on the same case and device:
 
 1. Run the same case with your current default model; export the report and note the per-step `decide` phase and `retries` count.
-2. Switch Settings → Provider → Default model to a vision model for your provider (on Groq: `meta-llama/llama-4-scout-17b-16e-instruct`). The Settings card now flags known text-only models.
+2. Switch Settings → Provider → Default model to a vision model for your provider (on Groq: `qwen/qwen3.8-27b` — Llama 4 Scout shut down 2026-07-17). The Settings card now flags known text-only models.
 3. Re-run the same case. Expect: `decide` phase roughly halved-to-flat (no thinking, no repair retries → `retries` absent), identical `capture`/`screen`/`image` phases, and the run completing in fewer steps when App Knowledge covers recurring screens.
 4. Add App Knowledge for the app (e.g. splash + nav order) and re-run to see first-step handling improve.
 

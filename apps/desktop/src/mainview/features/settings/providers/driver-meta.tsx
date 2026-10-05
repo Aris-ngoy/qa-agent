@@ -115,7 +115,7 @@ export const FALLBACK_ACTIVE_DRIVERS: DriverMeta[] = [
 	{
 		kind: "groq",
 		label: "Groq",
-		description: "Groq API via @ai-sdk/groq (fast Llama / vision-capable scout models).",
+		description: "Groq API via @ai-sdk/groq (Qwen 3.8 vision; Llama 4 Scout is shut down).",
 		authModes: ["api_key"],
 		defaultBinary: null,
 		envHints: ["GROQ_API_KEY"],

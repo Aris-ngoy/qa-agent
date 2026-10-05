@@ -17,6 +17,7 @@ export class AgentProviderError extends Error {
 }
 
 const EXAMPLE_OPENCODE_VISION_MODEL = "mimo-v2.5-free";
+const EXAMPLE_GROQ_VISION_MODEL = "qwen/qwen3.8-27b";
 const VISION_MAX_TOKENS = 4096;
 const VISION_MAX_EDGE = 1170;
 
@@ -109,6 +110,9 @@ export function formatProviderHttpError(label: string, status: number, body: str
 		(body.includes("Internal server error") || body.includes('"type":"error"'))
 	) {
 		return `OpenCode Zen returned an internal error for this vision request. Many free models reject screenshots. In Settings → Provider, set the default model to ${EXAMPLE_OPENCODE_VISION_MODEL} (or another vision-capable model).`;
+	}
+	if (label === "Groq" && status === 400 && body.includes("content must be a string")) {
+		return `This Groq model cannot read screenshots (text-only). In Settings → Provider, set the default model to ${EXAMPLE_GROQ_VISION_MODEL}. openai/gpt-oss and Llama 3 reject image parts; Llama 4 Scout is shut down.`;
 	}
 	if (
 		label === "Groq" &&

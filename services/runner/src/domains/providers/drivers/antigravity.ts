@@ -1,23 +1,14 @@
+import { ANTIGRAVITY_FALLBACK_MODELS, parseAgyModelLines } from "./antigravity-models";
 import { antigravityVision } from "./antigravity-vision";
 import { probeCli, runCommand } from "./probe";
-import type { DriverDefinition } from "./types";
+import type { DriverDefinition, ModelEntry } from "./types";
 
-const FALLBACK_MODELS = [
-	"gemini-3.5-flash-medium",
-	"gemini-3.5-flash-low",
-	"gemini-3.1-pro-low",
-	"claude-sonnet-4-6",
-];
+export { ANTIGRAVITY_DEFAULT_VISION_MODEL } from "./antigravity-models";
 
-export const ANTIGRAVITY_DEFAULT_VISION_MODEL = "gemini-3.5-flash-medium";
-
-async function listAgyModels(binary: string): Promise<string[]> {
+async function listAgyModels(binary: string): Promise<ModelEntry[]> {
 	const result = await runCommand([binary, "models"], { timeoutMs: 15_000 });
 	if (result.exitCode !== 0) return [];
-	return (result.stdout || "")
-		.split("\n")
-		.map((line) => line.trim())
-		.filter((line) => line.length > 0 && !line.toLowerCase().startsWith("usage"));
+	return parseAgyModelLines(result.stdout || result.stderr || "");
 }
 
 export const antigravityDriver: DriverDefinition = {
@@ -99,19 +90,19 @@ export const antigravityDriver: DriverDefinition = {
 			const models = await listAgyModels(probe.binaryPath);
 			if (models.length > 0) {
 				return {
-					models: models.map((id) => ({ id, name: id })),
+					models,
 					message: `${models.length} Antigravity models`,
 				};
 			}
 		}
 		if (key) {
 			return {
-				models: FALLBACK_MODELS.map((id) => ({ id, name: id })),
-				message: `${FALLBACK_MODELS.length} fallback models (CLI list unavailable)`,
+				models: ANTIGRAVITY_FALLBACK_MODELS,
+				message: `${ANTIGRAVITY_FALLBACK_MODELS.length} fallback models (CLI list unavailable)`,
 			};
 		}
 		return {
-			models: FALLBACK_MODELS.map((id) => ({ id, name: id })),
+			models: ANTIGRAVITY_FALLBACK_MODELS,
 			message: probe.found
 				? "Using fallback model list"
 				: probe.detail || "Antigravity CLI not found",
