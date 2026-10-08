@@ -51,7 +51,7 @@ export async function groundDescription(
 		const object = await completeVision(auth, {
 			schema: groundResultSchema,
 			system: GROUND_SYSTEM,
-			prompt: { testCase: "", step: prompt },
+			prompt: { step: prompt },
 			imageBase64: shot.base64,
 		});
 		return { x: object.x, y: object.y };

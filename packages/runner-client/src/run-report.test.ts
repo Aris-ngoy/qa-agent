@@ -315,7 +315,7 @@ describe("per-phase step timing", () => {
 			],
 		};
 		expect(formatRunReportMarkdown(doc)).toContain(
-			"settle 800ms · tokens in 250, cached 1800, cache write 900, out 60 (61% cached)",
+			"settle 800ms · usage in 250, cached 1800, cache write 900, out 60 (61% cached)",
 		);
 		expect(formatRunReportHtml(doc)).toContain("61% cached");
 	});
@@ -336,7 +336,7 @@ describe("per-phase step timing", () => {
 				outputTokens: 20,
 			},
 		});
-		expect(usageOnly).toContain("tokens in 100, out 20 (0% cached)");
+		expect(usageOnly).toContain("usage in 100, out 20 (0% cached)");
 		const none = formatStepPhases({
 			captureMs: 0,
 			screenMs: 0,

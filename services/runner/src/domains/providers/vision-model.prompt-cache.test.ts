@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { CallUsage } from "@yoqa/runner-client";
 import { MockLanguageModelV4 } from "ai/test";
 import { z } from "zod";
-import type { CallUsage, VisionAuth, VisionPrompt } from "./drivers/types";
+import type { VisionAuth, VisionPrompt } from "./drivers/types";
 import { createSdkVisionPort } from "./vision-model";
 
 type GenerateResult = Awaited<ReturnType<MockLanguageModelV4["doGenerate"]>>;
@@ -89,6 +90,22 @@ describe("shared SDK vision port: Prompt cache order", () => {
 		expect(content.map((part) => part.type)).toEqual(["text", "file", "text"]);
 		expect(textOf(content[0])).toBe(TEST_CASE_BLOCK);
 		expect(textOf(content[2])).toBe("Current instruction (do ONLY this): Tap the gear");
+	});
+
+	test("a prompt without a Test Case sends only the screenshot and the step block", async () => {
+		const model = mockModel("anthropic.messages", [reply(VALID_REPLY)]);
+		await portFor(model).completeObject({
+			auth: AUTH,
+			schema: SCHEMA,
+			system: "You locate UI elements on a mobile screen.",
+			prompt: { step: "Find: Allow button" },
+			imageBase64: IMAGE.base64,
+			image: IMAGE,
+		});
+
+		const content = userContent(model.doGenerateCalls[0]);
+		expect(content.map((part) => part.type)).toEqual(["file", "text"]);
+		expect(textOf(content[1])).toBe("Find: Allow button");
 	});
 
 	test("two steps of the same Test Case share the prefix up to the screenshot", async () => {

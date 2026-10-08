@@ -308,7 +308,7 @@ export function formatStepPhases(phases: StepPhases): string {
 }
 
 /**
- * One step's Call usage, e.g. `tokens in 250, cached 1800, cache write 900, out 60 (61% cached)`.
+ * One step's Call usage, e.g. `usage in 250, cached 1800, cache write 900, out 60 (61% cached)`.
  * Fields the Provider did not report are left out. The cached share is Prompt cache reads
  * over all input (fresh, cache reads and cache writes). Null when nothing was reported.
  */
@@ -323,7 +323,7 @@ export function formatCallUsage(usage: CallUsage): string | null {
 	const cached = usage.cachedInputTokens ?? 0;
 	const totalInput = (usage.inputTokens ?? 0) + cached + (usage.cacheWriteTokens ?? 0);
 	const share = totalInput > 0 ? ` (${Math.round((cached / totalInput) * 100)}% cached)` : "";
-	return `tokens ${fields.join(", ")}${share}`;
+	return `usage ${fields.join(", ")}${share}`;
 }
 
 function mapCatalogStep(step: RunStep, screenshotsByStepId: Record<string, string>): RunReportStep {
