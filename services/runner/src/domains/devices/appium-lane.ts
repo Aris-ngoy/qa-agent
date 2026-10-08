@@ -88,11 +88,18 @@ const MAX_RECORDING_SECONDS = 1800;
 
 /**
  * Options for Appium's `startRecordingScreen`. iOS records MJPEG unless told otherwise, which
- * the desktop app cannot play, so it is asked for H.264 in a pixel format players accept.
+ * the desktop app cannot play, so it is asked for H.264 in a pixel format players accept, at an
+ * even frame size.
  */
 export function screenRecordingOptions(android: boolean): Record<string, string | number> {
 	if (android) return { timeLimit: MAX_RECORDING_SECONDS };
-	return { videoType: "libx264", pixelFormat: "yuv420p", timeLimit: MAX_RECORDING_SECONDS };
+	return {
+		videoType: "libx264",
+		pixelFormat: "yuv420p",
+		// H.264 in yuv420p cannot encode odd sizes; ffmpeg would write an empty file.
+		videoFilters: "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+		timeLimit: MAX_RECORDING_SECONDS,
+	};
 }
 
 export function mjpegUpstreamUrl(mjpegPort: number): string {
