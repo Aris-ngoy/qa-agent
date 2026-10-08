@@ -96,8 +96,9 @@ export function screenRecordingOptions(android: boolean): Record<string, string 
 	return {
 		videoType: "libx264",
 		pixelFormat: "yuv420p",
-		// H.264 in yuv420p cannot encode odd sizes; ffmpeg would write an empty file.
-		videoFilters: "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+		// H.264 in yuv420p cannot encode odd sizes (ffmpeg would write an empty file), and the MJPEG
+		// source is full range, which ffmpeg otherwise keeps as yuvj420p that QuickTime refuses.
+		videoFilters: "scale=trunc(iw/2)*2:trunc(ih/2)*2:in_range=pc:out_range=tv,format=yuv420p",
 		timeLimit: MAX_RECORDING_SECONDS,
 	};
 }
