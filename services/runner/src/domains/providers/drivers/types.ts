@@ -1,4 +1,8 @@
-import type { ProviderAuthMode, ProviderKind } from "@yoqa/runner-client";
+import type {
+	ProviderAuthMode,
+	ProviderKind,
+	CallUsage as RunnerClientCallUsage,
+} from "@yoqa/runner-client";
 import type { z } from "zod";
 
 export type ProbeResult = {
@@ -67,13 +71,9 @@ export type VisionPrompt = { testCase: string; step: string };
 /**
  * Call usage for one HTTP attempt of a Decide or verify call. Each field is null
  * when the Provider did not report it. `inputTokens` is fresh (uncached) input.
+ * The shape is shared with step phases, so it lives in runner-client.
  */
-export type CallUsage = {
-	inputTokens: number | null;
-	cachedInputTokens: number | null;
-	cacheWriteTokens: number | null;
-	outputTokens: number | null;
-};
+export type CallUsage = RunnerClientCallUsage;
 
 export type VisionCompleteInput<T> = {
 	auth: VisionAuth;

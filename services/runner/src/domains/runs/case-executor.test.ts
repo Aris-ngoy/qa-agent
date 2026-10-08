@@ -770,6 +770,86 @@ describe("executeAgentCase", () => {
 		);
 	});
 
+	it("adds up Call usage across decide retries and verify on the step's phases", async () => {
+		const steps: Array<StepPhases | null | undefined> = [];
+		let calls = 0;
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push(step.phases);
+			},
+			readScreen: async () => ({ elements: [] }),
+			decide: async (input) => {
+				calls += 1;
+				if (calls === 1) {
+					input.onUsage?.({
+						inputTokens: 100,
+						cachedInputTokens: 0,
+						cacheWriteTokens: 900,
+						outputTokens: 20,
+					});
+					return { type: "fail", reason: "No screenshot provided", thoughts: "I see nothing" };
+				}
+				input.onUsage?.({
+					inputTokens: 100,
+					cachedInputTokens: 900,
+					cacheWriteTokens: null,
+					outputTokens: 30,
+				});
+				return { type: "tap", x: 10, y: 20, reason: "Tap", thoughts: "button" };
+			},
+			verify: async (input) => {
+				input.onUsage?.({
+					inputTokens: 50,
+					cachedInputTokens: 900,
+					cacheWriteTokens: 0,
+					outputTokens: 10,
+				});
+				return { type: "verify", reason: "Done", thoughts: "ok" };
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(steps[0]?.decideRetries).toBe(1);
+		expect(steps[0]?.usage).toEqual({
+			inputTokens: 250,
+			cachedInputTokens: 1800,
+			cacheWriteTokens: 900,
+			outputTokens: 60,
+		});
+	});
+
+	it("leaves Call usage out of the step's phases when no call reports it", async () => {
+		const steps: Array<StepPhases | null | undefined> = [];
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "demo",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push(step.phases);
+			},
+			readScreen: async () => ({ elements: [] }),
+			decide: async () => ({ type: "tap", x: 10, y: 20, reason: "Tap", thoughts: "button" }),
+			verify: async () => ({ type: "verify", reason: "Done", thoughts: "ok" }),
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(steps[0]).toBeDefined();
+		expect(steps[0] && "usage" in steps[0]).toBe(false);
+	});
+
 	it("reads the Screen once per step and reuses it for id taps", async () => {
 		let pageSourceCalls = 0;
 		const taps: Array<{ x: number; y: number }> = [];

@@ -1,6 +1,7 @@
 import {
 	type ActionRequest,
 	type ActionResponse,
+	type CallUsage,
 	type CaseScript,
 	type CatalogCase,
 	type RunScreenMode,
@@ -102,6 +103,8 @@ export type CaseDecideFn = (input: {
 	 * JSON, or the first reply was unusable (e.g. claiming no screenshot).
 	 */
 	onDecideRetry?: () => void;
+	/** Called once per Provider call attempt with its Call usage (SDK Providers only). */
+	onUsage?: (usage: CallUsage) => void;
 	recentActions?: AgentDecision[];
 	screenSnapshot?: string;
 	lastError?: string;
@@ -627,6 +630,25 @@ export async function executeScriptCase(
 /**
  * Run one Test Case with an injected decide function against a Device Session.
  */
+function sumTokens(total: number | null, more: number | null): number | null {
+	if (total == null) return more;
+	if (more == null) return total;
+	return total + more;
+}
+
+/** Adds one call's Call usage to the step total. The first report creates `phases.usage`. */
+function addCallUsage(phases: StepPhases, usage: CallUsage): void {
+	const total = phases.usage;
+	phases.usage = total
+		? {
+				inputTokens: sumTokens(total.inputTokens, usage.inputTokens),
+				cachedInputTokens: sumTokens(total.cachedInputTokens, usage.cachedInputTokens),
+				cacheWriteTokens: sumTokens(total.cacheWriteTokens, usage.cacheWriteTokens),
+				outputTokens: sumTokens(total.outputTokens, usage.outputTokens),
+			}
+		: { ...usage };
+}
+
 export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	status: "passed" | "errored" | "cancelled";
 	decisions: AgentDecision[];
@@ -669,6 +691,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		coordGrid: boolean;
 		screenshotOnly: boolean;
 		onDecideRetry?: () => void;
+		onUsage?: (usage: CallUsage) => void;
 	}): Promise<AgentDecision> => {
 		const payload = {
 			auth: deps.auth,
@@ -690,6 +713,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 			coordGrid: input.coordGrid,
 			screenshotOnly: input.screenshotOnly,
 			onDecideRetry: input.onDecideRetry,
+			onUsage: input.onUsage,
 		};
 		const finish = (raw: AgentDecision): AgentDecision => {
 			let next = coerceScrollIntentToSwipe(raw);
@@ -874,6 +898,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					coordGrid: input.coordGrid,
 					screenshotOnly: input.screenshotOnly,
 					onDecideRetry: input.onDecideRetry,
+					onUsage: input.onUsage,
 				});
 			}
 			if (deps.decide) {
@@ -893,6 +918,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				instructionOrdinal: input.instructionOrdinal,
 				instructionCount: input.instructionCount,
 				onDecideRetry: input.onDecideRetry,
+				onUsage: input.onUsage,
 			});
 		};
 
@@ -955,6 +981,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 							onDecideRetry: () => {
 								phases.decideRetries += 1;
 							},
+							onUsage: (usage) => addCallUsage(phases, usage),
 						});
 						phases.decideMs += clock.now() - retryStarted;
 						if (!isDeviceDecision(pending)) {
@@ -1118,6 +1145,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					onDecideRetry: () => {
 						phases.decideRetries += 1;
 					},
+					onUsage: (usage: CallUsage) => addCallUsage(phases, usage),
 				};
 				lastVision = {
 					imageBase64: visionBase64,
