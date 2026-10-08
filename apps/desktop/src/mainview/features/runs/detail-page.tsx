@@ -51,8 +51,29 @@ function VideoDialog({
 	title,
 	url,
 	onClose,
-}: { title: string; url: string | null; onClose: () => void }) {
+	onDelete,
+}: {
+	title: string;
+	url: string | null;
+	onClose: () => void;
+	onDelete: () => Promise<void>;
+}) {
 	const [saving, setSaving] = useState(false);
+	const [confirmingDelete, setConfirmingDelete] = useState(false);
+	const [deleting, setDeleting] = useState(false);
+
+	const remove = async () => {
+		setDeleting(true);
+		try {
+			await onDelete();
+			setConfirmingDelete(false);
+			onClose();
+		} catch (error) {
+			toast.danger(error instanceof Error ? error.message : "Delete failed");
+		} finally {
+			setDeleting(false);
+		}
+	};
 
 	const download = async () => {
 		if (!url) return;
@@ -75,7 +96,14 @@ function VideoDialog({
 
 	return (
 		<Modal>
-			<Modal.Backdrop isOpen={url !== null} onOpenChange={(next) => !next && onClose()}>
+			<Modal.Backdrop
+				isOpen={url !== null}
+				onOpenChange={(next) => {
+					if (next) return;
+					setConfirmingDelete(false);
+					onClose();
+				}}
+			>
 				<Modal.Container placement="center" size="lg">
 					<Modal.Dialog className="gap-4 p-5">
 						<Modal.CloseTrigger />
@@ -89,11 +117,34 @@ function VideoDialog({
 								src={url}
 							/>
 						) : null}
-						<div className="flex justify-end">
-							<Button isDisabled={saving} onPress={() => void download()} variant="secondary">
-								{saving ? "Downloading…" : "Download video"}
-							</Button>
-						</div>
+						{confirmingDelete ? (
+							<div className="flex flex-wrap items-center justify-between gap-3">
+								<p className="text-body-sm text-on-surface-variant">
+									Delete this video? This cannot be undone.
+								</p>
+								<div className="flex gap-2">
+									<Button
+										isDisabled={deleting}
+										onPress={() => setConfirmingDelete(false)}
+										variant="secondary"
+									>
+										Cancel
+									</Button>
+									<Button isDisabled={deleting} onPress={() => void remove()} variant="danger">
+										{deleting ? "Deleting…" : "Delete"}
+									</Button>
+								</div>
+							</div>
+						) : (
+							<div className="flex justify-end gap-2">
+								<Button onPress={() => setConfirmingDelete(true)} variant="danger-soft">
+									Delete video
+								</Button>
+								<Button isDisabled={saving} onPress={() => void download()} variant="secondary">
+									{saving ? "Downloading…" : "Download video"}
+								</Button>
+							</div>
+						)}
 					</Modal.Dialog>
 				</Modal.Container>
 			</Modal.Backdrop>
@@ -109,10 +160,12 @@ function CaseVideos({
 	tests,
 	label,
 	videoUrl,
+	onDelete,
 }: {
 	tests: RunTest[];
 	label: (test: RunTest) => string;
 	videoUrl: (test: RunTest) => string | null;
+	onDelete: (test: RunTest) => Promise<void>;
 }) {
 	const [openTestId, setOpenTestId] = useState<string | null>(null);
 	const finished = tests.filter((test) => test.recording && test.recording.status !== "recording");
@@ -156,6 +209,7 @@ function CaseVideos({
 			})}
 			<VideoDialog
 				onClose={() => setOpenTestId(null)}
+				onDelete={() => (openTest ? onDelete(openTest) : Promise.resolve())}
 				title={openTest ? label(openTest) : ""}
 				url={openTest ? videoUrl(openTest) : null}
 			/>
@@ -935,6 +989,11 @@ export function RunDetailPage() {
 						<CaseVideos
 							label={(test) => formatCaseLabel(caseNameById.get(test.caseId), test.caseId)}
 							tests={run.tests}
+							onDelete={async (test) => {
+								const client = await getRunnerClient();
+								await client.deleteRunTestVideo(runId, test.id);
+								await queryClient.invalidateQueries({ queryKey: runQueryKey(runId) });
+							}}
 							videoUrl={(test) => videoClient?.testUrl(test.id) ?? null}
 						/>
 					) : null}

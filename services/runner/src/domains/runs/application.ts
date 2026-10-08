@@ -31,7 +31,13 @@ import {
 	executeAgentCase as runAgentCase,
 	executeScriptCase as runScriptCase,
 } from "./case-executor";
-import { deleteRunVideo, readyVideoPath, recordCase, runVideoPath } from "./run-recording";
+import {
+	RUN_VIDEO_DIR,
+	deleteRunVideo,
+	readyVideoPath,
+	recordCase,
+	runVideoPath,
+} from "./run-recording";
 import { runSteps, runTests, runs } from "./schema";
 import { buildScriptFromDecisions, parseCaseScript, serializeCaseScript } from "./script";
 
@@ -885,6 +891,29 @@ export async function getRunStepScreenshotPath(runId: string, stepId: string): P
 	}
 
 	throw new RunNotFoundError("Step not found");
+}
+
+/** Delete one case's video and forget its recording. Only once the Run has finished. */
+export async function deleteRunTestVideo(
+	runId: string,
+	runTestId: string,
+	videoDir: string = RUN_VIDEO_DIR,
+): Promise<void> {
+	const run = await loadRun(runId);
+	if (!run) {
+		throw new RunNotFoundError("Run not found");
+	}
+	if (!run.tests.some((item) => item.id === runTestId)) {
+		throw new RunNotFoundError("Test not found");
+	}
+	if (!TERMINAL_RUN_STATUSES.has(run.status)) {
+		throw new RunValidationError("Wait for the run to finish before deleting its video");
+	}
+	await deleteRunVideo(runTestId, videoDir);
+	await getCatalogDb()
+		.update(runTests)
+		.set({ recordingStatus: null, recordingNote: null })
+		.where(eq(runTests.id, runTestId));
 }
 
 export async function getRunTestVideoPath(runId: string, runTestId: string): Promise<string> {

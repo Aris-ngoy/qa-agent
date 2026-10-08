@@ -1010,6 +1010,14 @@ export class RunnerClient {
 		return `${this.baseUrl}/runs/${encodeURIComponent(runId)}/tests/${encodeURIComponent(runTestId)}/video`;
 	}
 
+	async deleteRunTestVideo(runId: string, runTestId: string): Promise<void> {
+		await this.requestJson(
+			`/runs/${encodeURIComponent(runId)}/tests/${encodeURIComponent(runTestId)}/video`,
+			{ method: "DELETE" },
+			"Delete video failed",
+		);
+	}
+
 	async connectDevice(request: ConnectDeviceRequest): Promise<ActiveDeviceResponse> {
 		const body = connectDeviceRequestSchema.parse(request);
 		const json = await this.requestJson(

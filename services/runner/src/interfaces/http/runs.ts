@@ -7,6 +7,7 @@ import {
 	cancelRun,
 	createRun,
 	deleteRun,
+	deleteRunTestVideo,
 	getRun,
 	getRunStepScreenshotPath,
 	getRunTestVideoPath,
@@ -124,6 +125,16 @@ export function createRunsRoutes() {
 		try {
 			const run = await cancelRun(runId);
 			return c.json(runSchema.parse(run));
+		} catch (error) {
+			const mapped = runErrorResponse(error);
+			return c.json(mapped.body, mapped.status);
+		}
+	});
+
+	app.delete("/runs/:runId/tests/:testId/video", async (c) => {
+		try {
+			await deleteRunTestVideo(c.req.param("runId"), c.req.param("testId"));
+			return c.body(null, 204);
 		} catch (error) {
 			const mapped = runErrorResponse(error);
 			return c.json(mapped.body, mapped.status);
