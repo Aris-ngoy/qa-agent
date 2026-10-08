@@ -18,6 +18,7 @@ Let a Run optionally produce a screen video of the whole flow, next to its Resul
 - `DeviceSession.startRecording(path)` on all three Lanes; `runs/run-recording.ts` wraps it so failures become `unavailable` instead of errors.
 - `executeRun` starts the recording once the session is acquired and stops it before the session is released, including on cancel or error.
 - Files live at `~/.yoqa/runs/videos/<runId>.mp4`, served by `GET /runs/:runId/video` (supports `Range`), and deleted with the Run. DB columns `record_video`, `recording_status`, `recording_note`.
+- Review fixes: the detail page keeps polling until the video is finalized; a recording cut off by a runner stop reads as `unavailable`; starting a recording can no longer fail a Run; Android stop signals only its own `screenrecord` pid and reports `unavailable` if the file is not finalized; stopping is bounded to 20s; unsatisfiable `Range` returns 416; a video is removed if its Run was deleted mid-recording.
 - Desktop: a "Record video" toggle in the runs panel header; the Run detail Screenshot panel shows the player, or the reason it is unavailable.
 - CLI: `yoqa runs create --record-video`.
 
