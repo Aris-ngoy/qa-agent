@@ -1,3 +1,4 @@
+import { useReducedMotion } from "@/app/motion/use-reduced-motion";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
@@ -10,7 +11,7 @@ import {
 	formatDeviceShortLabel,
 } from "@/features/runs/labels";
 import { ScreenshotCrossfade } from "@/features/runs/screenshot-crossfade";
-import { useFollowLatest } from "@/features/runs/use-follow-latest";
+import { useArrivingIds, useFollowLatest } from "@/features/runs/use-follow-latest";
 import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { Button, Modal, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -725,7 +726,12 @@ export function RunDetailPage() {
 	const newestContent = run
 		? `${steps.at(-1)?.id ?? ""}:${run.tests.map((test) => test.currentCommand ?? "").join("|")}`
 		: "";
-	const follow = useFollowLatest(isLive, `${steps.length}:${newestContent}`);
+	const reducedMotion = useReducedMotion();
+	const follow = useFollowLatest(isLive, `${steps.length}:${newestContent}`, !reducedMotion);
+	const isArriving = useArrivingIds(
+		steps.map((step) => step.id),
+		Boolean(run),
+	);
 
 	useEffect(() => {
 		if (!run || !reviewMode) return;
@@ -847,7 +853,11 @@ export function RunDetailPage() {
 			<div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] lg:grid-rows-[minmax(0,1fr)]">
 				<section
 					className="min-h-0 overflow-y-auto rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-5 shadow-soft"
+					onKeyDown={follow.onUserScroll}
+					onPointerDown={follow.onUserScroll}
 					onScroll={follow.onScroll}
+					onTouchStart={follow.onUserScroll}
+					onWheel={follow.onUserScroll}
 					ref={follow.ref}
 				>
 					{run.tests.map((test, testIndex) => {
@@ -923,7 +933,13 @@ export function RunDetailPage() {
 										}
 
 										return (
-											<li className="relative flex items-start gap-3" key={step.id}>
+											<li
+												className={[
+													"relative flex items-start gap-3",
+													isLive && isArriving(step.id) ? "motion-step-in" : "",
+												].join(" ")}
+												key={step.id}
+											>
 												<StepIndicator index={step.idx + 1} ok={step.ok} reviewMode={reviewMode} />
 												<div className="min-w-0 flex-1">
 													<p className="text-body-md font-medium text-on-surface">

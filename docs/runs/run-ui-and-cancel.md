@@ -43,7 +43,7 @@ After starting a test, navigate to a live run page, show in-progress details (st
 3. Click red control (or Stop) → run and in-flight tests become `cancelled`; play returns.
 4. Sidebar **Runs** → history list for the app; click a row → detail; trash removes the run.
 5. Open a finished run → steps show Passed/Failed; click steps → aside updates; **Runs ›** returns to the list.
-6. While a run is live, the steps list follows the newest step like a chat (`use-follow-latest.ts`). Scroll up to stop following; a **Jump to latest** button (or scrolling back to the end) resumes. Finished runs never auto-scroll.
+6. While a run is live, the steps list follows the newest step like a chat (`use-follow-latest.ts`). Scroll up to stop following; a **Jump to latest** button (or scrolling back to the end) resumes. Finished runs never auto-scroll. The scroll glides (smooth, ignored by the follow logic while it is in flight) and each step that arrives live slides in (`motion-step-in`); both are off under reduced motion.
 
 ## Follow-ups
 
