@@ -17,7 +17,7 @@ import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
 import type { DeviceSession, PointerPhase, ScreenRecording, SessionOptions } from "./lane";
 import { remember } from "./once";
-import { exitsWithin, spawnRecorder } from "./recorder-process";
+import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
 export type AdbResult = {
@@ -31,9 +31,6 @@ export type AdbExec = (args: string[]) => Promise<AdbResult>;
 
 /** `screenrecord` refuses to run longer than this per file. */
 const SCREENRECORD_LIMIT_SECONDS = 180;
-/** Longest wait for screenrecord to write the mp4 trailer after SIGINT. */
-const SCREENRECORD_FINALIZE_MS = 10_000;
-
 async function readRemotePid(stdout: ReadableStream<Uint8Array>): Promise<string> {
 	const { value } = await stdout.getReader().read();
 	const pid = new TextDecoder().decode(value).trim().split(/\s+/)[0] ?? "";
@@ -341,7 +338,7 @@ export async function createAndroidDirectSession(
 			stop: async () => {
 				// SIGINT lets screenrecord write the mp4 trailer; killing the adb client alone would not.
 				await adb(["-s", serial, "shell", "kill", "-2", pid]);
-				const finalized = await exitsWithin(proc, SCREENRECORD_FINALIZE_MS);
+				const finalized = await exitsWithin(proc, RECORDER_FINALIZE_MS);
 				if (!finalized) proc.kill();
 				const pulled = finalized ? await adb(["-s", serial, "pull", remote, path]) : null;
 				await adb(["-s", serial, "shell", "rm", "-f", remote]);

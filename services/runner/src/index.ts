@@ -2,6 +2,7 @@ import { ensureAndroidSdkEnv } from "./domains/appium/android-sdk";
 import { ensureHostToolPath } from "./domains/appium/host-path";
 import { stopAppiumServer } from "./domains/appium/server";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
+import { recoverInterruptedRecordings } from "./domains/runs/application";
 import { installAppiumSessionBridge } from "./domains/servers/application";
 import { createApp } from "./interfaces/http/app";
 import {
@@ -22,6 +23,9 @@ const startedAt = Date.now();
 
 const dbPath = getCatalogDbPath();
 openCatalogDb(dbPath);
+void recoverInterruptedRecordings().catch((error) =>
+	console.error("[yoqa-runner] could not recover interrupted recordings", error),
+);
 console.log(`[yoqa-runner] catalog db → ${dbPath}`);
 
 const app = createApp(settings, startedAt);

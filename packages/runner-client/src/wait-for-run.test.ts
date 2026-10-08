@@ -35,6 +35,38 @@ describe("waitForRun", () => {
 		expect(result.status).toBe("passed");
 	});
 
+	test("keeps waiting while a finished run is still saving a video", async () => {
+		const states = ["recording", "recording", "ready"] as const;
+		let calls = 0;
+		const result = await waitForRun(
+			{
+				getRun: async () => {
+					const status = states[Math.min(calls, states.length - 1)] ?? "ready";
+					calls += 1;
+					return sampleRun({
+						status: "passed",
+						tests: [
+							{
+								id: "rtest_1",
+								runId: "run_1",
+								caseId: "case_1",
+								status: "passed",
+								error: null,
+								startedAt: 1,
+								finishedAt: 2,
+								recording: { status },
+							},
+						],
+					});
+				},
+			},
+			"run_1",
+			{ sleep: async () => undefined, now: () => 0 },
+		);
+		expect(calls).toBe(3);
+		expect(result.tests[0]?.recording?.status).toBe("ready");
+	});
+
 	test("polls until the run becomes terminal", async () => {
 		const statuses = ["queued", "running", "errored"] as const;
 		let index = 0;
