@@ -4,9 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
 import { APICallError, NoObjectGeneratedError, generateObject } from "ai";
-import type { LanguageModel } from "ai";
+import type { LanguageModel, LanguageModelUsage, ProviderMetadata } from "ai";
 import { z } from "zod";
-import type { VisionAuth, VisionCompleteInput, VisionImage, VisionPort } from "./drivers/types";
+import type {
+	CallUsage,
+	VisionAuth,
+	VisionCompleteInput,
+	VisionImage,
+	VisionPort,
+	VisionPrompt,
+} from "./drivers/types";
 import { normalizeVisionJson, salvageAgentJsonText } from "./json-salvage";
 
 export class AgentProviderError extends Error {
@@ -24,7 +31,12 @@ const VISION_MAX_EDGE = 1170;
 const JSON_REPAIR_PROMPT =
 	"Your previous reply was not valid JSON for this task. Reply again with ONLY one strict JSON object using double quotes for every key and string (no single quotes, no markdown, no prose).";
 
-export type { VisionImage } from "./drivers/types";
+export type { CallUsage, VisionImage, VisionPrompt } from "./drivers/types";
+
+/** One prompt string for paths without a message structure (CLI drivers). */
+export function joinVisionPrompt(prompt: VisionPrompt): string {
+	return [prompt.testCase, prompt.step].filter((part) => part.length > 0).join("\n");
+}
 
 /**
  * Shrink device screenshots for vision APIs. Full-res iPhone PNGs (~1–2MB) are
@@ -201,41 +213,96 @@ function parseVisionSchema<T>(
 	}
 }
 
+/** Anthropic needs explicit Prompt cache breakpoints; other SDK providers cache prefixes automatically. */
+const ANTHROPIC_CACHE_BREAKPOINT = { anthropic: { cacheControl: { type: "ephemeral" } } };
+
+function isAnthropicModel(model: LanguageModel): boolean {
+	return typeof model === "object" && /(^|\.)anthropic(\.|$)/.test(model.provider);
+}
+
+function countOrNull(value: unknown): number | null {
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Raw Anthropic usage as echoed in provider metadata (`cache_*_input_tokens`). */
+function anthropicMetadataUsage(metadata: ProviderMetadata | undefined): Record<string, unknown> {
+	const usage = metadata?.anthropic?.usage;
+	return usage && typeof usage === "object" && !Array.isArray(usage)
+		? (usage as Record<string, unknown>)
+		: {};
+}
+
+/** Convert AI SDK usage plus provider metadata into one Call usage record. */
+export function toCallUsage(
+	usage: LanguageModelUsage | undefined,
+	metadata: ProviderMetadata | undefined,
+): CallUsage {
+	const anthropic = anthropicMetadataUsage(metadata);
+	const details = usage?.inputTokenDetails;
+	const cachedInputTokens =
+		countOrNull(details?.cacheReadTokens) ?? countOrNull(anthropic.cache_read_input_tokens);
+	const cacheWriteTokens =
+		countOrNull(details?.cacheWriteTokens) ?? countOrNull(anthropic.cache_creation_input_tokens);
+	const total = countOrNull(usage?.inputTokens);
+	const inputTokens =
+		countOrNull(details?.noCacheTokens) ??
+		countOrNull(anthropic.input_tokens) ??
+		(total === null ? null : total - (cachedInputTokens ?? 0) - (cacheWriteTokens ?? 0));
+	return {
+		inputTokens,
+		cachedInputTokens,
+		cacheWriteTokens,
+		outputTokens: countOrNull(usage?.outputTokens) ?? countOrNull(anthropic.output_tokens),
+	};
+}
+
 export async function completeWithAiSdk<T>(input: {
 	label: string;
 	model: LanguageModel;
 	schema: VisionCompleteInput<T>["schema"];
 	system: string;
-	prompt: string;
+	prompt: VisionPrompt;
 	image: VisionImage;
 	onDecideRetry?: () => void;
+	onUsage?: (usage: CallUsage) => void;
 	maxOutputTokens?: number;
 }): Promise<T> {
-	const run = async (prompt: string): Promise<T> => {
+	const cacheBreakpoint = isAnthropicModel(input.model)
+		? { providerOptions: ANTHROPIC_CACHE_BREAKPOINT }
+		: {};
+	const run = async (stepBlock: string): Promise<T> => {
 		try {
-			const { object } = await generateObject({
+			const { object, usage, providerMetadata } = await generateObject({
 				model: input.model,
 				schema: input.schema,
-				system: input.system,
+				system: { role: "system", content: input.system, ...cacheBreakpoint },
 				maxOutputTokens: input.maxOutputTokens ?? VISION_MAX_TOKENS,
 				experimental_repairText: async ({ text }) => salvageAgentJsonText(text),
 				messages: [
 					{
 						role: "user",
 						content: [
+							...(input.prompt.testCase
+								? [{ type: "text" as const, text: input.prompt.testCase, ...cacheBreakpoint }]
+								: []),
 							{
 								type: "file",
 								mediaType: input.image.mediaType,
 								data: { type: "data", data: input.image.base64 },
 							},
-							{ type: "text", text: prompt },
+							{ type: "text", text: stepBlock },
 						],
 					},
 				],
 			});
+			input.onUsage?.(toCallUsage(usage, providerMetadata));
 			return parseVisionSchema(input.schema, object, input.label);
 		} catch (error) {
 			if (error instanceof AgentProviderError) throw error;
+			if (NoObjectGeneratedError.isInstance(error) && error.usage) {
+				// The HTTP attempt completed and was billed even though the reply was unusable.
+				input.onUsage?.(toCallUsage(error.usage, undefined));
+			}
 			if (NoObjectGeneratedError.isInstance(error) && error.text?.trim()) {
 				try {
 					const salvaged = salvageAgentJsonText(error.text);
@@ -250,13 +317,13 @@ export async function completeWithAiSdk<T>(input: {
 	};
 
 	try {
-		return await run(input.prompt);
+		return await run(input.prompt.step);
 	} catch (error) {
 		if (!(error instanceof AgentProviderError) || !isJsonRepairableError(error)) {
 			throw error;
 		}
 		input.onDecideRetry?.();
-		return run(`${input.prompt}\n\n${JSON_REPAIR_PROMPT}`);
+		return run(`${input.prompt.step}\n\n${JSON_REPAIR_PROMPT}`);
 	}
 }
 
@@ -280,6 +347,7 @@ export function createSdkVisionPort(opts: {
 				prompt: input.prompt,
 				image,
 				onDecideRetry: input.onDecideRetry,
+				onUsage: input.onUsage,
 				maxOutputTokens: opts.maxOutputTokens,
 			});
 		},

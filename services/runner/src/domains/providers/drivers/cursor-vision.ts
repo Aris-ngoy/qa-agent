@@ -2,7 +2,12 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractAgentJsonObject, parseVisionObject } from "../agent-json";
-import { AgentProviderError, isJsonRepairableError, prepareVisionImage } from "../vision-model";
+import {
+	AgentProviderError,
+	isJsonRepairableError,
+	joinVisionPrompt,
+	prepareVisionImage,
+} from "../vision-model";
 import { resolveBinary, runCommand } from "./probe";
 import type { VisionAuth, VisionCompleteInput, VisionPort } from "./types";
 
@@ -99,7 +104,7 @@ async function completeOnce<T>(input: VisionCompleteInput<T>, repairHint?: strin
 	const shotName = `shot.${ext}`;
 	const userText = [
 		input.system,
-		input.prompt,
+		joinVisionPrompt(input.prompt),
 		repairHint ? `\n${repairHint}` : "",
 		`\nScreenshot file (open and look at it): ${shotName}`,
 		"The absolute path is in the current workspace. Open that image and base your answer on what you see.",
