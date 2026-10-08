@@ -19,6 +19,12 @@ export const runs = sqliteTable("runs", {
 	/** appium | direct — Lane that ran. Null on rows from before Lanes. */
 	lane: text("lane"),
 	laneWarning: text("lane_warning"),
+	/** 1 when the Run was started with a Run recording. */
+	recordVideo: integer("record_video").notNull().default(0),
+	/** recording | ready | unavailable — null unless `recordVideo`. */
+	recordingStatus: text("recording_status"),
+	/** Why the recording is unavailable. */
+	recordingNote: text("recording_note"),
 	error: text("error"),
 	createdAt: integer("created_at").notNull(),
 	startedAt: integer("started_at"),

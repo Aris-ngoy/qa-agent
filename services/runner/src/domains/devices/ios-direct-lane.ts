@@ -1,10 +1,10 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { requireIdbBins } from "./idb-companion";
-import type { DeviceSession, PointerPhase, SessionOptions } from "./lane";
+import type { DeviceSession, PointerPhase, ScreenRecording, SessionOptions } from "./lane";
 import { remember } from "./once";
 import { cleanPageSource } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
@@ -113,6 +113,27 @@ function pointSize(info: TargetDescribe): PointerSize {
 function defaultIdb(): IdbExec {
 	const bins = requireIdbBins();
 	return createIdbExec(bins.client, bins.companion);
+}
+
+/** Record the simulator screen with `simctl io recordVideo`; SIGINT makes simctl finalize the mp4. */
+export async function recordViaSimctl(udid: string, path: string): Promise<ScreenRecording> {
+	await mkdir(dirname(path), { recursive: true });
+	const proc = Bun.spawn(
+		["xcrun", "simctl", "io", udid, "recordVideo", "--codec=h264", "--force", path],
+		{ stdout: "ignore", stderr: "pipe" },
+	);
+	// simctl exits early when it cannot record; surface that instead of returning a dead handle.
+	const early = await Promise.race([proc.exited, Bun.sleep(1000).then(() => null)]);
+	if (early !== null) {
+		const stderr = await new Response(proc.stderr).text();
+		throw new Error(`simctl recordVideo: ${stderr.trim() || `exit ${early}`}`);
+	}
+	return {
+		stop: async () => {
+			proc.kill("SIGINT");
+			await Promise.race([proc.exited, Bun.sleep(10_000)]);
+		},
+	};
 }
 
 export async function captureViaSimctl(udid: string): Promise<Uint8Array> {
@@ -304,6 +325,7 @@ export async function createIosDirectSession(
 		lane: "direct",
 		stream: null,
 		quit: async () => undefined,
+		startRecording: (path) => recordViaSimctl(udid, path),
 		captureFrame,
 		screenshot,
 		pageSource,

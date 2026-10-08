@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 import { type Browser, remote } from "webdriverio";
 import { APPIUM_HOST, ensureAppiumServer } from "../appium/server";
@@ -19,7 +19,13 @@ import {
 } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
 import { typeText } from "./keyboard";
-import type { CapturedFrame, DeviceSession, PointerPhase, SessionOptions } from "./lane";
+import type {
+	CapturedFrame,
+	DeviceSession,
+	PointerPhase,
+	ScreenRecording,
+	SessionOptions,
+} from "./lane";
 import { isDeadSessionError } from "./lane";
 import { remember } from "./once";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
@@ -729,10 +735,24 @@ export async function createAppiumSession(options: SessionOptions): Promise<Devi
 		});
 	};
 
+	const startRecording = async (path: string): Promise<ScreenRecording> => {
+		// UiAutomator2 stops at 3 minutes unless told otherwise; ask for the 30-minute maximum.
+		await browser.startRecordingScreen(isAndroidDriver(browser) ? { timeLimit: 1800 } : {});
+		return {
+			stop: async () => {
+				const base64 = await browser.stopRecordingScreen();
+				if (!base64) throw new Error("Appium returned an empty recording");
+				await mkdir(dirname(path), { recursive: true });
+				await Bun.write(path, Uint8Array.from(Buffer.from(base64, "base64")));
+			},
+		};
+	};
+
 	const session: DeviceSession = {
 		lane: "appium",
 		stream: { ready: streamReady, port: mjpegPort, upstreamUrl: mjpegUpstreamUrl(mjpegPort) },
 		quit,
+		startRecording,
 		captureFrame,
 		screenshot,
 		pageSource,

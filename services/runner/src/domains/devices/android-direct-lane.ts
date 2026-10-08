@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { ensureAndroidSdkEnv } from "../appium/android-sdk";
 import {
 	encodeAdbInputText,
@@ -15,7 +15,7 @@ import {
 } from "./android-alerts";
 import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
-import type { DeviceSession, PointerPhase, SessionOptions } from "./lane";
+import type { DeviceSession, PointerPhase, ScreenRecording, SessionOptions } from "./lane";
 import { remember } from "./once";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
@@ -30,6 +30,8 @@ export type AdbExec = (args: string[]) => Promise<AdbResult>;
 
 export type AndroidDirectDeps = {
 	adb?: AdbExec;
+	/** adb binary for the long-lived `screenrecord` process; defaults to the resolved adb. */
+	adbBin?: string;
 	resolveSerial?: (deviceId: string) => Promise<string>;
 };
 
@@ -302,10 +304,45 @@ export async function createAndroidDirectSession(
 		);
 	};
 
+	/** `screenrecord` caps one file at 3 minutes, so a longer Run keeps only that first stretch. */
+	const startRecording = async (path: string): Promise<ScreenRecording> => {
+		const remote = `/sdcard/yoqa-rec-${Date.now()}.mp4`;
+		await mkdir(dirname(path), { recursive: true });
+		const proc = Bun.spawn(
+			[
+				deps.adbBin ?? resolveAdbBin(),
+				"-s",
+				serial,
+				"shell",
+				"screenrecord",
+				"--time-limit",
+				"180",
+				remote,
+			],
+			{ stdout: "ignore", stderr: "pipe" },
+		);
+		const early = await Promise.race([proc.exited, Bun.sleep(1000).then(() => null)]);
+		if (early !== null) {
+			const stderr = await new Response(proc.stderr).text();
+			throw new Error(`screenrecord: ${stderr.trim() || `exit ${early}`}`);
+		}
+		return {
+			stop: async () => {
+				// SIGINT lets screenrecord write the mp4 trailer; killing the adb client alone would not.
+				await adb(["-s", serial, "shell", "pkill", "-2", "screenrecord"]);
+				await Promise.race([proc.exited, Bun.sleep(5_000)]);
+				const pulled = await adb(["-s", serial, "pull", remote, path]);
+				await adb(["-s", serial, "shell", "rm", "-f", remote]);
+				if (pulled.exitCode !== 0) fail(pulled, "adb pull recording");
+			},
+		};
+	};
+
 	const session: DeviceSession = {
 		lane: "direct",
 		stream: null,
 		quit: async () => undefined,
+		startRecording,
 		captureFrame,
 		screenshot,
 		pageSource,

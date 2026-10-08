@@ -787,6 +787,8 @@ export const createRunRequestSchema = z.object({
 	screenMode: runScreenModeSchema.optional(),
 	/** Lane override for the Device Session this Run opens. */
 	lane: z.union([laneNameSchema, z.literal("auto")]).optional(),
+	/** Record a screen video of the whole Run (Run recording). Omitted means off. */
+	recordVideo: z.boolean().optional(),
 });
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 
@@ -854,6 +856,16 @@ export const runTestSchema = z.object({
 });
 export type RunTest = z.infer<typeof runTestSchema>;
 
+/**
+ * Run recording state. `recording` while the Run is live, `ready` once the video can be
+ * played, `unavailable` when the Lane or device could not record (`note` says why).
+ */
+export const runRecordingSchema = z.object({
+	status: z.union([z.literal("recording"), z.literal("ready"), z.literal("unavailable")]),
+	note: z.string().min(1).optional(),
+});
+export type RunRecording = z.infer<typeof runRecordingSchema>;
+
 export const runSchema = z.object({
 	id: z.string().min(1),
 	appId: z.string().min(1),
@@ -866,6 +878,8 @@ export const runSchema = z.object({
 	screenMode: runScreenModeSchema.optional(),
 	lane: laneNameSchema.optional(),
 	laneWarning: z.string().min(1).optional(),
+	/** Present only when the Run was started with `recordVideo`. */
+	recording: runRecordingSchema.optional(),
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	startedAt: z.number().int().nonnegative().nullable(),

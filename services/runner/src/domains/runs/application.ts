@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import type {
 	CreateRunRequest,
 	Run,
 	RunExecutionMode,
+	RunRecording,
 	RunScreenMode,
 	RunStatus,
 	RunStep,
@@ -30,6 +32,13 @@ import {
 	executeAgentCase as runAgentCase,
 	executeScriptCase as runScriptCase,
 } from "./case-executor";
+import {
+	type ActiveRecording,
+	RUN_VIDEO_DIR,
+	deleteRunVideo,
+	runVideoPath,
+	startRunRecording,
+} from "./run-recording";
 import { runSteps, runTests, runs } from "./schema";
 import { buildScriptFromDecisions, parseCaseScript, serializeCaseScript } from "./script";
 
@@ -115,6 +124,21 @@ function resolveCaseExecutionMode(
 	return "agent";
 }
 
+function recordingFromRow(row: {
+	recordVideo: number;
+	recordingStatus: string | null;
+	recordingNote: string | null;
+}): RunRecording | undefined {
+	if (row.recordVideo !== 1) return undefined;
+	const status =
+		row.recordingStatus === "recording" ||
+		row.recordingStatus === "ready" ||
+		row.recordingStatus === "unavailable"
+			? row.recordingStatus
+			: "recording";
+	return { status, note: row.recordingNote ?? undefined };
+}
+
 async function loadRun(runId: string): Promise<Run | null> {
 	const db = getCatalogDb();
 	const runRow = await db.query.runs.findFirst({ where: eq(runs.id, runId) });
@@ -168,6 +192,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 		screenMode: parseRunScreenMode(runRow.screenMode),
 		lane: runRow.lane === "direct" || runRow.lane === "appium" ? runRow.lane : undefined,
 		laneWarning: runRow.laneWarning ?? undefined,
+		recording: recordingFromRow(runRow),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -416,6 +441,40 @@ async function executeCase(input: {
 	return caseStatus;
 }
 
+/** Start the Run recording and record its state. A device that cannot record leaves the Run unaffected. */
+async function beginRunRecording(
+	runId: string,
+	session: DeviceSession,
+): Promise<ActiveRecording | null> {
+	const db = getCatalogDb();
+	await mkdir(RUN_VIDEO_DIR, { recursive: true }).catch(() => undefined);
+	const started = await startRunRecording(session, runVideoPath(runId));
+	if ("unavailable" in started) {
+		await db
+			.update(runs)
+			.set({ recordingStatus: "unavailable", recordingNote: started.unavailable })
+			.where(eq(runs.id, runId));
+		return null;
+	}
+	await db
+		.update(runs)
+		.set({ recordingStatus: "recording", recordingNote: null })
+		.where(eq(runs.id, runId));
+	return started;
+}
+
+async function finishRunRecording(runId: string, recording: ActiveRecording): Promise<void> {
+	const outcome = await recording.stop();
+	await getCatalogDb()
+		.update(runs)
+		.set({
+			recordingStatus: outcome.status,
+			recordingNote: outcome.status === "unavailable" ? outcome.note : null,
+		})
+		.where(eq(runs.id, runId))
+		.catch((error) => console.error(`[runs] recording state for ${runId} not saved`, error));
+}
+
 export async function executeRun(runId: string): Promise<void> {
 	const db = getCatalogDb();
 	const run = await loadRun(runId);
@@ -425,6 +484,7 @@ export async function executeRun(runId: string): Promise<void> {
 
 	let session: DeviceSession | null = null;
 	let sharedSession = true;
+	let recording: ActiveRecording | null = null;
 	try {
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
@@ -504,6 +564,10 @@ export async function executeRun(runId: string): Promise<void> {
 				laneWarning: session.laneWarning ?? null,
 			})
 			.where(eq(runs.id, runId));
+
+		if (run.recording) {
+			recording = await beginRunRecording(runId, session);
+		}
 
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
@@ -605,6 +669,8 @@ export async function executeRun(runId: string): Promise<void> {
 			}
 		}
 	} finally {
+		// Finalize the video before the session is released; it never changes the Run's outcome.
+		if (recording) await finishRunRecording(runId, recording);
 		if (session) {
 			// Shared sessions stay live as the Active Session; detached ones are quit.
 			await releaseSessionFromRun(runId, session, sharedSession);
@@ -682,6 +748,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		executionMode,
 		screenMode,
 		requestedLane: input.lane ?? null,
+		recordVideo: input.recordVideo ? 1 : 0,
 		error: null,
 		createdAt: now,
 		startedAt: null,
@@ -770,6 +837,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		screenMode: parseRunScreenMode(runRow.screenMode),
 		lane: runRow.lane === "direct" || runRow.lane === "appium" ? runRow.lane : undefined,
 		laneWarning: runRow.laneWarning ?? undefined,
+		recording: recordingFromRow(runRow),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -797,6 +865,7 @@ export async function deleteRun(runId: string): Promise<void> {
 	clearControl(runId);
 	const db = getCatalogDb();
 	await db.delete(runs).where(eq(runs.id, runId));
+	await deleteRunVideo(runId);
 }
 
 export async function cancelRun(runId: string): Promise<Run> {
@@ -837,4 +906,16 @@ export async function getRunStepScreenshotPath(runId: string, stepId: string): P
 	}
 
 	throw new RunNotFoundError("Step not found");
+}
+
+export async function getRunVideoPath(runId: string): Promise<string> {
+	const run = await loadRun(runId);
+	if (!run) {
+		throw new RunNotFoundError("Run not found");
+	}
+	const path = runVideoPath(runId);
+	if (run.recording?.status !== "ready" || !existsSync(path)) {
+		throw new RunNotFoundError("Video not found");
+	}
+	return path;
 }

@@ -48,6 +48,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [runs/vision-no-screenshot-fail.md](./runs/vision-no-screenshot-fail.md) | Harden agent against “no screenshot” hallucinations |
 | [runs/vision-first-screen-mode.md](./runs/vision-first-screen-mode.md) | Run agent decides from the screenshot and `x,y`; tree is opt-in (`screenMode`) |
 | [runs/game-tap-grid.md](./runs/game-tap-grid.md) | Coordinate grid so game taps use the screenshot point |
+| [runs/run-recording.md](./runs/run-recording.md) | Opt-in screen video of a whole Run (`recordVideo`) |
 | [runs/action-result-screenshot.md](./runs/action-result-screenshot.md) | `yoqa action --screenshot`: settle, result screenshot, tap marker for games |
 | [runs/android-permission-alerts.md](./runs/android-permission-alerts.md) | Android Allow / permission dialog taps and agent alerts |
 | [devices/xml-entity-labels.md](./devices/xml-entity-labels.md) | Decode `&amp;` in screen labels so tap-by-label matches |

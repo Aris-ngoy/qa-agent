@@ -9,8 +9,30 @@ import {
 	deleteRun,
 	getRun,
 	getRunStepScreenshotPath,
+	getRunVideoPath,
 	listRuns,
 } from "../../domains/runs/application";
+
+/** Parse a single `bytes=start-end` Range header; null when absent or unsatisfiable. */
+export function parseByteRange(
+	header: string | undefined,
+	size: number,
+): { start: number; end: number } | null {
+	const match = header?.match(/^bytes=(\d*)-(\d*)$/);
+	if (!match || size <= 0) return null;
+	const [, from, to] = match;
+	if (from === "" && to === "") return null;
+	let start: number;
+	let end: number;
+	if (from === "") {
+		start = Math.max(0, size - Number(to));
+		end = size - 1;
+	} else {
+		start = Number(from);
+		end = to === "" ? size - 1 : Math.min(Number(to), size - 1);
+	}
+	return start <= end && start < size ? { start, end } : null;
+}
 
 function runErrorResponse(error: unknown): {
 	status: 400 | 404 | 500;
@@ -98,6 +120,36 @@ export function createRunsRoutes() {
 		try {
 			const run = await cancelRun(runId);
 			return c.json(runSchema.parse(run));
+		} catch (error) {
+			const mapped = runErrorResponse(error);
+			return c.json(mapped.body, mapped.status);
+		}
+	});
+
+	app.get("/runs/:runId/video", async (c) => {
+		try {
+			const file = Bun.file(await getRunVideoPath(c.req.param("runId")));
+			const range = parseByteRange(c.req.header("range"), file.size);
+			const headers = {
+				"Content-Type": "video/mp4",
+				"Accept-Ranges": "bytes",
+				"Cache-Control": "private, max-age=60",
+			};
+			// <video> seeks with Range requests, so serve partial content.
+			if (range) {
+				return new Response(file.slice(range.start, range.end + 1), {
+					status: 206,
+					headers: {
+						...headers,
+						"Content-Range": `bytes ${range.start}-${range.end}/${file.size}`,
+						"Content-Length": String(range.end - range.start + 1),
+					},
+				});
+			}
+			return new Response(file, {
+				status: 200,
+				headers: { ...headers, "Content-Length": String(file.size) },
+			});
 		} catch (error) {
 			const mapped = runErrorResponse(error);
 			return c.json(mapped.body, mapped.status);

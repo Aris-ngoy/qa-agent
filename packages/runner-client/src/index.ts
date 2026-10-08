@@ -67,6 +67,7 @@ import {
 	type Run,
 	type RunError,
 	type RunExecutionMode,
+	type RunRecording,
 	type RunScreenMode,
 	type RunStatus,
 	type RunStep,
@@ -337,6 +338,7 @@ export {
 	type Run,
 	type RunError,
 	type RunExecutionMode,
+	type RunRecording,
 	type RunScreenMode,
 	type RunStatus,
 	type RunStep,
@@ -1000,6 +1002,10 @@ export class RunnerClient {
 
 	getRunStepScreenshotUrl(runId: string, stepId: string): string {
 		return `${this.baseUrl}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/screenshot`;
+	}
+
+	getRunVideoUrl(runId: string): string {
+		return `${this.baseUrl}/runs/${encodeURIComponent(runId)}/video`;
 	}
 
 	async connectDevice(request: ConnectDeviceRequest): Promise<ActiveDeviceResponse> {
