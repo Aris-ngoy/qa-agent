@@ -19,7 +19,7 @@ Let a Run optionally produce a screen video of the whole flow, next to its Resul
 - `run_tests.recording_status` / `recording_note`; `RunTest.recording` = `{ status: recording | ready | unavailable, note? }`.
 - `recordCase` (`runs/run-recording.ts`) wraps one case's execution with a recording and turns every failure into `unavailable`; `executeRun` calls it per case.
 - Files live at `~/.yoqa/runs/videos/<runTestId>.mp4`, served by `GET /runs/:runId/tests/:testId/video` (supports `Range`), and deleted with the Run. A recording cut off by a runner stop reads as `unavailable`.
-- Desktop: "Record video" switch on the Test Case Configuration tab; the Run detail page lists each recorded case's video under the screenshot once the Run is finished.
+- Desktop: "Record video" switch on the Test Case Configuration tab; the Run detail page lists each recorded case under the screenshot once the Run is finished; each is a button that opens a dialog with a player and a Download button.
 - CLI: `yoqa runs create --record-video` forces recording for all cases and prints each video URL.
 
 ## How to verify
