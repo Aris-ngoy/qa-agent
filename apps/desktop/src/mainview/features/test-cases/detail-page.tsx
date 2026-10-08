@@ -10,7 +10,7 @@ import {
 	mapCatalogCase,
 } from "@/features/test-cases/data";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
-import { AlertDialog, Button, Form, Tabs } from "@heroui/react";
+import { AlertDialog, Button, Form, Switch, Tabs } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -24,6 +24,7 @@ import {
 import { type SVGProps, useEffect, useRef, useState } from "react";
 import {
 	type Control,
+	Controller,
 	type UseFormSetValue,
 	useFieldArray,
 	useForm,
@@ -48,6 +49,7 @@ type FormValues = {
 	tags: string[];
 	flows: TestFlow[];
 	capabilities: Capability[];
+	recordVideo: boolean;
 	galleryImages: GalleryImage[];
 	locale: string | null;
 };
@@ -148,6 +150,7 @@ function formFromCase(testCase: TestCase): FormValues {
 		tags: [...testCase.tags],
 		flows: testCase.flows.map((flow) => ({ ...flow })),
 		capabilities: testCase.capabilities.map((cap) => ({ ...cap })),
+		recordVideo: testCase.recordVideo,
 		galleryImages: [],
 		locale: null,
 	};
@@ -475,6 +478,31 @@ function ConfigurationPanel({
 
 	return (
 		<div className="flex w-full max-w-2xl flex-col gap-5">
+			<section className={configCardClass}>
+				<Controller
+					control={control}
+					name="recordVideo"
+					render={({ field }) => (
+						<Switch
+							className="flex w-full items-center justify-between gap-4"
+							isSelected={field.value}
+							onChange={field.onChange}
+						>
+							<Switch.Content className="flex flex-col gap-1.5">
+								<span className="text-headline-md text-on-surface">Record video</span>
+								<span className="text-body-md text-on-surface-variant">
+									Record the screen whenever this test case runs. The video appears on the run once
+									it has finished.
+								</span>
+							</Switch.Content>
+							<Switch.Control>
+								<Switch.Thumb />
+							</Switch.Control>
+						</Switch>
+					)}
+				/>
+			</section>
+
 			<section className={configCardClass}>
 				<div className="mb-5">
 					<h2 className="mb-1.5 text-headline-md text-on-surface">Appium Capabilities</h2>
@@ -1216,6 +1244,7 @@ const emptyDefaults: FormValues = {
 	tags: [],
 	flows: [],
 	capabilities: [],
+	recordVideo: false,
 	galleryImages: [],
 	locale: null,
 };
@@ -1278,6 +1307,7 @@ export function TestCaseDetailPage() {
 					capabilities: next.capabilities
 						.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
 						.filter((cap) => cap.key.length > 0),
+					recordVideo: next.recordVideo,
 				}),
 			);
 		},
@@ -1317,6 +1347,7 @@ export function TestCaseDetailPage() {
 					capabilities: form.capabilities
 						.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
 						.filter((cap) => cap.key.length > 0),
+					recordVideo: form.recordVideo,
 				}),
 			);
 		},

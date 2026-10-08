@@ -1006,8 +1006,8 @@ export class RunnerClient {
 		return `${this.baseUrl}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/screenshot`;
 	}
 
-	getRunVideoUrl(runId: string): string {
-		return `${this.baseUrl}/runs/${encodeURIComponent(runId)}/video`;
+	getRunTestVideoUrl(runId: string, runTestId: string): string {
+		return `${this.baseUrl}/runs/${encodeURIComponent(runId)}/tests/${encodeURIComponent(runTestId)}/video`;
 	}
 
 	async connectDevice(request: ConnectDeviceRequest): Promise<ActiveDeviceResponse> {

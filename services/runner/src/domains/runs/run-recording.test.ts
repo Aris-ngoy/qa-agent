@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { DeviceSession } from "../devices/lane";
-import { runVideoPath, startRunRecording } from "./run-recording";
+import { recordCase, runVideoPath, startRunRecording } from "./run-recording";
 
 function sessionWith(startRecording?: DeviceSession["startRecording"]): DeviceSession {
 	return { lane: "direct", startRecording } as unknown as DeviceSession;
@@ -62,5 +62,90 @@ describe("startRunRecording", () => {
 			status: "unavailable",
 			note: "Could not save recording: pull failed",
 		});
+	});
+});
+
+describe("recordCase", () => {
+	function recorder() {
+		const states: Array<{ status: string; note?: string }> = [];
+		return {
+			states,
+			onState: async (state: { status: string; note?: string }) => void states.push(state),
+		};
+	}
+
+	test("does not touch the device when the case does not need a video", async () => {
+		let started = false;
+		const { states, onState } = recorder();
+		const result = await recordCase(
+			sessionWith(async () => {
+				started = true;
+				return { stop: async () => undefined };
+			}),
+			"/tmp/never.mp4",
+			{ enabled: false, onState },
+			async () => "ran",
+		);
+		expect(result).toBe("ran");
+		expect(started).toBe(false);
+		expect(states).toEqual([]);
+	});
+
+	test("records around the case and ends ready", async () => {
+		const dir = await mkdtemp(`${tmpdir()}/rec-`);
+		const path = runVideoPath("rtest_1", dir);
+		const { states, onState } = recorder();
+		const result = await recordCase(
+			sessionWith(async (dest) => ({ stop: async () => void (await writeFile(dest, "mp4")) })),
+			path,
+			{ enabled: true, onState },
+			async () => "ran",
+		);
+		expect(result).toBe("ran");
+		expect(states).toEqual([{ status: "recording" }, { status: "ready" }]);
+	});
+
+	test("runs the case anyway and reports why when the Lane cannot record", async () => {
+		const { states, onState } = recorder();
+		const result = await recordCase(
+			sessionWith(undefined),
+			"/tmp/x.mp4",
+			{ enabled: true, onState },
+			async () => "ran",
+		);
+		expect(result).toBe("ran");
+		expect(states).toEqual([
+			{ status: "unavailable", note: "The direct lane cannot record video" },
+		]);
+	});
+
+	test("still stops the recording when the case throws", async () => {
+		const dir = await mkdtemp(`${tmpdir()}/rec-`);
+		const { states, onState } = recorder();
+		const run = recordCase(
+			sessionWith(async (dest) => ({ stop: async () => void (await writeFile(dest, "mp4")) })),
+			runVideoPath("rtest_2", dir),
+			{ enabled: true, onState },
+			async () => {
+				throw new Error("case blew up");
+			},
+		);
+		await expect(run).rejects.toThrow("case blew up");
+		expect(states).toEqual([{ status: "recording" }, { status: "ready" }]);
+	});
+
+	test("a failing state sink never fails the case", async () => {
+		const result = await recordCase(
+			sessionWith(undefined),
+			"/tmp/x.mp4",
+			{
+				enabled: true,
+				onState: async () => {
+					throw new Error("db down");
+				},
+			},
+			async () => "ran",
+		);
+		expect(result).toBe("ran");
 	});
 });

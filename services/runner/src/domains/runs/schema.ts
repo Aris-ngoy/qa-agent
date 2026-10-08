@@ -19,12 +19,8 @@ export const runs = sqliteTable("runs", {
 	/** appium | direct — Lane that ran. Null on rows from before Lanes. */
 	lane: text("lane"),
 	laneWarning: text("lane_warning"),
-	/** 1 when the Run was started with a Run recording. */
+	/** 1 when the Run was started asking to record every case, whatever the cases say. */
 	recordVideo: integer("record_video").notNull().default(0),
-	/** recording | ready | unavailable — null unless `recordVideo`. */
-	recordingStatus: text("recording_status"),
-	/** Why the recording is unavailable. */
-	recordingNote: text("recording_note"),
 	error: text("error"),
 	createdAt: integer("created_at").notNull(),
 	startedAt: integer("started_at"),
@@ -47,6 +43,10 @@ export const runTests = sqliteTable("run_tests", {
 	finishedAt: integer("finished_at"),
 	/** Shell command currently in flight (cleared when the step finishes). */
 	currentCommand: text("current_command"),
+	/** recording | ready | unavailable — null when this case was not recorded. */
+	recordingStatus: text("recording_status"),
+	/** Why the recording is unavailable. */
+	recordingNote: text("recording_note"),
 });
 
 export const runSteps = sqliteTable("run_steps", {

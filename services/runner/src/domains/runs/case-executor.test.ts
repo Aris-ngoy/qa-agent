@@ -44,6 +44,7 @@ function emptyCase(overrides?: Partial<CatalogCase>): CatalogCase {
 		tags: [],
 		flows: [{ id: "flow_1", instructions: "Tap login", expectedResult: "Home", flowId: null }],
 		capabilities: [],
+		recordVideo: false,
 		hasScript: false,
 		scriptSavedAt: null,
 		script: null,

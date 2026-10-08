@@ -60,6 +60,8 @@ export const cases = sqliteTable("cases", {
 	title: text("title").notNull(),
 	/** JSON array of CapabilityRow */
 	appiumCaps: text("appium_caps").notNull().default("[]"),
+	/** 1 when every run of this case records a screen video. */
+	recordVideo: integer("record_video").notNull().default(0),
 	/** JSON CaseScript — replayable actions from a successful agent run */
 	scriptJson: text("script_json"),
 	scriptSavedAt: integer("script_saved_at"),

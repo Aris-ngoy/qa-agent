@@ -2,13 +2,14 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { RunRecording } from "@yoqa/runner-client";
 import type { DeviceSession, ScreenRecording } from "../devices/lane";
 
-/** Run recordings live here, one `<runId>.mp4` per Run. */
+/** Run recordings live here, one `<runTestId>.mp4` per recorded Test Case. */
 export const RUN_VIDEO_DIR = join(homedir(), ".yoqa", "runs", "videos");
 
-export function runVideoPath(runId: string, dir: string = RUN_VIDEO_DIR): string {
-	return join(dir, `${runId}.mp4`);
+export function runVideoPath(runTestId: string, dir: string = RUN_VIDEO_DIR): string {
+	return join(dir, `${runTestId}.mp4`);
 }
 
 export type RecordingOutcome = { status: "ready" } | { status: "unavailable"; note: string };
@@ -62,13 +63,51 @@ export async function startRunRecording(
 	};
 }
 
-/** Best-effort removal of a Run's video; used when the Run is deleted. */
-export async function deleteRunVideo(runId: string, dir: string = RUN_VIDEO_DIR): Promise<void> {
-	await rm(runVideoPath(runId, dir), { force: true }).catch(() => undefined);
+/** Best-effort removal of a case's video; used when its Run is deleted. */
+export async function deleteRunVideo(
+	runTestId: string,
+	dir: string = RUN_VIDEO_DIR,
+): Promise<void> {
+	await rm(runVideoPath(runTestId, dir), { force: true }).catch(() => undefined);
 }
 
-/** The video's path when it can be played: the Run recording is ready and the file exists. */
-export function readyVideoPath(runId: string, status: string | undefined): string | null {
-	const path = runVideoPath(runId);
+/** The video's path when it can be played: the case's recording is ready and the file exists. */
+export function readyVideoPath(runTestId: string, status: string | undefined): string | null {
+	const path = runVideoPath(runTestId);
 	return status === "ready" && existsSync(path) ? path : null;
+}
+
+export type CaseRecordingOptions = {
+	/** Record this case. When false the device is never touched. */
+	enabled: boolean;
+	/** Told each state change (`recording`, then `ready` or `unavailable`). Failures are ignored. */
+	onState: (state: RunRecording) => Promise<void>;
+};
+
+/**
+ * Run one Test Case with a recording around it when `enabled`. Recording is evidence only:
+ * a Lane that cannot record, or a sink that fails, never changes how the case runs, and the
+ * recording is finalized even when the case throws.
+ */
+export async function recordCase<T>(
+	session: DeviceSession,
+	path: string,
+	options: CaseRecordingOptions,
+	run: () => Promise<T>,
+): Promise<T> {
+	if (!options.enabled) return run();
+	const report = (state: RunRecording) => options.onState(state).catch(() => undefined);
+
+	const started = await startRunRecording(session, path);
+	if ("unavailable" in started) {
+		await report({ status: "unavailable", note: started.unavailable });
+		return run();
+	}
+	await report({ status: "recording" });
+	try {
+		return await run();
+	} finally {
+		const outcome = await started.stop();
+		await report(outcome.status === "ready" ? { status: "ready" } : outcome);
+	}
 }
