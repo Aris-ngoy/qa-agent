@@ -10,6 +10,7 @@ import {
 	formatDeviceShortLabel,
 } from "@/features/runs/labels";
 import { ScreenshotCrossfade } from "@/features/runs/screenshot-crossfade";
+import { useFollowLatest } from "@/features/runs/use-follow-latest";
 import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { Button, Modal, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -720,6 +721,12 @@ export function RunDetailPage() {
 		return flattenSteps(run);
 	}, [run]);
 
+	// New steps (or a command starting) move the view while the run is live, like a chat.
+	const newestContent = run
+		? `${steps.at(-1)?.id ?? ""}:${run.tests.map((test) => test.currentCommand ?? "").join("|")}`
+		: "";
+	const follow = useFollowLatest(isLive, `${steps.length}:${newestContent}`);
+
 	useEffect(() => {
 		if (!run || !reviewMode) return;
 		if (selectedStepId && steps.some((step) => step.id === selectedStepId)) return;
@@ -838,7 +845,11 @@ export function RunDetailPage() {
 			) : null}
 
 			<div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] lg:grid-rows-[minmax(0,1fr)]">
-				<section className="min-h-0 overflow-y-auto rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-5 shadow-soft">
+				<section
+					className="min-h-0 overflow-y-auto rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-5 shadow-soft"
+					onScroll={follow.onScroll}
+					ref={follow.ref}
+				>
 					{run.tests.map((test, testIndex) => {
 						const caseLabel = formatCaseLabel(caseNameById.get(test.caseId), test.caseId);
 						const testSteps = test.steps ?? [];
@@ -945,6 +956,19 @@ export function RunDetailPage() {
 
 					{steps.length === 0 && run.tests.length === 0 ? (
 						<p className="text-body-md text-on-surface-variant">No tests in this run.</p>
+					) : null}
+
+					{isLive && !follow.following ? (
+						<div className="pointer-events-none sticky bottom-0 flex justify-center pt-2">
+							<Button
+								className="pointer-events-auto shadow-float"
+								onPress={follow.jumpToLatest}
+								size="sm"
+								variant="secondary"
+							>
+								Jump to latest ↓
+							</Button>
+						</div>
 					) : null}
 				</section>
 
