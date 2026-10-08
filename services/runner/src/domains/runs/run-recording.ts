@@ -13,12 +13,15 @@ export function runVideoPath(runId: string, dir: string = RUN_VIDEO_DIR): string
 
 export type RecordingOutcome = { status: "ready" } | { status: "unavailable"; note: string };
 
+/** Longest we wait for a recorder to finish, so a stuck one cannot hold the device session. */
+const STOP_TIMEOUT_MS = 20_000;
+
 export type ActiveRecording = {
 	/** Finalize the file. Never throws; a failure comes back as `unavailable`. */
 	stop: () => Promise<RecordingOutcome>;
 };
 
-function describe(error: unknown): string {
+function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
@@ -37,14 +40,19 @@ export async function startRunRecording(
 	try {
 		recording = await session.startRecording(path);
 	} catch (error) {
-		return { unavailable: `Could not start recording: ${describe(error)}` };
+		return { unavailable: `Could not start recording: ${errorMessage(error)}` };
 	}
 	return {
 		stop: async () => {
 			try {
-				await recording.stop();
+				await Promise.race([
+					recording.stop(),
+					Bun.sleep(STOP_TIMEOUT_MS).then(() => {
+						throw new Error("timed out");
+					}),
+				]);
 			} catch (error) {
-				return { status: "unavailable", note: `Could not save recording: ${describe(error)}` };
+				return { status: "unavailable", note: `Could not save recording: ${errorMessage(error)}` };
 			}
 			if (!existsSync(path)) {
 				return { status: "unavailable", note: "The device produced no video file" };
@@ -57,4 +65,10 @@ export async function startRunRecording(
 /** Best-effort removal of a Run's video; used when the Run is deleted. */
 export async function deleteRunVideo(runId: string, dir: string = RUN_VIDEO_DIR): Promise<void> {
 	await rm(runVideoPath(runId, dir), { force: true }).catch(() => undefined);
+}
+
+/** The video's path when it can be played: the Run recording is ready and the file exists. */
+export function readyVideoPath(runId: string, status: string | undefined): string | null {
+	const path = runVideoPath(runId);
+	return status === "ready" && existsSync(path) ? path : null;
 }

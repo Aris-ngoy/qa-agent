@@ -9,10 +9,11 @@ describe("parseByteRange", () => {
 		expect(parseByteRange("bytes=0-5000", 1000)).toEqual({ start: 0, end: 999 });
 	});
 
-	test("rejects missing, malformed and unsatisfiable ranges", () => {
+	test("ignores missing or malformed ranges and flags unsatisfiable ones", () => {
 		expect(parseByteRange(undefined, 1000)).toBeNull();
 		expect(parseByteRange("bytes=-", 1000)).toBeNull();
-		expect(parseByteRange("bytes=2000-", 1000)).toBeNull();
-		expect(parseByteRange("bytes=0-9", 0)).toBeNull();
+		expect(parseByteRange("bytes=-0", 1000)).toBe("unsatisfiable");
+		expect(parseByteRange("bytes=2000-", 1000)).toBe("unsatisfiable");
+		expect(parseByteRange("bytes=0-9", 0)).toBe("unsatisfiable");
 	});
 });

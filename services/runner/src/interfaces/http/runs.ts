@@ -13,15 +13,19 @@ import {
 	listRuns,
 } from "../../domains/runs/application";
 
-/** Parse a single `bytes=start-end` Range header; null when absent or unsatisfiable. */
+/**
+ * Parse a single `bytes=start-end` Range header. Null when absent or malformed (serve the
+ * whole file); "unsatisfiable" when it points past the end (answer 416).
+ */
 export function parseByteRange(
 	header: string | undefined,
 	size: number,
-): { start: number; end: number } | null {
+): { start: number; end: number } | "unsatisfiable" | null {
 	const match = header?.match(/^bytes=(\d*)-(\d*)$/);
-	if (!match || size <= 0) return null;
+	if (!match) return null;
 	const [, from, to] = match;
 	if (from === "" && to === "") return null;
+	if (size <= 0) return "unsatisfiable";
 	let start: number;
 	let end: number;
 	if (from === "") {
@@ -31,7 +35,7 @@ export function parseByteRange(
 		start = Number(from);
 		end = to === "" ? size - 1 : Math.min(Number(to), size - 1);
 	}
-	return start <= end && start < size ? { start, end } : null;
+	return start <= end && start < size ? { start, end } : "unsatisfiable";
 }
 
 function runErrorResponse(error: unknown): {
@@ -135,6 +139,12 @@ export function createRunsRoutes() {
 				"Accept-Ranges": "bytes",
 				"Cache-Control": "private, max-age=60",
 			};
+			if (range === "unsatisfiable") {
+				return new Response(null, {
+					status: 416,
+					headers: { "Content-Range": `bytes */${file.size}` },
+				});
+			}
 			// <video> seeks with Range requests, so serve partial content.
 			if (range) {
 				return new Response(file.slice(range.start, range.end + 1), {

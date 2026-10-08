@@ -389,6 +389,7 @@ export function RunDetailPage() {
 	const { selectedApp } = useApps();
 	const { setActiveRun, isRunLive, activeRunId } = useActiveRun();
 	const [screenshotBaseUrl, setScreenshotBaseUrl] = useState<string | null>(null);
+	const [videoUrl, setVideoUrl] = useState<string | null>(null);
 	const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 	const [exportingFormat, setExportingFormat] = useState<"html" | "md" | null>(null);
 
@@ -406,6 +407,8 @@ export function RunDetailPage() {
 		refetchInterval: (query) => {
 			const status = query.state.data?.status;
 			if (status && LIVE_STATUSES.has(status)) return 1000;
+			// The video is finalized just after the Run's last status is saved.
+			if (query.state.data?.recording?.status === "recording") return 1000;
 			return false;
 		},
 	});
@@ -414,12 +417,14 @@ export function RunDetailPage() {
 		let cancelled = false;
 		void (async () => {
 			const client = await getRunnerClient();
-			if (!cancelled) setScreenshotBaseUrl(client.baseUrl);
+			if (cancelled) return;
+			setScreenshotBaseUrl(client.baseUrl);
+			setVideoUrl(client.getRunVideoUrl(runId));
 		})();
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [runId]);
 
 	const casesQuery = useQuery({
 		queryKey: selectedApp ? casesQueryKey(selectedApp.id) : ["catalog", "cases", "none"],
@@ -817,15 +822,7 @@ export function RunDetailPage() {
 						)}
 					</div>
 					{run.recording ? (
-						<RunVideo
-							note={run.recording.note}
-							status={run.recording.status}
-							url={
-								screenshotBaseUrl
-									? `${screenshotBaseUrl}/runs/${encodeURIComponent(runId)}/video`
-									: null
-							}
-						/>
+						<RunVideo note={run.recording.note} status={run.recording.status} url={videoUrl} />
 					) : null}
 				</aside>
 			</div>

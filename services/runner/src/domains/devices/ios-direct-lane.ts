@@ -6,6 +6,7 @@ import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { requireIdbBins } from "./idb-companion";
 import type { DeviceSession, PointerPhase, ScreenRecording, SessionOptions } from "./lane";
 import { remember } from "./once";
+import { exitsWithin, spawnRecorder } from "./recorder-process";
 import { cleanPageSource } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
@@ -115,23 +116,23 @@ function defaultIdb(): IdbExec {
 	return createIdbExec(bins.client, bins.companion);
 }
 
+/** Longest wait for simctl to write the mp4 trailer after SIGINT. */
+const SIMCTL_FINALIZE_MS = 10_000;
+
 /** Record the simulator screen with `simctl io recordVideo`; SIGINT makes simctl finalize the mp4. */
 export async function recordViaSimctl(udid: string, path: string): Promise<ScreenRecording> {
 	await mkdir(dirname(path), { recursive: true });
-	const proc = Bun.spawn(
+	const proc = await spawnRecorder(
 		["xcrun", "simctl", "io", udid, "recordVideo", "--codec=h264", "--force", path],
-		{ stdout: "ignore", stderr: "pipe" },
+		"simctl recordVideo",
 	);
-	// simctl exits early when it cannot record; surface that instead of returning a dead handle.
-	const early = await Promise.race([proc.exited, Bun.sleep(1000).then(() => null)]);
-	if (early !== null) {
-		const stderr = await new Response(proc.stderr).text();
-		throw new Error(`simctl recordVideo: ${stderr.trim() || `exit ${early}`}`);
-	}
 	return {
 		stop: async () => {
 			proc.kill("SIGINT");
-			await Promise.race([proc.exited, Bun.sleep(10_000)]);
+			if (!(await exitsWithin(proc, SIMCTL_FINALIZE_MS))) {
+				proc.kill("SIGKILL");
+				throw new Error("simctl did not finish writing the video");
+			}
 		},
 	};
 }

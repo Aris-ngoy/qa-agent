@@ -17,6 +17,7 @@ import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
 import type { DeviceSession, PointerPhase, ScreenRecording, SessionOptions } from "./lane";
 import { remember } from "./once";
+import { exitsWithin, spawnRecorder } from "./recorder-process";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
 export type AdbResult = {
@@ -27,6 +28,19 @@ export type AdbResult = {
 };
 
 export type AdbExec = (args: string[]) => Promise<AdbResult>;
+
+/** `screenrecord` refuses to run longer than this per file. */
+const SCREENRECORD_LIMIT_SECONDS = 180;
+/** Longest wait for screenrecord to write the mp4 trailer after SIGINT. */
+const SCREENRECORD_FINALIZE_MS = 10_000;
+
+async function readRemotePid(stdout: ReadableStream<Uint8Array>): Promise<string> {
+	const { value } = await stdout.getReader().read();
+	const pid = new TextDecoder().decode(value).trim().split(/\s+/)[0] ?? "";
+	if (!/^\d+$/.test(pid))
+		throw new Error(`screenrecord: could not read its pid (${pid || "empty"})`);
+	return pid;
+}
 
 export type AndroidDirectDeps = {
 	adb?: AdbExec;
@@ -308,31 +322,30 @@ export async function createAndroidDirectSession(
 	const startRecording = async (path: string): Promise<ScreenRecording> => {
 		const remote = `/sdcard/yoqa-rec-${Date.now()}.mp4`;
 		await mkdir(dirname(path), { recursive: true });
-		const proc = Bun.spawn(
+		// Print the shell's pid, then exec screenrecord in its place, so stop can signal this
+		// recording alone and not another `screenrecord` running on the device.
+		const proc = await spawnRecorder(
 			[
 				deps.adbBin ?? resolveAdbBin(),
 				"-s",
 				serial,
 				"shell",
-				"screenrecord",
-				"--time-limit",
-				"180",
-				remote,
+				`echo $$; exec screenrecord --time-limit ${SCREENRECORD_LIMIT_SECONDS} ${remote}`,
 			],
-			{ stdout: "ignore", stderr: "pipe" },
+			"screenrecord",
+			"pipe",
 		);
-		const early = await Promise.race([proc.exited, Bun.sleep(1000).then(() => null)]);
-		if (early !== null) {
-			const stderr = await new Response(proc.stderr).text();
-			throw new Error(`screenrecord: ${stderr.trim() || `exit ${early}`}`);
-		}
+		if (!proc.stdout) throw new Error("screenrecord: no output to read its pid from");
+		const pid = await readRemotePid(proc.stdout);
 		return {
 			stop: async () => {
 				// SIGINT lets screenrecord write the mp4 trailer; killing the adb client alone would not.
-				await adb(["-s", serial, "shell", "pkill", "-2", "screenrecord"]);
-				await Promise.race([proc.exited, Bun.sleep(5_000)]);
-				const pulled = await adb(["-s", serial, "pull", remote, path]);
+				await adb(["-s", serial, "shell", "kill", "-2", pid]);
+				const finalized = await exitsWithin(proc, SCREENRECORD_FINALIZE_MS);
+				if (!finalized) proc.kill();
+				const pulled = finalized ? await adb(["-s", serial, "pull", remote, path]) : null;
 				await adb(["-s", serial, "shell", "rm", "-f", remote]);
+				if (!pulled) throw new Error("screenrecord did not finish writing the video");
 				if (pulled.exitCode !== 0) fail(pulled, "adb pull recording");
 			},
 		};
