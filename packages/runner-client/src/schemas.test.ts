@@ -107,6 +107,34 @@ describe("runStepSchema", () => {
 			runStepSchema.parse({ ...baseStep, command: "yoqa action tap --label 'Allow'" }).command,
 		).toBe("yoqa action tap --label 'Allow'");
 	});
+
+	const phases = {
+		captureMs: 1,
+		screenMs: 2,
+		prepareMs: 3,
+		decideMs: 4,
+		actionMs: 5,
+		settleMs: 6,
+		decideRetries: 0,
+	};
+
+	test("loads phases recorded before Call usage existed", () => {
+		const step = runStepSchema.parse({ ...baseStep, phases });
+		expect(step.phases).toEqual(phases);
+		expect(step.phases?.usage).toBeUndefined();
+	});
+
+	test("loads phases with Call usage, including unreported fields", () => {
+		const usage = {
+			inputTokens: 250,
+			cachedInputTokens: 1800,
+			cacheWriteTokens: null,
+			outputTokens: 60,
+		};
+		expect(
+			runStepSchema.parse({ ...baseStep, phases: { ...phases, usage } }).phases?.usage,
+		).toEqual(usage);
+	});
 });
 
 describe("runTestSchema", () => {

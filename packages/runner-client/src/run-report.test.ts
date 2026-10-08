@@ -6,6 +6,7 @@ import {
 	formatRunReportHtml,
 	formatRunReportMarkdown,
 	formatStepCommand,
+	formatStepPhases,
 	readStepCycle,
 	stepReasoning,
 	suggestedRunReportBasename,
@@ -278,6 +279,74 @@ describe("per-phase step timing", () => {
 			"Phases: capture 820ms · screen 1100ms · image 95ms · decide 32400ms · action 210ms · settle 800ms · retries 1",
 		);
 		expect(formatRunReportHtml(doc)).toContain("capture 820ms");
+	});
+
+	test("shows the step's Call usage and cached share after the phases", () => {
+		const base = sampleDoc();
+		const baseTest = base.tests[0];
+		const baseStep = baseTest?.steps[0];
+		if (!baseTest || !baseStep) throw new Error("sample doc is missing a step");
+		const doc: RunReportDocument = {
+			...base,
+			tests: [
+				{
+					...baseTest,
+					steps: [
+						{
+							...baseStep,
+							phases: {
+								captureMs: 820,
+								screenMs: 1100,
+								prepareMs: 95,
+								decideMs: 32400,
+								actionMs: 210,
+								settleMs: 800,
+								decideRetries: 0,
+								usage: {
+									inputTokens: 250,
+									cachedInputTokens: 1800,
+									cacheWriteTokens: 900,
+									outputTokens: 60,
+								},
+							},
+						},
+					],
+				},
+			],
+		};
+		expect(formatRunReportMarkdown(doc)).toContain(
+			"settle 800ms · tokens in 250, cached 1800, cache write 900, out 60 (61% cached)",
+		);
+		expect(formatRunReportHtml(doc)).toContain("61% cached");
+	});
+
+	test("leaves out unreported Call usage fields and shows no usage when phases have none", () => {
+		const usageOnly = formatStepPhases({
+			captureMs: 0,
+			screenMs: 0,
+			prepareMs: 0,
+			decideMs: 0,
+			actionMs: 0,
+			settleMs: 0,
+			decideRetries: 0,
+			usage: {
+				inputTokens: 100,
+				cachedInputTokens: null,
+				cacheWriteTokens: null,
+				outputTokens: 20,
+			},
+		});
+		expect(usageOnly).toContain("tokens in 100, out 20 (0% cached)");
+		const none = formatStepPhases({
+			captureMs: 0,
+			screenMs: 0,
+			prepareMs: 0,
+			decideMs: 0,
+			actionMs: 0,
+			settleMs: 0,
+			decideRetries: 0,
+		});
+		expect(none).not.toContain("tokens");
 	});
 
 	test("omits the breakdown for steps without phases", () => {

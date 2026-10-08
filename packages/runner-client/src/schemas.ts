@@ -790,6 +790,19 @@ export const createRunRequestSchema = z.object({
 });
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 
+/**
+ * Call usage: tokens one or more Decide/verify calls used. `inputTokens` is fresh
+ * (uncached) input; `cachedInputTokens` were Prompt cache reads and `cacheWriteTokens`
+ * Prompt cache writes. A field is null when no call reported it.
+ */
+export const callUsageSchema = z.object({
+	inputTokens: z.number().int().nonnegative().nullable(),
+	cachedInputTokens: z.number().int().nonnegative().nullable(),
+	cacheWriteTokens: z.number().int().nonnegative().nullable(),
+	outputTokens: z.number().int().nonnegative().nullable(),
+});
+export type CallUsage = z.infer<typeof callUsageSchema>;
+
 /** Per-phase wall-clock breakdown of one agent step (script steps leave it null). */
 export const stepPhasesSchema = z.object({
 	captureMs: z.number().nonnegative(),
@@ -800,6 +813,11 @@ export const stepPhasesSchema = z.object({
 	settleMs: z.number().nonnegative(),
 	/** Decide re-calls caused by JSON repair or an unusable first reply. */
 	decideRetries: z.number().int().nonnegative(),
+	/**
+	 * Call usage summed over every Decide attempt and the verify call of this step.
+	 * Missing when no call reported usage (unavailable, not zero). Older steps never have it.
+	 */
+	usage: callUsageSchema.optional(),
 });
 export type StepPhases = z.infer<typeof stepPhasesSchema>;
 
