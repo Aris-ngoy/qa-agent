@@ -85,6 +85,14 @@ _Avoid_: any Provider with an API key
 A single vision completion by a Vision-capable Provider that maps the current screenshot and one instruction (plus the Screen, only in tree Screen mode) to the next Action.
 _Avoid_: LLM call, inference, step (Run timeline)
 
+**Prompt cache**:
+A Provider's reuse of the unchanged leading part of a Decide or verify request across calls in the same Test Case, billed and served cheaper than fresh input.
+_Avoid_: token cache (ambiguous with auth tokens), decision cache, response cache
+
+**Call usage**:
+The token accounting a Provider reports for one Decide or verify call: fresh input, Prompt cache reads, Prompt cache writes, and output.
+_Avoid_: cost, tokens (alone), billing
+
 ### Catalog
 
 **App Knowledge**:
