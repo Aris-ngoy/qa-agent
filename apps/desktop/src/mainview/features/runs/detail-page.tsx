@@ -14,7 +14,7 @@ import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { Button, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { Device, Run, RunRecording, RunStatus, RunStep } from "@yoqa/runner-client";
+import type { Device, Run, RunStatus, RunStep, RunTest } from "@yoqa/runner-client";
 import {
 	buildRunReportFromCatalogRun,
 	formatRunReportHtml,
@@ -34,25 +34,45 @@ const BUILD_LABELS: Record<string, string> = {
 
 const LIVE_STATUSES = new Set<RunStatus>(["queued", "running"]);
 
-/** Playback of the Run recording, shown under the screenshot once the Run has finished. */
-function RunVideo({
-	status,
-	note,
-	url,
-}: { status: RunRecording["status"]; note?: string; url: string | null }) {
-	if (status === "ready" && url) {
-		return (
-			<div className="flex flex-col gap-2">
-				<p className="text-helper font-medium text-on-surface-variant">Video</p>
-				{/* biome-ignore lint/a11y/useMediaCaption: a device screen recording has no audio track */}
-				<video className="max-h-64 w-full rounded-2xl bg-black object-contain" controls src={url} />
-			</div>
-		);
-	}
+/**
+ * Videos of the cases that were recorded. Shown only once the Run has finished: while it is
+ * live (or a video is still being saved) there is nothing to show yet.
+ */
+function CaseVideos({
+	tests,
+	label,
+	videoUrl,
+}: {
+	tests: RunTest[];
+	label: (test: RunTest) => string;
+	videoUrl: (test: RunTest) => string | null;
+}) {
+	const finished = tests.filter((test) => test.recording && test.recording.status !== "recording");
+	if (finished.length === 0) return null;
 	return (
-		<p className="text-body-sm text-on-surface-variant">
-			{status === "recording" ? "Recording video…" : `Video unavailable${note ? `: ${note}` : ""}`}
-		</p>
+		<div className="flex flex-col gap-3">
+			<p className="text-helper font-medium text-on-surface-variant">Video</p>
+			{finished.map((test) => {
+				const url = videoUrl(test);
+				return (
+					<div className="flex flex-col gap-1.5" key={test.id}>
+						<p className="text-body-sm text-on-surface-variant">{label(test)}</p>
+						{test.recording?.status === "ready" && url ? (
+							// biome-ignore lint/a11y/useMediaCaption: a device screen recording has no audio track
+							<video
+								className="max-h-64 w-full rounded-2xl bg-black object-contain"
+								controls
+								src={url}
+							/>
+						) : (
+							<p className="text-body-sm text-on-surface-variant">
+								Video unavailable{test.recording?.note ? `: ${test.recording.note}` : ""}
+							</p>
+						)}
+					</div>
+				);
+			})}
+		</div>
 	);
 }
 
@@ -389,7 +409,9 @@ export function RunDetailPage() {
 	const { selectedApp } = useApps();
 	const { setActiveRun, isRunLive, activeRunId } = useActiveRun();
 	const [screenshotBaseUrl, setScreenshotBaseUrl] = useState<string | null>(null);
-	const [videoUrl, setVideoUrl] = useState<string | null>(null);
+	const [videoClient, setVideoClient] = useState<{
+		testUrl: (runTestId: string) => string;
+	} | null>(null);
 	const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 	const [exportingFormat, setExportingFormat] = useState<"html" | "md" | null>(null);
 
@@ -408,7 +430,8 @@ export function RunDetailPage() {
 			const status = query.state.data?.status;
 			if (status && LIVE_STATUSES.has(status)) return 1000;
 			// The video is finalized just after the Run's last status is saved.
-			if (query.state.data?.recording?.status === "recording") return 1000;
+			if (query.state.data?.tests.some((test) => test.recording?.status === "recording"))
+				return 1000;
 			return false;
 		},
 	});
@@ -419,7 +442,7 @@ export function RunDetailPage() {
 			const client = await getRunnerClient();
 			if (cancelled) return;
 			setScreenshotBaseUrl(client.baseUrl);
-			setVideoUrl(client.getRunVideoUrl(runId));
+			setVideoClient({ testUrl: (runTestId) => client.getRunTestVideoUrl(runId, runTestId) });
 		})();
 		return () => {
 			cancelled = true;
@@ -821,8 +844,12 @@ export function RunDetailPage() {
 							</div>
 						)}
 					</div>
-					{run.recording ? (
-						<RunVideo note={run.recording.note} status={run.recording.status} url={videoUrl} />
+					{reviewMode ? (
+						<CaseVideos
+							label={(test) => formatCaseLabel(caseNameById.get(test.caseId), test.caseId)}
+							tests={run.tests}
+							videoUrl={(test) => videoClient?.testUrl(test.id) ?? null}
+						/>
 					) : null}
 				</aside>
 			</div>

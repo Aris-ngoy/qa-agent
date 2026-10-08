@@ -163,6 +163,7 @@ async function loadCaseDetail(caseId: string): Promise<CatalogCase | null> {
 		tags: tagRows.map((t) => t.name),
 		flows: steps,
 		capabilities: parseCapabilities(row.appiumCaps),
+		recordVideo: row.recordVideo === 1,
 		hasScript: script !== null,
 		scriptSavedAt: row.scriptSavedAt ?? null,
 		script,
@@ -418,6 +419,7 @@ export async function createCase(appId: string, input: CreateCaseRequest): Promi
 		number,
 		title: name,
 		appiumCaps: serializeCapabilities(input.capabilities ?? []),
+		recordVideo: input.recordVideo ? 1 : 0,
 		lastRunAt: null,
 		lastRunStatus: null,
 		createdAt: now,
@@ -458,6 +460,7 @@ export async function updateCase(caseId: string, input: UpdateCaseRequest): Prom
 				input.capabilities !== undefined
 					? serializeCapabilities(input.capabilities)
 					: existing.appiumCaps,
+			...(input.recordVideo !== undefined ? { recordVideo: input.recordVideo ? 1 : 0 } : {}),
 			...(input.script !== undefined
 				? input.script === null
 					? { scriptJson: null, scriptSavedAt: null }

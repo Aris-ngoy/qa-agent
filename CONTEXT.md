@@ -106,7 +106,7 @@ An execution of one or more Test Cases against a device, in script or agent mode
 _Avoid_: Job, job run, pipeline
 
 **Run recording**:
-An opt-in screen video of a whole Run, captured alongside its Result screenshots and chosen before the Run starts (off by default). Evidence only: it is never shown to Decide and never takes part in Settle. A Lane or device that cannot record leaves the Run unaffected and the Run records why there is no video.
+An opt-in screen video of one Test Case within a Run, captured alongside its Result screenshots. A Test Case says whether it records (off by default); starting a Run can also ask to record every case. Evidence only: it is never shown to Decide and never takes part in Settle. It is playable only after the Run has finished. A Lane or device that cannot record leaves the Run unaffected and the case records why there is no video.
 _Avoid_: screencast, clip, session recording
 
 **Case executor**:

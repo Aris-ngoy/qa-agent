@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
 import type {
 	CreateRunRequest,
 	Run,
@@ -32,14 +31,7 @@ import {
 	executeAgentCase as runAgentCase,
 	executeScriptCase as runScriptCase,
 } from "./case-executor";
-import {
-	type ActiveRecording,
-	RUN_VIDEO_DIR,
-	deleteRunVideo,
-	readyVideoPath,
-	runVideoPath,
-	startRunRecording,
-} from "./run-recording";
+import { deleteRunVideo, readyVideoPath, recordCase, runVideoPath } from "./run-recording";
 import { runSteps, runTests, runs } from "./schema";
 import { buildScriptFromDecisions, parseCaseScript, serializeCaseScript } from "./script";
 
@@ -130,16 +122,15 @@ function resolveCaseExecutionMode(
  * `recording` then was cut off (the runner stopped), so it reads as unavailable.
  */
 function recordingFromRow(
-	row: { recordVideo: number; recordingStatus: string | null; recordingNote: string | null },
+	row: { recordingStatus: string | null; recordingNote: string | null },
 	settled: boolean,
 ): RunRecording | undefined {
-	if (row.recordVideo !== 1) return undefined;
 	const parsed = runRecordingSchema.shape.status.safeParse(row.recordingStatus);
-	const status = parsed.success ? parsed.data : "recording";
-	if (status === "recording" && settled) {
+	if (!parsed.success) return undefined;
+	if (parsed.data === "recording" && settled) {
 		return { status: "unavailable", note: "The runner stopped before the video was saved" };
 	}
-	return { status, note: row.recordingNote ?? undefined };
+	return { status: parsed.data, note: row.recordingNote ?? undefined };
 }
 
 /** A finished Run whose executeRun has fully wound down (its control is cleared last). */
@@ -185,6 +176,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 			startedAt: test.startedAt,
 			finishedAt: test.finishedAt,
 			currentCommand: test.currentCommand ?? null,
+			recording: recordingFromRow(test, isSettled(runId, runRow.status)),
 			steps,
 		});
 	}
@@ -200,7 +192,6 @@ async function loadRun(runId: string): Promise<Run | null> {
 		screenMode: parseRunScreenMode(runRow.screenMode),
 		lane: runRow.lane === "direct" || runRow.lane === "appium" ? runRow.lane : undefined,
 		laneWarning: runRow.laneWarning ?? undefined,
-		recording: recordingFromRow(runRow, isSettled(runRow.id, runRow.status)),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -449,46 +440,11 @@ async function executeCase(input: {
 	return caseStatus;
 }
 
-/** Start the Run recording and record its state. A device that cannot record leaves the Run unaffected. */
-async function beginRunRecording(
-	runId: string,
-	session: DeviceSession,
-): Promise<ActiveRecording | null> {
-	const db = getCatalogDb();
-	try {
-		await mkdir(RUN_VIDEO_DIR, { recursive: true });
-		const started = await startRunRecording(session, runVideoPath(runId));
-		if ("unavailable" in started) {
-			await db
-				.update(runs)
-				.set({ recordingStatus: "unavailable", recordingNote: started.unavailable })
-				.where(eq(runs.id, runId));
-			return null;
-		}
-		await db
-			.update(runs)
-			.set({ recordingStatus: "recording", recordingNote: null })
-			.where(eq(runs.id, runId));
-		return started;
-	} catch (error) {
-		// Recording is evidence only; whatever went wrong here must not fail the Run.
-		console.error(`[runs] recording for ${runId} not started`, error);
-		return null;
-	}
-}
-
-async function finishRunRecording(runId: string, recording: ActiveRecording): Promise<void> {
-	const outcome = await recording.stop();
+async function saveCaseRecording(runTestId: string, state: RunRecording): Promise<void> {
 	await getCatalogDb()
-		.update(runs)
-		.set({
-			recordingStatus: outcome.status,
-			recordingNote: outcome.status === "unavailable" ? outcome.note : null,
-		})
-		.where(eq(runs.id, runId))
-		.catch((error) => console.error(`[runs] recording state for ${runId} not saved`, error));
-	// The Run was deleted while it was still recording; do not leave its video behind.
-	if (!(await loadRun(runId))) await deleteRunVideo(runId);
+		.update(runTests)
+		.set({ recordingStatus: state.status, recordingNote: state.note ?? null })
+		.where(eq(runTests.id, runTestId));
 }
 
 export async function executeRun(runId: string): Promise<void> {
@@ -500,7 +456,6 @@ export async function executeRun(runId: string): Promise<void> {
 
 	let session: DeviceSession | null = null;
 	let sharedSession = true;
-	let recording: ActiveRecording | null = null;
 	try {
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
@@ -581,15 +536,12 @@ export async function executeRun(runId: string): Promise<void> {
 			})
 			.where(eq(runs.id, runId));
 
-		if (run.recording) {
-			recording = await beginRunRecording(runId, session);
-		}
-
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
 			return;
 		}
 
+		const caseSession = session;
 		let anyFailed = false;
 		for (const test of run.tests) {
 			if (isAborted(runId)) {
@@ -615,21 +567,33 @@ export async function executeRun(runId: string): Promise<void> {
 				caseModes.find((item) => item.caseId === test.caseId)?.mode ??
 				resolveCaseExecutionMode(run.executionMode, catalogCase.hasScript);
 
-			const status = await executeCase({
-				runId,
-				runTestId: test.id,
-				caseId: test.caseId,
-				appContext: app.context,
-				appKnowledge: app.knowledge,
-				session,
-				auth,
-				caseMode,
-				screenMode: run.screenMode ?? "tree",
-				defaultAppId:
-					run.platform === "ios"
-						? app.iosBundleId || undefined
-						: app.androidApplicationId || undefined,
-			});
+			const status = await recordCase(
+				caseSession,
+				runVideoPath(test.id),
+				{
+					// The Run can ask for every case; otherwise each case decides for itself.
+					enabled: runRow?.recordVideo === 1 || catalogCase.recordVideo,
+					onState: (state) => saveCaseRecording(test.id, state),
+				},
+				() =>
+					executeCase({
+						runId,
+						runTestId: test.id,
+						caseId: test.caseId,
+						appContext: app.context,
+						appKnowledge: app.knowledge,
+						session: caseSession,
+						auth,
+						caseMode,
+						screenMode: run.screenMode ?? "tree",
+						defaultAppId:
+							run.platform === "ios"
+								? app.iosBundleId || undefined
+								: app.androidApplicationId || undefined,
+					}),
+			);
+			// The Run was deleted while this case was recording; do not leave its video behind.
+			if (!(await loadRun(runId))) await deleteRunVideo(test.id);
 			if (status === "cancelled" || isAborted(runId)) {
 				await persistCancelled(runId);
 				return;
@@ -685,8 +649,6 @@ export async function executeRun(runId: string): Promise<void> {
 			}
 		}
 	} finally {
-		// Finalize the video before the session is released; it never changes the Run's outcome.
-		if (recording) await finishRunRecording(runId, recording);
 		if (session) {
 			// Shared sessions stay live as the Active Session; detached ones are quit.
 			await releaseSessionFromRun(runId, session, sharedSession);
@@ -824,6 +786,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 	const runIds = runRows.map((row) => row.id);
 	const testRows = await db.select().from(runTests).where(inArray(runTests.runId, runIds));
 
+	const settledByRunId = new Map(runRows.map((row) => [row.id, isSettled(row.id, row.status)]));
 	const testsByRunId = new Map<string, RunTest[]>();
 	for (const test of testRows) {
 		const list = testsByRunId.get(test.runId) ?? [];
@@ -838,6 +801,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 			error: test.error,
 			startedAt: test.startedAt,
 			finishedAt: test.finishedAt,
+			recording: recordingFromRow(test, settledByRunId.get(test.runId) ?? false),
 		});
 		testsByRunId.set(test.runId, list);
 	}
@@ -853,7 +817,6 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		screenMode: parseRunScreenMode(runRow.screenMode),
 		lane: runRow.lane === "direct" || runRow.lane === "appium" ? runRow.lane : undefined,
 		laneWarning: runRow.laneWarning ?? undefined,
-		recording: recordingFromRow(runRow, isSettled(runRow.id, runRow.status)),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -881,7 +844,7 @@ export async function deleteRun(runId: string): Promise<void> {
 	clearControl(runId);
 	const db = getCatalogDb();
 	await db.delete(runs).where(eq(runs.id, runId));
-	await deleteRunVideo(runId);
+	for (const test of run.tests) await deleteRunVideo(test.id);
 }
 
 export async function cancelRun(runId: string): Promise<Run> {
@@ -924,12 +887,16 @@ export async function getRunStepScreenshotPath(runId: string, stepId: string): P
 	throw new RunNotFoundError("Step not found");
 }
 
-export async function getRunVideoPath(runId: string): Promise<string> {
+export async function getRunTestVideoPath(runId: string, runTestId: string): Promise<string> {
 	const run = await loadRun(runId);
 	if (!run) {
 		throw new RunNotFoundError("Run not found");
 	}
-	const path = readyVideoPath(runId, run.recording?.status);
+	const test = run.tests.find((item) => item.id === runTestId);
+	if (!test) {
+		throw new RunNotFoundError("Test not found");
+	}
+	const path = readyVideoPath(runTestId, test.recording?.status);
 	if (!path) {
 		throw new RunNotFoundError("Video not found");
 	}

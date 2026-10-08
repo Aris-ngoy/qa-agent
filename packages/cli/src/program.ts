@@ -1643,7 +1643,10 @@ runsCmd
 		"vision | tree — what the agent sees: screenshot only, or also the accessibility tree (default: vision)",
 	)
 	.option("--lane <lane>", "appium | direct | auto — Android / iOS sim auto → Direct")
-	.option("--record-video", "Record a screen video of the whole run (Run recording)")
+	.option(
+		"--record-video",
+		"Record a screen video of every case in the run, even cases not set to record",
+	)
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.option("--wait", "Wait until the run finishes (passed / errored / cancelled)")
@@ -1761,8 +1764,13 @@ runsCmd
 					console.log(JSON.stringify(run, null, 2));
 				} else {
 					console.log(`created ${run.id} (${run.status})`);
-					if (run.recording?.status === "ready") console.log(`video ${c.getRunVideoUrl(run.id)}`);
-					else if (run.recording?.note) console.log(`video unavailable: ${run.recording.note}`);
+					for (const test of run.tests) {
+						if (test.recording?.status === "ready") {
+							console.log(`video ${c.getRunTestVideoUrl(run.id, test.id)}`);
+						} else if (test.recording?.status === "unavailable") {
+							console.log(`video unavailable: ${test.recording.note ?? "unknown reason"}`);
+						}
+					}
 				}
 				if (options.wait && shouldFailOnRunStatus("errored", run.status)) {
 					process.exitCode = 1;

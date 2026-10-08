@@ -162,7 +162,7 @@ function ensureSchema(sqlite: Database): void {
 	migrateRunExecutionMode(sqlite);
 	migrateRunScreenMode(sqlite);
 	migrateRunLane(sqlite);
-	migrateRunRecording(sqlite);
+	migrateRecording(sqlite);
 	migrateRunCommands(sqlite);
 	migrateRunStepPhases(sqlite);
 }
@@ -216,18 +216,32 @@ function migrateRunLane(sqlite: Database): void {
 	addColumnIfMissing(sqlite, "runs", "lane_warning", "lane_warning TEXT", runCols);
 }
 
-function migrateRunRecording(sqlite: Database): void {
+function migrateRecording(sqlite: Database): void {
+	const caseCols = tableColumns(sqlite, "cases");
+	if (caseCols.size > 0) {
+		addColumnIfMissing(
+			sqlite,
+			"cases",
+			"record_video",
+			"record_video INTEGER NOT NULL DEFAULT 0",
+			caseCols,
+		);
+	}
 	const runCols = tableColumns(sqlite, "runs");
-	if (runCols.size === 0) return;
-	addColumnIfMissing(
-		sqlite,
-		"runs",
-		"record_video",
-		"record_video INTEGER NOT NULL DEFAULT 0",
-		runCols,
-	);
-	addColumnIfMissing(sqlite, "runs", "recording_status", "recording_status TEXT", runCols);
-	addColumnIfMissing(sqlite, "runs", "recording_note", "recording_note TEXT", runCols);
+	if (runCols.size > 0) {
+		addColumnIfMissing(
+			sqlite,
+			"runs",
+			"record_video",
+			"record_video INTEGER NOT NULL DEFAULT 0",
+			runCols,
+		);
+	}
+	const testCols = tableColumns(sqlite, "run_tests");
+	if (testCols.size > 0) {
+		addColumnIfMissing(sqlite, "run_tests", "recording_status", "recording_status TEXT", testCols);
+		addColumnIfMissing(sqlite, "run_tests", "recording_note", "recording_note TEXT", testCols);
+	}
 }
 
 /** Rows from before Screen modes existed ran with the tree, so they read back as `tree`. */

@@ -9,7 +9,7 @@ import {
 	deleteRun,
 	getRun,
 	getRunStepScreenshotPath,
-	getRunVideoPath,
+	getRunTestVideoPath,
 	listRuns,
 } from "../../domains/runs/application";
 
@@ -130,9 +130,9 @@ export function createRunsRoutes() {
 		}
 	});
 
-	app.get("/runs/:runId/video", async (c) => {
+	app.get("/runs/:runId/tests/:testId/video", async (c) => {
 		try {
-			const file = Bun.file(await getRunVideoPath(c.req.param("runId")));
+			const file = Bun.file(await getRunTestVideoPath(c.req.param("runId"), c.req.param("testId")));
 			const range = parseByteRange(c.req.header("range"), file.size);
 			const headers = {
 				"Content-Type": "video/mp4",
