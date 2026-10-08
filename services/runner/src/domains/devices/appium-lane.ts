@@ -83,6 +83,18 @@ async function pickMjpegPort(): Promise<number> {
 	);
 }
 
+/** Longest recording either driver accepts, in seconds (both default to 3 minutes). */
+const MAX_RECORDING_SECONDS = 1800;
+
+/**
+ * Options for Appium's `startRecordingScreen`. iOS records MJPEG unless told otherwise, which
+ * the desktop app cannot play, so it is asked for H.264 in a pixel format players accept.
+ */
+export function screenRecordingOptions(android: boolean): Record<string, string | number> {
+	if (android) return { timeLimit: MAX_RECORDING_SECONDS };
+	return { videoType: "libx264", pixelFormat: "yuv420p", timeLimit: MAX_RECORDING_SECONDS };
+}
+
 export function mjpegUpstreamUrl(mjpegPort: number): string {
 	return `http://127.0.0.1:${mjpegPort}/`;
 }
@@ -736,8 +748,7 @@ export async function createAppiumSession(options: SessionOptions): Promise<Devi
 	};
 
 	const startRecording = async (path: string): Promise<ScreenRecording> => {
-		// UiAutomator2 stops at 3 minutes unless told otherwise; ask for the 30-minute maximum.
-		await browser.startRecordingScreen(isAndroidDriver(browser) ? { timeLimit: 1800 } : {});
+		await browser.startRecordingScreen(screenRecordingOptions(isAndroidDriver(browser)));
 		return {
 			stop: async () => {
 				const base64 = await browser.stopRecordingScreen();
