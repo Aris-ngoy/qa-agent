@@ -31,6 +31,7 @@ Let a Run optionally produce a screen video of the whole flow, next to its Resul
 
 ## Follow-ups
 
+- Recording on **physical iPhones** (Appium lane) needs `ffmpeg` on the host (`brew install ffmpeg`, then restart Yoqa so the runner sees it); without it the case shows "Video unavailable" with that instruction. Simulators and Android Direct do not need it.
 - Android Direct stops at 3 minutes (a `screenrecord` limit); longer Runs keep the first stretch. Stitching segments would lift it.
 - No size cap or age-based pruning of videos (screenshots are pruned after 7 days). Videos can be large; delete the Run to reclaim space.
 - Seek-to-step, run-report mention of the video, and a `--record-video` flag on `cases create/update`.

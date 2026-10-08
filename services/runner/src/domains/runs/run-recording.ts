@@ -41,7 +41,15 @@ export async function startRunRecording(
 	try {
 		recording = await session.startRecording(path);
 	} catch (error) {
-		return { unavailable: `Could not start recording: ${errorMessage(error)}` };
+		const message = errorMessage(error);
+		// Appium shells out to ffmpeg to record iOS; say what to do instead of showing its error.
+		if (/ffmpeg.*not found/i.test(message)) {
+			return {
+				unavailable:
+					"Recording on this device needs ffmpeg. Install it with `brew install ffmpeg`, then restart Yoqa.",
+			};
+		}
+		return { unavailable: `Could not start recording: ${message}` };
 	}
 	return {
 		stop: async () => {
