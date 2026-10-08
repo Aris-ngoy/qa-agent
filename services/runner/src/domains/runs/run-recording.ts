@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { RunRecording } from "@yoqa/runner-client";
+import { type RunRecording, runRecordingSchema } from "@yoqa/runner-client";
 import type { DeviceSession, ScreenRecording } from "../devices/lane";
 
 /** Run recordings live here, one `<runTestId>.mp4` per recorded Test Case. */
@@ -80,8 +80,12 @@ export async function deleteRunVideo(
 }
 
 /** The video's path when it can be played: the case's recording is ready and the file exists. */
-export function readyVideoPath(runTestId: string, status: string | undefined): string | null {
-	const path = runVideoPath(runTestId);
+export function readyVideoPath(
+	runTestId: string,
+	status: string | undefined,
+	dir: string = RUN_VIDEO_DIR,
+): string | null {
+	const path = runVideoPath(runTestId, dir);
 	return status === "ready" && existsSync(path) ? path : null;
 }
 
@@ -116,6 +120,23 @@ export async function recordCase<T>(
 		return await run();
 	} finally {
 		const outcome = await started.stop();
-		await report(outcome.status === "ready" ? { status: "ready" } : outcome);
+		await report(outcome);
 	}
 }
+
+/**
+ * Read a case's recording from its database columns. `settled` is true once nothing is
+ * executing the Run any more: a recording still marked `recording` then was cut off (the
+ * runner stopped), so it reads as unavailable.
+ */
+export function recordingFromRow(
+	row: { recordingStatus: string | null; recordingNote: string | null },
+	settled: boolean,
+): RunRecording | undefined {
+	const parsed = runRecordingSchema.shape.status.safeParse(row.recordingStatus);
+	if (!parsed.success) return undefined;
+	if (parsed.data === "recording" && settled) return { status: "unavailable", note: CUT_OFF_NOTE };
+	return { status: parsed.data, note: row.recordingNote ?? undefined };
+}
+
+export const CUT_OFF_NOTE = "The runner stopped before the video was saved";

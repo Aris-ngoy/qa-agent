@@ -1,5 +1,8 @@
 import type { Subprocess } from "bun";
 
+/** Longest wait for a recorder to write its file trailer after being told to stop. */
+export const RECORDER_FINALIZE_MS = 10_000;
+
 /** A recorder that exits within this window failed to start (no display, bad device, ...). */
 const EARLY_EXIT_PROBE_MS = 1000;
 

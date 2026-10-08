@@ -11,7 +11,7 @@ import type {
 	RunTestStatus,
 	StepPhases,
 } from "@yoqa/runner-client";
-import { runRecordingSchema, stepPhasesSchema } from "@yoqa/runner-client";
+import { stepPhasesSchema } from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
 import { getApp, getCase, getCaseScriptJson, saveCaseScript } from "../catalog/application";
@@ -32,10 +32,12 @@ import {
 	executeScriptCase as runScriptCase,
 } from "./case-executor";
 import {
+	CUT_OFF_NOTE,
 	RUN_VIDEO_DIR,
 	deleteRunVideo,
 	readyVideoPath,
 	recordCase,
+	recordingFromRow,
 	runVideoPath,
 } from "./run-recording";
 import { runSteps, runTests, runs } from "./schema";
@@ -121,22 +123,6 @@ function resolveCaseExecutionMode(
 	if (runMode === "agent") return "agent";
 	if (hasScript) return "script";
 	return "agent";
-}
-
-/**
- * `settled` is true once nothing is executing the Run any more. A recording still marked
- * `recording` then was cut off (the runner stopped), so it reads as unavailable.
- */
-function recordingFromRow(
-	row: { recordingStatus: string | null; recordingNote: string | null },
-	settled: boolean,
-): RunRecording | undefined {
-	const parsed = runRecordingSchema.shape.status.safeParse(row.recordingStatus);
-	if (!parsed.success) return undefined;
-	if (parsed.data === "recording" && settled) {
-		return { status: "unavailable", note: "The runner stopped before the video was saved" };
-	}
-	return { status: parsed.data, note: row.recordingNote ?? undefined };
 }
 
 /** A finished Run whose executeRun has fully wound down (its control is cleared last). */
@@ -532,7 +518,8 @@ export async function executeRun(runId: string): Promise<void> {
 					? requestedLane
 					: undefined,
 		});
-		session = acquired.session;
+		const activeSession = acquired.session;
+		session = activeSession;
 		sharedSession = acquired.shared;
 		await db
 			.update(runs)
@@ -547,7 +534,6 @@ export async function executeRun(runId: string): Promise<void> {
 			return;
 		}
 
-		const caseSession = session;
 		let anyFailed = false;
 		for (const test of run.tests) {
 			if (isAborted(runId)) {
@@ -574,7 +560,7 @@ export async function executeRun(runId: string): Promise<void> {
 				resolveCaseExecutionMode(run.executionMode, catalogCase.hasScript);
 
 			const status = await recordCase(
-				caseSession,
+				activeSession,
 				runVideoPath(test.id),
 				{
 					// The Run can ask for every case; otherwise each case decides for itself.
@@ -588,7 +574,7 @@ export async function executeRun(runId: string): Promise<void> {
 						caseId: test.caseId,
 						appContext: app.context,
 						appKnowledge: app.knowledge,
-						session: caseSession,
+						session: activeSession,
 						auth,
 						caseMode,
 						screenMode: run.screenMode ?? "tree",
@@ -916,7 +902,12 @@ export async function deleteRunTestVideo(
 		.where(eq(runTests.id, runTestId));
 }
 
-export async function getRunTestVideoPath(runId: string, runTestId: string): Promise<string> {
+/** A video is only handed out once the Run has finished. */
+export async function getRunTestVideoPath(
+	runId: string,
+	runTestId: string,
+	videoDir: string = RUN_VIDEO_DIR,
+): Promise<string> {
 	const run = await loadRun(runId);
 	if (!run) {
 		throw new RunNotFoundError("Run not found");
@@ -925,9 +916,22 @@ export async function getRunTestVideoPath(runId: string, runTestId: string): Pro
 	if (!test) {
 		throw new RunNotFoundError("Test not found");
 	}
-	const path = readyVideoPath(runTestId, test.recording?.status);
+	const path = TERMINAL_RUN_STATUSES.has(run.status)
+		? readyVideoPath(runTestId, test.recording?.status, videoDir)
+		: null;
 	if (!path) {
 		throw new RunNotFoundError("Video not found");
 	}
 	return path;
+}
+
+/**
+ * At startup nothing is executing, so a case still marked `recording` lost its runner mid-case.
+ * Mark it unavailable so it does not read as recording forever.
+ */
+export async function recoverInterruptedRecordings(): Promise<void> {
+	await getCatalogDb()
+		.update(runTests)
+		.set({ recordingStatus: "unavailable", recordingNote: CUT_OFF_NOTE })
+		.where(eq(runTests.recordingStatus, "recording"));
 }

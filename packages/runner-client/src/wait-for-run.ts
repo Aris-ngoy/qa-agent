@@ -9,6 +9,13 @@ export function isTerminalRunStatus(status: RunStatus): status is TerminalRunSta
 	return status === "passed" || status === "errored" || status === "cancelled";
 }
 
+/** A finished run can still be saving a case's video; callers want the run once that is done. */
+function isSettled(run: Run): boolean {
+	return (
+		isTerminalRunStatus(run.status) && !run.tests.some((t) => t.recording?.status === "recording")
+	);
+}
+
 export type WaitForRunClient = {
 	getRun: (runId: string) => Promise<Run>;
 };
@@ -82,7 +89,7 @@ export async function waitForRun(
 
 		lastRun = await client.getRun(runId);
 		options.onStatus?.(lastRun);
-		if (isTerminalRunStatus(lastRun.status)) {
+		if (isSettled(lastRun)) {
 			return lastRun;
 		}
 

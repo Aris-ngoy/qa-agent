@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { DeviceSession } from "../devices/lane";
-import { recordCase, runVideoPath, startRunRecording } from "./run-recording";
+import { recordCase, recordingFromRow, runVideoPath, startRunRecording } from "./run-recording";
 
 function sessionWith(startRecording?: DeviceSession["startRecording"]): DeviceSession {
 	return { lane: "direct", startRecording } as unknown as DeviceSession;
@@ -162,5 +162,37 @@ describe("recordCase", () => {
 			async () => "ran",
 		);
 		expect(result).toBe("ran");
+	});
+});
+
+describe("recordingFromRow", () => {
+	const cutOff = {
+		status: "unavailable",
+		note: "The runner stopped before the video was saved",
+	} as const;
+
+	test("a case that was not recorded has no recording", () => {
+		expect(recordingFromRow({ recordingStatus: null, recordingNote: null }, false)).toBeUndefined();
+	});
+
+	test("reads ready and unavailable states with their note", () => {
+		expect(recordingFromRow({ recordingStatus: "ready", recordingNote: null }, true)).toEqual({
+			status: "ready",
+		});
+		expect(
+			recordingFromRow({ recordingStatus: "unavailable", recordingNote: "no display" }, true),
+		).toEqual({ status: "unavailable", note: "no display" });
+	});
+
+	test("still recording is live while the Run is executing", () => {
+		expect(recordingFromRow({ recordingStatus: "recording", recordingNote: null }, false)).toEqual({
+			status: "recording",
+		});
+	});
+
+	test("still recording after the Run is settled means it was cut off", () => {
+		expect(recordingFromRow({ recordingStatus: "recording", recordingNote: null }, true)).toEqual(
+			cutOff,
+		);
 	});
 });
