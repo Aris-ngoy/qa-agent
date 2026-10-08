@@ -3,11 +3,11 @@ import { homedir } from "node:os";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
+import type { CallUsage } from "@yoqa/runner-client";
 import { APICallError, NoObjectGeneratedError, generateObject } from "ai";
 import type { LanguageModel, LanguageModelUsage, ProviderMetadata } from "ai";
 import { z } from "zod";
 import type {
-	CallUsage,
 	VisionAuth,
 	VisionCompleteInput,
 	VisionImage,
@@ -31,11 +31,13 @@ const VISION_MAX_EDGE = 1170;
 const JSON_REPAIR_PROMPT =
 	"Your previous reply was not valid JSON for this task. Reply again with ONLY one strict JSON object using double quotes for every key and string (no single quotes, no markdown, no prose).";
 
-export type { CallUsage, VisionImage, VisionPrompt } from "./drivers/types";
+export type { VisionImage, VisionPrompt } from "./drivers/types";
 
 /** One prompt string for paths without a message structure (CLI drivers). */
 export function joinVisionPrompt(prompt: VisionPrompt): string {
-	return [prompt.testCase, prompt.step].filter((part) => part.length > 0).join("\n");
+	return [prompt.testCase, prompt.step]
+		.filter((part) => part != null && part.length > 0)
+		.join("\n");
 }
 
 /**
@@ -300,7 +302,9 @@ export async function completeWithAiSdk<T>(input: {
 		} catch (error) {
 			if (error instanceof AgentProviderError) throw error;
 			if (NoObjectGeneratedError.isInstance(error) && error.usage) {
-				// The HTTP attempt completed and was billed even though the reply was unusable.
+				// The call completed and was billed even though the reply was unusable.
+				// NoObjectGeneratedError carries no provider metadata (ai 7.0.37), so
+				// Anthropic cache fields come from the usage details alone here.
 				input.onUsage?.(toCallUsage(error.usage, undefined));
 			}
 			if (NoObjectGeneratedError.isInstance(error) && error.text?.trim()) {

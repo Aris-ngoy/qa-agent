@@ -103,7 +103,7 @@ export type CaseDecideFn = (input: {
 	 * JSON, or the first reply was unusable (e.g. claiming no screenshot).
 	 */
 	onDecideRetry?: () => void;
-	/** Called once per Provider call attempt with its Call usage (SDK Providers only). */
+	/** Called once per Decide or verify call with its Call usage (SDK Providers only). */
 	onUsage?: (usage: CallUsage) => void;
 	recentActions?: AgentDecision[];
 	screenSnapshot?: string;
@@ -627,9 +627,6 @@ export async function executeScriptCase(
 	}
 }
 
-/**
- * Run one Test Case with an injected decide function against a Device Session.
- */
 function sumTokens(total: number | null, more: number | null): number | null {
 	if (total == null) return more;
 	if (more == null) return total;
@@ -649,6 +646,9 @@ function addCallUsage(phases: StepPhases, usage: CallUsage): void {
 		: { ...usage };
 }
 
+/**
+ * Run one Test Case with an injected decide function against a Device Session.
+ */
 export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	status: "passed" | "errored" | "cancelled";
 	decisions: AgentDecision[];
@@ -949,6 +949,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					settleMs: 0,
 					decideRetries: 0,
 				};
+				const reportUsage = (usage: CallUsage) => addCallUsage(phases, usage);
 
 				// Each step is action → screenshot → decision → verify.
 				// The action is the previous decision; the first step only looks.
@@ -981,7 +982,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 							onDecideRetry: () => {
 								phases.decideRetries += 1;
 							},
-							onUsage: (usage) => addCallUsage(phases, usage),
+							onUsage: reportUsage,
 						});
 						phases.decideMs += clock.now() - retryStarted;
 						if (!isDeviceDecision(pending)) {
@@ -1145,7 +1146,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					onDecideRetry: () => {
 						phases.decideRetries += 1;
 					},
-					onUsage: (usage: CallUsage) => addCallUsage(phases, usage),
+					onUsage: reportUsage,
 				};
 				lastVision = {
 					imageBase64: visionBase64,

@@ -791,9 +791,9 @@ export const createRunRequestSchema = z.object({
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 
 /**
- * Call usage: tokens one or more Decide/verify calls used. `inputTokens` is fresh
+ * Call usage: tokens one Decide or verify call used. `inputTokens` is fresh
  * (uncached) input; `cachedInputTokens` were Prompt cache reads and `cacheWriteTokens`
- * Prompt cache writes. A field is null when no call reported it.
+ * Prompt cache writes. A field is null when the Provider did not report it.
  */
 export const callUsageSchema = z.object({
 	inputTokens: z.number().int().nonnegative().nullable(),
@@ -814,8 +814,9 @@ export const stepPhasesSchema = z.object({
 	/** Decide re-calls caused by JSON repair or an unusable first reply. */
 	decideRetries: z.number().int().nonnegative(),
 	/**
-	 * Call usage summed over every Decide attempt and the verify call of this step.
-	 * Missing when no call reported usage (unavailable, not zero). Older steps never have it.
+	 * Call usage summed over the step's Decide and verify calls. A field is null when
+	 * no call reported it. Missing when no call reported usage (unavailable, not zero).
+	 * Older steps never have it.
 	 */
 	usage: callUsageSchema.optional(),
 });

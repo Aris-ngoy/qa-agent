@@ -1,9 +1,9 @@
-import type { ActionRequest, ScreenElement } from "@yoqa/runner-client";
+import type { ActionRequest, CallUsage, ScreenElement } from "@yoqa/runner-client";
 import { z } from "zod";
 import { parseVisionObject } from "../providers/agent-json";
 import type { ActiveProviderAuth } from "../providers/application";
 import { completeVision } from "../providers/vision";
-import type { CallUsage, VisionImage, VisionPrompt } from "../providers/vision-model";
+import type { VisionImage, VisionPrompt } from "../providers/vision-model";
 import { pointFromGridCell } from "./coord-grid";
 
 export { AgentProviderError, assertVisionCapableProvider } from "../providers/vision";

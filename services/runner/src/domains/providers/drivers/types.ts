@@ -1,8 +1,4 @@
-import type {
-	ProviderAuthMode,
-	ProviderKind,
-	CallUsage as RunnerClientCallUsage,
-} from "@yoqa/runner-client";
+import type { CallUsage, ProviderAuthMode, ProviderKind } from "@yoqa/runner-client";
 import type { z } from "zod";
 
 export type ProbeResult = {
@@ -64,16 +60,10 @@ export type VisionImage = { base64: string; mediaType: "image/png" | "image/jpeg
 /**
  * The user prompt of a vision call, split for the Prompt cache. `testCase` is the
  * Test Case block (stable for the whole Test Case); `step` is the per-step block.
- * SDK paths send: Test Case block, screenshot, step block.
+ * SDK paths send: Test Case block, screenshot, step block. A call outside a Test Case
+ * (e.g. grounding) omits `testCase` and sends no Test Case block.
  */
-export type VisionPrompt = { testCase: string; step: string };
-
-/**
- * Call usage for one HTTP attempt of a Decide or verify call. Each field is null
- * when the Provider did not report it. `inputTokens` is fresh (uncached) input.
- * The shape is shared with step phases, so it lives in runner-client.
- */
-export type CallUsage = RunnerClientCallUsage;
+export type VisionPrompt = { testCase?: string; step: string };
 
 export type VisionCompleteInput<T> = {
 	auth: VisionAuth;
@@ -86,7 +76,7 @@ export type VisionCompleteInput<T> = {
 	image?: VisionImage;
 	/** Called when a completion is retried because the first reply was not usable JSON (provider JSON repair). */
 	onDecideRetry?: () => void;
-	/** Called once per HTTP attempt with its Call usage. SDK paths only; other paths never call it. */
+	/** Called once per call with its Call usage. SDK paths only; other paths never call it. */
 	onUsage?: (usage: CallUsage) => void;
 };
 

@@ -826,6 +826,130 @@ describe("executeAgentCase", () => {
 		});
 	});
 
+	it("adds up Call usage across the grid cell retry and verify on the step's phases", async () => {
+		const png = encodeRgbaPng({
+			width: 40,
+			height: 80,
+			rgba: new Uint8Array(40 * 80 * 4).fill(255),
+		}).toString("base64");
+		const steps: Array<StepPhases | null | undefined> = [];
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "This is a mobile game.",
+			auth: fakeAuth(),
+			session: {
+				screenshot: async () => ({ path: "/tmp/game.png", base64: png }),
+			} as unknown as DeviceSession,
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push(step.phases);
+			},
+			readScreen: async () => ({ elements: [] }),
+			decide: async (input) => {
+				if (input.lastError?.includes("col and row")) {
+					input.onUsage?.({
+						inputTokens: 40,
+						cachedInputTokens: 700,
+						cacheWriteTokens: null,
+						outputTokens: 15,
+					});
+					return {
+						type: "tap",
+						col: 1,
+						row: 2,
+						reason: "Tap play",
+						thoughts: "Play is in cell 1-2",
+					};
+				}
+				input.onUsage?.({
+					inputTokens: 60,
+					cachedInputTokens: 0,
+					cacheWriteTokens: 700,
+					outputTokens: 25,
+				});
+				return { type: "tap", x: 12, y: 34, reason: "Tap play", thoughts: "Guessed a point" };
+			},
+			verify: async (input) => {
+				input.onUsage?.({
+					inputTokens: 20,
+					cachedInputTokens: 700,
+					cacheWriteTokens: null,
+					outputTokens: 5,
+				});
+				return { type: "verify", reason: "Done", thoughts: "The level started" };
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(steps[0]?.decideRetries).toBe(1);
+		expect(steps[0]?.usage).toEqual({
+			inputTokens: 120,
+			cachedInputTokens: 1400,
+			cacheWriteTokens: 700,
+			outputTokens: 45,
+		});
+	});
+
+	it("adds up Call usage across the screenshot point retry and verify on the step's phases", async () => {
+		const steps: Array<StepPhases | null | undefined> = [];
+		let calls = 0;
+		const result = await executeAgentCase({
+			catalogCase: emptyCase(),
+			appContext: "Rewards app",
+			auth: fakeAuth(),
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push(step.phases);
+			},
+			readScreen: async () => ({ elements: [] }),
+			decide: async (input) => {
+				calls += 1;
+				if (calls === 1) {
+					input.onUsage?.({
+						inputTokens: 80,
+						cachedInputTokens: null,
+						cacheWriteTokens: 500,
+						outputTokens: 10,
+					});
+					return { type: "tap", label: "Login", reason: "Tap login", thoughts: "No point given" };
+				}
+				input.onUsage?.({
+					inputTokens: 90,
+					cachedInputTokens: 500,
+					cacheWriteTokens: null,
+					outputTokens: 20,
+				});
+				return { type: "tap", x: 200, y: 440, reason: "Tap login", thoughts: "Login button" };
+			},
+			verify: async (input) => {
+				input.onUsage?.({
+					inputTokens: 30,
+					cachedInputTokens: 500,
+					cacheWriteTokens: null,
+					outputTokens: null,
+				});
+				return { type: "verify", reason: "Done", thoughts: "Logged in" };
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: { sleep: async () => {}, now: () => 1 },
+			settleMs: 0,
+		});
+
+		expect(result.status).toBe("passed");
+		expect(calls).toBe(2);
+		expect(steps[0]?.decideRetries).toBe(1);
+		expect(steps[0]?.usage).toEqual({
+			inputTokens: 200,
+			cachedInputTokens: 1000,
+			cacheWriteTokens: 500,
+			outputTokens: 30,
+		});
+	});
+
 	it("leaves Call usage out of the step's phases when no call reports it", async () => {
 		const steps: Array<StepPhases | null | undefined> = [];
 		const result = await executeAgentCase({
