@@ -483,21 +483,20 @@ function ConfigurationPanel({
 					control={control}
 					name="recordVideo"
 					render={({ field }) => (
-						<Switch
-							className="flex w-full items-center justify-between gap-4"
-							isSelected={field.value}
-							onChange={field.onChange}
-						>
-							<Switch.Content className="flex flex-col gap-1.5">
-								<span className="text-headline-md text-on-surface">Record video</span>
-								<span className="text-body-md text-on-surface-variant">
-									Record the screen whenever this test case runs. The video appears on the run once
-									it has finished.
+						<Switch className="w-full" isSelected={field.value} onChange={field.onChange}>
+							{/* Switch.Content is the clickable button: the control must live inside it. */}
+							<Switch.Content className="flex w-full items-center justify-between gap-4 text-left">
+								<span className="flex flex-col gap-1.5">
+									<span className="text-headline-md text-on-surface">Record video</span>
+									<span className="text-body-md text-on-surface-variant">
+										Record the screen whenever this test case runs. The video appears on the run
+										once it has finished.
+									</span>
 								</span>
+								<Switch.Control>
+									<Switch.Thumb />
+								</Switch.Control>
 							</Switch.Content>
-							<Switch.Control>
-								<Switch.Thumb />
-							</Switch.Control>
 						</Switch>
 					)}
 				/>
