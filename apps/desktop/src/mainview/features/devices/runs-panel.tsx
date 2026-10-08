@@ -167,6 +167,24 @@ function LaptopIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
+function VideoIcon({ active, ...props }: SVGProps<SVGSVGElement> & { active?: boolean }) {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-5"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.75"
+			viewBox="0 0 24 24"
+			{...props}
+		>
+			<rect height="12" rx="2.5" width="12" x="3" y="6" />
+			<path d="m15 11 6-3.5v9L15 13" strokeLinejoin="round" />
+			{active ? <circle cx="9" cy="12" fill="currentColor" r="2" stroke="none" /> : null}
+		</svg>
+	);
+}
+
 function KeyIcon(props: SVGProps<SVGSVGElement>) {
 	return (
 		<svg
@@ -244,6 +262,7 @@ export function RunsPanel() {
 	const [wdaOpen, setWdaOpen] = useState(false);
 	const [modalPlatform, setModalPlatform] = useState<DevicePlatform | null>(null);
 	const [executionPromptOpen, setExecutionPromptOpen] = useState(false);
+	const [recordVideo, setRecordVideo] = useState(false);
 	const [serversOpen, setServersOpen] = useState(false);
 	const setupAbortRef = useRef<AbortController | null>(null);
 	/** Last device id seen on the runner's Active Session — drives preselection. */
@@ -322,6 +341,7 @@ export function RunsPanel() {
 				deviceId: device.id,
 				platform: device.platform,
 				executionMode,
+				recordVideo: recordVideo || undefined,
 			});
 		},
 		onMutate: () => {
@@ -528,6 +548,20 @@ export function RunsPanel() {
 							type="button"
 						>
 							<KeyIcon />
+						</button>
+						<button
+							aria-label="Record video"
+							aria-pressed={recordVideo}
+							className={[
+								"transition-opacity hover:opacity-100",
+								recordVideo ? "text-white" : "text-white/60",
+							].join(" ")}
+							disabled={isRunLive}
+							onClick={() => setRecordVideo((value) => !value)}
+							title={recordVideo ? "Video recording on" : "Record a video of the run"}
+							type="button"
+						>
+							<VideoIcon active={recordVideo} />
 						</button>
 						<button
 							aria-label="Export results"

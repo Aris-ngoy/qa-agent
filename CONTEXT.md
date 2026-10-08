@@ -105,6 +105,10 @@ _Avoid_: memory, learned context, app summary
 An execution of one or more Test Cases against a device, in script or agent mode.
 _Avoid_: Job, job run, pipeline
 
+**Run recording**:
+An opt-in screen video of a whole Run, captured alongside its Result screenshots and chosen before the Run starts (off by default). Evidence only: it is never shown to Decide and never takes part in Settle. A Lane or device that cannot record leaves the Run unaffected and the Run records why there is no video.
+_Avoid_: screencast, clip, session recording
+
 **Case executor**:
 The module that runs one Test Case against a Device Session (script replay or agent loop), with abort, settle, and step recording injected at its seam.
 _Avoid_: executeRun (orchestration + persistence around cases)

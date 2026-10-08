@@ -39,6 +39,11 @@ export type LiveStream = {
 	upstreamUrl: string;
 };
 
+/** A screen recording in flight (Run recording). `stop` finalizes the file at the path it was started with. */
+export type ScreenRecording = {
+	stop: () => Promise<void>;
+};
+
 export type DeviceSession = {
 	/** Which Lane drives this session. Fixed for the session's whole life. */
 	lane: LaneName;
@@ -50,6 +55,11 @@ export type DeviceSession = {
 	captureFrame: () => Promise<CapturedFrame>;
 	/** Persist a screenshot under ~/.yoqa/runs/screenshots/. */
 	screenshot: () => Promise<{ path: string; base64: string }>;
+	/**
+	 * Start recording the screen to `path` (mp4). Rejects when this Lane or device cannot record;
+	 * callers treat that as "no video", never as a failed Run.
+	 */
+	startRecording?: (path: string) => Promise<ScreenRecording>;
 	pageSource: () => Promise<string>;
 	getWindowSize: () => Promise<{ width: number; height: number }>;
 	tap: (
