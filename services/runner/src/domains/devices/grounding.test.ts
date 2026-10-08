@@ -49,7 +49,7 @@ describe("Groq Grounding stays on structured output (#140)", () => {
 				},
 				schema: groundResultSchema,
 				system: "You locate UI elements on a mobile screen.",
-				prompt: "Find: Allow button",
+				prompt: { testCase: "", step: "Find: Allow button" },
 				imageBase64: "",
 				image: { base64: "c2hvdA==", mediaType: "image/png" },
 			});

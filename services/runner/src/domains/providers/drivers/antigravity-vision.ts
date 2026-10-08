@@ -7,6 +7,7 @@ import {
 	AgentProviderError,
 	completeWithAiSdk,
 	isJsonRepairableError,
+	joinVisionPrompt,
 	prepareVisionImage,
 	resolveGoogleKey,
 } from "../vision-model";
@@ -39,7 +40,7 @@ async function completeWithAgyCli<T>(
 		await writeFile(shotPath, new Uint8Array(Buffer.from(image.base64, "base64")));
 		const userText = [
 			input.system,
-			input.prompt,
+			joinVisionPrompt(input.prompt),
 			repairHint ? `\n${repairHint}` : "",
 			`\nScreenshot file (open and look at it): ${shotPath}`,
 			"Reply with ONLY one strict JSON object (double quotes only — no single quotes).",
@@ -108,6 +109,7 @@ export const antigravityVision: VisionPort = {
 				prompt: input.prompt,
 				image,
 				onDecideRetry: input.onDecideRetry,
+				onUsage: input.onUsage,
 			});
 		}
 

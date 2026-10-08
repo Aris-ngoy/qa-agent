@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { extractAgentJsonObject } from "../providers/agent-json";
+import { joinVisionPrompt } from "../providers/vision-model";
 import {
 	SYSTEM_PROMPT,
 	VISION_SYSTEM_PROMPT,
@@ -26,6 +27,15 @@ import {
 	snapTapToElement,
 	splitInstructionSteps,
 } from "./agent";
+
+/** The whole user prompt as one string; these tests check wording, not the Prompt cache split. */
+function decidePrompt(input: Parameters<typeof formatDecidePrompt>[0]): string {
+	return joinVisionPrompt(formatDecidePrompt(input));
+}
+
+function verifyPrompt(input: Parameters<typeof formatVerifyPrompt>[0]): string {
+	return joinVisionPrompt(formatVerifyPrompt(input));
+}
 
 describe("parseAgentDecision", () => {
 	test("clamps a tap whose y overshoots the 0–1000 grid", () => {
@@ -713,7 +723,7 @@ describe("canvas screens", () => {
 	});
 
 	test("a screenshot-only step sends no tree and asks for x,y", () => {
-		const prompt = formatDecidePrompt({
+		const prompt = decidePrompt({
 			appContext: "Rewards app",
 			caseTitle: "Open settings",
 			instructions: "Tap the gear",
@@ -731,7 +741,7 @@ describe("canvas screens", () => {
 	});
 
 	test("Grid mode adds the cell contract to a screenshot-only step", () => {
-		const prompt = formatDecidePrompt({
+		const prompt = decidePrompt({
 			appContext: "This is a game",
 			caseTitle: "Level 1",
 			instructions: "Tap play",
@@ -746,7 +756,7 @@ describe("canvas screens", () => {
 	});
 
 	test("a tree step still attaches the Screen", () => {
-		const prompt = formatDecidePrompt({
+		const prompt = decidePrompt({
 			appContext: "Rewards app",
 			caseTitle: "Open settings",
 			instructions: "Tap the gear",
@@ -973,7 +983,7 @@ describe("flattenCaseInstructions", () => {
 
 describe("formatVerifyPrompt", () => {
 	test("asks only whether the current instruction is satisfied", () => {
-		const prompt = formatVerifyPrompt({
+		const prompt = verifyPrompt({
 			caseTitle: "Payout",
 			instructions: "Tap confirm",
 			expectedResult: "Payout success",
@@ -989,7 +999,7 @@ describe("formatVerifyPrompt", () => {
 
 describe("formatDecidePrompt", () => {
 	test("sends only the current instruction and hides later ones", () => {
-		const prompt = formatDecidePrompt({
+		const prompt = decidePrompt({
 			appContext: "Cash Giraffe",
 			caseTitle: "Payout",
 			instructions: "Tap on paypal pick any amount",
@@ -1016,7 +1026,7 @@ describe("formatDecidePrompt", () => {
 			{ length: 15 },
 			(_, index) => `Unique step ${index} secret-${index}`,
 		);
-		const prompt = formatDecidePrompt({
+		const prompt = decidePrompt({
 			appContext: "Cash Giraffe",
 			caseTitle: "Payout",
 			instructions: "Tap confirm",
@@ -1032,7 +1042,7 @@ describe("formatDecidePrompt", () => {
 		expect(prompt).toContain("Again, do ONLY this: Tap confirm");
 		expect(prompt).toContain("Each cell is labeled in its top-left corner as column-row");
 		expect(prompt).toContain("Do not send x or y");
-		const withoutGrid = formatDecidePrompt({
+		const withoutGrid = decidePrompt({
 			appContext: "Cash Giraffe",
 			caseTitle: "Payout",
 			instructions: "Tap confirm",
@@ -1056,7 +1066,7 @@ describe("formatDecidePrompt", () => {
 			stepIndex: 0,
 			screenSnapshot: "(empty tree)",
 		};
-		const withKnowledge = formatDecidePrompt({
+		const withKnowledge = decidePrompt({
 			...base,
 			appKnowledge:
 				"Cold start shows a 'Verifying your installation' splash — tap Continue. Bottom nav: Discover / My Games / Rewards / Profile.",
@@ -1065,12 +1075,12 @@ describe("formatDecidePrompt", () => {
 		expect(withKnowledge).toContain("Verifying your installation");
 		expect(withKnowledge).toContain("Discover / My Games / Rewards / Profile");
 
-		const without = formatDecidePrompt({ ...base, appKnowledge: "   " });
+		const without = decidePrompt({ ...base, appKnowledge: "   " });
 		expect(without).not.toContain("App knowledge");
 	});
 
 	test("caps oversized app knowledge instead of sending the whole document", () => {
-		const prompt = formatDecidePrompt({
+		const prompt = decidePrompt({
 			appContext: "Playzone",
 			caseTitle: "Check Navigation",
 			instructions: "Open My Games",

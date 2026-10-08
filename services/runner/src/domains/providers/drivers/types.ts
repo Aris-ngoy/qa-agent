@@ -57,17 +57,37 @@ export type VisionAuth = {
 /** A screenshot prepared for a vision API (already resized/compressed). */
 export type VisionImage = { base64: string; mediaType: "image/png" | "image/jpeg" };
 
+/**
+ * The user prompt of a vision call, split for the Prompt cache. `testCase` is the
+ * Test Case block (stable for the whole Test Case); `step` is the per-step block.
+ * SDK paths send: Test Case block, screenshot, step block.
+ */
+export type VisionPrompt = { testCase: string; step: string };
+
+/**
+ * Call usage for one HTTP attempt of a Decide or verify call. Each field is null
+ * when the Provider did not report it. `inputTokens` is fresh (uncached) input.
+ */
+export type CallUsage = {
+	inputTokens: number | null;
+	cachedInputTokens: number | null;
+	cacheWriteTokens: number | null;
+	outputTokens: number | null;
+};
+
 export type VisionCompleteInput<T> = {
 	auth: VisionAuth;
 	schema: z.ZodType<T>;
 	system: string;
-	prompt: string;
+	prompt: VisionPrompt;
 	/** Raw screenshot (PNG base64). The adapter resizes before sending. */
 	imageBase64: string;
 	/** Pre-prepared image for this screenshot — reused across retries, skips re-prepare. */
 	image?: VisionImage;
 	/** Called when a completion is retried because the first reply was not usable JSON (provider JSON repair). */
 	onDecideRetry?: () => void;
+	/** Called once per HTTP attempt with its Call usage. SDK paths only; other paths never call it. */
+	onUsage?: (usage: CallUsage) => void;
 };
 
 export type VisionPort = {

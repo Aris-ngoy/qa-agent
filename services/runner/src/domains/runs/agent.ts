@@ -3,7 +3,7 @@ import { z } from "zod";
 import { parseVisionObject } from "../providers/agent-json";
 import type { ActiveProviderAuth } from "../providers/application";
 import { completeVision } from "../providers/vision";
-import type { VisionImage } from "../providers/vision-model";
+import type { CallUsage, VisionImage, VisionPrompt } from "../providers/vision-model";
 import { pointFromGridCell } from "./coord-grid";
 
 export { AgentProviderError, assertVisionCapableProvider } from "../providers/vision";
@@ -886,7 +886,10 @@ function formatAppKnowledge(knowledge: string | undefined): string | null {
 	return `${trimmed.slice(0, MAX_APP_KNOWLEDGE_CHARS)}\n… (app knowledge truncated at ${MAX_APP_KNOWLEDGE_CHARS} characters)`;
 }
 
-/** User-message body for a vision decide call (no image). */
+/**
+ * User-message body for a vision decide call (no image), split into the Test Case
+ * block (stable across steps) and the step block (changes every step).
+ */
 export function formatDecidePrompt(input: {
 	appContext: string;
 	appKnowledge?: string;
@@ -905,7 +908,7 @@ export function formatDecidePrompt(input: {
 	coordGrid?: boolean;
 	/** Screenshot only: the accessibility tree is not attached. Vision Screen mode, and Grid mode. */
 	screenshotOnly?: boolean;
-}): string {
+}): VisionPrompt {
 	const ordinal = input.instructionOrdinal ?? input.stepIndex + 1;
 	const total = input.instructionCount ?? 0;
 	const remaining = total > 0 ? Math.max(0, total - ordinal) : 0;
@@ -923,7 +926,8 @@ export function formatDecidePrompt(input: {
 
 	const appKnowledge = formatAppKnowledge(input.appKnowledge);
 
-	return [
+	// Test Case block: stable for the whole Test Case, so it can be a Prompt cache prefix.
+	const testCase = [
 		`App context: ${input.appContext || "(none)"}`,
 		...(appKnowledge
 			? [
@@ -931,13 +935,16 @@ export function formatDecidePrompt(input: {
 				]
 			: []),
 		`Test case: ${input.caseTitle}`,
+		`Catalog app id (activate/terminate/restart): ${input.defaultAppId || "(unknown)"}`,
+	].join("\n");
+
+	const step = [
 		progress,
 		"Completed instructions (already done — do not repeat):",
 		formatCompletedInstructions(input.completedInstructions ?? []),
 		`Current instruction (do ONLY this): ${input.instructions || "(none)"}`,
 		`Expected result for this instruction: ${expected}`,
 		later,
-		`Catalog app id (activate/terminate/restart): ${input.defaultAppId || "(unknown)"}`,
 		`Recent actions:\n${formatRecentActions(input.recentActions ?? [])}`,
 		`Last action error: ${input.lastError || "(none)"}`,
 		...(input.screenshotOnly
@@ -959,6 +966,8 @@ export function formatDecidePrompt(input: {
 		`Again, do ONLY this: ${input.instructions || "(none)"}`,
 		'Reply with ONLY the JSON action object, including non-empty "reason" and "thoughts".',
 	].join("\n");
+
+	return { testCase, step };
 }
 
 /** Models sometimes hallucinate "no screenshot" even when an image was sent. */
@@ -991,29 +1000,31 @@ Reply with ONLY one JSON object: {"type":"verify"|"continue"|"fail","reason":"..
 - fail: the instruction cannot be completed from what is on screen.
 Do not propose coordinates. Do not skip ahead to later instructions.`;
 
-/** User message for the per-step verify check (no next-action request). */
+/** User message for the per-step verify check (no next-action request), split like the decide prompt. */
 export function formatVerifyPrompt(input: {
 	caseTitle: string;
 	instructions: string;
 	expectedResult: string;
 	instructionOrdinal?: number;
 	instructionCount?: number;
-}): string {
+}): VisionPrompt {
 	const ordinal = input.instructionOrdinal ?? 1;
 	const total = input.instructionCount ?? 0;
 	const progress = total > 0 ? `Instruction ${ordinal} of ${total}.` : "";
 	const expected = input.expectedResult.trim()
 		? input.expectedResult
 		: "(none — verify once this instruction has been performed and the UI has updated)";
-	return [
-		`Test case: ${input.caseTitle}`,
-		progress,
-		`Instruction to verify: ${input.instructions || "(none)"}`,
-		`Expected result: ${expected}`,
-		"Look at the attached screenshot. Is this instruction satisfied now?",
-	]
-		.filter((line) => line.length > 0)
-		.join("\n");
+	return {
+		testCase: `Test case: ${input.caseTitle}`,
+		step: [
+			progress,
+			`Instruction to verify: ${input.instructions || "(none)"}`,
+			`Expected result: ${expected}`,
+			"Look at the attached screenshot. Is this instruction satisfied now?",
+		]
+			.filter((line) => line.length > 0)
+			.join("\n"),
+	};
 }
 
 /** Separate from decide: did the last action finish the current instruction? */
@@ -1027,6 +1038,7 @@ export async function verifyInstruction(input: {
 	instructionOrdinal?: number;
 	instructionCount?: number;
 	onDecideRetry?: () => void;
+	onUsage?: (usage: CallUsage) => void;
 }): Promise<InstructionVerdict> {
 	const verdictSchema = z.object({
 		type: z.union([z.literal("verify"), z.literal("continue"), z.literal("fail")]),
@@ -1040,6 +1052,7 @@ export async function verifyInstruction(input: {
 		imageBase64: input.imageBase64,
 		image: input.image,
 		onDecideRetry: input.onDecideRetry,
+		onUsage: input.onUsage,
 	});
 	return object;
 }
@@ -1055,6 +1068,7 @@ export async function decideNextAction(input: {
 	imageBase64: string;
 	image?: VisionImage;
 	onDecideRetry?: () => void;
+	onUsage?: (usage: CallUsage) => void;
 	recentActions?: AgentDecision[];
 	screenSnapshot?: string;
 	lastError?: string;
@@ -1072,5 +1086,6 @@ export async function decideNextAction(input: {
 		imageBase64: input.imageBase64,
 		image: input.image,
 		onDecideRetry: input.onDecideRetry,
+		onUsage: input.onUsage,
 	});
 }
