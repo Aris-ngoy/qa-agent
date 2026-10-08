@@ -50,3 +50,4 @@ apps/video/.capture-scratch/
 .cursor/
 .agents/
 .claude/
+.grok/
