@@ -39,6 +39,43 @@ export function parseByteRange(
 	return start <= end && start < size ? { start, end } : "unsatisfiable";
 }
 
+/**
+ * Serve an mp4, honouring a single Range request (a `<video>` seeks with them). The body is read
+ * into memory, because a streamed or file-backed body loses its Content-Length and goes out
+ * chunked, which WebKit's media loader will not play.
+ */
+export async function serveVideo(path: string, rangeHeader: string | undefined): Promise<Response> {
+	const file = Bun.file(path);
+	const range = parseByteRange(rangeHeader, file.size);
+	const headers = {
+		"Content-Type": "video/mp4",
+		"Accept-Ranges": "bytes",
+		"Cache-Control": "private, max-age=60",
+	};
+	if (range === "unsatisfiable") {
+		return new Response(null, {
+			status: 416,
+			headers: { "Content-Range": `bytes */${file.size}` },
+		});
+	}
+	if (range) {
+		const bytes = await file.slice(range.start, range.end + 1).arrayBuffer();
+		return new Response(bytes, {
+			status: 206,
+			headers: {
+				...headers,
+				"Content-Range": `bytes ${range.start}-${range.end}/${file.size}`,
+				"Content-Length": String(bytes.byteLength),
+			},
+		});
+	}
+	const bytes = await file.arrayBuffer();
+	return new Response(bytes, {
+		status: 200,
+		headers: { ...headers, "Content-Length": String(bytes.byteLength) },
+	});
+}
+
 function runErrorResponse(error: unknown): {
 	status: 400 | 404 | 500;
 	body: { error: string; detail?: string };
@@ -143,34 +180,8 @@ export function createRunsRoutes() {
 
 	app.get("/runs/:runId/tests/:testId/video", async (c) => {
 		try {
-			const file = Bun.file(await getRunTestVideoPath(c.req.param("runId"), c.req.param("testId")));
-			const range = parseByteRange(c.req.header("range"), file.size);
-			const headers = {
-				"Content-Type": "video/mp4",
-				"Accept-Ranges": "bytes",
-				"Cache-Control": "private, max-age=60",
-			};
-			if (range === "unsatisfiable") {
-				return new Response(null, {
-					status: 416,
-					headers: { "Content-Range": `bytes */${file.size}` },
-				});
-			}
-			// <video> seeks with Range requests, so serve partial content.
-			if (range) {
-				return new Response(file.slice(range.start, range.end + 1), {
-					status: 206,
-					headers: {
-						...headers,
-						"Content-Range": `bytes ${range.start}-${range.end}/${file.size}`,
-						"Content-Length": String(range.end - range.start + 1),
-					},
-				});
-			}
-			return new Response(file, {
-				status: 200,
-				headers: { ...headers, "Content-Length": String(file.size) },
-			});
+			const path = await getRunTestVideoPath(c.req.param("runId"), c.req.param("testId"));
+			return await serveVideo(path, c.req.header("range"));
 		} catch (error) {
 			const mapped = runErrorResponse(error);
 			return c.json(mapped.body, mapped.status);
