@@ -73,7 +73,7 @@ function fakeSims(options: { failSpawn?: boolean; noStream?: boolean } = {}): Fa
 		let stopped = false;
 		const sim: YoqaSim = {
 			url: "http://127.0.0.1:50123",
-			stream: options.noStream ? null : "http://127.0.0.1:50123/stream.mjpeg",
+			streamUrl: options.noStream ? null : "http://127.0.0.1:50123/stream.mjpeg",
 			frame: async () => {
 				alive();
 				return { bytes: SIM_FRAME, mime: "image/png", hash: "c0ffee" };

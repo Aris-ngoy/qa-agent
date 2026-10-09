@@ -126,7 +126,7 @@ describe("spawnYoqaSim", () => {
 	test("reads the live stream URL from its stream_ready line", async () => {
 		fake = fakeYoqaSim();
 		const sim = await spawnYoqaSim(UDID, { command: ["/opt/yoqa-sim"], spawn: fake.spawn });
-		expect(sim.stream).toBe(`${sim.url}/stream.mjpeg`);
+		expect(sim.streamUrl).toBe(`${sim.url}/stream.mjpeg`);
 		await sim.stop();
 	});
 
@@ -138,9 +138,22 @@ describe("spawnYoqaSim", () => {
 			spawn: fake.spawn,
 			streamReadyTimeoutMs: 50,
 		});
-		expect(sim.stream).toBeNull();
+		expect(sim.streamUrl).toBeNull();
 		expect(performance.now() - started).toBeLessThan(1000);
 		expect(await sim.frame()).toMatchObject({ hash: "9f2c00aa" });
+		await sim.stop();
+	});
+
+	test("waiting for stream_ready never trips the api_ready timeout", async () => {
+		fake = fakeYoqaSim("no-stream");
+		const sim = await spawnYoqaSim(UDID, {
+			command: ["/opt/yoqa-sim"],
+			spawn: fake.spawn,
+			readyTimeoutMs: 50,
+			streamReadyTimeoutMs: 150,
+		});
+		expect(sim.streamUrl).toBeNull();
+		expect(fake.kills()).toBe(0);
 		await sim.stop();
 	});
 
