@@ -97,7 +97,11 @@ function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneH
 		if (joined.includes("get-state")) return ok("device\n");
 		if (joined.includes("wm size")) return ok(`Physical size: ${DEVICE.width}x${DEVICE.height}\n`);
 		if (joined.includes("screencap")) return ok("", devicePng(taps.length));
-		if (joined.includes("uiautomator dump")) return ok("UI hierchary dumped\n");
+		if (joined.includes("uiautomator dump")) {
+			// With the helper faked, a tree read must come from it, never from a dump.
+			if (deps.devtools) return { stdout: "", stderr: "dump not faked", exitCode: 1 };
+			return ok("UI hierchary dumped\n");
+		}
 		if (joined.includes("cat") && joined.includes("yoqa-window.xml")) return ok(ANDROID_DUMP);
 		const tap = args.indexOf("tap");
 		if (args.includes("input") && tap >= 0) {
@@ -131,6 +135,31 @@ export function androidAdbLane(): LaneHarness {
 
 export function androidLatestFrameLane(): LaneHarness {
 	return androidLane("Android Direct: device-android (faked adb)", { backgroundCapture: {} });
+}
+
+/** `device-android` with the instrumentation helper faked: the tree comes from it, not a dump. */
+export function androidDevtoolsLane(): LaneHarness {
+	return androidLane("Android Direct: device-android with the helper (faked adb and helper)", {
+		backgroundCapture: {},
+		devtools: async () => ({
+			tree: async () => ({
+				nodes: [
+					{
+						role: "android.widget.Button",
+						value: BUTTON.label,
+						bounds: {
+							x: BUTTON.x / 1000,
+							y: BUTTON.y / 1000,
+							width: BUTTON.width / 1000,
+							height: BUTTON.height / 1000,
+						},
+						enabled: true,
+					},
+				],
+			}),
+			stop: async () => undefined,
+		}),
+	});
 }
 
 export function iosIdbLane(): LaneHarness {

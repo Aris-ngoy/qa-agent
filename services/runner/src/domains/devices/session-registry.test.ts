@@ -150,7 +150,10 @@ describe("openDeviceSession (lane dispatcher)", () => {
 	});
 
 	describe("Direct lane implementations", () => {
-		function directImpl(name: string, opts: { promoted?: boolean; fails?: boolean } = {}) {
+		function directImpl(
+			name: string,
+			opts: { promoted?: boolean; fails?: boolean; warning?: string } = {},
+		) {
 			const opened: string[] = [];
 			return {
 				opened,
@@ -163,6 +166,7 @@ describe("openDeviceSession (lane dispatcher)", () => {
 						return {
 							lane: "direct",
 							stream: null,
+							...(opts.warning ? { laneWarning: opts.warning } : {}),
 							quit: async () => undefined,
 						} as unknown as DeviceSession;
 					},
@@ -223,6 +227,19 @@ describe("openDeviceSession (lane dispatcher)", () => {
 			expect(created).toHaveLength(0);
 			expect(session.lane).toBe("direct");
 			expect(session.laneWarning).toMatch(/device-android failed to start; fell back to adb/);
+			await session.quit();
+		});
+
+		test("a fallback keeps the warning the implementation it fell back to gave", async () => {
+			const fresh = directImpl("device-android", { fails: true });
+			const existing = directImpl("adb", { promoted: true, warning: "Android helper unavailable" });
+			const { factory: appium } = fakeLane();
+			const session = await openDeviceSession(options("dev-impl-warn"), {
+				appium,
+				direct: createDirectLane([fresh.impl, existing.impl], "device-android"),
+			});
+			expect(session.laneWarning).toMatch(/device-android failed to start; fell back to adb/);
+			expect(session.laneWarning).toMatch(/Android helper unavailable/);
 			await session.quit();
 		});
 
