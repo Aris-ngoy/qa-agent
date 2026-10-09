@@ -7,15 +7,46 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-/** A running `yoqa-sim` for one simulator. */
+/** The latest simulator frame. `hash` changes exactly when the screen's pixels do. */
+export type YoqaSimFrame = {
+	bytes: Uint8Array;
+	mime: "image/png" | "image/jpeg";
+	hash?: string;
+};
+
+/** A point on the simulator screen as fractions of its width and height (0.0–1.0). */
+export type ScreenFraction = { x: number; y: number };
+
+/** The hardware keys `yoqa-sim` can press. */
+export type YoqaSimKey = "home";
+
+/**
+ * A running `yoqa-sim` for one simulator. Coordinates are 0.0–1.0, never 0–1000: the
+ * Lane converts at its edge. Each input call resolves once the touch is up.
+ */
 export type YoqaSim = {
 	/** Its control API, from the `api_ready` line. */
 	url: string;
-	/** A PNG of the simulator screen. */
-	screenshot: () => Promise<Uint8Array>;
+	/** The latest frame, full size, as PNG. Not a fresh capture. */
+	frame: () => Promise<YoqaSimFrame>;
+	/** Down, hold (`holdMs`, 16 ms by default and never less), up. */
+	tap: (x: number, y: number, holdMs?: number) => Promise<void>;
+	swipe: (from: ScreenFraction, to: ScreenFraction, durationMs?: number) => Promise<void>;
+	key: (key: YoqaSimKey) => Promise<void>;
 	/** Kill it. Safe to call twice. */
 	stop: () => Promise<void>;
 };
+
+/**
+ * `yoqa-sim` could not be reached, so the call did nothing on the simulator and can safely
+ * be done another way. Any other failure may have touched the screen already.
+ */
+export class YoqaSimUnreachableError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "YoqaSimUnreachableError";
+	}
+}
 
 /** Spawns `yoqa-sim` for a simulator UDID and resolves once it printed `api_ready`. */
 export type SpawnYoqaSim = (udid: string) => Promise<YoqaSim>;
@@ -46,7 +77,7 @@ export type SpawnYoqaSimOptions = {
 };
 
 const READY_TIMEOUT_MS = 10_000;
-const SCREENSHOT_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 10_000;
 const STOP_GRACE_MS = 2_000;
 const API_READY_RE = /^api_ready (http:\/\/127\.0\.0\.1:\d+)\s*$/;
 
@@ -128,18 +159,57 @@ export async function spawnYoqaSim(udid: string, options: SpawnYoqaSimOptions): 
 		throw new Error(`yoqa-sim exited (${code}) before api_ready${detail ? `: ${detail}` : ""}`);
 	}
 
+	const send = (path: string, body?: Record<string, unknown>) =>
+		fetch(`${url}${path}`, {
+			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+			...(body
+				? {
+						method: "POST",
+						headers: { "content-type": "application/json" },
+						body: JSON.stringify(body),
+					}
+				: {}),
+		});
+
+	const request = async (label: string, path: string, body?: Record<string, unknown>) => {
+		const response = await send(path, body).catch((error: unknown) => {
+			// A timed-out request may still have reached the simulator; a refused one did not.
+			if (error instanceof Error && error.name === "TimeoutError") throw error;
+			throw new YoqaSimUnreachableError(
+				`yoqa-sim ${label}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		});
+		if (!response.ok) {
+			throw new Error(`yoqa-sim ${label}: ${response.status} ${(await response.text()).trim()}`);
+		}
+		return response;
+	};
+
 	return {
 		url,
-		screenshot: async () => {
-			const response = await fetch(`${url}/screenshot`, {
-				signal: AbortSignal.timeout(SCREENSHOT_TIMEOUT_MS),
+		frame: async () => {
+			const response = await request("screenshot", "/screenshot?scale=1&format=png");
+			const hash = response.headers.get("x-frame-hash");
+			return {
+				bytes: new Uint8Array(await response.arrayBuffer()),
+				mime: "image/png",
+				...(hash ? { hash } : {}),
+			};
+		},
+		tap: async (x, y, holdMs) => {
+			await request("tap", "/tap", { x, y, ...(holdMs === undefined ? {} : { holdMs }) });
+		},
+		swipe: async (from, to, durationMs) => {
+			await request("swipe", "/swipe", {
+				fromX: from.x,
+				fromY: from.y,
+				toX: to.x,
+				toY: to.y,
+				...(durationMs === undefined ? {} : { durationMs }),
 			});
-			if (!response.ok) {
-				throw new Error(
-					`yoqa-sim screenshot: ${response.status} ${(await response.text()).trim()}`,
-				);
-			}
-			return new Uint8Array(await response.arrayBuffer());
+		},
+		key: async (key) => {
+			await request("key", "/key", { key });
 		},
 		stop,
 	};
