@@ -143,3 +143,16 @@ describe("Android Direct implementations", () => {
 		expect(names("device-android")).toEqual(["device-android", "adb"]);
 	});
 });
+
+describe("iOS-simulator Direct implementations", () => {
+	const names = (optIn?: string) =>
+		directImplementationOrder(DIRECT_IMPLEMENTATIONS["ios-simulator"], optIn).map((i) => i.name);
+
+	test("idb_companion stays the default until device-sim shows a measured gain", () => {
+		expect(names()).toEqual(["idb"]);
+	});
+
+	test("YOQA_DIRECT_IOS_SIMULATOR=device-sim tries yoqa-sim first", () => {
+		expect(names("device-sim")).toEqual(["device-sim", "idb"]);
+	});
+});

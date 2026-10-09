@@ -28,6 +28,7 @@ import {
 	type ScreenRecording,
 	type SessionOptions,
 	guardToolLoss,
+	reportLaneFallback,
 } from "./lane";
 import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
@@ -265,9 +266,11 @@ export async function createAndroidDirectSession(
 				return devtoolsTreeToDump(await devtools.tree(), await getWindowSize());
 			} catch (error) {
 				// The helper holds the device's UiAutomation, so stop it before uiautomator dump runs.
-				const warning = `Android helper failed; reading the tree with uiautomator dump for the rest of the session (${errorMessage(error)})`;
-				console.warn(`[yoqa-runner] ${warning}`);
-				session.laneWarning = [session.laneWarning, warning].filter(Boolean).join("; ");
+				reportLaneFallback(
+					session,
+					options,
+					`Android helper failed; reading the tree with uiautomator dump for the rest of the session (${errorMessage(error)})`,
+				);
 				await stopDevtools();
 			}
 		}

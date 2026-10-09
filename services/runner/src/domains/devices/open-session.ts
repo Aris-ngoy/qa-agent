@@ -1,7 +1,13 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
 import { createAppiumSession } from "./appium-lane";
 import { DirectLaneStartError, defaultDirectLane } from "./direct-lane";
-import type { DeviceSession, LaneFactory, LaneName, SessionOptions } from "./lane";
+import {
+	type DeviceSession,
+	type LaneFactory,
+	type LaneName,
+	type SessionOptions,
+	joinLaneWarnings,
+} from "./lane";
 import { availableLanes, selectLane } from "./select-lane";
 
 /** At most one Device Session per device id (Active Session or Run). */
@@ -78,10 +84,19 @@ export async function openDeviceSession(
 		caseCaps: options.caseCaps,
 	});
 
+	// A fallback the Lane reports later lands on the session handed out here, not on the
+	// Lane's own object, which this wrapper copies.
+	const laneOptions: SessionOptions = {
+		...options,
+		onLaneWarning: (late) => {
+			session.laneWarning = joinLaneWarnings(session.laneWarning, late);
+			options.onLaneWarning?.(late);
+		},
+	};
 	let opened: DeviceSession;
 	let warning = choice.warning;
 	try {
-		opened = await openOnLane(choice.lane, options, merged);
+		opened = await openOnLane(choice.lane, laneOptions, merged);
 		warning = [warning, opened.laneWarning].filter(Boolean).join("; ") || undefined;
 	} catch (error) {
 		if (choice.lane === "direct") {
@@ -90,7 +105,7 @@ export async function openDeviceSession(
 			warning = [...inner, `Direct lane failed to start; fell back to Appium (${detail})`].join(
 				"; ",
 			);
-			opened = await openOnLane("appium", options, merged);
+			opened = await openOnLane("appium", laneOptions, merged);
 		} else {
 			throw error;
 		}

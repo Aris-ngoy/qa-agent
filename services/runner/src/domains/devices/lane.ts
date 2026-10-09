@@ -17,6 +17,11 @@ export type SessionOptions = {
 	requestedLane?: LaneName | "auto";
 	/** Called once when the lane reports the session is gone. */
 	onSessionDead?: () => void;
+	/**
+	 * Called when the Lane falls back inside a running session (a Direct implementation's
+	 * helper process failed). The session's Lane warning gains the same text.
+	 */
+	onLaneWarning?: (warning: string) => void;
 };
 
 export type CapturedFrame = {
@@ -99,6 +104,25 @@ export type DeviceSession = {
  * `createDeviceSession` does, so every lane shares the same rule (ADR-0001).
  */
 export type LaneFactory = (options: SessionOptions) => Promise<DeviceSession>;
+
+/** Lane warnings joined the way the Run report shows them; undefined when there are none. */
+export function joinLaneWarnings(...warnings: Array<string | undefined>): string | undefined {
+	return warnings.filter(Boolean).join("; ") || undefined;
+}
+
+/**
+ * Report a fallback inside a running session, loudly (ADR-0004): log it, add it to the
+ * session's Lane warning, and pass it to `onLaneWarning`.
+ */
+export function reportLaneFallback(
+	session: { laneWarning?: string },
+	options: SessionOptions,
+	warning: string,
+): void {
+	console.warn(`[yoqa-runner] ${warning}`);
+	session.laneWarning = joinLaneWarnings(session.laneWarning, warning);
+	options.onLaneWarning?.(warning);
+}
 
 const DEAD_SESSION_RE =
 	/session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i;
