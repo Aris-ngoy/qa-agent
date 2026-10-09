@@ -10,7 +10,7 @@ import { createAppiumSession } from "./appium-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
 import type { DeviceSession } from "./lane";
-import type { SpawnYoqaSim } from "./yoqa-sim";
+import { type SpawnYoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
 /** The device every harness fakes, in the unit its tool uses (pixels, or points for idb). */
 export const DEVICE = { width: 200, height: 400 };
@@ -218,12 +218,22 @@ function iosLane(name: string, withYoqaSim = false): LaneHarness {
 		}
 		return ok();
 	};
+	const alive = () => {
+		if (dead) throw new YoqaSimUnreachableError("fetch failed: Connection refused");
+	};
 	const yoqaSim: SpawnYoqaSim = async () => ({
 		url: "http://127.0.0.1:50123",
-		screenshot: async () => {
-			if (dead) throw new Error("fetch failed: Connection refused");
-			return devicePng(taps.length);
+		frame: async () => {
+			alive();
+			return { bytes: devicePng(taps.length), mime: "image/png", hash: `taps-${taps.length}` };
 		},
+		// yoqa-sim takes 0.0–1.0; record the device point it lands on, as idb's taps are.
+		tap: async (x, y) => {
+			alive();
+			taps.push({ x: x * DEVICE.width, y: y * DEVICE.height });
+		},
+		swipe: async () => alive(),
+		key: async () => alive(),
 		stop: async () => undefined,
 	});
 	return {
