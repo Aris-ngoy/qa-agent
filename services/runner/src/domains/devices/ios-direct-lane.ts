@@ -18,6 +18,7 @@ import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { cleanPageSource } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
+import type { StartYoqaAx, YoqaAx } from "./yoqa-ax";
 import { type SpawnYoqaSim, type YoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
 const IOS_ACCEPT_LABELS = ["Allow While Using App", "Allow Once", "Allow", "OK"] as const;
@@ -53,6 +54,13 @@ export type IosDirectDeps = {
 	 * idb_companion and says so in its Lane warning.
 	 */
 	yoqaSim?: SpawnYoqaSim;
+	/**
+	 * Start the in-simulator accessibility helper (`yoqa-ax`) on the first screen or action,
+	 * in the background, and stop it on quit. Nothing waits for it. When it doesn't connect,
+	 * the session is degraded: it keeps working, the tree stays on idb_companion, and its
+	 * Lane warning says so.
+	 */
+	yoqaAx?: StartYoqaAx;
 };
 
 function errorMessage(error: unknown): string {
@@ -240,7 +248,7 @@ export async function createIosDirectSession(
 		use: (running: YoqaSim) => Promise<T>,
 		retryable = false,
 	): Promise<{ value: T } | null> => {
-		const running = await ensureYoqaSim();
+		const running = await startHelpers();
 		if (!running) return null;
 		try {
 			return { value: await use(running) };
@@ -255,12 +263,33 @@ export async function createIosDirectSession(
 	/** 0–1000 to the 0.0–1.0 `yoqa-sim` takes; the conversion happens here, at the Lane's edge. */
 	const fraction = (norm: number) => Math.min(1, Math.max(0, norm / 1000));
 
+	/** One `yoqa-ax` per session, started on first use; null once it failed. */
+	let yoqaAx: Promise<YoqaAx | null> | null = null;
+	const ensureYoqaAx = () => {
+		const start = deps.yoqaAx;
+		if (!start || quitting || yoqaAx) return;
+		yoqaAx = start(udid).catch((error: unknown) => {
+			reportLaneFallback(
+				session,
+				options,
+				`Session degraded: yoqa-ax is unavailable, so the tree stays on idb_companion (${errorMessage(error)})`,
+			);
+			return null;
+		});
+	};
+
+	/** Start the session's helpers on its first screen or action. */
+	const startHelpers = () => {
+		ensureYoqaAx();
+		return ensureYoqaSim();
+	};
+
 	/**
 	 * Run an action under the lock. The first one also starts `yoqa-sim`; gestures then wait
 	 * for it to be up (once per session), while other actions go on with idb_companion.
 	 */
 	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
-		void ensureYoqaSim();
+		void startHelpers();
 		return lock.withLock(fn);
 	};
 
@@ -304,6 +333,7 @@ export async function createIosDirectSession(
 	};
 
 	const pageSource = async () => {
+		void startHelpers();
 		const result = await run(
 			["ui", "describe-all", "--udid", udid, "--json", "--api", "axbridge", "--format", "complete"],
 			"idb describe-all",
@@ -447,9 +477,10 @@ export async function createIosDirectSession(
 		stream: null,
 		quit: async () => {
 			quitting = true;
-			const running = await yoqaSim;
+			const [running, ax] = await Promise.all([yoqaSim, yoqaAx]);
 			yoqaSim = null;
-			await running?.stop();
+			yoqaAx = null;
+			await Promise.all([running?.stop(), ax?.stop()]);
 		},
 		startRecording: (path) => recordViaSimctl(udid, path),
 		captureFrame,
