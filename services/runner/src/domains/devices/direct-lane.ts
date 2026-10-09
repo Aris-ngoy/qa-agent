@@ -73,6 +73,11 @@ export function deviceClassFor(platform: DevicePlatform): DeviceClass {
  */
 export const DIRECT_IMPLEMENTATIONS: Record<DeviceClass, DirectImplementation[]> = {
 	android: [
+		{
+			// adb with capture-frame served from a background `screencap` loop (#237).
+			name: "device-android",
+			open: (options) => createAndroidDirectSession(options, { backgroundCapture: {} }),
+		},
 		{ name: "adb", promoted: true, open: (options) => createAndroidDirectSession(options) },
 	],
 	"ios-simulator": [

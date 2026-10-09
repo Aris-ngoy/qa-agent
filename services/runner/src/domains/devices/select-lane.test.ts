@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DIRECT_IMPLEMENTATIONS } from "./direct-lane";
 import {
 	directImplementationOrder,
 	directOptIn,
@@ -127,5 +128,18 @@ describe("directOptIn", () => {
 	test("unset or blank means no opt-in", () => {
 		expect(directOptIn("android", {})).toBeUndefined();
 		expect(directOptIn("android", { YOQA_DIRECT_ANDROID: "  " })).toBeUndefined();
+	});
+});
+
+describe("Android Direct implementations", () => {
+	const names = (optIn?: string) =>
+		directImplementationOrder(DIRECT_IMPLEMENTATIONS.android, optIn).map((i) => i.name);
+
+	test("adb stays the default until device-android shows a measured gain", () => {
+		expect(names()).toEqual(["adb"]);
+	});
+
+	test("YOQA_DIRECT_ANDROID=device-android tries the background capture first", () => {
+		expect(names("device-android")).toEqual(["device-android", "adb"]);
 	});
 });
