@@ -13,6 +13,12 @@ import {
 	ANDROID_DISMISS_BUTTON_LABELS,
 	ANDROID_DISMISS_RESOURCE_IDS,
 } from "./android-alerts";
+import {
+	type AndroidDevtools,
+	DEVTOOLS_PACKAGE,
+	type StartAndroidDevtools,
+	devtoolsTreeToDump,
+} from "./android-devtools";
 import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
 import { createFrameLoop } from "./frame-loop";
@@ -64,7 +70,17 @@ export type AndroidDirectDeps = {
 	 * implementation). A read after input waits for a frame captured after that input.
 	 */
 	backgroundCapture?: { idleMs?: number };
+	/**
+	 * Read the tree from the instrumentation helper (`yoqa.android.devtools`) instead of
+	 * `uiautomator dump`. When it can't start, the session keeps `uiautomator dump` and
+	 * says so in its Lane warning.
+	 */
+	devtools?: StartAndroidDevtools;
 };
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
 
 function fail(result: AdbResult, label: string): never {
 	throw new Error(
@@ -97,8 +113,7 @@ export function createAdbExec(adbBin: string): AdbExec {
 				stdoutBytes,
 			};
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return { stdout: "", stderr: message, exitCode: 127 };
+			return { stdout: "", stderr: errorMessage(error), exitCode: 127 };
 		}
 	};
 }
@@ -208,7 +223,33 @@ export async function createAndroidDirectSession(
 		return { path, base64: frame.base64 };
 	};
 
-	const pageSource = async () => {
+	let devtools: AndroidDevtools | null = null;
+	let laneWarning: string | undefined;
+	if (deps.devtools) {
+		try {
+			devtools = await deps.devtools({
+				serial,
+				adb,
+				spawnAdb: (args) =>
+					Bun.spawn([deps.adbBin ?? resolveAdbBin(), ...args], {
+						stdout: "ignore",
+						stderr: "ignore",
+					}),
+			});
+		} catch (error) {
+			laneWarning = `Android helper unavailable; reading the tree with uiautomator dump (${errorMessage(error)})`;
+		}
+	} else {
+		// A helper a crashed runner left running holds UiAutomation, so uiautomator dump would fail.
+		await adb(["-s", serial, "shell", "am", "force-stop", DEVTOOLS_PACKAGE]);
+	}
+	const stopDevtools = async () => {
+		const running = devtools;
+		devtools = null;
+		await running?.stop().catch(() => undefined);
+	};
+
+	const dumpPageSource = async () => {
 		await readShell(["uiautomator", "dump", "/sdcard/yoqa-window.xml"], "uiautomator dump");
 		const result = await readShell(["cat", "/sdcard/yoqa-window.xml"], "cat window dump");
 		const xml = stripUiautomatorDump(result.stdout);
@@ -216,6 +257,21 @@ export async function createAndroidDirectSession(
 			throw new Error("uiautomator dump returned no tree");
 		}
 		return xml;
+	};
+
+	const pageSource = async () => {
+		if (devtools) {
+			try {
+				return devtoolsTreeToDump(await devtools.tree(), await getWindowSize());
+			} catch (error) {
+				// The helper holds the device's UiAutomation, so stop it before uiautomator dump runs.
+				const warning = `Android helper failed; reading the tree with uiautomator dump for the rest of the session (${errorMessage(error)})`;
+				console.warn(`[yoqa-runner] ${warning}`);
+				session.laneWarning = [session.laneWarning, warning].filter(Boolean).join("; ");
+				await stopDevtools();
+			}
+		}
+		return dumpPageSource();
 	};
 
 	const pointerSize = async (coordSpace?: "window" | "screenshot"): Promise<PointerSize> => {
@@ -389,7 +445,11 @@ export async function createAndroidDirectSession(
 	const session: DeviceSession = {
 		lane: "direct",
 		stream: null,
-		quit: async () => frameLoop?.stop(),
+		...(laneWarning ? { laneWarning } : {}),
+		quit: async () => {
+			await frameLoop?.stop();
+			await stopDevtools();
+		},
 		startRecording,
 		captureFrame,
 		screenshot,
