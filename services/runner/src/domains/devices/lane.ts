@@ -112,3 +112,28 @@ export function isDeadSessionError(error: unknown): boolean {
 	const message = error instanceof Error ? error.message : String(error);
 	return DEAD_SESSION_RE.test(message);
 }
+
+type ToolResult = { stdout: string; stderr: string; exitCode: number };
+
+/**
+ * Wrap a Direct lane's device tool so a result that says the device or the tool is
+ * gone becomes a Dead Session: `onSessionDead` fires once and the call rejects with
+ * `DeadSessionError`. Wrap only after connect, so a start failure stays a start failure.
+ */
+export function guardToolLoss<R extends ToolResult>(
+	exec: (args: string[]) => Promise<R>,
+	isLost: (result: R) => boolean,
+	onSessionDead?: () => void,
+): (args: string[]) => Promise<R> {
+	let notified = false;
+	return async (args) => {
+		const result = await exec(args);
+		if (!isLost(result)) return result;
+		if (!notified) {
+			notified = true;
+			onSessionDead?.();
+		}
+		const detail = result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`;
+		throw new DeadSessionError(`Device session ended: ${detail}`);
+	};
+}

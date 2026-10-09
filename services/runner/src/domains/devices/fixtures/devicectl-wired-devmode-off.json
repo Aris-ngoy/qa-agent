@@ -1,0 +1,85 @@
+{
+	"info": {
+		"arguments": ["devicectl", "list", "devices", "--json-output"],
+		"outcome": "success"
+	},
+	"result": {
+		"devices": [
+			{
+				"connectionProperties": {
+					"authenticationType": "manualPairing",
+					"isMobileDeviceOnly": false,
+					"lastConnectionDate": "2026-10-09T10:50:00.000Z",
+					"pairingState": "paired",
+					"transportType": "wired",
+					"tunnelState": "connected",
+					"tunnelTransportProtocol": "tcp"
+				},
+				"deviceProperties": {
+					"bootState": "booted",
+					"bootedFromSnapshot": true,
+					"ddiServicesAvailable": true,
+					"developerModeStatus": "disabled",
+					"hasInternalOSBuild": false,
+					"name": "Test’s iPhone",
+					"osBuildUpdate": "24A446",
+					"osVersionNumber": "27.0.1",
+					"rootFileSystemIsWritable": false,
+					"supportsCheckedAllocations": false
+				},
+				"hardwareProperties": {
+					"deviceType": "iPhone",
+					"hardwareModel": "D37AP",
+					"isProductionFused": true,
+					"marketingName": "iPhone 15",
+					"platform": "iOS",
+					"productType": "iPhone15,4",
+					"reality": "physical",
+					"supportedDeviceFamilies": [1],
+					"thinningProductType": "iPhone15,4",
+					"udid": "00008120-000E6D813E2A601E"
+				},
+				"identifier": "D3F5A97A-F247-5023-BA5B-04314170DE61",
+				"properties": {
+					"connection": {
+						"authenticationType": "manualPairing",
+						"lastConnectionDate": 813235800,
+						"pairingState": "paired",
+						"state": "connected",
+						"transportType": "wired",
+						"tunnelTransportProtocol": "tcp"
+					},
+					"hardware": {
+						"deviceType": "iPhone",
+						"hasActionButton": false,
+						"marketingName": "iPhone 15",
+						"platform": "iOS",
+						"productType": "iPhone15,4",
+						"reality": "physical",
+						"supportedBiometrics": ["faceID"],
+						"supportedDeviceFamilies": [1],
+						"supportsSiri": true,
+						"thinningProductType": "iPhone15,4",
+						"udid": "00008120-000E6D813E2A601E"
+					},
+					"software": {
+						"osVersionNumber": {
+							"components": [27, 0, 1, 0, 0],
+							"originalComponentsCount": 3,
+							"stringValue": "27.0.1"
+						},
+						"supportsCheckedAllocations": false
+					},
+					"state": {
+						"bootState": "booted",
+						"developerModeStatus": {
+							"disabled": {}
+						},
+						"name": "Test’s iPhone",
+						"preparednessState": 7
+					}
+				}
+			}
+		]
+	}
+}

@@ -1,5 +1,6 @@
 import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
+import { hasCustomCapabilities } from "./select-lane";
 import { type DeviceSession, createDeviceSession, isDeadSessionError } from "./session";
 
 export type ActiveSessionInfo = {
@@ -180,10 +181,15 @@ export async function disconnectDevice(): Promise<ActiveSessionInfo | null> {
  * Run-side acquisition of the shared Device Session.
  *
  * - Adopts the Active Session when it already targets the requested device
- *   (no reconnect, no WDA relaunch) and marks it held by this run.
+ *   (no reconnect, no WDA relaunch) and marks it held by this run, whatever its
+ *   Lane — unless the Run's App or first Case sets custom Appium capabilities and
+ *   the session is not on the Appium lane. Then the session is replaced with an
+ *   Appium session and the Run carries a Lane warning saying why (ADR-0004).
  * - Replaces an unheld Active Session pointing at another device (device change).
+ * - Opens a fresh session on the Run's requested Lane when there is none to adopt.
  * - When another run owns the shared session, creates a detached session that
- *   is not registered as Active and is quit again at release.
+ *   is not registered as Active and is quit again at release. A held session on
+ *   the same device is never replaced: that request fails with `SessionBusyError`.
  */
 export async function acquireSessionForRun(options: {
 	runId: string;
@@ -198,6 +204,11 @@ export async function acquireSessionForRun(options: {
 	const current = active;
 
 	if (current?.heldByRunId && current.heldByRunId !== options.runId) {
+		if (current.deviceId === options.deviceId) {
+			throw new SessionBusyError(
+				`Another run is using ${options.deviceId}. Wait for it to finish or cancel it first.`,
+			);
+		}
 		const session = await createDeviceSession({
 			platform: options.platform,
 			deviceId: options.deviceId,
@@ -211,24 +222,33 @@ export async function acquireSessionForRun(options: {
 		return { session, shared: false };
 	}
 
+	let replacedWarning: string | undefined;
 	if (current && current.deviceId === options.deviceId) {
-		// Health-check before adopting: a stale session (device restarted,
-		// Appium dropped it) must not fail the whole run.
-		const healthy = await current.session
-			.getWindowSize()
-			.then(() => true)
-			.catch(() => false);
-		if (healthy) {
-			current.heldByRunId = options.runId;
-			return { session: current.session, shared: true };
+		const pinned =
+			current.session.lane !== "appium" &&
+			hasCustomCapabilities(options.appCaps ?? [], options.caseCaps ?? []);
+		if (pinned) {
+			replacedWarning = `Custom Appium capabilities pin the Appium lane; replaced the ${laneLabel(current.session.lane)} Active Session`;
+			console.warn(`[yoqa-runner] ${replacedWarning} for ${options.deviceId}`);
+		} else {
+			// Health-check before adopting: a stale session (device restarted,
+			// Appium dropped it) must not fail the whole run.
+			const healthy = await current.session
+				.getWindowSize()
+				.then(() => true)
+				.catch(() => false);
+			if (healthy) {
+				current.heldByRunId = options.runId;
+				return { session: current.session, shared: true };
+			}
+			console.warn(
+				`[yoqa-runner] active session for ${options.deviceId} is dead — creating a fresh one for the run`,
+			);
 		}
-		console.warn(
-			`[yoqa-runner] active session for ${options.deviceId} is dead — creating a fresh one for the run`,
-		);
 		await disconnectDevice().catch(() => undefined);
 	}
 
-	if (current) {
+	if (active) {
 		await disconnectDevice();
 	}
 
@@ -239,9 +259,19 @@ export async function acquireSessionForRun(options: {
 		caseCaps: options.caseCaps,
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
+		requestedLane: options.requestedLane,
 		heldByRunId: options.runId,
 	});
+	if (replacedWarning) {
+		// The replacement reason already says capabilities pin Appium; keep any other warning.
+		const others = session.laneWarning?.split("; ").filter((w) => !replacedWarning?.startsWith(w));
+		session.laneWarning = [replacedWarning, ...(others ?? [])].join("; ");
+	}
 	return { session, shared: true };
+}
+
+function laneLabel(lane: import("./lane").LaneName): string {
+	return lane === "direct" ? "Direct" : "Appium";
 }
 
 /**

@@ -58,6 +58,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/benchmark.md](./devices/benchmark.md) | Yoqa vs Argent latency + accuracy harness |
 | [devices/appium-lane-wins.md](./devices/appium-lane-wins.md) | Adaptive Settle, cached window size, connector phases |
 | [devices/android-direct-lane.md](./devices/android-direct-lane.md) | Android Direct lane over adb |
+| [devices/device-lanes-foundation.md](./devices/device-lanes-foundation.md) | Lane contract suite, capability-pinned adoption, Direct implementations, wired iPhones |
 | [devices/android-direct-tree-settle.md](./devices/android-direct-tree-settle.md) | Direct system-wide tree, Settle, vs-Argent gate |
 | [devices/hybrid-screen-arm.md](./devices/hybrid-screen-arm.md) | Screenshot + tree every Agent step as a benchmark arm |
 | [devices/idb-companion-spike.md](./devices/idb-companion-spike.md) | idb_companion vs WDA on one simulator; adopt for iOS Direct |

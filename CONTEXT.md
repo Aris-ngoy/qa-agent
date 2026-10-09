@@ -11,15 +11,15 @@ A live connection to one device (or simulator/emulator) through one Lane, includ
 _Avoid_: Active session handle alone, WebDriver session (implementation detail), runner session
 
 **Lane**:
-The control path a Device Session uses to drive its device: the _Appium lane_ (through the Appium Server) or a _Direct lane_ (straight to the platform tooling, bypassing Appium, for speed). Android auto-picks Direct over adb when there are no custom capabilities; iOS simulators auto-pick Direct over idb_companion when the official binary is present (physical iOS stays Appium). A Device Session has exactly one Lane for its whole life. A Case or App that sets custom Appium capabilities always gets the Appium lane. The Run report names the Lane that ran.
-_Avoid_: driver (Provider drivers), backend (runner / cloud), transport, engine
+The control path a Device Session uses to drive its device: the _Appium lane_ (through the Appium Server) or a _Direct lane_ (straight to the platform tooling, bypassing Appium, for speed). Android auto-picks Direct over adb when there are no custom capabilities; iOS simulators auto-pick Direct over idb_companion when the official binary is present (physical iOS stays Appium). Within a device class the Direct lane picks its implementation (a new one only when opted in, until it clears the benchmark gate) and falls back once, loudly, to the existing implementation and then to Appium; the Lane name stays `direct`. A Device Session has exactly one Lane for its whole life. A Case or App that sets custom Appium capabilities always gets the Appium lane. The Run report names the Lane that ran.
+_Avoid_: driver (Provider drivers), backend (runner / cloud), adapter, transport, engine
 
 **Active Session**:
-The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes; it stays live until the user disconnects or connects another device.
+The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes, unless the Run sets custom Appium capabilities and the session is not on the Appium lane: then it is replaced with an Appium session and the Run report says why; it stays live until the user disconnects or connects another device.
 _Avoid_: Run session (a Run adopts the Active Session), per-mode session
 
 **Dead Session**:
-A Device Session the runner still thinks is open but Appium has already dropped (invalid/missing session id).
+A Device Session the runner still thinks is open but its Lane has already lost: Appium dropped it (invalid/missing session id), or a Direct lane's device tool says the device is gone.
 _Avoid_: disconnected (user-initiated), abandoned (implementation verb only)
 
 **Appium Runtime**:

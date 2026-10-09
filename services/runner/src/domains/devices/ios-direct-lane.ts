@@ -4,7 +4,14 @@ import { dirname, join } from "node:path";
 import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { requireIdbBins } from "./idb-companion";
-import type { DeviceSession, PointerPhase, ScreenRecording, SessionOptions } from "./lane";
+import {
+	DeadSessionError,
+	type DeviceSession,
+	type PointerPhase,
+	type ScreenRecording,
+	type SessionOptions,
+	guardToolLoss,
+} from "./lane";
 import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { cleanPageSource } from "./screen";
@@ -21,6 +28,17 @@ export type IdbResult = {
 };
 
 export type IdbExec = (args: string[]) => Promise<IdbResult>;
+
+/** idb could not run, its companion is unreachable, or the simulator is gone. */
+const IDB_LOST_RE =
+	/StatusCode\.UNAVAILABLE|failed to connect|Connection refused|companion .*(?:not running|terminated)|(?:device|simulator|target) .*not found|not booted/i;
+
+export function idbLostDevice(result: IdbResult): boolean {
+	return (
+		result.exitCode === 127 ||
+		(result.exitCode !== 0 && IDB_LOST_RE.test(`${result.stderr}\n${result.stdout}`))
+	);
+}
 
 export type IosDirectDeps = {
 	idb?: IdbExec;
@@ -162,14 +180,17 @@ export async function createIosDirectSession(
 		throw new Error("iOS Direct lane supports simulators only; physical iOS stays on Appium");
 	}
 
-	const idb = deps.idb ?? defaultIdb();
+	const connectIdb = deps.idb ?? defaultIdb();
 	const udid = options.deviceId;
 	const described = parseDescribe(
-		(await requireOk(await idb(["describe", "--udid", udid, "--json"]), "idb describe")).stdout,
+		(await requireOk(await connectIdb(["describe", "--udid", udid, "--json"]), "idb describe"))
+			.stdout,
 	);
 	if (described.target_type && described.target_type !== "simulator") {
 		throw new Error("iOS Direct lane supports simulators only; physical iOS stays on Appium");
 	}
+
+	const idb = guardToolLoss(connectIdb, idbLostDevice, options.onSessionDead);
 
 	const getWindowSize = remember(async () => pointSize(described));
 	let lastShotSize: PointerSize | null = null;
@@ -189,7 +210,8 @@ export async function createIosDirectSession(
 					? result.stdoutBytes
 					: new Uint8Array(await readFile(dest));
 			if (bytes.byteLength === 0) throw new Error("idb screenshot returned an empty frame");
-		} catch {
+		} catch (error) {
+			if (error instanceof DeadSessionError) throw error;
 			bytes = await (deps.screenshotFallback ?? captureViaSimctl)(udid);
 			if (bytes.byteLength === 0) throw new Error("simctl screenshot returned an empty frame");
 		}
