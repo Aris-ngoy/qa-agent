@@ -222,7 +222,7 @@ export async function createIosDirectSession(
 
 	const run = async (args: string[], label: string) => requireOk(await idb(args), label);
 
-	/** One `yoqa-sim` per session, spawned on first use; null once it failed. */
+	/** One `yoqa-sim` per session, spawned at connect; null once it failed. */
 	let yoqaSim: Promise<YoqaSim | null> | null = null;
 	let quitting = false;
 	const yoqaSimFailed = (error: unknown) => {
@@ -289,8 +289,8 @@ export async function createIosDirectSession(
 	};
 
 	/**
-	 * Run an action under the lock. The first one also starts `yoqa-sim`; gestures then wait
-	 * for it to be up (once per session), while other actions go on with idb_companion.
+	 * Run an action under the lock. The first one also starts `yoqa-ax`. `yoqa-sim` is
+	 * already up from connect.
 	 */
 	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
 		void startHelpers();
@@ -530,6 +530,7 @@ export async function createIosDirectSession(
 
 /** `yoqa-sim`'s MJPEG preview as the session's live stream; null when it printed none. */
 function liveStream(running: YoqaSim | null): LiveStream | null {
-	if (!running?.stream) return null;
-	return { ready: true, port: Number(new URL(running.stream).port), upstreamUrl: running.stream };
+	if (!running?.streamUrl) return null;
+	const { streamUrl } = running;
+	return { ready: true, port: Number(new URL(streamUrl).port), upstreamUrl: streamUrl };
 }

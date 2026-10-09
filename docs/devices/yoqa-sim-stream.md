@@ -16,6 +16,7 @@ Ticket [#241](https://github.com/Aris-ngoy/qa-agent/issues/241) (spec [#233](htt
 - **Spawned at connect, not on first use.**
   - The Inspector picks Stream or Poll once, from the connect response (`streamReady`). So the session has to know about `stream_ready` before connect returns.
   - When `device-sim` is opted in, the lane now awaits `yoqa-sim` at connect: about 370 ms on an iPhone 17 Pro simulator. Start-up is still paid once per session.
+  - Worst case, a `yoqa-sim` that hangs before `api_ready` holds connect for its 10 s ready timeout, plus 500 ms for `stream_ready`, before the lane falls back to idb_companion. That applies to every opted-in session, with or without an Inspector.
   - `yoqa-ax` stays lazy (first screen or action).
   - Rejected: keeping the spawn lazy and having the Inspector switch from Poll to Stream when a later status says `streamReady`. That needs Inspector changes and starts every session on Poll.
 - **No stream means Poll.**
@@ -33,7 +34,7 @@ Ticket [#241](https://github.com/Aris-ngoy/qa-agent/issues/241) (spec [#233](htt
   - `main.swift` prints `stream_ready`.
   - Tests: one part per new frame until the client leaves, the heartbeat resend, a 503 with no framebuffer, streamed serialization, and the `stream_ready` line from the real binary.
 - `services/runner/src/domains/devices/`
-  - `yoqa-sim.ts`: `YoqaSim.stream`, read from `stream_ready` (`streamReadyTimeoutMs`, 500 ms by default).
+  - `yoqa-sim.ts`: `YoqaSim.streamUrl`, read from `stream_ready` (`streamReadyTimeoutMs`, 500 ms by default). The ready timeout covers `api_ready` only.
   - `ios-direct-lane.ts`: spawns `yoqa-sim` at connect and sets `session.stream`. The stream is cleared on fallback and on quit.
   - Tests: the client parses or misses `stream_ready`, the lane reports the stream or none, and a crash takes the stream away. The Lane contract harness's fake has a stream.
 
@@ -54,4 +55,4 @@ Ticket [#241](https://github.com/Aris-ngoy/qa-agent/issues/241) (spec [#233](htt
 ## Follow-ups
 
 - `device-sim` still needs idb_companion for `describe`, typing and lifecycle, so it can't open without it. Promotion (#245) needs the benchmark on a machine that has it installed.
-- The Inspector doesn't fall back from Stream to Poll mid-session when the stream dies (an existing follow-up in [manual-inspector-mjpeg-stream.md](../desktop/manual-inspector-mjpeg-stream.md)).
+- The Inspector doesn't fall back from Stream to Poll mid-session when the stream dies (an existing follow-up in [manual-inspector-mjpeg-stream.md](../desktop/manual-inspector-mjpeg-stream.md)). `session.stream` is cleared only when the next frame read or action finds `yoqa-sim` unreachable, not when the process exits.

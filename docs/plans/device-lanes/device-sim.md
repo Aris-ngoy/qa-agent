@@ -32,7 +32,7 @@ A process the runner can spawn that prints `api_ready` and stays up. Resolve `Si
 The real server.
 
 - Link `CoreSimulator` and `SimulatorKit`. idb's `FBSimulatorControl` is the open reference for the IOSurface and HID calls. Write your own binary. Do not ship theirs, and do not open Argent's `simulator-server`.
-- Capture thread copies the simulator IOSurface into a quarter-scale JPEG ring buffer. `/screenshot` returns the latest frame. Age is one frame.
+- Capture thread copies the simulator IOSurface into a quarter-scale JPEG ring buffer. `/screenshot` returns the latest frame. Age is one frame. As built, it is one latest-frame store, not a ring ([#240](../../devices/yoqa-sim-framebuffer-hid.md)), and the MJPEG stream reads it at half scale ([#241](../../devices/yoqa-sim-stream.md)).
 - HID thread writes Down and Up. Default hold is 16 ms. Zero-length taps get dropped by `UIControl`. Do not wait for the app after Up.
 - Boot, install, launch, terminate stay `xcrun simctl` in the runner. This process does not own lifecycle.
 
