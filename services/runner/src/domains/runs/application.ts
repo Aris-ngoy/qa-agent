@@ -605,6 +605,8 @@ export async function executeRun(runId: string): Promise<void> {
 				status: anyFailed ? "errored" : "passed",
 				finishedAt,
 				error: null,
+				// A Lane can fall back mid-run (ADR-0004); keep its latest warning.
+				...(session ? { laneWarning: session.laneWarning ?? null } : {}),
 			})
 			.where(eq(runs.id, runId));
 	} catch (error) {
@@ -621,6 +623,7 @@ export async function executeRun(runId: string): Promise<void> {
 				status: "errored",
 				error: message,
 				finishedAt,
+				...(session ? { laneWarning: session.laneWarning ?? null } : {}),
 			})
 			.where(eq(runs.id, runId));
 

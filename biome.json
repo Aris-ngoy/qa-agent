@@ -11,6 +11,7 @@
 			"**/node_modules/**",
 			"**/.turbo/**",
 			"**/build/**",
+			"**/.build/**",
 			"**/view-transition-types.css",
 			"examples/expo-demo/**",
 			"apps/video/**"

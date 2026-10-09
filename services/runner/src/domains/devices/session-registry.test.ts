@@ -258,4 +258,32 @@ describe("openDeviceSession (lane dispatcher)", () => {
 			await session.quit();
 		});
 	});
+
+	test("a fallback a Lane reports after open shows on the session the caller holds", async () => {
+		let report: ((warning: string) => void) | undefined;
+		const direct: LaneFactory = async (opened) => {
+			report = opened.onLaneWarning;
+			return {
+				lane: "direct",
+				stream: null,
+				quit: async () => undefined,
+			} as unknown as DeviceSession;
+		};
+		const { factory: appium } = fakeLane();
+		const seen: string[] = [];
+		const session = await openDeviceSession(
+			{ ...options("dev-late-warning"), onLaneWarning: (warning) => seen.push(warning) },
+			{ appium, direct },
+		);
+		expect(session.laneWarning).toBeUndefined();
+
+		report?.("yoqa-sim failed mid-session; using idb_companion");
+		report?.("second fallback");
+
+		expect(session.laneWarning).toBe(
+			"yoqa-sim failed mid-session; using idb_companion; second fallback",
+		);
+		expect(seen).toEqual(["yoqa-sim failed mid-session; using idb_companion", "second fallback"]);
+		await session.quit();
+	});
 });
