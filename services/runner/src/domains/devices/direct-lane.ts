@@ -1,4 +1,5 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
+import { startAndroidDevtools } from "./android-devtools";
 import { createAndroidDirectSession } from "./android-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
 import type { LaneFactory } from "./lane";
@@ -47,7 +48,9 @@ export function createDirectLane(
 		for (const [index, impl] of order.entries()) {
 			try {
 				const session = await impl.open(options);
-				return warnings.length > 0 ? { ...session, laneWarning: warnings.join("; ") } : session;
+				if (warnings.length === 0) return session;
+				const laneWarning = [...warnings, session.laneWarning].filter(Boolean).join("; ");
+				return { ...session, laneWarning };
 			} catch (error) {
 				lastError = error;
 				const next = order[index + 1];
@@ -74,9 +77,14 @@ export function deviceClassFor(platform: DevicePlatform): DeviceClass {
 export const DIRECT_IMPLEMENTATIONS: Record<DeviceClass, DirectImplementation[]> = {
 	android: [
 		{
-			// adb with capture-frame served from a background `screencap` loop (#237).
+			// adb with capture-frame served from a background `screencap` loop (#237), and the
+			// tree from the instrumentation helper, else `uiautomator dump` (#238).
 			name: "device-android",
-			open: (options) => createAndroidDirectSession(options, { backgroundCapture: {} }),
+			open: (options) =>
+				createAndroidDirectSession(options, {
+					backgroundCapture: {},
+					devtools: (context) => startAndroidDevtools(context),
+				}),
 		},
 		{ name: "adb", promoted: true, open: (options) => createAndroidDirectSession(options) },
 	],

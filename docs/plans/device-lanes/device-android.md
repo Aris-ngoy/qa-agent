@@ -22,7 +22,7 @@ Test-only APK, package `yoqa.android.devtools`.
 
 - Install with `adb install -r -t`.
 - Drive with `am instrument`.
-- Dump the foreground window as JSON on stdout: `role`, `label`, `value`, `id`, `bounds` in 0.0–1.0, `enabled`.
+- Serve the foreground window as JSON over the forward (`GET /tree`), not on stdout: `role`, `label`, `value`, `id`, `bounds` in 0.0–1.0, `enabled`. One `am instrument` per session, not per read. Shipped in [android-instrumentation-tree](../../devices/android-instrumentation-tree.md).
 - One `adb forward` per serial. Remove it on disconnect.
 - `uiautomator dump` remains the fallback, not the session.
 

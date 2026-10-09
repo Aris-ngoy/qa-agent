@@ -7,6 +7,7 @@ import {
 	DEVICE,
 	type LaneHarness,
 	androidAdbLane,
+	androidDevtoolsLane,
 	androidLatestFrameLane,
 	appiumLane,
 	frameAfterTaps,
@@ -22,6 +23,7 @@ const LANES: Array<() => LaneHarness> = [
 	appiumLane,
 	androidAdbLane,
 	androidLatestFrameLane,
+	androidDevtoolsLane,
 	iosIdbLane,
 ];
 
