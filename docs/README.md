@@ -63,6 +63,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/yoqa-ax-connect.md](./devices/yoqa-ax-connect.md) | `yoqa-ax` runs inside the simulator and connects back to the runner over a Unix socket; `ping` (opt-in) |
 | [devices/yoqa-sim-framebuffer-hid.md](./devices/yoqa-sim-framebuffer-hid.md) | `yoqa-sim` reads the framebuffer and sends Indigo HID touches: tap, swipe, Home (opt-in) |
 | [devices/yoqa-sim-spawn.md](./devices/yoqa-sim-spawn.md) | `device-sim`: the resident `yoqa-sim` process, spawned per simulator, serving screenshots (opt-in) |
+| [devices/yoqa-sim-stream.md](./devices/yoqa-sim-stream.md) | `yoqa-sim` serves an MJPEG live stream that the Inspector shows through `/stream.mjpeg` (opt-in) |
 | [devices/android-instrumentation-tree.md](./devices/android-instrumentation-tree.md) | `device-android`: Screen from the `yoqa.android.devtools` helper, `uiautomator dump` fallback (opt-in) |
 | [devices/android-direct-tree-settle.md](./devices/android-direct-tree-settle.md) | Direct system-wide tree, Settle, vs-Argent gate |
 | [devices/hybrid-screen-arm.md](./devices/hybrid-screen-arm.md) | Screenshot + tree every Agent step as a benchmark arm |

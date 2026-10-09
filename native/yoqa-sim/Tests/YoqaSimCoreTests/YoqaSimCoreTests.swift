@@ -73,7 +73,8 @@ final class FakeDevice: TouchDevice {
 final class RoutingTests: XCTestCase {
     private let status = Status(udid: "B750", simulatorKit: "/X/SimulatorKit.framework")
     private let device = FakeDevice()
-    private lazy var controller = Controller(status: status, device: device, frames: FrameStore(source: ShadeSource()), sleep: { _ in })
+    private let frames = FrameStore(source: ShadeSource())
+    private lazy var controller = Controller(status: status, device: device, frames: frames, sleep: { _ in })
 
     private func respond(_ raw: String) -> Response {
         controller.handle(HTTPRequest.parse(Data(raw.utf8)))
@@ -158,6 +159,66 @@ final class RoutingTests: XCTestCase {
     func testUnknownIs404AndGarbageIs400() {
         XCTAssertEqual(respond("GET /nope HTTP/1.1\r\n\r\n").status, 404)
         XCTAssertEqual(respond("garbage").status, 400)
+    }
+
+    /// Feeds the stream to a client that keeps reading while `keep` says so; returns its parts.
+    private func readStream(_ response: Response, keep: @escaping ([Data]) -> Bool) throws -> [Data] {
+        let stream = try XCTUnwrap(response.stream)
+        var parts: [Data] = []
+        let ended = expectation(description: "stream ended")
+        DispatchQueue.global().async {
+            stream { part in
+                parts.append(part)
+                return keep(parts)
+            }
+            ended.fulfill()
+        }
+        wait(for: [ended], timeout: 5)
+        return parts
+    }
+
+    private func isJPEGPart(_ part: Data) -> Bool {
+        let head = "--yoqa-frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+        guard part.starts(with: Data(head.utf8)), let end = part.range(of: Data("\r\n\r\n".utf8)) else { return false }
+        let length = Int(String(decoding: part[part.startIndex + head.utf8.count ..< end.lowerBound], as: UTF8.self))
+        let jpeg = part[end.upperBound...].dropLast(2)
+        return length == jpeg.count && Array(jpeg.prefix(2)) == [0xFF, 0xD8] && part.suffix(2) == Data("\r\n".utf8)
+    }
+
+    func testTheStreamSendsAJPEGPartForEachNewFrameUntilTheClientLeaves() throws {
+        controller.streamHeartbeat = 30
+        let response = respond("GET /stream.mjpeg HTTP/1.1\r\n\r\n")
+        XCTAssertEqual(response.status, 200)
+        XCTAssertEqual(response.contentType, "multipart/x-mixed-replace; boundary=yoqa-frame")
+        let parts = try readStream(response) { [frames] parts in
+            if parts.count == 1 { frames.frameArrived() }
+            return parts.count < 2
+        }
+        XCTAssertEqual(parts.count, 2)
+        XCTAssertTrue(parts.allSatisfy(isJPEGPart))
+    }
+
+    func testAnUnchangedScreenIsResentAtTheHeartbeat() throws {
+        controller.streamHeartbeat = 0.02
+        let parts = try readStream(respond("GET /stream.mjpeg HTTP/1.1\r\n\r\n")) { $0.count < 3 }
+        XCTAssertEqual(parts.count, 3)
+        XCTAssertEqual(parts[2], parts[0])
+    }
+
+    func testNoFramebufferIsNoStream() {
+        final class Empty: FrameSource { func currentImage() -> CGImage? { nil } }
+        let blank = Controller(status: status, device: device, frames: FrameStore(source: Empty()), sleep: { _ in })
+        let response = blank.handle(HTTPRequest.parse(Data("GET /stream.mjpeg HTTP/1.1\r\n\r\n".utf8)))
+        XCTAssertEqual(response.status, 503)
+        XCTAssertNil(response.stream)
+    }
+
+    func testAStreamedResponseHasNoContentLength() {
+        let streamed = Response(status: 200, contentType: "multipart/x-mixed-replace; boundary=b", body: Data(), stream: { _ in })
+        XCTAssertEqual(
+            String(decoding: streamed.serialized(), as: UTF8.self),
+            "HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=b\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n"
+        )
     }
 
     func testSerializedResponse() {

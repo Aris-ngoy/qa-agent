@@ -8,6 +8,7 @@ import {
 	type CapturedFrame,
 	DeadSessionError,
 	type DeviceSession,
+	type LiveStream,
 	type PointerPhase,
 	type ScreenRecording,
 	type SessionOptions,
@@ -49,9 +50,10 @@ export type IosDirectDeps = {
 	/** When companion screenshot fails (“no active display”), use simctl. */
 	screenshotFallback?: (udid: string) => Promise<Uint8Array>;
 	/**
-	 * Serve screenshots from `yoqa-sim` (the `device-sim` implementation). It is spawned on
-	 * the first screen or action and killed on quit. When it can't start, the session keeps
-	 * idb_companion and says so in its Lane warning.
+	 * Serve screenshots, input and the live stream from `yoqa-sim` (the `device-sim`
+	 * implementation). It is spawned at connect, so the session can report its stream, and
+	 * killed on quit. When it can't start, the session keeps idb_companion, has no stream,
+	 * and says so in its Lane warning.
 	 */
 	yoqaSim?: SpawnYoqaSim;
 	/**
@@ -223,12 +225,14 @@ export async function createIosDirectSession(
 	/** One `yoqa-sim` per session, spawned on first use; null once it failed. */
 	let yoqaSim: Promise<YoqaSim | null> | null = null;
 	let quitting = false;
-	const yoqaSimFailed = (error: unknown) =>
+	const yoqaSimFailed = (error: unknown) => {
+		session.stream = null;
 		reportLaneFallback(
 			session,
 			options,
 			`yoqa-sim failed; using idb_companion for the rest of the session (${errorMessage(error)})`,
 		);
+	};
 	const ensureYoqaSim = (): Promise<YoqaSim | null> => {
 		const spawn = deps.yoqaSim;
 		if (!spawn || quitting) return Promise.resolve(null);
@@ -477,6 +481,7 @@ export async function createIosDirectSession(
 		stream: null,
 		quit: async () => {
 			quitting = true;
+			session.stream = null;
 			const [running, ax] = await Promise.all([yoqaSim, yoqaAx]);
 			yoqaSim = null;
 			yoqaAx = null;
@@ -519,5 +524,12 @@ export async function createIosDirectSession(
 		},
 		isPointerActive: () => lock.isPointerActive(),
 	};
+	if (deps.yoqaSim) session.stream = liveStream(await ensureYoqaSim());
 	return session;
+}
+
+/** `yoqa-sim`'s MJPEG preview as the session's live stream; null when it printed none. */
+function liveStream(running: YoqaSim | null): LiveStream | null {
+	if (!running?.stream) return null;
+	return { ready: true, port: Number(new URL(running.stream).port), upstreamUrl: running.stream };
 }
