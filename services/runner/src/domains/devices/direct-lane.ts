@@ -9,6 +9,7 @@ import {
 	directImplementationOrder,
 	directOptIn,
 } from "./select-lane";
+import { type StartYoqaAx, resolveYoqaAxBin, startYoqaAx } from "./yoqa-ax";
 import { resolveYoqaSimBin, spawnYoqaSim } from "./yoqa-sim";
 
 /** One way the Direct lane drives a device class (e.g. adb, or a faster `device-android`). */
@@ -91,14 +92,22 @@ export const DIRECT_IMPLEMENTATIONS: Record<DeviceClass, DirectImplementation[]>
 	],
 	"ios-simulator": [
 		{
-			// idb_companion, with screenshots from our resident `yoqa-sim` (#239).
+			// idb_companion, with frames and input from our resident `yoqa-sim` (#239, #240), and
+			// `yoqa-ax` connected inside the simulator (#242). Without `yoqa-ax` it runs degraded.
 			name: "device-sim",
 			open: async (options) => {
 				const bin = resolveYoqaSimBin();
 				if (!bin)
 					throw new Error("yoqa-sim is not built (native/yoqa-sim) and YOQA_SIM_BIN is unset");
+				const axBin = resolveYoqaAxBin();
+				const yoqaAx: StartYoqaAx = axBin
+					? (udid) => startYoqaAx(udid, { bin: axBin })
+					: async () => {
+							throw new Error("yoqa-ax is not built (native/yoqa-ax) and YOQA_AX_BIN is unset");
+						};
 				return createIosDirectSession(options, {
 					yoqaSim: (udid) => spawnYoqaSim(udid, { command: [bin] }),
+					yoqaAx,
 				});
 			},
 		},

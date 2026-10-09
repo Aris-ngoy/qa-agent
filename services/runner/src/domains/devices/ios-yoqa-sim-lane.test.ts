@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { encodeRgbaPng } from "../runs/coord-grid";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
+import type { StartYoqaAx, YoqaAx } from "./yoqa-ax";
 import { type SpawnYoqaSim, type YoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
 const UDID = "B75001FB-B91D-4F94-80A7-3E371A641D27";
@@ -34,6 +35,7 @@ function fakeIdb(): IdbExec {
 			);
 		}
 		if (args[0] === "screenshot") return ok("", IDB_FRAME);
+		if (args[1] === "describe-all") return ok("[]");
 		return ok();
 	};
 }
@@ -269,6 +271,95 @@ describe("iOS-simulator Direct lane: device-sim", () => {
 			["tap", 0.9, 0.9, undefined],
 		]);
 		expect(session.laneWarning).toBeUndefined();
+		await session.quit();
+	});
+});
+
+/**
+ * A faked `yoqa-ax` starter. `never` stands for a helper that doesn't connect: its start
+ * rejects after `connectMs`, as `startYoqaAx` does at its 10 s timeout.
+ */
+function fakeAx(options: { never?: boolean; connectMs?: number } = {}) {
+	const started: string[] = [];
+	let running = 0;
+	const start: StartYoqaAx = async (udid) => {
+		started.push(udid);
+		await Bun.sleep(options.connectMs ?? 5);
+		if (options.never) {
+			throw new Error(`yoqa-ax did not connect within ${options.connectMs ?? 5} ms`);
+		}
+		running += 1;
+		let stopped = false;
+		const ax: YoqaAx = {
+			ping: async () => "ok",
+			stop: async () => {
+				if (stopped) return;
+				stopped = true;
+				running -= 1;
+			},
+		};
+		return ax;
+	};
+	return { start, started, running: () => running };
+}
+
+describe("iOS-simulator Direct lane: device-sim with yoqa-ax", () => {
+	async function openWithAx(ax: ReturnType<typeof fakeAx>, onLaneWarning?: (w: string) => void) {
+		return createIosDirectSession(
+			{ platform: "ios", deviceId: UDID, appCaps: [], caseCaps: [], onLaneWarning },
+			{ idb: fakeIdb(), yoqaSim: fakeSims().spawn, yoqaAx: ax.start },
+		);
+	}
+
+	test("starts one yoqa-ax on first use, and quit stops it", async () => {
+		const ax = fakeAx();
+		const session = await openWithAx(ax);
+		expect(ax.started).toEqual([]);
+
+		await Promise.all([session.captureFrame(), session.tap(500, 500)]);
+		await Bun.sleep(20);
+		expect(ax.started).toEqual([UDID]);
+		expect(ax.running()).toBe(1);
+
+		await session.quit();
+		await session.quit();
+		expect(ax.running()).toBe(0);
+		expect(session.laneWarning).toBeUndefined();
+	});
+
+	test("quit while yoqa-ax is still connecting stops it once it is up", async () => {
+		const ax = fakeAx({ connectMs: 30 });
+		const session = await openWithAx(ax);
+		await session.captureFrame();
+		await session.quit();
+		await Bun.sleep(50);
+		expect(ax.running()).toBe(0);
+	});
+
+	test("a tap never waits for yoqa-ax to connect", async () => {
+		const ax = fakeAx({ connectMs: 2_000 });
+		const session = await openWithAx(ax);
+		const started = performance.now();
+		await session.tap(500, 500);
+		expect(performance.now() - started).toBeLessThan(500);
+		await session.quit();
+	});
+
+	test("a yoqa-ax that never connects leaves the session usable and marked degraded", async () => {
+		const ax = fakeAx({ never: true, connectMs: 40 });
+		const warnings: string[] = [];
+		const session = await openWithAx(ax, (warning) => warnings.push(warning));
+
+		await session.tap(500, 500);
+		expect(session.laneWarning).toBeUndefined();
+		await Bun.sleep(60);
+
+		expect(session.laneWarning).toMatch(/degraded.*yoqa-ax did not connect within 40 ms/);
+		expect(warnings).toEqual([session.laneWarning ?? ""]);
+		expect((await session.captureFrame()).base64).toBe(base64(SIM_FRAME));
+		await session.tap(100, 100);
+		expect(JSON.parse(await session.pageSource())).toBeDefined();
+		expect(ax.started).toEqual([UDID]);
 		await session.quit();
 	});
 });
