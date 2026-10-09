@@ -28,6 +28,8 @@ public final class Controller {
     private let sleep: (Double) -> Void
     private let hid = DispatchQueue(label: "yoqa-sim.hid", qos: .userInteractive)
     public var onShutdown: () -> Void = { exit(0) }
+    /// An unchanged screen is sent again this often, so the stream finds a client that left.
+    public var streamHeartbeat: TimeInterval = 1
 
     public init(status: Status, device: TouchDevice, frames: FrameStore, sleep: @escaping (Double) -> Void = { usleep(useconds_t($0 * 1000)) }) {
         self.status = status
@@ -43,6 +45,8 @@ public final class Controller {
             return .json(200, ["udid": status.udid, "simulatorKit": status.simulatorKit])
         case ("GET", "/screenshot"):
             return screenshot(request.query)
+        case ("GET", "/stream.mjpeg"):
+            return stream(request.query)
         case ("GET", "/display"):
             let size = device.pixelSize
             return .json(200, [
@@ -90,6 +94,46 @@ public final class Controller {
             body: frame.data,
             headers: ["X-Frame-Hash": frame.hash, "X-Frame-Seq": String(frame.sequence)]
         )
+    }
+
+    /// The live preview for the Inspector: MJPEG, one JPEG part per new frame, at most
+    /// `streamFPS` a second. The agent never reads it.
+    private func stream(_ query: [String: String]) -> Response {
+        let scale = Double(query["scale"] ?? "") ?? Self.streamScale
+        guard scale > 0, scale <= 1 else { return .error(400, "scale must be in (0, 1]") }
+        guard let first = frames.frame(scale: scale, format: .jpeg) else {
+            return .error(503, "the display has no framebuffer yet")
+        }
+        let frames = frames
+        let heartbeat = streamHeartbeat
+        return Response(
+            status: 200,
+            contentType: "multipart/x-mixed-replace; boundary=\(Self.streamBoundary)",
+            body: Data(),
+            stream: { write in
+                var frame = first
+                while write(Self.mjpegPart(frame.data)) {
+                    let sentAt = Date()
+                    frames.waitForFrame(after: frame.sequence, timeout: heartbeat)
+                    let early = 1 / Self.streamFPS - Date().timeIntervalSince(sentAt)
+                    if early > 0 { usleep(useconds_t(early * 1_000_000)) }
+                    guard let next = frames.frame(scale: scale, format: .jpeg) else { return }
+                    frame = next
+                }
+            }
+        )
+    }
+
+    static let streamBoundary = "yoqa-frame"
+    /// Half size: sharp enough for the Inspector, a quarter of the full frame's pixels.
+    static let streamScale = 0.5
+    static let streamFPS = 30.0
+
+    private static func mjpegPart(_ jpeg: Data) -> Data {
+        var part = Data("--\(streamBoundary)\r\nContent-Type: image/jpeg\r\nContent-Length: \(jpeg.count)\r\n\r\n".utf8)
+        part.append(jpeg)
+        part.append(Data("\r\n".utf8))
+        return part
     }
 
     private func perform(_ plan: [TouchStep]) -> Response {

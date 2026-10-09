@@ -52,7 +52,7 @@ type FakeSims = {
 	refuseNext: () => void;
 };
 
-function fakeSims(options: { failSpawn?: boolean } = {}): FakeSims {
+function fakeSims(options: { failSpawn?: boolean; noStream?: boolean } = {}): FakeSims {
 	const spawned: string[] = [];
 	let running = 0;
 	let crashed = false;
@@ -73,6 +73,7 @@ function fakeSims(options: { failSpawn?: boolean } = {}): FakeSims {
 		let stopped = false;
 		const sim: YoqaSim = {
 			url: "http://127.0.0.1:50123",
+			stream: options.noStream ? null : "http://127.0.0.1:50123/stream.mjpeg",
 			frame: async () => {
 				alive();
 				return { bytes: SIM_FRAME, mime: "image/png", hash: "c0ffee" };
@@ -129,10 +130,10 @@ function base64(bytes: Uint8Array): string {
 }
 
 describe("iOS-simulator Direct lane: device-sim", () => {
-	test("spawns one yoqa-sim on first use and serves frames from it", async () => {
+	test("spawns one yoqa-sim at connect and serves frames from it", async () => {
 		const sims = fakeSims();
 		const session = await open(sims);
-		expect(sims.spawned).toEqual([]);
+		expect(sims.spawned).toEqual([UDID]);
 
 		const frames = await Promise.all([session.captureFrame(), session.captureFrame()]);
 
@@ -141,26 +142,41 @@ describe("iOS-simulator Direct lane: device-sim", () => {
 		await session.quit();
 	});
 
-	test("the first action spawns it too, and quit kills it", async () => {
+	test("quit kills it", async () => {
 		const sims = fakeSims();
 		const session = await open(sims);
 		await session.tap(500, 500);
-		await Bun.sleep(20);
-		expect(sims.spawned).toEqual([UDID]);
 		expect(sims.running()).toBe(1);
 
 		await session.quit();
 		await session.quit();
 		expect(sims.running()).toBe(0);
+		expect(session.stream).toBeNull();
 	});
 
-	test("quit while it is still starting kills it once it is up", async () => {
+	test("reports yoqa-sim's MJPEG feed as the session's live stream", async () => {
+		const session = await open(fakeSims());
+		expect(session.stream).toEqual({
+			ready: true,
+			port: 50123,
+			upstreamUrl: "http://127.0.0.1:50123/stream.mjpeg",
+		});
+		await session.quit();
+	});
+
+	test("a yoqa-sim that printed no stream_ready reports no stream, and still serves frames", async () => {
+		const session = await open(fakeSims({ noStream: true }));
+		expect(session.stream).toBeNull();
+		expect((await session.captureFrame()).base64).toBe(base64(SIM_FRAME));
+		await session.quit();
+	});
+
+	test("a yoqa-sim that dies mid-session takes its stream with it", async () => {
 		const sims = fakeSims();
 		const session = await open(sims);
-		const frame = session.captureFrame();
-		await session.quit();
-		await frame.catch(() => undefined);
-		expect(sims.running()).toBe(0);
+		sims.crash();
+		await session.captureFrame();
+		expect(session.stream).toBeNull();
 	});
 
 	test("when yoqa-sim can't start, frames come from idb_companion and the session says so", async () => {
@@ -171,10 +187,12 @@ describe("iOS-simulator Direct lane: device-sim", () => {
 		expect((await session.captureFrame()).base64).toBe(base64(IDB_FRAME));
 		expect(sims.spawned).toEqual([UDID]);
 		expect(session.laneWarning).toMatch(/yoqa-sim failed.*api_ready/);
+		expect(session.stream).toBeNull();
 	});
 
-	test("without device-sim, nothing is spawned", async () => {
+	test("without device-sim, nothing is spawned and there is no stream", async () => {
 		const session = await open();
+		expect(session.stream).toBeNull();
 		expect((await session.captureFrame()).base64).toBe(base64(IDB_FRAME));
 		await session.quit();
 	});

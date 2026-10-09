@@ -4,7 +4,7 @@ Resident macOS binary. One process per booted simulator. Owns the framebuffer an
 
 Start after the Android Direct implementation exists. Can run in parallel with `device-ios`.
 
-Spawn from the runner on the first `screen` or `action` for that UDID. Keep it for the session. Kill it on disconnect.
+Spawn from the runner when the session connects, so the connect response can report the live stream ([#241](../../devices/yoqa-sim-stream.md)). Keep it for the session. Kill it on disconnect.
 
 ```text
 yoqa-sim ios --id <udid> [--device-set <path>]
@@ -44,6 +44,7 @@ Control API:
 | POST | `/swipe` | `fromX`, `fromY`, `toX`, `toY`, `durationMs` default 200 | Down, moves, Up |
 | POST | `/key` | `key` | `home` only: a swipe up from the bottom edge. Button messages aren't handled by current runtimes ([#240](../../devices/yoqa-sim-framebuffer-hid.md)) |
 | GET | `/screenshot` | `scale` default 0.25, `format` `jpeg` (default) or `png` | Latest frame, not a fresh capture; `X-Frame-Hash` identifies its pixels. The Lane reads `scale=1&format=png` |
+| GET | `/stream.mjpeg` | `scale` default 0.5 | MJPEG for the Inspector: one JPEG part per new frame, at most 30 fps, the latest frame again every second while idle ([#241](../../devices/yoqa-sim-stream.md)) |
 | GET | `/display` | | Width, height, scale, orientation |
 | POST | `/shutdown` | | Exit |
 

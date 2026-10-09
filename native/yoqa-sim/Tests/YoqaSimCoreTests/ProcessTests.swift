@@ -31,6 +31,7 @@ final class ProcessTests: XCTestCase {
         let line = try XCTUnwrap(readLine(stdout.fileHandleForReading))
         XCTAssertNotNil(line.range(of: #"^api_ready http://127\.0\.0\.1:\d+$"#, options: .regularExpression), line)
         let base = String(line.dropFirst("api_ready ".count))
+        XCTAssertEqual(readLine(stdout.fileHandleForReading), "stream_ready \(base)/stream.mjpeg")
 
         let display = try JSONSerialization.jsonObject(with: try fetch("\(base)/display").0) as? [String: Any]
         XCTAssertGreaterThan(display?["width"] as? Int ?? 0, 0)

@@ -223,6 +223,7 @@ function iosLane(name: string, withYoqaSim = false): LaneHarness {
 	};
 	const yoqaSim: SpawnYoqaSim = async () => ({
 		url: "http://127.0.0.1:50123",
+		stream: "http://127.0.0.1:50123/stream.mjpeg",
 		frame: async () => {
 			alive();
 			return { bytes: devicePng(taps.length), mime: "image/png", hash: `taps-${taps.length}` };

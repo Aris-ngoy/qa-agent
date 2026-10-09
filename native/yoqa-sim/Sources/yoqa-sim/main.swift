@@ -3,7 +3,8 @@ import SimBridge
 import YoqaSimCore
 
 // Resident process for one booted iOS simulator (see docs/plans/device-lanes/device-sim.md).
-// Prints `api_ready http://127.0.0.1:<port>` once it serves, then nothing. It exits when
+// Prints `api_ready http://127.0.0.1:<port>` once it serves, then
+// `stream_ready http://127.0.0.1:<port>/stream.mjpeg` for the Inspector's live preview, then nothing. It exits when
 // stdin closes, so it never outlives the runner that spawned it.
 
 // A client that hangs up mid-response must not kill the process.
@@ -52,6 +53,7 @@ do {
 server.serve(controller.handle)
 
 FileHandle.standardOutput.write(Data("api_ready http://127.0.0.1:\(server.port)\n".utf8))
+FileHandle.standardOutput.write(Data("stream_ready http://127.0.0.1:\(server.port)/stream.mjpeg\n".utf8))
 
 // The lifeline: the runner holds our stdin open for the session.
 while !FileHandle.standardInput.availableData.isEmpty {}

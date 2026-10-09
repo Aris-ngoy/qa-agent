@@ -4,12 +4,13 @@ import { type YoqaSimProcess, YoqaSimUnreachableError, spawnYoqaSim } from "./yo
 const UDID = "B75001FB-B91D-4F94-80A7-3E371A641D27";
 const FRAME = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
 
-type Mode = "ok" | "exit" | "silent";
+type Mode = "ok" | "no-stream" | "exit" | "silent";
 
 /**
  * Stands in for the `yoqa-sim` process at its wire protocol: it prints `api_ready` for a
- * real loopback server that serves `/screenshot`, and stops serving when killed.
- * `exit` dies before `api_ready`; `silent` never prints it.
+ * real loopback server that serves `/screenshot`, then `stream_ready`, and stops serving
+ * when killed. `no-stream` prints no `stream_ready`; `exit` dies before `api_ready`;
+ * `silent` never prints it.
  */
 function fakeYoqaSim(mode: Mode = "ok") {
 	const launched: string[][] = [];
@@ -47,7 +48,7 @@ function fakeYoqaSim(mode: Mode = "ok") {
 		if (mode === "exit") {
 			err.enqueue(encoder.encode("SimulatorKit not found under /Applications/Xcode.app\n"));
 			die(3);
-		} else if (mode === "ok") {
+		} else if (mode === "ok" || mode === "no-stream") {
 			server = Bun.serve({
 				port: 0,
 				hostname: "127.0.0.1",
@@ -70,6 +71,9 @@ function fakeYoqaSim(mode: Mode = "ok") {
 			servers.push(server);
 			out.enqueue(encoder.encode("starting\n"));
 			out.enqueue(encoder.encode(`api_ready http://127.0.0.1:${server.port}\n`));
+			if (mode === "ok") {
+				out.enqueue(encoder.encode(`stream_ready http://127.0.0.1:${server.port}/stream.mjpeg\n`));
+			}
 		}
 		return {
 			stdout,
@@ -116,6 +120,27 @@ describe("spawnYoqaSim", () => {
 			{ method: "GET", path: "/screenshot?scale=1&format=png", body: null },
 		]);
 		expect(fake.launched).toEqual([["/opt/yoqa-sim", "ios", "--id", UDID]]);
+		await sim.stop();
+	});
+
+	test("reads the live stream URL from its stream_ready line", async () => {
+		fake = fakeYoqaSim();
+		const sim = await spawnYoqaSim(UDID, { command: ["/opt/yoqa-sim"], spawn: fake.spawn });
+		expect(sim.stream).toBe(`${sim.url}/stream.mjpeg`);
+		await sim.stop();
+	});
+
+	test("has no stream when stream_ready doesn't follow api_ready", async () => {
+		fake = fakeYoqaSim("no-stream");
+		const started = performance.now();
+		const sim = await spawnYoqaSim(UDID, {
+			command: ["/opt/yoqa-sim"],
+			spawn: fake.spawn,
+			streamReadyTimeoutMs: 50,
+		});
+		expect(sim.stream).toBeNull();
+		expect(performance.now() - started).toBeLessThan(1000);
+		expect(await sim.frame()).toMatchObject({ hash: "9f2c00aa" });
 		await sim.stop();
 	});
 
