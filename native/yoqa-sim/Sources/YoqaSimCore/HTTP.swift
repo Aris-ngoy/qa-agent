@@ -35,12 +35,16 @@ public struct Response {
     public var contentType: String
     public var body: Data
     public var headers: [String: String]
+    /// A body sent in parts after the head, for as long as it likes: each `write` returns
+    /// false once the client is gone. The response then has no `Content-Length`.
+    public var stream: ((_ write: (Data) -> Bool) -> Void)?
 
-    public init(status: Int, contentType: String, body: Data, headers: [String: String] = [:]) {
+    public init(status: Int, contentType: String, body: Data, headers: [String: String] = [:], stream: ((_ write: (Data) -> Bool) -> Void)? = nil) {
         self.status = status
         self.contentType = contentType
         self.body = body
         self.headers = headers
+        self.stream = stream
     }
 
     static func json(_ status: Int, _ object: [String: Any]) -> Response {
@@ -59,7 +63,7 @@ public struct Response {
         var data = Data((
             "HTTP/1.1 \(status) \(Self.reasons[status] ?? "Status")\r\n" +
             "Content-Type: \(contentType)\r\n" +
-            "Content-Length: \(body.count)\r\n" +
+            (stream == nil ? "Content-Length: \(body.count)\r\n" : "Cache-Control: no-cache\r\n") +
             extra +
             "Connection: close\r\n\r\n"
         ).utf8)

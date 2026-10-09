@@ -1,7 +1,8 @@
 /**
  * `yoqa-sim` (source in `native/yoqa-sim`): our resident macOS process for one booted
  * iOS simulator. The iOS-simulator Direct lane spawns it on first use and kills it on quit.
- * It binds loopback only and announces itself with `api_ready http://127.0.0.1:<port>`.
+ * It binds loopback only and announces itself with `api_ready http://127.0.0.1:<port>`, then
+ * `stream_ready http://127.0.0.1:<port>/stream.mjpeg` for the Inspector's live preview.
  */
 
 import { existsSync } from "node:fs";
@@ -27,6 +28,8 @@ export type YoqaSimKey = "home";
 export type YoqaSim = {
 	/** Its control API, from the `api_ready` line. */
 	url: string;
+	/** Its MJPEG preview, from the `stream_ready` line; null when it printed none. */
+	stream: string | null;
 	/** The latest frame, full size, as PNG. Not a fresh capture. */
 	frame: () => Promise<YoqaSimFrame>;
 	/** Down, hold (`holdMs`, 16 ms by default and never less), up. */
@@ -73,13 +76,17 @@ export type SpawnYoqaSimOptions = {
 	/** A non-default CoreSimulator device set (`--device-set`). */
 	deviceSet?: string;
 	readyTimeoutMs?: number;
+	/** How long to wait for `stream_ready` after `api_ready` before going on without a stream. */
+	streamReadyTimeoutMs?: number;
 	spawn?: (command: string[]) => YoqaSimProcess;
 };
 
 const READY_TIMEOUT_MS = 10_000;
+const STREAM_READY_TIMEOUT_MS = 500;
 const REQUEST_TIMEOUT_MS = 10_000;
 const STOP_GRACE_MS = 2_000;
 const API_READY_RE = /^api_ready (http:\/\/127\.0\.0\.1:\d+)\s*$/;
+const STREAM_READY_RE = /^stream_ready (http:\/\/127\.0\.0\.1:\d+\/\S+)\s*$/;
 
 /** `YOQA_SIM_BIN`, else the binary built from `native/yoqa-sim`, else null. */
 export function resolveYoqaSimBin(): string | null {
@@ -93,27 +100,45 @@ export function resolveYoqaSimBin(): string | null {
 	return null;
 }
 
-/** Resolve on the first `api_ready` line, then keep draining stdout so the pipe never fills. */
-async function readApiReady(stdout: ReadableStream<Uint8Array>): Promise<string | null> {
-	const reader = stdout.getReader();
-	const decoder = new TextDecoder();
-	let buffered = "";
-	while (true) {
-		const { value, done } = await reader.read();
-		if (done) return null;
-		buffered += decoder.decode(value, { stream: true });
-		const lines = buffered.split("\n");
-		buffered = lines.pop() ?? "";
-		for (const line of lines) {
-			const url = line.match(API_READY_RE)?.[1];
-			if (url) {
-				void (async () => {
-					while (!(await reader.read()).done) {}
-				})().catch(() => undefined);
-				return url;
+type Announced = { url: string; stream: string | null };
+
+/**
+ * Resolve on the first `api_ready` line, with the `stream_ready` line when it follows within
+ * `streamTimeoutMs`; null when stdout ends first. Stdout keeps draining, so the pipe never fills.
+ */
+function readAnnouncements(
+	stdout: ReadableStream<Uint8Array>,
+	streamTimeoutMs: number,
+): Promise<Announced | null> {
+	return new Promise((resolve) => {
+		let url: string | null = null;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const finish = (stream: string | null) => {
+			clearTimeout(timer);
+			resolve(url ? { url, stream } : null);
+		};
+		void (async () => {
+			const reader = stdout.getReader();
+			const decoder = new TextDecoder();
+			let buffered = "";
+			while (true) {
+				const { value, done } = await reader.read();
+				if (done) return finish(null);
+				buffered += decoder.decode(value, { stream: true });
+				const lines = buffered.split("\n");
+				buffered = lines.pop() ?? "";
+				for (const line of lines) {
+					if (!url) {
+						url = line.match(API_READY_RE)?.[1] ?? null;
+						if (url) timer = setTimeout(() => finish(null), streamTimeoutMs);
+						continue;
+					}
+					const stream = line.match(STREAM_READY_RE)?.[1];
+					if (stream) finish(stream);
+				}
 			}
-		}
-	}
+		})().catch(() => finish(null));
+	});
 }
 
 /** Spawn `yoqa-sim ios --id <udid>` and wait for its `api_ready` line. */
@@ -141,24 +166,25 @@ export async function spawnYoqaSim(udid: string, options: SpawnYoqaSimOptions): 
 
 	const timeoutMs = options.readyTimeoutMs ?? READY_TIMEOUT_MS;
 	let timer: ReturnType<typeof setTimeout> | undefined;
-	const url = await Promise.race([
-		readApiReady(proc.stdout),
+	const announced = await Promise.race([
+		readAnnouncements(proc.stdout, options.streamReadyTimeoutMs ?? STREAM_READY_TIMEOUT_MS),
 		new Promise<"timeout">((resolve) => {
 			timer = setTimeout(() => resolve("timeout"), timeoutMs);
 		}),
 	]).finally(() => clearTimeout(timer));
 
-	if (url === "timeout") {
+	if (announced === "timeout") {
 		await stop();
 		throw new Error(`yoqa-sim printed no api_ready within ${timeoutMs} ms`);
 	}
-	if (!url) {
+	if (!announced) {
 		const code = await proc.exited;
 		const detail = (await stderr).trim().split("\n").slice(-3).join(" ");
 		stopped = true;
 		throw new Error(`yoqa-sim exited (${code}) before api_ready${detail ? `: ${detail}` : ""}`);
 	}
 
+	const { url, stream } = announced;
 	const send = (path: string, body?: Record<string, unknown>) =>
 		fetch(`${url}${path}`, {
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -187,6 +213,7 @@ export async function spawnYoqaSim(udid: string, options: SpawnYoqaSimOptions): 
 
 	return {
 		url,
+		stream,
 		frame: async () => {
 			const response = await request("screenshot", "/screenshot?scale=1&format=png");
 			const hash = response.headers.get("x-frame-hash");

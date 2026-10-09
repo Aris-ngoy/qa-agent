@@ -43,7 +43,8 @@ public final class FrameStore {
     }
 
     private let source: FrameSource
-    private let lock = NSLock()
+    /// Guards the fields below; signalled when a frame arrives.
+    private let lock = NSCondition()
     private var sequence: UInt64 = 1
     private var entry: Entry?
     private var lastRead: [Key: Date] = [Key(scale: preview.scale, format: preview.format): .distantFuture]
@@ -62,6 +63,7 @@ public final class FrameStore {
         sequence += 1
         let schedule = !warmPending
         warmPending = true
+        lock.broadcast()
         lock.unlock()
         guard schedule else { return }
         warmQueue.async { [weak self] in
@@ -73,6 +75,14 @@ public final class FrameStore {
             self.lock.unlock()
             for key in keys { _ = self.encoded(key, markRead: false) }
         }
+    }
+
+    /// Blocks until a frame newer than `sequence` arrives, or `timeout` passes.
+    public func waitForFrame(after sequence: UInt64, timeout: TimeInterval) {
+        let deadline = Date().addingTimeInterval(timeout)
+        lock.lock()
+        while self.sequence <= sequence, lock.wait(until: deadline) {}
+        lock.unlock()
     }
 
     /// Blocks until queued warm-ups are done (for tests).

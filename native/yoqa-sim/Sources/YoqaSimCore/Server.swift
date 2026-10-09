@@ -11,6 +11,9 @@ public struct SocketError: Error, CustomStringConvertible {
 /// How long a connection may take to send its request head.
 private let requestTimeoutSeconds = 5
 
+/// How long a write may block on a client that stopped reading, before it is dropped.
+private let writeTimeoutSeconds = 5
+
 /// A blocking HTTP listener on 127.0.0.1 only, one request per connection.
 public final class LoopbackServer {
     public let port: UInt16
@@ -53,10 +56,13 @@ public final class LoopbackServer {
                 setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout<Int32>.size))
                 var timeout = timeval(tv_sec: requestTimeoutSeconds, tv_usec: 0)
                 setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+                var writeTimeout = timeval(tv_sec: writeTimeoutSeconds, tv_usec: 0)
+                setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &writeTimeout, socklen_t(MemoryLayout<timeval>.size))
                 queue.async {
                     defer { close(client) }
                     let response = handle(HTTPRequest.parse(readRequest(client)))
-                    writeAll(client, response.serialized())
+                    guard writeAll(client, response.serialized()), let stream = response.stream else { return }
+                    stream { writeAll(client, $0) }
                 }
             }
         }
@@ -80,15 +86,17 @@ private func readRequest(_ fd: Int32) -> Data {
     return data
 }
 
-private func writeAll(_ fd: Int32, _ data: Data) {
+/// False when the client is gone (or stopped reading for `writeTimeoutSeconds`).
+private func writeAll(_ fd: Int32, _ data: Data) -> Bool {
     data.withUnsafeBytes { raw in
-        guard var pointer = raw.baseAddress else { return }
+        guard var pointer = raw.baseAddress else { return true }
         var remaining = raw.count
         while remaining > 0 {
             let written = write(fd, pointer, remaining)
-            if written <= 0 { return }
+            if written <= 0 { return false }
             pointer += written
             remaining -= written
         }
+        return true
     }
 }
