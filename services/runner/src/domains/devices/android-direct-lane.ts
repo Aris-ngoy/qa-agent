@@ -169,19 +169,6 @@ export async function createAndroidDirectSession(
 	let lastAppId = options.appPackage;
 	let pointerStart: { x: number; y: number } | null = null;
 
-	/** When the last command that can change the screen finished (`performance.now()`). */
-	let lastInputAt = 0;
-	const readShell = async (args: string[], label: string) =>
-		requireOk(await adb(["-s", serial, "shell", ...args]), label);
-	const shell = async (args: string[], label: string) => {
-		try {
-			return await readShell(args, label);
-		} finally {
-			lastInputAt = performance.now();
-			frameLoop?.kick();
-		}
-	};
-
 	const grabFrame = async () => {
 		const result = await requireOk(
 			await adb(["-s", serial, "exec-out", "screencap", "-p"]),
@@ -197,6 +184,20 @@ export async function createAndroidDirectSession(
 	const frameLoop = deps.backgroundCapture
 		? createFrameLoop(grabFrame, { idleMs: deps.backgroundCapture.idleMs })
 		: null;
+
+	/** When the last command that can change the screen finished (`performance.now()`). */
+	let lastInputAt = 0;
+	const readShell = async (args: string[], label: string) =>
+		requireOk(await adb(["-s", serial, "shell", ...args]), label);
+	const shell = async (args: string[], label: string) => {
+		try {
+			return await readShell(args, label);
+		} finally {
+			lastInputAt = performance.now();
+			frameLoop?.kick();
+		}
+	};
+
 	const captureFrame = frameLoop ? () => frameLoop.read(lastInputAt) : grabFrame;
 
 	const screenshot = async () => {

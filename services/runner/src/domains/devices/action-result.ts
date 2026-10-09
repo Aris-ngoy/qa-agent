@@ -36,7 +36,8 @@ function frameHash(base64: string): string {
  * The first frame is taken immediately (no lead-in). An animating screen never settles;
  * the latest frame is returned with `settled: false`. A frame with `capturedAt` (from a
  * background capture) is timed by when it was captured, so the same capture read twice
- * proves nothing.
+ * proves nothing. A source gives `capturedAt` on every frame or on none: it is on the
+ * source's clock, not the settle clock.
  */
 export async function settleScreen(
 	capture: () => Promise<{ base64: string; capturedAt?: number }>,

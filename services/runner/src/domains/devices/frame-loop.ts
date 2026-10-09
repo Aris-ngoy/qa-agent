@@ -31,10 +31,10 @@ export type FrameLoop = {
  */
 export function createFrameLoop(
 	capture: () => Promise<CapturedFrame>,
-	options: { idleMs?: number; now?: () => number } = {},
+	options: { idleMs?: number } = {},
 ): FrameLoop {
 	const idleMs = options.idleMs ?? 2000;
-	const now = options.now ?? (() => performance.now());
+	const now = () => performance.now();
 	let latest: CapturedFrame | null = null;
 	let fatal: unknown = null;
 	let running = false;
@@ -57,8 +57,11 @@ export function createFrameLoop(
 		for (const w of all) w.reject(error);
 	};
 
-	/** One capture. Resolves false when it failed and the caller should back off. */
-	const captureOnce = async (): Promise<boolean> => {
+	/**
+	 * One capture. Resolves false when it failed and the caller should back off. Only the
+	 * loop's own failures fail waiting reads; a failed kick leaves them to the loop.
+	 */
+	const captureOnce = async (failWaiters: boolean): Promise<boolean> => {
 		const startedAt = now();
 		try {
 			const frame = await capture();
@@ -72,7 +75,7 @@ export function createFrameLoop(
 		} catch (error) {
 			if (fatal) return true;
 			if (isDeadSessionError(error)) fatal = error;
-			rejectWaiters(error);
+			if (fatal || failWaiters) rejectWaiters(error);
 			return false;
 		}
 	};
@@ -80,7 +83,7 @@ export function createFrameLoop(
 	const run = async () => {
 		running = true;
 		while (!fatal && (waiters.length > 0 || now() - lastRead < idleMs)) {
-			if (!(await captureOnce()) && !fatal) await Bun.sleep(RETRY_AFTER_ERROR_MS);
+			if (!(await captureOnce(true)) && !fatal) await Bun.sleep(RETRY_AFTER_ERROR_MS);
 		}
 		running = false;
 	};
@@ -99,7 +102,7 @@ export function createFrameLoop(
 		kick: () => {
 			if (fatal || !running || kicked) return;
 			kicked = true;
-			void captureOnce().finally(() => {
+			void captureOnce(false).finally(() => {
 				kicked = false;
 			});
 		},
