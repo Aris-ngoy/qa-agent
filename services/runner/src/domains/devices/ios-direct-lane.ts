@@ -5,6 +5,7 @@ import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { requireIdbBins } from "./idb-companion";
 import {
+	type CapturedFrame,
 	DeadSessionError,
 	type DeviceSession,
 	type PointerPhase,
@@ -17,7 +18,7 @@ import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { cleanPageSource } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
-import type { SpawnYoqaSim, YoqaSim } from "./yoqa-sim";
+import { type SpawnYoqaSim, type YoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
 const IOS_ACCEPT_LABELS = ["Allow While Using App", "Allow Once", "Allow", "OK"] as const;
 const IOS_DISMISS_LABELS = ["Don't Allow", "Don’t Allow", "Don't allow"] as const;
@@ -229,23 +230,34 @@ export async function createIosDirectSession(
 		});
 		return yoqaSim;
 	};
-	/** A frame from `yoqa-sim`; if it fails, stop it and let idb_companion take over. */
-	const captureViaYoqaSim = async (running: YoqaSim): Promise<Uint8Array | null> => {
+	/**
+	 * Run `use` on `yoqa-sim`, or return null when there is none. When it can't be reached,
+	 * stop it and return null, so the caller does the same with idb_companion for the rest of
+	 * the session. Any other failure may already have touched the screen, so a gesture
+	 * (`retryable: false`) rethrows it instead of being sent twice; a frame read retries.
+	 */
+	const viaYoqaSim = async <T>(
+		use: (running: YoqaSim) => Promise<T>,
+		retryable = false,
+	): Promise<{ value: T } | null> => {
+		const running = await ensureYoqaSim();
+		if (!running) return null;
 		try {
-			const bytes = await running.screenshot();
-			if (bytes.byteLength === 0) throw new Error("empty frame");
-			return bytes;
+			return { value: await use(running) };
 		} catch (error) {
+			if (!retryable && !(error instanceof YoqaSimUnreachableError)) throw error;
 			yoqaSimFailed(error);
 			yoqaSim = Promise.resolve(null);
 			await running.stop().catch(() => undefined);
 			return null;
 		}
 	};
+	/** 0–1000 to the 0.0–1.0 `yoqa-sim` takes; the conversion happens here, at the Lane's edge. */
+	const fraction = (norm: number) => Math.min(1, Math.max(0, norm / 1000));
 
 	/**
-	 * Run an action under the lock. The first one also starts `yoqa-sim`, without waiting
-	 * for it, so input never waits on a spawn.
+	 * Run an action under the lock. The first one also starts `yoqa-sim`; gestures then wait
+	 * for it to be up (once per session), while other actions go on with idb_companion.
 	 */
 	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
 		void ensureYoqaSim();
@@ -270,12 +282,17 @@ export async function createIosDirectSession(
 		return bytes;
 	};
 
-	const captureFrame = async () => {
-		const running = await ensureYoqaSim();
-		const bytes = (running && (await captureViaYoqaSim(running))) ?? (await captureViaIdb());
+	const captureFrame = async (): Promise<CapturedFrame> => {
+		const fromYoqaSim = await viaYoqaSim(async (running) => {
+			const frame = await running.frame();
+			if (frame.bytes.byteLength === 0) throw new Error("empty frame");
+			return frame;
+		}, true);
+		const bytes = fromYoqaSim?.value.bytes ?? (await captureViaIdb());
 		const base64 = Buffer.from(bytes).toString("base64");
 		lastShotSize = pngSizeFromBase64(base64) ?? lastShotSize;
-		return { base64, mime: "image/png" as const };
+		const hash = fromYoqaSim?.value.hash;
+		return { base64, mime: "image/png", ...(hash ? { hash } : {}) };
 	};
 
 	const screenshot = async () => {
@@ -311,15 +328,58 @@ export async function createIosDirectSession(
 		await run(["ui", "tap", String(x), String(y), "--udid", udid, "--api", "hid"], "idb ui tap");
 	};
 
+	/** A tap at 0–1000. Both coordinate spaces are the full screen, so fractions need no size. */
+	const tapNorm = async (
+		xNorm: number,
+		yNorm: number,
+		tapOptions?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
+	) => {
+		const sent = await viaYoqaSim((running) =>
+			running.tap(fraction(xNorm), fraction(yNorm), tapOptions?.durationMs),
+		);
+		if (sent) return;
+		const size = await pointerSize(tapOptions?.coordSpace);
+		await tapPx(toPx(xNorm, size.width), toPx(yNorm, size.height));
+	};
+
+	const swipeNorm = async (
+		x1: number,
+		y1: number,
+		x2: number,
+		y2: number,
+		durationMs: number | undefined,
+		coordSpace?: "window" | "screenshot",
+	) => {
+		const sent = await viaYoqaSim((running) =>
+			running.swipe(
+				{ x: fraction(x1), y: fraction(y1) },
+				{ x: fraction(x2), y: fraction(y2) },
+				durationMs,
+			),
+		);
+		if (sent) return;
+		const size = await pointerSize(coordSpace);
+		await run(
+			[
+				"ui",
+				"swipe",
+				String(toPx(x1, size.width)),
+				String(toPx(y1, size.height)),
+				String(toPx(x2, size.width)),
+				String(toPx(y2, size.height)),
+				"--udid",
+				udid,
+			],
+			"idb ui swipe",
+		);
+	};
+
 	const tap = async (
 		xNorm: number,
 		yNorm: number,
 		tapOptions?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
 	) => {
-		await withActionLock(async () => {
-			const size = await pointerSize(tapOptions?.coordSpace);
-			await tapPx(toPx(xNorm, size.width), toPx(yNorm, size.height));
-		});
+		await withActionLock(() => tapNorm(xNorm, yNorm, tapOptions));
 	};
 
 	const swipe = async (
@@ -327,25 +387,10 @@ export async function createIosDirectSession(
 		y1: number,
 		x2: number,
 		y2: number,
-		_durationMs = 400,
+		durationMs = 400,
 		swipeOptions?: { coordSpace?: "window" | "screenshot" },
 	) => {
-		await withActionLock(async () => {
-			const size = await pointerSize(swipeOptions?.coordSpace);
-			await run(
-				[
-					"ui",
-					"swipe",
-					String(toPx(x1, size.width)),
-					String(toPx(y1, size.height)),
-					String(toPx(x2, size.width)),
-					String(toPx(y2, size.height)),
-					"--udid",
-					udid,
-				],
-				"idb ui swipe",
-			);
-		});
+		await withActionLock(() => swipeNorm(x1, y1, x2, y2, durationMs, swipeOptions?.coordSpace));
 	};
 
 	const type = async (text: string) => {
@@ -369,7 +414,8 @@ export async function createIosDirectSession(
 
 	const backgroundApp = async (seconds = 3) => {
 		await withActionLock(async () => {
-			await run(["ui", "button", "HOME", "--udid", udid], "idb HOME");
+			const pressed = await viaYoqaSim((running) => running.key("home"));
+			if (!pressed) await run(["ui", "button", "HOME", "--udid", udid], "idb HOME");
 			await Bun.sleep(Math.max(0, seconds) * 1000);
 			if (lastAppId) {
 				await run(["launch", lastAppId, "--udid", udid], "idb launch");
@@ -393,10 +439,7 @@ export async function createIosDirectSession(
 		if (!hit) {
 			throw new Error(`No ${action} alert button in the idb Screen`);
 		}
-		await tapPx(
-			toPx(hit.x + hit.width / 2, window.width),
-			toPx(hit.y + hit.height / 2, window.height),
-		);
+		await tapNorm(hit.x + hit.width / 2, hit.y + hit.height / 2);
 	};
 
 	const session: DeviceSession = {
@@ -425,28 +468,22 @@ export async function createIosDirectSession(
 		dismissAlert: () => withActionLock(() => resolveAlert("dismiss")),
 		withActionLock,
 		pointerEvent: async (phase: PointerPhase, xNorm: number, yNorm: number) => {
-			const size = await pointerSize("screenshot");
-			const x = toPx(xNorm, size.width);
-			const y = toPx(yNorm, size.height);
 			if (phase === "begin") {
-				pointerStart = { x, y };
+				pointerStart = { x: xNorm, y: yNorm };
 				lock.setPointerActive(true);
 				return;
 			}
 			if (phase === "move") {
-				pointerStart = pointerStart ?? { x, y };
+				pointerStart = pointerStart ?? { x: xNorm, y: yNorm };
 				return;
 			}
-			const start = pointerStart ?? { x, y };
+			const start = pointerStart ?? { x: xNorm, y: yNorm };
 			pointerStart = null;
 			lock.setPointerActive(false);
-			if (start.x === x && start.y === y) {
-				await tapPx(x, y);
+			if (start.x === xNorm && start.y === yNorm) {
+				await tapNorm(xNorm, yNorm, { coordSpace: "screenshot" });
 			} else {
-				await run(
-					["ui", "swipe", String(start.x), String(start.y), String(x), String(y), "--udid", udid],
-					"idb ui swipe",
-				);
+				await swipeNorm(start.x, start.y, xNorm, yNorm, undefined, "screenshot");
 			}
 		},
 		isPointerActive: () => lock.isPointerActive(),

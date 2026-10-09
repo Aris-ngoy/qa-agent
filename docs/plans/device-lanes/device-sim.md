@@ -42,8 +42,8 @@ Control API:
 | --- | --- | --- | --- |
 | POST | `/tap` | `x`, `y` in 0.0–1.0, optional `holdMs` default 16 | Down, hold, Up |
 | POST | `/swipe` | `fromX`, `fromY`, `toX`, `toY`, `durationMs` default 200 | Down, moves, Up |
-| POST | `/key` | `key` | Hardware key: home, volume |
-| GET | `/screenshot` | `scale` default 0.25 | Latest JPEG, not a fresh capture |
+| POST | `/key` | `key` | `home` only: a swipe up from the bottom edge. Button messages aren't handled by current runtimes ([#240](../../devices/yoqa-sim-framebuffer-hid.md)) |
+| GET | `/screenshot` | `scale` default 0.25, `format` `jpeg` (default) or `png` | Latest frame, not a fresh capture; `X-Frame-Hash` identifies its pixels. The Lane reads `scale=1&format=png` |
 | GET | `/display` | | Width, height, scale, orientation |
 | POST | `/shutdown` | | Exit |
 

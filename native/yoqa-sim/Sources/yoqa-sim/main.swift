@@ -1,4 +1,5 @@
 import Foundation
+import SimBridge
 import YoqaSimCore
 
 // Resident process for one booted iOS simulator (see docs/plans/device-lanes/device-sim.md).
@@ -30,19 +31,25 @@ guard let simulatorKit = SimulatorKit.resolve(developerDir: developerDir, exists
     fail("SimulatorKit.framework not found for the Xcode at \(developerDir)")
 }
 
+let simulator: YSSimulator
+do {
+    simulator = try YSSimulator(udid: arguments.udid, deviceSet: arguments.deviceSet, developerDir: developerDir, simulatorKit: simulatorKit)
+} catch {
+    fail(error.localizedDescription)
+}
+
+let device = SimulatorDevice(simulator)
+let frames = FrameStore(source: device)
+simulator.observeFrames { frames.frameArrived() }
+let controller = Controller(status: Status(udid: arguments.udid, simulatorKit: simulatorKit), device: device, frames: frames)
+
 let server: LoopbackServer
 do {
     server = try LoopbackServer()
 } catch {
     fail(String(describing: error))
 }
-
-let status = Status(udid: arguments.udid, simulatorKit: simulatorKit)
-server.serve { request in
-    route(request, status: status) {
-        try simctlScreenshot(udid: arguments.udid, deviceSet: arguments.deviceSet)
-    }
-}
+server.serve(controller.handle)
 
 FileHandle.standardOutput.write(Data("api_ready http://127.0.0.1:\(server.port)\n".utf8))
 

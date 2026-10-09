@@ -55,7 +55,7 @@ public final class LoopbackServer {
                 setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
                 queue.async {
                     defer { close(client) }
-                    let response = handle(HTTPRequest.parse(readHead(client)))
+                    let response = handle(HTTPRequest.parse(readRequest(client)))
                     writeAll(client, response.serialized())
                 }
             }
@@ -63,16 +63,21 @@ public final class LoopbackServer {
     }
 }
 
-private func readHead(_ fd: Int32) -> Data {
-    var head = Data()
+/// The request head, then its body up to `Content-Length` (bodies are small JSON).
+private func readRequest(_ fd: Int32) -> Data {
+    var data = Data()
     var buffer = [UInt8](repeating: 0, count: 4096)
     let end = Data("\r\n\r\n".utf8)
-    while head.count < 65_536, head.range(of: end) == nil {
+    while data.count < 65_536 {
+        if let headEnd = data.range(of: end) {
+            let length = min(HTTPRequest.contentLength(ofHead: data[..<headEnd.lowerBound]), 65_536)
+            if data.count - headEnd.upperBound >= length { break }
+        }
         let count = read(fd, &buffer, buffer.count)
         if count <= 0 { break }
-        head.append(buffer, count: count)
+        data.append(buffer, count: count)
     }
-    return head
+    return data
 }
 
 private func writeAll(_ fd: Int32, _ data: Data) {

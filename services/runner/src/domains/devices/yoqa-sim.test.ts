@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type YoqaSimProcess, spawnYoqaSim } from "./yoqa-sim";
+import { type YoqaSimProcess, YoqaSimUnreachableError, spawnYoqaSim } from "./yoqa-sim";
 
 const UDID = "B75001FB-B91D-4F94-80A7-3E371A641D27";
 const FRAME = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
@@ -13,6 +13,7 @@ type Mode = "ok" | "exit" | "silent";
  */
 function fakeYoqaSim(mode: Mode = "ok") {
 	const launched: string[][] = [];
+	const requests: Array<{ method: string; path: string; body: unknown }> = [];
 	const servers: Array<ReturnType<typeof Bun.serve>> = [];
 	let kills = 0;
 	const spawn = (command: string[]): YoqaSimProcess => {
@@ -50,10 +51,21 @@ function fakeYoqaSim(mode: Mode = "ok") {
 			server = Bun.serve({
 				port: 0,
 				hostname: "127.0.0.1",
-				fetch: (request) =>
-					new URL(request.url).pathname === "/screenshot"
-						? new Response(FRAME, { headers: { "content-type": "image/png" } })
-						: new Response("not found", { status: 404 }),
+				fetch: async (request) => {
+					const url = new URL(request.url);
+					const body = request.method === "POST" ? await request.json() : null;
+					requests.push({ method: request.method, path: `${url.pathname}${url.search}`, body });
+					if (url.pathname === "/screenshot") {
+						return new Response(FRAME, {
+							headers: { "content-type": "image/png", "x-frame-hash": "9f2c00aa" },
+						});
+					}
+					if (url.pathname === "/key" && (body as { key?: string }).key !== "home") {
+						return Response.json({ error: "unsupported key volume-up" }, { status: 400 });
+					}
+					if (["/tap", "/swipe", "/key"].includes(url.pathname)) return Response.json({ ok: true });
+					return new Response("not found", { status: 404 });
+				},
 			});
 			servers.push(server);
 			out.enqueue(encoder.encode("starting\n"));
@@ -72,6 +84,7 @@ function fakeYoqaSim(mode: Mode = "ok") {
 	return {
 		spawn,
 		launched,
+		requests,
 		kills: () => kills,
 		close: () => {
 			for (const server of servers) server.stop(true);
@@ -98,7 +111,10 @@ describe("spawnYoqaSim", () => {
 		const sim = await spawnYoqaSim(UDID, { command: ["/opt/yoqa-sim"], spawn: fake.spawn });
 
 		expect(sim.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
-		expect(await sim.screenshot()).toEqual(FRAME);
+		expect(await sim.frame()).toEqual({ bytes: FRAME, mime: "image/png", hash: "9f2c00aa" });
+		expect(fake.requests).toEqual([
+			{ method: "GET", path: "/screenshot?scale=1&format=png", body: null },
+		]);
 		expect(fake.launched).toEqual([["/opt/yoqa-sim", "ios", "--id", UDID]]);
 		await sim.stop();
 	});
@@ -138,5 +154,41 @@ describe("spawnYoqaSim", () => {
 			spawnYoqaSim(UDID, { command: ["/opt/yoqa-sim"], spawn: fake.spawn, readyTimeoutMs: 200 }),
 		).rejects.toThrow(/no api_ready within 200 ms/);
 		expect(fake.kills()).toBe(1);
+	});
+
+	test("sends taps, swipes and keys in 0.0–1.0, and waits for each to finish", async () => {
+		fake = fakeYoqaSim();
+		const sim = await spawnYoqaSim(UDID, { command: ["/opt/yoqa-sim"], spawn: fake.spawn });
+		await sim.tap(0.25, 0.5);
+		await sim.tap(0.25, 0.5, 600);
+		await sim.swipe({ x: 0.5, y: 0.9 }, { x: 0.5, y: 0.1 }, 300);
+		await sim.key("home");
+		expect(fake.requests).toEqual([
+			{ method: "POST", path: "/tap", body: { x: 0.25, y: 0.5 } },
+			{ method: "POST", path: "/tap", body: { x: 0.25, y: 0.5, holdMs: 600 } },
+			{
+				method: "POST",
+				path: "/swipe",
+				body: { fromX: 0.5, fromY: 0.9, toX: 0.5, toY: 0.1, durationMs: 300 },
+			},
+			{ method: "POST", path: "/key", body: { key: "home" } },
+		]);
+		await sim.stop();
+	});
+
+	test("a refused command rejects with yoqa-sim's reason", async () => {
+		fake = fakeYoqaSim();
+		const sim = await spawnYoqaSim(UDID, { command: ["/opt/yoqa-sim"], spawn: fake.spawn });
+		await expect(sim.key("volume-up" as "home")).rejects.toThrow(/key: 400 .*unsupported key/);
+		await sim.stop();
+	});
+
+	test("a yoqa-sim that can't be reached is reported as unreachable, so the call is safe to redo", async () => {
+		fake = fakeYoqaSim();
+		const sim = await spawnYoqaSim(UDID, { command: ["/opt/yoqa-sim"], spawn: fake.spawn });
+		fake.close();
+		const error = await sim.tap(0.5, 0.5).catch((caught: unknown) => caught);
+		expect(error).toBeInstanceOf(YoqaSimUnreachableError);
+		await sim.stop();
 	});
 });

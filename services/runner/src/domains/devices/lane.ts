@@ -32,6 +32,11 @@ export type CapturedFrame = {
 	 * frames from a background capture. Absent when the frame was captured for this call.
 	 */
 	capturedAt?: number;
+	/**
+	 * Identifies the frame's pixels, for a Lane whose frame source reports one (`yoqa-sim`).
+	 * Equal hashes mean an unchanged screen, so a reader can reuse what it derived from it.
+	 */
+	hash?: string;
 };
 
 export type PointerPhase = "begin" | "move" | "end";
