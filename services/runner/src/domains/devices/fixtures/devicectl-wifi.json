@@ -1,0 +1,266 @@
+{
+	"info": {
+		"arguments": ["devicectl", "list", "devices", "--json-output"],
+		"outcome": "success"
+	},
+	"result": {
+		"devices": [
+			{
+				"connectionProperties": {
+					"authenticationType": "manualPairing",
+					"isMobileDeviceOnly": false,
+					"pairingState": "paired",
+					"transportType": "localNetwork",
+					"tunnelState": "disconnected",
+					"tunnelTransportProtocol": "tcp"
+				},
+				"deviceProperties": {
+					"bootState": "booted",
+					"ddiServicesAvailable": false,
+					"name": "Test’s Apple Watch"
+				},
+				"hardwareProperties": {
+					"deviceType": "appleWatch",
+					"platform": "watchOS",
+					"productType": "Watch7,20",
+					"udid": "00008310-0004E21A2600E01E"
+				},
+				"identifier": "E2D46D64-7F2B-59DC-9745-F81DB3F3A929",
+				"properties": {
+					"connection": {
+						"authenticationType": "manualPairing",
+						"pairingState": "paired",
+						"state": "disconnected",
+						"transportType": "localNetwork",
+						"tunnelTransportProtocol": "tcp"
+					},
+					"hardware": {
+						"deviceType": "appleWatch",
+						"platform": "watchOS",
+						"productType": "Watch7,20",
+						"udid": "00008310-0004E21A2600E01E"
+					},
+					"state": {
+						"bootState": "booted",
+						"name": "Test’s Apple Watch"
+					}
+				}
+			},
+			{
+				"connectionProperties": {
+					"authenticationType": "manualPairing",
+					"isMobileDeviceOnly": false,
+					"lastConnectionDate": "2026-10-09T10:46:00.000Z",
+					"pairingState": "paired",
+					"transportType": "localNetwork",
+					"tunnelState": "disconnected",
+					"tunnelTransportProtocol": "tcp"
+				},
+				"deviceProperties": {
+					"bootState": "booted",
+					"bootedFromSnapshot": true,
+					"ddiServicesAvailable": false,
+					"developerModeStatus": "enabled",
+					"hasInternalOSBuild": false,
+					"name": "Test’s iPhone",
+					"osBuildUpdate": "24A446",
+					"osVersionNumber": "27.0.1",
+					"rootFileSystemIsWritable": false,
+					"supportsCheckedAllocations": true
+				},
+				"hardwareProperties": {
+					"deviceType": "iPhone",
+					"hardwareModel": "V53AP",
+					"isProductionFused": true,
+					"marketingName": "iPhone 17 Pro",
+					"platform": "iOS",
+					"productType": "iPhone18,1",
+					"reality": "physical",
+					"supportedDeviceFamilies": [1],
+					"thinningProductType": "iPhone18,1",
+					"udid": "00008150-000504A22638401C"
+				},
+				"identifier": "A0FD1D4B-CED5-5EB5-907A-0A9B0997C802",
+				"properties": {
+					"connection": {
+						"authenticationType": "manualPairing",
+						"lastConnectionDate": 813235560,
+						"pairingState": "paired",
+						"state": "disconnected",
+						"transportType": "localNetwork",
+						"tunnelTransportProtocol": "tcp"
+					},
+					"hardware": {
+						"deviceType": "iPhone",
+						"hasActionButton": true,
+						"marketingName": "iPhone 17 Pro",
+						"platform": "iOS",
+						"productType": "iPhone18,1",
+						"reality": "physical",
+						"supportedBiometrics": ["faceID"],
+						"supportedDeviceFamilies": [1],
+						"supportsSiri": true,
+						"thinningProductType": "iPhone18,1",
+						"udid": "00008150-000504A22638401C"
+					},
+					"software": {
+						"osVersionNumber": {
+							"components": [27, 0, 1, 0, 0],
+							"originalComponentsCount": 3,
+							"stringValue": "27.0.1"
+						},
+						"supportsCheckedAllocations": true
+					},
+					"state": {
+						"bootState": "booted",
+						"developerModeStatus": {
+							"enabled": {
+								"mode": 1
+							}
+						},
+						"name": "Test’s iPhone"
+					}
+				}
+			},
+			{
+				"connectionProperties": {
+					"authenticationType": "manualPairing",
+					"isMobileDeviceOnly": false,
+					"lastConnectionDate": "2026-10-09T10:50:00.000Z",
+					"pairingState": "paired",
+					"transportType": "localNetwork",
+					"tunnelState": "connected",
+					"tunnelTransportProtocol": "tcp"
+				},
+				"deviceProperties": {
+					"bootState": "booted",
+					"bootedFromSnapshot": true,
+					"ddiServicesAvailable": true,
+					"developerModeStatus": "enabled",
+					"hasInternalOSBuild": false,
+					"name": "Test’s iPhone",
+					"osBuildUpdate": "24A446",
+					"osVersionNumber": "27.0.1",
+					"rootFileSystemIsWritable": false,
+					"supportsCheckedAllocations": false
+				},
+				"hardwareProperties": {
+					"deviceType": "iPhone",
+					"hardwareModel": "D37AP",
+					"isProductionFused": true,
+					"marketingName": "iPhone 15",
+					"platform": "iOS",
+					"productType": "iPhone15,4",
+					"reality": "physical",
+					"supportedDeviceFamilies": [1],
+					"thinningProductType": "iPhone15,4",
+					"udid": "00008120-000E6D813E2A601E"
+				},
+				"identifier": "D3F5A97A-F247-5023-BA5B-04314170DE61",
+				"properties": {
+					"connection": {
+						"authenticationType": "manualPairing",
+						"lastConnectionDate": 813235800,
+						"pairingState": "paired",
+						"state": "connected",
+						"transportType": "localNetwork",
+						"tunnelTransportProtocol": "tcp"
+					},
+					"hardware": {
+						"deviceType": "iPhone",
+						"hasActionButton": false,
+						"marketingName": "iPhone 15",
+						"platform": "iOS",
+						"productType": "iPhone15,4",
+						"reality": "physical",
+						"supportedBiometrics": ["faceID"],
+						"supportedDeviceFamilies": [1],
+						"supportsSiri": true,
+						"thinningProductType": "iPhone15,4",
+						"udid": "00008120-000E6D813E2A601E"
+					},
+					"software": {
+						"osVersionNumber": {
+							"components": [27, 0, 1, 0, 0],
+							"originalComponentsCount": 3,
+							"stringValue": "27.0.1"
+						},
+						"supportsCheckedAllocations": false
+					},
+					"state": {
+						"bootState": "booted",
+						"developerModeStatus": {
+							"enabled": {
+								"mode": 1
+							}
+						},
+						"name": "Test’s iPhone",
+						"preparednessState": 7
+					}
+				}
+			},
+			{
+				"connectionProperties": {
+					"authenticationType": "implicit",
+					"isMobileDeviceOnly": false,
+					"lastConnectionDate": "2026-10-09T10:50:51.000Z",
+					"pairingState": "paired",
+					"transportType": "sameMachine",
+					"tunnelState": "connected"
+				},
+				"deviceProperties": {
+					"bootState": "booted",
+					"ddiServicesAvailable": true,
+					"hasInternalOSBuild": false,
+					"name": "iPhone 17 Pro",
+					"osBuildUpdate": "23F77",
+					"osVersionNumber": "26.5",
+					"provider": "com.apple.CoreSimulator.SimulatorCoreDevicePlugin"
+				},
+				"hardwareProperties": {
+					"deviceType": "iPhone",
+					"hardwareModel": "V53",
+					"marketingName": "iPhone 17 Pro",
+					"platform": "iOS",
+					"productType": "iPhone18,1",
+					"reality": "simulated",
+					"udid": "B75001FB-B91D-4F94-80A7-3E371A641D27"
+				},
+				"identifier": "B75001FB-B91D-4F94-80A7-3E371A641D27",
+				"properties": {
+					"connection": {
+						"authenticationType": "implicit",
+						"lastConnectionDate": 813235851,
+						"pairingState": "paired",
+						"state": "connected",
+						"transportType": "sameMachine"
+					},
+					"hardware": {
+						"deviceType": "iPhone",
+						"hasActionButton": true,
+						"marketingName": "iPhone 17 Pro",
+						"platform": "iOS",
+						"productType": "iPhone18,1",
+						"reality": "simulated",
+						"supportedBiometrics": ["faceID"],
+						"supportsSiri": true,
+						"udid": "B75001FB-B91D-4F94-80A7-3E371A641D27"
+					},
+					"software": {
+						"osVersionNumber": {
+							"components": [26, 5, 0, 0, 0],
+							"originalComponentsCount": 2,
+							"stringValue": "26.5"
+						}
+					},
+					"state": {
+						"bootState": "booted",
+						"name": "iPhone 17 Pro",
+						"preparednessState": 15,
+						"visibilityClass": "simulators"
+					}
+				}
+			}
+		]
+	}
+}

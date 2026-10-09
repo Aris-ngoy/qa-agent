@@ -9,6 +9,7 @@ import {
 	matchAndroidAppiumIdentity,
 	parseAdbEmuAvdName,
 } from "./android-identity";
+import { parseDevicectlDevices } from "./devicectl";
 import type { ListDevicesOptions } from "./models";
 
 async function runCommand(
@@ -149,53 +150,6 @@ async function listIosSimulators(includeUnavailable: boolean): Promise<Device[]>
 	});
 }
 
-type DevicectlHardware = {
-	udid?: string;
-	marketingName?: string;
-	deviceType?: string;
-	platform?: string;
-	reality?: string;
-	productType?: string;
-};
-
-type DevicectlDeviceProperties = {
-	name?: string;
-	osVersionNumber?: string;
-};
-
-type DevicectlConnection = {
-	tunnelState?: string;
-	pairingState?: string;
-	transportType?: string;
-};
-
-type DevicectlDevice = {
-	hardwareProperties?: DevicectlHardware;
-	deviceProperties?: DevicectlDeviceProperties;
-	connectionProperties?: DevicectlConnection;
-	identifier?: string;
-};
-
-type DevicectlListJson = {
-	result?: {
-		devices?: DevicectlDevice[];
-	};
-};
-
-function isPhoneOrTablet(deviceType: string | undefined): boolean {
-	if (!deviceType) return false;
-	return /^(iPhone|iPad)$/i.test(deviceType);
-}
-
-function physicalIosState(connection: DevicectlConnection | undefined): string {
-	const tunnel = connection?.tunnelState?.toLowerCase() ?? "";
-	if (tunnel.includes("connected")) return "connected";
-	if (tunnel.includes("unavailable")) return "unavailable";
-	if (tunnel.includes("disconnected")) return "disconnected";
-	if (connection?.pairingState === "paired") return "paired";
-	return tunnel || connection?.pairingState || "unknown";
-}
-
 async function listIosPhysicalDevices(includeUnavailable: boolean): Promise<Device[]> {
 	const dir = await mkdtemp(join(tmpdir(), "yoqa-devices-"));
 	const jsonPath = join(dir, "devices.json");
@@ -210,41 +164,15 @@ async function listIosPhysicalDevices(includeUnavailable: boolean): Promise<Devi
 		]);
 		if (exitCode !== 0) return [];
 
-		let parsed: DevicectlListJson;
+		let parsed: unknown;
 		try {
-			parsed = JSON.parse(await readFile(jsonPath, "utf8")) as DevicectlListJson;
+			parsed = JSON.parse(await readFile(jsonPath, "utf8"));
 		} catch {
 			return [];
 		}
-
-		const devices: Device[] = [];
-		for (const item of parsed.result?.devices ?? []) {
-			const hardware = item.hardwareProperties;
-			const props = item.deviceProperties;
-			if (!hardware?.udid) continue;
-			if (hardware.reality && hardware.reality !== "physical") continue;
-			if (!isPhoneOrTablet(hardware.deviceType)) continue;
-			if (hardware.platform && !/^iOS$/i.test(hardware.platform)) continue;
-
-			const state = physicalIosState(item.connectionProperties);
-			if (!includeUnavailable && state === "unavailable") continue;
-
-			const modelName = hardware.marketingName ?? hardware.productType ?? "iPhone";
-			const owner = props?.name?.trim() || undefined;
-
-			devices.push({
-				id: hardware.udid,
-				name: modelName,
-				owner,
-				osVersion: formatIosVersion(props?.osVersionNumber ?? ""),
-				platform: "ios",
-				kind: "physical",
-				state,
-				model: hardware.productType,
-			});
-		}
-
-		return devices.sort((a, b) => a.name.localeCompare(b.name));
+		const devices = parseDevicectlDevices(parsed);
+		// Without unavailable devices, only targets remain: a cabled, connected phone.
+		return includeUnavailable ? devices : devices.filter((device) => !device.unavailableReason);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}

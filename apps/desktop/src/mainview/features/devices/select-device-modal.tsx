@@ -24,6 +24,8 @@ type DeviceRow = {
 	osVersion: string;
 	state?: string;
 	kind: "physical" | "simulator" | "emulator";
+	/** Listed but not a target (e.g. an iPhone paired over Wi-Fi only); shown instead of picking it. */
+	unavailableReason?: string;
 };
 
 type SelectDeviceModalProps = {
@@ -111,6 +113,7 @@ function toDeviceRow(device: Device): DeviceRow {
 		osVersion: device.osVersion,
 		state: device.state,
 		kind: device.kind,
+		unavailableReason: device.unavailableReason,
 	};
 }
 
@@ -150,7 +153,8 @@ function DeviceList({
 			{devices.map((device) => (
 				<li key={device.id}>
 					<button
-						className="flex w-full items-center justify-between gap-4 px-1 py-3.5 text-left transition-colors hover:bg-surface-container-low"
+						className="flex w-full items-center justify-between gap-4 px-1 py-3.5 text-left transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+						disabled={Boolean(device.unavailableReason)}
 						onClick={() => onSelect(device)}
 						type="button"
 					>
@@ -158,6 +162,11 @@ function DeviceList({
 							{device.name}
 							{device.owner ? (
 								<span className="font-normal text-on-surface-variant"> ({device.owner})</span>
+							) : null}
+							{device.unavailableReason ? (
+								<span className="block text-body-sm font-normal text-on-surface-variant">
+									{device.unavailableReason}
+								</span>
 							) : null}
 						</span>
 						<span className="shrink-0 text-right text-body-sm text-on-surface-variant">

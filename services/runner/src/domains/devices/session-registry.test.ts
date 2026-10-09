@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createDirectLane } from "./direct-lane";
 import type { DeviceSession, LaneFactory, SessionOptions } from "./lane";
 import { defaultLanesFor, openDeviceSession } from "./open-session";
 
@@ -146,5 +147,98 @@ describe("openDeviceSession (lane dispatcher)", () => {
 		const next = await openDeviceSession(options("dev-lane-5"), { appium: factory });
 		expect(created).toHaveLength(1);
 		await next.quit();
+	});
+
+	describe("Direct lane implementations", () => {
+		function directImpl(name: string, opts: { promoted?: boolean; fails?: boolean } = {}) {
+			const opened: string[] = [];
+			return {
+				opened,
+				impl: {
+					name,
+					promoted: opts.promoted,
+					open: async () => {
+						if (opts.fails) throw new Error(`${name} would not start`);
+						opened.push(name);
+						return {
+							lane: "direct",
+							stream: null,
+							quit: async () => undefined,
+						} as unknown as DeviceSession;
+					},
+				},
+			};
+		}
+
+		test("with no new implementation registered, the existing one opens the session", async () => {
+			const existing = directImpl("adb", { promoted: true });
+			const { factory: appium } = fakeLane();
+			const session = await openDeviceSession(options("dev-impl-1"), {
+				appium,
+				direct: createDirectLane([existing.impl]),
+			});
+			expect(existing.opened).toEqual(["adb"]);
+			expect(session.lane).toBe("direct");
+			expect(session.laneWarning).toBeUndefined();
+			await session.quit();
+		});
+
+		test("a registered new implementation is not used unless opted in", async () => {
+			const fresh = directImpl("device-android");
+			const existing = directImpl("adb", { promoted: true });
+			const { factory: appium } = fakeLane();
+			const session = await openDeviceSession(options("dev-impl-2"), {
+				appium,
+				direct: createDirectLane([fresh.impl, existing.impl]),
+			});
+			expect(fresh.opened).toEqual([]);
+			expect(existing.opened).toEqual(["adb"]);
+			await session.quit();
+		});
+
+		test("an opted-in new implementation opens the session on the Direct lane", async () => {
+			const fresh = directImpl("device-android");
+			const existing = directImpl("adb", { promoted: true });
+			const { factory: appium } = fakeLane();
+			const session = await openDeviceSession(options("dev-impl-3"), {
+				appium,
+				direct: createDirectLane([fresh.impl, existing.impl], "device-android"),
+			});
+			expect(fresh.opened).toEqual(["device-android"]);
+			expect(existing.opened).toEqual([]);
+			expect(session.lane).toBe("direct");
+			expect(session.laneWarning).toBeUndefined();
+			await session.quit();
+		});
+
+		test("a new implementation that fails to start falls back to the existing one, loudly", async () => {
+			const fresh = directImpl("device-android", { fails: true });
+			const existing = directImpl("adb", { promoted: true });
+			const { factory: appium, created } = fakeLane();
+			const session = await openDeviceSession(options("dev-impl-4"), {
+				appium,
+				direct: createDirectLane([fresh.impl, existing.impl], "device-android"),
+			});
+			expect(existing.opened).toEqual(["adb"]);
+			expect(created).toHaveLength(0);
+			expect(session.lane).toBe("direct");
+			expect(session.laneWarning).toMatch(/device-android failed to start; fell back to adb/);
+			await session.quit();
+		});
+
+		test("when both Direct implementations fail, Appium opens it and both warnings are kept", async () => {
+			const fresh = directImpl("device-android", { fails: true });
+			const existing = directImpl("adb", { promoted: true, fails: true });
+			const { factory: appium, created } = fakeLane();
+			const session = await openDeviceSession(options("dev-impl-5"), {
+				appium,
+				direct: createDirectLane([fresh.impl, existing.impl], "device-android"),
+			});
+			expect(created).toHaveLength(1);
+			expect(session.lane).toBe("appium");
+			expect(session.laneWarning).toMatch(/device-android failed to start; fell back to adb/);
+			expect(session.laneWarning).toMatch(/Direct lane failed to start; fell back to Appium/);
+			await session.quit();
+		});
 	});
 });
