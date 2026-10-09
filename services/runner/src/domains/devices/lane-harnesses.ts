@@ -4,7 +4,7 @@
  */
 import type { Browser } from "webdriverio";
 import { encodeRgbaPng } from "../runs/coord-grid";
-import type { AdbExec, AdbResult } from "./android-direct-lane";
+import type { AdbExec, AdbResult, AndroidDirectDeps } from "./android-direct-lane";
 import { createAndroidDirectSession } from "./android-direct-lane";
 import { createAppiumSession } from "./appium-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
@@ -29,9 +29,15 @@ export type LaneHarness = {
 	killTool: () => void;
 };
 
-function devicePng(): Uint8Array {
-	const rgba = new Uint8Array(DEVICE.width * DEVICE.height * 4).fill(255);
+/** The device's screen after `taps` taps: each tap darkens it, so a frame shows what it followed. */
+function devicePng(taps = 0): Uint8Array {
+	const rgba = new Uint8Array(DEVICE.width * DEVICE.height * 4).fill(Math.max(0, 255 - taps));
 	return new Uint8Array(encodeRgbaPng({ width: DEVICE.width, height: DEVICE.height, rgba }));
+}
+
+/** The frame a harness serves after `taps` taps, base64-encoded. */
+export function frameAfterTaps(taps: number): string {
+	return Buffer.from(devicePng(taps)).toString("base64");
 }
 
 const ANDROID_DUMP = `<?xml version="1.0"?><hierarchy><node class="android.widget.Button" text="${BUTTON.label}" clickable="true" enabled="true" bounds="[0,0][100,40]" /></hierarchy>`;
@@ -39,13 +45,12 @@ const ANDROID_DUMP = `<?xml version="1.0"?><hierarchy><node class="android.widge
 export function appiumLane(): LaneHarness {
 	const taps: Array<{ x: number; y: number }> = [];
 	let dead = false;
-	const png = Buffer.from(devicePng()).toString("base64");
 	const alive = <T>(value: T): Promise<T> =>
 		dead ? Promise.reject(new Error("invalid session id")) : Promise.resolve(value);
 	const browser = {
 		capabilities: { platformName: "Android" },
 		getWindowSize: () => alive({ ...DEVICE }),
-		takeScreenshot: () => alive(png),
+		takeScreenshot: () => alive(frameAfterTaps(taps.length)),
 		getPageSource: () => alive(ANDROID_DUMP),
 		execute: (command: string, params?: { x?: number; y?: number }) => {
 			if (!dead && command === "mobile: clickGesture" && params) {
@@ -77,10 +82,9 @@ export function appiumLane(): LaneHarness {
 	};
 }
 
-export function androidAdbLane(): LaneHarness {
+function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneHarness {
 	const taps: Array<{ x: number; y: number }> = [];
 	let dead = false;
-	const png = devicePng();
 	const ok = (stdout = "", stdoutBytes?: Uint8Array): AdbResult => ({
 		stdout,
 		stderr: "",
@@ -92,7 +96,7 @@ export function androidAdbLane(): LaneHarness {
 		const joined = args.join(" ");
 		if (joined.includes("get-state")) return ok("device\n");
 		if (joined.includes("wm size")) return ok(`Physical size: ${DEVICE.width}x${DEVICE.height}\n`);
-		if (joined.includes("screencap")) return ok("", png);
+		if (joined.includes("screencap")) return ok("", devicePng(taps.length));
 		if (joined.includes("uiautomator dump")) return ok("UI hierchary dumped\n");
 		if (joined.includes("cat") && joined.includes("yoqa-window.xml")) return ok(ANDROID_DUMP);
 		const tap = args.indexOf("tap");
@@ -102,7 +106,7 @@ export function androidAdbLane(): LaneHarness {
 		return ok();
 	};
 	return {
-		name: "Android Direct (faked adb)",
+		name,
 		open: ({ onSessionDead }) =>
 			createAndroidDirectSession(
 				{
@@ -112,7 +116,7 @@ export function androidAdbLane(): LaneHarness {
 					caseCaps: [],
 					onSessionDead,
 				},
-				{ adb, resolveSerial: async () => "emulator-5554" },
+				{ adb, resolveSerial: async () => "emulator-5554", ...deps },
 			),
 		taps: () => taps,
 		killTool: () => {
@@ -121,11 +125,18 @@ export function androidAdbLane(): LaneHarness {
 	};
 }
 
+export function androidAdbLane(): LaneHarness {
+	return androidLane("Android Direct: adb (faked adb)");
+}
+
+export function androidLatestFrameLane(): LaneHarness {
+	return androidLane("Android Direct: device-android (faked adb)", { backgroundCapture: {} });
+}
+
 export function iosIdbLane(): LaneHarness {
 	const udid = "B75001FB-B91D-4F94-80A7-3E371A641D27";
 	const taps: Array<{ x: number; y: number }> = [];
 	let dead = false;
-	const png = devicePng();
 	const ok = (stdout = "", stdoutBytes?: Uint8Array): IdbResult => ({
 		stdout,
 		stderr: "",
@@ -148,7 +159,7 @@ export function iosIdbLane(): LaneHarness {
 				}),
 			);
 		}
-		if (args[0] === "screenshot") return ok("", png);
+		if (args[0] === "screenshot") return ok("", devicePng(taps.length));
 		if (args[0] === "ui" && args[1] === "describe-all") {
 			return ok(
 				JSON.stringify({

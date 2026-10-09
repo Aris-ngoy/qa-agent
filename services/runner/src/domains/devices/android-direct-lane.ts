@@ -15,6 +15,7 @@ import {
 } from "./android-alerts";
 import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
+import { createFrameLoop } from "./frame-loop";
 import {
 	type DeviceSession,
 	type PointerPhase,
@@ -58,6 +59,11 @@ export type AndroidDirectDeps = {
 	/** adb binary for the long-lived `screenrecord` process; defaults to the resolved adb. */
 	adbBin?: string;
 	resolveSerial?: (deviceId: string) => Promise<string>;
+	/**
+	 * Serve capture-frame from a background `screencap` loop (the `device-android`
+	 * implementation). A read after input waits for a frame captured after that input.
+	 */
+	backgroundCapture?: { idleMs?: number };
 };
 
 function fail(result: AdbResult, label: string): never {
@@ -163,10 +169,20 @@ export async function createAndroidDirectSession(
 	let lastAppId = options.appPackage;
 	let pointerStart: { x: number; y: number } | null = null;
 
-	const shell = async (args: string[], label: string) =>
+	/** When the last command that can change the screen finished (`performance.now()`). */
+	let lastInputAt = 0;
+	const readShell = async (args: string[], label: string) =>
 		requireOk(await adb(["-s", serial, "shell", ...args]), label);
+	const shell = async (args: string[], label: string) => {
+		try {
+			return await readShell(args, label);
+		} finally {
+			lastInputAt = performance.now();
+			frameLoop?.kick();
+		}
+	};
 
-	const captureFrame = async () => {
+	const grabFrame = async () => {
 		const result = await requireOk(
 			await adb(["-s", serial, "exec-out", "screencap", "-p"]),
 			"screencap",
@@ -178,6 +194,11 @@ export async function createAndroidDirectSession(
 		return { base64, mime: "image/png" as const };
 	};
 
+	const frameLoop = deps.backgroundCapture
+		? createFrameLoop(grabFrame, { idleMs: deps.backgroundCapture.idleMs })
+		: null;
+	const captureFrame = frameLoop ? () => frameLoop.read(lastInputAt) : grabFrame;
+
 	const screenshot = async () => {
 		await mkdir(SCREENSHOT_DIR, { recursive: true });
 		const frame = await captureFrame();
@@ -187,8 +208,8 @@ export async function createAndroidDirectSession(
 	};
 
 	const pageSource = async () => {
-		await shell(["uiautomator", "dump", "/sdcard/yoqa-window.xml"], "uiautomator dump");
-		const result = await shell(["cat", "/sdcard/yoqa-window.xml"], "cat window dump");
+		await readShell(["uiautomator", "dump", "/sdcard/yoqa-window.xml"], "uiautomator dump");
+		const result = await readShell(["cat", "/sdcard/yoqa-window.xml"], "cat window dump");
 		const xml = stripUiautomatorDump(result.stdout);
 		if (!xml.includes("<")) {
 			throw new Error("uiautomator dump returned no tree");
@@ -199,7 +220,8 @@ export async function createAndroidDirectSession(
 	const pointerSize = async (coordSpace?: "window" | "screenshot"): Promise<PointerSize> => {
 		const window = await getWindowSize();
 		if (coordSpace === "screenshot") {
-			if (!lastShotSize) await captureFrame();
+			// Any frame gives the size, so this never waits for one captured after the last input.
+			if (!lastShotSize) await (frameLoop ? frameLoop.read() : grabFrame());
 			return lastShotSize ?? window;
 		}
 		return window;
@@ -366,7 +388,7 @@ export async function createAndroidDirectSession(
 	const session: DeviceSession = {
 		lane: "direct",
 		stream: null,
-		quit: async () => undefined,
+		quit: async () => frameLoop?.stop(),
 		startRecording,
 		captureFrame,
 		screenshot,
