@@ -22,6 +22,11 @@ export type SessionOptions = {
 export type CapturedFrame = {
 	base64: string;
 	mime: "image/png" | "image/jpeg";
+	/**
+	 * When this frame's capture started (`performance.now()`), for a Lane that serves
+	 * frames from a background capture. Absent when the frame was captured for this call.
+	 */
+	capturedAt?: number;
 };
 
 export type PointerPhase = "begin" | "move" | "end";

@@ -7,7 +7,9 @@ import {
 	DEVICE,
 	type LaneHarness,
 	androidAdbLane,
+	androidLatestFrameLane,
 	appiumLane,
+	frameAfterTaps,
 	iosIdbLane,
 } from "./lane-harnesses";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
@@ -16,7 +18,12 @@ import { SCREENSHOT_DIR } from "./screenshot-retention";
  * What every Lane must do for Actions to work (see `Lane` in CONTEXT.md). A new Lane
  * joins by adding its harness to this list.
  */
-const LANES: Array<() => LaneHarness> = [appiumLane, androidAdbLane, iosIdbLane];
+const LANES: Array<() => LaneHarness> = [
+	appiumLane,
+	androidAdbLane,
+	androidLatestFrameLane,
+	iosIdbLane,
+];
 
 async function screenshotFiles(): Promise<string[]> {
 	return readdir(SCREENSHOT_DIR).catch(() => []);
@@ -56,6 +63,14 @@ for (const makeHarness of LANES) {
 			expect(frame.mime).toMatch(/^image\//);
 			expect(Buffer.from(frame.base64, "base64").byteLength).toBeGreaterThan(0);
 			expect(await screenshotFiles()).toEqual(before);
+		});
+
+		test("capture-frame after a tap shows the screen after that tap", async () => {
+			const { session } = await open(makeHarness());
+			expect((await session.captureFrame()).base64).toBe(frameAfterTaps(0));
+			await session.tap(500, 500);
+			expect((await session.captureFrame()).base64).toBe(frameAfterTaps(1));
+			await session.quit();
 		});
 
 		test("screenshot persists one image under the run screenshots directory", async () => {
