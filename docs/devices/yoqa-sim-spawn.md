@@ -24,7 +24,7 @@ Ticket [#239](https://github.com/Aris-ngoy/qa-agent/issues/239) (spec [#233](htt
   - It is located, not linked yet. Linking comes with the framebuffer slice (#240).
 - **Swift, no dependencies.** It uses a POSIX loopback listener and one request per connection. The core (arguments, SimulatorKit resolution, routing) is a library target so tests reach it without a simulator.
 - Rejected:
-  - spawning at connect (the plan says first use);
+  - spawning at connect (the plan says first use). #241 later moved the spawn to connect, so the session can report its live stream ([yoqa-sim-stream.md](./yoqa-sim-stream.md));
   - the Network framework listener (it doesn't bind to loopback by default, and is harder to test);
   - copying idb's or Argent's servers (#233).
 

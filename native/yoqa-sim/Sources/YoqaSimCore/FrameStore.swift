@@ -25,7 +25,8 @@ public struct EncodedFrame {
 /// only after the display reports a new one, so serving an unchanged screen costs nothing.
 /// Capture and encoding run outside the lock, so one slow encode never blocks other reads.
 public final class FrameStore {
-    /// What the live preview reads (`GET /screenshot` without parameters).
+    /// `GET /screenshot` without parameters; always encoded ahead of time. The Inspector's
+    /// stream (`/stream.mjpeg`) reads half scale instead, kept warm while it is read.
     public static let preview = (scale: 0.25, format: FrameFormat.jpeg)
     /// A format read within this long is encoded ahead of time when a new frame arrives.
     static let warmWindow: TimeInterval = 2
