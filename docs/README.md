@@ -60,6 +60,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/android-direct-lane.md](./devices/android-direct-lane.md) | Android Direct lane over adb |
 | [devices/device-lanes-foundation.md](./devices/device-lanes-foundation.md) | Lane contract suite, capability-pinned adoption, Direct implementations, wired iPhones |
 | [devices/android-latest-frame.md](./devices/android-latest-frame.md) | `device-android`: capture-frame from a background `screencap` loop (opt-in) |
+| [devices/yoqa-sim-spawn.md](./devices/yoqa-sim-spawn.md) | `device-sim`: the resident `yoqa-sim` process, spawned per simulator, serving screenshots (opt-in) |
 | [devices/android-instrumentation-tree.md](./devices/android-instrumentation-tree.md) | `device-android`: Screen from the `yoqa.android.devtools` helper, `uiautomator dump` fallback (opt-in) |
 | [devices/android-direct-tree-settle.md](./devices/android-direct-tree-settle.md) | Direct system-wide tree, Settle, vs-Argent gate |
 | [devices/hybrid-screen-arm.md](./devices/hybrid-screen-arm.md) | Screenshot + tree every Agent step as a benchmark arm |

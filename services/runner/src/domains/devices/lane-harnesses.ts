@@ -10,6 +10,7 @@ import { createAppiumSession } from "./appium-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
 import type { DeviceSession } from "./lane";
+import type { SpawnYoqaSim } from "./yoqa-sim";
 
 /** The device every harness fakes, in the unit its tool uses (pixels, or points for idb). */
 export const DEVICE = { width: 200, height: 400 };
@@ -163,6 +164,15 @@ export function androidDevtoolsLane(): LaneHarness {
 }
 
 export function iosIdbLane(): LaneHarness {
+	return iosLane("iOS simulator Direct (faked idb_companion)");
+}
+
+/** `device-sim`: screenshots from a faked `yoqa-sim` that shows the same device as idb. */
+export function iosYoqaSimLane(): LaneHarness {
+	return iosLane("iOS simulator Direct: device-sim (faked idb_companion and yoqa-sim)", true);
+}
+
+function iosLane(name: string, withYoqaSim = false): LaneHarness {
 	const udid = "B75001FB-B91D-4F94-80A7-3E371A641D27";
 	const taps: Array<{ x: number; y: number }> = [];
 	let dead = false;
@@ -208,8 +218,16 @@ export function iosIdbLane(): LaneHarness {
 		}
 		return ok();
 	};
+	const yoqaSim: SpawnYoqaSim = async () => ({
+		url: "http://127.0.0.1:50123",
+		screenshot: async () => {
+			if (dead) throw new Error("fetch failed: Connection refused");
+			return devicePng(taps.length);
+		},
+		stop: async () => undefined,
+	});
 	return {
-		name: "iOS simulator Direct (faked idb_companion)",
+		name,
 		open: ({ onSessionDead }) =>
 			createIosDirectSession(
 				{ platform: "ios", deviceId: udid, appCaps: [], caseCaps: [], onSessionDead },
@@ -218,6 +236,7 @@ export function iosIdbLane(): LaneHarness {
 					screenshotFallback: async () => {
 						throw new Error("simctl is not faked");
 					},
+					...(withYoqaSim ? { yoqaSim } : {}),
 				},
 			),
 		taps: () => taps,

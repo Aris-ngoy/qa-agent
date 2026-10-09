@@ -11,11 +11,13 @@ import {
 	type ScreenRecording,
 	type SessionOptions,
 	guardToolLoss,
+	reportLaneFallback,
 } from "./lane";
 import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { cleanPageSource } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
+import type { SpawnYoqaSim, YoqaSim } from "./yoqa-sim";
 
 const IOS_ACCEPT_LABELS = ["Allow While Using App", "Allow Once", "Allow", "OK"] as const;
 const IOS_DISMISS_LABELS = ["Don't Allow", "Don’t Allow", "Don't allow"] as const;
@@ -44,7 +46,17 @@ export type IosDirectDeps = {
 	idb?: IdbExec;
 	/** When companion screenshot fails (“no active display”), use simctl. */
 	screenshotFallback?: (udid: string) => Promise<Uint8Array>;
+	/**
+	 * Serve screenshots from `yoqa-sim` (the `device-sim` implementation). It is spawned on
+	 * the first screen or action and killed on quit. When it can't start, the session keeps
+	 * idb_companion and says so in its Lane warning.
+	 */
+	yoqaSim?: SpawnYoqaSim;
 };
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
 
 function fail(result: IdbResult, label: string): never {
 	throw new Error(
@@ -77,8 +89,7 @@ export function createIdbExec(clientBin: string, companionPath: string): IdbExec
 				stdoutBytes,
 			};
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return { stdout: "", stderr: message, exitCode: 127 };
+			return { stdout: "", stderr: errorMessage(error), exitCode: 127 };
 		}
 	};
 }
@@ -200,7 +211,48 @@ export async function createIosDirectSession(
 
 	const run = async (args: string[], label: string) => requireOk(await idb(args), label);
 
-	const captureFrame = async () => {
+	/** One `yoqa-sim` per session, spawned on first use; null once it failed. */
+	let yoqaSim: Promise<YoqaSim | null> | null = null;
+	let quitting = false;
+	const yoqaSimFailed = (error: unknown) =>
+		reportLaneFallback(
+			session,
+			options,
+			`yoqa-sim failed; using idb_companion for the rest of the session (${errorMessage(error)})`,
+		);
+	const ensureYoqaSim = (): Promise<YoqaSim | null> => {
+		const spawn = deps.yoqaSim;
+		if (!spawn || quitting) return Promise.resolve(null);
+		yoqaSim ??= spawn(udid).catch((error: unknown) => {
+			yoqaSimFailed(error);
+			return null;
+		});
+		return yoqaSim;
+	};
+	/** A frame from `yoqa-sim`; if it fails, stop it and let idb_companion take over. */
+	const captureViaYoqaSim = async (running: YoqaSim): Promise<Uint8Array | null> => {
+		try {
+			const bytes = await running.screenshot();
+			if (bytes.byteLength === 0) throw new Error("empty frame");
+			return bytes;
+		} catch (error) {
+			yoqaSimFailed(error);
+			yoqaSim = Promise.resolve(null);
+			await running.stop().catch(() => undefined);
+			return null;
+		}
+	};
+
+	/**
+	 * Run an action under the lock. The first one also starts `yoqa-sim`, without waiting
+	 * for it, so input never waits on a spawn.
+	 */
+	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
+		void ensureYoqaSim();
+		return lock.withLock(fn);
+	};
+
+	const captureViaIdb = async (): Promise<Uint8Array> => {
 		const dest = join(tmpdir(), `yoqa-idb-${crypto.randomUUID()}.png`);
 		let bytes: Uint8Array;
 		try {
@@ -215,6 +267,12 @@ export async function createIosDirectSession(
 			bytes = await (deps.screenshotFallback ?? captureViaSimctl)(udid);
 			if (bytes.byteLength === 0) throw new Error("simctl screenshot returned an empty frame");
 		}
+		return bytes;
+	};
+
+	const captureFrame = async () => {
+		const running = await ensureYoqaSim();
+		const bytes = (running && (await captureViaYoqaSim(running))) ?? (await captureViaIdb());
 		const base64 = Buffer.from(bytes).toString("base64");
 		lastShotSize = pngSizeFromBase64(base64) ?? lastShotSize;
 		return { base64, mime: "image/png" as const };
@@ -258,7 +316,7 @@ export async function createIosDirectSession(
 		yNorm: number,
 		tapOptions?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
 	) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			const size = await pointerSize(tapOptions?.coordSpace);
 			await tapPx(toPx(xNorm, size.width), toPx(yNorm, size.height));
 		});
@@ -272,7 +330,7 @@ export async function createIosDirectSession(
 		_durationMs = 400,
 		swipeOptions?: { coordSpace?: "window" | "screenshot" },
 	) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			const size = await pointerSize(swipeOptions?.coordSpace);
 			await run(
 				[
@@ -291,26 +349,26 @@ export async function createIosDirectSession(
 	};
 
 	const type = async (text: string) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			await run(["ui", "text", text, "--udid", udid], "idb ui text");
 		});
 	};
 
 	const activateApp = async (appId: string) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			lastAppId = appId;
 			await run(["launch", appId, "--udid", udid], "idb launch");
 		});
 	};
 
 	const terminateApp = async (appId: string) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			await run(["terminate", appId, "--udid", udid], "idb terminate");
 		});
 	};
 
 	const backgroundApp = async (seconds = 3) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			await run(["ui", "button", "HOME", "--udid", udid], "idb HOME");
 			await Bun.sleep(Math.max(0, seconds) * 1000);
 			if (lastAppId) {
@@ -320,7 +378,7 @@ export async function createIosDirectSession(
 	};
 
 	const openUrl = async (url: string) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			await run(["open", url, "--udid", udid], "idb open");
 		});
 	};
@@ -344,7 +402,12 @@ export async function createIosDirectSession(
 	const session: DeviceSession = {
 		lane: "direct",
 		stream: null,
-		quit: async () => undefined,
+		quit: async () => {
+			quitting = true;
+			const running = await yoqaSim;
+			yoqaSim = null;
+			await running?.stop();
+		},
 		startRecording: (path) => recordViaSimctl(udid, path),
 		captureFrame,
 		screenshot,
@@ -358,9 +421,9 @@ export async function createIosDirectSession(
 		terminateApp,
 		backgroundApp,
 		openUrl,
-		acceptAlert: () => lock.withLock(() => resolveAlert("accept")),
-		dismissAlert: () => lock.withLock(() => resolveAlert("dismiss")),
-		withActionLock: (fn) => lock.withLock(fn),
+		acceptAlert: () => withActionLock(() => resolveAlert("accept")),
+		dismissAlert: () => withActionLock(() => resolveAlert("dismiss")),
+		withActionLock,
 		pointerEvent: async (phase: PointerPhase, xNorm: number, yNorm: number) => {
 			const size = await pointerSize("screenshot");
 			const x = toPx(xNorm, size.width);
