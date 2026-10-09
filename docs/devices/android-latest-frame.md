@@ -19,7 +19,7 @@ Under `services/runner/src/domains/devices/`:
 
 - `frame-loop.ts`: `createFrameLoop(capture)` with `read(after)`, `kick()` and `stop()`.
   - A Dead Session from the tool stops the loop and fails every later read.
-  - Another capture error fails the reads waiting at that moment, then the loop retries after 100 ms.
+  - Another error in the loop's own capture fails the reads waiting at that moment, then the loop retries after 100 ms. A failed input-kicked capture fails no reads, because the loop's next capture serves them.
   - Overlapping captures never replace a newer frame with an older one.
 - `android-direct-lane.ts`: `AndroidDirectDeps.backgroundCapture`.
   - Read-only shell commands (`uiautomator dump`, `cat`) go through `readShell`. Every other shell command marks input and kicks the loop.
@@ -30,7 +30,7 @@ Under `services/runner/src/domains/devices/`:
 - `action-result.ts`: `settleScreen` uses `capturedAt` when present.
 - Tests:
   - `android-latest-frame.test.ts` uses a gated fake adb whose `screencap` finishes only when the test says so. It checks that reads never start a capture, a tap never waits for capture, a read after a tap returns a post-tap frame after one new capture, the loop pauses when idle, and quit stops it.
-  - The Lane contract suite runs `device-android` as a fifth harness and gains one check for every Lane: capture-frame after a tap shows the screen after that tap.
+  - The Lane contract suite runs `device-android` as a fourth harness and gains one check for every Lane: capture-frame after a tap shows the screen after that tap.
   - `select-lane.test.ts` pins the real registry: `adb` is the default, and opting in tries `device-android` first.
 
 ## Measurements
