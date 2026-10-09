@@ -15,7 +15,13 @@ import {
 } from "./android-alerts";
 import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
-import type { DeviceSession, PointerPhase, ScreenRecording, SessionOptions } from "./lane";
+import {
+	type DeviceSession,
+	type PointerPhase,
+	type ScreenRecording,
+	type SessionOptions,
+	guardToolLoss,
+} from "./lane";
 import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
@@ -37,6 +43,14 @@ async function readRemotePid(stdout: ReadableStream<Uint8Array>): Promise<string
 	if (!/^\d+$/.test(pid))
 		throw new Error(`screenrecord: could not read its pid (${pid || "empty"})`);
 	return pid;
+}
+
+/** adb could not run, or says the device is no longer attached. */
+const ADB_LOST_RE =
+	/device '.*' not found|device offline|device not found|no devices\/emulators found/i;
+
+export function adbLostDevice(result: AdbResult): boolean {
+	return result.exitCode === 127 || (result.exitCode !== 0 && ADB_LOST_RE.test(result.stderr));
 }
 
 export type AndroidDirectDeps = {
@@ -129,12 +143,13 @@ export async function createAndroidDirectSession(
 		throw new Error("Direct lane supports Android only");
 	}
 
-	const adb = deps.adb ?? createAdbExec(resolveAdbBin());
+	const connectAdb = deps.adb ?? createAdbExec(resolveAdbBin());
 	const serial = await (deps.resolveSerial ?? defaultResolveSerial)(options.deviceId);
-	const state = await requireOk(await adb(["-s", serial, "get-state"]), "adb get-state");
+	const state = await requireOk(await connectAdb(["-s", serial, "get-state"]), "adb get-state");
 	if (state.stdout.trim() !== "device") {
 		throw new Error(`Android device ${serial} is ${state.stdout.trim() || "unavailable"}`);
 	}
+	const adb = guardToolLoss(connectAdb, adbLostDevice, options.onSessionDead);
 
 	const fetchWindow = async (): Promise<PointerSize> => {
 		const result = await requireOk(await adb(["-s", serial, "shell", "wm", "size"]), "wm size");

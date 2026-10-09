@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { hasCustomCapabilities, selectLane } from "./select-lane";
+import {
+	directImplementationOrder,
+	directOptIn,
+	hasCustomCapabilities,
+	selectLane,
+} from "./select-lane";
 
 describe("hasCustomCapabilities", () => {
 	test("empty lists are not custom", () => {
@@ -75,5 +80,52 @@ describe("selectLane", () => {
 				caseCaps: [],
 			}),
 		).toEqual({ lane: "appium", fallback: false });
+	});
+});
+
+describe("directImplementationOrder", () => {
+	const existing = { name: "adb", promoted: true };
+	const fresh = { name: "device-android" };
+
+	test("with only the existing implementation, that is the one tried", () => {
+		expect(directImplementationOrder([existing]).map((i) => i.name)).toEqual(["adb"]);
+	});
+
+	test("a new implementation is skipped until it is opted into", () => {
+		expect(directImplementationOrder([fresh, existing]).map((i) => i.name)).toEqual(["adb"]);
+	});
+
+	test("opting in tries the new implementation first, then the existing one", () => {
+		expect(
+			directImplementationOrder([fresh, existing], "device-android").map((i) => i.name),
+		).toEqual(["device-android", "adb"]);
+	});
+
+	test("a promoted new implementation is used without opting in", () => {
+		expect(
+			directImplementationOrder([{ ...fresh, promoted: true }, existing]).map((i) => i.name),
+		).toEqual(["device-android", "adb"]);
+	});
+
+	test("opting into the existing implementation rolls a promoted one back", () => {
+		expect(
+			directImplementationOrder([{ ...fresh, promoted: true }, existing], "adb").map((i) => i.name),
+		).toEqual(["adb"]);
+	});
+});
+
+describe("directOptIn", () => {
+	test("reads the device class's env var", () => {
+		expect(directOptIn("android", { YOQA_DIRECT_ANDROID: " device-android " })).toBe(
+			"device-android",
+		);
+		expect(directOptIn("ios-simulator", { YOQA_DIRECT_IOS_SIMULATOR: "device-sim" })).toBe(
+			"device-sim",
+		);
+	});
+
+	test("unset or blank means no opt-in", () => {
+		expect(directOptIn("android", {})).toBeUndefined();
+		expect(directOptIn("android", { YOQA_DIRECT_ANDROID: "  " })).toBeUndefined();
 	});
 });

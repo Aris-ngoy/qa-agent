@@ -244,6 +244,7 @@ function printDevicesTable(
 		osVersion: string;
 		kind: string;
 		state?: string;
+		unavailableReason?: string;
 	}>,
 ) {
 	if (devicesList.length === 0) {
@@ -255,6 +256,9 @@ function printDevicesTable(
 		const state = device.state ? ` [${device.state}]` : "";
 		console.log(`${device.kind.padEnd(10)} ${label} — ${device.osVersion}${state}`);
 		console.log(`           ${device.id}`);
+		if (device.unavailableReason) {
+			console.log(`           Not a target: ${device.unavailableReason}`);
+		}
 	}
 }
 

@@ -33,6 +33,8 @@ export const deviceSchema = z.object({
 	/** Connection / boot state from the host tooling */
 	state: z.string().optional(),
 	model: z.string().optional(),
+	/** Why this device is listed but cannot be a target (e.g. an iPhone paired over Wi-Fi only). */
+	unavailableReason: z.string().optional(),
 });
 
 export type Device = z.infer<typeof deviceSchema>;
