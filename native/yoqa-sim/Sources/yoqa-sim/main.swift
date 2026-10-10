@@ -42,7 +42,14 @@ do {
 let device = SimulatorDevice(simulator)
 let frames = FrameStore(source: device)
 simulator.observeFrames { frames.frameArrived() }
-let controller = Controller(status: Status(udid: arguments.udid, simulatorKit: simulatorKit), device: device, frames: frames)
+// Whether backboardd still takes Indigo touches (see TouchscreenState).
+let touchscreen = TouchscreenWatch()
+let touchscreenFeed = TouchscreenFeed(udid: arguments.udid, deviceSet: arguments.deviceSet)
+touchscreenFeed.start(into: touchscreen)
+atexit { touchscreenFeed.stop() }
+let controller = Controller(
+    status: Status(udid: arguments.udid, simulatorKit: simulatorKit), device: device, frames: frames, touchscreen: touchscreen
+)
 
 let server: LoopbackServer
 do {
