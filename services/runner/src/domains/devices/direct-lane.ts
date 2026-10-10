@@ -1,6 +1,8 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
 import { startAndroidDevtools } from "./android-devtools";
 import { createAndroidDirectSession } from "./android-direct-lane";
+import { looksLikePhysicalIosUdid } from "./appium-lane";
+import { createIosDeviceSession } from "./ios-device-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
 import type { LaneFactory } from "./lane";
 import {
@@ -67,9 +69,10 @@ export function createDirectLane(
 	};
 }
 
-/** Physical iOS has no Direct device class yet; it stays on Appium unless `direct` is requested. */
-export function deviceClassFor(platform: DevicePlatform): DeviceClass {
-	return platform === "android" ? "android" : "ios-simulator";
+/** The device class a device belongs to; a physical iPhone is told apart by its UDID. */
+export function deviceClassFor(platform: DevicePlatform, deviceId: string): DeviceClass {
+	if (platform === "android") return "android";
+	return looksLikePhysicalIosUdid(deviceId) ? "ios-device" : "ios-simulator";
 }
 
 /**
@@ -116,10 +119,24 @@ export const DIRECT_IMPLEMENTATIONS: Record<DeviceClass, DirectImplementation[]>
 		},
 		{ name: "idb", promoted: true, open: (options) => createIosDirectSession(options) },
 	],
+	"ios-device": [
+		{
+			// `YoqaRunner` on a cabled iPhone, over a usbmuxd tunnel (#247, #248). `promoted` only
+			// within the Direct lane: `auto` still keeps a phone on Appium (`directIsAutomatic`).
+			name: "device-ios",
+			promoted: true,
+			open: (options) => createIosDeviceSession(options),
+		},
+	],
 };
 
-/** The default Direct lane for a platform, honoring its device class's opt-in env var. */
+/**
+ * The default Direct lane for a platform. It picks the device class from the device it
+ * opens (simulator or physical iPhone) and honors that class's opt-in env var.
+ */
 export function defaultDirectLane(platform: DevicePlatform): LaneFactory {
-	const deviceClass = deviceClassFor(platform);
-	return createDirectLane(DIRECT_IMPLEMENTATIONS[deviceClass], directOptIn(deviceClass));
+	return (options) => {
+		const deviceClass = deviceClassFor(platform, options.deviceId);
+		return createDirectLane(DIRECT_IMPLEMENTATIONS[deviceClass], directOptIn(deviceClass))(options);
+	};
 }

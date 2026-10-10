@@ -49,6 +49,8 @@ The Mac connects through `/var/run/usbmuxd`.
 - HTTP runs on that socket.
 - A `status` call must cross the cable before any gesture is written.
 
+As built (#248), see [ios-device-usbmux.md](../../devices/ios-device-usbmux.md). On macOS 27 / iOS 27 usbmuxd does list a cabled iPhone as `USB`.
+
 ## Later slices
 
 Gestures and observation, each in its own file: `Session+Gestures.swift`, `Session+Snapshot.swift`, `Session+Screenshot.swift`, `Session+Text.swift`.
