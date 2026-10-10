@@ -1,6 +1,6 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
 import { createAppiumSession } from "./appium-lane";
-import { DirectLaneStartError, defaultDirectLane, deviceClassFor } from "./direct-lane";
+import { DirectLaneStartError, defaultDirectLane } from "./direct-lane";
 import {
 	type DeviceSession,
 	type LaneFactory,
@@ -8,7 +8,7 @@ import {
 	type SessionOptions,
 	joinLaneWarnings,
 } from "./lane";
-import { availableLanes, directIsAutomatic, selectLane } from "./select-lane";
+import { availableLanes, selectLane } from "./select-lane";
 
 /** At most one Device Session per device id (Active Session or Run). */
 const openByDeviceId = new Map<string, DeviceSession>();
@@ -16,7 +16,6 @@ const openByDeviceId = new Map<string, DeviceSession>();
 /**
  * Direct: Android over adb, iOS simulator over idb_companion, a cabled iPhone over
  * `YoqaRunner`, each picking its implementation inside the Direct lane (`direct-lane.ts`).
- * `auto` keeps a physical iPhone on Appium (`directIsAutomatic`).
  */
 export function defaultLanesFor(platform: DevicePlatform): Partial<Record<LaneName, LaneFactory>> {
 	return {
@@ -83,7 +82,6 @@ export async function openDeviceSession(
 		available: availableLanes(merged),
 		appCaps: options.appCaps,
 		caseCaps: options.caseCaps,
-		directIsAutomatic: directIsAutomatic(deviceClassFor(options.platform, options.deviceId)),
 	});
 
 	// A fallback the Lane reports later lands on the session handed out here, not on the

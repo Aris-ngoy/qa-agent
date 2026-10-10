@@ -121,8 +121,8 @@ export const DIRECT_IMPLEMENTATIONS: Record<DeviceClass, DirectImplementation[]>
 	],
 	"ios-device": [
 		{
-			// `YoqaRunner` on a cabled iPhone, over a usbmuxd tunnel (#247, #248). `promoted` only
-			// within the Direct lane: `auto` still keeps a phone on Appium (`directIsAutomatic`).
+			// `YoqaRunner` on a cabled iPhone, over a usbmuxd tunnel (#247, #248). Promoted in #251:
+			// about 2.4x faster than Appium per tap.
 			name: "device-ios",
 			promoted: true,
 			open: (options) => createIosDeviceSession(options),

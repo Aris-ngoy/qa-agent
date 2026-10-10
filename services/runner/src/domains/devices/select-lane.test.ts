@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { DIRECT_IMPLEMENTATIONS, deviceClassFor } from "./direct-lane";
 import {
 	directImplementationOrder,
-	directIsAutomatic,
 	directOptIn,
 	hasCustomCapabilities,
 	selectLane,
@@ -168,21 +167,14 @@ describe("physical-iOS Direct lane", () => {
 		expect(DIRECT_IMPLEMENTATIONS["ios-device"].map((i) => i.name)).toEqual(["device-ios"]);
 	});
 
-	test("auto doesn't pick Direct on a phone until it beats Appium in the benchmark", () => {
-		expect(directIsAutomatic("ios-device")).toBe(false);
-		expect(directIsAutomatic("ios-simulator")).toBe(true);
-		expect(directIsAutomatic("android")).toBe(true);
-	});
-
-	test("with Direct not automatic, auto picks Appium and an explicit direct still gets it", () => {
-		const base = { available: ["appium", "direct"] as const, appCaps: [], caseCaps: [] };
-		expect(selectLane({ ...base, requested: "auto", directIsAutomatic: false })).toEqual({
-			lane: "appium",
-			fallback: false,
-		});
-		expect(selectLane({ ...base, requested: "direct", directIsAutomatic: false })).toEqual({
+	test("auto picks Direct for a phone, and custom capabilities still pin Appium", () => {
+		const base = { available: ["appium", "direct"] as const, requested: "auto" as const };
+		expect(selectLane({ ...base, appCaps: [], caseCaps: [] })).toEqual({
 			lane: "direct",
 			fallback: false,
 		});
+		expect(
+			selectLane({ ...base, appCaps: [{ key: "appium:autoLaunch" }], caseCaps: [] }).lane,
+		).toBe("appium");
 	});
 });
