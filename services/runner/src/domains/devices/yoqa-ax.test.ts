@@ -17,11 +17,11 @@ function frame(body: unknown): Buffer {
 
 /**
  * Stands in for `simctl spawn … yoqa-ax` at its wire protocol: it connects back to the
- * socket named after `--connect` and answers `ping`, and `describe` with `tree`, with
- * length-prefixed JSON.
+ * socket named after `--connect` and answers `ping`, `describe` with `tree` and `alert`
+ * with `alert`, with length-prefixed JSON.
  * `silent` never connects; `exit` dies before connecting.
  */
-function fakeYoqaAx(mode: Mode = "ok", tree?: unknown) {
+function fakeYoqaAx(mode: Mode = "ok", tree?: unknown, alert?: unknown) {
 	const launched: string[][] = [];
 	let kills = 0;
 	let closedByRunner = false;
@@ -53,7 +53,9 @@ function fakeYoqaAx(mode: Mode = "ok", tree?: unknown) {
 								? { id: request.id, result: "ok" }
 								: request.method === "describe" && tree !== undefined
 									? { id: request.id, result: tree }
-									: { id: request.id, error: `unknown method ${request.method}` },
+									: request.method === "alert" && alert !== undefined
+										? { id: request.id, result: alert }
+										: { id: request.id, error: `unknown method ${request.method}` },
 						),
 					);
 				}
@@ -125,6 +127,34 @@ describe("startYoqaAx", () => {
 			await expect(ax.describe()).rejects.toThrow("yoqa-ax describe returned no tree");
 		} finally {
 			await ax.stop();
+		}
+	});
+
+	test("alert answers the SpringBoard dialog's title and buttons, or none", async () => {
+		const allowOnce = {
+			label: "Allow Once",
+			frame: { x: 0.14, y: 0.52, width: 0.72, height: 0.05 },
+		};
+		const dialog = fakeYoqaAx("ok", undefined, {
+			title: "Allow “Maps” to use your location?",
+			buttons: [allowOnce],
+		});
+		const ax = await startYoqaAx(UDID, { bin: BIN, spawn: dialog.spawn });
+		try {
+			expect(await ax.alert()).toEqual({
+				title: "Allow “Maps” to use your location?",
+				buttons: [allowOnce],
+			});
+		} finally {
+			await ax.stop();
+		}
+
+		const none = fakeYoqaAx("ok", undefined, { buttons: [] });
+		const quiet = await startYoqaAx(UDID, { bin: BIN, spawn: none.spawn });
+		try {
+			expect(await quiet.alert()).toEqual({ buttons: [] });
+		} finally {
+			await quiet.stop();
 		}
 	});
 

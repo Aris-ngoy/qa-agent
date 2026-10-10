@@ -267,6 +267,7 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 			],
 			degraded: false,
 		}),
+		alert: async () => ({ buttons: [] }),
 		stop: async () => undefined,
 	});
 	return {

@@ -341,35 +341,46 @@ export async function createIosDirectSession(
 	let cachedTree: { hash: string; source: string } | null = null;
 
 	/**
-	 * The tree from `yoqa-ax`, or null when there is none. An unchanged frame hash returns
-	 * the cached tree. A failed read stops it, so the tree comes from idb_companion for the
-	 * rest of the session.
+	 * Run `use` on `yoqa-ax`, or return null when there is none. A failed read stops it, so
+	 * the tree and alerts come from idb_companion for the rest of the session.
 	 */
-	const treeViaYoqaAx = async (): Promise<string | null> => {
+	const viaYoqaAx = async <T>(use: (ax: YoqaAx) => Promise<T>): Promise<{ value: T } | null> => {
 		const pending = yoqaAx;
 		const ax = await pending;
 		if (!ax) return null;
-		// The hash is read first, so a screen that changes during the read is read again.
-		const hash = (await viaYoqaSim((running) => running.frame(), true))?.value.hash;
-		if (hash && cachedTree?.hash === hash) return cachedTree.source;
 		try {
-			const tree = await ax.describe();
-			const source = yoqaAxTreeToSource(tree, await getWindowSize());
-			cachedTree = hash && !tree.degraded ? { hash, source } : null;
-			return source;
+			return { value: await use(ax) };
 		} catch (error) {
 			// Quit stopped it under the read: that is the session ending, not a fallback.
 			if (quitting) throw error;
 			reportLaneFallback(
 				session,
 				options,
-				`yoqa-ax failed; reading the tree with idb_companion for the rest of the session (${errorMessage(error)})`,
+				`yoqa-ax failed; reading the tree and alerts with idb_companion for the rest of the session (${errorMessage(error)})`,
 			);
 			cachedTree = null;
 			if (yoqaAx === pending) yoqaAx = Promise.resolve(null);
 			await ax.stop().catch(() => undefined);
 			return null;
 		}
+	};
+
+	/**
+	 * The tree from `yoqa-ax`, or null when there is none. An unchanged frame hash returns
+	 * the cached tree.
+	 */
+	const treeViaYoqaAx = async (): Promise<string | null> => {
+		if (!(await yoqaAx)) return null;
+		// The hash is read first, so a screen that changes during the read is read again.
+		const hash = (await viaYoqaSim((running) => running.frame(), true))?.value.hash;
+		if (hash && cachedTree?.hash === hash) return cachedTree.source;
+		const read = await viaYoqaAx(async (ax) => {
+			const tree = await ax.describe();
+			return { tree, source: yoqaAxTreeToSource(tree, await getWindowSize()) };
+		});
+		if (!read) return null;
+		cachedTree = hash && !read.value.tree.degraded ? { hash, source: read.value.source } : null;
+		return read.value.source;
 	};
 
 	const pageSource = async () => {
@@ -501,16 +512,28 @@ export async function createIosDirectSession(
 		});
 	};
 
+	/**
+	 * Tap an alert's accept or dismiss button, chosen in the label list's order. The
+	 * SpringBoard dialog comes from `yoqa-ax`'s `alert` read; without one (an in-app alert,
+	 * or no `yoqa-ax`) the button comes from the Screen. The tap goes through `yoqa-sim`.
+	 */
 	const resolveAlert = async (action: "accept" | "dismiss") => {
-		const raw = await pageSource();
-		const window = await getWindowSize();
-		const labels = action === "accept" ? IOS_ACCEPT_LABELS : IOS_DISMISS_LABELS;
-		const hit = cleanPageSource(raw, window).elements.find((el) =>
-			labels.some((label) => el.label === label),
+		const labels: readonly string[] = action === "accept" ? IOS_ACCEPT_LABELS : IOS_DISMISS_LABELS;
+		const dialog = await viaYoqaAx((ax) => ax.alert());
+		const fromDialog = preferredButton(
+			(dialog?.value.buttons ?? []).map(({ label, frame }) => ({
+				label,
+				x: frame.x * 1000,
+				y: frame.y * 1000,
+				width: frame.width * 1000,
+				height: frame.height * 1000,
+			})),
+			labels,
 		);
-		if (!hit) {
-			throw new Error(`No ${action} alert button in the idb Screen`);
-		}
+		const hit =
+			fromDialog ??
+			preferredButton(cleanPageSource(await pageSource(), await getWindowSize()).elements, labels);
+		if (!hit) throw new Error(`No ${action} alert button on screen`);
 		await tapNorm(hit.x + hit.width / 2, hit.y + hit.height / 2);
 	};
 
@@ -564,6 +587,20 @@ export async function createIosDirectSession(
 	};
 	if (deps.yoqaSim) session.stream = liveStream(await ensureYoqaSim());
 	return session;
+}
+
+type AlertButton = { label: string; x: number; y: number; width: number; height: number };
+
+/** The button whose label comes first in `labels`, in 0–1000; undefined when none matches. */
+function preferredButton(
+	buttons: AlertButton[],
+	labels: readonly string[],
+): AlertButton | undefined {
+	for (const label of labels) {
+		const button = buttons.find((candidate) => candidate.label === label);
+		if (button) return button;
+	}
+	return undefined;
 }
 
 /**

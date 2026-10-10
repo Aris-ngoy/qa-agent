@@ -3,7 +3,7 @@ import { encodeRgbaPng } from "../runs/coord-grid";
 import { getScreen } from "./interaction";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
-import type { StartYoqaAx, YoqaAx, YoqaAxTree } from "./yoqa-ax";
+import type { StartYoqaAx, YoqaAx, YoqaAxAlert, YoqaAxTree } from "./yoqa-ax";
 import { type SpawnYoqaSim, type YoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
 const UDID = "B75001FB-B91D-4F94-80A7-3E371A641D27";
@@ -311,6 +311,8 @@ function fakeAx(options: { never?: boolean; connectMs?: number } = {}) {
 	let tree: YoqaAxTree = { nodes: [], degraded: true };
 	let describeMs = 0;
 	let failDescribe: string | null = null;
+	let alert: YoqaAxAlert = { buttons: [] };
+	let failAlert: string | null = null;
 	const start: StartYoqaAx = async (udid) => {
 		started.push(udid);
 		await Bun.sleep(options.connectMs ?? 5);
@@ -326,6 +328,10 @@ function fakeAx(options: { never?: boolean; connectMs?: number } = {}) {
 				if (describeMs) await Bun.sleep(describeMs);
 				if (failDescribe) throw new Error(failDescribe);
 				return tree;
+			},
+			alert: async () => {
+				if (failAlert) throw new Error(failAlert);
+				return alert;
 			},
 			stop: async () => {
 				if (stopped) return;
@@ -348,6 +354,12 @@ function fakeAx(options: { never?: boolean; connectMs?: number } = {}) {
 		},
 		failDescribe: (reason: string) => {
 			failDescribe = reason;
+		},
+		setAlert: (next: YoqaAxAlert) => {
+			alert = next;
+		},
+		failAlert: (reason: string) => {
+			failAlert = reason;
 		},
 	};
 }
@@ -437,7 +449,7 @@ describe("iOS-simulator Direct lane: device-sim with yoqa-ax", () => {
 		const session = await openWithAx(ax, (warning) => warnings.push(warning));
 		expect(JSON.parse(await session.pageSource())).toEqual([]);
 		expect(session.laneWarning).toMatch(
-			/yoqa-ax failed; reading the tree with idb_companion.*no reply within 5000 ms/,
+			/yoqa-ax failed; reading the tree and alerts with idb_companion.*no reply within 5000 ms/,
 		);
 		expect(warnings).toEqual([session.laneWarning ?? ""]);
 		expect(ax.running()).toBe(0);
@@ -462,6 +474,92 @@ describe("iOS-simulator Direct lane: device-sim with yoqa-ax", () => {
 		await reading;
 		expect(session.laneWarning).toBeUndefined();
 		expect(idbTreeReads()).toBe(0);
+	});
+
+	/** Maps' location prompt: three buttons stacked from y 0.5, each 0.0625 tall. */
+	const LOCATION_PROMPT: YoqaAxAlert = {
+		title: "Allow “Maps” to use your location?",
+		buttons: ["Allow Once", "Allow While Using App", "Don’t Allow"].map((label, index) => ({
+			label,
+			frame: { x: 0.25, y: 0.5 + index * 0.0625, width: 0.5, height: 0.0625 },
+		})),
+	};
+
+	test("accept taps the preferred accept button through yoqa-sim, without idb_companion", async () => {
+		const ax = fakeAx();
+		ax.setAlert(LOCATION_PROMPT);
+		const sims = fakeSims();
+		const session = await openWithAx(ax, undefined, sims);
+		await session.captureFrame();
+		await Bun.sleep(20);
+		await session.acceptAlert();
+		// "Allow While Using App" outranks "Allow Once", though it is listed second.
+		expect(sims.input).toEqual([["tap", 0.5, 0.59375, undefined]]);
+		expect(idbInput).toEqual([]);
+		await session.quit();
+	});
+
+	test("dismiss taps Don’t Allow", async () => {
+		const ax = fakeAx();
+		ax.setAlert(LOCATION_PROMPT);
+		const sims = fakeSims();
+		const session = await openWithAx(ax, undefined, sims);
+		await session.captureFrame();
+		await Bun.sleep(20);
+		await session.dismissAlert();
+		expect(sims.input).toEqual([["tap", 0.5, 0.65625, undefined]]);
+		expect(idbInput).toEqual([]);
+		await session.quit();
+	});
+
+	test("without a dialog, accept fails at once and taps nothing", async () => {
+		const ax = fakeAx();
+		const sims = fakeSims();
+		const session = await openWithAx(ax, undefined, sims);
+		await session.captureFrame();
+		await Bun.sleep(20);
+		await expect(session.acceptAlert()).rejects.toThrow("No accept alert button on screen");
+		expect(sims.input).toEqual([]);
+		expect(idbTreeReads()).toBe(0);
+		await session.quit();
+	});
+
+	test("without a SpringBoard dialog, accept taps an in-app alert's button from the Screen", async () => {
+		const ax = fakeAx();
+		ax.setTree({
+			nodes: [
+				{
+					role: "Button",
+					label: "OK",
+					frame: { x: 0.25, y: 0.5, width: 0.5, height: 0.125 },
+					enabled: true,
+				},
+			],
+			degraded: false,
+		});
+		const sims = fakeSims();
+		const session = await openWithAx(ax, undefined, sims);
+		await session.captureFrame();
+		await Bun.sleep(20);
+		await session.acceptAlert();
+		expect(sims.input).toEqual([["tap", 0.5, 0.5625, undefined]]);
+		expect(idbTreeReads()).toBe(0);
+		await session.quit();
+	});
+
+	test("an alert read that fails moves alerts and the tree to idb_companion, loudly", async () => {
+		const ax = fakeAx();
+		ax.failAlert("yoqa-ax alert: no reply within 5000 ms");
+		const session = await openWithAx(ax);
+		await session.captureFrame();
+		await Bun.sleep(20);
+		await expect(session.acceptAlert()).rejects.toThrow("No accept alert button on screen");
+		expect(session.laneWarning).toMatch(
+			/yoqa-ax failed; reading the tree and alerts with idb_companion.*no reply within 5000 ms/,
+		);
+		expect(idbTreeReads()).toBe(1);
+		expect(ax.running()).toBe(0);
+		await session.quit();
 	});
 
 	test("a tap never waits on a tree read", async () => {
