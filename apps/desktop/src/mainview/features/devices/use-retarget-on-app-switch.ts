@@ -1,14 +1,14 @@
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { type Application, useApps } from "@/features/apps/context";
-import { retargetsAfterRun } from "@/features/devices/session-app";
+import { appTargetFor, retargetsAfterRun } from "@/features/devices/session-app";
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
 } from "@/features/devices/use-active-device-session";
 import { runQueryKey } from "@/features/runs/active-run-context";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Run } from "@yoqa/runner-client";
+import type { ActiveDeviceResponse, Run } from "@yoqa/runner-client";
 import { useCallback, useEffect, useRef } from "react";
 
 /**
@@ -30,13 +30,10 @@ export function useRetargetOnAppSwitch() {
 	const previousSessionRef = useRef(activeSession);
 
 	const retarget = useCallback(
-		async (app: Application) => {
+		async (session: ActiveDeviceResponse, app: Application) => {
 			try {
 				const client = await getRunnerClient();
-				const info = await client.retargetDevice({
-					bundleId: app.iosBundleId.trim() || undefined,
-					appPackage: app.androidApplicationId.trim() || undefined,
-				});
+				const info = await client.retargetDevice(appTargetFor(session.platform, app));
 				queryClient.setQueryData(activeDeviceSessionQueryKey, info);
 			} catch (error) {
 				showErrorToast(error, `Failed to switch the device session to ${app.name}`);
@@ -52,7 +49,7 @@ export function useRetargetOnAppSwitch() {
 		if (previous === null || previous === selectedApp.id) return;
 		const session = sessionRef.current;
 		if (!session || session.heldByRun) return;
-		void retarget(selectedApp);
+		void retarget(session, selectedApp);
 	}, [selectedApp, retarget]);
 
 	useEffect(() => {
@@ -61,7 +58,8 @@ export function useRetargetOnAppSwitch() {
 		const app = selectedAppRef.current;
 		const runId = previous?.heldByRunId;
 		const runAppId = runId ? queryClient.getQueryData<Run>(runQueryKey(runId))?.appId : undefined;
-		if (!app || !retargetsAfterRun(previous, activeSession, runAppId, app.id)) return;
-		void retarget(app);
+		if (!app || !activeSession) return;
+		if (!retargetsAfterRun(previous, activeSession, runAppId, app.id)) return;
+		void retarget(activeSession, app);
 	}, [activeSession, queryClient, retarget]);
 }
