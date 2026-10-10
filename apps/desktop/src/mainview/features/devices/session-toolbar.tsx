@@ -4,7 +4,8 @@ import {
 	type SelectedDevice,
 } from "@/features/devices/select-device-modal";
 import { ServersDoctorPanel } from "@/features/devices/servers-doctor-panel";
-import { Button, ListBox, Select } from "@heroui/react";
+import { sessionPillLabel } from "@/features/devices/session-status";
+import { Button, Dropdown, Label, ListBox, Select } from "@heroui/react";
 import type { ActiveDeviceResponse } from "@yoqa/runner-client";
 import { type SVGProps, useState } from "react";
 
@@ -30,6 +31,27 @@ function PhoneIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
+function RestartIcon({ spinning }: { spinning: boolean }) {
+	return (
+		<svg
+			aria-hidden="true"
+			className={["size-[18px]", spinning ? "animate-spin" : ""].join(" ")}
+			fill="none"
+			stroke="currentColor"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			strokeWidth="2"
+			viewBox="0 0 24 24"
+		>
+			<path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+			<path d="M3 3v5h5" />
+		</svg>
+	);
+}
+
+const RESTART_BUTTON_CLASS =
+	"inline-flex size-10 items-center justify-center rounded-[10px] text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
+
 type SessionToolbarProps = {
 	platform: DevicePlatform;
 	onPlatformChange: (platform: DevicePlatform) => void;
@@ -39,12 +61,12 @@ type SessionToolbarProps = {
 	connecting: boolean;
 	live: boolean;
 	onConnect: () => void;
-	onRestart: () => void;
+	onRestart: (options: { rebuildWda: boolean }) => void;
 	onDisconnect: () => void;
 	/** A Run owns the shared session — watch-only until it finishes. */
 	viewOnly: boolean;
-	/** Connect / Restart / Disconnect are only offered where a session is worked on (Inspector). */
-	canManageSession: boolean;
+	/** Restart also offers to rebuild WebDriverAgent (an iOS session on the Appium lane). */
+	offerWdaRebuild: boolean;
 };
 
 export function SessionToolbar({
@@ -59,7 +81,7 @@ export function SessionToolbar({
 	onRestart,
 	onDisconnect,
 	viewOnly,
-	canManageSession,
+	offerWdaRebuild,
 }: SessionToolbarProps) {
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [serversOpen, setServersOpen] = useState(false);
@@ -110,7 +132,10 @@ export function SessionToolbar({
 
 				{connected ? (
 					<>
-						<span className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-2.5 py-1 text-body-sm font-semibold text-on-secondary-container">
+						<span
+							className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-2.5 py-1 text-body-sm font-semibold text-on-secondary-container"
+							title={active.laneWarning}
+						>
 							<span className="relative flex size-2">
 								<span
 									className={[
@@ -120,60 +145,75 @@ export function SessionToolbar({
 								/>
 								<span className="relative inline-flex size-2 rounded-full bg-secondary" />
 							</span>
-							{live ? "Live" : "Connected"}
+							{sessionPillLabel(active)}
 						</span>
-						{canManageSession ? (
-							<>
-								<button
-									type="button"
+						{offerWdaRebuild ? (
+							<Dropdown>
+								<Button
 									aria-label="Restart session"
-									title="Restart session"
-									className="inline-flex size-10 items-center justify-center rounded-[10px] text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
-									disabled={connecting || viewOnly}
-									onClick={() => {
-										onRestart();
-									}}
+									className={RESTART_BUTTON_CLASS}
+									isDisabled={connecting || viewOnly}
+									isIconOnly
+									variant="ghost"
 								>
-									<svg
-										aria-hidden="true"
-										className={["size-[18px]", connecting ? "animate-spin" : ""].join(" ")}
-										fill="none"
-										stroke="currentColor"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										strokeWidth="2"
-										viewBox="0 0 24 24"
+									<RestartIcon spinning={connecting} />
+								</Button>
+								<Dropdown.Popover className="w-72">
+									<Dropdown.Menu
+										onAction={(key) => {
+											onRestart({ rebuildWda: String(key) === "restart-rebuild-wda" });
+										}}
 									>
-										<path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-										<path d="M3 3v5h5" />
-									</svg>
-								</button>
-								<button
-									type="button"
-									className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] px-3 text-body-md font-semibold text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
-									disabled={connecting || viewOnly}
-									onClick={() => {
-										onDisconnect();
-									}}
-								>
-									<svg
-										aria-hidden="true"
-										className="size-4"
-										fill="none"
-										stroke="currentColor"
-										strokeLinecap="round"
-										strokeWidth="2"
-										viewBox="0 0 24 24"
-									>
-										<path d="M12 3v9" />
-										<path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
-									</svg>
-									Disconnect
-								</button>
-							</>
-						) : null}
+										<Dropdown.Item id="restart" textValue="Restart session">
+											<Label>Restart session</Label>
+										</Dropdown.Item>
+										<Dropdown.Item
+											id="restart-rebuild-wda"
+											textValue="Restart & rebuild WebDriverAgent"
+										>
+											<Label>Restart &amp; rebuild WebDriverAgent</Label>
+										</Dropdown.Item>
+									</Dropdown.Menu>
+								</Dropdown.Popover>
+							</Dropdown>
+						) : (
+							<button
+								type="button"
+								aria-label="Restart session"
+								title="Restart session"
+								className={RESTART_BUTTON_CLASS}
+								disabled={connecting || viewOnly}
+								onClick={() => {
+									onRestart({ rebuildWda: false });
+								}}
+							>
+								<RestartIcon spinning={connecting} />
+							</button>
+						)}
+						<button
+							type="button"
+							className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] px-3 text-body-md font-semibold text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
+							disabled={connecting || viewOnly}
+							onClick={() => {
+								onDisconnect();
+							}}
+						>
+							<svg
+								aria-hidden="true"
+								className="size-4"
+								fill="none"
+								stroke="currentColor"
+								strokeLinecap="round"
+								strokeWidth="2"
+								viewBox="0 0 24 24"
+							>
+								<path d="M12 3v9" />
+								<path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
+							</svg>
+							Disconnect
+						</button>
 					</>
-				) : canManageSession ? (
+				) : (
 					<>
 						<Button
 							isDisabled={!device || connecting}
@@ -191,14 +231,14 @@ export function SessionToolbar({
 								size="sm"
 								variant="secondary"
 								onPress={() => {
-									onRestart();
+									onRestart({ rebuildWda: false });
 								}}
 							>
 								{connecting ? "Restarting…" : "Restart session"}
 							</Button>
 						) : null}
 					</>
-				) : null}
+				)}
 				<ServersDoctorPanel onOpenChange={setServersOpen} open={serversOpen} />
 			</div>
 
