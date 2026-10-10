@@ -10,7 +10,6 @@ import {
 	androidDevtoolsLane,
 	androidLatestFrameLane,
 	appiumLane,
-	frameAfterTaps,
 	iosIdbLane,
 	iosYoqaAxLane,
 	iosYoqaSimLane,
@@ -62,6 +61,20 @@ for (const makeHarness of LANES) {
 			]);
 		});
 
+		test("a tap in screenshot space lands on the same device edges", async () => {
+			const harness = makeHarness();
+			const { session } = await open(harness);
+			await session.captureFrame();
+			await session.tap(0, 0, { coordSpace: "screenshot" });
+			await session.tap(1000, 1000, { coordSpace: "screenshot" });
+			await session.tap(1000, 0, { coordSpace: "screenshot" });
+			expect(harness.taps()).toEqual([
+				{ x: 0, y: 0 },
+				{ x: DEVICE.width, y: DEVICE.height },
+				{ x: DEVICE.width, y: 0 },
+			]);
+		});
+
 		test("capture-frame returns an image and writes nothing to disk", async () => {
 			const { session } = await open(makeHarness());
 			const before = await screenshotFiles();
@@ -72,10 +85,11 @@ for (const makeHarness of LANES) {
 		});
 
 		test("capture-frame after a tap shows the screen after that tap", async () => {
-			const { session } = await open(makeHarness());
-			expect((await session.captureFrame()).base64).toBe(frameAfterTaps(0));
+			const harness = makeHarness();
+			const { session } = await open(harness);
+			expect((await session.captureFrame()).base64).toBe(harness.frame(0));
 			await session.tap(500, 500);
-			expect((await session.captureFrame()).base64).toBe(frameAfterTaps(1));
+			expect((await session.captureFrame()).base64).toBe(harness.frame(1));
 			await session.quit();
 		});
 

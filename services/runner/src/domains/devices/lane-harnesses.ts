@@ -27,19 +27,31 @@ export type LaneHarness = {
 	open: (hooks: { onSessionDead: () => void }) => Promise<DeviceSession>;
 	/** Where taps landed, in device units. */
 	taps: () => Array<{ x: number; y: number }>;
+	/** The frame this harness serves after `taps` taps, base64-encoded. */
+	frame: (taps: number) => string;
 	/** The device tool dies: every later call fails the way that tool reports it. */
 	killTool: () => void;
 };
 
-/** The device's screen after `taps` taps: each tap darkens it, so a frame shows what it followed. */
-function devicePng(taps = 0): Uint8Array {
-	const rgba = new Uint8Array(DEVICE.width * DEVICE.height * 4).fill(Math.max(0, 255 - taps));
-	return new Uint8Array(encodeRgbaPng({ width: DEVICE.width, height: DEVICE.height, rgba }));
+/**
+ * Screenshot pixels per device unit. An iOS screenshot is in pixels, 3× the points idb
+ * and yoqa-sim take on an iPhone 17 Pro. Android's screencap is in the pixels adb takes.
+ */
+const IOS_SCREENSHOT_SCALE = 3;
+
+/**
+ * The device's screen after `taps` taps, at `scale` screenshot pixels per device unit.
+ * Each tap darkens it, so a frame shows what it followed.
+ */
+function devicePng(taps = 0, scale = 1): Uint8Array {
+	const width = DEVICE.width * scale;
+	const height = DEVICE.height * scale;
+	const rgba = new Uint8Array(width * height * 4).fill(Math.max(0, 255 - taps));
+	return new Uint8Array(encodeRgbaPng({ width, height, rgba }));
 }
 
-/** The frame a harness serves after `taps` taps, base64-encoded. */
-export function frameAfterTaps(taps: number): string {
-	return Buffer.from(devicePng(taps)).toString("base64");
+function frameAfterTaps(taps: number, scale = 1): string {
+	return Buffer.from(devicePng(taps, scale)).toString("base64");
 }
 
 const ANDROID_DUMP = `<?xml version="1.0"?><hierarchy><node class="android.widget.Button" text="${BUTTON.label}" clickable="true" enabled="true" bounds="[0,0][100,40]" /></hierarchy>`;
@@ -78,6 +90,7 @@ export function appiumLane(): LaneHarness {
 				{ connect: async () => ({ browser, mjpegPort: 9100, streamReady: false }) },
 			),
 		taps: () => taps,
+		frame: (count) => frameAfterTaps(count),
 		killTool: () => {
 			dead = true;
 		},
@@ -125,6 +138,7 @@ function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneH
 				{ adb, resolveSerial: async () => "emulator-5554", ...deps },
 			),
 		taps: () => taps,
+		frame: (count) => frameAfterTaps(count),
 		killTool: () => {
 			dead = true;
 		},
@@ -209,7 +223,7 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 				}),
 			);
 		}
-		if (args[0] === "screenshot") return ok("", devicePng(taps.length));
+		if (args[0] === "screenshot") return ok("", devicePng(taps.length, IOS_SCREENSHOT_SCALE));
 		if (args[0] === "ui" && args[1] === "describe-all") {
 			if (fakes.yoqaAx) return { stdout: "", stderr: "describe-all not faked", exitCode: 1 };
 			return ok(
@@ -238,7 +252,11 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 		streamUrl: "http://127.0.0.1:50123/stream.mjpeg",
 		frame: async () => {
 			alive();
-			return { bytes: devicePng(taps.length), mime: "image/png", hash: `taps-${taps.length}` };
+			return {
+				bytes: devicePng(taps.length, IOS_SCREENSHOT_SCALE),
+				mime: "image/png",
+				hash: `taps-${taps.length}`,
+			};
 		},
 		// yoqa-sim takes 0.0–1.0; record the device point it lands on, as idb's taps are.
 		tap: async (x, y) => {
@@ -285,6 +303,7 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 				},
 			),
 		taps: () => taps,
+		frame: (count) => frameAfterTaps(count, IOS_SCREENSHOT_SCALE),
 		killTool: () => {
 			dead = true;
 		},
