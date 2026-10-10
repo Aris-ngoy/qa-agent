@@ -2,7 +2,6 @@ import { useEnterOnce } from "@/app/motion/use-enter-once";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
-import type { DevicePlatform, SelectedDevice } from "@/features/devices/select-device-modal";
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
@@ -19,7 +18,6 @@ import {
 	cycleChangeSelector,
 	selectionFromPoint,
 } from "@/features/inspector/selection";
-import { SessionToolbar } from "@/features/inspector/session-toolbar";
 import {
 	type TestCase,
 	caseQueryKey,
@@ -142,10 +140,7 @@ export function InspectorPage() {
 	const { selectedApp } = useApps();
 	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
 
-	const [platform, setPlatform] = useState<DevicePlatform>("ios");
-	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [active, setActive] = useState<ActiveDeviceResponse | null>(null);
-	const [connecting, setConnecting] = useState(false);
 	const [bootLoading, setBootLoading] = useState(false);
 	const [imageUrl, setImageUrl] = useState<string | null>(null);
 	const [feedMode, setFeedMode] = useState<"mjpeg" | "poll" | null>(null);
@@ -259,25 +254,11 @@ export function InspectorPage() {
 	}, [revokeImage]);
 
 	const handleSessionGone = useCallback(() => {
-		const current = activeRef.current;
-		if (current) {
-			setDevice(
-				(prev) =>
-					prev ?? {
-						id: current.deviceId,
-						platform: current.platform,
-						label: current.deviceId,
-						name: current.deviceId,
-						osVersion: "",
-						kind: "physical",
-					},
-			);
-		}
 		sessionEpochRef.current += 1;
 		clearSessionUi();
 		queryClient.setQueryData(activeDeviceSessionQueryKey, null);
 		invalidateActiveDeviceSession();
-		notify("Device session ended — use Restart session to reconnect");
+		notify("Device session ended — reconnect from the top bar");
 	}, [clearSessionUi, invalidateActiveDeviceSession, queryClient]);
 
 	const refreshTree = useCallback(
@@ -466,33 +447,6 @@ export function InspectorPage() {
 
 	startLiveFeedRef.current = startLiveFeed;
 
-	const connectWithDevice = useCallback(
-		async (target: SelectedDevice) => {
-			const client = await getRunnerClient();
-			const bundleId =
-				target.platform === "ios" ? selectedApp?.iosBundleId.trim() || undefined : undefined;
-			const appPackage =
-				target.platform === "android"
-					? selectedApp?.androidApplicationId.trim() || undefined
-					: undefined;
-			const info = await client.connectDevice({
-				deviceId: target.id,
-				platform: target.platform,
-				bundleId,
-				appPackage,
-			});
-			sessionEpochRef.current += 1;
-			activeRef.current = info;
-			setActive(info);
-			setSelection(null);
-			setLiveControl(false);
-			await startLiveFeed(info);
-			invalidateActiveDeviceSession();
-			return info;
-		},
-		[invalidateActiveDeviceSession, selectedApp, startLiveFeed],
-	);
-
 	useEffect(() => {
 		const onVisibility = () => {
 			setPageVisible(document.visibilityState === "visible");
@@ -504,7 +458,6 @@ export function InspectorPage() {
 	// Adopt the shared Active Session (connected from any mode — play bar, CLI,
 	// another inspector visit) and mirror external disconnects into local UI.
 	useEffect(() => {
-		if (connecting) return;
 		if (!activeSession) {
 			// Query is still null after a local connect (refetch in flight). Don't
 			// wipe the feed unless this session was adopted from the shared query.
@@ -525,9 +478,8 @@ export function InspectorPage() {
 		sessionEpochRef.current += 1;
 		activeRef.current = activeSession;
 		setActive(activeSession);
-		setPlatform(activeSession.platform);
 		void startLiveFeedRef.current(activeSession);
-	}, [activeSession, clearSessionUi, connecting]);
+	}, [activeSession, clearSessionUi]);
 
 	useEffect(() => {
 		return () => {
@@ -647,90 +599,6 @@ export function InspectorPage() {
 			}),
 		);
 	}, []);
-
-	const handleConnect = useCallback(async () => {
-		if (!device) return;
-		setConnecting(true);
-		try {
-			const info = await connectWithDevice(device);
-			notify(
-				info.streamReady === false
-					? "Connected — screenshot poll (MJPEG unavailable)"
-					: "Connected — live stream on",
-			);
-		} catch (error) {
-			showErrorToast(error, "Failed to connect device");
-		} finally {
-			setConnecting(false);
-		}
-	}, [connectWithDevice, device]);
-
-	const handleRestartSession = useCallback(async () => {
-		const target: SelectedDevice | null =
-			device ??
-			(active
-				? {
-						id: active.deviceId,
-						platform: active.platform,
-						label: active.deviceId,
-						name: active.deviceId,
-						osVersion: "",
-						kind: "physical",
-					}
-				: null);
-		if (!target) {
-			showErrorToast(new Error("Select a device first"), "Nothing to restart");
-			return;
-		}
-
-		setConnecting(true);
-		setLiveControl(false);
-		controlWsRef.current?.close();
-		controlWsRef.current = null;
-		try {
-			const client = await getRunnerClient();
-			try {
-				await client.disconnectDevice();
-			} catch {
-				/* already dead / no session */
-			}
-			sessionEpochRef.current += 1;
-			clearSessionUi();
-			if (!device) setDevice(target);
-			const info = await connectWithDevice(target);
-			notify(
-				info.streamReady === false
-					? "Session restarted — screenshot poll"
-					: "Session restarted — live stream refreshed",
-			);
-		} catch (error) {
-			sessionEpochRef.current += 1;
-			clearSessionUi();
-			showErrorToast(error, "Failed to restart session");
-		} finally {
-			setConnecting(false);
-		}
-	}, [active, clearSessionUi, connectWithDevice, device]);
-
-	const handleDisconnect = useCallback(async () => {
-		if (scriptHasBody(script) && !window.confirm("Disconnect and keep the current script?")) {
-			return;
-		}
-		setConnecting(true);
-		try {
-			const client = await getRunnerClient();
-			await client.disconnectDevice();
-			sessionEpochRef.current += 1;
-			clearSessionUi();
-			queryClient.setQueryData(activeDeviceSessionQueryKey, null);
-			invalidateActiveDeviceSession();
-			notify("Disconnected");
-		} catch (error) {
-			showErrorToast(error, "Failed to disconnect");
-		} finally {
-			setConnecting(false);
-		}
-	}, [clearSessionUi, invalidateActiveDeviceSession, queryClient, script]);
 
 	const appendLines = useCallback((lines: string[]) => {
 		setScript((prev) => appendScriptLines(prev, lines));
@@ -890,7 +758,7 @@ export function InspectorPage() {
 				buildRunReportFromInspectorSession({
 					title: defaultCaseNameFromScript(script),
 					appLabel: selectedApp?.name ?? null,
-					deviceLabel: device?.name ?? active.deviceId,
+					deviceLabel: active.deviceId,
 					platform: active.platform,
 					ok: result.ok,
 					cancelled,
@@ -917,7 +785,7 @@ export function InspectorPage() {
 				buildRunReportFromInspectorSession({
 					title: defaultCaseNameFromScript(script),
 					appLabel: selectedApp?.name ?? null,
-					deviceLabel: device?.name ?? active.deviceId,
+					deviceLabel: active.deviceId,
 					platform: active.platform,
 					ok: false,
 					error: message,
@@ -932,7 +800,7 @@ export function InspectorPage() {
 			abortRef.current = null;
 			void refreshTree({ silent: true });
 		}
-	}, [active, device?.name, pushLog, refreshTree, running, script, selectedApp?.name]);
+	}, [active, pushLog, refreshTree, running, script, selectedApp?.name]);
 
 	const handleStop = useCallback(() => {
 		abortRef.current?.abort();
@@ -1074,11 +942,11 @@ export function InspectorPage() {
 	const snippetContext = useMemo(
 		() => ({
 			defaultAppId:
-				platform === "ios"
-					? (selectedApp?.iosBundleId.trim() ?? "")
-					: (selectedApp?.androidApplicationId.trim() ?? ""),
+				active?.platform === "android"
+					? (selectedApp?.androidApplicationId.trim() ?? "")
+					: (selectedApp?.iosBundleId.trim() ?? ""),
 		}),
-		[platform, selectedApp?.androidApplicationId, selectedApp?.iosBundleId],
+		[active?.platform, selectedApp?.androidApplicationId, selectedApp?.iosBundleId],
 	);
 
 	return (
@@ -1087,35 +955,11 @@ export function InspectorPage() {
 				" ",
 			)}
 		>
-			<header className="relative z-40 flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-5 py-3 shadow-soft backdrop-blur-md">
-				<div className="flex flex-col gap-0.5">
-					<h1 className="m-0 text-headline-lg text-on-surface">Inspector</h1>
-					<p className="m-0 text-body-md text-on-surface-variant">
-						Pick an element on the device to add steps, or edit the script directly.
-					</p>
-				</div>
-				<SessionToolbar
-					platform={platform}
-					onPlatformChange={(next) => {
-						setPlatform(next);
-						setDevice(null);
-					}}
-					device={device}
-					onDeviceSelect={setDevice}
-					active={active}
-					connecting={connecting}
-					live={live}
-					onConnect={() => {
-						void handleConnect();
-					}}
-					onRestart={() => {
-						void handleRestartSession();
-					}}
-					onDisconnect={() => {
-						void handleDisconnect();
-					}}
-					viewOnly={viewOnly}
-				/>
+			<header className="flex flex-col gap-0.5 px-1">
+				<h1 className="m-0 text-headline-lg text-on-surface">Inspector</h1>
+				<p className="m-0 text-body-md text-on-surface-variant">
+					Pick an element on the device to add steps, or edit the script directly.
+				</p>
 			</header>
 
 			<div className="flex flex-wrap items-start gap-5">

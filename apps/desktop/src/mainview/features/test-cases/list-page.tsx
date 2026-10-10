@@ -7,6 +7,7 @@ import {
 	casesQueryKey,
 	mapCatalogCase,
 } from "@/features/test-cases/data";
+import { RunControls } from "@/features/test-cases/run-controls";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
 import { Button } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -160,6 +161,7 @@ export function TestCasesPage() {
 				>
 					New test case
 				</Button>
+				<RunControls />
 			</div>
 
 			<div className="overflow-hidden rounded-2xl bg-surface-container-lowest shadow-soft">
