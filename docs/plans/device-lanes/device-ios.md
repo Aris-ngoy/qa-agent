@@ -28,6 +28,8 @@ YoqaRunner.xcodeproj
     MainThreadGate.swift
 ```
 
+As built (#247), `Session.swift` and `HTTPServer.swift` live in `Sources/YoqaRunnerCore/`, a Swift package the UI-test target compiles too, so the wire protocol is tested on the host. The test method is `testServe`. See [yoqa-runner-status.md](../../devices/yoqa-runner-status.md).
+
 The test method starts the server and waits. Bind `127.0.0.1` on the device. Port from `YOQA_RUNNER_PORT`, or a system port logged as `YOQA_RUNNER_LISTENING port=N`.
 
 Signing is part of this slice. Nothing runs without it.
