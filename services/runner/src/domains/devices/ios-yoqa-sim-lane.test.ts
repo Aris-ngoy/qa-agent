@@ -257,6 +257,19 @@ describe("iOS-simulator Direct lane: device-sim", () => {
 		await session.quit();
 	});
 
+	test("a new target app is the one backgrounding relaunches, and setting it launches nothing", async () => {
+		const sims = fakeSims();
+		const session = await createIosDirectSession(
+			{ platform: "ios", deviceId: UDID, appCaps: [], caseCaps: [], bundleId: "com.app-a" },
+			{ idb: fakeIdb(), yoqaSim: sims.spawn },
+		);
+		session.setTargetApp("com.app-b");
+		expect(idbInput).toEqual([]);
+		await session.backgroundApp(0);
+		expect(idbInput).toEqual([["launch", "com.app-b", "--udid", UDID]]);
+		await session.quit();
+	});
+
 	test("when yoqa-sim can't start, taps go to idb_companion", async () => {
 		const session = await open(fakeSims({ failSpawn: true }));
 		await session.tap(500, 500);

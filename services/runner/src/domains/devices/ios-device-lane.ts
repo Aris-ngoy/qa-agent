@@ -157,7 +157,10 @@ export async function createIosDeviceSession(
 
 	/** A runner the cable no longer reaches is a Dead Session, reported once. */
 	let notifiedDead = false;
-	/** The app a snapshot reads: the one the session was opened for, then the last one activated. */
+	/**
+	 * The app a snapshot reads: the one the session was opened for, then the last one
+	 * activated or set as the target.
+	 */
 	let appId = options.bundleId;
 	const call = async (command: string, fields?: Record<string, unknown>, journaled = false) => {
 		try {
@@ -335,6 +338,9 @@ export async function createIosDeviceSession(
 		type: (text) => withActionLock(() => typeText(text)),
 		activateApp: async (id) => {
 			await devicectl(["device", "process", "launch", "--device", udid, id], "devicectl launch");
+			appId = id;
+		},
+		setTargetApp: (id) => {
 			appId = id;
 		},
 		terminateApp: notYet("Terminating an app"),

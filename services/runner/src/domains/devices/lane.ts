@@ -93,6 +93,12 @@ export type DeviceSession = {
 	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	type: (text: string) => Promise<void>;
 	activateApp: (appId: string) => Promise<void>;
+	/**
+	 * Point the session at another app (bundle id / package) without reconnecting or
+	 * launching anything: what a Lane that remembers its app reads or relaunches from now
+	 * on. Undefined forgets the app. A Lane that remembers none ignores it (Appium).
+	 */
+	setTargetApp: (appId: string | undefined) => void;
 	terminateApp: (appId: string) => Promise<void>;
 	backgroundApp: (seconds?: number) => Promise<void>;
 	openUrl: (url: string) => Promise<void>;
