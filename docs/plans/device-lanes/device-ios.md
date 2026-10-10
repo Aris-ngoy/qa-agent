@@ -65,6 +65,8 @@ Lifecycle stays `xcrun devicectl`.
 
 As built (#249): `viewport`, `screenshot`, `tap`, `longPress`, `drag` and the journal. See [ios-device-actions.md](../../devices/ios-device-actions.md).
 
+As built (#250): `snapshot`, `type`, `keyboardReturn`, `keyboardDelete`, `button`, `APP_BACKGROUNDED`, and `RUNNER_WEDGED` through `MainThreadGate`. See [ios-device-observation.md](../../devices/ios-device-observation.md).
+
 ## Done
 
 Connect, snapshot, tap, and screenshot work on a phone with Developer Mode on, and a retried tap does not fire twice.

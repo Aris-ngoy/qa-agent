@@ -47,7 +47,7 @@ async function open(harness: LaneHarness) {
 }
 
 for (const makeHarness of LANES) {
-	const { name, pending } = makeHarness();
+	const { name } = makeHarness();
 
 	describe(`Lane contract: ${name}`, () => {
 		test("a tap at the 0–1000 corners lands on the matching device edges", async () => {
@@ -109,15 +109,12 @@ for (const makeHarness of LANES) {
 			}
 		});
 
-		test.skipIf(Boolean(pending?.tree))(
-			`a tree read returns the cleaned 0–1000 Screen${pending?.tree ? ` (arrives in ${pending.tree})` : ""}`,
-			async () => {
-				const { session } = await open(makeHarness());
-				const screen = await getScreen(session, { pauseMjpeg: false });
-				if (screen.full) throw new Error("expected the cleaned Screen");
-				expect(screen.elements).toEqual([expect.objectContaining(BUTTON)]);
-			},
-		);
+		test("a tree read returns the cleaned 0–1000 Screen", async () => {
+			const { session } = await open(makeHarness());
+			const screen = await getScreen(session, { pauseMjpeg: false });
+			if (screen.full) throw new Error("expected the cleaned Screen");
+			expect(screen.elements).toEqual([expect.objectContaining(BUTTON)]);
+		});
 
 		test("quit is idempotent", async () => {
 			const { session } = await open(makeHarness());

@@ -179,4 +179,18 @@ final class FakeDevice: Device {
         if let failure { throw DeviceError(failure) }
         return png
     }
+
+    var nodes: [SnapshotNode] = []
+    var snapshotError: Error?
+
+    func snapshot(bundleId: String?) throws -> [SnapshotNode] {
+        if let snapshotError { throw snapshotError }
+        try record("snapshot \(bundleId ?? "-")")
+        return nodes
+    }
+
+    func typeText(_ text: String) throws { try record("type \(text)") }
+    func keyboardReturn() throws { try record("keyboardReturn") }
+    func keyboardDelete() throws { try record("keyboardDelete") }
+    func button(_ name: String) throws { try record("button \(name)") }
 }

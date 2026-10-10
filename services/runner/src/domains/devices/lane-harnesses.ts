@@ -33,8 +33,6 @@ export type LaneHarness = {
 	frame: (taps: number) => string;
 	/** The device tool dies: every later call fails the way that tool reports it. */
 	killTool: () => void;
-	/** Contract tests this Lane can't pass yet, by test, with the ticket that brings them. */
-	pending?: { tree?: string };
 };
 
 /**
@@ -333,6 +331,22 @@ export function iosDeviceLane(): LaneHarness {
 					return ok({ ...DEVICE });
 				case "screenshot":
 					return ok({ png: frameAfterTaps(taps.length, IOS_SCREENSHOT_SCALE) });
+				case "snapshot":
+					return ok({
+						nodes: [
+							{
+								role: "Button",
+								label: BUTTON.label,
+								frame: {
+									x: BUTTON.x / 1000,
+									y: BUTTON.y / 1000,
+									width: BUTTON.width / 1000,
+									height: BUTTON.height / 1000,
+								},
+								enabled: true,
+							},
+						],
+					});
 				case "tap":
 					taps.push({ x: (body.x ?? -1) * DEVICE.width, y: (body.y ?? -1) * DEVICE.height });
 					return ok({});
@@ -368,6 +382,5 @@ export function iosDeviceLane(): LaneHarness {
 		killTool: () => {
 			runner.stop(true);
 		},
-		pending: { tree: "#250" },
 	};
 }

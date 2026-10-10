@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createConnection } from "node:net";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
 import type { SessionOptions } from "./lane";
+import { cleanPageSource } from "./screen";
+import { YoqaRunnerCommandError } from "./yoqa-runner-link";
 
 const PHONE_UDID = "00008120-000E6D813E2A601E";
 const SIM_UDID = "B75001FB-B91D-4F94-80A7-3E371A641D27";
@@ -28,7 +30,14 @@ afterEach(() => {
  * `RUNNER_PORT`, and the tunnel to that port reaches a real HTTP server that answers like
  * the runner (`status` ready, unless `statusFails`). `devicectl` records its commands.
  */
-function fakePhone(mode: { statusFails?: boolean; tunnelFails?: boolean } = {}) {
+function fakePhone(
+	mode: {
+		statusFails?: boolean;
+		tunnelFails?: boolean;
+		/** Answers a command with this reply instead of the default. */
+		replies?: Record<string, unknown>;
+	} = {},
+) {
 	const commands: string[] = [];
 	const bodies: Array<Record<string, unknown>> = [];
 	const devicectl: string[][] = [];
@@ -43,11 +52,13 @@ function fakePhone(mode: { statusFails?: boolean; tunnelFails?: boolean } = {}) 
 			commands.push(body.command);
 			bodies.push(body);
 			const reply =
-				body.command === "status" && mode.statusFails
-					? { ok: false, error: { code: "UNKNOWN_COMMAND", message: "no" } }
-					: body.command === "viewport"
-						? { ok: true, data: { width: 393, height: 852 } }
-						: { ok: true, data: { state: "ready" } };
+				mode.replies && body.command in mode.replies
+					? mode.replies[body.command]
+					: body.command === "status" && mode.statusFails
+						? { ok: false, error: { code: "UNKNOWN_COMMAND", message: "no" } }
+						: body.command === "viewport"
+							? { ok: true, data: { width: 393, height: 852 } }
+							: { ok: true, data: { state: "ready" } };
 			return Response.json(reply, { headers: { Connection: "close" } });
 		},
 	});
@@ -203,10 +214,122 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		await session.quit();
 	});
 
-	test("the tree says it isn't available yet instead of hanging", async () => {
+	test("the tree is the runner's snapshot of the app, as the 0–1000 Screen", async () => {
+		const phone = fakePhone({
+			replies: {
+				snapshot: {
+					ok: true,
+					data: {
+						nodes: [
+							{
+								role: "Button",
+								label: "Allow",
+								id: "allow",
+								frame: { x: 0.1, y: 0.2, width: 0.5, height: 0.1 },
+								enabled: true,
+							},
+						],
+					},
+				},
+			},
+		});
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, { bundleId: "com.demo" }),
+			phone.deps,
+		);
+		const screen = cleanPageSource(await session.pageSource(), await session.getWindowSize());
+		expect(phone.bodies.find((body) => body.command === "snapshot")).toMatchObject({
+			bundleId: "com.demo",
+		});
+		expect(screen.elements).toEqual([
+			expect.objectContaining({ label: "Allow", x: 100, y: 200, width: 500, height: 100 }),
+		]);
+		await session.quit();
+	});
+
+	test("the snapshot follows the app that was last activated", async () => {
+		const phone = fakePhone({ replies: { snapshot: { ok: true, data: { nodes: [] } } } });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.activateApp("com.other");
+		await session.pageSource();
+		expect(phone.bodies.find((body) => body.command === "snapshot")).toMatchObject({
+			bundleId: "com.other",
+		});
+		await session.quit();
+	});
+
+	test("a backgrounded app is a clear error that names the app", async () => {
+		const phone = fakePhone({
+			replies: {
+				snapshot: { ok: false, error: { code: "APP_BACKGROUNDED", message: "state 3" } },
+			},
+		});
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, { bundleId: "com.demo" }),
+			phone.deps,
+		);
+		const error = await session.pageSource().catch((caught: unknown) => caught);
+		expect(error).toBeInstanceOf(YoqaRunnerCommandError);
+		expect((error as YoqaRunnerCommandError).code).toBe("APP_BACKGROUNDED");
+		expect((error as Error).message).toMatch(/com\.demo is not in the foreground/);
+		await session.quit();
+	});
+
+	test("a stuck main thread is a clear error, not a Dead Session", async () => {
+		const phone = fakePhone({
+			replies: { tap: { ok: false, error: { code: "RUNNER_WEDGED", message: "8 s" } } },
+		});
+		let dead = 0;
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, {
+				onSessionDead: () => {
+					dead += 1;
+				},
+			}),
+			phone.deps,
+		);
+		const error = await session.tap(500, 500).catch((caught: unknown) => caught);
+		expect((error as YoqaRunnerCommandError).code).toBe("RUNNER_WEDGED");
+		expect((error as Error).message).toMatch(/main thread is stuck/);
+		expect(dead).toBe(0);
+		await session.quit();
+	});
+
+	test("typing sends the text, and a newline presses return", async () => {
 		const phone = fakePhone();
 		const session = await createIosDeviceSession(options(), phone.deps);
-		await expect(session.pageSource()).rejects.toThrow(/physical-iOS Direct lane/);
+		await session.type("ab\ncd");
+		const sent = phone.bodies.slice(-3);
+		expect(sent.map((body) => body.command)).toEqual(["type", "keyboardReturn", "type"]);
+		expect(sent[0]).toMatchObject({ text: "ab" });
+		expect(sent[2]).toMatchObject({ text: "cd" });
+		await session.quit();
+	});
+
+	test("a backspace character presses delete", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.type("a\b\bb");
+		expect(phone.bodies.slice(-4).map((body) => body.command)).toEqual([
+			"type",
+			"keyboardDelete",
+			"keyboardDelete",
+			"type",
+		]);
+		await session.quit();
+	});
+
+	test("backgrounding presses home, waits, and brings the app back", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, { bundleId: "com.demo" }),
+			phone.deps,
+		);
+		await session.backgroundApp(0);
+		expect(phone.bodies.at(-1)).toMatchObject({ command: "button", name: "home" });
+		expect(phone.devicectl).toEqual([
+			["device", "process", "launch", "--device", PHONE_UDID, "com.demo"],
+		]);
 		await session.quit();
 	});
 });
