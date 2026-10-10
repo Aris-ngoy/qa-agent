@@ -44,28 +44,52 @@ export function SessionRunChip() {
 	const chip = runChip(activeSession, runQuery.data ?? null);
 	if (!chip) return null;
 
+	const finished = runQuery.data ? chip.finished : 0;
+	const total = runQuery.data ? chip.total : 0;
+	const percent = total > 0 ? Math.round((finished / total) * 100) : 0;
+
 	return (
-		<span className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-2.5 py-1 text-body-sm font-semibold text-on-secondary-container">
+		<div className="motion-fade-in flex items-center gap-3">
+			<span aria-hidden="true" className="h-8 w-px bg-outline-variant" />
+			<div className="flex w-52 flex-col gap-1">
+				<div className="flex items-baseline justify-between text-body-sm">
+					{chip.runId ? (
+						<Link
+							className="font-semibold text-primary hover:underline"
+							params={{ runId: chip.runId }}
+							to="/runs/$runId"
+						>
+							Running
+						</Link>
+					) : (
+						<span className="font-semibold text-primary">Run in progress</span>
+					)}
+					{total > 0 ? (
+						<span className="text-on-surface-variant">
+							{finished} of {total} done
+						</span>
+					) : null}
+				</div>
+				<div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-container-high">
+					<div
+						className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+						style={{ width: `${percent}%` }}
+					/>
+				</div>
+			</div>
 			{chip.runId ? (
-				<>
-					<Link className="hover:underline" params={{ runId: chip.runId }} to="/runs/$runId">
-						{chip.label}
-					</Link>
-					<span aria-hidden="true">·</span>
-					<button
-						className="text-error hover:underline disabled:opacity-50"
-						disabled={cancelMutation.isPending}
-						onClick={() => {
-							if (chip.runId) cancelMutation.mutate(chip.runId);
-						}}
-						type="button"
-					>
-						Cancel
-					</button>
-				</>
-			) : (
-				chip.label
-			)}
-		</span>
+				<button
+					className="inline-flex h-10 items-center gap-2 rounded-xl border border-error/30 px-4 text-body-md font-semibold text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
+					disabled={cancelMutation.isPending}
+					onClick={() => {
+						if (chip.runId) cancelMutation.mutate(chip.runId);
+					}}
+					type="button"
+				>
+					<span aria-hidden="true" className="size-2.5 rounded-[2px] bg-error" />
+					Stop
+				</button>
+			) : null}
+		</div>
 	);
 }

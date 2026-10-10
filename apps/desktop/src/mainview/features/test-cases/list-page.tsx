@@ -113,7 +113,6 @@ export function TestCasesPage() {
 	if (!selectedApp) {
 		return (
 			<div className="motion-fade-up flex w-full flex-col gap-4 py-16">
-				<h1 className="text-headline-lg text-on-surface">Test Cases</h1>
 				<p className="text-body-md text-on-surface-variant">
 					Select or create an app to manage its test cases.
 				</p>
@@ -125,7 +124,6 @@ export function TestCasesPage() {
 		<div className="flex w-full flex-col gap-8 pb-4">
 			<div className="motion-fade-up flex flex-wrap items-center gap-6">
 				<div className="min-w-[10rem]">
-					<h1 className="text-headline-lg text-on-surface">Test Cases</h1>
 					<p className="text-body-sm text-on-surface-variant">
 						Automated regression suites for {selectedApp.name}
 						{selectedCaseIds.length > 0 ? ` · ${selectedCaseIds.length} selected` : null}

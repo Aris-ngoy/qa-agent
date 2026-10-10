@@ -27,7 +27,7 @@ Make the app's single top bar the one place to manage the **Active Session** (se
 - The last device you connected from the desktop (Connect, Restart, or Run connecting first) and its platform are remembered across launches (`yoqa.lastDevice`) and preselected, never connected; a session the bar only adopted (from the CLI or a Run) is not remembered, and a device the list no longer has leaves "Select device".
 - `run-controls.tsx`: with a picked device and no Active Session, Run connects first (the bar shows "Connecting…"), then creates the Run; a failed connect is a toast and no Run. Run is disabled for want of a device only when there is neither a session nor a picked device. The WDA Skip/Rebuild select is gone.
 - Restart on an iOS Appium-lane session whose device is in the device list is a menu: "Restart session" or "Restart & rebuild WebDriverAgent" (`wda-setup.ts`: setup with `force`, then reconnect on the Appium lane). On a physical iPhone the forced setup rebuilds and reinstalls WDA, signed from Settings; on a simulator it drops Appium's WDA build (`~/.yoqa/wda-sim`, `services/runner/src/domains/ios/simulator-wda.ts`), so the reconnect compiles WDA from scratch.
-- `session-run-chip.tsx`: while a Run holds the session, every page shows "Running · n/m · Cancel" (n = cases finished, whatever their outcome, as the runs list counts them; m = all cases), linked to the Run, for Runs started from the desktop, CLI or connector. Without a holder id it says "Run in progress", with no link.
+- `session-run-chip.tsx`: while a Run holds the session, every page shows a progress bar ("Running", "n of m done", and a **Stop** button; n = cases finished, whatever their outcome, as the runs list counts them; m = all cases), linked to the Run, for Runs started from the desktop, CLI or connector. Without a holder id it says "Run in progress", with no link.
 - `use-retarget-on-app-switch.ts`: switching app in the sidebar while connected and unheld retargets the session; the Inspector marks its cached tree stale so the next selection reads the new app. When a Run for another app lets the session go, the session is pointed back at the selected app (`session-app.ts`); a Run for the selected app leaves it as is.
 
 ## How to verify
@@ -38,10 +38,26 @@ Make the app's single top bar the one place to manage the **Active Session** (se
 4. Quit and relaunch the desktop app → the last device connected from the desktop is preselected, not connected (a device connected only from the CLI in step 3 is not). Delete that simulator (or unplug the iPhone) and relaunch → "Select device".
 5. Test cases, select cases, no session, device picked → Run: the bar shows "Connecting…", then the Run starts. With a device that can't connect → a toast and no new Run in Runs.
 6. iOS session on the Appium lane (`yoqa devices connect <udid> --lane appium`) → Restart offers "Restart & rebuild WebDriverAgent" on a simulator and on a cabled iPhone.
-7. Start a Run (desktop or `yoqa runs create`) → every page shows "Running · n/m · Cancel"; the label opens the Run, Cancel cancels it.
+7. Start a Run (desktop or `yoqa runs create`) → every page shows the Run progress bar; "Running" opens the Run, **Stop** cancels it, and the device pill is locked.
 8. Connected, no Run: switch app in the sidebar → no reconnect; Inspector → select an element: the tree reads the new app (on a cabled iPhone the new app must be in front, or the read says it is backgrounded).
 9. Connected with app A selected, start a Run for app B from the CLI (`yoqa runs create`); when it finishes, the Inspector reads app A again, with no reconnect.
 
 ## Follow-ups
 
 - The session bar's UI states (remembered device, Run chip, connect-first) are covered by unit tests of their pure helpers, not by rendered component tests.
+
+## Top bar redesign (visual)
+
+**Goal:** make the bar match the design: the page title lives in it, and each state has its own look.
+
+**Plan summary:** one card, title left, controls right. No new data; the Run chip's `finished`/`total` come from `runChip`. Rejected: the design's "On failure" select and ⌘R hint (nothing backs them), and step-level progress (the runner reports cases).
+
+**What shipped**
+- `session-bar-title.tsx`: caption over title per route; the Inspector shows "Live session" / "No device connected" with a dot; a test case shows its name (read from the detail page's query cache). Pages dropped their own `h1`.
+- `session-toolbar.tsx`: grouped platform + device picker, purple **Connect**, green device pill, outlined **Restart session** / **Disconnect**; while a Run holds the session the pill is grey and locked and the controls are hidden.
+- `run-controls.tsx`: dark **Run test** pill (hidden while a Run holds the session; the chip's **Stop** takes over).
+- Servers & doctor button is a 40px rounded square. Inspector: the device card stays put while the script panel scrolls, shows a shimmer placeholder while the feed starts, slides the Inspect / Use device highlight and eases its height. Existing `motion-*` classes carry the bar's animations; all respect reduced motion.
+
+**How to verify:** open each page and check the title; walk Inspector through not connected, connected and a held session; start a Run and watch the progress bar and Stop.
+
+**Follow-ups:** the placeholder and image height caps use viewport-based estimates; adjust if the card overflows.

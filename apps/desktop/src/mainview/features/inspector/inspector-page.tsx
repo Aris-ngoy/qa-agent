@@ -959,19 +959,13 @@ export function InspectorPage() {
 
 	return (
 		<div
-			className={["flex flex-col gap-5 p-4", entered ? "motion-enter-done" : "motion-enter"].join(
-				" ",
-			)}
+			className={[
+				"flex h-full min-h-0 flex-col gap-5 px-4 pb-4",
+				entered ? "motion-enter-done" : "motion-enter",
+			].join(" ")}
 		>
-			<header className="flex flex-col gap-0.5 px-1">
-				<h1 className="m-0 text-headline-lg text-on-surface">Inspector</h1>
-				<p className="m-0 text-body-md text-on-surface-variant">
-					Pick an element on the device to add steps, or edit the script directly.
-				</p>
-			</header>
-
-			<div className="flex flex-wrap items-start gap-5">
-				<div className="min-w-75 flex-[0_1_360px]">
+			<div className="flex min-h-0 flex-1 gap-5">
+				<div className="min-w-75 flex-[0_1_360px] self-start">
 					<ScreenshotPanel
 						imageUrl={imageUrl}
 						elements={elements}
@@ -992,7 +986,7 @@ export function InspectorPage() {
 					/>
 				</div>
 
-				<div className="min-w-0 flex-[2_1_440px]">
+				<div className="h-full min-h-0 min-w-0 flex-[2_1_440px] overflow-y-auto">
 					<ScriptPanel
 						script={script}
 						onScriptChange={setScript}

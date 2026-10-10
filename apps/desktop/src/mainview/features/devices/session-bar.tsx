@@ -8,6 +8,7 @@ import {
 	platformDevicesQueryKey,
 } from "@/features/devices/select-device-modal";
 import { appTargetFor } from "@/features/devices/session-app";
+import { SessionBarTitle } from "@/features/devices/session-bar-title";
 import {
 	deviceForSession,
 	pickRememberedDevice,
@@ -191,8 +192,8 @@ export function SessionBar() {
 	};
 
 	return (
-		<header className="relative z-40 flex w-full shrink-0 flex-wrap items-center justify-end gap-3 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-5 py-3 shadow-soft backdrop-blur-md">
-			<SessionRunChip />
+		<header className="relative z-40 flex min-h-[76px] w-full shrink-0 flex-wrap items-center justify-end gap-x-4 gap-y-3 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-6 py-3 shadow-soft backdrop-blur-md">
+			<SessionBarTitle />
 			<SessionToolbar
 				platform={platform}
 				onPlatformChange={(next) => {
@@ -207,7 +208,6 @@ export function SessionBar() {
 				}}
 				active={activeSession}
 				connecting={connecting}
-				live={Boolean(activeSession) && activeSession?.streamReady !== false}
 				onConnect={() => {
 					void handleConnect();
 				}}
@@ -220,7 +220,8 @@ export function SessionBar() {
 				viewOnly={Boolean(activeSession?.heldByRun)}
 				offerWdaRebuild={rebuildTarget != null}
 			/>
-			{showRun ? (
+			<SessionRunChip />
+			{showRun && !activeSession?.heldByRun ? (
 				<RunControls connectDevice={connectDevice} connecting={connecting} device={device} />
 			) : null}
 		</header>

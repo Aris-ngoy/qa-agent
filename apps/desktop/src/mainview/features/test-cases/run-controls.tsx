@@ -149,30 +149,28 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 
 	return (
 		<>
-			<div className="flex shrink-0 items-center gap-3">
-				<button
-					aria-label={isRunLive ? "Cancel run" : "Run tests"}
-					className={[
-						"motion-press flex size-12 shrink-0 items-center justify-center rounded-full shadow-float disabled:opacity-40",
-						isRunLive ? "bg-error text-on-error" : "bg-primary text-on-primary",
-					].join(" ")}
-					disabled={isRunLive ? cancelMutation.isPending : !canRun}
-					onClick={onPrimaryClick}
-					title={runTitle}
-					type="button"
-				>
-					{isRunLive ? (
-						<svg aria-hidden="true" className="size-5" fill="currentColor" viewBox="0 0 24 24">
-							<rect height="14" rx="1.5" width="4" x="6" y="5" />
-							<rect height="14" rx="1.5" width="4" x="14" y="5" />
-						</svg>
-					) : (
-						<svg aria-hidden="true" className="size-5" fill="currentColor" viewBox="0 0 24 24">
-							<path d="M8 5.5v13l11-6.5L8 5.5Z" />
-						</svg>
-					)}
-				</button>
-			</div>
+			<button
+				aria-label={isRunLive ? "Cancel run" : "Run tests"}
+				className={[
+					"motion-press inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-5 text-body-md font-semibold disabled:opacity-40",
+					isRunLive ? "bg-error text-on-error" : "bg-inverse-surface text-inverse-on-surface",
+				].join(" ")}
+				disabled={isRunLive ? cancelMutation.isPending : !canRun}
+				onClick={onPrimaryClick}
+				title={runTitle}
+				type="button"
+			>
+				{isRunLive ? (
+					<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
+						<rect height="12" rx="1.5" width="12" x="6" y="6" />
+					</svg>
+				) : (
+					<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
+						<path d="M8 5.5v13l11-6.5L8 5.5Z" />
+					</svg>
+				)}
+				{isRunLive ? "Stop" : "Run test"}
+			</button>
 
 			<AlertDialog>
 				<AlertDialog.Backdrop isOpen={executionPromptOpen} onOpenChange={setExecutionPromptOpen}>

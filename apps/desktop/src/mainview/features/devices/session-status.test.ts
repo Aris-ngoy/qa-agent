@@ -65,19 +65,21 @@ describe("runChip", () => {
 				{ ...SESSION, heldByRun: true, heldByRunId: "run_a" },
 				runWith(["passed", "errored", "cancelled", "running", "queued"]),
 			),
-		).toEqual({ runId: "run_a", label: "Running · 3/5" });
+		).toEqual({ runId: "run_a", label: "Running · 3/5", finished: 3, total: 5 });
 		expect(
 			runChip(
 				{ ...SESSION, heldByRun: true, heldByRunId: "run_a" },
 				runWith(["running", "queued"]),
 			),
-		).toEqual({ runId: "run_a", label: "Running · 0/2" });
+		).toEqual({ runId: "run_a", label: "Running · 0/2", finished: 0, total: 2 });
 	});
 
 	test("says Running until the holding Run has loaded", () => {
 		expect(runChip({ ...SESSION, heldByRun: true, heldByRunId: "run_a" }, null)).toEqual({
 			runId: "run_a",
 			label: "Running",
+			finished: 0,
+			total: 0,
 		});
 	});
 
@@ -85,6 +87,8 @@ describe("runChip", () => {
 		expect(runChip({ ...SESSION, heldByRun: true }, null)).toEqual({
 			runId: null,
 			label: "Run in progress",
+			finished: 0,
+			total: 0,
 		});
 	});
 });
