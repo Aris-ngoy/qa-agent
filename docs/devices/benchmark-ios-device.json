@@ -1,0 +1,38 @@
+{
+	"device": {
+		"model": "iPhone 15",
+		"ios": "27.0.1",
+		"udid": "00008120-000E6D813E2A601E",
+		"transport": "USB",
+		"date": "2026-10-10",
+		"screen": "home screen"
+	},
+	"scenario": "10 taps at (500,500) after one warm-up tap; tap-to-result is the whole performActionWithScreenshot call: action, Settle, Result screenshot",
+	"appium": {
+		"lane": "appium",
+		"coldStartMs": 6493,
+		"tapToResultMs": {
+			"p50": 2639,
+			"p95": 2796,
+			"samples": [2632, 2639, 2719, 2546, 2761, 2603, 2778, 2622, 2748, 2796]
+		},
+		"actionMs": { "p50": 819 },
+		"settleMs": { "p50": 1585 },
+		"frameCaptureMs": 345,
+		"treeReadMs": 11113
+	},
+	"direct": {
+		"lane": "direct",
+		"coldStartMs": 3024,
+		"tapToResultMs": {
+			"p50": 2892,
+			"p95": 3254,
+			"samples": [2867, 3254, 2917, 2882, 3045, 3080, 2854, 2869, 2892, 2925]
+		},
+		"actionMs": { "p50": 904 },
+		"settleMs": { "p50": 1667 },
+		"frameCaptureMs": 293,
+		"treeReadMs": null,
+		"treeReadNote": "snapshot of the home screen did not answer within 30000 ms (10000 ms before the timeout was raised)"
+	}
+}

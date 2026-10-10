@@ -13,7 +13,7 @@ type Reply = { status: number; body: string };
  * Stands in for `YoqaRunner` at its wire protocol: every command is `POST /` with a JSON
  * body, answered by `reply` with `Connection: close`, as `HTTPServer.swift` does.
  */
-function fakeRunner(reply: (body: Record<string, unknown>) => Reply) {
+function fakeRunner(reply: (body: Record<string, unknown>) => Reply, delayMs = 0) {
 	const received: Array<{ method: string; body: Record<string, unknown> }> = [];
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
@@ -21,6 +21,7 @@ function fakeRunner(reply: (body: Record<string, unknown>) => Reply) {
 		fetch: async (request) => {
 			const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
 			received.push({ method: request.method, body });
+			if (delayMs > 0) await Bun.sleep(delayMs);
 			const { status, body: text } = reply(body);
 			return new Response(text, {
 				status,
@@ -110,6 +111,13 @@ describe("createYoqaRunnerLink", () => {
 		};
 		const link = createYoqaRunnerLink(silent, { timeoutMs: 50 });
 		await expect(link.send("status")).rejects.toThrow(/did not answer status within 50 ms/);
+	});
+
+	test("a snapshot is given longer than other commands to answer", async () => {
+		const runner = fakeRunner(() => ok({ nodes: [] }), 200);
+		const link = createYoqaRunnerLink(runner.tunnel, { timeoutMs: 50, snapshotTimeoutMs: 2000 });
+		expect(await link.send("snapshot")).toEqual({ nodes: [] });
+		await expect(link.send("viewport")).rejects.toThrow(/did not answer viewport within 50 ms/);
 	});
 });
 
