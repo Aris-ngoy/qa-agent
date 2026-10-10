@@ -10,28 +10,34 @@ Ticket [#251](https://github.com/Aris-ngoy/qa-agent/issues/251) (spec [#233](htt
 - `yoqa benchmark --lane appium|direct` is the first tool, but its tap-to-result includes the accuracy tree read. That read is the part `device-ios` cannot do yet, so a second script times the Action path alone (`performActionWithScreenshot`).
 - Decision rule from the ticket: a measured gain promotes; no gain records the result and promotes nothing.
 
-## Result: no gain, nothing promoted
+## Result
 
-Raw numbers: [`benchmark-ios-device.json`](./benchmark-ios-device.json). Harness run on Appium: [`benchmark-ios-device-appium.json`](./benchmark-ios-device-appium.json). Script: [`benchmark-ios-device-actions.ts`](./benchmark-ios-device-actions.ts).
+Raw numbers: [`benchmark-ios-device.json`](./benchmark-ios-device.json) (`before` and `after`). Harness run on Appium: [`benchmark-ios-device-appium.json`](./benchmark-ios-device-appium.json). Script: [`benchmark-ios-device-actions.ts`](./benchmark-ios-device-actions.ts) (taps the status bar, so run it with the Settings app in front).
 
-| Metric (10 taps, after a warm-up) | Appium | `device-ios` |
+**Before (first run, home screen): no gain.** Direct tap-to-result p50 was 2892 ms against Appium's 2639 ms, and the home-screen `snapshot` never answered inside 30 s (Appium: 11 s). `PhoneDevice.snapshot` resolved `query.element(boundBy:)` for every element, and each one re-queries the app, so the cost grew with the square of the tree.
+
+**After one `XCUIElement.snapshot()` per read.** Static screen (Settings), 10 taps after a warm-up, two runs per lane:
+
+| Metric | Appium | `device-ios` |
 | --- | --- | --- |
-| tap-to-result p50 / p95 | 2639 / 2796 ms | 2892 / 3254 ms |
-| action p50 | 819 ms | 904 ms |
-| Settle p50 | 1585 ms | 1667 ms |
-| one frame capture | 345 ms | 293 ms |
-| cold start (runner already built) | 6493 ms | 3024 ms |
-| tree read of the home screen | 11113 ms | no answer in 30 s |
+| tap-to-result p50 / p95 | 2631 / 2651 ms, 2624 / 2652 ms | 1093 / 1248 ms, 1104 / 1422 ms |
+| action p50 | 763 ms | 645 ms |
+| Settle p50 | 1577 ms | 329 ms |
+| one frame capture | 339 ms | 117 ms |
+| cold start (runner already built) | 5.8 s | 2.8 s |
+| tree read | 11113 ms | 377 ms |
 
-- Tap-to-result is about 10% slower on `device-ios`. The action itself isn't faster, because XCUITest does the work either way, and Settle dominates both.
-- Direct wins only on cold start and a single frame capture. Neither moves a Run's step time.
-- The `snapshot` command queries each element separately, so the home screen's tree never comes back inside the link's timeout. The tree read is the Direct lane's main cost to fix, not a win to claim.
+The harness (`yoqa benchmark`, home screen) now completes on Direct: tap-to-result p50 3179 ms against 13145 ms, screen read 377 ms against 11113 ms, tap accuracy 1.00 on both.
+
+- Direct is 2.4x faster per tap and about 30x faster at reading the tree.
+- Settle is the largest part. On Appium it always ran to its 1.5 s cap on a static screen; on Direct two identical frames come back in about 330 ms because a frame is 117 ms instead of 339 ms.
+- On the home screen the Clock icon's second hand changes the frame, so Settle runs to its cap on both lanes. That is Settle working, not a lane fault.
 
 ## What shipped
 
-- No promotion: `directIsAutomatic("ios-device")` stays false, so `auto` on a phone is still Appium. Capability-pinned Cases stay on Appium either way.
-- `yoqa-runner-link.ts`: a `snapshot` is given 30 s instead of 10 s (`SNAPSHOT_TIMEOUT_MS`), since a big tree legitimately takes longer than a gesture. Test in `yoqa-runner-link.test.ts`.
-- `CONTEXT.md` (Lane) and the ADR-0004 considered options now record the result.
+- `PhoneDevice.swift`: `snapshot` reads one `XCUIElement.snapshot()` and walks its children in document order.
+- `yoqa-runner-link.ts`: a `snapshot` gets 30 s instead of 10 s (`SNAPSHOT_TIMEOUT_MS`). Test in `yoqa-runner-link.test.ts`.
+- **`auto` is not promoted yet.** `directIsAutomatic("ios-device")` is still false. The gain clears the gate, but promoting makes every phone `auto` Run build, sign and start `YoqaRunner`, so it is a separate decision. The glossary and the ADR-0004 note say so.
 
 ## How to verify
 
@@ -40,6 +46,6 @@ Raw numbers: [`benchmark-ios-device.json`](./benchmark-ios-device.json). Harness
 
 ## Follow-ups
 
-- Make `snapshot` fast on a big tree (read one `XCUIElementSnapshot` instead of per-element queries), then re-run this benchmark. Only a gain on tap-to-result and the tree read justifies flipping `directIsAutomatic("ios-device")`.
-- Settle is ~1.6 s on both lanes. A shorter Settle on the Direct lane is the lever that could make a gain, and it belongs in the lane-speed ticket, not here.
+- Decide whether `auto` picks `device-ios` on a cabled phone. That is one line in `select-lane.ts` plus its tests, and the benchmark above is the evidence. Capability-pinned Cases stay on Appium either way.
+- Appium's Settle never settles on a static screen (every frame differs). That is a likely Appium-lane win, not part of this change.
 - The harness (`yoqa benchmark`) resolves a relative `--out` against the CLI's directory, not the caller's.
