@@ -26,7 +26,12 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
-import { type FrameSource, recordFrames, screenshotSource } from "./frame-recorder";
+import {
+	type FrameRecorderDeps,
+	type FrameSource,
+	recordFrames,
+	screenshotSource,
+} from "./frame-recorder";
 import { yoqaAxTreeToSource } from "./ios-direct-lane";
 import {
 	type CapturedFrame,
@@ -72,6 +77,8 @@ export type IosDeviceDeps = {
 	connect: (udid: string, port: number) => Promise<Duplex>;
 	/** Runs `xcrun devicectl <args>`. */
 	devicectl: RunnerExec;
+	/** `ffmpeg` for Run recording; the host's own when omitted. */
+	recorder?: FrameRecorderDeps;
 };
 
 function errorMessage(error: unknown): string {
@@ -237,7 +244,7 @@ export async function createIosDeviceSession(
 
 	const startRecording = async (path: string) => {
 		try {
-			return await recordFrames(runnerFrames(), path);
+			return await recordFrames(runnerFrames(), path, deps.recorder);
 		} catch (error) {
 			// A runner built before recording existed (or one that cannot capture) still gets a
 			// video from screenshots; no ffmpeg stays an error, which the Run recorder explains.
