@@ -13,6 +13,8 @@
  * not in front is `APP_BACKGROUNDED`. A stuck main thread on the phone is `RUNNER_WEDGED`.
  * Both reach the caller as `YoqaRunnerCommandError`s with a plain message.
  *
+ * Run recording is screenshots stitched into an mp4 by `ffmpeg` (`frame-recorder.ts`).
+ *
  * Alerts, URLs and terminating an app arrive in later slices; until then they reject with
  * a clear message.
  */
@@ -21,6 +23,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
+import { recordFrames } from "./frame-recorder";
 import { yoqaAxTreeToSource } from "./ios-direct-lane";
 import {
 	type CapturedFrame,
@@ -256,6 +259,8 @@ export async function createIosDeviceSession(
 		},
 		captureFrame,
 		screenshot,
+		// The runner has no video API, so the recording is screenshots stitched by ffmpeg.
+		startRecording: (path) => recordFrames(async () => (await captureFrame()).base64, path),
 		pageSource,
 		getWindowSize,
 		tap: (x, y, tapOptions) => withActionLock(() => tapNorm(x, y, tapOptions?.durationMs)),
