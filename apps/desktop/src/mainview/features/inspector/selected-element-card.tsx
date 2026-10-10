@@ -8,7 +8,7 @@ import {
 } from "@/features/inspector/command-snippets";
 import type { InspectorSelection } from "@/features/inspector/selection";
 import { Button, Input, Label, TextField } from "@heroui/react";
-import { type SVGProps, useMemo, useState } from "react";
+import { type ReactNode, type SVGProps, useMemo, useState } from "react";
 
 type SelectedElementCardProps = {
 	selection: InspectorSelection | null;
@@ -31,20 +31,6 @@ type PromptState = {
 	promptKind?: CommandSnippet["promptKind"];
 	returnView: "main" | "selector";
 };
-
-function ChevronIcon(props: SVGProps<SVGSVGElement>) {
-	return (
-		<svg viewBox="0 0 16 16" width="12" height="12" fill="none" aria-hidden="true" {...props}>
-			<path
-				d="M6 3.5 10.5 8 6 12.5"
-				stroke="currentColor"
-				strokeWidth="1.5"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-			/>
-		</svg>
-	);
-}
 
 function PlayIcon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -146,13 +132,109 @@ function promptPlaceholder(prompt: PromptState): string {
 }
 
 const BTN =
-	"inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/40 bg-surface px-2.5 py-1.5 text-body-sm text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
+	"inline-flex min-h-10 items-center gap-1.5 rounded-[10px] border border-outline-variant bg-surface-bright px-3 text-body-sm font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
 
-function Detail({ label, value }: { label: string; value: string }) {
+type StepIconProps = SVGProps<SVGSVGElement>;
+
+function StepIcon({ children, ...props }: StepIconProps) {
 	return (
-		<div className="flex flex-col gap-0.5">
-			<dt className="text-helper text-on-surface-variant">{label}</dt>
-			<dd className="truncate font-mono text-body-sm text-on-surface" title={value}>
+		<svg
+			aria-hidden="true"
+			className="size-4 shrink-0"
+			fill="none"
+			stroke="currentColor"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			strokeWidth="2"
+			viewBox="0 0 24 24"
+			{...props}
+		>
+			{children}
+		</svg>
+	);
+}
+
+/** Short title + icon for a suggested command button; code preview shows once picked. */
+function stepButtonContent(snippet: CommandSnippet): { title: string; icon: ReactNode } {
+	switch (snippet.id) {
+		case "tap":
+		case "tapAlt":
+			return {
+				title: snippet.label.replace("tap", "Tap"),
+				icon: (
+					<StepIcon>
+						<circle cx="12" cy="12" r="3" />
+						<circle cx="12" cy="12" r="8" />
+					</StepIcon>
+				),
+			};
+		case "tapPoint":
+			return {
+				title: "Tap point",
+				icon: (
+					<StepIcon>
+						<circle cx="12" cy="12" r="3" />
+						<circle cx="12" cy="12" r="8" />
+					</StepIcon>
+				),
+			};
+		case "assertVisible":
+		case "assertNotVisible":
+			return {
+				title: snippet.id === "assertVisible" ? "Assert visible" : "Assert hidden",
+				icon: (
+					<StepIcon>
+						<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" />
+						<circle cx="12" cy="12" r="3" />
+					</StepIcon>
+				),
+			};
+		case "inputText":
+			return {
+				title: "Type text",
+				icon: (
+					<StepIcon>
+						<rect x="2" y="6" width="20" height="12" rx="2" />
+						<path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
+					</StepIcon>
+				),
+			};
+		case "longPress":
+			return {
+				title: "Long press",
+				icon: (
+					<StepIcon>
+						<circle cx="12" cy="12" r="9" />
+						<path d="M12 7v5l3 2" />
+					</StepIcon>
+				),
+			};
+		case "doubleTap":
+			return {
+				title: "Double tap",
+				icon: (
+					<StepIcon>
+						<circle cx="9" cy="12" r="3" />
+						<circle cx="15" cy="12" r="3" />
+					</StepIcon>
+				),
+			};
+		default:
+			return { title: snippet.label, icon: <CodeIcon /> };
+	}
+}
+
+function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+	return (
+		<div className="min-w-0">
+			<dt className="text-body-sm text-on-surface-variant">{label}</dt>
+			<dd
+				className={[
+					"m-0 truncate text-body-sm text-on-surface",
+					mono ? "font-mono" : "font-medium",
+				].join(" ")}
+				title={value}
+			>
 				{value}
 			</dd>
 		</div>
@@ -170,14 +252,16 @@ export function SelectedElementCard(props: SelectedElementCardProps) {
 	return (
 		<section
 			aria-labelledby="inspector-element-heading"
-			className="flex flex-col gap-3 rounded-xl border border-outline-variant/30 bg-surface-container/40 p-3"
+			className="flex flex-col gap-3.5 rounded-[18px] border border-outline-variant bg-surface-bright p-4"
 		>
 			<div className="flex items-start justify-between gap-2">
-				<div className="min-w-0">
-					<span className="text-helper text-on-surface-variant">Selected element</span>
+				<div className="flex min-w-0 flex-col gap-0.5">
+					<span className="text-label-caps uppercase text-on-violet-container">
+						Selected element
+					</span>
 					<h2
 						id="inspector-element-heading"
-						className="truncate text-title-sm font-semibold text-on-surface"
+						className="m-0 truncate text-lg font-semibold text-on-surface"
 					>
 						{selection ? selectionTitle(selection) : "Nothing selected"}
 					</h2>
@@ -187,10 +271,12 @@ export function SelectedElementCard(props: SelectedElementCardProps) {
 						type="button"
 						aria-label="Clear selection"
 						title="Clear selection"
-						className="rounded-md px-1.5 py-0.5 text-body-sm text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+						className="inline-flex size-9 items-center justify-center rounded-lg text-on-surface transition-colors hover:bg-surface-container"
 						onClick={onClearSelection}
 					>
-						✕
+						<StepIcon>
+							<path d="M6 6l12 12M18 6L6 18" />
+						</StepIcon>
 					</button>
 				) : null}
 			</div>
@@ -201,7 +287,7 @@ export function SelectedElementCard(props: SelectedElementCardProps) {
 					selection={selection}
 				/>
 			) : (
-				<p className="text-body-sm text-on-surface-variant">
+				<p className="m-0 text-body-sm text-on-surface-variant">
 					Click an element on the device to see its details and add steps.
 				</p>
 			)}
@@ -294,10 +380,10 @@ function SelectedElementActions({
 
 	return (
 		<>
-			<dl className="grid grid-cols-2 gap-x-3 gap-y-2">
+			<dl className="m-0 grid grid-cols-2 gap-x-3 gap-y-2.5">
 				<Detail label="Type" value={element?.type ?? "Point"} />
 				<Detail label="Label" value={element?.label?.trim() || "—"} />
-				<Detail label="Tap point" value={`${selection.x}, ${selection.y}`} />
+				<Detail mono label="Tap point" value={`${selection.x}, ${selection.y}`} />
 				<Detail
 					label="Visible"
 					value={element ? (element.visible === false ? "No" : "Yes") : "—"}
@@ -360,7 +446,7 @@ function SelectedElementActions({
 			) : (
 				<div className="flex flex-col gap-2">
 					<div className="flex items-center justify-between gap-2">
-						<span className="text-helper font-medium text-on-surface-variant">
+						<span className="text-body-sm font-semibold text-on-surface">
 							{view === "selector" ? "Selector commands" : "Add step"}
 						</span>
 						{view === "selector" ? (
@@ -376,32 +462,68 @@ function SelectedElementActions({
 							</button>
 						) : null}
 					</div>
-					<div className="flex flex-col gap-1.5">
-						{commandRows.map((snippet) => (
-							<button
-								key={snippet.id}
-								type="button"
-								disabled={disabled}
-								aria-pressed={flyoutId === snippet.id}
-								className={[
-									"flex w-full items-start gap-2 rounded-lg border px-2.5 py-2 text-left font-mono text-helper leading-snug transition-colors disabled:opacity-50",
-									flyoutId === snippet.id
-										? "border-secondary bg-secondary-container/50"
-										: "border-outline-variant/40 bg-surface hover:bg-surface-container",
-								].join(" ")}
-								onClick={() => {
-									openCommand(snippet, view === "selector" ? "selector" : "main");
-								}}
-							>
-								<span className="min-w-0 flex-1 whitespace-pre-wrap break-all text-on-surface">
-									{view === "selector" ? snippet.label : snippet.previewLines.join("\n")}
-								</span>
-								<span className="mt-0.5 shrink-0 text-on-surface-variant">
-									{view === "selector" ? <CodeIcon /> : <ChevronIcon />}
-								</span>
-							</button>
-						))}
-					</div>
+					{view === "selector" ? (
+						<div className="flex flex-col gap-1.5">
+							{commandRows.map((snippet) => (
+								<button
+									key={snippet.id}
+									type="button"
+									disabled={disabled}
+									aria-pressed={flyoutId === snippet.id}
+									className={[
+										"flex w-full items-start gap-2 rounded-[10px] border px-2.5 py-2 text-left font-mono text-helper leading-snug transition-colors disabled:opacity-50",
+										flyoutId === snippet.id
+											? "border-violet bg-violet-container"
+											: "border-outline-variant bg-surface-bright hover:bg-surface-container",
+									].join(" ")}
+									onClick={() => {
+										openCommand(snippet, "selector");
+									}}
+								>
+									<span className="min-w-0 flex-1 whitespace-pre-wrap break-all text-on-surface">
+										{snippet.label}
+									</span>
+									<span className="mt-0.5 shrink-0 text-on-surface-variant">
+										<CodeIcon />
+									</span>
+								</button>
+							))}
+						</div>
+					) : (
+						<div className="grid grid-cols-2 gap-2">
+							{commandRows.map((snippet) => {
+								const { title, icon } = stepButtonContent(snippet);
+								const picked = flyoutId === snippet.id;
+								return (
+									<button
+										key={snippet.id}
+										type="button"
+										disabled={disabled}
+										aria-pressed={picked}
+										title={snippet.previewLines.join("\n")}
+										className={[
+											"inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] border text-body-md font-semibold transition-colors disabled:opacity-50",
+											picked
+												? "border-violet bg-violet text-on-violet"
+												: "border-outline-variant bg-surface-bright text-on-surface hover:bg-surface-container",
+										].join(" ")}
+										onClick={() => {
+											openCommand(snippet, "main");
+										}}
+									>
+										{icon}
+										{title}
+									</button>
+								);
+							})}
+						</div>
+					)}
+
+					{view === "main" && flyoutId && activeLines.length > 0 ? (
+						<pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-[10px] bg-surface-container px-3 py-2 font-mono text-helper leading-relaxed text-on-surface">
+							{activeLines.join("\n")}
+						</pre>
+					) : null}
 
 					{flyoutId && activeLines.length > 0 ? (
 						<div className="flex flex-wrap gap-1.5">
@@ -439,7 +561,7 @@ function SelectedElementActions({
 					) : null}
 
 					{view === "main" ? (
-						<div className="flex flex-wrap gap-1.5 border-t border-outline-variant/30 pt-2">
+						<div className="flex flex-wrap gap-2 border-t border-outline-variant pt-3">
 							{canChangeSelector ? (
 								<button
 									type="button"
