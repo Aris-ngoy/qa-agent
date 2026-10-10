@@ -184,7 +184,12 @@ function DeviceList({
 	);
 }
 
-async function fetchPlatformDevices(platform: DevicePlatform): Promise<Device[]> {
+/** Query key for a platform's device list, shared by the picker and the session bar. */
+export function platformDevicesQueryKey(platform: DevicePlatform) {
+	return ["devices", platform] as const;
+}
+
+export async function fetchPlatformDevices(platform: DevicePlatform): Promise<Device[]> {
 	const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
 	const client = createRunnerClient({ baseUrl });
 	const response = await client.listDevices(platform, { includeUnavailable: true });
@@ -196,7 +201,7 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 	const copy = PLATFORM_COPY[platform];
 
 	const devicesQuery = useQuery({
-		queryKey: ["devices", platform],
+		queryKey: platformDevicesQueryKey(platform),
 		queryFn: () => fetchPlatformDevices(platform),
 		enabled: open,
 		refetchOnWindowFocus: true,

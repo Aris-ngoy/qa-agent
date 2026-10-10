@@ -1,97 +1,40 @@
-import { getDesktopRpc } from "@/app/desktop-rpc";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
 import type { SelectedDevice } from "@/features/devices/select-device-modal";
+import { runTarget } from "@/features/devices/session-status";
 import { useActiveDeviceSession } from "@/features/devices/use-active-device-session";
 import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
 import { runsListQueryKey } from "@/features/runs/list-page";
 import { type TestCase, casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
-import { AlertDialog, Button, ListBox, Select } from "@heroui/react";
+import { AlertDialog, Button } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import {
-	type RunExecutionMode,
-	type SetupPlatformRequest,
-	createRunnerClient,
-} from "@yoqa/runner-client";
+import type { ActiveDeviceResponse, RunExecutionMode } from "@yoqa/runner-client";
 import { useMemo, useState } from "react";
 
-async function resolveIosPhysicalSetup(): Promise<
-	Pick<SetupPlatformRequest, "xcodeDeveloperDir" | "developmentTeam" | "codeSignIdentity">
-> {
-	const toolchain = await getDesktopRpc().request.getIosToolchain();
-	const xcodeDeveloperDir = toolchain.preferences.xcodeDeveloperDir;
-	if (!xcodeDeveloperDir) {
-		throw new Error("No Xcode selected. Open Settings and choose an Xcode installation.");
-	}
-
-	const identity =
-		(toolchain.preferences.signingIdentityHash &&
-			toolchain.identities.find(
-				(item) => item.hash === toolchain.preferences.signingIdentityHash,
-			)) ||
-		toolchain.identities.find((item) => item.tier === "Paid") ||
-		toolchain.identities[0] ||
-		null;
-
-	if (!identity) {
-		throw new Error(
-			"No valid Apple Development certificate found. Open Settings, pick a certificate that is not revoked, and try again.",
-		);
-	}
-
-	return {
-		xcodeDeveloperDir,
-		developmentTeam: identity.teamId,
-		codeSignIdentity: identity.name,
-	};
-}
-
-async function setupSelectedDevice(
-	device: SelectedDevice,
-	signal: AbortSignal,
-	options?: { force?: boolean },
-) {
-	const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
-	const client = createRunnerClient({ baseUrl });
-
-	const request: SetupPlatformRequest = {
-		platform: device.platform,
-		deviceId: device.id,
-		kind: device.kind,
-		force: options?.force === true ? true : undefined,
-	};
-
-	if (device.platform === "ios" && device.kind === "physical") {
-		Object.assign(request, await resolveIosPhysicalSetup());
-	}
-
-	return client.setupPlatform(request, { signal });
-}
-
-/** WebDriverAgent policy for iOS physical runs (`force` maps to setup `--force`). */
-const WDA_MODES = [
-	{ id: "skip", label: "Skip" },
-	{ id: "rebuild", label: "Rebuild" },
-] as const;
-
-type WdaMode = (typeof WDA_MODES)[number]["id"];
+type RunControlsProps = {
+	/** The device picked in the top bar, connected first when there is no Active Session. */
+	device: SelectedDevice | null;
+	/** The bar's connect path (it shows "Connecting…"); rejects when the device can't connect. */
+	connectDevice: (device: SelectedDevice) => Promise<ActiveDeviceResponse>;
+	connecting: boolean;
+};
 
 /**
- * Starts (or cancels) a run of the selected test cases on the device that is
- * connected in the top session bar.
+ * Starts (or cancels) a run of the selected test cases on the Active Session, or on the
+ * device picked in the top bar, which is connected first. A failed connect creates no Run.
  */
-export function RunControls() {
+export function RunControls({ device, connectDevice, connecting }: RunControlsProps) {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
 	const { selectedCaseIds } = useTestCaseSelection();
 	const { activeRunId, isRunLive, setActiveRun } = useActiveRun();
 	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
-	const [wdaMode, setWdaMode] = useState<WdaMode>("skip");
 	const [executionPromptOpen, setExecutionPromptOpen] = useState(false);
+	const target = runTarget(activeSession, device);
 
 	const casesQuery = useQuery({
 		queryKey: selectedApp ? casesQueryKey(selectedApp.id) : ["catalog", "cases", "none"],
@@ -113,28 +56,22 @@ export function RunControls() {
 	const runMutation = useMutation({
 		mutationFn: async (executionMode: RunExecutionMode) => {
 			if (!selectedApp) throw new Error("Select an app first");
-			if (!activeSession) throw new Error("Connect a device in the top bar first");
 			if (selectedCaseIds.length === 0) throw new Error("Select at least one test case");
 
-			// Rebuild → force WebDriverAgent rebuild/install on iOS (setup `--force`).
-			if (wdaMode === "rebuild" && activeSession.platform === "ios") {
-				const device: SelectedDevice = {
-					id: activeSession.deviceId,
-					platform: "ios",
-					label: activeSession.deviceId,
-					name: activeSession.deviceId,
-					osVersion: "",
-					kind: "physical",
-				};
-				await setupSelectedDevice(device, new AbortController().signal, { force: true });
+			// No Active Session yet: connect the picked device through the bar's Connect path
+			// first. A connect error rejects here, so no Run is created for it.
+			let session = activeSession;
+			if (!session) {
+				if (!device) throw new Error("Pick a device in the top bar first");
+				session = await connectDevice(device);
 			}
 
 			const client = await getRunnerClient();
 			return client.createRun({
 				appId: selectedApp.id,
 				caseIds: selectedCaseIds,
-				deviceId: activeSession.deviceId,
-				platform: activeSession.platform,
+				deviceId: session.deviceId,
+				platform: session.platform,
 				executionMode,
 			});
 		},
@@ -176,22 +113,25 @@ export function RunControls() {
 
 	const canRun = Boolean(
 		selectedApp &&
-			activeSession &&
-			!activeSession.heldByRun &&
+			target &&
+			!activeSession?.heldByRun &&
 			selectedCaseIds.length > 0 &&
 			!runMutation.isPending &&
+			!connecting &&
 			!isRunLive,
 	);
 	const runTitle = isRunLive
 		? "Cancel run"
 		: runMutation.isPending
-			? "Starting run…"
+			? connecting
+				? "Connecting…"
+				: "Starting run…"
 			: !selectedApp
 				? "Select an app to run"
 				: selectedCaseIds.length === 0
 					? "Select test cases to run"
-					: !activeSession
-						? "Connect a device in the top bar to run"
+					: !target
+						? "Pick a device in the top bar to run"
 						: `Run ${selectedCaseIds.length} test${selectedCaseIds.length === 1 ? "" : "s"}`;
 
 	const onPrimaryClick = () => {
@@ -210,31 +150,6 @@ export function RunControls() {
 	return (
 		<>
 			<div className="flex shrink-0 items-center gap-3">
-				<Select
-					aria-label="WebDriverAgent mode"
-					className="w-[11.5rem]"
-					placeholder="WDA"
-					selectedKey={wdaMode}
-					onSelectionChange={(key) => {
-						if (key === "skip" || key === "rebuild") setWdaMode(key);
-					}}
-				>
-					<Select.Trigger className="h-10 items-center gap-2 rounded-full border border-outline-variant bg-surface-container-lowest px-3.5 shadow-none">
-						<Select.Value />
-						<Select.Indicator className="text-on-surface-variant" />
-					</Select.Trigger>
-					<Select.Popover>
-						<ListBox>
-							{WDA_MODES.map((mode) => (
-								<ListBox.Item id={mode.id} key={mode.id} textValue={mode.label}>
-									{mode.label}
-									<ListBox.ItemIndicator />
-								</ListBox.Item>
-							))}
-						</ListBox>
-					</Select.Popover>
-				</Select>
-
 				<button
 					aria-label={isRunLive ? "Cancel run" : "Run tests"}
 					className={[

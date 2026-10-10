@@ -481,6 +481,14 @@ export function InspectorPage() {
 		void startLiveFeedRef.current(activeSession);
 	}, [activeSession, clearSessionUi]);
 
+	// Switching app points the Active Session at it (top bar); the cached tree was read for
+	// the previous app, so the next selection reads the Screen again.
+	const selectedAppId = selectedApp?.id;
+	useEffect(() => {
+		if (!selectedAppId) return;
+		treeUpdatedAtRef.current = 0;
+	}, [selectedAppId]);
+
 	useEffect(() => {
 		return () => {
 			abortRef.current?.abort();
