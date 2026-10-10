@@ -1,4 +1,7 @@
+import type { SnippetContext } from "@/features/inspector/command-snippets";
 import { coordsFromImageRect, isPickPointModifier } from "@/features/inspector/inspect-pointer";
+import { ScreenGestures } from "@/features/inspector/screen-gestures";
+import { SelectedElementCard } from "@/features/inspector/selected-element-card";
 import {
 	type InspectorSelection,
 	activeSelectorCaption,
@@ -64,7 +67,23 @@ type ScreenshotPanelProps = {
 	onDoubleTap: (selection: InspectorSelection) => void;
 	onPointer: (phase: "begin" | "move" | "end", x: number, y: number) => void;
 	onClearSelection: () => void;
+	snippetContext: SnippetContext;
+	canChangeSelector: boolean;
+	onChangeSelector: () => void;
+	onInsertLines: (lines: string[]) => void;
+	onInsertAndRunLines: (lines: string[]) => void;
+	onCopyLines: (lines: string[]) => void;
+	gesturesDisabled: boolean;
+	onAddSwipe: (direction: "up" | "down" | "left" | "right") => void;
+	onAddWait: (seconds: number) => void;
 };
+
+/** Anchor the menu to the right of the selection, opening downward. */
+function menuPosition(anchor: { left: number; top: number; width: number; height: number }) {
+	const left = Math.min(92, anchor.left + anchor.width + 2);
+	const top = Math.min(88, Math.max(2, anchor.top + Math.min(anchor.height, 8)));
+	return { left: `${left}%`, top: `${top}%` };
+}
 
 export function ScreenshotPanel({
 	imageUrl,
@@ -83,6 +102,15 @@ export function ScreenshotPanel({
 	onDoubleTap,
 	onPointer,
 	onClearSelection,
+	snippetContext,
+	canChangeSelector,
+	onChangeSelector,
+	onInsertLines,
+	onInsertAndRunLines,
+	onCopyLines,
+	gesturesDisabled,
+	onAddSwipe,
+	onAddWait,
 }: ScreenshotPanelProps) {
 	const imgRef = useRef<HTMLImageElement | null>(null);
 	const pointerActiveRef = useRef(false);
@@ -544,6 +572,36 @@ export function ScreenshotPanel({
 										{selection.x},{selection.y}
 									</div>
 								)}
+								{/* biome-ignore lint/a11y/useKeyWithClickEvents: only stops pointer events from reaching the screenshot */}
+								<dialog
+									open
+									aria-label="Selected element"
+									className="absolute z-30 m-0 flex border-0 bg-transparent p-0 text-inherit max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-[18px] shadow-[0_18px_50px_-20px_rgba(0,0,0,0.5)]"
+									style={menuPosition(selectionAnchor)}
+									onClick={(event) => event.stopPropagation()}
+									onContextMenu={(event) => event.stopPropagation()}
+									onDoubleClick={(event) => event.stopPropagation()}
+									onPointerDown={(event) => event.stopPropagation()}
+									onPointerMove={(event) => event.stopPropagation()}
+									onPointerUp={(event) => event.stopPropagation()}
+								>
+									<SelectedElementCard
+										selection={selection}
+										disabled={disabled}
+										snippetContext={snippetContext}
+										canChangeSelector={canChangeSelector}
+										onChangeSelector={onChangeSelector}
+										onInsert={onInsertLines}
+										onInsertAndRun={onInsertAndRunLines}
+										onCopyLines={onCopyLines}
+										onClearSelection={onClearSelection}
+									/>
+									<ScreenGestures
+										disabled={gesturesDisabled}
+										onAddSwipe={onAddSwipe}
+										onAddWait={onAddWait}
+									/>
+								</dialog>
 							</>
 						) : null}
 					</div>
