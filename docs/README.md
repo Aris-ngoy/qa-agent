@@ -63,10 +63,11 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/ios-sim-promotion.md](./devices/ios-sim-promotion.md) | `device-sim` (yoqa-sim + yoqa-ax) is the iOS-simulator Direct default, benchmarked against idb_companion |
 | [devices/yoqa-ax-alerts.md](./devices/yoqa-ax-alerts.md) | `yoqa-ax` reads SpringBoard dialogs; accept and dismiss tap them through `yoqa-sim` (default since #245) |
 | [devices/yoqa-runner-status.md](./devices/yoqa-runner-status.md) | `YoqaRunner` (physical iOS): XCUITest runner signs with the newest Apple Development team, builds once per source/Xcode/team, answers `status` on the phone |
-| [devices/ios-device-usbmux.md](./devices/ios-device-usbmux.md) | `device-ios`: an explicit `direct` request on a cabled iPhone reaches `YoqaRunner` over usbmuxd; `status` must cross the cable first; `auto` stays Appium |
+| [devices/ios-device-usbmux.md](./devices/ios-device-usbmux.md) | `device-ios`: an explicit `direct` request on a cabled iPhone reaches `YoqaRunner` over usbmuxd; `status` must cross the cable first; `auto` picks it (promoted in #251) |
 | [devices/ios-device-actions.md](./devices/ios-device-actions.md) | `device-ios`: tap, long-press, drag and screenshot over `YoqaRunner`; gestures journaled (64), a lost reply resolved by `status`, never resent |
 | [devices/ios-device-observation.md](./devices/ios-device-observation.md) | `device-ios`: the Screen tree, typing and hardware buttons; `APP_BACKGROUNDED` and `RUNNER_WEDGED` (the main-thread gate) |
-| [devices/ios-device-benchmark.md](./devices/ios-device-benchmark.md) | `device-ios` vs Appium on a cabled iPhone: about 2.4x faster per tap once the snapshot is one read; `auto` not yet promoted |
+| [devices/ios-device-benchmark.md](./devices/ios-device-benchmark.md) | `device-ios` vs Appium on a cabled iPhone: about 2.4x faster per tap once the snapshot is one read; promoted: `auto` picks it |
+| [devices/ios-device-default.md](./devices/ios-device-default.md) | `device-ios` becomes the `auto` lane on a cabled iPhone; the `directIsAutomatic` gate is removed |
 | [devices/yoqa-ax-describe.md](./devices/yoqa-ax-describe.md) | `yoqa-ax` reads the accessibility tree inside the simulator; the Screen comes from it, cached by frame hash (default since #245) |
 | [devices/yoqa-ax-connect.md](./devices/yoqa-ax-connect.md) | `yoqa-ax` runs inside the simulator and connects back to the runner over a Unix socket; `ping` (default since #245) |
 | [devices/yoqa-sim-framebuffer-hid.md](./devices/yoqa-sim-framebuffer-hid.md) | `yoqa-sim` reads the framebuffer and sends Indigo HID touches: tap, swipe, Home (default since #245) |

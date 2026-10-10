@@ -335,14 +335,35 @@ describe("openDeviceSession on a cabled physical iPhone", () => {
 		return { factory, opened };
 	}
 
-	test("auto stays on Appium without trying Direct", async () => {
+	test("auto opens the Direct lane", async () => {
 		const { factory: appium, created } = fakeLane();
 		const direct = directLane();
 		const session = await openDeviceSession(phone("auto"), { appium, direct: direct.factory });
-		expect(session.lane).toBe("appium");
+		expect(session.lane).toBe("direct");
 		expect(session.laneWarning).toBeUndefined();
+		expect(direct.opened).toEqual([PHONE]);
+		expect(created).toHaveLength(0);
+		await session.quit();
+	});
+
+	test("auto falls back to Appium with a Lane warning when the runner can't start", async () => {
+		const { factory: appium } = fakeLane();
+		const direct = directLane("YoqaRunner status did not cross the cable to port 8100");
+		const session = await openDeviceSession(phone("auto"), { appium, direct: direct.factory });
+		expect(session.lane).toBe("appium");
+		expect(session.laneWarning).toMatch(/fell back to Appium/);
+		await session.quit();
+	});
+
+	test("custom capabilities keep a phone on Appium under auto", async () => {
+		const { factory: appium } = fakeLane();
+		const direct = directLane();
+		const session = await openDeviceSession(
+			{ ...phone("auto"), appCaps: [{ key: "appium:autoLaunch" } as never] },
+			{ appium, direct: direct.factory },
+		);
+		expect(session.lane).toBe("appium");
 		expect(direct.opened).toHaveLength(0);
-		expect(created).toHaveLength(1);
 		await session.quit();
 	});
 
