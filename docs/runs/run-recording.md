@@ -10,7 +10,7 @@ Let a Run optionally produce a screen video of the whole flow, next to its Resul
 - One video **per recorded case**, not per Run: each case's recording starts just before it executes and stops right after.
 - The video shows on the Run detail page only after the Run has finished; no "recording" placeholder while it is live.
 - Evidence only: Decide, Settle and the pass/fail outcome never depend on it. A Lane or device that cannot record leaves the Run unaffected and the case records why.
-- Each Lane records natively: Appium `startRecordingScreen`, Android Direct `adb screenrecord`, iOS simulator Direct `simctl io recordVideo`.
+- Each Lane records natively: Appium `startRecordingScreen`, Android Direct `adb screenrecord`, iOS simulator Direct `simctl io recordVideo`, cabled-iPhone Direct (`device-ios`) screenshots stitched by `ffmpeg`.
 - Rejected: one video per Run, a header toggle, a live mid-Run toggle (partial video), ffmpeg stitching for Android's 3-minute cap (new dependency).
 
 ## What shipped
@@ -32,8 +32,9 @@ Let a Run optionally produce a screen video of the whole flow, next to its Resul
 
 ## Follow-ups
 
-- Recording on **physical iPhones** (Appium lane) needs `ffmpeg` on the host (`brew install ffmpeg`, then restart Yoqa so the runner sees it); without it the case shows "Video unavailable" with that instruction. Simulators and Android Direct do not need it.
+- Recording on **physical iPhones** (Appium lane, and `device-ios` via `frame-recorder.ts`) needs `ffmpeg` on the host (`brew install ffmpeg`, then restart Yoqa so the runner sees it); without it the case shows "Video unavailable" with that instruction. Simulators and Android Direct do not need it.
 - Android Direct stops at 3 minutes (a `screenrecord` limit); longer Runs keep the first stretch. Stitching segments would lift it.
 - No size cap or age-based pruning of videos (screenshots are pruned after 7 days). Videos can be large; delete the Run to reclaim space.
 - Seek-to-step, run-report mention of the video, and a `--record-video` flag on `cases create/update`.
-- Not yet exercised on real devices; only unit-tested.
+- `device-ios` has no native video API, so its video is screenshots at the phone's pace (a few frames a second, real-time length) and the grabs add runner load. A smoother feed (ffmpeg `avfoundation` on the cable) is the alternative.
+- Not yet exercised on real devices; only unit-tested (the `ffmpeg` encode was checked on the host).
