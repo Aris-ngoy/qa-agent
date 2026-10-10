@@ -9,7 +9,7 @@ import {
 	matchAndroidAppiumIdentity,
 	parseAdbEmuAvdName,
 } from "./android-identity";
-import { parseDevicectlDevices } from "./devicectl";
+import { idleWiredUdids, parseDevicectlDevices } from "./devicectl";
 import type { ListDevicesOptions } from "./models";
 
 async function runCommand(
@@ -150,25 +150,39 @@ async function listIosSimulators(includeUnavailable: boolean): Promise<Device[]>
 	});
 }
 
+async function readDevicectlDevices(jsonPath: string): Promise<unknown | null> {
+	const { exitCode } = await runCommand([
+		"xcrun",
+		"devicectl",
+		"list",
+		"devices",
+		"--json-output",
+		jsonPath,
+	]);
+	if (exitCode !== 0) return null;
+	try {
+		return JSON.parse(await readFile(jsonPath, "utf8"));
+	} catch {
+		return null;
+	}
+}
+
 async function listIosPhysicalDevices(includeUnavailable: boolean): Promise<Device[]> {
 	const dir = await mkdtemp(join(tmpdir(), "yoqa-devices-"));
 	const jsonPath = join(dir, "devices.json");
 	try {
-		const { exitCode } = await runCommand([
-			"xcrun",
-			"devicectl",
-			"list",
-			"devices",
-			"--json-output",
-			jsonPath,
-		]);
-		if (exitCode !== 0) return [];
+		let parsed = await readDevicectlDevices(jsonPath);
+		if (parsed === null) return [];
 
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(await readFile(jsonPath, "utf8"));
-		} catch {
-			return [];
+		// A cabled phone's tunnel only opens once something talks to it, so wake idle ones and re-read.
+		const idle = idleWiredUdids(parsed);
+		if (idle.length > 0) {
+			await Promise.all(
+				idle.map((udid) =>
+					runCommand(["xcrun", "devicectl", "device", "info", "lockState", "--device", udid]),
+				),
+			);
+			parsed = (await readDevicectlDevices(jsonPath)) ?? parsed;
 		}
 		const devices = parseDevicectlDevices(parsed);
 		// Without unavailable devices, only targets remain: a cabled, connected phone.
