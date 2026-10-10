@@ -27,6 +27,9 @@ export type RunChip = {
 	/** The Run holding the session, to link to and cancel; null when the runner did not say. */
 	runId: string | null;
 	label: string;
+	/** Cases done out of all of them; 0 of 0 until the Run is known. */
+	finished: number;
+	total: number;
 };
 
 /** A case that is done, whatever its outcome; the runs list counts these. */
@@ -42,10 +45,15 @@ export function runChip(
 ): RunChip | null {
 	if (!session?.heldByRun) return null;
 	const runId = session.heldByRunId ?? null;
-	if (!runId) return { runId: null, label: "Run in progress" };
-	if (!run) return { runId, label: "Running" };
+	if (!runId) return { runId: null, label: "Run in progress", finished: 0, total: 0 };
+	if (!run) return { runId, label: "Running", finished: 0, total: 0 };
 	const finished = run.tests.filter((test) => FINISHED_CASE_STATUSES.has(test.status)).length;
-	return { runId, label: `Running · ${finished}/${run.tests.length}` };
+	return {
+		runId,
+		label: `Running · ${finished}/${run.tests.length}`,
+		finished,
+		total: run.tests.length,
+	};
 }
 
 /**
