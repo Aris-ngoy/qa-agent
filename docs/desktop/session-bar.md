@@ -26,7 +26,7 @@ Make the app's single top bar the one place to manage the **Active Session** (se
 - `session-bar.tsx` / `session-toolbar.tsx`: Connect / Restart / Disconnect on every page. While connected, the device button shows the session's device by the name the device list gives it (`session-device.ts`), from any source (desktop, CLI, a Run). The pill reads "Live · Direct" / "Live · Appium" ("Connected · …" when the Lane has no live stream), with the Lane warning as its tooltip.
 - Last connected device and platform remembered across launches (`yoqa.lastDevice`) and preselected, never connected; a device the list no longer has leaves "Select device".
 - `run-controls.tsx`: with a picked device and no Active Session, Run connects first (the bar shows "Connecting…"), then creates the Run; a failed connect is a toast and no Run. Run is disabled for want of a device only when there is neither a session nor a picked device. The WDA Skip/Rebuild select is gone.
-- Restart on an iOS Appium-lane session is a menu: "Restart session" or "Restart & rebuild WebDriverAgent" (`wda-setup.ts`: setup with `force`, signed from Settings on a physical iPhone, then reconnect on the Appium lane).
+- Restart on an iOS Appium-lane session is a menu: "Restart session" or "Restart & rebuild WebDriverAgent" (`wda-setup.ts`: setup with `force`, then reconnect on the Appium lane). On a physical iPhone the forced setup rebuilds and reinstalls WDA, signed from Settings; on a simulator it drops Appium's WDA build (`~/.yoqa/wda-sim`, `services/runner/src/domains/ios/simulator-wda.ts`), so the reconnect compiles WDA from scratch.
 - `session-run-chip.tsx`: while a Run holds the session, every page shows "Running · n/m · Cancel" (n = cases started, m = all cases), linked to the Run, for Runs started from the desktop, CLI or connector. Without a holder id it says "Run in progress", with no link.
 - `use-retarget-on-app-switch.ts`: switching app in the sidebar while connected and unheld retargets the session; the Inspector marks its cached tree stale so the next selection reads the new app.
 
@@ -43,6 +43,5 @@ Make the app's single top bar the one place to manage the **Active Session** (se
 
 ## Follow-ups
 
-- On a simulator, "Restart & rebuild WebDriverAgent" re-runs setup with `force`, but the runner only rebuilds WDA for physical iPhones; a simulator's WDA stays in Appium's derived data (`~/.yoqa/wda-sim`). Clearing it on a forced simulator setup would make the rebuild real there.
 - Switching app while a Run holds the session does not retarget it after the Run; the session keeps the Run's app until the next switch or connect.
 - The session bar's UI states (remembered device, Run chip, connect-first) are covered by unit tests of their pure helpers, not by rendered component tests.

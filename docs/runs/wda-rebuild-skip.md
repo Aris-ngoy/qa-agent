@@ -1,6 +1,6 @@
 # Runs panel: Rebuild / Skip (WebDriverAgent)
 
-> **Superseded:** the Skip/Rebuild select is gone. Rebuilding WebDriverAgent is now "Restart & rebuild WebDriverAgent" on the top bar's Restart, for an iOS session on the Appium lane. See [Session bar](../desktop/session-bar.md).
+> **Superseded:** the Skip/Rebuild select is gone. Rebuilding WebDriverAgent is now "Restart & rebuild WebDriverAgent" on the top bar's Restart, for an iOS session on the Appium lane, and it rebuilds on simulators too (the forced setup drops Appium's simulator WDA build). See [Session bar](../desktop/session-bar.md).
 
 ## Goal
 
