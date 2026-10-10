@@ -26,10 +26,18 @@ export type YoqaAxNode = {
 /** One `describe`: the foreground apps' and SpringBoard's elements. An empty read is degraded. */
 export type YoqaAxTree = { nodes: YoqaAxNode[]; degraded: boolean };
 
+/** The SpringBoard dialog on screen. No dialog has no title and no buttons. */
+export type YoqaAxAlert = {
+	title?: string;
+	/** In order. Frames are 0.0–1.0 of the screen. */
+	buttons: Array<{ label: string; frame: YoqaAxNode["frame"] }>;
+};
+
 /** A connected `yoqa-ax`. Requests go one at a time. */
 export type YoqaAx = {
 	ping: () => Promise<"ok">;
 	describe: () => Promise<YoqaAxTree>;
+	alert: () => Promise<YoqaAxAlert>;
 	/** Close the socket and end the helper. Safe to call twice. */
 	stop: () => Promise<void>;
 };
@@ -166,6 +174,16 @@ function parseTree(value: unknown): YoqaAxTree {
 	return { nodes: body.nodes as YoqaAxNode[], degraded: body.degraded === true };
 }
 
+function parseAlert(value: unknown): YoqaAxAlert {
+	const body = (typeof value === "object" && value !== null ? value : {}) as {
+		title?: unknown;
+		buttons?: unknown;
+	};
+	if (!Array.isArray(body.buttons)) throw new Error("yoqa-ax alert returned no buttons");
+	const buttons = body.buttons as YoqaAxAlert["buttons"];
+	return typeof body.title === "string" ? { title: body.title, buttons } : { buttons };
+}
+
 /** Bind the socket, spawn `yoqa-ax` inside the simulator, and wait for it to connect back. */
 export async function startYoqaAx(udid: string, options: StartYoqaAxOptions): Promise<YoqaAx> {
 	const path = socketPath(udid);
@@ -233,6 +251,7 @@ export async function startYoqaAx(udid: string, options: StartYoqaAxOptions): Pr
 			return "ok";
 		},
 		describe: async () => parseTree(await connection.request("describe")),
+		alert: async () => parseAlert(await connection.request("alert")),
 		stop,
 	};
 	try {

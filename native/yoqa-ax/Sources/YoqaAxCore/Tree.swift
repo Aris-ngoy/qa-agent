@@ -11,6 +11,20 @@ public struct Rect: Equatable {
         self.width = width
         self.height = height
     }
+
+    /// This rectangle as fractions of `screen` (both in points).
+    func fraction(of screen: Rect) -> Rect {
+        Rect(
+            x: (x - screen.x) / screen.width,
+            y: (y - screen.y) / screen.height,
+            width: width / screen.width,
+            height: height / screen.height
+        )
+    }
+
+    var json: [String: Double] {
+        ["x": x, "y": y, "width": width, "height": height]
+    }
 }
 
 /// One accessibility element, flat: what `describe` returns for each node.
@@ -36,7 +50,7 @@ public struct AXNode: Equatable {
     var json: [String: Any] {
         var body: [String: Any] = [
             "role": role,
-            "frame": ["x": frame.x, "y": frame.y, "width": frame.width, "height": frame.height],
+            "frame": frame.json,
             "enabled": enabled,
         ]
         if let label { body["label"] = label }
@@ -68,13 +82,16 @@ public struct RawElement {
     public var traits: UInt64
     /// In points.
     public var frame: Rect
+    /// Inside a SpringBoard dialog (a permission prompt, a system alert).
+    public var inDialog: Bool
 
-    public init(label: String?, value: String?, identifier: String?, traits: UInt64, frame: Rect) {
+    public init(label: String?, value: String?, identifier: String?, traits: UInt64, frame: Rect, inDialog: Bool = false) {
         self.label = label
         self.value = value
         self.identifier = identifier
         self.traits = traits
         self.frame = frame
+        self.inDialog = inDialog
     }
 }
 
@@ -107,12 +124,7 @@ extension Tree {
                 label: Self.text(element.label),
                 value: Self.text(element.value),
                 id: Self.text(element.identifier),
-                frame: Rect(
-                    x: (frame.x - screen.x) / screen.width,
-                    y: (frame.y - screen.y) / screen.height,
-                    width: frame.width / screen.width,
-                    height: frame.height / screen.height
-                ),
+                frame: frame.fraction(of: screen),
                 enabled: element.traits & Trait.notEnabled == 0
             )
         })
@@ -135,5 +147,52 @@ extension Tree {
     private static func text(_ value: String?) -> String? {
         guard let value, !value.isEmpty else { return nil }
         return value
+    }
+}
+
+/// The SpringBoard dialog on screen: its title and buttons, in order. No dialog gives no
+/// title and no buttons.
+public struct Alert: Equatable {
+    public struct Button: Equatable {
+        public var label: String
+        /// 0.0–1.0 of the simulator screen.
+        public var frame: Rect
+
+        public init(label: String, frame: Rect) {
+            self.label = label
+            self.frame = frame
+        }
+    }
+
+    public var title: String?
+    public var buttons: [Button]
+
+    public init(title: String?, buttons: [Button]) {
+        self.title = title
+        self.buttons = buttons
+    }
+
+    /// The dialog among SpringBoard's elements: its first text is the title, and its labelled
+    /// buttons are the buttons.
+    public init(screen: Rect, elements: [RawElement]) {
+        let dialog = elements.filter(\.inDialog)
+        guard screen.width > 0, screen.height > 0, !dialog.isEmpty else {
+            self.init(title: nil, buttons: [])
+            return
+        }
+        let isButton = { (element: RawElement) in element.traits & Trait.button != 0 }
+        self.init(
+            title: dialog.first { !isButton($0) && !($0.label ?? "").isEmpty }?.label,
+            buttons: dialog.filter(isButton).compactMap { element in
+                guard let label = element.label, !label.isEmpty else { return nil }
+                return Button(label: label, frame: element.frame.fraction(of: screen))
+            }
+        )
+    }
+
+    var json: [String: Any] {
+        var body: [String: Any] = ["buttons": buttons.map { ["label": $0.label, "frame": $0.frame.json] }]
+        if let title { body["title"] = title }
+        return body
     }
 }

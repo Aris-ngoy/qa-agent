@@ -72,7 +72,7 @@ iPhone 17 Pro simulator (iOS 26.5), Xcode 27, Apple silicon, release build, Sett
 
 ## Follow-ups
 
-- #244: `alert`, the SpringBoard dialog read.
+- #244: `alert`, the SpringBoard dialog read ([yoqa-ax-alerts.md](./yoqa-ax-alerts.md)). It also stops `describe` from reading SpringBoard twice while it is frontmost.
 - The 50 ms target is met at the socket (about 23 ms). Through the Lane, a read on a new frame took 35–80 ms. Part of that is fetching the whole frame to get its hash. A hash-only `yoqa-sim` route would cut it.
 - `degraded` reaches only the raw (`full`) source. Putting it on the Screen response is a schema change for #233's follow-ups to decide.
 - Frames are converted with the window size read at connect, as idb's tree already is. A rotated simulator would need it refreshed.

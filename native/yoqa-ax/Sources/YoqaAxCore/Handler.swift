@@ -4,12 +4,16 @@ import Foundation
 /// failure gives `{"id":1,"error":"…"}`. Requests are handled one at a time.
 ///
 /// `describe` gives `{"nodes":[…],"degraded":false}`, or no nodes and `degraded: true`.
+/// `alert` gives `{"title":"…","buttons":[{"label":"…","frame":{…}}]}`, or `{"buttons":[]}`.
 public struct Handler {
     private let describe: () -> Tree
+    private let alert: () -> Alert
 
-    /// `describe` reads the accessibility tree; the binary passes the in-simulator reader.
-    public init(describe: @escaping () -> Tree) {
+    /// `describe` reads the accessibility tree and `alert` the SpringBoard dialog; the binary
+    /// passes the in-simulator reader.
+    public init(describe: @escaping () -> Tree, alert: @escaping () -> Alert) {
         self.describe = describe
+        self.alert = alert
     }
 
     public func respond(to request: Data) -> Data {
@@ -21,6 +25,7 @@ public struct Handler {
         switch method {
         case "ping": return reply(id: id, ["result": "ok"])
         case "describe": return reply(id: id, ["result": describe().json])
+        case "alert": return reply(id: id, ["result": alert().json])
         default: return reply(id: id, ["error": "unknown method \(method)"])
         }
     }

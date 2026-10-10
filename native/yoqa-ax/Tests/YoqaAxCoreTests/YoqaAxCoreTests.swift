@@ -34,7 +34,7 @@ final class FramingTests: XCTestCase {
 
 final class HandlerTests: XCTestCase {
     private func respond(_ request: String, tree: Tree = Tree(nodes: [])) throws -> [String: Any] {
-        let reply = Handler(describe: { tree }).respond(to: Data(request.utf8))
+        let reply = Handler(describe: { tree }, alert: { Alert(title: nil, buttons: []) }).respond(to: Data(request.utf8))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: reply) as? [String: Any])
     }
 
@@ -76,6 +76,29 @@ final class HandlerTests: XCTestCase {
         let result = try XCTUnwrap(reply["result"] as? [String: Any])
         XCTAssertEqual((result["nodes"] as? [Any])?.count, 0)
         XCTAssertEqual(result["degraded"] as? Bool, true)
+    }
+
+    func testAlertAnswersTheTitleAndButtons() throws {
+        let alert = Alert(title: "Allow “Maps” to use your location?", buttons: [
+            Alert.Button(label: "Allow Once", frame: Rect(x: 0.25, y: 0.5, width: 0.5, height: 0.0625)),
+        ])
+        let reply = Handler(describe: { Tree(nodes: []) }, alert: { alert })
+            .respond(to: Data(#"{"id":11,"method":"alert"}"#.utf8))
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: reply) as? [String: Any])
+        let result = try XCTUnwrap(body["result"] as? [String: Any])
+        XCTAssertEqual(result["title"] as? String, "Allow “Maps” to use your location?")
+        let buttons = try XCTUnwrap(result["buttons"] as? [[String: Any]])
+        XCTAssertEqual(buttons.first?["label"] as? String, "Allow Once")
+        XCTAssertEqual(buttons.first?["frame"] as? [String: Double], ["x": 0.25, "y": 0.5, "width": 0.5, "height": 0.0625])
+    }
+
+    func testNoAlertAnswersNoTitleAndNoButtons() throws {
+        let reply = Handler(describe: { Tree(nodes: []) }, alert: { Alert(title: nil, buttons: []) })
+            .respond(to: Data(#"{"id":12,"method":"alert"}"#.utf8))
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: reply) as? [String: Any])
+        let result = try XCTUnwrap(body["result"] as? [String: Any])
+        XCTAssertNil(result["title"])
+        XCTAssertEqual((result["buttons"] as? [Any])?.count, 0)
     }
 
     func testARequestThatIsNotJsonIsAnError() throws {
@@ -140,5 +163,39 @@ final class TreeTests: XCTestCase {
         let tree = Tree(screen: Rect(x: 0, y: 0, width: 0, height: 0), elements: [element("General", traits: 1)])
         XCTAssertEqual(tree.nodes, [])
         XCTAssertTrue(tree.degraded)
+    }
+}
+
+final class AlertTests: XCTestCase {
+    private let screen = Rect(x: 0, y: 0, width: 400, height: 800)
+
+    private func element(_ label: String, traits: UInt64, y: Double, inDialog: Bool = true) -> RawElement {
+        RawElement(
+            label: label, value: nil, identifier: nil, traits: traits,
+            frame: Rect(x: 100, y: y, width: 200, height: 40), inDialog: inDialog
+        )
+    }
+
+    func testADialogGivesItsTitleAndButtonsInOrder() {
+        let alert = Alert(screen: screen, elements: [
+            element("09:06", traits: 1 << 6, y: 0, inDialog: false),
+            element("Allow “Maps” to use your location?", traits: 1 << 6 | 1 << 33, y: 200),
+            element("Your location is used to show your position on the map.", traits: 1 << 6, y: 240),
+            element("Allow Once", traits: 1 | 1 << 33, y: 400),
+            element("Don’t Allow", traits: 1 | 1 << 33, y: 480),
+        ])
+        XCTAssertEqual(alert.title, "Allow “Maps” to use your location?")
+        XCTAssertEqual(alert.buttons, [
+            Alert.Button(label: "Allow Once", frame: Rect(x: 0.25, y: 0.5, width: 0.5, height: 0.05)),
+            Alert.Button(label: "Don’t Allow", frame: Rect(x: 0.25, y: 0.6, width: 0.5, height: 0.05)),
+        ])
+    }
+
+    func testNoDialogIsEmpty() {
+        let alert = Alert(screen: screen, elements: [
+            element("Settings", traits: 1, y: 400, inDialog: false),
+        ])
+        XCTAssertNil(alert.title)
+        XCTAssertEqual(alert.buttons, [])
     }
 }
