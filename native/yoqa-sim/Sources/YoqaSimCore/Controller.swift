@@ -25,16 +25,21 @@ public final class Controller {
     private let status: Status
     private let device: TouchDevice
     private let frames: FrameStore
+    private let touchscreen: TouchscreenHealth?
     private let sleep: (Double) -> Void
     private let hid = DispatchQueue(label: "yoqa-sim.hid", qos: .userInteractive)
     public var onShutdown: () -> Void = { exit(0) }
     /// An unchanged screen is sent again this often, so the stream finds a client that left.
     public var streamHeartbeat: TimeInterval = 1
 
-    public init(status: Status, device: TouchDevice, frames: FrameStore, sleep: @escaping (Double) -> Void = { usleep(useconds_t($0 * 1000)) }) {
+    public init(
+        status: Status, device: TouchDevice, frames: FrameStore, touchscreen: TouchscreenHealth? = nil,
+        sleep: @escaping (Double) -> Void = { usleep(useconds_t($0 * 1000)) }
+    ) {
         self.status = status
         self.device = device
         self.frames = frames
+        self.touchscreen = touchscreen
         self.sleep = sleep
     }
 
@@ -42,7 +47,11 @@ public final class Controller {
         guard let request else { return .error(400, "bad request") }
         switch (request.method, request.path) {
         case ("GET", "/status"):
-            return .json(200, ["udid": status.udid, "simulatorKit": status.simulatorKit])
+            return .json(200, [
+                "udid": status.udid,
+                "simulatorKit": status.simulatorKit,
+                "touchscreen": (touchscreen?.state ?? .unknown).rawValue,
+            ])
         case ("GET", "/screenshot"):
             return screenshot(request.query)
         case ("GET", "/stream.mjpeg"):
@@ -136,7 +145,13 @@ public final class Controller {
         return part
     }
 
+    /// How long a gesture that reconnects the touchscreen waits to hear whether it stuck.
+    static let revivalTimeout: TimeInterval = 0.5
+    static let droppedTouchscreen = "the simulator dropped its legacy touchscreen this boot, so touches are accepted but never reach the screen; reboot the simulator"
+
     private func perform(_ plan: [TouchStep]) -> Response {
+        let before = touchscreen?.state ?? .unknown
+        if before == .dropped { return .error(503, Self.droppedTouchscreen) }
         var failure: Error?
         hid.sync {
             var down: TouchStep?
@@ -156,6 +171,10 @@ public final class Controller {
             }
         }
         if let failure { return .error(500, String(describing: failure)) }
+        // This gesture's Down reconnected the touchscreen; backboardd logs at once whether that held.
+        if before.awaitsRevival, touchscreen?.settled(timeout: Self.revivalTimeout) == .dropped {
+            return .error(503, Self.droppedTouchscreen)
+        }
         return .json(200, ["ok": true])
     }
 }
