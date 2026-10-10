@@ -87,6 +87,8 @@ export function SessionToolbar({
 	const [serversOpen, setServersOpen] = useState(false);
 	const connected = active != null;
 	const canRestart = connected || device != null;
+	/** A session's device the list does not have yet shows by its id. */
+	const deviceLabel = device?.label ?? active?.deviceId;
 
 	return (
 		<div className="flex flex-col items-end gap-1">
@@ -119,7 +121,7 @@ export function SessionToolbar({
 				<Button
 					className={[
 						"min-w-44 max-w-56 justify-start",
-						device ? "font-mono text-body-sm" : "",
+						deviceLabel ? "font-mono text-body-sm" : "",
 					].join(" ")}
 					isDisabled={connecting || connected}
 					size="sm"
@@ -127,7 +129,7 @@ export function SessionToolbar({
 					onPress={() => setPickerOpen(true)}
 				>
 					<PhoneIcon />
-					<span className="truncate">{device?.label ?? "Select device"}</span>
+					<span className="truncate">{deviceLabel ?? "Select device"}</span>
 				</Button>
 
 				{connected ? (

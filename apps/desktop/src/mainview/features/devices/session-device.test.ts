@@ -58,9 +58,9 @@ describe("deviceForSession", () => {
 		);
 	});
 
-	test("falls back to the device id when the list does not have it", () => {
-		const device = deviceForSession({ deviceId: "emulator-5554", platform: "android" }, []);
-		expect(device).toMatchObject({ id: "emulator-5554", label: "emulator-5554" });
+	test("is nothing when the list does not have the device (or is not loaded), never a guess", () => {
+		expect(deviceForSession({ deviceId: SIMULATOR.id, platform: "ios" }, [PHONE])).toBeNull();
+		expect(deviceForSession({ deviceId: SIMULATOR.id, platform: "ios" }, undefined)).toBeNull();
 	});
 });
 

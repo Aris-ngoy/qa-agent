@@ -1,5 +1,6 @@
-import type { ActiveDeviceResponse, LaneName, RunTestStatus } from "@yoqa/runner-client";
+import type { ActiveDeviceResponse, Device, LaneName, RunTestStatus } from "@yoqa/runner-client";
 import type { SelectedDevice } from "./select-device-modal";
+import { deviceForSession } from "./session-device";
 
 const LANE_LABELS: Record<LaneName, string> = { direct: "Direct", appium: "Appium" };
 
@@ -9,11 +10,17 @@ export function sessionPillLabel(session: Pick<ActiveDeviceResponse, "streamRead
 	return session.lane ? `${state} · ${LANE_LABELS[session.lane]}` : state;
 }
 
-/** Only an iOS session on the Appium lane runs WebDriverAgent, so only it can rebuild it. */
-export function offersWdaRebuild(
-	session: Pick<ActiveDeviceResponse, "platform" | "lane"> | null,
-): boolean {
-	return session?.platform === "ios" && session.lane === "appium";
+/**
+ * The device "Restart & rebuild WebDriverAgent" rebuilds for, or null when it is not offered.
+ * Only an iOS session on the Appium lane runs WebDriverAgent, and the rebuild needs the
+ * device's real kind (simulator or physical), so the device list must have the device.
+ */
+export function wdaRebuildTarget(
+	session: Pick<ActiveDeviceResponse, "deviceId" | "platform" | "lane"> | null,
+	devices: readonly Device[] | undefined,
+): SelectedDevice | null {
+	if (session?.platform !== "ios" || session.lane !== "appium") return null;
+	return deviceForSession(session, devices);
 }
 
 export type RunChip = {

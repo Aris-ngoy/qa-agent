@@ -20,32 +20,18 @@ function toSelectedDevice(device: Device): SelectedDevice {
 	};
 }
 
-/** A simulator's UDID is a UUID; a physical iPhone's is not. Android emulators are `emulator-*`. */
-function guessKind(platform: DevicePlatform, deviceId: string): SelectedDevice["kind"] {
-	if (platform === "android") return deviceId.startsWith("emulator-") ? "emulator" : "physical";
-	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deviceId)
-		? "simulator"
-		: "physical";
-}
-
 /**
  * The Active Session's device by its real name and kind, from the platform's device list.
- * A device the list does not have is shown by its id.
+ * Null when the list does not have it (or has not loaded): its kind is then unknown.
  */
 export function deviceForSession(
 	session: { deviceId: string; platform: DevicePlatform },
 	devices: readonly Device[] | undefined,
-): SelectedDevice {
-	const listed = devices?.find((device) => device.id === session.deviceId);
-	if (listed) return toSelectedDevice(listed);
-	return {
-		id: session.deviceId,
-		label: session.deviceId,
-		name: session.deviceId,
-		osVersion: "",
-		platform: session.platform,
-		kind: guessKind(session.platform, session.deviceId),
-	};
+): SelectedDevice | null {
+	const listed = devices?.find(
+		(device) => device.id === session.deviceId && device.platform === session.platform,
+	);
+	return listed ? toSelectedDevice(listed) : null;
 }
 
 /**

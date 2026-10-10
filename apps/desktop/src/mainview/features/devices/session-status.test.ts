@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { RunTestStatus } from "@yoqa/runner-client";
-import { offersWdaRebuild, runChip, runTarget, sessionPillLabel } from "./session-status";
+import type { Device, RunTestStatus } from "@yoqa/runner-client";
+import { runChip, runTarget, sessionPillLabel, wdaRebuildTarget } from "./session-status";
 
 const SESSION = { deviceId: "dev-1", platform: "ios" as const, connectedAt: 1 };
 
@@ -20,12 +20,36 @@ describe("sessionPillLabel", () => {
 	});
 });
 
-describe("offersWdaRebuild", () => {
-	test("only an iOS session on the Appium lane runs WebDriverAgent", () => {
-		expect(offersWdaRebuild({ platform: "ios", lane: "appium" })).toBe(true);
-		expect(offersWdaRebuild({ platform: "ios", lane: "direct" })).toBe(false);
-		expect(offersWdaRebuild({ platform: "android", lane: "appium" })).toBe(false);
-		expect(offersWdaRebuild(null)).toBe(false);
+describe("wdaRebuildTarget", () => {
+	const simulator: Device = {
+		id: "B75001FB-B91D-4F94-80A7-3E371A641D27",
+		name: "iPhone 17 Pro",
+		osVersion: "26.0",
+		platform: "ios",
+		kind: "simulator",
+	};
+	const onAppium = { ...SESSION, deviceId: simulator.id, lane: "appium" as const };
+
+	test("an iOS Appium-lane session rebuilds on its listed device, with that device's real kind", () => {
+		expect(wdaRebuildTarget(onAppium, [simulator])).toMatchObject({
+			id: simulator.id,
+			kind: "simulator",
+		});
+	});
+
+	test("offers no rebuild when the device list does not have the device", () => {
+		expect(wdaRebuildTarget(onAppium, [])).toBeNull();
+		expect(wdaRebuildTarget(onAppium, undefined)).toBeNull();
+	});
+
+	test("offers no rebuild off the Appium lane, on Android, or without a session", () => {
+		expect(wdaRebuildTarget({ ...onAppium, lane: "direct" }, [simulator])).toBeNull();
+		expect(
+			wdaRebuildTarget({ ...onAppium, platform: "android" }, [
+				{ ...simulator, platform: "android" },
+			]),
+		).toBeNull();
+		expect(wdaRebuildTarget(null, [simulator])).toBeNull();
 	});
 });
 
