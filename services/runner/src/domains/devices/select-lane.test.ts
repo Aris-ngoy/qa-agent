@@ -148,11 +148,11 @@ describe("iOS-simulator Direct implementations", () => {
 	const names = (optIn?: string) =>
 		directImplementationOrder(DIRECT_IMPLEMENTATIONS["ios-simulator"], optIn).map((i) => i.name);
 
-	test("idb_companion stays the default until device-sim shows a measured gain", () => {
-		expect(names()).toEqual(["idb"]);
+	test("device-sim is the default, with idb_companion as its fallback", () => {
+		expect(names()).toEqual(["device-sim", "idb"]);
 	});
 
-	test("YOQA_DIRECT_IOS_SIMULATOR=device-sim tries yoqa-sim first", () => {
-		expect(names("device-sim")).toEqual(["device-sim", "idb"]);
+	test("YOQA_DIRECT_IOS_SIMULATOR=idb rolls back to idb_companion alone", () => {
+		expect(names("idb")).toEqual(["idb"]);
 	});
 });
