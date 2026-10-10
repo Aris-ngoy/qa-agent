@@ -537,6 +537,9 @@ export async function createIosDirectSession(
 		drag: (x1, y1, x2, y2, durationMs = 800) => swipe(x1, y1, x2, y2, durationMs),
 		type,
 		activateApp,
+		setTargetApp: (appId) => {
+			lastAppId = appId;
+		},
 		terminateApp,
 		backgroundApp,
 		openUrl,

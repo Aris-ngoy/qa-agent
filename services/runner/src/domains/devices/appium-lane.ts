@@ -801,6 +801,8 @@ export async function createAppiumSession(
 		drag,
 		type,
 		activateApp,
+		// The Appium session already knows its app from its capabilities; nothing to remember.
+		setTargetApp: () => undefined,
 		terminateApp,
 		backgroundApp,
 		openUrl,
