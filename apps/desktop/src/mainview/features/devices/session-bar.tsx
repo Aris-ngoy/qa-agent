@@ -70,13 +70,13 @@ export function SessionBar() {
 
 	// A session started anywhere (desktop, CLI, a Run) drives the bar: its platform, and
 	// its device by the name the device list gives it (kept picked after a disconnect).
+	// Only a connect from this desktop is remembered (`connectDevice`), not an adopted one.
 	const sessionDeviceId = activeSession?.deviceId;
 	const sessionPlatform = activeSession?.platform;
 	useEffect(() => {
 		if (!sessionDeviceId || !sessionPlatform) return;
 		rememberedPendingRef.current = false;
 		setPlatform(sessionPlatform);
-		writeRememberedDevice({ platform: sessionPlatform, deviceId: sessionDeviceId });
 		const listed = deviceForSession(
 			{ deviceId: sessionDeviceId, platform: sessionPlatform },
 			sessionPlatform === platform ? devices : undefined,
