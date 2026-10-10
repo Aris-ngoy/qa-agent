@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseDevicectlDevices } from "./devicectl";
+import { idleWiredUdids, parseDevicectlDevices } from "./devicectl";
 import wifi from "./fixtures/devicectl-wifi.json";
 import devModeOff from "./fixtures/devicectl-wired-devmode-off.json";
 import wiredLegacy from "./fixtures/devicectl-wired-legacy.json";
@@ -53,5 +53,23 @@ describe("parseDevicectlDevices", () => {
 	test("unreadable output lists nothing", () => {
 		expect(parseDevicectlDevices(null)).toEqual([]);
 		expect(parseDevicectlDevices({ result: {} })).toEqual([]);
+	});
+});
+
+describe("idleWiredUdids", () => {
+	test("finds a cabled phone whose tunnel is down, not a connected or Wi-Fi one", () => {
+		const idle = structuredClone(wired) as typeof wired;
+		const item = idle.result.devices.find(
+			(d) => parseDevicectlDevices({ result: { devices: [d] } }).length,
+		);
+		const props = (item as { properties?: { connection?: { state?: string } } }).properties;
+		const legacy = (item as { connectionProperties?: { tunnelState?: string } })
+			.connectionProperties;
+		if (props?.connection) props.connection.state = "disconnected";
+		if (legacy) legacy.tunnelState = "disconnected";
+
+		expect(idleWiredUdids(idle).length).toBeGreaterThan(0);
+		expect(idleWiredUdids(wired)).toEqual([]);
+		expect(idleWiredUdids(wifi)).toEqual([]);
 	});
 });
