@@ -10,10 +10,8 @@ import {
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
 import { isDeviceSessionGone } from "@/features/inspector/inspect-session";
 import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
-import { ScreenGestures } from "@/features/inspector/screen-gestures";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
 import { type RunLogEntry, ScriptPanel } from "@/features/inspector/script-panel";
-import { SelectedElementCard } from "@/features/inspector/selected-element-card";
 import {
 	type InspectorSelection,
 	appendScriptLines,
@@ -1138,25 +1136,15 @@ export function InspectorPage() {
 						onDoubleTap={handleDoubleTap}
 						onPointer={sendPointer}
 						onClearSelection={() => setSelection(null)}
-					/>
-				</div>
-
-				<div className="flex min-w-65 flex-[1_1_280px] flex-col gap-5">
-					<SelectedElementCard
-						selection={selection}
-						disabled={!connected || running || viewOnly}
 						snippetContext={snippetContext}
 						canChangeSelector={Boolean(selection?.element)}
 						onChangeSelector={handleChangeSelector}
-						onInsert={handleInsertLines}
-						onInsertAndRun={handleInsertAndRunLines}
+						onInsertLines={handleInsertLines}
+						onInsertAndRunLines={handleInsertAndRunLines}
 						onCopyLines={(lines) => {
 							void handleCopyLines(lines);
 						}}
-						onClearSelection={() => setSelection(null)}
-					/>
-					<ScreenGestures
-						disabled={running || viewOnly}
+						gesturesDisabled={running || viewOnly}
 						onAddSwipe={handleAddSwipe}
 						onAddWait={handleAddWait}
 					/>

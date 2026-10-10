@@ -41,12 +41,12 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 - **Screen gestures** card: swipe d-pad + wait stepper
 - **Save as test case** in the Script panel footer (requires selected app + convertible actions); recorded taps/inputs always include `--x/--y` so conversion does not depend on the live accessibility tree
 
-**Desktop — layout redesign (3 columns)**
+**Desktop — layout redesign (device + script columns)**
 - Header carries the Platform / Device / Connect-Restart-Disconnect controls (`SessionToolbar`, restyled only; same picker modal and connect flow). The app sidebar is untouched.
 - **Device** column: segmented **Inspect / Interact** toggle (maps to the existing Live control state), refresh-tree button, hint line.
-- **Middle** column: **Selected element** card (Type, Label, Tap point, Visible, then Add step) replaces the floating action menu; **Screen gestures** replaces the command bar.
+- **Selected element** card (Type, Label, Tap point, Visible, then Add step) and **Screen gestures** (swipe d-pad + wait) live together in a floating dialog anchored beside the selection on the device screenshot — there is no middle column. Gestures are therefore reachable only while an element or point is selected.
 - **Script** column: **Steps / Code** tabs. Steps is a read-only view parsed from the script (`script-steps.ts`, built on `parseYoqaShellScript`); Code is the editable textarea. While a run is in flight the active line drives Running / Passed / Queued badges and a progress bar (derived client-side from the active line and run log; no runner changes). Export menu: Shell script, HTML report, Markdown report. The run log stays under the steps.
-- Layout is a wrapping flex row (device ~360px, middle ~280px, script grows), so columns drop below each other as the window narrows.
+- Layout is a wrapping two-column flex row (device ~360px, script grows), so columns drop below each other as the window narrows.
 - **Visual pass against the design mock:** white 18px-radius cards with `outline-variant` borders, icon buttons and a violet accent (`--color-violet*` tokens in `@yoqa/ui`), colored step-verb chips, dark Code view, Export menu. The first redesign pass used `text-title-*` classes that do not exist in the theme (they silently rendered unstyled); typography now uses `headline-lg` / `subheading` / `body-*`.
 
 ## How to verify
