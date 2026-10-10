@@ -32,7 +32,7 @@ Make the app's single top bar the one place to manage the **Active Session** (se
 
 ## How to verify
 
-1. `bun run test` (runner: Lane retarget on the cabled-iPhone, simulator and Android Direct lanes; a Run for app B adopting a session for app A reads B's Screen / relaunches B; `heldByRunId`; `POST /devices/retarget` and the Screen after it. Desktop: device lookup, remembered device, pill label, Run chip, Run target, pointing the session back at the selected app after a Run).
+1. `bun run test` (runner: Lane retarget on the cabled-iPhone, simulator and Android Direct lanes; a Run for app B adopting a session for app A reads B's Screen / relaunches B; `heldByRunId`; `POST /devices/retarget` and the Screen after it. Desktop: device lookup, remembered device, pill label, Run chip, Run target, the app id per platform, pointing the session back at the selected app after a Run).
 2. Desktop, Runs page: pick a device, **Connect** → pill "Live · Direct" (or Appium); hover it after a fallback to see the Lane warning. Restart and Disconnect work here and on Test cases.
 3. `yoqa devices connect <udid>` from the CLI → the bar shows the device's name and the Lane.
 4. Quit and relaunch the desktop app → the last device connected from the desktop is preselected, not connected (a device connected only from the CLI in step 3 is not). Delete that simulator (or unplug the iPhone) and relaunch → "Select device".

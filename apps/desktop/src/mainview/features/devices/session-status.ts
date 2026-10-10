@@ -49,13 +49,12 @@ export function runChip(
 }
 
 /**
- * What Run starts on: the Active Session, or the picked device once it is connected.
- * Null when there is neither, the only case Run is disabled for want of a device.
+ * Whether Run has something to start on: the Active Session, or the picked device, which
+ * is connected first. Without either, Run is disabled for want of a device.
  */
-export function runTarget(
+export function hasRunTarget(
 	session: ActiveDeviceResponse | null,
 	device: SelectedDevice | null,
-): "session" | "connect-first" | null {
-	if (session) return "session";
-	return device ? "connect-first" : null;
+): boolean {
+	return session != null || device != null;
 }

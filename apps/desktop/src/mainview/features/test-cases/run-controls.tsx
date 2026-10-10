@@ -2,7 +2,7 @@ import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
 import type { SelectedDevice } from "@/features/devices/select-device-modal";
-import { runTarget } from "@/features/devices/session-status";
+import { hasRunTarget } from "@/features/devices/session-status";
 import { useActiveDeviceSession } from "@/features/devices/use-active-device-session";
 import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
 import { runsListQueryKey } from "@/features/runs/list-page";
@@ -34,7 +34,7 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 	const { activeRunId, isRunLive, setActiveRun } = useActiveRun();
 	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
 	const [executionPromptOpen, setExecutionPromptOpen] = useState(false);
-	const target = runTarget(activeSession, device);
+	const hasTarget = hasRunTarget(activeSession, device);
 
 	const casesQuery = useQuery({
 		queryKey: selectedApp ? casesQueryKey(selectedApp.id) : ["catalog", "cases", "none"],
@@ -113,7 +113,7 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 
 	const canRun = Boolean(
 		selectedApp &&
-			target &&
+			hasTarget &&
 			!activeSession?.heldByRun &&
 			selectedCaseIds.length > 0 &&
 			!runMutation.isPending &&
@@ -130,7 +130,7 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 				? "Select an app to run"
 				: selectedCaseIds.length === 0
 					? "Select test cases to run"
-					: !target
+					: !hasTarget
 						? "Pick a device in the top bar to run"
 						: `Run ${selectedCaseIds.length} test${selectedCaseIds.length === 1 ? "" : "s"}`;
 
