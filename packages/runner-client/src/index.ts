@@ -64,6 +64,7 @@ import {
 	type ProviderKind,
 	type ProviderModel,
 	type ProviderStatus,
+	type RetargetDeviceRequest,
 	type Run,
 	type RunError,
 	type RunExecutionMode,
@@ -155,6 +156,7 @@ import {
 	providerKindSchema,
 	providerModelSchema,
 	providerStatusSchema,
+	retargetDeviceRequestSchema,
 	runErrorSchema,
 	runExecutionModeSchema,
 	runRecordingSchema,
@@ -246,6 +248,7 @@ export {
 	providerKindSchema,
 	providerModelSchema,
 	providerStatusSchema,
+	retargetDeviceRequestSchema,
 	runErrorSchema,
 	runExecutionModeSchema,
 	runRecordingSchema,
@@ -337,6 +340,7 @@ export {
 	type ProviderKind,
 	type ProviderModel,
 	type ProviderStatus,
+	type RetargetDeviceRequest,
 	type Run,
 	type RunError,
 	type RunExecutionMode,
@@ -1041,6 +1045,21 @@ export class RunnerClient {
 				errorMessageFromBody(json, `Get active device failed: HTTP ${response.status}`),
 			);
 		}
+		return activeDeviceResponseSchema.parse(json);
+	}
+
+	/** Point the Active Session at another app without reconnecting (409 while a Run holds it). */
+	async retargetDevice(request: RetargetDeviceRequest): Promise<ActiveDeviceResponse> {
+		const body = retargetDeviceRequestSchema.parse(request);
+		const json = await this.requestJson(
+			"/devices/retarget",
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			},
+			"Switch app failed",
+		);
 		return activeDeviceResponseSchema.parse(json);
 	}
 

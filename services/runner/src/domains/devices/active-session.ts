@@ -14,6 +14,8 @@ export type ActiveSessionInfo = {
 	streamUrl: string;
 	/** A Run currently owns this session for test execution (interactive actions are view-only). */
 	heldByRun: boolean;
+	/** The id of the Run that holds this session, while one does. */
+	heldByRunId?: string;
 	lane: import("./lane").LaneName;
 	laneWarning?: string;
 };
@@ -51,6 +53,7 @@ function toInfo(current: ActiveSession): ActiveSessionInfo {
 		streamReady: current.session.stream?.ready ?? false,
 		streamUrl: current.streamUrl,
 		heldByRun: current.heldByRunId != null,
+		...(current.heldByRunId != null ? { heldByRunId: current.heldByRunId } : {}),
 		lane: current.session.lane,
 		...(current.session.laneWarning ? { laneWarning: current.session.laneWarning } : {}),
 	};
@@ -178,6 +181,25 @@ export async function disconnectDevice(): Promise<ActiveSessionInfo | null> {
 }
 
 /**
+ * Point the Active Session at another app (the user switched app) without reconnecting
+ * or launching anything. The app id the session's platform uses is picked from the two.
+ * Refused while a Run holds the session: the Run decides which app it reads.
+ */
+export function retargetActiveSession(app: {
+	bundleId?: string;
+	appPackage?: string;
+}): ActiveSessionInfo {
+	const current = requireActiveSession();
+	if (current.heldByRunId != null) {
+		throw new SessionBusyError(
+			"A run is using the device session. Wait for it to finish before switching app.",
+		);
+	}
+	current.session.setTargetApp(targetAppFor({ platform: current.platform, ...app }));
+	return toInfo(current);
+}
+
+/**
  * Run-side acquisition of the shared Device Session.
  *
  * - Adopts the Active Session when it already targets the requested device
@@ -239,6 +261,8 @@ export async function acquireSessionForRun(options: {
 				.catch(() => false);
 			if (healthy) {
 				current.heldByRunId = options.runId;
+				// The session may have been opened for another app; the Run reads its own.
+				current.session.setTargetApp(targetAppFor(options));
 				return { session: current.session, shared: true };
 			}
 			console.warn(
@@ -268,6 +292,15 @@ export async function acquireSessionForRun(options: {
 		session.laneWarning = [replacedWarning, ...(others ?? [])].join("; ");
 	}
 	return { session, shared: true };
+}
+
+/** The app id a session on this platform targets: the iOS bundle id or the Android package. */
+function targetAppFor(options: {
+	platform: DevicePlatform;
+	bundleId?: string;
+	appPackage?: string;
+}): string | undefined {
+	return options.platform === "ios" ? options.bundleId : options.appPackage;
 }
 
 function laneLabel(lane: import("./lane").LaneName): string {

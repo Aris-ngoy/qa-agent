@@ -1,15 +1,27 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createConnection } from "node:net";
+import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
+import { type IdbExec, createIosDirectSession } from "./ios-direct-lane";
 import type { LaneFactory, LaneName } from "./lane";
 import * as actualSession from "./session";
 
-type FakeSession = { quitCalls: number; healthy: boolean };
+type FakeSession = {
+	quitCalls: number;
+	healthy: boolean;
+	/** Every target app the session was pointed at, in order. */
+	targets: Array<string | undefined>;
+};
 
 function fakeSession(deviceId: string, lane: LaneName): unknown {
 	const session = {
 		deviceId,
 		quitCalls: 0,
 		healthy: true,
+		targets: [] as Array<string | undefined>,
 		lane,
+		setTargetApp: (appId: string | undefined) => {
+			session.targets.push(appId);
+		},
 		stream: { ready: true, port: 9100, upstreamUrl: "http://127.0.0.1:9100/" },
 		getWindowSize: async () => {
 			if (!session.healthy) {
@@ -36,17 +48,24 @@ function fakeLane(lane: LaneName): LaneFactory {
 	};
 }
 
+/** The Direct lane sessions open on; a test may swap in a real Lane with a faked device. */
+let directLane: LaneFactory = fakeLane("direct");
+
 // Keep every real export (session.test.ts relies on them) and open sessions through
 // the real Lane selection with fake Lane factories, so no device or Appium is needed.
 const realCreateDeviceSession = actualSession.createDeviceSession;
 mock.module("./session", () => ({
 	...actualSession,
 	createDeviceSession: (options: actualSession.SessionOptions) =>
-		realCreateDeviceSession(options, { appium: fakeLane("appium"), direct: fakeLane("direct") }),
+		realCreateDeviceSession(options, {
+			appium: fakeLane("appium"),
+			direct: (laneOptions) => directLane(laneOptions),
+		}),
 }));
 
 mock.module("./mjpeg-proxy", () => ({
-	abortAllMjpegProxies: () => {},
+	trackMjpegProxy: () => new AbortController(),
+	abortAllMjpegProxies: () => false,
 }));
 
 const {
@@ -58,7 +77,9 @@ const {
 	getActiveSessionInfo,
 	isActiveSessionHeldByRun,
 	releaseSessionFromRun,
+	retargetActiveSession,
 } = await import("./active-session");
+const { createSessionRoutes } = await import("../../interfaces/http/session");
 
 beforeEach(() => {
 	// Tests always start from an explicit connect; connectDevice replaces any
@@ -73,7 +94,71 @@ afterEach(async () => {
 	if (current?.heldByRunId) {
 		await releaseSessionFromRun(current.heldByRunId, current.session, true);
 	}
+	directLane = fakeLane("direct");
 });
+
+const PHONE_UDID = "00008120-000E6D813E2A601E";
+const SIM_UDID = "B75001FB-B91D-4F94-80A7-3E371A641D27";
+
+const phoneServers: Array<ReturnType<typeof Bun.serve>> = [];
+afterEach(() => {
+	for (const server of phoneServers.splice(0)) server.stop(true);
+});
+
+/**
+ * A cabled iPhone with `YoqaRunner` on it, faked at the Lane's seams: the tunnel reaches
+ * an HTTP server that answers like the runner and records the app each snapshot reads.
+ */
+function fakePhone() {
+	const snapshots: Array<string | undefined> = [];
+	const launched: string[][] = [];
+	const server = Bun.serve({
+		hostname: "127.0.0.1",
+		port: 0,
+		fetch: async (request) => {
+			const body = (await request.json()) as { command: string; bundleId?: string };
+			if (body.command === "snapshot") snapshots.push(body.bundleId);
+			const data =
+				body.command === "viewport"
+					? { width: 393, height: 852 }
+					: body.command === "snapshot"
+						? { nodes: [] }
+						: { state: "ready" };
+			return Response.json({ ok: true, data }, { headers: { Connection: "close" } });
+		},
+	});
+	phoneServers.push(server);
+	const deps: IosDeviceDeps = {
+		startRunner: async () => ({
+			port: 54_321,
+			exited: new Promise<number>(() => undefined),
+			stop: async () => undefined,
+		}),
+		connect: async () => createConnection(server.port ?? 0, "127.0.0.1"),
+		devicectl: async (args) => {
+			launched.push(args);
+			return { stdout: "", stderr: "", exitCode: 0 };
+		},
+	};
+	return { deps, snapshots, launched };
+}
+
+/** An iOS simulator behind idb_companion, faked; records the apps it launches. */
+function fakeSimulator() {
+	const launched: string[] = [];
+	const idb: IdbExec = async (args) => {
+		if (args[0] === "launch" && args[1]) launched.push(args[1]);
+		const stdout =
+			args[0] === "describe"
+				? JSON.stringify({
+						target_type: "simulator",
+						screen_dimensions: { width_points: 402, height_points: 874 },
+					})
+				: "";
+		return { stdout, stderr: "", exitCode: 0 };
+	};
+	return { idb, launched };
+}
 
 describe("shared device session", () => {
 	test("connectDevice registers the Active Session", async () => {
@@ -102,6 +187,75 @@ describe("shared device session", () => {
 		expect(after?.deviceId).toBe(before?.deviceId);
 		expect(after?.heldByRun).toBe(false);
 		expect(createdCount).toBe(sessionsBeforeAcquire);
+	});
+
+	test("the Active Session names the Run that holds it, and forgets it at release", async () => {
+		await connectDevice({ deviceId: "dev-1", platform: "android" });
+		expect(getActiveSessionInfo()?.heldByRunId).toBeUndefined();
+
+		const acquired = await acquireSessionForRun({
+			runId: "run_a",
+			deviceId: "dev-1",
+			platform: "android",
+		});
+		expect(getActiveSessionInfo()).toMatchObject({ heldByRun: true, heldByRunId: "run_a" });
+
+		await releaseSessionFromRun("run_a", acquired.session, acquired.shared);
+		expect(getActiveSessionInfo()?.heldByRun).toBe(false);
+		expect(getActiveSessionInfo()?.heldByRunId).toBeUndefined();
+	});
+
+	test("a Run that adopts the Active Session points it at the Run's app", async () => {
+		await connectDevice({ deviceId: "dev-1", platform: "android", appPackage: "com.app.a" });
+
+		const acquired = await acquireSessionForRun({
+			runId: "run_a",
+			deviceId: "dev-1",
+			platform: "android",
+			appPackage: "com.app.b",
+		});
+		expect(createdCount).toBe(1);
+		expect(createdFakeSessions[0]?.targets).toEqual(["com.app.b"]);
+
+		await releaseSessionFromRun("run_a", acquired.session, acquired.shared);
+	});
+
+	test("a Run for app B that adopts a cabled iPhone's session for app A reads B's Screen from its first step", async () => {
+		const phone = fakePhone();
+		directLane = (options) => createIosDeviceSession(options, phone.deps);
+		await connectDevice({ deviceId: PHONE_UDID, platform: "ios", bundleId: "com.app-a" });
+		const connected = getActiveSession()?.session;
+
+		const acquired = await acquireSessionForRun({
+			runId: "run_b",
+			deviceId: PHONE_UDID,
+			platform: "ios",
+			bundleId: "com.app-b",
+		});
+		expect(acquired.session).toBe(connected as never);
+		await acquired.session.pageSource();
+		expect(phone.snapshots).toEqual(["com.app-b"]);
+		expect(phone.launched).toEqual([]);
+
+		await releaseSessionFromRun("run_b", acquired.session, acquired.shared);
+	});
+
+	test("a Run for app B that adopts a simulator's Direct session for app A relaunches B, not A", async () => {
+		const simulator = fakeSimulator();
+		directLane = (options) => createIosDirectSession(options, { idb: simulator.idb });
+		await connectDevice({ deviceId: SIM_UDID, platform: "ios", bundleId: "com.app-a" });
+
+		const acquired = await acquireSessionForRun({
+			runId: "run_b",
+			deviceId: SIM_UDID,
+			platform: "ios",
+			bundleId: "com.app-b",
+		});
+		expect(simulator.launched).toEqual([]);
+		await acquired.session.backgroundApp(0);
+		expect(simulator.launched).toEqual(["com.app-b"]);
+
+		await releaseSessionFromRun("run_b", acquired.session, acquired.shared);
 	});
 
 	test("run replaces an unheld Active Session on another device", async () => {
@@ -267,5 +421,79 @@ describe("shared device session", () => {
 		expect(getActiveSessionInfo()?.lane).toBe("direct");
 
 		await releaseSessionFromRun("run_a", held.session, held.shared);
+	});
+});
+
+describe("retargeting the Active Session to another app", () => {
+	test("points an unheld session at the new app without reconnecting", async () => {
+		await connectDevice({ deviceId: "dev-1", platform: "android", appPackage: "com.app.a" });
+
+		const info = retargetActiveSession({ appPackage: "com.app.b", bundleId: "com.ios.b" });
+		expect(info.deviceId).toBe("dev-1");
+		expect(createdCount).toBe(1);
+		expect(createdFakeSessions[0]?.targets).toEqual(["com.app.b"]);
+	});
+
+	test("is refused while a Run holds the session", async () => {
+		await connectDevice({ deviceId: "dev-1", platform: "android" });
+		const acquired = await acquireSessionForRun({
+			runId: "run_a",
+			deviceId: "dev-1",
+			platform: "android",
+			appPackage: "com.app.a",
+		});
+
+		expect(() => retargetActiveSession({ appPackage: "com.app.b" })).toThrow(SessionBusyError);
+		expect(createdFakeSessions[0]?.targets).toEqual(["com.app.a"]);
+
+		await releaseSessionFromRun("run_a", acquired.session, acquired.shared);
+	});
+
+	test("POST /devices/retarget answers with the session, 409 while a Run holds it, 404 without one", async () => {
+		const routes = createSessionRoutes();
+		const retarget = (body: unknown) =>
+			routes.request("/devices/retarget", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			});
+		await connectDevice({ deviceId: "dev-1", platform: "android", appPackage: "com.app.a" });
+
+		const ok = await retarget({ appPackage: "com.app.b" });
+		expect(ok.status).toBe(200);
+		expect(await ok.json()).toMatchObject({ deviceId: "dev-1", heldByRun: false });
+		expect(createdFakeSessions[0]?.targets).toEqual(["com.app.b"]);
+
+		const acquired = await acquireSessionForRun({
+			runId: "run_a",
+			deviceId: "dev-1",
+			platform: "android",
+		});
+		expect((await retarget({ appPackage: "com.app.c" })).status).toBe(409);
+		expect(await (await routes.request("/devices/active")).json()).toMatchObject({
+			heldByRun: true,
+			heldByRunId: "run_a",
+		});
+		await releaseSessionFromRun("run_a", acquired.session, acquired.shared);
+
+		await disconnectDevice();
+		expect((await retarget({ appPackage: "com.app.c" })).status).toBe(404);
+	});
+
+	test("after a switch, the Screen of a cabled iPhone reads the new app", async () => {
+		const phone = fakePhone();
+		directLane = (options) => createIosDeviceSession(options, phone.deps);
+		await connectDevice({ deviceId: PHONE_UDID, platform: "ios", bundleId: "com.app-a" });
+		const routes = createSessionRoutes();
+
+		const switched = await routes.request("/devices/retarget", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ bundleId: "com.app-b" }),
+		});
+		expect(switched.status).toBe(200);
+		expect((await routes.request("/screen?pauseMjpeg=0")).status).toBe(200);
+		expect(phone.snapshots).toEqual(["com.app-b"]);
+		expect(phone.launched).toEqual([]);
 	});
 });
