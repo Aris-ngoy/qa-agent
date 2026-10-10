@@ -97,6 +97,21 @@ describe("createAndroidDirectSession", () => {
 		await session.quit();
 	});
 
+	test("a new target app is the one backgrounding resumes, and setting it launches nothing", async () => {
+		const { adb, calls } = recordingAdb();
+		const session = await createAndroidDirectSession(options({ appPackage: "com.app.a" }), {
+			adb,
+			resolveSerial: async () => "emulator-5554",
+		});
+		session.setTargetApp("com.app.b");
+		expect(calls.some((c) => c.includes("monkey"))).toBe(false);
+		await session.backgroundApp(0);
+		const launches = calls.filter((c) => c.includes("monkey"));
+		expect(launches).toHaveLength(1);
+		expect(launches[0]).toContain("com.app.b");
+		await session.quit();
+	});
+
 	test("acceptAlert taps the Allow node from the dump", async () => {
 		const { adb, calls } = recordingAdb();
 		const session = await createAndroidDirectSession(options(), {

@@ -10,7 +10,7 @@ Let a Run optionally produce a screen video of the whole flow, next to its Resul
 - One video **per recorded case**, not per Run: each case's recording starts just before it executes and stops right after.
 - The video shows on the Run detail page only after the Run has finished; no "recording" placeholder while it is live.
 - Evidence only: Decide, Settle and the pass/fail outcome never depend on it. A Lane or device that cannot record leaves the Run unaffected and the case records why.
-- Each Lane records natively: Appium `startRecordingScreen`, Android Direct `adb screenrecord`, iOS simulator Direct `simctl io recordVideo`.
+- Each Lane records natively: Appium `startRecordingScreen`, Android Direct `adb screenrecord`, iOS simulator Direct `simctl io recordVideo`, cabled-iPhone Direct (`device-ios`) frames captured on the phone by `YoqaRunner` and encoded by `ffmpeg`.
 - Rejected: one video per Run, a header toggle, a live mid-Run toggle (partial video), ffmpeg stitching for Android's 3-minute cap (new dependency).
 
 ## What shipped
@@ -32,8 +32,11 @@ Let a Run optionally produce a screen video of the whole flow, next to its Resul
 
 ## Follow-ups
 
-- Recording on **physical iPhones** (Appium lane) needs `ffmpeg` on the host (`brew install ffmpeg`, then restart Yoqa so the runner sees it); without it the case shows "Video unavailable" with that instruction. Simulators and Android Direct do not need it.
+- Recording on **physical iPhones** (Appium lane, and `device-ios` via `frame-recorder.ts`) needs `ffmpeg` on the host (`brew install ffmpeg`, then restart Yoqa so the runner sees it); without it the case shows "Video unavailable" with that instruction. Simulators and Android Direct do not need it.
 - Android Direct stops at 3 minutes (a `screenrecord` limit); longer Runs keep the first stretch. Stitching segments would lift it.
 - No size cap or age-based pruning of videos (screenshots are pruned after 7 days). Videos can be large; delete the Run to reclaim space.
 - Seek-to-step, run-report mention of the video, and a `--record-video` flag on `cases create/update`.
-- Not yet exercised on real devices; only unit-tested.
+- `device-ios` has no native video API (XCUITest cannot record). `YoqaRunner` captures half-size JPEGs in a background thread on the phone (`recordStart`, about 8 a second; `FrameRecorder.swift`), the Mac pulls them in batches (`recordFetch`, every 400 ms) and `ffmpeg` encodes them with each frame held for its real gap, so the video plays in real time. This is the idea behind Appium's WDA MJPEG server, with a pull instead of a push, and it avoids a cable round trip and PNG per frame. A runner that lacks the commands, or whose capture fails, falls back to Mac-side screenshots. Frames are capped at 64 MB on the phone and a recording the Mac stops pulling for 60 s stops itself.
+- Rejected for `device-ios`: the cable's real screen feed (ffmpeg `avfoundation`). macOS lists it only to a process that sets `kCMIOHardwarePropertyAllowScreenCaptureDevices`, then needs Camera permission for the host app, which was denied here with no frame delivered. Argent does not record physical iPhones at all.
+- Measured on 2026-10-10 on an iPhone 15 (iOS 27.0.1): an 11 s recording with three swipes gave a 590x1278 H.264 file of about 0.5 MB. The phone's real capture rate is unmeasured; a slow capture lowers smoothness, not the video's length.
+- Appium/Android are not exercised on real devices; only unit-tested. `device-ios` was run once on a phone as above.

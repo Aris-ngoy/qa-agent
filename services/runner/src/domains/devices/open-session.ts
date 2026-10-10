@@ -1,19 +1,28 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
-import { createAndroidDirectSession } from "./android-direct-lane";
 import { createAppiumSession } from "./appium-lane";
-import { createIosDirectSession } from "./ios-direct-lane";
-import type { DeviceSession, LaneFactory, LaneName, SessionOptions } from "./lane";
+import { DirectLaneStartError, defaultDirectLane } from "./direct-lane";
+import {
+	type DeviceSession,
+	type LaneFactory,
+	type LaneName,
+	type SessionOptions,
+	joinLaneWarnings,
+} from "./lane";
 import { availableLanes, selectLane } from "./select-lane";
 
 /** At most one Device Session per device id (Active Session or Run). */
 const openByDeviceId = new Map<string, DeviceSession>();
 
-/** Direct: Android over adb, iOS simulator over idb_companion. Physical iOS stays Appium. */
+/**
+ * Direct: Android over adb, iOS simulator over idb_companion, a cabled iPhone over
+ * `YoqaRunner`, each picking its implementation inside the Direct lane (`direct-lane.ts`).
+ */
 export function defaultLanesFor(platform: DevicePlatform): Partial<Record<LaneName, LaneFactory>> {
 	return {
 		appium: createAppiumSession,
-		...(platform === "android" ? { direct: createAndroidDirectSession } : {}),
-		...(platform === "ios" ? { direct: createIosDirectSession } : {}),
+		...(platform === "android" || platform === "ios"
+			? { direct: defaultDirectLane(platform) }
+			: {}),
 	};
 }
 
@@ -75,34 +84,52 @@ export async function openDeviceSession(
 		caseCaps: options.caseCaps,
 	});
 
+	// A fallback the Lane reports later lands on the session handed out here, not on the
+	// Lane's own object, which this wrapper copies. One it reports while it opens is
+	// already on that object's laneWarning, which the copy carries.
+	const handedOutRef: { session?: DeviceSession } = {};
+	const laneOptions: SessionOptions = {
+		...options,
+		onLaneWarning: (late) => {
+			const session = handedOutRef.session;
+			if (!session) return;
+			session.laneWarning = joinLaneWarnings(session.laneWarning, late);
+			options.onLaneWarning?.(late);
+		},
+	};
 	let opened: DeviceSession;
 	let warning = choice.warning;
 	try {
-		opened = await openOnLane(choice.lane, options, merged);
+		opened = await openOnLane(choice.lane, laneOptions, merged);
+		warning = [warning, opened.laneWarning].filter(Boolean).join("; ") || undefined;
 	} catch (error) {
 		if (choice.lane === "direct") {
 			const detail = error instanceof Error ? error.message : String(error);
-			warning = `Direct lane failed to start; fell back to Appium (${detail})`;
-			opened = await openOnLane("appium", options, merged);
+			const inner = error instanceof DirectLaneStartError ? error.warnings : [];
+			warning = [...inner, `Direct lane failed to start; fell back to Appium (${detail})`].join(
+				"; ",
+			);
+			opened = await openOnLane("appium", laneOptions, merged);
 		} else {
 			throw error;
 		}
 	}
 
-	const session: DeviceSession = {
+	const handedOut: DeviceSession = {
 		...opened,
 		lane: opened.lane,
 		...(warning ? { laneWarning: warning } : {}),
 		quit: async () => {
-			if (openByDeviceId.get(options.deviceId) === session) {
+			if (openByDeviceId.get(options.deviceId) === handedOut) {
 				openByDeviceId.delete(options.deviceId);
 			}
 			await opened.quit();
 		},
 	};
+	handedOutRef.session = handedOut;
 	if (warning) {
 		console.warn(`[yoqa-runner] ${warning}`);
 	}
-	openByDeviceId.set(options.deviceId, session);
-	return session;
+	openByDeviceId.set(options.deviceId, handedOut);
+	return handedOut;
 }

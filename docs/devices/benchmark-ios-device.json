@@ -1,0 +1,116 @@
+{
+	"device": {
+		"model": "iPhone 15",
+		"ios": "27.0.1",
+		"udid": "00008120-000E6D813E2A601E",
+		"transport": "USB",
+		"date": "2026-10-10",
+		"screen": "home screen"
+	},
+	"scenario": "10 taps at (500,500) after one warm-up tap; tap-to-result is the whole performActionWithScreenshot call: action, Settle, Result screenshot",
+	"before": {
+		"note": "per-element snapshot queries; home screen (the Clock icon animates, so Settle always ran to its cap on both lanes)",
+		"appium": {
+			"lane": "appium",
+			"coldStartMs": 6493,
+			"tapToResultMs": {
+				"p50": 2639,
+				"p95": 2796,
+				"samples": [2632, 2639, 2719, 2546, 2761, 2603, 2778, 2622, 2748, 2796]
+			},
+			"actionMs": {
+				"p50": 819
+			},
+			"settleMs": {
+				"p50": 1585
+			},
+			"frameCaptureMs": 345,
+			"treeReadMs": 11113
+		},
+		"direct": {
+			"lane": "direct",
+			"coldStartMs": 3024,
+			"tapToResultMs": {
+				"p50": 2892,
+				"p95": 3254,
+				"samples": [2867, 3254, 2917, 2882, 3045, 3080, 2854, 2869, 2892, 2925]
+			},
+			"actionMs": {
+				"p50": 904
+			},
+			"settleMs": {
+				"p50": 1667
+			},
+			"frameCaptureMs": 293,
+			"treeReadMs": null,
+			"treeReadNote": "snapshot of the home screen did not answer within 30000 ms (10000 ms before the timeout was raised)"
+		}
+	},
+	"after": {
+		"note": "one XCUIElement.snapshot() per tree read; Settings app in front (static screen), tap at (500,8), 2 runs per lane, 10 taps each",
+		"appium": {
+			"runs": [
+				{
+					"coldStartMs": 5867,
+					"tapToResultMs": {
+						"p50": 2631,
+						"p95": 2651
+					},
+					"actionMs": 763,
+					"settleMs": 1577,
+					"frameCaptureMs": 339
+				},
+				{
+					"coldStartMs": 5763,
+					"tapToResultMs": {
+						"p50": 2624,
+						"p95": 2652
+					},
+					"actionMs": 759,
+					"settleMs": 1570,
+					"frameCaptureMs": 328
+				}
+			],
+			"treeReadMs": 11113
+		},
+		"direct": {
+			"runs": [
+				{
+					"coldStartMs": 2880,
+					"tapToResultMs": {
+						"p50": 1093,
+						"p95": 1248
+					},
+					"actionMs": 645,
+					"settleMs": 329,
+					"frameCaptureMs": 117
+				},
+				{
+					"coldStartMs": 2789,
+					"tapToResultMs": {
+						"p50": 1104,
+						"p95": 1422
+					},
+					"actionMs": 649,
+					"settleMs": 328,
+					"frameCaptureMs": 121
+				}
+			],
+			"treeReadMs": 377
+		},
+		"harnessHomeScreen": {
+			"direct": {
+				"tapToResultP50": 3179,
+				"screenReadMs": 377,
+				"coldStartMs": 2992,
+				"tapAccuracy": 1.0
+			},
+			"appium": {
+				"tapToResultP50": 13145,
+				"screenReadMs": 11113,
+				"coldStartMs": 3680,
+				"tapAccuracy": 1.0
+			}
+		}
+	}
+}

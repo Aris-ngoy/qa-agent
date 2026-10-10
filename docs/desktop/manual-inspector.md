@@ -2,12 +2,12 @@
 
 ## Goal
 
-Give desktop users a **Maestro-like** inspector for manual end-to-end testing: connect a device, select an element on the live screenshot, choose an action from a floating menu (Insert / Insert & Run / Copy), build a runnable `yoqa` shell script, and **save it as a catalog test case** with a replayable CaseScript.
+Give desktop users a **Maestro-like** inspector for manual end-to-end testing: connect a device, select an element on the live screenshot, choose an action from the Selected element card (Insert / Insert & Run / Copy), build a runnable `yoqa` shell script, and **save it as a catalog test case** with a replayable CaseScript.
 
 ## Plan summary
 
 - **Script format:** Bash-style lines (`yoqa action …`, `yoqa assert …`, `sleep N`) — not Maestro YAML.
-- **Interaction model:** Cached Select Mode (warm accessibility tree when Live control is off) → hover preview + instant click hit-test → **hold Control** to pick a raw screenshot `x,y` when hit-test cannot select a control → floating action menu → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut (not while Control is held). Live control keeps continuous MJPEG without source.
+- **Interaction model:** Cached Select Mode (warm accessibility tree when Live control is off) → hover preview + instant click hit-test → **hold Control** to pick a raw screenshot `x,y` when hit-test cannot select a control → Selected element card → Insert / Insert & Run / Copy. Double-click still inserts a tap shortcut (not while Control is held). Live control keeps continuous MJPEG without source.
 - **Screenshot coords:** Inspector Control-pick, `tap (x,y)`, and agent in-app taps use the 0–1000 grid of the **screenshot image** on both iOS and Android. Locator taps (`--id` / `--label`) still resolve against the accessibility tree. System permission sheets still use label/alert, not guessed coords.
 - **Input text:** Menu action focuses the selected field (`--id` / `--label` / coords) then types; runner taps whenever coordinates are resolved.
 - **Save as test case:** Convert convertible shell steps → CaseScript (`tap` / `type` / `wait`), `createCase` + `updateCase({ script })`, open the new case.
@@ -33,13 +33,22 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 - **Change Selector:** cycles preferred locator (`id` → `label` when both exist), then overlapping candidates smallest → largest (leaf → parent). Default preference is **`id`** when present.
 - Active selector caption under the highlight (`id: …` / `label: …`).
 - Suggested chips ordered by preference: `tap (id)` / `tap (label)` then always `tap (x,y)`. **Hold Control** over the screenshot to pick a point (crosshair + live `x,y`); click opens the action menu with coords-only `tap (x,y)` / `doubleTap` / `longPress` / `inputText` — no tree snap.
-- Selection-anchored **ElementActionMenu** (suggested + Selector Commands; Insert / Insert & Run / Copy)
+- **Selected element card** (suggested + Selector Commands; Insert / Insert & Run / Copy) — see the layout redesign below
 - **Hit-test** prefers elements with a usable `label`/`id`; when several share the same label (e.g. StaticText + Button “Continue”), selects the **largest** so the highlight covers the full word/control instead of a tiny nested leaf
 - Under Stream, tree refresh still pauses MJPEG briefly (`GET /screen?pauseMjpeg=1`) then remounts the stream — never continuous pageSource + MJPEG
 - Snippet generation only attaches `--id` / `--label` / assert `--text` when values look like real selectors (not deeplink URLs or `XCUIElementType…` type names); assert prompts for text when no usable label
 - **Selector Commands** include app control: `activateApp` / `terminateApp` / `restartApp`, `openUrl`, `acceptAlert` / `dismissAlert` (App ID prefilled from selected app); and screenshots: `screenshot` / `screenshot (path)`
-- Command bar: swipe + wait
-- **Save as test case** on the run panel (requires selected app + convertible actions); recorded taps/inputs always include `--x/--y` so conversion does not depend on the live accessibility tree
+- **Screen gestures** card: swipe d-pad + wait stepper
+- **Save as test case** in the Script panel footer (requires selected app + convertible actions); recorded taps/inputs always include `--x/--y` so conversion does not depend on the live accessibility tree
+
+**Desktop — layout redesign (device + script columns)**
+- **One top bar for the whole app** (`features/devices/session-bar.tsx`): it owns the shared Active Session; the Inspector adopts it from the shared query. See [Session bar](./session-bar.md).
+- Header carries the Platform / Device / Connect-Restart-Disconnect controls (`SessionToolbar`, restyled only; same picker modal). The app sidebar is untouched.
+- **Device** column: segmented **Inspect / Interact** toggle (maps to the existing Live control state), refresh-tree button, hint line.
+- Clicking an element (Live control off) opens the **element dialog**: *1. Command* (Tap, Assert visible, Long press, Double tap, Type text; "More commands" holds the old app/alert/wait/screenshot list), *2. Selector* (Label, ID, Label + ID, Point — only what the element supplies, each with a match count from the cached tree or a *Fragile* badge for raw points; defaults to the previously preferred locator), a live **Preview** with Copy, and **Run on device** / **Cancel** / **Add to script**. Swipe and wait live in a collapsible *Screen gestures* section of the same dialog. "Not this element?" cycles overlapping candidates (the old Change selector).
+- **Script** column: **Steps / Code** tabs. Steps is a read-only view parsed from the script (`script-steps.ts`, built on `parseYoqaShellScript`); Code is the editable textarea. While a run is in flight the active line drives Running / Passed / Queued badges and a progress bar (derived client-side from the active line and run log; no runner changes). Export menu: Shell script, HTML report, Markdown report. The run log stays under the steps.
+- Layout is a wrapping two-column flex row (device ~360px, script grows), so columns drop below each other as the window narrows.
+- **Visual pass against the design mock:** white 18px-radius cards with `outline-variant` borders, icon buttons and a violet accent (`--color-violet*` tokens in `@yoqa/ui`), colored step-verb chips, dark Code view, Export menu. The first redesign pass used `text-title-*` classes that do not exist in the theme (they silently rendered unstyled); typography now uses `headline-lg` / `subheading` / `body-*`.
 
 ## How to verify
 
@@ -57,6 +66,9 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 12. **Control-pick:** with Live control off, hold Control, move over a control the tree will not highlight, click — a point target and menu appear (`x,y` caption). Insert `tap (x,y)` (or double-tap / long-press / input). Save as test case → Script tab has `{ type: "tap", x, y }`. Replay on iOS and Android taps that screenshot point.
 
 ## Follow-ups
+
+- "On failure" policy (skip / stop / retry once) shown in the redesign mock — needs runner support and its own design
+- Per-step *failed* badges (today failed is counted from the run log only)
 
 - All Commands catalog + View Docs links
 - `scrollUntilVisible`, `copyTextFrom`, `extendedWaitUntil`

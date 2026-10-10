@@ -189,8 +189,6 @@ export function RunsListPage() {
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-5">
-			<h1 className="motion-fade-up text-headline-md font-semibold text-on-surface">Runs</h1>
-
 			{runsQuery.isLoading ? (
 				<p className="text-body-md text-on-surface-variant">Loading runs…</p>
 			) : runsQuery.isError ? (

@@ -1025,10 +1025,6 @@ export function SettingsPage() {
 
 	return (
 		<div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-8">
-			<header>
-				<h1 className="text-headline-lg text-on-surface">Settings</h1>
-			</header>
-
 			<Tabs
 				className="flex w-full flex-col gap-6"
 				onSelectionChange={(key) => setSection(String(key) as SettingsSection)}

@@ -1,14 +1,26 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
+import { type PointerSize, toPx } from "./android-gestures";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { requireIdbBins } from "./idb-companion";
-import type { DeviceSession, PointerPhase, ScreenRecording, SessionOptions } from "./lane";
+import {
+	type CapturedFrame,
+	DeadSessionError,
+	type DeviceSession,
+	type LiveStream,
+	type PointerPhase,
+	type ScreenRecording,
+	type SessionOptions,
+	guardToolLoss,
+	reportLaneFallback,
+} from "./lane";
 import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { cleanPageSource } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
+import type { StartYoqaAx, YoqaAx, YoqaAxTree } from "./yoqa-ax";
+import { type SpawnYoqaSim, type YoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
 const IOS_ACCEPT_LABELS = ["Allow While Using App", "Allow Once", "Allow", "OK"] as const;
 const IOS_DISMISS_LABELS = ["Don't Allow", "Don’t Allow", "Don't allow"] as const;
@@ -22,11 +34,41 @@ export type IdbResult = {
 
 export type IdbExec = (args: string[]) => Promise<IdbResult>;
 
+/** idb could not run, its companion is unreachable, or the simulator is gone. */
+const IDB_LOST_RE =
+	/StatusCode\.UNAVAILABLE|failed to connect|Connection refused|companion .*(?:not running|terminated)|(?:device|simulator|target) .*not found|not booted/i;
+
+export function idbLostDevice(result: IdbResult): boolean {
+	return (
+		result.exitCode === 127 ||
+		(result.exitCode !== 0 && IDB_LOST_RE.test(`${result.stderr}\n${result.stdout}`))
+	);
+}
+
 export type IosDirectDeps = {
 	idb?: IdbExec;
 	/** When companion screenshot fails (“no active display”), use simctl. */
 	screenshotFallback?: (udid: string) => Promise<Uint8Array>;
+	/**
+	 * Serve screenshots, input and the live stream from `yoqa-sim` (the `device-sim`
+	 * implementation). It is spawned at connect, so the session can report its stream, and
+	 * killed on quit. When it can't start, the session keeps idb_companion, has no stream,
+	 * and says so in its Lane warning.
+	 */
+	yoqaSim?: SpawnYoqaSim;
+	/**
+	 * Start the in-simulator accessibility helper (`yoqa-ax`) on the first screen or action,
+	 * in the background, and stop it on quit. No action waits for it; a tree read does, and
+	 * then reads the tree from it, cached by `yoqa-sim`'s frame hash. When it doesn't
+	 * connect, the session is degraded: it keeps working, the tree stays on idb_companion,
+	 * and its Lane warning says so.
+	 */
+	yoqaAx?: StartYoqaAx;
 };
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
 
 function fail(result: IdbResult, label: string): never {
 	throw new Error(
@@ -59,8 +101,7 @@ export function createIdbExec(clientBin: string, companionPath: string): IdbExec
 				stdoutBytes,
 			};
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return { stdout: "", stderr: message, exitCode: 127 };
+			return { stdout: "", stderr: errorMessage(error), exitCode: 127 };
 		}
 	};
 }
@@ -162,24 +203,101 @@ export async function createIosDirectSession(
 		throw new Error("iOS Direct lane supports simulators only; physical iOS stays on Appium");
 	}
 
-	const idb = deps.idb ?? defaultIdb();
+	const connectIdb = deps.idb ?? defaultIdb();
 	const udid = options.deviceId;
 	const described = parseDescribe(
-		(await requireOk(await idb(["describe", "--udid", udid, "--json"]), "idb describe")).stdout,
+		(await requireOk(await connectIdb(["describe", "--udid", udid, "--json"]), "idb describe"))
+			.stdout,
 	);
 	if (described.target_type && described.target_type !== "simulator") {
 		throw new Error("iOS Direct lane supports simulators only; physical iOS stays on Appium");
 	}
 
+	const idb = guardToolLoss(connectIdb, idbLostDevice, options.onSessionDead);
+
 	const getWindowSize = remember(async () => pointSize(described));
-	let lastShotSize: PointerSize | null = null;
 	let lastAppId = options.bundleId;
 	let pointerStart: { x: number; y: number } | null = null;
 	const lock = createLock();
 
 	const run = async (args: string[], label: string) => requireOk(await idb(args), label);
 
-	const captureFrame = async () => {
+	/** One `yoqa-sim` per session, spawned at connect; null once it failed. */
+	let yoqaSim: Promise<YoqaSim | null> | null = null;
+	let quitting = false;
+	const yoqaSimFailed = (error: unknown) => {
+		session.stream = null;
+		reportLaneFallback(
+			session,
+			options,
+			`yoqa-sim failed; using idb_companion for the rest of the session (${errorMessage(error)})`,
+		);
+	};
+	const ensureYoqaSim = (): Promise<YoqaSim | null> => {
+		const spawn = deps.yoqaSim;
+		if (!spawn || quitting) return Promise.resolve(null);
+		yoqaSim ??= spawn(udid).catch((error: unknown) => {
+			yoqaSimFailed(error);
+			return null;
+		});
+		return yoqaSim;
+	};
+	/**
+	 * Run `use` on `yoqa-sim`, or return null when there is none. When it can't be reached,
+	 * stop it and return null, so the caller does the same with idb_companion for the rest of
+	 * the session. Any other failure may already have touched the screen, so a gesture
+	 * (`retryable: false`) rethrows it instead of being sent twice; a frame read retries.
+	 */
+	const viaYoqaSim = async <T>(
+		use: (running: YoqaSim) => Promise<T>,
+		retryable = false,
+	): Promise<{ value: T } | null> => {
+		const running = await startHelpers();
+		if (!running) return null;
+		try {
+			return { value: await use(running) };
+		} catch (error) {
+			if (!retryable && !(error instanceof YoqaSimUnreachableError)) throw error;
+			yoqaSimFailed(error);
+			yoqaSim = Promise.resolve(null);
+			await running.stop().catch(() => undefined);
+			return null;
+		}
+	};
+	/** 0–1000 to the 0.0–1.0 `yoqa-sim` takes; the conversion happens here, at the Lane's edge. */
+	const fraction = (norm: number) => Math.min(1, Math.max(0, norm / 1000));
+
+	/** One `yoqa-ax` per session, started on first use; null once it failed. */
+	let yoqaAx: Promise<YoqaAx | null> | null = null;
+	const ensureYoqaAx = () => {
+		const start = deps.yoqaAx;
+		if (!start || quitting || yoqaAx) return;
+		yoqaAx = start(udid).catch((error: unknown) => {
+			reportLaneFallback(
+				session,
+				options,
+				`Session degraded: yoqa-ax is unavailable, so the tree stays on idb_companion (${errorMessage(error)})`,
+			);
+			return null;
+		});
+	};
+
+	/** Start the session's helpers on its first screen or action. */
+	const startHelpers = () => {
+		ensureYoqaAx();
+		return ensureYoqaSim();
+	};
+
+	/**
+	 * Run an action under the lock. The first one also starts `yoqa-ax`. `yoqa-sim` is
+	 * already up from connect.
+	 */
+	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
+		void startHelpers();
+		return lock.withLock(fn);
+	};
+
+	const captureViaIdb = async (): Promise<Uint8Array> => {
 		const dest = join(tmpdir(), `yoqa-idb-${crypto.randomUUID()}.png`);
 		let bytes: Uint8Array;
 		try {
@@ -189,13 +307,24 @@ export async function createIosDirectSession(
 					? result.stdoutBytes
 					: new Uint8Array(await readFile(dest));
 			if (bytes.byteLength === 0) throw new Error("idb screenshot returned an empty frame");
-		} catch {
+		} catch (error) {
+			if (error instanceof DeadSessionError) throw error;
 			bytes = await (deps.screenshotFallback ?? captureViaSimctl)(udid);
 			if (bytes.byteLength === 0) throw new Error("simctl screenshot returned an empty frame");
 		}
+		return bytes;
+	};
+
+	const captureFrame = async (): Promise<CapturedFrame> => {
+		const fromYoqaSim = await viaYoqaSim(async (running) => {
+			const frame = await running.frame();
+			if (frame.bytes.byteLength === 0) throw new Error("empty frame");
+			return frame;
+		}, true);
+		const bytes = fromYoqaSim?.value.bytes ?? (await captureViaIdb());
 		const base64 = Buffer.from(bytes).toString("base64");
-		lastShotSize = pngSizeFromBase64(base64) ?? lastShotSize;
-		return { base64, mime: "image/png" as const };
+		const hash = fromYoqaSim?.value.hash;
+		return { base64, mime: "image/png", ...(hash ? { hash } : {}) };
 	};
 
 	const screenshot = async () => {
@@ -206,7 +335,56 @@ export async function createIosDirectSession(
 		return { path, base64: frame.base64 };
 	};
 
+	/** The last tree `yoqa-ax` read, and the hash of the frame it was read on. */
+	let cachedTree: { hash: string; source: string } | null = null;
+
+	/**
+	 * Run `use` on `yoqa-ax`, or return null when there is none. A failed read stops it, so
+	 * the tree and alerts come from idb_companion for the rest of the session.
+	 */
+	const viaYoqaAx = async <T>(use: (ax: YoqaAx) => Promise<T>): Promise<{ value: T } | null> => {
+		const pending = yoqaAx;
+		const ax = await pending;
+		if (!ax) return null;
+		try {
+			return { value: await use(ax) };
+		} catch (error) {
+			// Quit stopped it under the read: that is the session ending, not a fallback.
+			if (quitting) throw error;
+			reportLaneFallback(
+				session,
+				options,
+				`yoqa-ax failed; reading the tree and alerts with idb_companion for the rest of the session (${errorMessage(error)})`,
+			);
+			cachedTree = null;
+			if (yoqaAx === pending) yoqaAx = Promise.resolve(null);
+			await ax.stop().catch(() => undefined);
+			return null;
+		}
+	};
+
+	/**
+	 * The tree from `yoqa-ax`, or null when there is none. An unchanged frame hash returns
+	 * the cached tree.
+	 */
+	const treeViaYoqaAx = async (): Promise<string | null> => {
+		if (!(await yoqaAx)) return null;
+		// The hash is read first, so a screen that changes during the read is read again.
+		const hash = (await viaYoqaSim((running) => running.frame(), true))?.value.hash;
+		if (hash && cachedTree?.hash === hash) return cachedTree.source;
+		const read = await viaYoqaAx(async (ax) => {
+			const tree = await ax.describe();
+			return { tree, source: yoqaAxTreeToSource(tree, await getWindowSize()) };
+		});
+		if (!read) return null;
+		cachedTree = hash && !read.value.tree.degraded ? { hash, source: read.value.source } : null;
+		return read.value.source;
+	};
+
 	const pageSource = async () => {
+		void startHelpers();
+		const fromYoqaAx = await treeViaYoqaAx();
+		if (fromYoqaAx !== null) return fromYoqaAx;
 		const result = await run(
 			["ui", "describe-all", "--udid", udid, "--json", "--api", "axbridge", "--format", "complete"],
 			"idb describe-all",
@@ -218,17 +396,51 @@ export async function createIosDirectSession(
 		return text;
 	};
 
-	const pointerSize = async (coordSpace?: "window" | "screenshot"): Promise<PointerSize> => {
-		const window = await getWindowSize();
-		if (coordSpace === "screenshot") {
-			if (!lastShotSize) await captureFrame();
-			return lastShotSize ?? window;
-		}
-		return window;
-	};
-
 	const tapPx = async (x: number, y: number) => {
 		await run(["ui", "tap", String(x), String(y), "--udid", udid, "--api", "hid"], "idb ui tap");
+	};
+
+	/**
+	 * A tap at 0–1000. Both coordinate spaces are the full screen, so yoqa-sim's fractions
+	 * need no size, and idb, which takes points, always converts with the window size.
+	 * Swipes and pointer events do the same.
+	 */
+	const tapNorm = async (
+		xNorm: number,
+		yNorm: number,
+		tapOptions?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
+	) => {
+		const sent = await viaYoqaSim((running) =>
+			running.tap(fraction(xNorm), fraction(yNorm), tapOptions?.durationMs),
+		);
+		if (sent) return;
+		const size = await getWindowSize();
+		await tapPx(toPx(xNorm, size.width), toPx(yNorm, size.height));
+	};
+
+	const swipeNorm = async (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => {
+		const sent = await viaYoqaSim((running) =>
+			running.swipe(
+				{ x: fraction(x1), y: fraction(y1) },
+				{ x: fraction(x2), y: fraction(y2) },
+				durationMs,
+			),
+		);
+		if (sent) return;
+		const size = await getWindowSize();
+		await run(
+			[
+				"ui",
+				"swipe",
+				String(toPx(x1, size.width)),
+				String(toPx(y1, size.height)),
+				String(toPx(x2, size.width)),
+				String(toPx(y2, size.height)),
+				"--udid",
+				udid,
+			],
+			"idb ui swipe",
+		);
 	};
 
 	const tap = async (
@@ -236,60 +448,36 @@ export async function createIosDirectSession(
 		yNorm: number,
 		tapOptions?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
 	) => {
-		await lock.withLock(async () => {
-			const size = await pointerSize(tapOptions?.coordSpace);
-			await tapPx(toPx(xNorm, size.width), toPx(yNorm, size.height));
-		});
+		await withActionLock(() => tapNorm(xNorm, yNorm, tapOptions));
 	};
 
-	const swipe = async (
-		x1: number,
-		y1: number,
-		x2: number,
-		y2: number,
-		_durationMs = 400,
-		swipeOptions?: { coordSpace?: "window" | "screenshot" },
-	) => {
-		await lock.withLock(async () => {
-			const size = await pointerSize(swipeOptions?.coordSpace);
-			await run(
-				[
-					"ui",
-					"swipe",
-					String(toPx(x1, size.width)),
-					String(toPx(y1, size.height)),
-					String(toPx(x2, size.width)),
-					String(toPx(y2, size.height)),
-					"--udid",
-					udid,
-				],
-				"idb ui swipe",
-			);
-		});
+	const swipe = async (x1: number, y1: number, x2: number, y2: number, durationMs = 400) => {
+		await withActionLock(() => swipeNorm(x1, y1, x2, y2, durationMs));
 	};
 
 	const type = async (text: string) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			await run(["ui", "text", text, "--udid", udid], "idb ui text");
 		});
 	};
 
 	const activateApp = async (appId: string) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			lastAppId = appId;
 			await run(["launch", appId, "--udid", udid], "idb launch");
 		});
 	};
 
 	const terminateApp = async (appId: string) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			await run(["terminate", appId, "--udid", udid], "idb terminate");
 		});
 	};
 
 	const backgroundApp = async (seconds = 3) => {
-		await lock.withLock(async () => {
-			await run(["ui", "button", "HOME", "--udid", udid], "idb HOME");
+		await withActionLock(async () => {
+			const pressed = await viaYoqaSim((running) => running.key("home"));
+			if (!pressed) await run(["ui", "button", "HOME", "--udid", udid], "idb HOME");
 			await Bun.sleep(Math.max(0, seconds) * 1000);
 			if (lastAppId) {
 				await run(["launch", lastAppId, "--udid", udid], "idb launch");
@@ -298,31 +486,47 @@ export async function createIosDirectSession(
 	};
 
 	const openUrl = async (url: string) => {
-		await lock.withLock(async () => {
+		await withActionLock(async () => {
 			await run(["open", url, "--udid", udid], "idb open");
 		});
 	};
 
+	/**
+	 * Tap an alert's accept or dismiss button, chosen in the label list's order. The
+	 * SpringBoard dialog comes from `yoqa-ax`'s `alert` read; without one (an in-app alert,
+	 * or no `yoqa-ax`) the button comes from the Screen. The tap goes through `yoqa-sim`.
+	 */
 	const resolveAlert = async (action: "accept" | "dismiss") => {
-		const raw = await pageSource();
-		const window = await getWindowSize();
-		const labels = action === "accept" ? IOS_ACCEPT_LABELS : IOS_DISMISS_LABELS;
-		const hit = cleanPageSource(raw, window).elements.find((el) =>
-			labels.some((label) => el.label === label),
+		const labels: readonly string[] = action === "accept" ? IOS_ACCEPT_LABELS : IOS_DISMISS_LABELS;
+		const dialog = await viaYoqaAx((ax) => ax.alert());
+		const fromDialog = preferredButton(
+			(dialog?.value.buttons ?? []).map(({ label, frame }) => ({
+				label,
+				x: frame.x * 1000,
+				y: frame.y * 1000,
+				width: frame.width * 1000,
+				height: frame.height * 1000,
+			})),
+			labels,
 		);
-		if (!hit) {
-			throw new Error(`No ${action} alert button in the idb Screen`);
-		}
-		await tapPx(
-			toPx(hit.x + hit.width / 2, window.width),
-			toPx(hit.y + hit.height / 2, window.height),
-		);
+		const hit =
+			fromDialog ??
+			preferredButton(cleanPageSource(await pageSource(), await getWindowSize()).elements, labels);
+		if (!hit) throw new Error(`No ${action} alert button on screen`);
+		await tapNorm(hit.x + hit.width / 2, hit.y + hit.height / 2);
 	};
 
 	const session: DeviceSession = {
 		lane: "direct",
 		stream: null,
-		quit: async () => undefined,
+		quit: async () => {
+			quitting = true;
+			session.stream = null;
+			const [running, ax] = await Promise.all([yoqaSim, yoqaAx]);
+			yoqaSim = null;
+			yoqaAx = null;
+			await Promise.all([running?.stop(), ax?.stop()]);
+		},
 		startRecording: (path) => recordViaSimctl(udid, path),
 		captureFrame,
 		screenshot,
@@ -333,38 +537,84 @@ export async function createIosDirectSession(
 		drag: (x1, y1, x2, y2, durationMs = 800) => swipe(x1, y1, x2, y2, durationMs),
 		type,
 		activateApp,
+		setTargetApp: (appId) => {
+			lastAppId = appId;
+		},
 		terminateApp,
 		backgroundApp,
 		openUrl,
-		acceptAlert: () => lock.withLock(() => resolveAlert("accept")),
-		dismissAlert: () => lock.withLock(() => resolveAlert("dismiss")),
-		withActionLock: (fn) => lock.withLock(fn),
+		acceptAlert: () => withActionLock(() => resolveAlert("accept")),
+		dismissAlert: () => withActionLock(() => resolveAlert("dismiss")),
+		withActionLock,
 		pointerEvent: async (phase: PointerPhase, xNorm: number, yNorm: number) => {
-			const size = await pointerSize("screenshot");
-			const x = toPx(xNorm, size.width);
-			const y = toPx(yNorm, size.height);
 			if (phase === "begin") {
-				pointerStart = { x, y };
+				pointerStart = { x: xNorm, y: yNorm };
 				lock.setPointerActive(true);
 				return;
 			}
 			if (phase === "move") {
-				pointerStart = pointerStart ?? { x, y };
+				pointerStart = pointerStart ?? { x: xNorm, y: yNorm };
 				return;
 			}
-			const start = pointerStart ?? { x, y };
+			const start = pointerStart ?? { x: xNorm, y: yNorm };
 			pointerStart = null;
 			lock.setPointerActive(false);
-			if (start.x === x && start.y === y) {
-				await tapPx(x, y);
+			if (start.x === xNorm && start.y === yNorm) {
+				await tapNorm(xNorm, yNorm);
 			} else {
-				await run(
-					["ui", "swipe", String(start.x), String(start.y), String(x), String(y), "--udid", udid],
-					"idb ui swipe",
-				);
+				await swipeNorm(start.x, start.y, xNorm, yNorm);
 			}
 		},
 		isPointerActive: () => lock.isPointerActive(),
 	};
+	if (deps.yoqaSim) session.stream = liveStream(await ensureYoqaSim());
 	return session;
+}
+
+type AlertButton = { label: string; x: number; y: number; width: number; height: number };
+
+/** The button whose label comes first in `labels`, in 0–1000; undefined when none matches. */
+function preferredButton(
+	buttons: AlertButton[],
+	labels: readonly string[],
+): AlertButton | undefined {
+	for (const label of labels) {
+		const button = buttons.find((candidate) => candidate.label === label);
+		if (button) return button;
+	}
+	return undefined;
+}
+
+/**
+ * `yoqa-ax`'s tree as idb's `describe-all` JSON, with frames converted from 0.0–1.0 to the
+ * window's points, so the Screen, alerts and locators read it as they read idb's. An empty
+ * read stays empty and says it is degraded.
+ */
+export function yoqaAxTreeToSource(
+	tree: YoqaAxTree,
+	window: { width: number; height: number },
+): string {
+	const elements = tree.nodes.map((node) => ({
+		type: node.role,
+		label: node.label ?? "",
+		// The Screen names an element by `label`, then `title`, so an element with only a
+		// value (a status bar item) is named by its value.
+		title: node.value ?? "",
+		identifier: node.id ?? "",
+		frame: {
+			x: node.frame.x * window.width,
+			y: node.frame.y * window.height,
+			width: node.frame.width * window.width,
+			height: node.frame.height * window.height,
+		},
+		enabled: node.enabled,
+	}));
+	return JSON.stringify(tree.degraded ? { elements, degraded: true } : { elements });
+}
+
+/** `yoqa-sim`'s MJPEG preview as the session's live stream; null when it printed none. */
+function liveStream(running: YoqaSim | null): LiveStream | null {
+	if (!running?.streamUrl) return null;
+	const { streamUrl } = running;
+	return { ready: true, port: Number(new URL(streamUrl).port), upstreamUrl: streamUrl };
 }

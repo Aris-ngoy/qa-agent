@@ -7,6 +7,7 @@ import {
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	connectDeviceRequestSchema,
+	retargetDeviceRequestSchema,
 	screenResponseSchema,
 	screenshotRequestSchema,
 	screenshotResponseSchema,
@@ -22,6 +23,7 @@ import {
 	isActiveSessionHeldByRun,
 	isMissingAppiumSessionError,
 	requireActiveSession,
+	retargetActiveSession,
 } from "../../domains/devices/active-session";
 import { performActionBatch } from "../../domains/devices/batch";
 import {
@@ -87,6 +89,30 @@ export function createSessionRoutes() {
 			return c.json({ error: "No active device session" }, 404);
 		}
 		return c.json(activeDeviceResponseSchema.parse(info));
+	});
+
+	app.post("/devices/retarget", async (c) => {
+		let json: unknown;
+		try {
+			json = await c.req.json();
+		} catch {
+			return c.json({ error: "Request body must be JSON" }, 400);
+		}
+		const parsed = retargetDeviceRequestSchema.safeParse(json);
+		if (!parsed.success) {
+			return c.json({ error: "Body may only include bundleId and appPackage" }, 400);
+		}
+		if (!getActiveSessionInfo()) {
+			return c.json({ error: "No active device session" }, 404);
+		}
+		try {
+			return c.json(activeDeviceResponseSchema.parse(retargetActiveSession(parsed.data)));
+		} catch (error) {
+			const mapped = sessionErrorResponse(error);
+			if (mapped) return c.json(mapped.body, mapped.status);
+			const message = error instanceof Error ? error.message : String(error);
+			return c.json({ error: "Failed to switch app", detail: message }, 500);
+		}
 	});
 
 	app.post("/devices/disconnect", async (c) => {

@@ -13,9 +13,23 @@ import {
 	ANDROID_DISMISS_BUTTON_LABELS,
 	ANDROID_DISMISS_RESOURCE_IDS,
 } from "./android-alerts";
+import {
+	type AndroidDevtools,
+	DEVTOOLS_PACKAGE,
+	type StartAndroidDevtools,
+	devtoolsTreeToDump,
+} from "./android-devtools";
 import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { resolveAndroidAppiumIdentity } from "./application";
-import type { DeviceSession, PointerPhase, ScreenRecording, SessionOptions } from "./lane";
+import { createFrameLoop } from "./frame-loop";
+import {
+	type DeviceSession,
+	type PointerPhase,
+	type ScreenRecording,
+	type SessionOptions,
+	guardToolLoss,
+	reportLaneFallback,
+} from "./lane";
 import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
@@ -39,12 +53,35 @@ async function readRemotePid(stdout: ReadableStream<Uint8Array>): Promise<string
 	return pid;
 }
 
+/** adb could not run, or says the device is no longer attached. */
+const ADB_LOST_RE =
+	/device '.*' not found|device offline|device not found|no devices\/emulators found/i;
+
+export function adbLostDevice(result: AdbResult): boolean {
+	return result.exitCode === 127 || (result.exitCode !== 0 && ADB_LOST_RE.test(result.stderr));
+}
+
 export type AndroidDirectDeps = {
 	adb?: AdbExec;
 	/** adb binary for the long-lived `screenrecord` process; defaults to the resolved adb. */
 	adbBin?: string;
 	resolveSerial?: (deviceId: string) => Promise<string>;
+	/**
+	 * Serve capture-frame from a background `screencap` loop (the `device-android`
+	 * implementation). A read after input waits for a frame captured after that input.
+	 */
+	backgroundCapture?: { idleMs?: number };
+	/**
+	 * Read the tree from the instrumentation helper (`yoqa.android.devtools`) instead of
+	 * `uiautomator dump`. When it can't start, the session keeps `uiautomator dump` and
+	 * says so in its Lane warning.
+	 */
+	devtools?: StartAndroidDevtools;
 };
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
 
 function fail(result: AdbResult, label: string): never {
 	throw new Error(
@@ -77,8 +114,7 @@ export function createAdbExec(adbBin: string): AdbExec {
 				stdoutBytes,
 			};
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			return { stdout: "", stderr: message, exitCode: 127 };
+			return { stdout: "", stderr: errorMessage(error), exitCode: 127 };
 		}
 	};
 }
@@ -129,12 +165,13 @@ export async function createAndroidDirectSession(
 		throw new Error("Direct lane supports Android only");
 	}
 
-	const adb = deps.adb ?? createAdbExec(resolveAdbBin());
+	const connectAdb = deps.adb ?? createAdbExec(resolveAdbBin());
 	const serial = await (deps.resolveSerial ?? defaultResolveSerial)(options.deviceId);
-	const state = await requireOk(await adb(["-s", serial, "get-state"]), "adb get-state");
+	const state = await requireOk(await connectAdb(["-s", serial, "get-state"]), "adb get-state");
 	if (state.stdout.trim() !== "device") {
 		throw new Error(`Android device ${serial} is ${state.stdout.trim() || "unavailable"}`);
 	}
+	const adb = guardToolLoss(connectAdb, adbLostDevice, options.onSessionDead);
 
 	const fetchWindow = async (): Promise<PointerSize> => {
 		const result = await requireOk(await adb(["-s", serial, "shell", "wm", "size"]), "wm size");
@@ -148,10 +185,7 @@ export async function createAndroidDirectSession(
 	let lastAppId = options.appPackage;
 	let pointerStart: { x: number; y: number } | null = null;
 
-	const shell = async (args: string[], label: string) =>
-		requireOk(await adb(["-s", serial, "shell", ...args]), label);
-
-	const captureFrame = async () => {
+	const grabFrame = async () => {
 		const result = await requireOk(
 			await adb(["-s", serial, "exec-out", "screencap", "-p"]),
 			"screencap",
@@ -163,6 +197,25 @@ export async function createAndroidDirectSession(
 		return { base64, mime: "image/png" as const };
 	};
 
+	const frameLoop = deps.backgroundCapture
+		? createFrameLoop(grabFrame, { idleMs: deps.backgroundCapture.idleMs })
+		: null;
+
+	/** When the last command that can change the screen finished (`performance.now()`). */
+	let lastInputAt = 0;
+	const readShell = async (args: string[], label: string) =>
+		requireOk(await adb(["-s", serial, "shell", ...args]), label);
+	const shell = async (args: string[], label: string) => {
+		try {
+			return await readShell(args, label);
+		} finally {
+			lastInputAt = performance.now();
+			frameLoop?.kick();
+		}
+	};
+
+	const captureFrame = frameLoop ? () => frameLoop.read(lastInputAt) : grabFrame;
+
 	const screenshot = async () => {
 		await mkdir(SCREENSHOT_DIR, { recursive: true });
 		const frame = await captureFrame();
@@ -171,9 +224,35 @@ export async function createAndroidDirectSession(
 		return { path, base64: frame.base64 };
 	};
 
-	const pageSource = async () => {
-		await shell(["uiautomator", "dump", "/sdcard/yoqa-window.xml"], "uiautomator dump");
-		const result = await shell(["cat", "/sdcard/yoqa-window.xml"], "cat window dump");
+	let devtools: AndroidDevtools | null = null;
+	let laneWarning: string | undefined;
+	if (deps.devtools) {
+		try {
+			devtools = await deps.devtools({
+				serial,
+				adb,
+				spawnAdb: (args) =>
+					Bun.spawn([deps.adbBin ?? resolveAdbBin(), ...args], {
+						stdout: "ignore",
+						stderr: "ignore",
+					}),
+			});
+		} catch (error) {
+			laneWarning = `Android helper unavailable; reading the tree with uiautomator dump (${errorMessage(error)})`;
+		}
+	} else {
+		// A helper a crashed runner left running holds UiAutomation, so uiautomator dump would fail.
+		await adb(["-s", serial, "shell", "am", "force-stop", DEVTOOLS_PACKAGE]);
+	}
+	const stopDevtools = async () => {
+		const running = devtools;
+		devtools = null;
+		await running?.stop().catch(() => undefined);
+	};
+
+	const dumpPageSource = async () => {
+		await readShell(["uiautomator", "dump", "/sdcard/yoqa-window.xml"], "uiautomator dump");
+		const result = await readShell(["cat", "/sdcard/yoqa-window.xml"], "cat window dump");
 		const xml = stripUiautomatorDump(result.stdout);
 		if (!xml.includes("<")) {
 			throw new Error("uiautomator dump returned no tree");
@@ -181,10 +260,28 @@ export async function createAndroidDirectSession(
 		return xml;
 	};
 
+	const pageSource = async () => {
+		if (devtools) {
+			try {
+				return devtoolsTreeToDump(await devtools.tree(), await getWindowSize());
+			} catch (error) {
+				// The helper holds the device's UiAutomation, so stop it before uiautomator dump runs.
+				reportLaneFallback(
+					session,
+					options,
+					`Android helper failed; reading the tree with uiautomator dump for the rest of the session (${errorMessage(error)})`,
+				);
+				await stopDevtools();
+			}
+		}
+		return dumpPageSource();
+	};
+
 	const pointerSize = async (coordSpace?: "window" | "screenshot"): Promise<PointerSize> => {
 		const window = await getWindowSize();
 		if (coordSpace === "screenshot") {
-			if (!lastShotSize) await captureFrame();
+			// Any frame gives the size, so this never waits for one captured after the last input.
+			if (!lastShotSize) await (frameLoop ? frameLoop.read() : grabFrame());
 			return lastShotSize ?? window;
 		}
 		return window;
@@ -351,7 +448,11 @@ export async function createAndroidDirectSession(
 	const session: DeviceSession = {
 		lane: "direct",
 		stream: null,
-		quit: async () => undefined,
+		...(laneWarning ? { laneWarning } : {}),
+		quit: async () => {
+			await frameLoop?.stop();
+			await stopDevtools();
+		},
 		startRecording,
 		captureFrame,
 		screenshot,
@@ -362,6 +463,9 @@ export async function createAndroidDirectSession(
 		drag: (x1, y1, x2, y2, durationMs = 800) => swipe(x1, y1, x2, y2, durationMs),
 		type,
 		activateApp,
+		setTargetApp: (appId) => {
+			lastAppId = appId;
+		},
 		terminateApp,
 		backgroundApp,
 		openUrl,

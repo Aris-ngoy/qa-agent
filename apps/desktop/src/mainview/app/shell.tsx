@@ -1,5 +1,5 @@
 import { SideMenu } from "@/app/side-menu";
-import { RunsPanel } from "@/features/devices/runs-panel";
+import { SessionBar } from "@/features/devices/session-bar";
 import type { ReactNode } from "react";
 
 type AppShellProps = {
@@ -13,7 +13,7 @@ export function AppShell({ children, activePath = "/" }: AppShellProps) {
 			<SideMenu activePath={activePath} />
 
 			<div className="electrobun-webkit-app-region-no-drag flex min-h-0 min-w-0 flex-1 flex-col gap-5">
-				<RunsPanel />
+				<SessionBar />
 				<main className="app-page min-h-0 min-w-0 flex-1 overflow-y-auto py-2 pr-1">
 					{children}
 				</main>

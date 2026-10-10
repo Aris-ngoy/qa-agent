@@ -17,11 +17,26 @@ export type SessionOptions = {
 	requestedLane?: LaneName | "auto";
 	/** Called once when the lane reports the session is gone. */
 	onSessionDead?: () => void;
+	/**
+	 * Called when the Lane falls back inside a running session (a Direct implementation's
+	 * helper process failed). The session's Lane warning gains the same text.
+	 */
+	onLaneWarning?: (warning: string) => void;
 };
 
 export type CapturedFrame = {
 	base64: string;
 	mime: "image/png" | "image/jpeg";
+	/**
+	 * When this frame's capture started (`performance.now()`), for a Lane that serves
+	 * frames from a background capture. Absent when the frame was captured for this call.
+	 */
+	capturedAt?: number;
+	/**
+	 * Identifies the frame's pixels, for a Lane whose frame source reports one (`yoqa-sim`).
+	 * Equal hashes mean an unchanged screen, so a reader can reuse what it derived from it.
+	 */
+	hash?: string;
 };
 
 export type PointerPhase = "begin" | "move" | "end";
@@ -78,6 +93,12 @@ export type DeviceSession = {
 	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	type: (text: string) => Promise<void>;
 	activateApp: (appId: string) => Promise<void>;
+	/**
+	 * Point the session at another app (bundle id / package) without reconnecting or
+	 * launching anything: what a Lane that remembers its app reads or relaunches from now
+	 * on. Undefined forgets the app. A Lane that remembers none ignores it (Appium).
+	 */
+	setTargetApp: (appId: string | undefined) => void;
 	terminateApp: (appId: string) => Promise<void>;
 	backgroundApp: (seconds?: number) => Promise<void>;
 	openUrl: (url: string) => Promise<void>;
@@ -95,6 +116,25 @@ export type DeviceSession = {
  */
 export type LaneFactory = (options: SessionOptions) => Promise<DeviceSession>;
 
+/** Lane warnings joined the way the Run report shows them; undefined when there are none. */
+export function joinLaneWarnings(...warnings: Array<string | undefined>): string | undefined {
+	return warnings.filter(Boolean).join("; ") || undefined;
+}
+
+/**
+ * Report a fallback inside a running session, loudly (ADR-0004): log it, add it to the
+ * session's Lane warning, and pass it to `onLaneWarning`.
+ */
+export function reportLaneFallback(
+	session: { laneWarning?: string },
+	options: SessionOptions,
+	warning: string,
+): void {
+	console.warn(`[yoqa-runner] ${warning}`);
+	session.laneWarning = joinLaneWarnings(session.laneWarning, warning);
+	options.onLaneWarning?.(warning);
+}
+
 const DEAD_SESSION_RE =
 	/session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i;
 
@@ -111,4 +151,29 @@ export function isDeadSessionError(error: unknown): boolean {
 	if (error instanceof DeadSessionError) return true;
 	const message = error instanceof Error ? error.message : String(error);
 	return DEAD_SESSION_RE.test(message);
+}
+
+type ToolResult = { stdout: string; stderr: string; exitCode: number };
+
+/**
+ * Wrap a Direct lane's device tool so a result that says the device or the tool is
+ * gone becomes a Dead Session: `onSessionDead` fires once and the call rejects with
+ * `DeadSessionError`. Wrap only after connect, so a start failure stays a start failure.
+ */
+export function guardToolLoss<R extends ToolResult>(
+	exec: (args: string[]) => Promise<R>,
+	isLost: (result: R) => boolean,
+	onSessionDead?: () => void,
+): (args: string[]) => Promise<R> {
+	let notified = false;
+	return async (args) => {
+		const result = await exec(args);
+		if (!isLost(result)) return result;
+		if (!notified) {
+			notified = true;
+			onSessionDead?.();
+		}
+		const detail = result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`;
+		throw new DeadSessionError(`Device session ended: ${detail}`);
+	};
 }

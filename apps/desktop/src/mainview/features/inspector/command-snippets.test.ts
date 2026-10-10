@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
 	assertLinesForSelection,
 	buildCommandLines,
+	buildStepLines,
+	defaultSelectorKind,
 	inputLinesForSelection,
 	isUsableSelectorValue,
 	selectorCommands,
+	selectorOptions,
 	suggestedCommands,
 	tapLinesForSelection,
 	usableId,
@@ -208,5 +211,88 @@ describe("command snippets selector quality", () => {
 		expect(longPress).toContain("--duration 2000");
 		expect(longPress).toContain("--y 887");
 		expect(longPress).not.toContain("--label");
+	});
+});
+
+describe("step builder (element dialog)", () => {
+	const button = selection({
+		x: 500,
+		y: 190,
+		element: {
+			type: "Button",
+			label: "Invite a Friend",
+			id: "invite_btn",
+			x: 400,
+			y: 150,
+			width: 200,
+			height: 80,
+		},
+	});
+	const labelOnly = selection({
+		element: { type: "Button", label: "Email", x: 0, y: 0, width: 10, height: 10 },
+	});
+	const bare = selection({ x: 300, y: 400, element: null });
+
+	test("offers only the selectors the element can supply, point always last", () => {
+		expect(selectorOptions(button, []).map((o) => o.kind)).toEqual([
+			"label",
+			"id",
+			"both",
+			"point",
+		]);
+		expect(selectorOptions(labelOnly, []).map((o) => o.kind)).toEqual(["label", "point"]);
+		expect(selectorOptions(bare, []).map((o) => o.kind)).toEqual(["point"]);
+	});
+
+	test("defaults to id when usable, then label, then point", () => {
+		expect(defaultSelectorKind(button)).toBe("id");
+		expect(defaultSelectorKind(labelOnly)).toBe("label");
+		expect(defaultSelectorKind(bare)).toBe("point");
+	});
+
+	test("counts matches in the tree and flags the point selector as fragile", () => {
+		const elements = [
+			{ type: "Button", label: "Email", x: 0, y: 0, width: 1, height: 1 },
+			{ type: "StaticText", label: "Email", x: 0, y: 0, width: 1, height: 1 },
+			{ type: "Button", label: "Other", x: 0, y: 0, width: 1, height: 1 },
+		];
+		const options = selectorOptions(labelOnly, elements);
+		expect(options.find((o) => o.kind === "label")?.matches).toBe(2);
+		expect(options.find((o) => o.kind === "point")?.matches).toBeNull();
+	});
+
+	test("builds tap lines for each selector", () => {
+		const line = (selector: "label" | "id" | "both" | "point") =>
+			buildStepLines(button, { command: "tap", selector }).at(-1);
+		expect(line("label")).toBe("yoqa action tap --label 'Invite a Friend' --x 500 --y 190");
+		expect(line("id")).toBe("yoqa action tap --id 'invite_btn' --x 500 --y 190");
+		expect(line("both")).toContain("--id 'invite_btn'");
+		expect(line("both")).toContain("--label 'Invite a Friend'");
+		expect(line("point")).toBe("yoqa action tap --x 500 --y 190");
+	});
+
+	test("long press and double tap honour the chosen selector", () => {
+		expect(buildStepLines(button, { command: "longPress", selector: "label" }).at(-1)).toContain(
+			"--label 'Invite a Friend' --x 500 --y 190 --duration 2000",
+		);
+		expect(buildStepLines(bare, { command: "doubleTap", selector: "point" }).at(-1)).toContain(
+			"--double",
+		);
+	});
+
+	test("type text targets the chosen selector and needs text", () => {
+		expect(buildStepLines(button, { command: "inputText", selector: "point", text: "hi" })).toEqual(
+			["# id invite_btn", "yoqa action input --x 500 --y 190 --text 'hi'"],
+		);
+		expect(buildStepLines(button, { command: "inputText", selector: "label", text: " " })).toEqual(
+			[],
+		);
+	});
+
+	test("assert visible uses the typed text, falling back to the label", () => {
+		expect(buildStepLines(button, { command: "assertVisible", selector: "label" })).toEqual([
+			"yoqa assert visible --text 'Invite a Friend'",
+		]);
+		expect(buildStepLines(bare, { command: "assertVisible", selector: "point" })).toEqual([]);
 	});
 });

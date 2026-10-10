@@ -31,3 +31,7 @@ Run connect, tap, swipe, drag, type, app lifecycle, open URL, and screenshot on 
 
 - [#199](https://github.com/Aris-ngoy/qa-agent/issues/199): see [ios-direct-tree-settle.md](./ios-direct-tree-settle.md).
 - Hardware Case on a simulator to tick the “sample Case end to end” box in #198.
+
+## Later changes
+
+- Since [#245](https://github.com/Aris-ngoy/qa-agent/issues/245) this is the fallback implementation (`idb`) behind `device-sim`. Its taps, swipes and pointer events in `screenshot` coordinate space used to be sent in screenshot pixels, 3× off, and now go in points: [ios-sim-promotion.md](./ios-sim-promotion.md).

@@ -2,25 +2,22 @@ import { useEnterOnce } from "@/app/motion/use-enter-once";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
-import type { DevicePlatform, SelectedDevice } from "@/features/devices/select-device-modal";
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
 } from "@/features/devices/use-active-device-session";
-import { CommandBar } from "@/features/inspector/command-bar";
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
+import { ElementActionDialog } from "@/features/inspector/element-action-dialog";
 import { isDeviceSessionGone } from "@/features/inspector/inspect-session";
-import { type RunLogEntry, RunPanel } from "@/features/inspector/run-panel";
 import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
-import { ScriptEditor } from "@/features/inspector/script-editor";
+import { type RunLogEntry, ScriptPanel } from "@/features/inspector/script-panel";
 import {
 	type InspectorSelection,
 	appendScriptLines,
 	cycleChangeSelector,
 	selectionFromPoint,
 } from "@/features/inspector/selection";
-import { SessionToolbar } from "@/features/inspector/session-toolbar";
 import {
 	type TestCase,
 	caseQueryKey,
@@ -143,10 +140,7 @@ export function InspectorPage() {
 	const { selectedApp } = useApps();
 	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
 
-	const [platform, setPlatform] = useState<DevicePlatform>("ios");
-	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [active, setActive] = useState<ActiveDeviceResponse | null>(null);
-	const [connecting, setConnecting] = useState(false);
 	const [bootLoading, setBootLoading] = useState(false);
 	const [imageUrl, setImageUrl] = useState<string | null>(null);
 	const [feedMode, setFeedMode] = useState<"mjpeg" | "poll" | null>(null);
@@ -260,25 +254,11 @@ export function InspectorPage() {
 	}, [revokeImage]);
 
 	const handleSessionGone = useCallback(() => {
-		const current = activeRef.current;
-		if (current) {
-			setDevice(
-				(prev) =>
-					prev ?? {
-						id: current.deviceId,
-						platform: current.platform,
-						label: current.deviceId,
-						name: current.deviceId,
-						osVersion: "",
-						kind: "physical",
-					},
-			);
-		}
 		sessionEpochRef.current += 1;
 		clearSessionUi();
 		queryClient.setQueryData(activeDeviceSessionQueryKey, null);
 		invalidateActiveDeviceSession();
-		notify("Device session ended — use Restart session to reconnect");
+		notify("Device session ended — reconnect from the top bar");
 	}, [clearSessionUi, invalidateActiveDeviceSession, queryClient]);
 
 	const refreshTree = useCallback(
@@ -467,33 +447,6 @@ export function InspectorPage() {
 
 	startLiveFeedRef.current = startLiveFeed;
 
-	const connectWithDevice = useCallback(
-		async (target: SelectedDevice) => {
-			const client = await getRunnerClient();
-			const bundleId =
-				target.platform === "ios" ? selectedApp?.iosBundleId.trim() || undefined : undefined;
-			const appPackage =
-				target.platform === "android"
-					? selectedApp?.androidApplicationId.trim() || undefined
-					: undefined;
-			const info = await client.connectDevice({
-				deviceId: target.id,
-				platform: target.platform,
-				bundleId,
-				appPackage,
-			});
-			sessionEpochRef.current += 1;
-			activeRef.current = info;
-			setActive(info);
-			setSelection(null);
-			setLiveControl(false);
-			await startLiveFeed(info);
-			invalidateActiveDeviceSession();
-			return info;
-		},
-		[invalidateActiveDeviceSession, selectedApp, startLiveFeed],
-	);
-
 	useEffect(() => {
 		const onVisibility = () => {
 			setPageVisible(document.visibilityState === "visible");
@@ -505,7 +458,6 @@ export function InspectorPage() {
 	// Adopt the shared Active Session (connected from any mode — play bar, CLI,
 	// another inspector visit) and mirror external disconnects into local UI.
 	useEffect(() => {
-		if (connecting) return;
 		if (!activeSession) {
 			// Query is still null after a local connect (refetch in flight). Don't
 			// wipe the feed unless this session was adopted from the shared query.
@@ -526,9 +478,16 @@ export function InspectorPage() {
 		sessionEpochRef.current += 1;
 		activeRef.current = activeSession;
 		setActive(activeSession);
-		setPlatform(activeSession.platform);
 		void startLiveFeedRef.current(activeSession);
-	}, [activeSession, clearSessionUi, connecting]);
+	}, [activeSession, clearSessionUi]);
+
+	// Switching app points the Active Session at it (top bar); the cached tree was read for
+	// the previous app, so the next selection reads the Screen again.
+	const selectedAppId = selectedApp?.id;
+	useEffect(() => {
+		if (!selectedAppId) return;
+		treeUpdatedAtRef.current = 0;
+	}, [selectedAppId]);
 
 	useEffect(() => {
 		return () => {
@@ -648,90 +607,6 @@ export function InspectorPage() {
 			}),
 		);
 	}, []);
-
-	const handleConnect = useCallback(async () => {
-		if (!device) return;
-		setConnecting(true);
-		try {
-			const info = await connectWithDevice(device);
-			notify(
-				info.streamReady === false
-					? "Connected — screenshot poll (MJPEG unavailable)"
-					: "Connected — live stream on",
-			);
-		} catch (error) {
-			showErrorToast(error, "Failed to connect device");
-		} finally {
-			setConnecting(false);
-		}
-	}, [connectWithDevice, device]);
-
-	const handleRestartSession = useCallback(async () => {
-		const target: SelectedDevice | null =
-			device ??
-			(active
-				? {
-						id: active.deviceId,
-						platform: active.platform,
-						label: active.deviceId,
-						name: active.deviceId,
-						osVersion: "",
-						kind: "physical",
-					}
-				: null);
-		if (!target) {
-			showErrorToast(new Error("Select a device first"), "Nothing to restart");
-			return;
-		}
-
-		setConnecting(true);
-		setLiveControl(false);
-		controlWsRef.current?.close();
-		controlWsRef.current = null;
-		try {
-			const client = await getRunnerClient();
-			try {
-				await client.disconnectDevice();
-			} catch {
-				/* already dead / no session */
-			}
-			sessionEpochRef.current += 1;
-			clearSessionUi();
-			if (!device) setDevice(target);
-			const info = await connectWithDevice(target);
-			notify(
-				info.streamReady === false
-					? "Session restarted — screenshot poll"
-					: "Session restarted — live stream refreshed",
-			);
-		} catch (error) {
-			sessionEpochRef.current += 1;
-			clearSessionUi();
-			showErrorToast(error, "Failed to restart session");
-		} finally {
-			setConnecting(false);
-		}
-	}, [active, clearSessionUi, connectWithDevice, device]);
-
-	const handleDisconnect = useCallback(async () => {
-		if (scriptHasBody(script) && !window.confirm("Disconnect and keep the current script?")) {
-			return;
-		}
-		setConnecting(true);
-		try {
-			const client = await getRunnerClient();
-			await client.disconnectDevice();
-			sessionEpochRef.current += 1;
-			clearSessionUi();
-			queryClient.setQueryData(activeDeviceSessionQueryKey, null);
-			invalidateActiveDeviceSession();
-			notify("Disconnected");
-		} catch (error) {
-			showErrorToast(error, "Failed to disconnect");
-		} finally {
-			setConnecting(false);
-		}
-	}, [clearSessionUi, invalidateActiveDeviceSession, queryClient, script]);
 
 	const appendLines = useCallback((lines: string[]) => {
 		setScript((prev) => appendScriptLines(prev, lines));
@@ -891,7 +766,7 @@ export function InspectorPage() {
 				buildRunReportFromInspectorSession({
 					title: defaultCaseNameFromScript(script),
 					appLabel: selectedApp?.name ?? null,
-					deviceLabel: device?.name ?? active.deviceId,
+					deviceLabel: active.deviceId,
 					platform: active.platform,
 					ok: result.ok,
 					cancelled,
@@ -918,7 +793,7 @@ export function InspectorPage() {
 				buildRunReportFromInspectorSession({
 					title: defaultCaseNameFromScript(script),
 					appLabel: selectedApp?.name ?? null,
-					deviceLabel: device?.name ?? active.deviceId,
+					deviceLabel: active.deviceId,
 					platform: active.platform,
 					ok: false,
 					error: message,
@@ -933,7 +808,7 @@ export function InspectorPage() {
 			abortRef.current = null;
 			void refreshTree({ silent: true });
 		}
-	}, [active, device?.name, pushLog, refreshTree, running, script, selectedApp?.name]);
+	}, [active, pushLog, refreshTree, running, script, selectedApp?.name]);
 
 	const handleStop = useCallback(() => {
 		abortRef.current?.abort();
@@ -1075,88 +950,48 @@ export function InspectorPage() {
 	const snippetContext = useMemo(
 		() => ({
 			defaultAppId:
-				platform === "ios"
-					? (selectedApp?.iosBundleId.trim() ?? "")
-					: (selectedApp?.androidApplicationId.trim() ?? ""),
+				active?.platform === "android"
+					? (selectedApp?.androidApplicationId.trim() ?? "")
+					: (selectedApp?.iosBundleId.trim() ?? ""),
 		}),
-		[platform, selectedApp?.androidApplicationId, selectedApp?.iosBundleId],
+		[active?.platform, selectedApp?.androidApplicationId, selectedApp?.iosBundleId],
 	);
 
 	return (
-		<div className={["flex flex-col", entered ? "motion-enter-done" : "motion-enter"].join(" ")}>
-			<header className="flex items-end justify-between gap-4 px-4 pt-2 pb-1">
-				<div>
-					<h1 className="text-title-lg font-semibold text-on-surface">Inspector</h1>
-					<p className="text-body-sm text-on-surface-variant">
-						Select an element for actions, or build a{" "}
-						<code className="font-mono text-helper">yoqa</code> script by hand.
-					</p>
+		<div
+			className={[
+				"flex h-full min-h-0 flex-col gap-5 px-4 pb-4",
+				entered ? "motion-enter-done" : "motion-enter",
+			].join(" ")}
+		>
+			<div className="flex min-h-0 flex-1 gap-5">
+				<div className="min-w-75 flex-[0_1_360px] self-start">
+					<ScreenshotPanel
+						imageUrl={imageUrl}
+						elements={elements}
+						selection={selection}
+						loading={bootLoading && !imageUrl}
+						treeRefreshing={treeRefreshing}
+						live={live}
+						feedMode={feedMode}
+						liveControl={liveControl}
+						onLiveControlChange={handleLiveControlChange}
+						disabled={!connected || running || viewOnly}
+						onSelect={setSelection}
+						onSelectWithPoint={handleSelectWithPoint}
+						onRefreshTree={handleRefreshTree}
+						onDoubleTap={handleDoubleTap}
+						onPointer={sendPointer}
+						onClearSelection={() => setSelection(null)}
+					/>
 				</div>
-			</header>
 
-			<SessionToolbar
-				platform={platform}
-				onPlatformChange={(next) => {
-					setPlatform(next);
-					setDevice(null);
-				}}
-				device={device}
-				onDeviceSelect={setDevice}
-				active={active}
-				connecting={connecting}
-				live={live}
-				onConnect={() => {
-					void handleConnect();
-				}}
-				onRestart={() => {
-					void handleRestartSession();
-				}}
-				onDisconnect={() => {
-					void handleDisconnect();
-				}}
-				viewOnly={viewOnly}
-			/>
-
-			<div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(280px,2fr)_minmax(0,3fr)]">
-				<ScreenshotPanel
-					imageUrl={imageUrl}
-					elements={elements}
-					selection={selection}
-					loading={bootLoading && !imageUrl}
-					treeRefreshing={treeRefreshing}
-					live={live}
-					feedMode={feedMode}
-					liveControl={liveControl}
-					onLiveControlChange={handleLiveControlChange}
-					disabled={!connected || running || viewOnly}
-					snippetContext={snippetContext}
-					onSelect={setSelection}
-					onSelectWithPoint={handleSelectWithPoint}
-					onChangeSelector={handleChangeSelector}
-					onRefreshTree={handleRefreshTree}
-					onDoubleTap={handleDoubleTap}
-					onPointer={sendPointer}
-					onInsertLines={handleInsertLines}
-					onInsertAndRunLines={handleInsertAndRunLines}
-					onCopyLines={(lines) => {
-						void handleCopyLines(lines);
-					}}
-					onClearSelection={() => setSelection(null)}
-				/>
-
-				<div className="flex flex-col gap-3">
-					<CommandBar
-						disabled={running || viewOnly}
-						onAddSwipe={handleAddSwipe}
-						onAddWait={handleAddWait}
-					/>
-					<ScriptEditor
-						value={script}
-						onChange={setScript}
-						disabled={running}
+				<div className="h-full min-h-0 min-w-0 flex-[2_1_440px] overflow-y-auto">
+					<ScriptPanel
+						script={script}
+						onScriptChange={setScript}
+						editingDisabled={running}
 						activeLineNumber={activeLineNumber}
-					/>
-					<RunPanel
 						running={running}
 						canRun={connected && !running && !viewOnly && scriptHasBody(script)}
 						canSaveAsCase={canSaveAsCase}
@@ -1181,6 +1016,24 @@ export function InspectorPage() {
 					/>
 				</div>
 			</div>
+
+			<ElementActionDialog
+				selection={liveControl ? null : selection}
+				elements={elements}
+				disabled={!connected || running || viewOnly}
+				snippetContext={snippetContext}
+				canChangeSelector={Boolean(selection?.element)}
+				onChangeSelector={handleChangeSelector}
+				onInsert={handleInsertLines}
+				onInsertAndRun={handleInsertAndRunLines}
+				onCopyLines={(lines) => {
+					void handleCopyLines(lines);
+				}}
+				onClose={() => setSelection(null)}
+				gesturesDisabled={running || viewOnly}
+				onAddSwipe={handleAddSwipe}
+				onAddWait={handleAddWait}
+			/>
 
 			<SaveAsTestCaseDialog
 				isOpen={saveOpen}

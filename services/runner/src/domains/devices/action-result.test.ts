@@ -69,6 +69,19 @@ describe("settleScreen", () => {
 		expect(result.base64).toBe(`frame-${call - 1}`);
 	});
 
+	test("a frame served again from the same background capture is not evidence of stability", async () => {
+		// One slow capture is read four times; only the next capture of the same image proves it held.
+		const frames = [0, 0, 0, 0, 170].map((capturedAt) => ({ base64: "a", capturedAt }));
+		let call = 0;
+		const result = await settleScreen(async () => frames[call++] ?? { base64: "end" }, {
+			clock: fakeClock(),
+			pollMs: 80,
+			stableWindowMs: 160,
+		});
+		expect(result.settled).toBe(true);
+		expect(call).toBe(5);
+	});
+
 	test("a zero cap takes one frame and does not claim it settled", async () => {
 		let call = 0;
 		const result = await settleScreen(async () => ({ base64: `f${call++}` }), {

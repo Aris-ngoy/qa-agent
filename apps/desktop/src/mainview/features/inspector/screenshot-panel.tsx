@@ -1,5 +1,3 @@
-import type { SnippetContext } from "@/features/inspector/command-snippets";
-import { ElementActionMenu } from "@/features/inspector/element-action-menu";
 import { coordsFromImageRect, isPickPointModifier } from "@/features/inspector/inspect-pointer";
 import {
 	type InspectorSelection,
@@ -58,18 +56,13 @@ type ScreenshotPanelProps = {
 	liveControl: boolean;
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
-	snippetContext: SnippetContext;
 	/** Optional: notify parent after a local select so it can background-refresh a stale tree. */
 	onSelectWithPoint?: (selection: InspectorSelection) => void;
 	onSelect: (selection: InspectorSelection) => void;
-	onChangeSelector: () => void;
 	onRefreshTree: () => void;
 	/** Double-click records a tap for the hit element/point. */
 	onDoubleTap: (selection: InspectorSelection) => void;
 	onPointer: (phase: "begin" | "move" | "end", x: number, y: number) => void;
-	onInsertLines: (lines: string[]) => void;
-	onInsertAndRunLines: (lines: string[]) => void;
-	onCopyLines: (lines: string[]) => void;
 	onClearSelection: () => void;
 };
 
@@ -84,16 +77,11 @@ export function ScreenshotPanel({
 	liveControl,
 	onLiveControlChange,
 	disabled,
-	snippetContext,
 	onSelectWithPoint,
 	onSelect,
-	onChangeSelector,
 	onRefreshTree,
 	onDoubleTap,
 	onPointer,
-	onInsertLines,
-	onInsertAndRunLines,
-	onCopyLines,
 	onClearSelection,
 }: ScreenshotPanelProps) {
 	const imgRef = useRef<HTMLImageElement | null>(null);
@@ -328,16 +316,31 @@ export function ScreenshotPanel({
 		feedMode === "poll" ? "Poll" : feedMode === "mjpeg" ? "Stream" : live ? "Live" : null;
 
 	const caption = selection ? activeSelectorCaption(selection) : null;
+	const viewRef = useRef<HTMLDivElement>(null);
+	const [viewHeight, setViewHeight] = useState<number | null>(null);
+	// Track the view's natural height so the card eases to its new size instead of jumping.
+	useEffect(() => {
+		const el = viewRef.current;
+		if (!el || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(() => setViewHeight(el.offsetHeight));
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, []);
 	const showRefreshing = treeRefreshing && elements.length === 0;
 	const inspectHint = pickingPoint
 		? "Picking x,y · click to set point"
-		: "Hover to preview · click to select · Hold Control to pick x,y";
+		: "Hover to preview, click to select an element.";
 
 	return (
-		<div className="flex flex-col gap-2">
+		<section
+			aria-labelledby="inspector-device-heading"
+			className="flex flex-col gap-3.5 rounded-[18px] border border-outline-variant bg-surface-bright p-4"
+		>
 			<div className="flex items-center justify-between gap-2">
+				<h2 id="inspector-device-heading" className="text-subheading text-on-surface">
+					Device
+				</h2>
 				<div className="flex items-center gap-2">
-					<h2 className="text-title-sm font-semibold text-on-surface">Device</h2>
 					{liveLabel ? (
 						<span className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-2 py-0.5 text-helper font-semibold text-on-secondary-container">
 							<span className="relative flex size-1.5">
@@ -347,194 +350,250 @@ export function ScreenshotPanel({
 							{liveLabel}
 						</span>
 					) : null}
-					{live && !disabled ? (
-						<label className="inline-flex cursor-pointer items-center gap-1.5 text-helper text-on-surface-variant">
-							<input
-								type="checkbox"
-								className="size-3.5 accent-secondary"
-								checked={liveControl}
-								onChange={(event) => onLiveControlChange(event.target.checked)}
-							/>
-							Live control
-						</label>
-					) : null}
 					{live && canInspect ? (
 						<button
 							type="button"
-							className="rounded-md px-1.5 py-0.5 text-helper font-medium text-on-surface-variant underline-offset-2 hover:text-on-surface hover:underline disabled:opacity-50"
+							aria-label="Refresh element tree"
+							title="Refresh element tree"
+							className="inline-flex size-9 items-center justify-center rounded-lg border border-outline-variant bg-surface-bright text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
 							disabled={treeRefreshing}
 							onClick={() => {
 								onRefreshTree();
 							}}
 						>
-							{treeRefreshing ? "Refreshing…" : "Refresh tree"}
+							<svg
+								aria-hidden="true"
+								className={["size-4", treeRefreshing ? "animate-spin" : ""].join(" ")}
+								fill="none"
+								stroke="currentColor"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								strokeWidth="2"
+								viewBox="0 0 24 24"
+							>
+								<path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+								<path d="M21 3v5h-5" />
+							</svg>
 						</button>
 					) : null}
 				</div>
-				{liveControl ? (
-					<span className="text-helper text-on-surface-variant">
-						Tap / drag to control · double-click to double-tap
-					</span>
-				) : showRefreshing ? (
-					<span className="text-helper text-on-surface-variant">Refreshing…</span>
-				) : pickingPoint ? (
-					<span className="text-helper text-on-surface-variant">{inspectHint}</span>
-				) : selection && caption ? (
-					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
-						{caption} · {selection.x},{selection.y}
-					</span>
-				) : selection ? (
-					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
-						{selection.x},{selection.y}
-					</span>
-				) : (
-					<span className="text-helper text-on-surface-variant">{inspectHint}</span>
-				)}
 			</div>
 
-			<div className="relative flex min-h-56 items-center justify-center overflow-visible rounded-xl bg-surface-container p-3">
-				{!imageUrl && !loading ? (
-					<div className="flex min-h-56 flex-col items-center justify-center gap-2 px-6 text-center">
-						<p className="text-body-sm font-medium text-on-surface">No live feed</p>
-						<p className="max-w-xs text-helper text-on-surface-variant">
-							Connect a device to stream the screen. Changes on the phone appear here automatically.
-						</p>
-					</div>
-				) : null}
-
-				{imageUrl ? (
-					<div className="relative w-fit max-w-full overflow-visible">
-						{/* biome-ignore lint/a11y/useKeyWithClickEvents: screenshot hit-testing is pointer-driven */}
-						<div
-							role="img"
-							aria-label={
-								liveControl
-									? "Live device screen — tap, drag, or double-click to double-tap"
-									: pickingPoint
-										? "Live device screen — Control held, click to pick x,y"
-										: "Live device screen — hover to preview, click to select actions, hold Control to pick x,y"
-							}
+			<fieldset
+				aria-label="Pointer mode"
+				className="relative m-0 grid min-w-0 grid-cols-2 gap-1 rounded-[10px] border-0 bg-surface-container p-1"
+			>
+				<span
+					aria-hidden="true"
+					className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc((100%-0.75rem)/2)] rounded-lg bg-surface-bright shadow-[0_1px_2px_rgba(27,26,34,0.12)] transition-transform duration-300 ease-out motion-reduce:transition-none"
+					style={{ transform: liveControl ? "translateX(calc(100% + 0.25rem))" : "none" }}
+				/>
+				{(["inspect", "interact"] as const).map((mode) => {
+					const selected = (mode === "interact") === liveControl;
+					return (
+						<button
+							key={mode}
+							type="button"
+							aria-pressed={selected}
+							disabled={mode === "interact" && (!live || disabled)}
 							className={[
-								"relative block w-fit max-w-full touch-none",
-								disabled
-									? "cursor-wait opacity-60"
-									: liveControl
-										? "cursor-grab active:cursor-grabbing"
-										: "cursor-crosshair",
+								"relative z-10 inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg text-body-md font-semibold transition-colors disabled:opacity-50",
+								selected ? "text-on-surface" : "text-on-surface-variant hover:text-on-surface",
 							].join(" ")}
-							onClick={disabled ? undefined : handleClick}
-							onContextMenu={disabled ? undefined : handleContextMenu}
-							onDoubleClick={disabled ? undefined : handleDoubleClick}
-							onPointerDown={disabled ? undefined : handlePointerDown}
-							onPointerMove={disabled ? undefined : handlePointerMove}
-							onPointerUp={disabled ? undefined : handlePointerUp}
-							onPointerCancel={disabled ? undefined : handlePointerUp}
-							onPointerLeave={handlePointerLeave}
+							onClick={() => onLiveControlChange(mode === "interact")}
 						>
-							<img
-								ref={imgRef}
-								alt="Live device screenshot"
-								className="pointer-events-none block max-h-[min(72vh,760px)] w-auto max-w-full rounded-lg shadow-[0_12px_40px_-18px_rgba(0,0,0,0.45)] select-none"
-								draggable={false}
-								src={imageUrl}
-							/>
-							{hoverBox ? (
-								<span
-									aria-hidden="true"
-									className="pointer-events-none absolute border border-dashed border-secondary/70 bg-secondary/10"
-									style={{
-										left: `${hoverBox.left}%`,
-										top: `${hoverBox.top}%`,
-										width: `${hoverBox.width}%`,
-										height: `${hoverBox.height}%`,
-									}}
+							<svg
+								aria-hidden="true"
+								className="size-4"
+								fill="none"
+								stroke="currentColor"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								strokeWidth="2"
+								viewBox="0 0 24 24"
+							>
+								{mode === "inspect" ? (
+									<path d="M4 4l7 17 2.5-7.5L21 11z" />
+								) : (
+									<>
+										<path d="M9 11V5a2 2 0 0 1 4 0v6" />
+										<path d="M13 10a2 2 0 0 1 4 0v4a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-1.5-3a1.5 1.5 0 0 1 2.6-1.5L9 15" />
+									</>
+								)}
+							</svg>
+							{mode === "inspect" ? "Inspect" : "Use device"}
+						</button>
+					);
+				})}
+			</fieldset>
+			<p className="-mt-1 text-body-sm text-on-surface-variant">
+				{liveControl
+					? "Taps and swipes go straight to the device · double-click to double-tap."
+					: showRefreshing
+						? "Refreshing…"
+						: pickingPoint
+							? inspectHint
+							: selection
+								? `${caption ? `${caption} · ` : ""}${selection.x},${selection.y}`
+								: inspectHint}
+			</p>
+
+			<div
+				className="rounded-xl bg-surface-container transition-[height] duration-300 ease-out motion-reduce:transition-none"
+				style={{ height: viewHeight ?? undefined }}
+			>
+				<div
+					ref={viewRef}
+					className="relative flex min-h-56 items-center justify-center overflow-visible rounded-xl p-3"
+				>
+					{!imageUrl && !loading ? (
+						<div className="flex min-h-56 flex-col items-center justify-center gap-2 px-6 text-center">
+							<p className="text-body-sm font-medium text-on-surface">No live feed</p>
+							<p className="max-w-xs text-helper text-on-surface-variant">
+								Connect a device to stream the screen. Changes on the phone appear here
+								automatically.
+							</p>
+						</div>
+					) : null}
+
+					{imageUrl ? (
+						<div className="relative w-fit max-w-full overflow-visible">
+							{/* biome-ignore lint/a11y/useKeyWithClickEvents: screenshot hit-testing is pointer-driven */}
+							<div
+								role="img"
+								aria-label={
+									liveControl
+										? "Live device screen — tap, drag, or double-click to double-tap"
+										: pickingPoint
+											? "Live device screen — Control held, click to pick x,y"
+											: "Live device screen — hover to preview, click to select actions, hold Control to pick x,y"
+								}
+								className={[
+									"relative block w-fit max-w-full touch-none",
+									disabled
+										? "cursor-wait opacity-60"
+										: liveControl
+											? "cursor-grab active:cursor-grabbing"
+											: "cursor-crosshair",
+								].join(" ")}
+								onClick={disabled ? undefined : handleClick}
+								onContextMenu={disabled ? undefined : handleContextMenu}
+								onDoubleClick={disabled ? undefined : handleDoubleClick}
+								onPointerDown={disabled ? undefined : handlePointerDown}
+								onPointerMove={disabled ? undefined : handlePointerMove}
+								onPointerUp={disabled ? undefined : handlePointerUp}
+								onPointerCancel={disabled ? undefined : handlePointerUp}
+								onPointerLeave={handlePointerLeave}
+							>
+								<img
+									ref={imgRef}
+									alt="Live device screenshot"
+									className="pointer-events-none block max-h-[max(260px,calc(100vh-27rem))] w-auto max-w-full rounded-[28px] shadow-[0_12px_40px_-18px_rgba(0,0,0,0.45)] select-none"
+									draggable={false}
+									src={imageUrl}
 								/>
-							) : null}
-							{pickHover && pickingPoint ? (
-								<>
+								{hoverBox ? (
 									<span
 										aria-hidden="true"
-										className="pointer-events-none absolute left-0 h-px w-full bg-secondary/80"
-										style={{ top: `${pickHover.y / 10}%` }}
-									/>
-									<span
-										aria-hidden="true"
-										className="pointer-events-none absolute top-0 h-full w-px bg-secondary/80"
-										style={{ left: `${pickHover.x / 10}%` }}
-									/>
-									<span
-										aria-hidden="true"
-										className="pointer-events-none absolute z-20 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[10px] text-white"
+										className="pointer-events-none absolute border border-dashed border-secondary/70 bg-secondary/10"
 										style={{
-											left: `${pickHover.x / 10}%`,
-											top: `${pickHover.y / 10}%`,
-											transform: "translate(8px, 8px)",
+											left: `${hoverBox.left}%`,
+											top: `${hoverBox.top}%`,
+											width: `${hoverBox.width}%`,
+											height: `${hoverBox.height}%`,
 										}}
-									>
-										{pickHover.x},{pickHover.y}
-									</span>
+									/>
+								) : null}
+								{pickHover && pickingPoint ? (
+									<>
+										<span
+											aria-hidden="true"
+											className="pointer-events-none absolute left-0 h-px w-full bg-secondary/80"
+											style={{ top: `${pickHover.y / 10}%` }}
+										/>
+										<span
+											aria-hidden="true"
+											className="pointer-events-none absolute top-0 h-full w-px bg-secondary/80"
+											style={{ left: `${pickHover.x / 10}%` }}
+										/>
+										<span
+											aria-hidden="true"
+											className="pointer-events-none absolute z-20 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[10px] text-white"
+											style={{
+												left: `${pickHover.x / 10}%`,
+												top: `${pickHover.y / 10}%`,
+												transform: "translate(8px, 8px)",
+											}}
+										>
+											{pickHover.x},{pickHover.y}
+										</span>
+									</>
+								) : null}
+								{selection && selectionAnchor && !liveControl ? (
+									<span
+										aria-hidden="true"
+										className="pointer-events-none absolute border-2 border-secondary bg-secondary/20"
+										style={{
+											left: `${selectionAnchor.left}%`,
+											top: `${selectionAnchor.top}%`,
+											width: `${selectionAnchor.width}%`,
+											height: `${selectionAnchor.height}%`,
+										}}
+									/>
+								) : null}
+							</div>
+							{selection && selectionAnchor && !liveControl ? (
+								<>
+									{caption ? (
+										<div
+											className="pointer-events-none absolute z-10 max-w-[14rem] truncate rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white"
+											style={{
+												left: `${selectionAnchor.left}%`,
+												top: `calc(${selectionAnchor.top + selectionAnchor.height}% + 4px)`,
+											}}
+										>
+											{caption}
+										</div>
+									) : (
+										<div
+											className="pointer-events-none absolute z-10 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white"
+											style={{
+												left: `${selectionAnchor.left}%`,
+												top: `calc(${selectionAnchor.top + selectionAnchor.height}% + 4px)`,
+											}}
+										>
+											{selection.x},{selection.y}
+										</div>
+									)}
 								</>
 							) : null}
-							{selection && selectionAnchor && !liveControl ? (
-								<span
-									aria-hidden="true"
-									className="pointer-events-none absolute border-2 border-secondary bg-secondary/20"
-									style={{
-										left: `${selectionAnchor.left}%`,
-										top: `${selectionAnchor.top}%`,
-										width: `${selectionAnchor.width}%`,
-										height: `${selectionAnchor.height}%`,
-									}}
-								/>
-							) : null}
 						</div>
-						{selection && selectionAnchor && !liveControl ? (
-							<>
-								{caption ? (
-									<div
-										className="pointer-events-none absolute z-10 max-w-[14rem] truncate rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white"
-										style={{
-											left: `${selectionAnchor.left}%`,
-											top: `calc(${selectionAnchor.top + selectionAnchor.height}% + 4px)`,
-										}}
-									>
-										{caption}
-									</div>
-								) : (
-									<div
-										className="pointer-events-none absolute z-10 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white"
-										style={{
-											left: `${selectionAnchor.left}%`,
-											top: `calc(${selectionAnchor.top + selectionAnchor.height}% + 4px)`,
-										}}
-									>
-										{selection.x},{selection.y}
-									</div>
-								)}
-								<ElementActionMenu
-									key={`${selection.x},${selection.y},${selection.candidateIndex},${selection.preferredLocator},${selection.element?.id ?? ""},${selection.element?.label ?? ""}`}
-									selection={selection}
-									anchor={selectionAnchor}
-									disabled={disabled}
-									snippetContext={snippetContext}
-									canChangeSelector={Boolean(selection.element)}
-									onChangeSelector={onChangeSelector}
-									onInsert={onInsertLines}
-									onInsertAndRun={onInsertAndRunLines}
-									onCopyLines={onCopyLines}
-									onClearSelection={onClearSelection}
-								/>
-							</>
-						) : null}
-					</div>
-				) : null}
+					) : null}
 
-				{loading ? (
-					<div className="absolute inset-0 flex items-center justify-center bg-surface/55 text-body-sm text-on-surface-variant backdrop-blur-[1px]">
-						Starting live feed…
-					</div>
-				) : null}
+					{loading ? (
+						imageUrl ? (
+							<div className="motion-fade-in absolute inset-0 flex items-center justify-center bg-surface/55 text-body-sm text-on-surface-variant backdrop-blur-[1px]">
+								Starting live feed…
+							</div>
+						) : (
+							<output
+								aria-live="polite"
+								className="motion-fade-in absolute inset-0 flex flex-col items-center justify-center gap-3"
+							>
+								<div className="motion-skeleton h-[min(24rem,calc(100vh-30rem))] min-h-48 aspect-[9/19] rounded-[28px] bg-surface-container-high" />
+								<span className="text-body-sm text-on-surface-variant">Starting live feed…</span>
+							</output>
+						)
+					) : null}
+				</div>
 			</div>
-		</div>
+			<p className="m-0 text-center text-helper text-on-surface-variant">
+				Hold{" "}
+				<kbd className="rounded border border-outline-variant bg-surface-container px-1 font-mono">
+					Ctrl
+				</kbd>{" "}
+				and click to pick exact x, y coordinates
+			</p>
+		</section>
 	);
 }

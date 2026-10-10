@@ -1,11 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:net";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 import { type Browser, remote } from "webdriverio";
 import { APPIUM_HOST, ensureAppiumServer } from "../appium/server";
 import { loadDevicePrep } from "../ios/application";
+import { SIMULATOR_WDA_DERIVED_DATA } from "../ios/simulator-wda";
 import { resolveNativeAlert } from "./android-alerts";
 import {
 	type PointerSize,
@@ -30,7 +30,6 @@ import { isDeadSessionError } from "./lane";
 import { remember } from "./once";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
-const YOQA_ROOT = join(homedir(), ".yoqa");
 const DEFAULT_MJPEG_PORT = Number(process.env.YOQA_MJPEG_PORT ?? "9100");
 
 const MJPEG_SETTINGS_BASE = {
@@ -173,7 +172,6 @@ export function looksLikePhysicalIosUdid(udid: string): boolean {
 /** First simulator connect compiles WebDriverAgent; physical devices reuse a preinstalled WDA. */
 export const PHYSICAL_IOS_SESSION_TIMEOUT_MS = 60_000;
 export const SIMULATOR_WDA_SESSION_TIMEOUT_MS = 600_000;
-const SIMULATOR_WDA_DERIVED_DATA = join(YOQA_ROOT, "wda-sim");
 
 export function iosSessionCreateTimeoutMs(deviceId: string): number {
 	return looksLikePhysicalIosUdid(deviceId)
@@ -511,11 +509,19 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 	}
 }
 
-/**
- * Open a Device Session on the Appium lane. Per-device exclusivity is enforced by
- * `createDeviceSession`, not here.
- */
-export async function createAppiumSession(options: SessionOptions): Promise<DeviceSession> {
+/** A WebDriver session on the Appium Server, plus its MJPEG broadcaster. */
+export type AppiumConnection = {
+	browser: Browser;
+	mjpegPort: number;
+	streamReady: boolean;
+};
+
+export type AppiumLaneDeps = {
+	/** Start the WebDriver session. Tests inject a fake WebDriver here. */
+	connect?: (options: SessionOptions) => Promise<AppiumConnection>;
+};
+
+async function connectToAppium(options: SessionOptions): Promise<AppiumConnection> {
 	const port = await ensureAppiumServer();
 	const mjpegPort = await pickMjpegPort();
 	const capabilities = await buildW3cCapabilities(options, mjpegPort);
@@ -546,6 +552,18 @@ export async function createAppiumSession(options: SessionOptions): Promise<Devi
 			`[yoqa-runner] MJPEG stream not reachable on port ${mjpegPort}; Inspector will fall back to screenshot polling`,
 		);
 	}
+	return { browser, mjpegPort, streamReady };
+}
+
+/**
+ * Open a Device Session on the Appium lane. Per-device exclusivity is enforced by
+ * `createDeviceSession`, not here.
+ */
+export async function createAppiumSession(
+	options: SessionOptions,
+	deps: AppiumLaneDeps = {},
+): Promise<DeviceSession> {
+	const { browser, mjpegPort, streamReady } = await (deps.connect ?? connectToAppium)(options);
 
 	const gate = new ActionGate();
 	let sessionDeadNotified = false;
@@ -781,6 +799,8 @@ export async function createAppiumSession(options: SessionOptions): Promise<Devi
 		drag,
 		type,
 		activateApp,
+		// The Appium session already knows its app from its capabilities; nothing to remember.
+		setTargetApp: () => undefined,
 		terminateApp,
 		backgroundApp,
 		openUrl,

@@ -33,6 +33,8 @@ export const deviceSchema = z.object({
 	/** Connection / boot state from the host tooling */
 	state: z.string().optional(),
 	model: z.string().optional(),
+	/** Why this device is listed but cannot be a target (e.g. an iPhone paired over Wi-Fi only). */
+	unavailableReason: z.string().optional(),
 });
 
 export type Device = z.infer<typeof deviceSchema>;
@@ -924,10 +926,22 @@ export const activeDeviceResponseSchema = z.object({
 	streamUrl: z.string().min(1).optional(),
 	/** A Run currently owns this session (interactive actions are view-only). */
 	heldByRun: z.boolean().optional(),
+	/** The id of the Run that holds this session, while one does. */
+	heldByRunId: z.string().min(1).optional(),
 	lane: laneNameSchema.optional(),
 	laneWarning: z.string().min(1).optional(),
 });
 export type ActiveDeviceResponse = z.infer<typeof activeDeviceResponseSchema>;
+
+/**
+ * Point the Active Session at another app without reconnecting. The session uses the id
+ * its platform needs: `bundleId` on iOS, `appPackage` on Android; a missing one forgets the app.
+ */
+export const retargetDeviceRequestSchema = z.object({
+	bundleId: z.string().min(1).optional(),
+	appPackage: z.string().min(1).optional(),
+});
+export type RetargetDeviceRequest = z.infer<typeof retargetDeviceRequestSchema>;
 
 export const controlPointerMessageSchema = z.object({
 	type: z.literal("pointer"),

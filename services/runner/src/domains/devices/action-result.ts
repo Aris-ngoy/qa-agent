@@ -34,10 +34,13 @@ function frameHash(base64: string): string {
 /**
  * Poll a cheap frame source until the same frame holds for `stableWindowMs`, or `capMs` passes.
  * The first frame is taken immediately (no lead-in). An animating screen never settles;
- * the latest frame is returned with `settled: false`.
+ * the latest frame is returned with `settled: false`. A frame with `capturedAt` (from a
+ * background capture) is timed by when it was captured, so the same capture read twice
+ * proves nothing. A source gives `capturedAt` on every frame or on none: it is on the
+ * source's clock, not the settle clock.
  */
 export async function settleScreen(
-	capture: () => Promise<{ base64: string }>,
+	capture: () => Promise<{ base64: string; capturedAt?: number }>,
 	options: { capMs?: number; pollMs?: number; stableWindowMs?: number; clock?: SettleClock } = {},
 ): Promise<SettleResult> {
 	const capMs = options.capMs ?? DEFAULT_SETTLE_CAP_MS;
@@ -46,9 +49,10 @@ export async function settleScreen(
 	const clock = options.clock ?? realClock;
 	const started = clock.now();
 
-	let latest = (await capture()).base64;
+	const first = await capture();
+	let latest = first.base64;
 	let lastHash = frameHash(latest);
-	let stableSince = started;
+	let stableSince = first.capturedAt ?? started;
 	if (capMs <= 0) {
 		return { base64: latest, settled: false, waitedMs: clock.now() - started };
 	}
@@ -59,16 +63,18 @@ export async function settleScreen(
 			return { base64: latest, settled: false, waitedMs: elapsed };
 		}
 		await clock.sleep(Math.max(0, Math.min(pollMs, capMs - elapsed)));
-		latest = (await capture()).base64;
+		const frame = await capture();
+		latest = frame.base64;
 		const hash = frameHash(latest);
 		const now = clock.now();
+		const seenAt = frame.capturedAt ?? now;
 		if (hash === lastHash) {
-			if (now - stableSince >= stableWindowMs) {
+			if (seenAt - stableSince >= stableWindowMs) {
 				return { base64: latest, settled: true, waitedMs: now - started };
 			}
 		} else {
 			lastHash = hash;
-			stableSince = now;
+			stableSince = seenAt;
 		}
 	}
 }
