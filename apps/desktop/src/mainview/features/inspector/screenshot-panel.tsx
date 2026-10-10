@@ -1,5 +1,3 @@
-import type { SnippetContext } from "@/features/inspector/command-snippets";
-import { ElementActionMenu } from "@/features/inspector/element-action-menu";
 import { coordsFromImageRect, isPickPointModifier } from "@/features/inspector/inspect-pointer";
 import {
 	type InspectorSelection,
@@ -58,18 +56,13 @@ type ScreenshotPanelProps = {
 	liveControl: boolean;
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
-	snippetContext: SnippetContext;
 	/** Optional: notify parent after a local select so it can background-refresh a stale tree. */
 	onSelectWithPoint?: (selection: InspectorSelection) => void;
 	onSelect: (selection: InspectorSelection) => void;
-	onChangeSelector: () => void;
 	onRefreshTree: () => void;
 	/** Double-click records a tap for the hit element/point. */
 	onDoubleTap: (selection: InspectorSelection) => void;
 	onPointer: (phase: "begin" | "move" | "end", x: number, y: number) => void;
-	onInsertLines: (lines: string[]) => void;
-	onInsertAndRunLines: (lines: string[]) => void;
-	onCopyLines: (lines: string[]) => void;
 	onClearSelection: () => void;
 };
 
@@ -84,16 +77,11 @@ export function ScreenshotPanel({
 	liveControl,
 	onLiveControlChange,
 	disabled,
-	snippetContext,
 	onSelectWithPoint,
 	onSelect,
-	onChangeSelector,
 	onRefreshTree,
 	onDoubleTap,
 	onPointer,
-	onInsertLines,
-	onInsertAndRunLines,
-	onCopyLines,
 	onClearSelection,
 }: ScreenshotPanelProps) {
 	const imgRef = useRef<HTMLImageElement | null>(null);
@@ -336,8 +324,8 @@ export function ScreenshotPanel({
 	return (
 		<div className="flex flex-col gap-2">
 			<div className="flex items-center justify-between gap-2">
+				<h2 className="text-title-sm font-semibold text-on-surface">Device</h2>
 				<div className="flex items-center gap-2">
-					<h2 className="text-title-sm font-semibold text-on-surface">Device</h2>
 					{liveLabel ? (
 						<span className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-2 py-0.5 text-helper font-semibold text-on-secondary-container">
 							<span className="relative flex size-1.5">
@@ -347,50 +335,59 @@ export function ScreenshotPanel({
 							{liveLabel}
 						</span>
 					) : null}
-					{live && !disabled ? (
-						<label className="inline-flex cursor-pointer items-center gap-1.5 text-helper text-on-surface-variant">
-							<input
-								type="checkbox"
-								className="size-3.5 accent-secondary"
-								checked={liveControl}
-								onChange={(event) => onLiveControlChange(event.target.checked)}
-							/>
-							Live control
-						</label>
-					) : null}
 					{live && canInspect ? (
 						<button
 							type="button"
-							className="rounded-md px-1.5 py-0.5 text-helper font-medium text-on-surface-variant underline-offset-2 hover:text-on-surface hover:underline disabled:opacity-50"
+							aria-label="Refresh element tree"
+							title="Refresh element tree"
+							className="rounded-md px-1.5 py-0.5 text-body-sm text-on-surface-variant hover:bg-surface-container hover:text-on-surface disabled:opacity-50"
 							disabled={treeRefreshing}
 							onClick={() => {
 								onRefreshTree();
 							}}
 						>
-							{treeRefreshing ? "Refreshing…" : "Refresh tree"}
+							{treeRefreshing ? "…" : "↻"}
 						</button>
 					) : null}
 				</div>
-				{liveControl ? (
-					<span className="text-helper text-on-surface-variant">
-						Tap / drag to control · double-click to double-tap
-					</span>
-				) : showRefreshing ? (
-					<span className="text-helper text-on-surface-variant">Refreshing…</span>
-				) : pickingPoint ? (
-					<span className="text-helper text-on-surface-variant">{inspectHint}</span>
-				) : selection && caption ? (
-					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
-						{caption} · {selection.x},{selection.y}
-					</span>
-				) : selection ? (
-					<span className="max-w-[55%] truncate text-helper text-on-surface-variant">
-						{selection.x},{selection.y}
-					</span>
-				) : (
-					<span className="text-helper text-on-surface-variant">{inspectHint}</span>
-				)}
 			</div>
+
+			<fieldset
+				aria-label="Pointer mode"
+				className="m-0 inline-flex w-fit min-w-0 rounded-lg border-0 bg-surface-container p-0.5"
+			>
+				{(["inspect", "interact"] as const).map((mode) => {
+					const selected = (mode === "interact") === liveControl;
+					return (
+						<button
+							key={mode}
+							type="button"
+							aria-pressed={selected}
+							disabled={mode === "interact" && (!live || disabled)}
+							className={[
+								"rounded-md px-3 py-1 text-body-sm font-medium transition-colors disabled:opacity-50",
+								selected
+									? "bg-surface text-on-surface shadow-sm"
+									: "text-on-surface-variant hover:text-on-surface",
+							].join(" ")}
+							onClick={() => onLiveControlChange(mode === "interact")}
+						>
+							{mode === "inspect" ? "Inspect" : "Interact"}
+						</button>
+					);
+				})}
+			</fieldset>
+			<p className="text-helper text-on-surface-variant">
+				{liveControl
+					? "Taps and swipes go straight to the device · double-click to double-tap."
+					: showRefreshing
+						? "Refreshing…"
+						: pickingPoint
+							? inspectHint
+							: selection
+								? `${caption ? `${caption} · ` : ""}${selection.x},${selection.y}`
+								: inspectHint}
+			</p>
 
 			<div className="relative flex min-h-56 items-center justify-center overflow-visible rounded-xl bg-surface-container p-3">
 				{!imageUrl && !loading ? (
@@ -511,19 +508,6 @@ export function ScreenshotPanel({
 										{selection.x},{selection.y}
 									</div>
 								)}
-								<ElementActionMenu
-									key={`${selection.x},${selection.y},${selection.candidateIndex},${selection.preferredLocator},${selection.element?.id ?? ""},${selection.element?.label ?? ""}`}
-									selection={selection}
-									anchor={selectionAnchor}
-									disabled={disabled}
-									snippetContext={snippetContext}
-									canChangeSelector={Boolean(selection.element)}
-									onChangeSelector={onChangeSelector}
-									onInsert={onInsertLines}
-									onInsertAndRun={onInsertAndRunLines}
-									onCopyLines={onCopyLines}
-									onClearSelection={onClearSelection}
-								/>
 							</>
 						) : null}
 					</div>
