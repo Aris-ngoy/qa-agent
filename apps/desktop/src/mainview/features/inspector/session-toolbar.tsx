@@ -3,6 +3,7 @@ import {
 	SelectDeviceModal,
 	type SelectedDevice,
 } from "@/features/devices/select-device-modal";
+import { ServersDoctorPanel } from "@/features/devices/servers-doctor-panel";
 import { Button, ListBox, Select } from "@heroui/react";
 import type { ActiveDeviceResponse } from "@yoqa/runner-client";
 import { type SVGProps, useState } from "react";
@@ -58,12 +59,13 @@ export function SessionToolbar({
 	viewOnly,
 }: SessionToolbarProps) {
 	const [pickerOpen, setPickerOpen] = useState(false);
+	const [serversOpen, setServersOpen] = useState(false);
 	const connected = active != null;
 	const canRestart = connected || device != null;
 
 	return (
 		<div className="flex flex-col items-end gap-1">
-			<div className="flex flex-wrap items-center justify-end gap-2 rounded-[14px] border border-outline-variant bg-surface-bright py-1.5 pr-1.5 pl-3">
+			<div className="flex flex-wrap items-center justify-end gap-2">
 				<Select
 					aria-label="Platform"
 					className="w-28"
@@ -190,6 +192,7 @@ export function SessionToolbar({
 						) : null}
 					</>
 				)}
+				<ServersDoctorPanel onOpenChange={setServersOpen} open={serversOpen} />
 			</div>
 
 			{viewOnly ? (
