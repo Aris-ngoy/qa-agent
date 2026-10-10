@@ -34,7 +34,9 @@ public final class Session {
             }
         case "screenshot":
             return run { ["png": try self.device.screenshot().base64EncodedString()] }
-        case "tap", "longPress", "drag":
+        case "snapshot":
+            return run { ["nodes": try self.device.snapshot(bundleId: body["bundleId"] as? String).map(Self.json)] }
+        case "tap", "longPress", "drag", "type", "keyboardReturn", "keyboardDelete", "button":
             return journaled(body) { try self.gesture(command, body) }
         default:
             return Self.failure(400, "UNKNOWN_COMMAND", "unknown command \"\(command)\"")
@@ -75,7 +77,7 @@ public final class Session {
             } catch let error as BadRequest {
                 response = Self.failure(400, "BAD_REQUEST", error.message)
             } catch {
-                response = Self.failure(500, "DEVICE_ERROR", "\(error)")
+                response = Self.deviceFailure(error)
             }
             journal.finish(id, response)
             return response
@@ -96,6 +98,20 @@ public final class Session {
                 pressSeconds: try Self.seconds(body, "pressMs"),
                 seconds: try Self.seconds(body, "durationMs")
             )
+        case "type":
+            guard let text = body["text"] as? String else {
+                throw BadRequest(message: "\"text\" must be a string")
+            }
+            try device.typeText(text)
+        case "keyboardReturn":
+            try device.keyboardReturn()
+        case "keyboardDelete":
+            try device.keyboardDelete()
+        case "button":
+            guard let name = body["name"] as? String, ["home", "volumeUp", "volumeDown"].contains(name) else {
+                throw BadRequest(message: "\"name\" must be home, volumeUp or volumeDown")
+            }
+            try device.button(name)
         default:
             throw BadRequest(message: "\"\(command)\" is not a gesture")
         }
@@ -106,8 +122,29 @@ public final class Session {
         do {
             return .json(200, ["ok": true, "data": try read()])
         } catch {
-            return Self.failure(500, "DEVICE_ERROR", "\(error)")
+            return Self.deviceFailure(error)
         }
+    }
+
+    /// `APP_BACKGROUNDED` and `RUNNER_WEDGED` reach the Mac as their own codes.
+    private static func deviceFailure(_ error: Error) -> HTTPResponse {
+        switch error {
+        case let error as AppBackgrounded: return failure(409, "APP_BACKGROUNDED", error.description)
+        case let error as RunnerWedged: return failure(503, "RUNNER_WEDGED", error.description)
+        default: return failure(500, "DEVICE_ERROR", "\(error)")
+        }
+    }
+
+    private static func json(_ node: SnapshotNode) -> [String: Any] {
+        var out: [String: Any] = [
+            "role": node.role,
+            "frame": ["x": node.frame.x, "y": node.frame.y, "width": node.frame.width, "height": node.frame.height],
+            "enabled": node.enabled,
+        ]
+        if let label = node.label { out["label"] = label }
+        if let value = node.value { out["value"] = value }
+        if let id = node.id { out["id"] = id }
+        return out
     }
 
     private struct BadRequest: Error {
