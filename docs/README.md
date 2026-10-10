@@ -41,6 +41,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [desktop/cli-and-agents.md](./desktop/cli-and-agents.md) | Settings CLI/skill install + full `yoqa` agent CLI |
 | [desktop/servers-and-doctor.md](./desktop/servers-and-doctor.md) | Servers panel + `yoqa doctor` diagnostics |
 | [desktop/manual-inspector.md](./desktop/manual-inspector.md) | Script-first Manual Inspector (select → shell script → run) |
+| [desktop/session-bar.md](./desktop/session-bar.md) | Top bar manages the shared Active Session on every page: connect-first Run, Run chip, WDA rebuild on Restart, app switch retargets |
 | [desktop/motion-system.md](./desktop/motion-system.md) | CSS View Transitions + shell/list motion polish |
 | [desktop/react-hook-form.md](./desktop/react-hook-form.md) | RHF + HeroUI form helpers for all data-entry forms |
 | [desktop/error-toast.md](./desktop/error-toast.md) | HeroUI danger toasts with summarized run errors |

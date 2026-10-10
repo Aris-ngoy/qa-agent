@@ -1,5 +1,7 @@
 # Runs panel: Rebuild / Skip (WebDriverAgent)
 
+> **Superseded:** the Skip/Rebuild select is gone. Rebuilding WebDriverAgent is now "Restart & rebuild WebDriverAgent" on the top bar's Restart, for an iOS session on the Appium lane. See [Session bar](../desktop/session-bar.md).
+
 ## Goal
 
 Replace mock build dropdown IDs (which failed with `Build not found`) with a WebDriverAgent policy: **Skip** (reuse) or **Rebuild** (force).
