@@ -9,10 +9,12 @@ import Foundation
 public final class Session {
     private let device: Device
     private let journal: Journal
+    private let recorder: FrameRecorder
 
     public init(device: Device, journal: Journal = Journal()) {
         self.device = device
         self.journal = journal
+        self.recorder = FrameRecorder(device: device)
     }
 
     public func handle(_ request: HTTPRequest?) -> HTTPResponse {
@@ -34,6 +36,13 @@ public final class Session {
             }
         case "screenshot":
             return run { ["png": try self.device.screenshot().base64EncodedString()] }
+        case "recordStart":
+            return recordStart(body)
+        case "recordFetch":
+            return recordFetch(body)
+        case "recordStop":
+            recorder.stop()
+            return .json(200, ["ok": true, "data": [String: Any]()])
         case "snapshot":
             return run { ["nodes": try self.device.snapshot(bundleId: body["bundleId"] as? String).map(Self.json)] }
         case "tap", "longPress", "drag", "type", "keyboardReturn", "keyboardDelete", "button":
@@ -41,6 +50,25 @@ public final class Session {
         default:
             return Self.failure(400, "UNKNOWN_COMMAND", "unknown command \"\(command)\"")
         }
+    }
+
+    /// `fps`, `scale` and `quality` are optional: 8 frames a second at 0.5 size and 0.6 quality.
+    private func recordStart(_ body: [String: Any]) -> HTTPResponse {
+        func number(_ key: String, _ fallback: Double, _ range: ClosedRange<Double>) -> Double {
+            min(range.upperBound, max(range.lowerBound, (body[key] as? NSNumber)?.doubleValue ?? fallback))
+        }
+        recorder.start(fps: number("fps", 8, 1...30), scale: number("scale", 0.5, 0.1...1), quality: number("quality", 0.6, 0.1...1))
+        return .json(200, ["ok": true, "data": [String: Any]()])
+    }
+
+    private func recordFetch(_ body: [String: Any]) -> HTTPResponse {
+        let batch = recorder.fetch(after: (body["after"] as? NSNumber)?.intValue)
+        var data: [String: Any] = [
+            "running": batch.running,
+            "frames": batch.frames.map { ["seq": $0.seq, "ms": $0.ms, "jpeg": $0.jpeg.base64EncodedString()] },
+        ]
+        if let error = batch.error { data["error"] = error }
+        return .json(200, ["ok": true, "data": data])
     }
 
     private func status(_ body: [String: Any]) -> HTTPResponse {

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createConnection } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
 import type { SessionOptions } from "./lane";
 import { cleanPageSource } from "./screen";
@@ -258,10 +260,27 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		await session.quit();
 	});
 
-	test("records video by stitching screenshots, so a Run on a phone can carry one", async () => {
-		const phone = fakePhone({ replies: { screenshot: { ok: true, data: { png: "AAAA" } } } });
+	test("records video from frames the phone captures, pulled in batches", async () => {
+		const phone = fakePhone({
+			replies: {
+				recordFetch: {
+					ok: true,
+					data: { running: true, frames: [{ seq: 0, ms: 0, jpeg: "AAAA" }] },
+				},
+			},
+		});
 		const session = await createIosDeviceSession(options(), phone.deps);
-		expect(session.startRecording).toBeFunction();
+		const recording = await session
+			.startRecording?.(join(tmpdir(), `yoqa-lane-${Date.now()}.mp4`))
+			.catch((error: Error) => error);
+		// ffmpeg may be missing on a CI host; either way the runner was asked to capture.
+		expect(phone.commands).toContain("recordStart");
+		if (recording && "stop" in recording) {
+			await Bun.sleep(100);
+			await recording.stop().catch(() => undefined);
+			expect(phone.commands).toContain("recordFetch");
+			expect(phone.commands).toContain("recordStop");
+		}
 		await session.quit();
 	});
 

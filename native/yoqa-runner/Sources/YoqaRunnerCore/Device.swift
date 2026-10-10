@@ -77,6 +77,8 @@ public protocol Device {
     func drag(from: Fraction, to: Fraction, pressSeconds: Double, seconds: Double) throws
     /// The whole screen as PNG.
     func screenshot() throws -> Data
+    /// The whole screen as JPEG, `scale` times its size (0–1) at `quality` (0–1), for video.
+    func frame(scale: Double, quality: Double) throws -> Data
     /// The accessibility tree of `bundleId`, or of SpringBoard when nil. Throws `AppBackgrounded`
     /// when that app is not in the foreground; it never activates it.
     func snapshot(bundleId: String?) throws -> [SnapshotNode]

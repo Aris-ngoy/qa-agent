@@ -3,7 +3,12 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type FrameRecorderDeps, recordFrames } from "./frame-recorder";
+import {
+	type FrameRecorderDeps,
+	type FrameSource,
+	recordFrames,
+	screenshotSource,
+} from "./frame-recorder";
 
 const PNG = Buffer.from("png-bytes").toString("base64");
 
@@ -30,7 +35,11 @@ async function fixture(encode?: FrameRecorderDeps["encode"]) {
 describe("recordFrames", () => {
 	test("encodes the grabbed frames with their real durations, then cleans up", async () => {
 		const { out, lists, frameFiles, deps } = await fixture();
-		const recording = await recordFrames(async () => PNG, out, deps);
+		const recording = await recordFrames(
+			screenshotSource(async () => PNG),
+			out,
+			deps,
+		);
 		await Bun.sleep(700);
 		await recording.stop();
 		expect(existsSync(out)).toBe(true);
@@ -44,11 +53,11 @@ describe("recordFrames", () => {
 		const { out, lists, deps } = await fixture();
 		let calls = 0;
 		const recording = await recordFrames(
-			async () => {
+			screenshotSource(async () => {
 				calls += 1;
 				if (calls === 1) throw new Error("busy");
 				return PNG;
-			},
+			}),
 			out,
 			deps,
 		);
@@ -60,16 +69,20 @@ describe("recordFrames", () => {
 	test("no ffmpeg is an error the Run recorder words as an install hint", async () => {
 		const { out, deps } = await fixture();
 		await expect(
-			recordFrames(async () => PNG, out, { ...deps, findFfmpeg: () => null }),
+			recordFrames(
+				screenshotSource(async () => PNG),
+				out,
+				{ ...deps, findFfmpeg: () => null },
+			),
 		).rejects.toThrow(/ffmpeg.*not found/i);
 	});
 
 	test("a phone that never answers leaves nothing to encode", async () => {
 		const { out, deps } = await fixture();
 		const recording = await recordFrames(
-			async () => {
+			screenshotSource(async () => {
 				throw new Error("down");
-			},
+			}),
 			out,
 			deps,
 		);
@@ -80,8 +93,38 @@ describe("recordFrames", () => {
 		const { out, deps } = await fixture(async () => {
 			throw new Error("ffmpeg: boom");
 		});
-		const recording = await recordFrames(async () => PNG, out, deps);
+		const recording = await recordFrames(
+			screenshotSource(async () => PNG),
+			out,
+			deps,
+		);
 		await Bun.sleep(300);
 		await expect(recording.stop()).rejects.toThrow("boom");
+	});
+
+	test("frames the source timed itself keep that timing, and the source is started and stopped", async () => {
+		const { out, lists, deps } = await fixture();
+		const events: string[] = [];
+		let batch = 0;
+		const source: FrameSource = {
+			intervalMs: 20,
+			start: async () => void events.push("start"),
+			stop: async () => void events.push("stop"),
+			pull: async () => {
+				batch += 1;
+				return batch === 1
+					? [
+							{ bytes: new Uint8Array([1]), at: 0, ext: "jpg" },
+							{ bytes: new Uint8Array([2]), at: 1500, ext: "jpg" },
+						]
+					: [];
+			},
+		};
+		const recording = await recordFrames(source, out, deps);
+		await Bun.sleep(60);
+		await recording.stop();
+		expect(events).toEqual(["start", "stop"]);
+		expect(lists[0]).toContain("duration 1.500");
+		expect(lists[0]).toContain(".jpg'");
 	});
 });
