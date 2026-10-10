@@ -62,8 +62,8 @@ export function SessionToolbar({
 	const canRestart = connected || device != null;
 
 	return (
-		<div className="flex flex-col gap-2 border-b border-outline-variant/40 px-4 py-3">
-			<div className="flex flex-wrap items-center gap-2">
+		<div className="flex flex-col items-end gap-1">
+			<div className="flex flex-wrap items-center justify-end gap-2">
 				<Select
 					aria-label="Platform"
 					className="w-28"

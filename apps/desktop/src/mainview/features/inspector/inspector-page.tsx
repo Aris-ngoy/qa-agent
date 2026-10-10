@@ -7,13 +7,13 @@ import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
 } from "@/features/devices/use-active-device-session";
-import { CommandBar } from "@/features/inspector/command-bar";
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
 import { isDeviceSessionGone } from "@/features/inspector/inspect-session";
-import { type RunLogEntry, RunPanel } from "@/features/inspector/run-panel";
 import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
+import { ScreenGestures } from "@/features/inspector/screen-gestures";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
-import { ScriptEditor } from "@/features/inspector/script-editor";
+import { type RunLogEntry, ScriptPanel } from "@/features/inspector/script-panel";
+import { SelectedElementCard } from "@/features/inspector/selected-element-card";
 import {
 	type InspectorSelection,
 	appendScriptLines,
@@ -1084,40 +1084,39 @@ export function InspectorPage() {
 
 	return (
 		<div className={["flex flex-col", entered ? "motion-enter-done" : "motion-enter"].join(" ")}>
-			<header className="flex items-end justify-between gap-4 px-4 pt-2 pb-1">
+			<header className="flex flex-wrap items-end justify-between gap-4 px-4 pt-2 pb-3">
 				<div>
 					<h1 className="text-title-lg font-semibold text-on-surface">Inspector</h1>
 					<p className="text-body-sm text-on-surface-variant">
-						Select an element for actions, or build a{" "}
-						<code className="font-mono text-helper">yoqa</code> script by hand.
+						Pick an element on the device to add steps, or edit the{" "}
+						<code className="font-mono text-helper">yoqa</code> script directly.
 					</p>
 				</div>
+				<SessionToolbar
+					platform={platform}
+					onPlatformChange={(next) => {
+						setPlatform(next);
+						setDevice(null);
+					}}
+					device={device}
+					onDeviceSelect={setDevice}
+					active={active}
+					connecting={connecting}
+					live={live}
+					onConnect={() => {
+						void handleConnect();
+					}}
+					onRestart={() => {
+						void handleRestartSession();
+					}}
+					onDisconnect={() => {
+						void handleDisconnect();
+					}}
+					viewOnly={viewOnly}
+				/>
 			</header>
 
-			<SessionToolbar
-				platform={platform}
-				onPlatformChange={(next) => {
-					setPlatform(next);
-					setDevice(null);
-				}}
-				device={device}
-				onDeviceSelect={setDevice}
-				active={active}
-				connecting={connecting}
-				live={live}
-				onConnect={() => {
-					void handleConnect();
-				}}
-				onRestart={() => {
-					void handleRestartSession();
-				}}
-				onDisconnect={() => {
-					void handleDisconnect();
-				}}
-				viewOnly={viewOnly}
-			/>
-
-			<div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(280px,2fr)_minmax(0,3fr)]">
+			<div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(260px,1fr)_minmax(260px,1fr)] xl:grid-cols-[minmax(260px,1fr)_minmax(260px,320px)_minmax(0,1.3fr)]">
 				<ScreenshotPanel
 					imageUrl={imageUrl}
 					elements={elements}
@@ -1129,34 +1128,41 @@ export function InspectorPage() {
 					liveControl={liveControl}
 					onLiveControlChange={handleLiveControlChange}
 					disabled={!connected || running || viewOnly}
-					snippetContext={snippetContext}
 					onSelect={setSelection}
 					onSelectWithPoint={handleSelectWithPoint}
-					onChangeSelector={handleChangeSelector}
 					onRefreshTree={handleRefreshTree}
 					onDoubleTap={handleDoubleTap}
 					onPointer={sendPointer}
-					onInsertLines={handleInsertLines}
-					onInsertAndRunLines={handleInsertAndRunLines}
-					onCopyLines={(lines) => {
-						void handleCopyLines(lines);
-					}}
 					onClearSelection={() => setSelection(null)}
 				/>
 
-				<div className="flex flex-col gap-3">
-					<CommandBar
+				<div className="flex flex-col gap-4">
+					<SelectedElementCard
+						selection={selection}
+						disabled={!connected || running || viewOnly}
+						snippetContext={snippetContext}
+						canChangeSelector={Boolean(selection?.element)}
+						onChangeSelector={handleChangeSelector}
+						onInsert={handleInsertLines}
+						onInsertAndRun={handleInsertAndRunLines}
+						onCopyLines={(lines) => {
+							void handleCopyLines(lines);
+						}}
+						onClearSelection={() => setSelection(null)}
+					/>
+					<ScreenGestures
 						disabled={running || viewOnly}
 						onAddSwipe={handleAddSwipe}
 						onAddWait={handleAddWait}
 					/>
-					<ScriptEditor
-						value={script}
-						onChange={setScript}
-						disabled={running}
+				</div>
+
+				<div className="lg:col-span-2 xl:col-span-1">
+					<ScriptPanel
+						script={script}
+						onScriptChange={setScript}
+						editingDisabled={running}
 						activeLineNumber={activeLineNumber}
-					/>
-					<RunPanel
 						running={running}
 						canRun={connected && !running && !viewOnly && scriptHasBody(script)}
 						canSaveAsCase={canSaveAsCase}
