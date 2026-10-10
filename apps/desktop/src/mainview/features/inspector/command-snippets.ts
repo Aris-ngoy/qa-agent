@@ -581,3 +581,117 @@ export function buildCommandLines(
 			return screenshotLines(promptValue ?? SCREENSHOT_PATH_PLACEHOLDER);
 	}
 }
+
+export type StepCommand = "tap" | "doubleTap" | "longPress" | "inputText" | "assertVisible";
+export type SelectorKind = "label" | "id" | "both" | "point";
+
+export type SelectorOption = {
+	kind: SelectorKind;
+	title: string;
+	/** Flags the generated line will carry for this selector, e.g. `--label 'Email' --x 1 --y 2`. */
+	flags: string;
+	/** Elements in the cached tree sharing this selector; null for a raw point. */
+	matches: number | null;
+};
+
+const SELECTOR_TITLES: Record<SelectorKind, string> = {
+	label: "Label",
+	id: "ID",
+	both: "Label + ID",
+	point: "Point",
+};
+
+function locatorForSelector(kind: SelectorKind): PreferredLocator | "both" | null {
+	return kind === "point" ? null : kind;
+}
+
+function flagsOfLine(line: string): string {
+	return line.replace(/^yoqa action \S+ ?/, "");
+}
+
+function matchCount(
+	kind: SelectorKind,
+	elements: ReadonlyArray<{ id?: string; label?: string; type?: string }>,
+	id: string | null,
+	label: string | null,
+): number | null {
+	if (kind === "point") return null;
+	return elements.filter((el) => {
+		const idOk = id != null && usableId(el) === id;
+		const labelOk = label != null && usableLabel(el) === label;
+		if (kind === "id") return idOk;
+		if (kind === "label") return labelOk;
+		return idOk && labelOk;
+	}).length;
+}
+
+/** Selectors the dialog offers for a selection — only those the element can actually supply. */
+export function selectorOptions(
+	selection: InspectorSelection,
+	elements: ReadonlyArray<{ id?: string; label?: string; type?: string }>,
+): SelectorOption[] {
+	const id = usableId(selection.element);
+	const label = usableLabel(selection.element);
+	const kinds: SelectorKind[] = [];
+	if (label) kinds.push("label");
+	if (id) kinds.push("id");
+	if (id && label) kinds.push("both");
+	kinds.push("point");
+	return kinds.map((kind) => {
+		const locator = locatorForSelector(kind);
+		const action =
+			locator == null
+				? tapPointActionForSelection(selection)
+				: tapActionForSelection(selection, {}, locator);
+		return {
+			kind,
+			title: SELECTOR_TITLES[kind],
+			flags: flagsOfLine(formatActionShellLine(action)),
+			matches: matchCount(kind, elements, id, label),
+		};
+	});
+}
+
+/** Same default the old menu used: the preferred locator, falling back to the point. */
+export function defaultSelectorKind(selection: InspectorSelection): SelectorKind {
+	const id = usableId(selection.element);
+	const label = usableLabel(selection.element);
+	if (preferredLocatorOf(selection) === "id" && id) return "id";
+	if (label) return "label";
+	if (id) return "id";
+	return "point";
+}
+
+/** Script lines for a command + selector chosen in the element dialog (empty when incomplete). */
+export function buildStepLines(
+	selection: InspectorSelection,
+	step: { command: StepCommand; selector: SelectorKind; text?: string },
+): string[] {
+	const locator = locatorForSelector(step.selector);
+	const tapLike = (extras: Partial<Pick<ActionRequest, "double" | "durationMs">>) =>
+		locator == null
+			? tapPointLinesForSelection(selection, extras)
+			: tapLinesForSelection(selection, extras, locator);
+	switch (step.command) {
+		case "tap":
+			return tapLike({});
+		case "doubleTap":
+			return tapLike({ double: true });
+		case "longPress":
+			return tapLike({ durationMs: LONG_PRESS_MS });
+		case "assertVisible":
+			return assertLinesForSelection(selection, "visible", step.text) ?? [];
+		case "inputText": {
+			const text = (step.text ?? "").trim();
+			if (!text) return [];
+			const action: ActionRequest = {
+				kind: "input",
+				text,
+				...(locator == null
+					? { x: selection.x, y: selection.y }
+					: targetFields(selection, locator)),
+			};
+			return withComment(selection, formatActionShellLine(action));
+		}
+	}
+}
