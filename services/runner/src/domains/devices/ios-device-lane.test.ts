@@ -269,18 +269,24 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 				},
 			},
 		});
-		const session = await createIosDeviceSession(options(), phone.deps);
-		const recording = await session
-			.startRecording?.(join(tmpdir(), `yoqa-lane-${Date.now()}.mp4`))
-			.catch((error: Error) => error);
-		// ffmpeg may be missing on a CI host; either way the runner was asked to capture.
-		expect(phone.commands).toContain("recordStart");
-		if (recording && "stop" in recording) {
-			await Bun.sleep(100);
-			await recording.stop().catch(() => undefined);
-			expect(phone.commands).toContain("recordFetch");
-			expect(phone.commands).toContain("recordStop");
-		}
+		const encoded: string[] = [];
+		const session = await createIosDeviceSession(options(), {
+			...phone.deps,
+			recorder: {
+				findFfmpeg: () => "/bin/ffmpeg",
+				encode: async (_ffmpeg, list) => {
+					encoded.push(await Bun.file(list).text());
+				},
+			},
+		});
+		const recording = await session.startRecording?.(join(tmpdir(), `yoqa-lane-${Date.now()}.mp4`));
+		await Bun.sleep(100);
+		await recording?.stop();
+		expect(phone.commands).toEqual(
+			expect.arrayContaining(["recordStart", "recordFetch", "recordStop"]),
+		);
+		expect(phone.bodies.find((body) => body.command === "recordStart")).toMatchObject({ fps: 8 });
+		expect(encoded[0]).toContain(".jpg'");
 		await session.quit();
 	});
 
