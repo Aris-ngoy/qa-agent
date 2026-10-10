@@ -8,8 +8,10 @@ import {
 	useActiveDeviceSession,
 } from "@/features/devices/use-active-device-session";
 import { RunControls } from "@/features/test-cases/run-controls";
+import { useTestCaseSelection } from "@/features/test-cases/selection-context";
 import { toast } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 function deviceFromSession(session: {
@@ -35,6 +37,10 @@ export function SessionBar() {
 	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
 	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
+	const pathname = useRouterState({ select: (state) => state.location.pathname });
+	const { selectedCaseIds } = useTestCaseSelection();
+	const onInspector = pathname.startsWith("/inspector");
+	const showRun = pathname.startsWith("/test-cases") && selectedCaseIds.length > 0;
 	const [platform, setPlatform] = useState<DevicePlatform>("ios");
 	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [connecting, setConnecting] = useState(false);
@@ -141,8 +147,9 @@ export function SessionBar() {
 					void handleDisconnect();
 				}}
 				viewOnly={Boolean(activeSession?.heldByRun)}
+				canManageSession={onInspector}
 			/>
-			<RunControls />
+			{showRun ? <RunControls /> : null}
 		</header>
 	);
 }
