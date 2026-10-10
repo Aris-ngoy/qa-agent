@@ -26,8 +26,6 @@ export function selectLane(input: {
 	available: readonly LaneName[];
 	appCaps: Array<{ key: string }>;
 	caseCaps: Array<{ key: string }>;
-	/** False when `auto` must not pick Direct for this device class (see `directIsAutomatic`). */
-	directIsAutomatic?: boolean;
 }): LaneChoice {
 	const available = new Set(input.available);
 	if (hasCustomCapabilities(input.appCaps, input.caseCaps)) {
@@ -39,9 +37,6 @@ export function selectLane(input: {
 		};
 	}
 	if (input.requested === "appium") {
-		return { lane: "appium", fallback: false };
-	}
-	if (input.requested === "auto" && input.directIsAutomatic === false) {
 		return { lane: "appium", fallback: false };
 	}
 	if (input.requested === "direct" || input.requested === "auto") {
@@ -74,15 +69,6 @@ export function availableLanes(factories: Partial<Record<LaneName, unknown>>): L
  * physical iPhone (`ios-device`) has one, `device-ios`.
  */
 export type DeviceClass = "android" | "ios-simulator" | "ios-device";
-
-/**
- * Whether `auto` picks Direct for a device class. Physical iOS stays on Appium until the
- * `device-ios` Lane beats it in the benchmark (ADR-0004, #251), so it reaches Direct only
- * through an explicit `direct` request.
- */
-export function directIsAutomatic(deviceClass: DeviceClass): boolean {
-	return deviceClass !== "ios-device";
-}
 
 /** One way the Direct lane can drive a device class. Only `name` and `promoted` matter here. */
 export type DirectImplementationInfo = {

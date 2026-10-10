@@ -37,7 +37,7 @@ The harness (`yoqa benchmark`, home screen) now completes on Direct: tap-to-resu
 
 - `PhoneDevice.swift`: `snapshot` reads one `XCUIElement.snapshot()` and walks its children in document order.
 - `yoqa-runner-link.ts`: a `snapshot` gets 30 s instead of 10 s (`SNAPSHOT_TIMEOUT_MS`). Test in `yoqa-runner-link.test.ts`.
-- **`auto` is not promoted yet.** `directIsAutomatic("ios-device")` is still false. The gain clears the gate, but promoting makes every phone `auto` Run build, sign and start `YoqaRunner`, so it is a separate decision. The glossary and the ADR-0004 note say so.
+- **`auto` is not promoted yet.** (Superseded: promoted in [ios-device-default.md](./ios-device-default.md).)
 
 ## How to verify
 
