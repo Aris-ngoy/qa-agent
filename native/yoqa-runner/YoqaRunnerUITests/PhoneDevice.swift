@@ -40,6 +40,26 @@ final class PhoneDevice: Device {
         try onMain { XCUIScreen.main.screenshot().pngRepresentation }
     }
 
+    func frame(scale: Double, quality: Double) throws -> Data {
+        try onMain {
+            let image = XCUIScreen.main.screenshot().image
+            // `size` is in points; scale from the pixels the phone really drew.
+            let size = CGSize(
+                width: image.size.width * image.scale * scale, height: image.size.height * image.scale * scale)
+            // Even pixel sizes: H.264 on the Mac cannot encode odd ones.
+            let even = CGSize(width: (size.width / 2).rounded() * 2, height: (size.height / 2).rounded() * 2)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let small = UIGraphicsImageRenderer(size: even, format: format).image { _ in
+                image.draw(in: CGRect(origin: .zero, size: even))
+            }
+            guard let jpeg = small.jpegData(compressionQuality: quality) else {
+                throw DeviceError("the screenshot could not be encoded as JPEG")
+            }
+            return jpeg
+        }
+    }
+
     /// The tree of `bundleId`, or of SpringBoard. A snapshot never activates an app: one that
     /// is not in the foreground is `AppBackgrounded`, and the foreground is left alone.
     func snapshot(bundleId: String?) throws -> [SnapshotNode] {

@@ -15,6 +15,9 @@
  *
  * Run recording is screenshots stitched into an mp4 by `ffmpeg` (`frame-recorder.ts`).
  *
+ * A Run recording is captured on the phone (`recordStart`, then `recordFetch` batches of
+ * JPEGs) and encoded by `ffmpeg` on the Mac (`frame-recorder.ts`); screenshots are the fallback.
+ *
  * Alerts, URLs and terminating an app arrive in later slices; until then they reject with
  * a clear message.
  */
@@ -23,7 +26,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
-import { recordFrames } from "./frame-recorder";
+import { type FrameSource, recordFrames, screenshotSource } from "./frame-recorder";
 import { yoqaAxTreeToSource } from "./ios-direct-lane";
 import {
 	type CapturedFrame,
@@ -53,6 +56,11 @@ const DRAG_PRESS_MS = 500;
 /** Typed text is cut at a newline (return) and at a backspace character (delete). */
 const BACKSPACE = String.fromCharCode(8);
 const KEY_SEPARATORS = new RegExp(`(\\r?\\n|${BACKSPACE})`);
+
+/** How often the Mac pulls the recording's frames off the phone. */
+const RECORDING_PULL_MS = 400;
+/** What the phone captures for a video: half-size JPEGs, about 8 a second. */
+const RECORDING_CAPTURE = { fps: 8, scale: 0.5, quality: 0.6 };
 
 /** A started `YoqaRunner`: its port on the phone, and how to stop it. */
 export type StartedRunner = Pick<YoqaRunner, "port" | "exited" | "stop">;
@@ -196,6 +204,54 @@ export async function createIosDeviceSession(
 		return { base64: shot.png, mime: "image/png" };
 	};
 
+	/** The phone captures JPEGs in the background; the Mac pulls them in batches. */
+	const runnerFrames = (): FrameSource => {
+		let after: number | undefined;
+		return {
+			intervalMs: RECORDING_PULL_MS,
+			start: async () => {
+				await call("recordStart", RECORDING_CAPTURE);
+			},
+			pull: async () => {
+				const reply = (await call("recordFetch", after === undefined ? {} : { after })) as {
+					frames?: Array<{ seq?: unknown; ms?: unknown; jpeg?: unknown }>;
+				};
+				const out = [];
+				for (const frame of reply?.frames ?? []) {
+					if (typeof frame.seq !== "number" || typeof frame.ms !== "number") continue;
+					if (typeof frame.jpeg !== "string") continue;
+					after = frame.seq;
+					out.push({
+						bytes: Uint8Array.from(Buffer.from(frame.jpeg, "base64")),
+						at: frame.ms,
+						ext: "jpg" as const,
+					});
+				}
+				return out;
+			},
+			stop: async () => {
+				await call("recordStop");
+			},
+		};
+	};
+
+	const startRecording = async (path: string) => {
+		try {
+			return await recordFrames(runnerFrames(), path);
+		} catch (error) {
+			// A runner built before recording existed (or one that cannot capture) still gets a
+			// video from screenshots; no ffmpeg stays an error, which the Run recorder explains.
+			if (/ffmpeg.*not found/i.test(errorMessage(error))) throw error;
+			console.warn(
+				`[yoqa-runner] phone-side recording unavailable (${errorMessage(error)}); using screenshots`,
+			);
+			return recordFrames(
+				screenshotSource(async () => (await captureFrame()).base64),
+				path,
+			);
+		}
+	};
+
 	const screenshot = async () => {
 		await mkdir(SCREENSHOT_DIR, { recursive: true });
 		const frame = await captureFrame();
@@ -259,8 +315,7 @@ export async function createIosDeviceSession(
 		},
 		captureFrame,
 		screenshot,
-		// The runner has no video API, so the recording is screenshots stitched by ffmpeg.
-		startRecording: (path) => recordFrames(async () => (await captureFrame()).base64, path),
+		startRecording,
 		pageSource,
 		getWindowSize,
 		tap: (x, y, tapOptions) => withActionLock(() => tapNorm(x, y, tapOptions?.durationMs)),
