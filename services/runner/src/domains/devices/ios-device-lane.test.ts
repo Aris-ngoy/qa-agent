@@ -30,6 +30,7 @@ afterEach(() => {
  */
 function fakePhone(mode: { statusFails?: boolean; tunnelFails?: boolean } = {}) {
 	const commands: string[] = [];
+	const bodies: Array<Record<string, unknown>> = [];
 	const devicectl: string[][] = [];
 	const tunnels: Array<{ udid: string; port: number }> = [];
 	let stops = 0;
@@ -40,10 +41,13 @@ function fakePhone(mode: { statusFails?: boolean; tunnelFails?: boolean } = {}) 
 		fetch: async (request) => {
 			const body = (await request.json()) as { command: string };
 			commands.push(body.command);
+			bodies.push(body);
 			const reply =
-				body.command === "status" && !mode.statusFails
-					? { ok: true, data: { state: "ready" } }
-					: { ok: false, error: { code: "UNKNOWN_COMMAND", message: "no" } };
+				body.command === "status" && mode.statusFails
+					? { ok: false, error: { code: "UNKNOWN_COMMAND", message: "no" } }
+					: body.command === "viewport"
+						? { ok: true, data: { width: 393, height: 852 } }
+						: { ok: true, data: { state: "ready" } };
 			return Response.json(reply, { headers: { Connection: "close" } });
 		},
 	});
@@ -71,6 +75,7 @@ function fakePhone(mode: { statusFails?: boolean; tunnelFails?: boolean } = {}) 
 	return {
 		deps,
 		commands,
+		bodies,
 		devicectl,
 		tunnels,
 		stops: () => stops,
@@ -145,11 +150,63 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		await session.quit();
 	});
 
-	test("gestures and observation say they aren't available yet instead of hanging", async () => {
+	test("a tap goes to the runner as fractions of the screen", async () => {
 		const phone = fakePhone();
 		const session = await createIosDeviceSession(options(), phone.deps);
-		await expect(session.tap(500, 500)).rejects.toThrow(/physical-iOS Direct lane/);
-		await expect(session.captureFrame()).rejects.toThrow(/physical-iOS Direct lane/);
+		await session.tap(250, 750);
+		expect(phone.bodies.at(-1)).toMatchObject({ command: "tap", x: 0.25, y: 0.75 });
+		await session.quit();
+	});
+
+	test("a held tap is a long-press for its duration", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.tap(500, 500, { durationMs: 1200 });
+		expect(phone.bodies.at(-1)).toMatchObject({
+			command: "longPress",
+			x: 0.5,
+			y: 0.5,
+			durationMs: 1200,
+		});
+		await session.quit();
+	});
+
+	test("a swipe flicks and a drag holds first", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.swipe(100, 800, 100, 200, 300);
+		await session.drag(100, 200, 900, 200, 1000);
+		const [swipe, drag] = phone.bodies.slice(-2);
+		expect(swipe).toMatchObject({
+			command: "drag",
+			fromX: 0.1,
+			fromY: 0.8,
+			toX: 0.1,
+			toY: 0.2,
+			durationMs: 300,
+			pressMs: 50,
+		});
+		expect(drag).toMatchObject({
+			command: "drag",
+			fromX: 0.1,
+			toX: 0.9,
+			durationMs: 1000,
+			pressMs: 500,
+		});
+		await session.quit();
+	});
+
+	test("the window size is the runner's viewport in points", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(options(), phone.deps);
+		expect(await session.getWindowSize()).toEqual({ width: 393, height: 852 });
+		await session.quit();
+	});
+
+	test("the tree says it isn't available yet instead of hanging", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await expect(session.pageSource()).rejects.toThrow(/physical-iOS Direct lane/);
 		await session.quit();
 	});
 });

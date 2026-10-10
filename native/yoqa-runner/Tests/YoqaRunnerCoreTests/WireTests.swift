@@ -8,7 +8,7 @@ final class WireTests: XCTestCase {
 
     override func setUpWithError() throws {
         server = try HTTPServer(port: 0)
-        server.serve(Session().handle)
+        server.serve(Session(device: FakeDevice()).handle)
     }
 
     func testStatusAnswersReady() throws {

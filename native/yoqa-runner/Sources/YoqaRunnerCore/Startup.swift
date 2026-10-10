@@ -4,9 +4,11 @@ public struct StartupError: Error, CustomStringConvertible {
     public let description: String
 }
 
-/// Bind 127.0.0.1 on `YOQA_RUNNER_PORT` (a system port when unset), serve a `Session`, and
-/// log `YOQA_RUNNER_LISTENING port=N` once listening. The Mac reads that line for the port.
+/// Bind 127.0.0.1 on `YOQA_RUNNER_PORT` (a system port when unset), serve a `Session` on
+/// `device`, and log `YOQA_RUNNER_LISTENING port=N` once listening. The Mac reads that line
+/// for the port.
 public func startRunner(
+    device: Device,
     environment: [String: String] = ProcessInfo.processInfo.environment,
     log: (String) -> Void
 ) throws -> HTTPServer {
@@ -18,7 +20,7 @@ public func startRunner(
         port = parsed
     }
     let server = try HTTPServer(port: port)
-    server.serve(Session().handle)
+    server.serve(Session(device: device).handle)
     log("YOQA_RUNNER_LISTENING port=\(server.port)")
     return server
 }
