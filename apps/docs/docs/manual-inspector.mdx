@@ -49,18 +49,18 @@ Real iOS sessions can occasionally drop under WDA load (for example, during long
 - **Restart session** — the toolbar button above the mirror disconnects, reconnects, and remounts the live stream. Use it when Inspector shows the Restart prompt, or any time the mirror looks stuck.
 - **Connect** — pick the device again in the device selector to start a fresh session.
 
-## Command bar
+## Screen gestures
 
-The command bar sits above the script and adds steps that don't need an element selection. It has two controls:
+The **Screen gestures** card (below the Selected element card) adds steps that don't need an element selection. It has two controls:
 
 - **Swipe up / down / left / right** — appends a directional swipe on the current screen. Saving the inspector script as a catalog case now keeps swipe steps (screenshot `x,y` → `x2,y2`).
-- **Wait** — enter seconds and click **Add wait** to pause the script (useful between an app launch and an assertion).
+- **Wait** — set seconds with the − / + stepper and click **Add wait** to pause the script (useful between an app launch and an assertion).
 
-Everything else — tap, assert, input, and app control — lives on the **Selector Commands** menu that opens when you select an element on the screenshot.
+Everything else — tap, assert, input, and app control — lives on the **Selected element** card, which fills in when you select an element on the screenshot (use **Selector commands** there for the full list).
 
 ## Selector Commands
 
-Select an element on the live screenshot to open its action menu. Alongside the usual `tap`, `assertVisible`, and `inputText` actions, the menu exposes app control and deeplink helpers you can drop into the script:
+Select an element on the live screenshot to fill the Selected element card. Alongside the usual `tap`, `assertVisible`, and `inputText` actions, the menu exposes app control and deeplink helpers you can drop into the script:
 
 - **activateApp** — bring an app to the foreground (launches it if needed). Prefilled with the selected app's iOS bundle ID or Android package; override to target a different app (for example, `com.apple.mobilenotes` to jump into Notes).
 - **terminateApp** — kill the app with the given App ID.
