@@ -17,10 +17,11 @@ function frame(body: unknown): Buffer {
 
 /**
  * Stands in for `simctl spawn … yoqa-ax` at its wire protocol: it connects back to the
- * socket named after `--connect` and answers `ping` with length-prefixed JSON.
+ * socket named after `--connect` and answers `ping`, and `describe` with `tree`, with
+ * length-prefixed JSON.
  * `silent` never connects; `exit` dies before connecting.
  */
-function fakeYoqaAx(mode: Mode = "ok") {
+function fakeYoqaAx(mode: Mode = "ok", tree?: unknown) {
 	const launched: string[][] = [];
 	let kills = 0;
 	let closedByRunner = false;
@@ -50,7 +51,9 @@ function fakeYoqaAx(mode: Mode = "ok") {
 						frame(
 							request.method === "ping"
 								? { id: request.id, result: "ok" }
-								: { id: request.id, error: `unknown method ${request.method}` },
+								: request.method === "describe" && tree !== undefined
+									? { id: request.id, result: tree }
+									: { id: request.id, error: `unknown method ${request.method}` },
 						),
 					);
 				}
@@ -93,6 +96,33 @@ describe("startYoqaAx", () => {
 			expect(fake.socketPath()).toMatch(/^\/tmp\/yoqa-ax-b75001fb-[0-9a-f]+\.sock$/);
 			expect(await ax.ping()).toBe("ok");
 			expect(await ax.ping()).toBe("ok");
+		} finally {
+			await ax.stop();
+		}
+	});
+
+	test("describe answers the flat nodes and whether the read was degraded", async () => {
+		const general = {
+			role: "Button",
+			label: "General",
+			id: "com.apple.settings.general",
+			frame: { x: 0.04, y: 0.335, width: 0.92, height: 0.058 },
+			enabled: true,
+		};
+		const fake = fakeYoqaAx("ok", { nodes: [general], degraded: false });
+		const ax = await startYoqaAx(UDID, { bin: BIN, spawn: fake.spawn });
+		try {
+			expect(await ax.describe()).toEqual({ nodes: [general], degraded: false });
+		} finally {
+			await ax.stop();
+		}
+	});
+
+	test("describe rejects a reply that is not a tree", async () => {
+		const fake = fakeYoqaAx("ok", { nodes: "none" });
+		const ax = await startYoqaAx(UDID, { bin: BIN, spawn: fake.spawn });
+		try {
+			await expect(ax.describe()).rejects.toThrow("yoqa-ax describe returned no tree");
 		} finally {
 			await ax.stop();
 		}

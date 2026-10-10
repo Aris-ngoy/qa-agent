@@ -12,6 +12,7 @@ import {
 	appiumLane,
 	frameAfterTaps,
 	iosIdbLane,
+	iosYoqaAxLane,
 	iosYoqaSimLane,
 } from "./lane-harnesses";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
@@ -27,6 +28,7 @@ const LANES: Array<() => LaneHarness> = [
 	androidDevtoolsLane,
 	iosIdbLane,
 	iosYoqaSimLane,
+	iosYoqaAxLane,
 ];
 
 async function screenshotFiles(): Promise<string[]> {

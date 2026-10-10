@@ -22,7 +22,8 @@ do {
 
 do {
     let fd = try UnixSocket.connect(arguments.socketPath)
-    try UnixSocket.serve(fd)
+    let reader = AXRuntimeReader()
+    try UnixSocket.serve(fd, handler: Handler(describe: reader.read))
     exit(0)
 } catch {
     fail("\(error)")

@@ -1,6 +1,6 @@
 /**
  * `yoqa-ax` (source in `native/yoqa-ax`): our helper that runs inside one booted iOS
- * simulator and will read its accessibility tree. The runner binds a Unix socket, then
+ * simulator and reads its accessibility tree. The runner binds a Unix socket, then
  * spawns it with `xcrun simctl spawn <udid> yoqa-ax --connect <socket>`; it connects back
  * and answers requests over length-prefixed JSON, one in flight.
  *
@@ -12,9 +12,24 @@ import { existsSync, rmSync } from "node:fs";
 import { type Server, type Socket, createServer } from "node:net";
 import { join } from "node:path";
 
+/** One accessibility element as `yoqa-ax` reports it. The frame is 0.0–1.0 of the screen. */
+export type YoqaAxNode = {
+	role: string;
+	label?: string;
+	value?: string;
+	/** The accessibility identifier. */
+	id?: string;
+	frame: { x: number; y: number; width: number; height: number };
+	enabled: boolean;
+};
+
+/** One `describe`: the foreground apps' and SpringBoard's elements. An empty read is degraded. */
+export type YoqaAxTree = { nodes: YoqaAxNode[]; degraded: boolean };
+
 /** A connected `yoqa-ax`. Requests go one at a time. */
 export type YoqaAx = {
 	ping: () => Promise<"ok">;
+	describe: () => Promise<YoqaAxTree>;
 	/** Close the socket and end the helper. Safe to call twice. */
 	stop: () => Promise<void>;
 };
@@ -142,6 +157,15 @@ function createClient(socket: Socket, requestTimeoutMs: number) {
 	};
 }
 
+function parseTree(value: unknown): YoqaAxTree {
+	const body = (typeof value === "object" && value !== null ? value : {}) as {
+		nodes?: unknown;
+		degraded?: unknown;
+	};
+	if (!Array.isArray(body.nodes)) throw new Error("yoqa-ax describe returned no tree");
+	return { nodes: body.nodes as YoqaAxNode[], degraded: body.degraded === true };
+}
+
 /** Bind the socket, spawn `yoqa-ax` inside the simulator, and wait for it to connect back. */
 export async function startYoqaAx(udid: string, options: StartYoqaAxOptions): Promise<YoqaAx> {
 	const path = socketPath(udid);
@@ -208,6 +232,7 @@ export async function startYoqaAx(udid: string, options: StartYoqaAxOptions): Pr
 			if (result !== "ok") throw new Error(`yoqa-ax ping answered ${JSON.stringify(result)}`);
 			return "ok";
 		},
+		describe: async () => parseTree(await connection.request("describe")),
 		stop,
 	};
 	try {

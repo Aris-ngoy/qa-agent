@@ -77,6 +77,6 @@ iPhone 17 Pro simulator (iOS 26.5), Xcode 27, Apple silicon, release build:
 
 ## Follow-ups
 
-- #243: `describe` from `yoqa-ax`, cached by `yoqa-sim`'s frame hash. #244: `alert`.
-- A guest that disconnects mid-session is not reported yet. Its next request fails, and #243 decides how a tree read falls back.
+- #243: `describe` from `yoqa-ax`, cached by `yoqa-sim`'s frame hash ([yoqa-ax-describe.md](./yoqa-ax-describe.md)). #244: `alert`.
+- A guest that disconnects mid-session: its next `describe` fails, and the tree moves to idb_companion for the rest of the session (#243).
 - Ship the binary with the runner (build it in release CI, for both simulator architectures).

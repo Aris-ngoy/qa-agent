@@ -60,6 +60,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/android-direct-lane.md](./devices/android-direct-lane.md) | Android Direct lane over adb |
 | [devices/device-lanes-foundation.md](./devices/device-lanes-foundation.md) | Lane contract suite, capability-pinned adoption, Direct implementations, wired iPhones |
 | [devices/android-latest-frame.md](./devices/android-latest-frame.md) | `device-android`: capture-frame from a background `screencap` loop (opt-in) |
+| [devices/yoqa-ax-describe.md](./devices/yoqa-ax-describe.md) | `yoqa-ax` reads the accessibility tree inside the simulator; the Screen comes from it, cached by frame hash (opt-in) |
 | [devices/yoqa-ax-connect.md](./devices/yoqa-ax-connect.md) | `yoqa-ax` runs inside the simulator and connects back to the runner over a Unix socket; `ping` (opt-in) |
 | [devices/yoqa-sim-framebuffer-hid.md](./devices/yoqa-sim-framebuffer-hid.md) | `yoqa-sim` reads the framebuffer and sends Indigo HID touches: tap, swipe, Home (opt-in) |
 | [devices/yoqa-sim-spawn.md](./devices/yoqa-sim-spawn.md) | `device-sim`: the resident `yoqa-sim` process, spawned per simulator, serving screenshots (opt-in) |

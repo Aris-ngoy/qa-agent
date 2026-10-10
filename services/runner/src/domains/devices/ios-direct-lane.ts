@@ -19,7 +19,7 @@ import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { cleanPageSource } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
-import type { StartYoqaAx, YoqaAx } from "./yoqa-ax";
+import type { StartYoqaAx, YoqaAx, YoqaAxTree } from "./yoqa-ax";
 import { type SpawnYoqaSim, type YoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
 const IOS_ACCEPT_LABELS = ["Allow While Using App", "Allow Once", "Allow", "OK"] as const;
@@ -58,9 +58,10 @@ export type IosDirectDeps = {
 	yoqaSim?: SpawnYoqaSim;
 	/**
 	 * Start the in-simulator accessibility helper (`yoqa-ax`) on the first screen or action,
-	 * in the background, and stop it on quit. Nothing waits for it. When it doesn't connect,
-	 * the session is degraded: it keeps working, the tree stays on idb_companion, and its
-	 * Lane warning says so.
+	 * in the background, and stop it on quit. No action waits for it; a tree read does, and
+	 * then reads the tree from it, cached by `yoqa-sim`'s frame hash. When it doesn't
+	 * connect, the session is degraded: it keeps working, the tree stays on idb_companion,
+	 * and its Lane warning says so.
 	 */
 	yoqaAx?: StartYoqaAx;
 };
@@ -336,8 +337,45 @@ export async function createIosDirectSession(
 		return { path, base64: frame.base64 };
 	};
 
+	/** The last tree `yoqa-ax` read, and the hash of the frame it was read on. */
+	let cachedTree: { hash: string; source: string } | null = null;
+
+	/**
+	 * The tree from `yoqa-ax`, or null when there is none. An unchanged frame hash returns
+	 * the cached tree. A failed read stops it, so the tree comes from idb_companion for the
+	 * rest of the session.
+	 */
+	const treeViaYoqaAx = async (): Promise<string | null> => {
+		const pending = yoqaAx;
+		const ax = await pending;
+		if (!ax) return null;
+		// The hash is read first, so a screen that changes during the read is read again.
+		const hash = (await viaYoqaSim((running) => running.frame(), true))?.value.hash;
+		if (hash && cachedTree?.hash === hash) return cachedTree.source;
+		try {
+			const tree = await ax.describe();
+			const source = yoqaAxTreeToSource(tree, await getWindowSize());
+			cachedTree = hash && !tree.degraded ? { hash, source } : null;
+			return source;
+		} catch (error) {
+			// Quit stopped it under the read: that is the session ending, not a fallback.
+			if (quitting) throw error;
+			reportLaneFallback(
+				session,
+				options,
+				`yoqa-ax failed; reading the tree with idb_companion for the rest of the session (${errorMessage(error)})`,
+			);
+			cachedTree = null;
+			if (yoqaAx === pending) yoqaAx = Promise.resolve(null);
+			await ax.stop().catch(() => undefined);
+			return null;
+		}
+	};
+
 	const pageSource = async () => {
 		void startHelpers();
+		const fromYoqaAx = await treeViaYoqaAx();
+		if (fromYoqaAx !== null) return fromYoqaAx;
 		const result = await run(
 			["ui", "describe-all", "--udid", udid, "--json", "--api", "axbridge", "--format", "complete"],
 			"idb describe-all",
@@ -526,6 +564,33 @@ export async function createIosDirectSession(
 	};
 	if (deps.yoqaSim) session.stream = liveStream(await ensureYoqaSim());
 	return session;
+}
+
+/**
+ * `yoqa-ax`'s tree as idb's `describe-all` JSON, with frames converted from 0.0–1.0 to the
+ * window's points, so the Screen, alerts and locators read it as they read idb's. An empty
+ * read stays empty and says it is degraded.
+ */
+export function yoqaAxTreeToSource(
+	tree: YoqaAxTree,
+	window: { width: number; height: number },
+): string {
+	const elements = tree.nodes.map((node) => ({
+		type: node.role,
+		label: node.label ?? "",
+		// The Screen names an element by `label`, then `title`, so an element with only a
+		// value (a status bar item) is named by its value.
+		title: node.value ?? "",
+		identifier: node.id ?? "",
+		frame: {
+			x: node.frame.x * window.width,
+			y: node.frame.y * window.height,
+			width: node.frame.width * window.width,
+			height: node.frame.height * window.height,
+		},
+		enabled: node.enabled,
+	}));
+	return JSON.stringify(tree.degraded ? { elements, degraded: true } : { elements });
 }
 
 /** `yoqa-sim`'s MJPEG preview as the session's live stream; null when it printed none. */
