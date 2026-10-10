@@ -1,5 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { retargetsAfterRun } from "./session-app";
+import { appTargetFor, retargetsAfterRun } from "./session-app";
+
+describe("appTargetFor", () => {
+	const app = { iosBundleId: " com.example.app ", androidApplicationId: "com.example.android" };
+
+	test("names the app by the id its platform uses: the bundle id on iOS, the package on Android", () => {
+		expect(appTargetFor("ios", app)).toEqual({ bundleId: "com.example.app" });
+		expect(appTargetFor("android", app)).toEqual({ appPackage: "com.example.android" });
+	});
+
+	test("names no app when the platform's id is blank or there is no app", () => {
+		expect(appTargetFor("ios", { ...app, iosBundleId: "  " })).toEqual({});
+		expect(appTargetFor("android", { ...app, androidApplicationId: "" })).toEqual({});
+		expect(appTargetFor("ios", null)).toEqual({});
+	});
+});
 
 const FREE = { deviceId: "dev-1", connectedAt: 10, heldByRun: false };
 const HELD = { ...FREE, heldByRun: true, heldByRunId: "run_a" };

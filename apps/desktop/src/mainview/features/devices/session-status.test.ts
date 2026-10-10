@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Device, RunTestStatus } from "@yoqa/runner-client";
-import { runChip, runTarget, sessionPillLabel, wdaRebuildTarget } from "./session-status";
+import { hasRunTarget, runChip, sessionPillLabel, wdaRebuildTarget } from "./session-status";
 
 const SESSION = { deviceId: "dev-1", platform: "ios" as const, connectedAt: 1 };
 
@@ -89,7 +89,7 @@ describe("runChip", () => {
 	});
 });
 
-describe("runTarget", () => {
+describe("hasRunTarget", () => {
 	const device = {
 		id: "dev-2",
 		label: "Pixel",
@@ -100,14 +100,15 @@ describe("runTarget", () => {
 	};
 
 	test("runs on the Active Session when there is one", () => {
-		expect(runTarget(SESSION, device)).toBe("session");
+		expect(hasRunTarget(SESSION, device)).toBe(true);
+		expect(hasRunTarget(SESSION, null)).toBe(true);
 	});
 
-	test("connects the picked device first when there is no Active Session", () => {
-		expect(runTarget(null, device)).toBe("connect-first");
+	test("runs on the picked device, connected first, when there is no Active Session", () => {
+		expect(hasRunTarget(null, device)).toBe(true);
 	});
 
 	test("has nothing to run on without a session or a picked device", () => {
-		expect(runTarget(null, null)).toBeNull();
+		expect(hasRunTarget(null, null)).toBe(false);
 	});
 });

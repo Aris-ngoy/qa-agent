@@ -7,6 +7,7 @@ import {
 	fetchPlatformDevices,
 	platformDevicesQueryKey,
 } from "@/features/devices/select-device-modal";
+import { appTargetFor } from "@/features/devices/session-app";
 import {
 	deviceForSession,
 	pickRememberedDevice,
@@ -104,12 +105,7 @@ export function SessionBar() {
 				const info = await client.connectDevice({
 					deviceId: target.id,
 					platform: target.platform,
-					bundleId:
-						target.platform === "ios" ? selectedApp?.iosBundleId.trim() || undefined : undefined,
-					appPackage:
-						target.platform === "android"
-							? selectedApp?.androidApplicationId.trim() || undefined
-							: undefined,
+					...appTargetFor(target.platform, selectedApp),
 					...(lane ? { lane } : {}),
 				});
 				writeRememberedDevice({ platform: target.platform, deviceId: target.id });

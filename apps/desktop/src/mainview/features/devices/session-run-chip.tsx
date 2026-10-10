@@ -41,7 +41,7 @@ export function SessionRunChip() {
 		},
 	});
 
-	const chip = runChip(activeSession, holderId ? (runQuery.data ?? null) : null);
+	const chip = runChip(activeSession, runQuery.data ?? null);
 	if (!chip) return null;
 
 	return (
