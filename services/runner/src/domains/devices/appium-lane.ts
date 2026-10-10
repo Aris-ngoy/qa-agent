@@ -1,11 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:net";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Capability, DevicePlatform } from "@yoqa/runner-client";
 import { type Browser, remote } from "webdriverio";
 import { APPIUM_HOST, ensureAppiumServer } from "../appium/server";
 import { loadDevicePrep } from "../ios/application";
+import { SIMULATOR_WDA_DERIVED_DATA } from "../ios/simulator-wda";
 import { resolveNativeAlert } from "./android-alerts";
 import {
 	type PointerSize,
@@ -30,7 +30,6 @@ import { isDeadSessionError } from "./lane";
 import { remember } from "./once";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
-const YOQA_ROOT = join(homedir(), ".yoqa");
 const DEFAULT_MJPEG_PORT = Number(process.env.YOQA_MJPEG_PORT ?? "9100");
 
 const MJPEG_SETTINGS_BASE = {
@@ -173,7 +172,6 @@ export function looksLikePhysicalIosUdid(udid: string): boolean {
 /** First simulator connect compiles WebDriverAgent; physical devices reuse a preinstalled WDA. */
 export const PHYSICAL_IOS_SESSION_TIMEOUT_MS = 60_000;
 export const SIMULATOR_WDA_SESSION_TIMEOUT_MS = 600_000;
-const SIMULATOR_WDA_DERIVED_DATA = join(YOQA_ROOT, "wda-sim");
 
 export function iosSessionCreateTimeoutMs(deviceId: string): number {
 	return looksLikePhysicalIosUdid(deviceId)

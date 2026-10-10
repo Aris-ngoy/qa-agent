@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { DevicePlatform, SetupPlatformRequest } from "@yoqa/runner-client";
 import { installWdaOnDevice } from "../ios/application";
+import { forceSimulatorWdaRebuild } from "../ios/simulator-wda";
 import { ensureHostToolPath } from "./host-path";
 import {
 	type AppiumDriverName,
@@ -379,6 +380,8 @@ export async function setupPlatform(
 
 	const shouldInstallWda = platform === "ios" && params.kind === "physical";
 	if (!shouldInstallWda) {
+		// A simulator's WDA is built by Appium at session start; a forced setup drops that build.
+		const forgotWda = await forceSimulatorWdaRebuild(params);
 		return {
 			ok: true,
 			platform,
@@ -386,7 +389,9 @@ export async function setupPlatform(
 			appiumVersion: appium.version,
 			driverVersion,
 			alreadyInstalled,
-			message: driverMessage,
+			message: forgotWda
+				? `${driverMessage}. WebDriverAgent will be rebuilt for the simulator on the next Appium session.`
+				: driverMessage,
 		};
 	}
 
