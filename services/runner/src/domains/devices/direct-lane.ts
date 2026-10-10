@@ -93,7 +93,8 @@ export const DIRECT_IMPLEMENTATIONS: Record<DeviceClass, DirectImplementation[]>
 	"ios-simulator": [
 		{
 			// idb_companion, with frames and input from our resident `yoqa-sim` (#239, #240), and
-			// `yoqa-ax` connected inside the simulator (#242). Without `yoqa-ax` it runs degraded.
+			// the tree from `yoqa-ax` inside the simulator (#242, #243). Without `yoqa-ax` it runs
+			// degraded, with the tree on idb_companion.
 			name: "device-sim",
 			open: async (options) => {
 				const bin = resolveYoqaSimBin();
