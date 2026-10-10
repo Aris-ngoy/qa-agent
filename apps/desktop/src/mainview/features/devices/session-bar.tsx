@@ -14,7 +14,7 @@ import {
 	writeRememberedDevice,
 } from "@/features/devices/session-device";
 import { SessionRunChip } from "@/features/devices/session-run-chip";
-import { offersWdaRebuild } from "@/features/devices/session-status";
+import { wdaRebuildTarget } from "@/features/devices/session-status";
 import { SessionToolbar } from "@/features/devices/session-toolbar";
 import {
 	activeDeviceSessionQueryKey,
@@ -69,7 +69,7 @@ export function SessionBar() {
 	}, [devices, remembered]);
 
 	// A session started anywhere (desktop, CLI, a Run) drives the bar: its platform, and
-	// its device by the name the device list gives it. It is remembered for next launch.
+	// its device by the name the device list gives it (kept picked after a disconnect).
 	const sessionDeviceId = activeSession?.deviceId;
 	const sessionPlatform = activeSession?.platform;
 	useEffect(() => {
@@ -77,20 +77,27 @@ export function SessionBar() {
 		rememberedPendingRef.current = false;
 		setPlatform(sessionPlatform);
 		writeRememberedDevice({ platform: sessionPlatform, deviceId: sessionDeviceId });
-		setDevice(
-			deviceForSession(
-				{ deviceId: sessionDeviceId, platform: sessionPlatform },
-				sessionPlatform === platform ? devices : undefined,
-			),
+		const listed = deviceForSession(
+			{ deviceId: sessionDeviceId, platform: sessionPlatform },
+			sessionPlatform === platform ? devices : undefined,
 		);
+		if (listed) setDevice(listed);
 	}, [sessionDeviceId, sessionPlatform, platform, devices]);
+
+	const sessionDevices = activeSession?.platform === platform ? devices : undefined;
+	/** The session's device from the list; null while unlisted (the bar then shows its id). */
+	const sessionDevice = activeSession ? deviceForSession(activeSession, sessionDevices) : null;
+	const rebuildTarget = wdaRebuildTarget(activeSession, sessionDevices);
 
 	/**
 	 * Connect `target` for the selected app; the one connect path for Connect, Restart and
 	 * Run. The bar shows "Connecting…" meanwhile. Errors are the caller's to show.
 	 */
 	const connectDevice = useCallback(
-		async (target: SelectedDevice, lane?: LaneName): Promise<ActiveDeviceResponse> => {
+		async (
+			target: Pick<SelectedDevice, "id" | "platform">,
+			lane?: LaneName,
+		): Promise<ActiveDeviceResponse> => {
 			setConnecting(true);
 			try {
 				const client = await getRunnerClient();
@@ -131,9 +138,19 @@ export function SessionBar() {
 	};
 
 	const handleRestart = async ({ rebuildWda }: { rebuildWda: boolean }) => {
-		const target = device;
+		const target = activeSession
+			? { id: activeSession.deviceId, platform: activeSession.platform }
+			: device;
 		if (!target) {
 			showErrorToast(new Error("Select a device first"), "Nothing to restart");
+			return;
+		}
+		// The rebuild needs the device's real kind, so it is only offered for a listed device.
+		if (rebuildWda && !rebuildTarget) {
+			showErrorToast(
+				new Error("The device list does not have this device, so its kind is unknown"),
+				"Cannot rebuild WebDriverAgent",
+			);
 			return;
 		}
 		setConnecting(true);
@@ -145,9 +162,9 @@ export function SessionBar() {
 				/* already dead / no session */
 			}
 			queryClient.setQueryData(activeDeviceSessionQueryKey, null);
-			if (rebuildWda) {
+			if (rebuildWda && rebuildTarget) {
 				// The rebuild is for the Appium lane's WebDriverAgent, so reconnect on that lane.
-				await rebuildWebDriverAgent(target);
+				await rebuildWebDriverAgent(rebuildTarget);
 				await connectDevice(target, "appium");
 				toast.success("Session restarted with a rebuilt WebDriverAgent");
 			} else {
@@ -187,7 +204,7 @@ export function SessionBar() {
 					setPlatform(next);
 					setDevice(null);
 				}}
-				device={device}
+				device={activeSession ? sessionDevice : device}
 				onDeviceSelect={(selected) => {
 					rememberedPendingRef.current = false;
 					setDevice(selected);
@@ -205,7 +222,7 @@ export function SessionBar() {
 					void handleDisconnect();
 				}}
 				viewOnly={Boolean(activeSession?.heldByRun)}
-				offerWdaRebuild={offersWdaRebuild(activeSession)}
+				offerWdaRebuild={rebuildTarget != null}
 			/>
 			{showRun ? (
 				<RunControls connectDevice={connectDevice} connecting={connecting} device={device} />
