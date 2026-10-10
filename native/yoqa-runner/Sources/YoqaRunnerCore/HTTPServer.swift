@@ -39,7 +39,7 @@ public struct HTTPResponse {
         return HTTPResponse(status: status, body: body)
     }
 
-    private static let reasons = [200: "OK", 400: "Bad Request", 404: "Not Found", 405: "Method Not Allowed"]
+    private static let reasons = [200: "OK", 400: "Bad Request", 404: "Not Found", 405: "Method Not Allowed", 409: "Conflict", 500: "Internal Server Error"]
 
     func serialized() -> Data {
         var data = Data((

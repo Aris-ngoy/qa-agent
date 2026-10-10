@@ -5,7 +5,7 @@ import YoqaRunnerCore
 final class StartupTests: XCTestCase {
     func testWithoutAPortItTakesASystemPortAndLogsIt() throws {
         var lines: [String] = []
-        let server = try startRunner(environment: [:]) { lines.append($0) }
+        let server = try startRunner(device: FakeDevice(), environment: [:]) { lines.append($0) }
         defer { server.stop() }
         XCTAssertGreaterThan(server.port, 0)
         XCTAssertEqual(lines, ["YOQA_RUNNER_LISTENING port=\(server.port)"])
@@ -16,21 +16,21 @@ final class StartupTests: XCTestCase {
         let port = probe.port
         probe.stop()
         var lines: [String] = []
-        let server = try startRunner(environment: ["YOQA_RUNNER_PORT": "\(port)"]) { lines.append($0) }
+        let server = try startRunner(device: FakeDevice(), environment: ["YOQA_RUNNER_PORT": "\(port)"]) { lines.append($0) }
         defer { server.stop() }
         XCTAssertEqual(server.port, port)
         XCTAssertEqual(lines, ["YOQA_RUNNER_LISTENING port=\(port)"])
     }
 
     func testAPortThatIsNotANumberIsRefused() {
-        XCTAssertThrowsError(try startRunner(environment: ["YOQA_RUNNER_PORT": "eighty"]) { _ in }) {
+        XCTAssertThrowsError(try startRunner(device: FakeDevice(), environment: ["YOQA_RUNNER_PORT": "eighty"]) { _ in }) {
             XCTAssertTrue("\($0)".contains("YOQA_RUNNER_PORT"))
         }
     }
 
     func testTheLoggedPortAnswersStatus() throws {
         var lines: [String] = []
-        let server = try startRunner(environment: [:]) { lines.append($0) }
+        let server = try startRunner(device: FakeDevice(), environment: [:]) { lines.append($0) }
         defer { server.stop() }
         let port = try XCTUnwrap(lines.first?.split(separator: "=").last)
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/")!)

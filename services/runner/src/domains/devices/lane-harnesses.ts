@@ -2,11 +2,13 @@
  * Lane harnesses for the Lane contract suite (`lane-contract.test.ts`). Each one opens
  * a real Lane with its device tool faked, and reads back what reached the device.
  */
+import { createConnection } from "node:net";
 import type { Browser } from "webdriverio";
 import { encodeRgbaPng } from "../runs/coord-grid";
 import type { AdbExec, AdbResult, AndroidDirectDeps } from "./android-direct-lane";
 import { createAndroidDirectSession } from "./android-direct-lane";
 import { createAppiumSession } from "./appium-lane";
+import { createIosDeviceSession } from "./ios-device-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
 import type { DeviceSession } from "./lane";
@@ -31,6 +33,8 @@ export type LaneHarness = {
 	frame: (taps: number) => string;
 	/** The device tool dies: every later call fails the way that tool reports it. */
 	killTool: () => void;
+	/** Contract tests this Lane can't pass yet, by test, with the ticket that brings them. */
+	pending?: { tree?: string };
 };
 
 /**
@@ -307,5 +311,63 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 		killTool: () => {
 			dead = true;
 		},
+	};
+}
+
+/**
+ * `device-ios`: `YoqaRunner` on a cabled phone, faked as an HTTP server that answers its
+ * wire protocol. It takes 0.0–1.0 fractions, so taps are recorded in the device points they
+ * land on, and its screenshot is in pixels, 3× the points.
+ */
+export function iosDeviceLane(): LaneHarness {
+	const taps: Array<{ x: number; y: number }> = [];
+	const ok = (data: unknown) =>
+		Response.json({ ok: true, data }, { headers: { Connection: "close" } });
+	const runner = Bun.serve({
+		hostname: "127.0.0.1",
+		port: 0,
+		fetch: async (request) => {
+			const body = (await request.json()) as { command: string; x?: number; y?: number };
+			switch (body.command) {
+				case "viewport":
+					return ok({ ...DEVICE });
+				case "screenshot":
+					return ok({ png: frameAfterTaps(taps.length, IOS_SCREENSHOT_SCALE) });
+				case "tap":
+					taps.push({ x: (body.x ?? -1) * DEVICE.width, y: (body.y ?? -1) * DEVICE.height });
+					return ok({});
+				default:
+					return ok({ state: "ready" });
+			}
+		},
+	});
+	runner.unref();
+	return {
+		name: "Physical iOS Direct: device-ios (faked YoqaRunner)",
+		open: ({ onSessionDead }) =>
+			createIosDeviceSession(
+				{
+					platform: "ios",
+					deviceId: "00008120-000E6D813E2A601E",
+					appCaps: [],
+					caseCaps: [],
+					onSessionDead,
+				},
+				{
+					startRunner: async () => ({
+						port: 49_733,
+						exited: new Promise<number>(() => undefined),
+						stop: async () => undefined,
+					}),
+					connect: async () => createConnection(runner.port ?? 0, "127.0.0.1"),
+					devicectl: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+				},
+			),
+		taps: () => taps,
+		frame: (count) => frameAfterTaps(count, IOS_SCREENSHOT_SCALE),
+		killTool: () => {
+			runner.stop(true);
+		},
+		pending: { tree: "#250" },
 	};
 }

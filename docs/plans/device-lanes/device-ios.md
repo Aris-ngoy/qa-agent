@@ -63,6 +63,8 @@ Response is `{ "ok": true, "data" }` or `{ "ok": false, "error": { "code", "mess
 
 Lifecycle stays `xcrun devicectl`.
 
+As built (#249): `viewport`, `screenshot`, `tap`, `longPress`, `drag` and the journal. See [ios-device-actions.md](../../devices/ios-device-actions.md).
+
 ## Done
 
 Connect, snapshot, tap, and screenshot work on a phone with Developer Mode on, and a retried tap does not fire twice.

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createConnection } from "node:net";
+import { type Socket, createConnection } from "node:net";
+import { Duplex } from "node:stream";
 import {
 	YoqaRunnerCommandError,
 	YoqaRunnerUnreachableError,
@@ -109,5 +110,110 @@ describe("createYoqaRunnerLink", () => {
 		};
 		const link = createYoqaRunnerLink(silent, { timeoutMs: 50 });
 		await expect(link.send("status")).rejects.toThrow(/did not answer status within 50 ms/);
+	});
+});
+
+/**
+ * A tunnel that carries the request to the runner and loses the reply: the connection
+ * closes as soon as the runner starts answering, as a flaky cable does.
+ */
+function losingReply(socket: Socket): Duplex {
+	const tunnel = new Duplex({
+		read() {},
+		write(chunk, _encoding, callback) {
+			socket.write(chunk, callback);
+		},
+	});
+	socket.once("data", () => {
+		socket.destroy();
+		tunnel.destroy();
+	});
+	return tunnel;
+}
+
+/**
+ * A runner that journals gestures by `commandId`, as `Journal.swift` does, and answers
+ * `status` about them. `pendingStatuses` status reads see the gesture still running.
+ */
+function journalingRunner(options: { gestureReply?: Reply; pendingStatuses?: number } = {}) {
+	const journal = new Map<string, unknown>();
+	let pending = options.pendingStatuses ?? 0;
+	const gestureReply = options.gestureReply ?? ok({});
+	const runner = fakeRunner((body) => {
+		if (body.command === "status") {
+			const id = body.statusCommandId as string | undefined;
+			if (!id) return ok({ state: "ready" });
+			if (!journal.has(id)) return ok({ state: "ready", command: { state: "unknown" } });
+			if (pending > 0) {
+				pending -= 1;
+				return ok({ state: "ready", command: { state: "pending" } });
+			}
+			return ok({ state: "ready", command: { state: "done", reply: journal.get(id) } });
+		}
+		journal.set(body.commandId as string, JSON.parse(gestureReply.body));
+		return gestureReply;
+	});
+	let calls = 0;
+	/** The first tunnel loses its reply; later ones are healthy. */
+	const flaky = async () => {
+		const socket = await runner.tunnel();
+		calls += 1;
+		return calls === 1 ? losingReply(socket) : socket;
+	};
+	const commands = () => runner.received.map(({ body }) => body.command);
+	return { runner, flaky, commands };
+}
+
+describe("createYoqaRunnerLink: journaled commands", () => {
+	test("a gesture whose reply is lost is resolved by status and never sent again", async () => {
+		const { runner, flaky, commands } = journalingRunner();
+		const link = createYoqaRunnerLink(flaky, { timeoutMs: 2000 });
+		expect(await link.send("tap", { x: 0.5, y: 0.5 }, { journaled: true })).toEqual({});
+		expect(commands()).toEqual(["tap", "status"]);
+		expect(runner.received[1]?.body.statusCommandId).toBe(runner.received[0]?.body.commandId);
+	});
+
+	test("a lost reply waits while status says the gesture is still running", async () => {
+		const { flaky, commands } = journalingRunner({ pendingStatuses: 2 });
+		const link = createYoqaRunnerLink(flaky, { timeoutMs: 2000 });
+		await link.send("tap", { x: 0.5, y: 0.5 }, { journaled: true });
+		expect(commands()).toEqual(["tap", "status", "status", "status"]);
+	});
+
+	test("a lost reply carrying a runner error rethrows it with its code", async () => {
+		const { flaky } = journalingRunner({
+			gestureReply: {
+				status: 500,
+				body: JSON.stringify({ ok: false, error: { code: "DEVICE_ERROR", message: "no window" } }),
+			},
+		});
+		const link = createYoqaRunnerLink(flaky, { timeoutMs: 2000 });
+		const failure = link.send("tap", { x: 0.5, y: 0.5 }, { journaled: true });
+		await expect(failure).rejects.toBeInstanceOf(YoqaRunnerCommandError);
+		await expect(failure).rejects.toMatchObject({ code: "DEVICE_ERROR" });
+	});
+
+	test("a gesture that never reached the runner is reported, not resent", async () => {
+		const { runner, commands } = journalingRunner();
+		let calls = 0;
+		const swallowFirst = async () => {
+			const socket = await runner.tunnel();
+			calls += 1;
+			if (calls === 1) socket.write = (() => true) as typeof socket.write;
+			return socket;
+		};
+		const link = createYoqaRunnerLink(swallowFirst, { timeoutMs: 100 });
+		const failure = link.send("tap", { x: 0.5, y: 0.5 }, { journaled: true });
+		await expect(failure).rejects.toBeInstanceOf(YoqaRunnerCommandError);
+		await expect(failure).rejects.toMatchObject({ code: "COMMAND_LOST" });
+		await expect(failure).rejects.toThrow(/never reached YoqaRunner/);
+		expect(commands()).toEqual(["status"]);
+	});
+
+	test("a read whose reply is lost is unreachable without a status lookup", async () => {
+		const { flaky, commands } = journalingRunner();
+		const link = createYoqaRunnerLink(flaky, { timeoutMs: 2000 });
+		await expect(link.send("screenshot")).rejects.toBeInstanceOf(YoqaRunnerUnreachableError);
+		expect(commands()).toEqual(["screenshot"]);
 	});
 });
