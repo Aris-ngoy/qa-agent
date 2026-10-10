@@ -50,23 +50,31 @@ final class PhoneDevice: Device {
             }
             let screen = self.springboard.frame
             guard screen.width > 0, screen.height > 0 else { throw DeviceError("the screen has no size") }
-            let query = app.descendants(matching: .any)
-            return (0..<query.count).compactMap { index -> SnapshotNode? in
-                let element = query.element(boundBy: index)
-                let frame = element.frame
-                guard frame.width > 0, frame.height > 0 else { return nil }
-                return SnapshotNode(
-                    role: Self.roleName(element.elementType),
-                    label: element.label.isEmpty ? nil : element.label,
-                    value: (element.value as? String).flatMap { $0.isEmpty ? nil : $0 },
-                    id: element.identifier.isEmpty ? nil : element.identifier,
-                    frame: (
-                        Double(frame.minX / screen.width), Double(frame.minY / screen.height),
-                        Double(frame.width / screen.width), Double(frame.height / screen.height)
-                    ),
-                    enabled: element.isEnabled
-                )
+            // One accessibility read of the whole tree. Resolving `query.element(boundBy:)` per
+            // element re-queries the app each time, which never finished on a home screen.
+            let root = try app.snapshot()
+            var nodes: [SnapshotNode] = []
+            func visit(_ snapshot: XCUIElementSnapshot) {
+                for child in snapshot.children {
+                    let frame = child.frame
+                    if frame.width > 0, frame.height > 0 {
+                        nodes.append(SnapshotNode(
+                            role: Self.roleName(child.elementType),
+                            label: child.label.isEmpty ? nil : child.label,
+                            value: (child.value as? String).flatMap { $0.isEmpty ? nil : $0 },
+                            id: child.identifier.isEmpty ? nil : child.identifier,
+                            frame: (
+                                Double(frame.minX / screen.width), Double(frame.minY / screen.height),
+                                Double(frame.width / screen.width), Double(frame.height / screen.height)
+                            ),
+                            enabled: child.isEnabled
+                        ))
+                    }
+                    visit(child)
+                }
             }
+            visit(root)
+            return nodes
         }
     }
 
