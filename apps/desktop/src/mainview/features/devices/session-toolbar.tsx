@@ -43,6 +43,8 @@ type SessionToolbarProps = {
 	onDisconnect: () => void;
 	/** A Run owns the shared session — watch-only until it finishes. */
 	viewOnly: boolean;
+	/** Connect / Restart / Disconnect are only offered where a session is worked on (Inspector). */
+	canManageSession: boolean;
 };
 
 export function SessionToolbar({
@@ -57,6 +59,7 @@ export function SessionToolbar({
 	onRestart,
 	onDisconnect,
 	viewOnly,
+	canManageSession,
 }: SessionToolbarProps) {
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [serversOpen, setServersOpen] = useState(false);
@@ -119,54 +122,58 @@ export function SessionToolbar({
 							</span>
 							{live ? "Live" : "Connected"}
 						</span>
-						<button
-							type="button"
-							aria-label="Restart session"
-							title="Restart session"
-							className="inline-flex size-10 items-center justify-center rounded-[10px] text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
-							disabled={connecting || viewOnly}
-							onClick={() => {
-								onRestart();
-							}}
-						>
-							<svg
-								aria-hidden="true"
-								className={["size-[18px]", connecting ? "animate-spin" : ""].join(" ")}
-								fill="none"
-								stroke="currentColor"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								strokeWidth="2"
-								viewBox="0 0 24 24"
-							>
-								<path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-								<path d="M3 3v5h5" />
-							</svg>
-						</button>
-						<button
-							type="button"
-							className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] px-3 text-body-md font-semibold text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
-							disabled={connecting || viewOnly}
-							onClick={() => {
-								onDisconnect();
-							}}
-						>
-							<svg
-								aria-hidden="true"
-								className="size-4"
-								fill="none"
-								stroke="currentColor"
-								strokeLinecap="round"
-								strokeWidth="2"
-								viewBox="0 0 24 24"
-							>
-								<path d="M12 3v9" />
-								<path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
-							</svg>
-							Disconnect
-						</button>
+						{canManageSession ? (
+							<>
+								<button
+									type="button"
+									aria-label="Restart session"
+									title="Restart session"
+									className="inline-flex size-10 items-center justify-center rounded-[10px] text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
+									disabled={connecting || viewOnly}
+									onClick={() => {
+										onRestart();
+									}}
+								>
+									<svg
+										aria-hidden="true"
+										className={["size-[18px]", connecting ? "animate-spin" : ""].join(" ")}
+										fill="none"
+										stroke="currentColor"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth="2"
+										viewBox="0 0 24 24"
+									>
+										<path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+										<path d="M3 3v5h5" />
+									</svg>
+								</button>
+								<button
+									type="button"
+									className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] px-3 text-body-md font-semibold text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
+									disabled={connecting || viewOnly}
+									onClick={() => {
+										onDisconnect();
+									}}
+								>
+									<svg
+										aria-hidden="true"
+										className="size-4"
+										fill="none"
+										stroke="currentColor"
+										strokeLinecap="round"
+										strokeWidth="2"
+										viewBox="0 0 24 24"
+									>
+										<path d="M12 3v9" />
+										<path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
+									</svg>
+									Disconnect
+								</button>
+							</>
+						) : null}
 					</>
-				) : (
+				) : canManageSession ? (
 					<>
 						<Button
 							isDisabled={!device || connecting}
@@ -191,7 +198,7 @@ export function SessionToolbar({
 							</Button>
 						) : null}
 					</>
-				)}
+				) : null}
 				<ServersDoctorPanel onOpenChange={setServersOpen} open={serversOpen} />
 			</div>
 
