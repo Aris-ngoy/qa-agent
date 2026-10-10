@@ -29,8 +29,11 @@ export type RunChip = {
 	label: string;
 };
 
+/** A case that is done, whatever its outcome; the runs list counts these. */
+const FINISHED_CASE_STATUSES = new Set<RunTestStatus>(["passed", "errored", "cancelled"]);
+
 /**
- * The chip for the Run that holds the Active Session: how many of its cases have started,
+ * The chip for the Run that holds the Active Session: how many of its cases have finished,
  * out of all of them. Null while no Run holds the session.
  */
 export function runChip(
@@ -41,8 +44,8 @@ export function runChip(
 	const runId = session.heldByRunId ?? null;
 	if (!runId) return { runId: null, label: "Run in progress" };
 	if (!run) return { runId, label: "Running" };
-	const started = run.tests.filter((test) => test.status !== "queued").length;
-	return { runId, label: `Running · ${started}/${run.tests.length}` };
+	const finished = run.tests.filter((test) => FINISHED_CASE_STATUSES.has(test.status)).length;
+	return { runId, label: `Running · ${finished}/${run.tests.length}` };
 }
 
 /**
