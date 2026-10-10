@@ -311,3 +311,57 @@ describe("openDeviceSession (lane dispatcher)", () => {
 		await session.quit();
 	});
 });
+
+describe("openDeviceSession on a cabled physical iPhone", () => {
+	const PHONE = "00008120-000E6D813E2A601E";
+	const phone = (requestedLane: SessionOptions["requestedLane"]): SessionOptions => ({
+		platform: "ios",
+		deviceId: PHONE,
+		appCaps: [],
+		caseCaps: [],
+		requestedLane,
+	});
+	function directLane(fail?: string) {
+		const opened: string[] = [];
+		const factory: LaneFactory = async (opts) => {
+			opened.push(opts.deviceId);
+			if (fail) throw new Error(fail);
+			return {
+				lane: "direct",
+				stream: null,
+				quit: async () => undefined,
+			} as unknown as DeviceSession;
+		};
+		return { factory, opened };
+	}
+
+	test("auto stays on Appium without trying Direct", async () => {
+		const { factory: appium, created } = fakeLane();
+		const direct = directLane();
+		const session = await openDeviceSession(phone("auto"), { appium, direct: direct.factory });
+		expect(session.lane).toBe("appium");
+		expect(session.laneWarning).toBeUndefined();
+		expect(direct.opened).toHaveLength(0);
+		expect(created).toHaveLength(1);
+		await session.quit();
+	});
+
+	test("an explicit direct request opens the Direct lane", async () => {
+		const { factory: appium, created } = fakeLane();
+		const direct = directLane();
+		const session = await openDeviceSession(phone("direct"), { appium, direct: direct.factory });
+		expect(session.lane).toBe("direct");
+		expect(direct.opened).toEqual([PHONE]);
+		expect(created).toHaveLength(0);
+		await session.quit();
+	});
+
+	test("a direct request whose status fails falls back to Appium with a Lane warning", async () => {
+		const { factory: appium } = fakeLane();
+		const direct = directLane("YoqaRunner status did not cross the cable to port 8100");
+		const session = await openDeviceSession(phone("direct"), { appium, direct: direct.factory });
+		expect(session.lane).toBe("appium");
+		expect(session.laneWarning).toMatch(/fell back to Appium.*status did not cross the cable/);
+		await session.quit();
+	});
+});

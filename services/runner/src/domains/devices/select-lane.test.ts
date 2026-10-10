@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { DIRECT_IMPLEMENTATIONS } from "./direct-lane";
+import { DIRECT_IMPLEMENTATIONS, deviceClassFor } from "./direct-lane";
 import {
 	directImplementationOrder,
+	directIsAutomatic,
 	directOptIn,
 	hasCustomCapabilities,
 	selectLane,
@@ -154,5 +155,34 @@ describe("iOS-simulator Direct implementations", () => {
 
 	test("YOQA_DIRECT_IOS_SIMULATOR=idb rolls back to idb_companion alone", () => {
 		expect(names("idb")).toEqual(["idb"]);
+	});
+});
+
+describe("physical-iOS Direct lane", () => {
+	const PHONE = "00008120-000E6D813E2A601E";
+	const SIMULATOR = "B75001FB-B91D-4F94-80A7-3E371A641D27";
+
+	test("a physical iPhone is its own device class, driven by device-ios", () => {
+		expect(deviceClassFor("ios", PHONE)).toBe("ios-device");
+		expect(deviceClassFor("ios", SIMULATOR)).toBe("ios-simulator");
+		expect(DIRECT_IMPLEMENTATIONS["ios-device"].map((i) => i.name)).toEqual(["device-ios"]);
+	});
+
+	test("auto doesn't pick Direct on a phone until it beats Appium in the benchmark", () => {
+		expect(directIsAutomatic("ios-device")).toBe(false);
+		expect(directIsAutomatic("ios-simulator")).toBe(true);
+		expect(directIsAutomatic("android")).toBe(true);
+	});
+
+	test("with Direct not automatic, auto picks Appium and an explicit direct still gets it", () => {
+		const base = { available: ["appium", "direct"] as const, appCaps: [], caseCaps: [] };
+		expect(selectLane({ ...base, requested: "auto", directIsAutomatic: false })).toEqual({
+			lane: "appium",
+			fallback: false,
+		});
+		expect(selectLane({ ...base, requested: "direct", directIsAutomatic: false })).toEqual({
+			lane: "direct",
+			fallback: false,
+		});
 	});
 });
