@@ -3,7 +3,7 @@ import XCTest
 @testable import YoqaAxCore
 
 /// The binary at its wire protocol, built for the host: it connects back to the socket it
-/// was given, answers `ping` and `describe`, and exits when the runner closes the connection.
+/// was given, answers `ping`, `describe` and `alert`, and exits when the runner closes the connection.
 final class ProcessTests: XCTestCase {
     private var binary: URL {
         Bundle(for: ProcessTests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("yoqa-ax")
@@ -29,6 +29,17 @@ final class ProcessTests: XCTestCase {
             let result = try XCTUnwrap(reply["result"] as? [String: Any])
             XCTAssertEqual((result["nodes"] as? [Any])?.count, 0)
             XCTAssertEqual(result["degraded"] as? Bool, true)
+            close(connection)
+        }
+    }
+
+    func testAlertWithoutAnAccessibilityRuntimeAnswersNoDialog() throws {
+        try withHelper { connection, _ in
+            let reply = try self.request(connection, #"{"id":3,"method":"alert"}"#)
+            XCTAssertNil(reply["error"])
+            let result = try XCTUnwrap(reply["result"] as? [String: Any])
+            XCTAssertNil(result["title"])
+            XCTAssertEqual((result["buttons"] as? [Any])?.count, 0)
             close(connection)
         }
     }

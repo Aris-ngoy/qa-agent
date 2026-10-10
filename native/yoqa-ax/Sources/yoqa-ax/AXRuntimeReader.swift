@@ -4,7 +4,7 @@ import YoqaAxCore
 
 /// Reads the accessibility tree from inside the simulator through the private AXRuntime
 /// framework, the way VoiceOver sees it: the foreground apps' elements, then SpringBoard's
-/// (its alerts and the status bar). Off the simulator there is no AXRuntime, and every read
+/// (its dialogs and the status bar). Off the simulator there is no AXRuntime, and every read
 /// is empty.
 ///
 /// It turns app accessibility on, so running apps load their accessibility bundles. It never
@@ -24,24 +24,45 @@ final class AXRuntimeReader {
         elementClass = NSClassFromString("AXElement") as? NSObject.Type
     }
 
+    /// The foreground apps' elements, then SpringBoard's.
     func read() -> Tree {
-        guard let springBoard = elementClass?.value(forKey: "systemApplication") as? NSObject else {
-            return Tree(nodes: [])
-        }
-        let apps = (object(springBoard, "currentApplications") as? [NSObject]) ?? []
-        let elements = (apps + [springBoard])
-            .flatMap { (object($0, "explorerElements") as? [NSObject]) ?? [] }
-            .map { element in
-                RawElement(
-                    label: string(element, "label"),
-                    value: string(element, "value"),
-                    identifier: string(element, "axIdentifier"),
-                    traits: (object(element, "traits") as? NSNumber)?.uint64Value ?? 0,
-                    frame: rect(element)
-                )
-            }
-        return Tree(screen: rect(springBoard), elements: elements)
+        guard let springBoard else { return Tree(nodes: []) }
+        // While SpringBoard is frontmost (a dialog, the home screen), it is listed among the
+        // current applications too; it is read once, last.
+        let apps = ((object(springBoard, "currentApplications") as? [NSObject]) ?? [])
+            .filter { (object($0, "isSystemApplication") as? NSNumber)?.boolValue != true }
+        return Tree(screen: rect(springBoard), elements: (apps + [springBoard]).flatMap(elements))
     }
+
+    /// The SpringBoard dialog, from SpringBoard's elements alone.
+    func alert() -> Alert {
+        guard let springBoard else { return Alert(title: nil, buttons: []) }
+        return Alert(screen: rect(springBoard), elements: elements(of: springBoard))
+    }
+
+    /// SpringBoard, whose frame is the screen in points.
+    private var springBoard: NSObject? {
+        elementClass?.value(forKey: "systemApplication") as? NSObject
+    }
+
+    private func elements(of app: NSObject) -> [RawElement] {
+        ((object(app, "explorerElements") as? [NSObject]) ?? []).map { element in
+            RawElement(
+                label: string(element, "label"),
+                value: string(element, "value"),
+                identifier: string(element, "axIdentifier"),
+                traits: (object(element, "traits") as? NSNumber)?.uint64Value ?? 0,
+                frame: rect(element),
+                inDialog: ((object(element, "containerTypes") as? [NSNumber]) ?? [])
+                    .contains { $0.intValue == Self.dialogContainer }
+            )
+        }
+    }
+
+    /// The container type of a SpringBoard dialog. Every element of a permission prompt has it
+    /// among its `containerTypes`, and its title is the container's label; Settings and the
+    /// home screen have none.
+    private static let dialogContainer = 1024
 
     /// The value of a getter the object has, else nil (KVC on a missing key would throw).
     private func object(_ target: NSObject, _ key: String) -> Any? {
