@@ -2,8 +2,15 @@ import Foundation
 
 /// Answers one request: `{"id":1,"method":"ping"}` gives `{"id":1,"result":"ok"}`, and any
 /// failure gives `{"id":1,"error":"…"}`. Requests are handled one at a time.
+///
+/// `describe` gives `{"nodes":[…],"degraded":false}`, or no nodes and `degraded: true`.
 public struct Handler {
-    public init() {}
+    private let describe: () -> Tree
+
+    /// `describe` reads the accessibility tree; the binary passes the in-simulator reader.
+    public init(describe: @escaping () -> Tree) {
+        self.describe = describe
+    }
 
     public func respond(to request: Data) -> Data {
         let object = (try? JSONSerialization.jsonObject(with: request)) as? [String: Any]
@@ -13,6 +20,7 @@ public struct Handler {
         }
         switch method {
         case "ping": return reply(id: id, ["result": "ok"])
+        case "describe": return reply(id: id, ["result": describe().json])
         default: return reply(id: id, ["error": "unknown method \(method)"])
         }
     }

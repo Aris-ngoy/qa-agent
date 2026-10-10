@@ -3,13 +3,37 @@ import XCTest
 @testable import YoqaAxCore
 
 /// The binary at its wire protocol, built for the host: it connects back to the socket it
-/// was given, answers `ping`, and exits when the runner closes the connection.
+/// was given, answers `ping` and `describe`, and exits when the runner closes the connection.
 final class ProcessTests: XCTestCase {
     private var binary: URL {
         Bundle(for: ProcessTests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("yoqa-ax")
     }
 
     func testConnectsBackAnswersPingAndExitsWhenTheRunnerCloses() throws {
+        try withHelper { connection, process in
+            let reply = try self.request(connection, #"{"id":1,"method":"ping"}"#)
+            XCTAssertEqual(reply["result"] as? String, "ok")
+
+            close(connection)
+            let deadline = Date().addingTimeInterval(5)
+            while process.isRunning && Date() < deadline { usleep(20_000) }
+            XCTAssertFalse(process.isRunning, "yoqa-ax must exit when the runner closes the socket")
+        }
+    }
+
+    /// Off the simulator there is no accessibility runtime, so the read is empty, and says so.
+    func testDescribeWithoutAnAccessibilityRuntimeAnswersADegradedEmptyTree() throws {
+        try withHelper { connection, _ in
+            let reply = try self.request(connection, #"{"id":2,"method":"describe"}"#)
+            XCTAssertNil(reply["error"])
+            let result = try XCTUnwrap(reply["result"] as? [String: Any])
+            XCTAssertEqual((result["nodes"] as? [Any])?.count, 0)
+            XCTAssertEqual(result["degraded"] as? Bool, true)
+            close(connection)
+        }
+    }
+
+    private func withHelper(_ body: (Int32, Process) throws -> Void) throws {
         let path = NSTemporaryDirectory() + "yoqa-ax-test-\(UUID().uuidString.prefix(8)).sock"
         let listener = try listen(path)
         defer { close(listener); unlink(path) }
@@ -24,25 +48,22 @@ final class ProcessTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(connection, 0)
         var timeout = timeval(tv_sec: 5, tv_usec: 0)
         setsockopt(connection, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        try body(connection, process)
+    }
 
-        let request = Framing.encode(Data(#"{"id":1,"method":"ping"}"#.utf8))
+    private func request(_ connection: Int32, _ body: String) throws -> [String: Any] {
+        let request = Framing.encode(Data(body.utf8))
         _ = request.withUnsafeBytes { write(connection, $0.baseAddress, request.count) }
         var reader = FrameReader()
         var replies: [Data] = []
         var chunk = [UInt8](repeating: 0, count: 256)
         while replies.isEmpty {
             let count = read(connection, &chunk, chunk.count)
-            XCTAssertGreaterThan(count, 0, "no reply to ping")
+            XCTAssertGreaterThan(count, 0, "no reply to \(body)")
             if count <= 0 { break }
             replies = try reader.feed(Data(chunk[0..<count]))
         }
-        let reply = try JSONSerialization.jsonObject(with: try XCTUnwrap(replies.first)) as? [String: Any]
-        XCTAssertEqual(reply?["result"] as? String, "ok")
-
-        close(connection)
-        let deadline = Date().addingTimeInterval(5)
-        while process.isRunning && Date() < deadline { usleep(20_000) }
-        XCTAssertFalse(process.isRunning, "yoqa-ax must exit when the runner closes the socket")
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(replies.first)) as? [String: Any])
     }
 
     func testExitsNonZeroWhenNobodyListens() throws {

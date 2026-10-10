@@ -10,6 +10,7 @@ import { createAppiumSession } from "./appium-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
 import type { DeviceSession } from "./lane";
+import type { StartYoqaAx } from "./yoqa-ax";
 import { type SpawnYoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
 /** The device every harness fakes, in the unit its tool uses (pixels, or points for idb). */
@@ -169,10 +170,20 @@ export function iosIdbLane(): LaneHarness {
 
 /** `device-sim`: screenshots from a faked `yoqa-sim` that shows the same device as idb. */
 export function iosYoqaSimLane(): LaneHarness {
-	return iosLane("iOS simulator Direct: device-sim (faked idb_companion and yoqa-sim)", true);
+	return iosLane("iOS simulator Direct: device-sim (faked idb_companion and yoqa-sim)", {
+		yoqaSim: true,
+	});
 }
 
-function iosLane(name: string, withYoqaSim = false): LaneHarness {
+/** `device-sim` with `yoqa-ax` faked: the tree comes from it, never from idb_companion. */
+export function iosYoqaAxLane(): LaneHarness {
+	return iosLane(
+		"iOS simulator Direct: device-sim with yoqa-ax (faked idb_companion, yoqa-sim and yoqa-ax)",
+		{ yoqaSim: true, yoqaAx: true },
+	);
+}
+
+function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = {}): LaneHarness {
 	const udid = "B75001FB-B91D-4F94-80A7-3E371A641D27";
 	const taps: Array<{ x: number; y: number }> = [];
 	let dead = false;
@@ -200,6 +211,7 @@ function iosLane(name: string, withYoqaSim = false): LaneHarness {
 		}
 		if (args[0] === "screenshot") return ok("", devicePng(taps.length));
 		if (args[0] === "ui" && args[1] === "describe-all") {
+			if (fakes.yoqaAx) return { stdout: "", stderr: "describe-all not faked", exitCode: 1 };
 			return ok(
 				JSON.stringify({
 					elements: [
@@ -237,6 +249,26 @@ function iosLane(name: string, withYoqaSim = false): LaneHarness {
 		key: async () => alive(),
 		stop: async () => undefined,
 	});
+	const yoqaAx: StartYoqaAx = async () => ({
+		ping: async () => "ok",
+		describe: async () => ({
+			nodes: [
+				{
+					role: "Button",
+					label: BUTTON.label,
+					frame: {
+						x: BUTTON.x / 1000,
+						y: BUTTON.y / 1000,
+						width: BUTTON.width / 1000,
+						height: BUTTON.height / 1000,
+					},
+					enabled: true,
+				},
+			],
+			degraded: false,
+		}),
+		stop: async () => undefined,
+	});
 	return {
 		name,
 		open: ({ onSessionDead }) =>
@@ -247,7 +279,8 @@ function iosLane(name: string, withYoqaSim = false): LaneHarness {
 					screenshotFallback: async () => {
 						throw new Error("simctl is not faked");
 					},
-					...(withYoqaSim ? { yoqaSim } : {}),
+					...(fakes.yoqaSim ? { yoqaSim } : {}),
+					...(fakes.yoqaAx ? { yoqaAx } : {}),
 				},
 			),
 		taps: () => taps,

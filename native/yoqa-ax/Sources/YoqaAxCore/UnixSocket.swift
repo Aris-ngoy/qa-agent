@@ -37,7 +37,7 @@ public enum UnixSocket {
     }
 
     /// Answer requests on `fd` one at a time until the runner closes it.
-    public static func serve(_ fd: Int32, handler: Handler = Handler()) throws {
+    public static func serve(_ fd: Int32, handler: Handler) throws {
         var reader = FrameReader()
         var chunk = [UInt8](repeating: 0, count: 64 * 1024)
         while true {
