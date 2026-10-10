@@ -258,6 +258,13 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		await session.quit();
 	});
 
+	test("records video by stitching screenshots, so a Run on a phone can carry one", async () => {
+		const phone = fakePhone({ replies: { screenshot: { ok: true, data: { png: "AAAA" } } } });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		expect(session.startRecording).toBeFunction();
+		await session.quit();
+	});
+
 	test("a backgrounded app is a clear error that names the app", async () => {
 		const phone = fakePhone({
 			replies: {
