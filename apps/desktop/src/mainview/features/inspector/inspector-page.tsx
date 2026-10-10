@@ -1083,13 +1083,16 @@ export function InspectorPage() {
 	);
 
 	return (
-		<div className={["flex flex-col", entered ? "motion-enter-done" : "motion-enter"].join(" ")}>
-			<header className="flex flex-wrap items-end justify-between gap-4 px-4 pt-2 pb-3">
-				<div>
-					<h1 className="text-title-lg font-semibold text-on-surface">Inspector</h1>
-					<p className="text-body-sm text-on-surface-variant">
-						Pick an element on the device to add steps, or edit the{" "}
-						<code className="font-mono text-helper">yoqa</code> script directly.
+		<div
+			className={["flex flex-col gap-5 p-4", entered ? "motion-enter-done" : "motion-enter"].join(
+				" ",
+			)}
+		>
+			<header className="flex flex-wrap items-center justify-between gap-4">
+				<div className="flex flex-col gap-0.5">
+					<h1 className="m-0 text-headline-lg text-on-surface">Inspector</h1>
+					<p className="m-0 text-body-md text-on-surface-variant">
+						Pick an element on the device to add steps, or edit the script directly.
 					</p>
 				</div>
 				<SessionToolbar
@@ -1116,27 +1119,29 @@ export function InspectorPage() {
 				/>
 			</header>
 
-			<div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(260px,1fr)_minmax(260px,1fr)] xl:grid-cols-[minmax(260px,1fr)_minmax(260px,320px)_minmax(0,1.3fr)]">
-				<ScreenshotPanel
-					imageUrl={imageUrl}
-					elements={elements}
-					selection={selection}
-					loading={bootLoading && !imageUrl}
-					treeRefreshing={treeRefreshing}
-					live={live}
-					feedMode={feedMode}
-					liveControl={liveControl}
-					onLiveControlChange={handleLiveControlChange}
-					disabled={!connected || running || viewOnly}
-					onSelect={setSelection}
-					onSelectWithPoint={handleSelectWithPoint}
-					onRefreshTree={handleRefreshTree}
-					onDoubleTap={handleDoubleTap}
-					onPointer={sendPointer}
-					onClearSelection={() => setSelection(null)}
-				/>
+			<div className="flex flex-wrap items-start gap-5">
+				<div className="min-w-75 flex-[0_1_360px]">
+					<ScreenshotPanel
+						imageUrl={imageUrl}
+						elements={elements}
+						selection={selection}
+						loading={bootLoading && !imageUrl}
+						treeRefreshing={treeRefreshing}
+						live={live}
+						feedMode={feedMode}
+						liveControl={liveControl}
+						onLiveControlChange={handleLiveControlChange}
+						disabled={!connected || running || viewOnly}
+						onSelect={setSelection}
+						onSelectWithPoint={handleSelectWithPoint}
+						onRefreshTree={handleRefreshTree}
+						onDoubleTap={handleDoubleTap}
+						onPointer={sendPointer}
+						onClearSelection={() => setSelection(null)}
+					/>
+				</div>
 
-				<div className="flex flex-col gap-4">
+				<div className="flex min-w-65 flex-[1_1_280px] flex-col gap-5">
 					<SelectedElementCard
 						selection={selection}
 						disabled={!connected || running || viewOnly}
@@ -1157,7 +1162,7 @@ export function InspectorPage() {
 					/>
 				</div>
 
-				<div className="lg:col-span-2 xl:col-span-1">
+				<div className="min-w-0 flex-[2_1_440px]">
 					<ScriptPanel
 						script={script}
 						onScriptChange={setScript}

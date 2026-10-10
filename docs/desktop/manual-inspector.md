@@ -46,7 +46,8 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 - **Device** column: segmented **Inspect / Interact** toggle (maps to the existing Live control state), refresh-tree button, hint line.
 - **Middle** column: **Selected element** card (Type, Label, Tap point, Visible, then Add step) replaces the floating action menu; **Screen gestures** replaces the command bar.
 - **Script** column: **Steps / Code** tabs. Steps is a read-only view parsed from the script (`script-steps.ts`, built on `parseYoqaShellScript`); Code is the editable textarea. While a run is in flight the active line drives Running / Passed / Queued badges and a progress bar (derived client-side from the active line and run log; no runner changes). Export menu: Shell script, HTML report, Markdown report. The run log stays under the steps.
-- Layout collapses to 2 columns on `lg` and 1 below.
+- Layout is a wrapping flex row (device ~360px, middle ~280px, script grows), so columns drop below each other as the window narrows.
+- **Visual pass against the design mock:** white 18px-radius cards with `outline-variant` borders, icon buttons and a violet accent (`--color-violet*` tokens in `@yoqa/ui`), colored step-verb chips, dark Code view, Export menu. The first redesign pass used `text-title-*` classes that do not exist in the theme (they silently rendered unstyled); typography now uses `headline-lg` / `subheading` / `body-*`.
 
 ## How to verify
 

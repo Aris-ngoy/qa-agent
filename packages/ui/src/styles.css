@@ -91,6 +91,10 @@
 	--color-card-mint: #a8d5c4;
 	--color-card-rose: #e8b4c4;
 	--color-blob: #b8a4e0;
+	--color-violet: #6d4fd8;
+	--color-on-violet: #ffffff;
+	--color-violet-container: #ece7fc;
+	--color-on-violet-container: #4a31b5;
 
 	/* Typography */
 	--font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;

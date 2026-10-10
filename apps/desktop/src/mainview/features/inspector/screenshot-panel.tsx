@@ -319,12 +319,17 @@ export function ScreenshotPanel({
 	const showRefreshing = treeRefreshing && elements.length === 0;
 	const inspectHint = pickingPoint
 		? "Picking x,y · click to set point"
-		: "Hover to preview · click to select · Hold Control to pick x,y";
+		: "Hover to preview, click to select an element.";
 
 	return (
-		<div className="flex flex-col gap-2">
+		<section
+			aria-labelledby="inspector-device-heading"
+			className="flex flex-col gap-3.5 rounded-[18px] border border-outline-variant bg-surface-bright p-4"
+		>
 			<div className="flex items-center justify-between gap-2">
-				<h2 className="text-title-sm font-semibold text-on-surface">Device</h2>
+				<h2 id="inspector-device-heading" className="text-subheading text-on-surface">
+					Device
+				</h2>
 				<div className="flex items-center gap-2">
 					{liveLabel ? (
 						<span className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-2 py-0.5 text-helper font-semibold text-on-secondary-container">
@@ -340,13 +345,25 @@ export function ScreenshotPanel({
 							type="button"
 							aria-label="Refresh element tree"
 							title="Refresh element tree"
-							className="rounded-md px-1.5 py-0.5 text-body-sm text-on-surface-variant hover:bg-surface-container hover:text-on-surface disabled:opacity-50"
+							className="inline-flex size-9 items-center justify-center rounded-lg border border-outline-variant bg-surface-bright text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
 							disabled={treeRefreshing}
 							onClick={() => {
 								onRefreshTree();
 							}}
 						>
-							{treeRefreshing ? "…" : "↻"}
+							<svg
+								aria-hidden="true"
+								className={["size-4", treeRefreshing ? "animate-spin" : ""].join(" ")}
+								fill="none"
+								stroke="currentColor"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								strokeWidth="2"
+								viewBox="0 0 24 24"
+							>
+								<path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+								<path d="M21 3v5h-5" />
+							</svg>
 						</button>
 					) : null}
 				</div>
@@ -354,7 +371,7 @@ export function ScreenshotPanel({
 
 			<fieldset
 				aria-label="Pointer mode"
-				className="m-0 inline-flex w-fit min-w-0 rounded-lg border-0 bg-surface-container p-0.5"
+				className="m-0 grid min-w-0 grid-cols-2 gap-1 rounded-[10px] border-0 bg-surface-container p-1"
 			>
 				{(["inspect", "interact"] as const).map((mode) => {
 					const selected = (mode === "interact") === liveControl;
@@ -365,19 +382,38 @@ export function ScreenshotPanel({
 							aria-pressed={selected}
 							disabled={mode === "interact" && (!live || disabled)}
 							className={[
-								"rounded-md px-3 py-1 text-body-sm font-medium transition-colors disabled:opacity-50",
+								"inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg text-body-md font-semibold transition-colors disabled:opacity-50",
 								selected
-									? "bg-surface text-on-surface shadow-sm"
+									? "bg-surface-bright text-on-surface shadow-[0_1px_2px_rgba(27,26,34,0.12)]"
 									: "text-on-surface-variant hover:text-on-surface",
 							].join(" ")}
 							onClick={() => onLiveControlChange(mode === "interact")}
 						>
-							{mode === "inspect" ? "Inspect" : "Interact"}
+							<svg
+								aria-hidden="true"
+								className="size-4"
+								fill="none"
+								stroke="currentColor"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								strokeWidth="2"
+								viewBox="0 0 24 24"
+							>
+								{mode === "inspect" ? (
+									<path d="M4 4l7 17 2.5-7.5L21 11z" />
+								) : (
+									<>
+										<path d="M9 11V5a2 2 0 0 1 4 0v6" />
+										<path d="M13 10a2 2 0 0 1 4 0v4a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-1.5-3a1.5 1.5 0 0 1 2.6-1.5L9 15" />
+									</>
+								)}
+							</svg>
+							{mode === "inspect" ? "Inspect" : "Use device"}
 						</button>
 					);
 				})}
 			</fieldset>
-			<p className="text-helper text-on-surface-variant">
+			<p className="-mt-1 text-body-sm text-on-surface-variant">
 				{liveControl
 					? "Taps and swipes go straight to the device · double-click to double-tap."
 					: showRefreshing
@@ -431,7 +467,7 @@ export function ScreenshotPanel({
 							<img
 								ref={imgRef}
 								alt="Live device screenshot"
-								className="pointer-events-none block max-h-[min(72vh,760px)] w-auto max-w-full rounded-lg shadow-[0_12px_40px_-18px_rgba(0,0,0,0.45)] select-none"
+								className="pointer-events-none block max-h-[min(72vh,760px)] w-auto max-w-full rounded-[28px] shadow-[0_12px_40px_-18px_rgba(0,0,0,0.45)] select-none"
 								draggable={false}
 								src={imageUrl}
 							/>
@@ -519,6 +555,13 @@ export function ScreenshotPanel({
 					</div>
 				) : null}
 			</div>
-		</div>
+			<p className="m-0 text-center text-helper text-on-surface-variant">
+				Hold{" "}
+				<kbd className="rounded border border-outline-variant bg-surface-container px-1 font-mono">
+					Ctrl
+				</kbd>{" "}
+				and click to pick exact x, y coordinates
+			</p>
+		</section>
 	);
 }
