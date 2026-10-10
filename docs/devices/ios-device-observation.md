@@ -36,7 +36,7 @@ Builds on [ios-device-actions.md](./ios-device-actions.md) (gestures, the journa
 
 ## Follow-ups
 
-- **Not run on a phone.** Check the element roles (XCUIElement type numbers are sent as the role, not names), that `typeText` on SpringBoard reaches the focused field of the foreground app, and snapshot latency for #251.
-- **Role names.** `role` is `XCUIElement.ElementType.rawValue` as a string. A name map would make locators readable.
-- **The gate times the wait for the main thread, not the work.** `run` waits 8 s for the whole closure, so a long-press or drag over about 8 s trips `RUNNER_WEDGED` though the thread is fine.
+- **Not run on a phone.** Check the element roles (roles are mapped to `yoqa-ax`'s names; unmapped types are `Other`), that `typeText` on SpringBoard reaches the focused field of the foreground app, and snapshot latency for #251.
+- **A snapshot without an app reads SpringBoard.** A session opened without a `bundleId`, before any `activateApp`, can't get `APP_BACKGROUNDED` and shows whatever is in front. The snapshot also queries each element separately, which may be slow on a big tree and trip the gate.
+- **The gate times the wait for the main thread, not the work.** `run` waits 8 s for the whole closure, so a long-press or drag over about 8 s trips `RUNNER_WEDGED` though the thread is fine. Work that was still queued at the deadline is cancelled and never fires late; work already running is waited for.
 - **Snapshots are not paginated.** A huge tree is one reply.

@@ -56,7 +56,7 @@ final class PhoneDevice: Device {
                 let frame = element.frame
                 guard frame.width > 0, frame.height > 0 else { return nil }
                 return SnapshotNode(
-                    role: "\(element.elementType.rawValue)",
+                    role: Self.roleName(element.elementType),
                     label: element.label.isEmpty ? nil : element.label,
                     value: (element.value as? String).flatMap { $0.isEmpty ? nil : $0 },
                     id: element.identifier.isEmpty ? nil : element.identifier,
@@ -67,6 +67,37 @@ final class PhoneDevice: Device {
                     enabled: element.isEnabled
                 )
             }
+        }
+    }
+
+    /// The names `yoqa-ax` reports on the simulator, so the Screen reads a phone the same way.
+    private static func roleName(_ type: XCUIElement.ElementType) -> String {
+        switch type {
+        case .button: return "Button"
+        case .staticText: return "StaticText"
+        case .textField: return "TextField"
+        case .secureTextField: return "SecureTextField"
+        case .textView: return "TextView"
+        case .image: return "Image"
+        case .switch: return "Switch"
+        case .slider: return "Slider"
+        case .cell: return "Cell"
+        case .table: return "Table"
+        case .collectionView: return "CollectionView"
+        case .scrollView: return "ScrollView"
+        case .navigationBar: return "NavigationBar"
+        case .tabBar: return "TabBar"
+        case .toolbar: return "Toolbar"
+        case .alert: return "Alert"
+        case .sheet: return "Sheet"
+        case .link: return "Link"
+        case .searchField: return "SearchField"
+        case .key: return "Key"
+        case .keyboard: return "Keyboard"
+        case .window: return "Window"
+        case .application: return "Application"
+        case .icon: return "Icon"
+        default: return "Other"
         }
     }
 

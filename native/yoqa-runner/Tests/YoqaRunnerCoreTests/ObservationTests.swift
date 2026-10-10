@@ -79,6 +79,18 @@ final class ObservationTests: XCTestCase {
         }
     }
 
+    func testWorkThatMissedTheDeadlineNeverRunsLate() {
+        let stuck = DispatchQueue(label: "late")
+        let block = DispatchSemaphore(value: 0)
+        stuck.async { block.wait() }
+        let gate = MainThreadGate(queue: stuck, timeout: 0.1)
+        var ran = false
+        XCTAssertThrowsError(try gate.run { ran = true }) { XCTAssertTrue($0 is RunnerWedged) }
+        block.signal()
+        stuck.sync {}
+        XCTAssertFalse(ran)
+    }
+
     func testTheGateReturnsWhatTheWorkReturnsAndRethrows() throws {
         let gate = MainThreadGate(queue: DispatchQueue(label: "fine"), timeout: 5)
         XCTAssertEqual(try gate.run { 42 }, 42)
