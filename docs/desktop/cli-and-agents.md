@@ -28,7 +28,7 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
 
 ### Runner / CLI
 
-- Active session: `POST /devices/connect`, `GET /devices/active`, `POST /devices/disconnect`
+- Active session: `POST /devices/connect`, `GET /devices/active`, `POST /devices/retarget` (switch app, see [Session bar](./session-bar.md)), `POST /devices/disconnect`
 - `GET /screen`, `POST /screenshot`, `POST /action` (tap/swipe/drag/input/lifecycle/open-url/alert + optional `-d` grounding)
 - `GET /status` — runner, runtime, provider, active device
 - Apps gain unique `prefix`; CLI resolves `APP` by prefix

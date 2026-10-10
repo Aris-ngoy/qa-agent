@@ -15,7 +15,7 @@ The control path a Device Session uses to drive its device: the _Appium lane_ (t
 _Avoid_: driver (Provider drivers), backend (runner / cloud), adapter, transport, engine
 
 **Active Session**:
-The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes, unless the Run sets custom Appium capabilities and the session is not on the Appium lane: then it is replaced with an Appium session and the Run report says why; it stays live until the user disconnects or connects another device.
+The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes, unless the Run sets custom Appium capabilities and the session is not on the Appium lane: then it is replaced with an Appium session and the Run report says why; it stays live until the user disconnects or connects another device. Its target app (what a Lane that remembers an app reads or relaunches) follows the Run that adopts it, or the app the user selects while no Run holds it, without reconnecting.
 _Avoid_: Run session (a Run adopts the Active Session), per-mode session
 
 **Dead Session**:
