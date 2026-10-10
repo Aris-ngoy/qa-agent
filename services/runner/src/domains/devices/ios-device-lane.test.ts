@@ -260,6 +260,21 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		await session.quit();
 	});
 
+	test("a new target app is what the next snapshot reads, and nothing is launched", async () => {
+		const phone = fakePhone({ replies: { snapshot: { ok: true, data: { nodes: [] } } } });
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, { bundleId: "com.app-a" }),
+			phone.deps,
+		);
+		session.setTargetApp("com.app-b");
+		await session.pageSource();
+		expect(phone.bodies.find((body) => body.command === "snapshot")).toMatchObject({
+			bundleId: "com.app-b",
+		});
+		expect(phone.devicectl).toEqual([]);
+		await session.quit();
+	});
+
 	test("records video from frames the phone captures, pulled in batches", async () => {
 		const phone = fakePhone({
 			replies: {
