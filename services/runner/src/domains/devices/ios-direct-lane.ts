@@ -1,7 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
+import { type PointerSize, toPx } from "./android-gestures";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { requireIdbBins } from "./idb-companion";
 import {
@@ -216,7 +216,6 @@ export async function createIosDirectSession(
 	const idb = guardToolLoss(connectIdb, idbLostDevice, options.onSessionDead);
 
 	const getWindowSize = remember(async () => pointSize(described));
-	let lastShotSize: PointerSize | null = null;
 	let lastAppId = options.bundleId;
 	let pointerStart: { x: number; y: number } | null = null;
 	const lock = createLock();
@@ -324,7 +323,6 @@ export async function createIosDirectSession(
 		}, true);
 		const bytes = fromYoqaSim?.value.bytes ?? (await captureViaIdb());
 		const base64 = Buffer.from(bytes).toString("base64");
-		lastShotSize = pngSizeFromBase64(base64) ?? lastShotSize;
 		const hash = fromYoqaSim?.value.hash;
 		return { base64, mime: "image/png", ...(hash ? { hash } : {}) };
 	};
@@ -398,20 +396,15 @@ export async function createIosDirectSession(
 		return text;
 	};
 
-	const pointerSize = async (coordSpace?: "window" | "screenshot"): Promise<PointerSize> => {
-		const window = await getWindowSize();
-		if (coordSpace === "screenshot") {
-			if (!lastShotSize) await captureFrame();
-			return lastShotSize ?? window;
-		}
-		return window;
-	};
-
 	const tapPx = async (x: number, y: number) => {
 		await run(["ui", "tap", String(x), String(y), "--udid", udid, "--api", "hid"], "idb ui tap");
 	};
 
-	/** A tap at 0–1000. Both coordinate spaces are the full screen, so fractions need no size. */
+	/**
+	 * A tap at 0–1000. Both coordinate spaces are the full screen, so yoqa-sim's fractions
+	 * need no size, and idb, which takes points, always converts with the window size.
+	 * Swipes and pointer events do the same.
+	 */
 	const tapNorm = async (
 		xNorm: number,
 		yNorm: number,
@@ -421,18 +414,11 @@ export async function createIosDirectSession(
 			running.tap(fraction(xNorm), fraction(yNorm), tapOptions?.durationMs),
 		);
 		if (sent) return;
-		const size = await pointerSize(tapOptions?.coordSpace);
+		const size = await getWindowSize();
 		await tapPx(toPx(xNorm, size.width), toPx(yNorm, size.height));
 	};
 
-	const swipeNorm = async (
-		x1: number,
-		y1: number,
-		x2: number,
-		y2: number,
-		durationMs: number | undefined,
-		coordSpace?: "window" | "screenshot",
-	) => {
+	const swipeNorm = async (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => {
 		const sent = await viaYoqaSim((running) =>
 			running.swipe(
 				{ x: fraction(x1), y: fraction(y1) },
@@ -441,7 +427,7 @@ export async function createIosDirectSession(
 			),
 		);
 		if (sent) return;
-		const size = await pointerSize(coordSpace);
+		const size = await getWindowSize();
 		await run(
 			[
 				"ui",
@@ -465,15 +451,8 @@ export async function createIosDirectSession(
 		await withActionLock(() => tapNorm(xNorm, yNorm, tapOptions));
 	};
 
-	const swipe = async (
-		x1: number,
-		y1: number,
-		x2: number,
-		y2: number,
-		durationMs = 400,
-		swipeOptions?: { coordSpace?: "window" | "screenshot" },
-	) => {
-		await withActionLock(() => swipeNorm(x1, y1, x2, y2, durationMs, swipeOptions?.coordSpace));
+	const swipe = async (x1: number, y1: number, x2: number, y2: number, durationMs = 400) => {
+		await withActionLock(() => swipeNorm(x1, y1, x2, y2, durationMs));
 	};
 
 	const type = async (text: string) => {
@@ -578,9 +557,9 @@ export async function createIosDirectSession(
 			pointerStart = null;
 			lock.setPointerActive(false);
 			if (start.x === xNorm && start.y === yNorm) {
-				await tapNorm(xNorm, yNorm, { coordSpace: "screenshot" });
+				await tapNorm(xNorm, yNorm);
 			} else {
-				await swipeNorm(start.x, start.y, xNorm, yNorm, undefined, "screenshot");
+				await swipeNorm(start.x, start.y, xNorm, yNorm);
 			}
 		},
 		isPointerActive: () => lock.isPointerActive(),

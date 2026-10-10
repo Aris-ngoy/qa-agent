@@ -180,6 +180,6 @@ Argent kept working because `--transport auto` sends through CoreDevice universa
 
 - #241: the MJPEG stream from the same frame store. #242–#244: the tree from `yoqa-ax`, cached by `X-Frame-Hash`.
 - Hardware buttons (lock, volume, Home on a Touch ID model) need another channel. Find out what Simulator.app's Device menu sends on this runtime.
-- `device-sim` is still opt-in. Promotion (#245) needs the benchmark against idb_companion on a machine that has it installed.
+- Done: `device-sim` is the default since #245 ([ios-sim-promotion.md](./ios-sim-promotion.md)).
 - Ship the binary with the runner (build and sign it in release CI).
 - Send touches through CoreDevice universal HID (`dtuhidd`'s `com.apple.coredevice.feature.remote.universalhidservice`, as argent does), so a dropped legacy touchscreen stops mattering. CoreDevice has no Swift interface, so this is its own reverse-engineering task.

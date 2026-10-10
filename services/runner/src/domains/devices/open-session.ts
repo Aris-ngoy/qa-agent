@@ -85,10 +85,14 @@ export async function openDeviceSession(
 	});
 
 	// A fallback the Lane reports later lands on the session handed out here, not on the
-	// Lane's own object, which this wrapper copies.
+	// Lane's own object, which this wrapper copies. One it reports while it opens is
+	// already on that object's laneWarning, which the copy carries.
+	const handedOutRef: { session?: DeviceSession } = {};
 	const laneOptions: SessionOptions = {
 		...options,
 		onLaneWarning: (late) => {
+			const session = handedOutRef.session;
+			if (!session) return;
 			session.laneWarning = joinLaneWarnings(session.laneWarning, late);
 			options.onLaneWarning?.(late);
 		},
@@ -111,20 +115,21 @@ export async function openDeviceSession(
 		}
 	}
 
-	const session: DeviceSession = {
+	const handedOut: DeviceSession = {
 		...opened,
 		lane: opened.lane,
 		...(warning ? { laneWarning: warning } : {}),
 		quit: async () => {
-			if (openByDeviceId.get(options.deviceId) === session) {
+			if (openByDeviceId.get(options.deviceId) === handedOut) {
 				openByDeviceId.delete(options.deviceId);
 			}
 			await opened.quit();
 		},
 	};
+	handedOutRef.session = handedOut;
 	if (warning) {
 		console.warn(`[yoqa-runner] ${warning}`);
 	}
-	openByDeviceId.set(options.deviceId, session);
-	return session;
+	openByDeviceId.set(options.deviceId, handedOut);
+	return handedOut;
 }

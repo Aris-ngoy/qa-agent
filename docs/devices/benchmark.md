@@ -31,4 +31,5 @@ A repo-local harness drives the same connector scenario through Yoqa (and Argent
 - Record a hardware baseline on the Appium lane and commit it over the fixture.
 - Fill suite `cases` once a catalog App is part of the gate.
 - Android Direct vs-Argent gate: [android-direct-tree-settle.md](./android-direct-tree-settle.md) (unmeasured until a live `--tools yoqa,argent` run).
+- iOS-simulator `device-sim` vs idb_companion: [ios-sim-promotion.md](./ios-sim-promotion.md) (promoted).
 - Hybrid Screen arm: [hybrid-screen-arm.md](./hybrid-screen-arm.md). Default stays vision.

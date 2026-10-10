@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createDirectLane } from "./direct-lane";
-import type { DeviceSession, LaneFactory, SessionOptions } from "./lane";
+import {
+	type DeviceSession,
+	type LaneFactory,
+	type SessionOptions,
+	reportLaneFallback,
+} from "./lane";
 import { defaultLanesFor, openDeviceSession } from "./open-session";
 
 function options(deviceId: string): SessionOptions {
@@ -257,6 +262,25 @@ describe("openDeviceSession (lane dispatcher)", () => {
 			expect(session.laneWarning).toMatch(/Direct lane failed to start; fell back to Appium/);
 			await session.quit();
 		});
+	});
+
+	test("a fallback a Lane reports while it opens keeps that Lane and shows once", async () => {
+		const direct: LaneFactory = async (opened) => {
+			const lane = {
+				lane: "direct",
+				stream: null,
+				quit: async () => undefined,
+			} as unknown as DeviceSession;
+			// yoqa-sim failing at connect: the Lane carries on with idb_companion.
+			reportLaneFallback(lane, opened, "yoqa-sim failed; using idb_companion");
+			return lane;
+		};
+		const { factory: appium, created } = fakeLane();
+		const session = await openDeviceSession(options("dev-early-warning"), { appium, direct });
+		expect(session.lane).toBe("direct");
+		expect(created).toHaveLength(0);
+		expect(session.laneWarning).toBe("yoqa-sim failed; using idb_companion");
+		await session.quit();
 	});
 
 	test("a fallback a Lane reports after open shows on the session the caller holds", async () => {
