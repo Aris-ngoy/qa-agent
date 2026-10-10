@@ -28,11 +28,11 @@ Make the app's single top bar the one place to manage the **Active Session** (se
 - `run-controls.tsx`: with a picked device and no Active Session, Run connects first (the bar shows "Connecting…"), then creates the Run; a failed connect is a toast and no Run. Run is disabled for want of a device only when there is neither a session nor a picked device. The WDA Skip/Rebuild select is gone.
 - Restart on an iOS Appium-lane session whose device is in the device list is a menu: "Restart session" or "Restart & rebuild WebDriverAgent" (`wda-setup.ts`: setup with `force`, then reconnect on the Appium lane). On a physical iPhone the forced setup rebuilds and reinstalls WDA, signed from Settings; on a simulator it drops Appium's WDA build (`~/.yoqa/wda-sim`, `services/runner/src/domains/ios/simulator-wda.ts`), so the reconnect compiles WDA from scratch.
 - `session-run-chip.tsx`: while a Run holds the session, every page shows "Running · n/m · Cancel" (n = cases started, m = all cases), linked to the Run, for Runs started from the desktop, CLI or connector. Without a holder id it says "Run in progress", with no link.
-- `use-retarget-on-app-switch.ts`: switching app in the sidebar while connected and unheld retargets the session; the Inspector marks its cached tree stale so the next selection reads the new app.
+- `use-retarget-on-app-switch.ts`: switching app in the sidebar while connected and unheld retargets the session; the Inspector marks its cached tree stale so the next selection reads the new app. When a Run for another app lets the session go, the session is pointed back at the selected app (`session-app.ts`); a Run for the selected app leaves it as is.
 
 ## How to verify
 
-1. `bun run test` (runner: Lane retarget on the cabled-iPhone, simulator and Android Direct lanes; a Run for app B adopting a session for app A reads B's Screen / relaunches B; `heldByRunId`; `POST /devices/retarget` and the Screen after it. Desktop: device lookup, remembered device, pill label, Run chip, Run target).
+1. `bun run test` (runner: Lane retarget on the cabled-iPhone, simulator and Android Direct lanes; a Run for app B adopting a session for app A reads B's Screen / relaunches B; `heldByRunId`; `POST /devices/retarget` and the Screen after it. Desktop: device lookup, remembered device, pill label, Run chip, Run target, pointing the session back at the selected app after a Run).
 2. Desktop, Runs page: pick a device, **Connect** → pill "Live · Direct" (or Appium); hover it after a fallback to see the Lane warning. Restart and Disconnect work here and on Test cases.
 3. `yoqa devices connect <udid>` from the CLI → the bar shows the device's name and the Lane.
 4. Quit and relaunch the desktop app → the last device connected from the desktop is preselected, not connected (a device connected only from the CLI in step 3 is not). Delete that simulator (or unplug the iPhone) and relaunch → "Select device".
@@ -40,8 +40,8 @@ Make the app's single top bar the one place to manage the **Active Session** (se
 6. iOS session on the Appium lane (`yoqa devices connect <udid> --lane appium`) → Restart offers "Restart & rebuild WebDriverAgent" on a simulator and on a cabled iPhone.
 7. Start a Run (desktop or `yoqa runs create`) → every page shows "Running · n/m · Cancel"; the label opens the Run, Cancel cancels it.
 8. Connected, no Run: switch app in the sidebar → no reconnect; Inspector → select an element: the tree reads the new app (on a cabled iPhone the new app must be in front, or the read says it is backgrounded).
+9. Connected with app A selected, start a Run for app B from the CLI (`yoqa runs create`); when it finishes, the Inspector reads app A again, with no reconnect.
 
 ## Follow-ups
 
-- Switching app while a Run holds the session does not retarget it after the Run; the session keeps the Run's app until the next switch or connect.
 - The session bar's UI states (remembered device, Run chip, connect-first) are covered by unit tests of their pure helpers, not by rendered component tests.
