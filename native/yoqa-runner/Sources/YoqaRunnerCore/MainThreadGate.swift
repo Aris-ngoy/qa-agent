@@ -17,11 +17,16 @@ public struct MainThreadGate {
         let done = DispatchSemaphore(value: 0)
         let box = Box<T>()
         queue.async {
+            // The caller gave up and said so: a late tap or keystroke must not fire after that.
+            guard box.start() else { return }
             box.set(Result { try work() })
             done.signal()
         }
         guard done.wait(timeout: .now() + timeout) == .success, let result = box.get() else {
-            throw RunnerWedged("the main thread did not answer within \(Int(timeout)) s")
+            if box.abandon() { throw RunnerWedged("the main thread did not answer within \(Int(timeout)) s") }
+            // The work started just before the deadline; take its result.
+            done.wait()
+            return try box.get()!.get()
         }
         return try result.get()
     }
@@ -31,6 +36,25 @@ public struct MainThreadGate {
 private final class Box<T> {
     private let lock = NSLock()
     private var result: Result<T, Error>?
+    private var state = 0  // 0 queued, 1 started, 2 abandoned
+
+    /// False when the caller already abandoned the work.
+    func start() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if state == 2 { return false }
+        state = 1
+        return true
+    }
+
+    /// True when the work never started and now never will.
+    func abandon() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if state == 1 { return false }
+        state = 2
+        return true
+    }
 
     func set(_ value: Result<T, Error>) {
         lock.lock()
