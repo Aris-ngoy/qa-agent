@@ -113,6 +113,30 @@ function targetState(reading: Reading): { state: string; unavailableReason?: str
 	return { state: "connected" };
 }
 
+/**
+ * Cabled, paired phones whose tunnel is down. CoreDevice opens the tunnel on first
+ * use, so `list devices` reports these as `disconnected` until something touches
+ * them; they are not a failure yet.
+ */
+export function idleWiredUdids(json: unknown): string[] {
+	const items = (json as { result?: { devices?: unknown } } | null)?.result?.devices;
+	if (!Array.isArray(items)) return [];
+	const udids: string[] = [];
+	for (const item of items as DevicectlDevice[]) {
+		const reading = read(item);
+		if (!reading.udid || (reading.reality && reading.reality !== "physical")) continue;
+		if (!/^(iPhone|iPad)$/i.test(reading.deviceType ?? "")) continue;
+		if (
+			reading.transport === "wired" &&
+			reading.pairing === "paired" &&
+			reading.tunnel !== "connected"
+		) {
+			udids.push(reading.udid);
+		}
+	}
+	return udids;
+}
+
 export function parseDevicectlDevices(json: unknown): Device[] {
 	const items = (json as { result?: { devices?: unknown } } | null)?.result?.devices;
 	if (!Array.isArray(items)) return [];
