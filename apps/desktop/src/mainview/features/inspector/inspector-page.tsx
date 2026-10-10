@@ -1087,7 +1087,7 @@ export function InspectorPage() {
 				" ",
 			)}
 		>
-			<header className="flex flex-wrap items-center justify-between gap-4">
+			<header className="relative z-40 flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-5 py-3 shadow-soft backdrop-blur-md">
 				<div className="flex flex-col gap-0.5">
 					<h1 className="m-0 text-headline-lg text-on-surface">Inspector</h1>
 					<p className="m-0 text-body-md text-on-surface-variant">
