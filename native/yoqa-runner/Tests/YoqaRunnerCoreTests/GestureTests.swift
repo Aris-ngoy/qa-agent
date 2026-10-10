@@ -127,6 +127,53 @@ final class GestureTests: XCTestCase {
         return (response.status, json ?? [:])
     }
 
+    func testRecordingCapturesFramesOnThePhoneAndHandsThemOverInBatches() throws {
+        _ = try ok(["command": "recordStart", "commandId": "r1", "fps": 30, "scale": 0.25, "quality": 0.5])
+        let first = try pullFrames(after: nil)
+        XCTAssertEqual(first["running"] as? Bool, true)
+        let frames = try XCTUnwrap(first["frames"] as? [[String: Any]])
+        XCTAssertFalse(frames.isEmpty)
+        let jpeg = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(frames[0]["jpeg"] as? String)))
+        XCTAssertTrue(String(decoding: jpeg, as: UTF8.self).hasSuffix("@0.25,0.5"))
+        let last = try XCTUnwrap(frames.last?["seq"] as? Int)
+        let next = try pullFrames(after: last)
+        for frame in try XCTUnwrap(next["frames"] as? [[String: Any]]) {
+            XCTAssertGreaterThan(try XCTUnwrap(frame["seq"] as? Int), last)
+        }
+        _ = try ok(["command": "recordStop", "commandId": "r2"])
+        XCTAssertEqual(try pullFrames(after: nil)["running"] as? Bool, false)
+    }
+
+    func testARecordingTheMacStopsPullingStopsItself() throws {
+        let recorder = FrameRecorder(device: device, idleSeconds: 0.2)
+        recorder.start(fps: 30, scale: 0.5, quality: 0.5)
+        Thread.sleep(forTimeInterval: 0.6)
+        let batch = recorder.fetch(after: nil)
+        XCTAssertFalse(batch.running)
+    }
+
+    func testCaptureFailuresAreReportedWhenNoFrameLands() throws {
+        device.failure = "screen locked"
+        _ = try ok(["command": "recordStart", "commandId": "r3"])
+        let batch = try pullFrames(after: nil)
+        XCTAssertEqual((batch["frames"] as? [Any])?.count, 0)
+        XCTAssertEqual(batch["error"] as? String, "screen locked")
+        _ = try ok(["command": "recordStop", "commandId": "r4"])
+    }
+
+    /// Waits for the background capture to land at least one frame, up to a second.
+    private func pullFrames(after seq: Int?) throws -> [String: Any] {
+        var out: [String: Any] = [:]
+        for _ in 0..<20 {
+            var request: [String: Any] = ["command": "recordFetch", "commandId": "f"]
+            if let seq { request["after"] = seq }
+            out = try ok(request)
+            if !((out["frames"] as? [Any])?.isEmpty ?? true) || out["error"] != nil { break }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return out
+    }
+
     private func ok(_ object: [String: Any]) throws -> [String: Any] {
         let (status, body) = reply(object)
         XCTAssertEqual(status, 200, "\(body)")
@@ -178,6 +225,16 @@ final class FakeDevice: Device {
     func screenshot() throws -> Data {
         if let failure { throw DeviceError(failure) }
         return png
+    }
+
+    var frames = 0
+    func frame(scale: Double, quality: Double) throws -> Data {
+        if let failure { throw DeviceError(failure) }
+        lock.lock()
+        frames += 1
+        let n = frames
+        lock.unlock()
+        return Data("jpeg\(n)@\(scale),\(quality)".utf8)
     }
 
     var nodes: [SnapshotNode] = []
