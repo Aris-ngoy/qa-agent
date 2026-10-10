@@ -139,7 +139,7 @@ export function ElementActionDialog(props: ElementActionDialogProps) {
 				variant="blur"
 			>
 				<Modal.Container placement="center" size="lg">
-					<Modal.Dialog className="rounded-3xl sm:max-w-2xl">
+					<Modal.Dialog className="rounded-2xl sm:max-w-lg">
 						{selection ? (
 							<DialogBody
 								key={`${selection.x},${selection.y},${selection.candidateIndex},${selection.preferredLocator},${selection.element?.id ?? ""},${selection.element?.label ?? ""}`}
@@ -234,7 +234,7 @@ function DialogBody({
 			<Modal.CloseTrigger />
 			<Modal.Header className="flex flex-col gap-1 border-b border-outline-variant pb-4">
 				<div className="flex items-center gap-3">
-					<Modal.Heading className="truncate text-xl! font-semibold! text-on-surface">
+					<Modal.Heading className="truncate text-base! font-semibold! text-on-surface">
 						{titleOf(selection)}
 					</Modal.Heading>
 					{badge ? (
@@ -243,7 +243,7 @@ function DialogBody({
 						</span>
 					) : null}
 				</div>
-				<p className="m-0 text-body-md text-on-surface-variant">
+				<p className="m-0 text-body-sm text-on-surface-variant">
 					Pick a command, then how to find this element.
 					{canChangeSelector ? (
 						<>
@@ -260,9 +260,9 @@ function DialogBody({
 				</p>
 			</Modal.Header>
 
-			<Modal.Body className="flex flex-col gap-5 py-4">
+			<Modal.Body className="flex flex-col gap-4 py-3">
 				<section className="flex flex-col gap-2">
-					<h3 className="m-0 text-body-md font-semibold text-on-surface">1. Command</h3>
+					<h3 className="m-0 text-body-sm font-semibold text-on-surface">1. Command</h3>
 					<div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
 						{STEP_COMMANDS.map(({ command, title }) => {
 							const picked = choice.kind === "step" && choice.command === command;
@@ -272,7 +272,7 @@ function DialogBody({
 									type="button"
 									aria-pressed={picked}
 									className={[
-										"min-h-11 rounded-xl border text-body-md font-semibold transition-colors",
+										"min-h-9 rounded-xl border text-body-sm font-semibold transition-colors",
 										picked
 											? "border-violet bg-violet text-on-violet"
 											: "border-outline-variant bg-surface-bright text-on-surface hover:bg-surface-container",
@@ -287,7 +287,7 @@ function DialogBody({
 					<button
 						type="button"
 						aria-expanded={moreOpen}
-						className="w-fit text-body-sm font-semibold text-on-violet-container underline-offset-2 hover:underline"
+						className="w-fit text-helper font-semibold text-on-violet-container underline-offset-2 hover:underline"
 						onClick={() => setMoreOpen((open) => !open)}
 					>
 						{moreOpen ? "Fewer commands" : "More commands (app, alerts, wait, screenshot)…"}
@@ -323,7 +323,7 @@ function DialogBody({
 						value={stepCommand === "assertVisible" ? assertText : text}
 						onChange={stepCommand === "assertVisible" ? setAssertText : setText}
 					>
-						<Label className="mb-1 text-body-sm font-semibold text-on-surface">
+						<Label className="mb-1 text-helper font-semibold text-on-surface">
 							{stepCommand === "assertVisible" ? "Text that should be visible" : "Text to type"}
 						</Label>
 						<Input
@@ -339,7 +339,7 @@ function DialogBody({
 						value={moreValue ?? initialMoreValue(activeMore.id)}
 						onChange={setMoreValue}
 					>
-						<Label className="mb-1 text-body-sm font-semibold text-on-surface">
+						<Label className="mb-1 text-helper font-semibold text-on-surface">
 							{activeMore.needsPrompt === "seconds"
 								? "Seconds to wait"
 								: activeMore.promptKind === "appId"
@@ -354,7 +354,7 @@ function DialogBody({
 
 				{needsSelector ? (
 					<section className="flex flex-col gap-2">
-						<h3 className="m-0 text-body-md font-semibold text-on-surface">2. Selector</h3>
+						<h3 className="m-0 text-body-sm font-semibold text-on-surface">2. Selector</h3>
 						<fieldset
 							aria-label="Selector"
 							className="m-0 flex min-w-0 flex-col overflow-hidden rounded-xl border border-outline-variant p-0"
@@ -365,7 +365,7 @@ function DialogBody({
 									<label
 										key={option.kind}
 										className={[
-											"flex cursor-pointer items-center gap-3 px-4 py-3.5 transition-colors",
+											"flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors",
 											index > 0 ? "border-t border-outline-variant" : "",
 											checked ? "bg-violet-container/60" : "hover:bg-surface-container-low",
 										].join(" ")}
@@ -380,16 +380,16 @@ function DialogBody({
 										<span
 											aria-hidden="true"
 											className={[
-												"flex size-5 shrink-0 items-center justify-center rounded-full border-2",
+												"flex size-4 shrink-0 items-center justify-center rounded-full border-2",
 												checked ? "border-violet" : "border-outline",
 											].join(" ")}
 										>
-											{checked ? <span className="size-2.5 rounded-full bg-violet" /> : null}
+											{checked ? <span className="size-2 rounded-full bg-violet" /> : null}
 										</span>
-										<span className="w-24 shrink-0 text-body-md font-semibold text-on-surface">
+										<span className="w-20 shrink-0 text-body-sm font-semibold text-on-surface">
 											{option.title}
 										</span>
-										<code className="min-w-0 flex-1 truncate font-mono text-body-sm text-on-surface">
+										<code className="min-w-0 flex-1 truncate font-mono text-helper text-on-surface">
 											{option.flags}
 										</code>
 										<MatchBadge matches={option.matches} />
@@ -398,7 +398,7 @@ function DialogBody({
 							})}
 						</fieldset>
 						{selectedOption ? (
-							<p className="m-0 text-body-sm text-on-surface-variant">
+							<p className="m-0 text-helper text-on-surface-variant">
 								{SELECTOR_NOTE[selectedOption.kind]}
 							</p>
 						) : null}
@@ -407,10 +407,10 @@ function DialogBody({
 
 				<section className="flex flex-col gap-2">
 					<div className="flex items-center justify-between">
-						<h3 className="m-0 text-body-md font-semibold text-on-surface">Preview</h3>
+						<h3 className="m-0 text-body-sm font-semibold text-on-surface">Preview</h3>
 						<button
 							type="button"
-							className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-body-sm font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
+							className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-helper font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
 							disabled={lines.length === 0}
 							onClick={() => finish(onCopyLines)}
 						>
@@ -421,15 +421,15 @@ function DialogBody({
 							Copy
 						</button>
 					</div>
-					<pre className="m-0 min-h-12 overflow-x-auto whitespace-pre rounded-xl bg-[#17161d] px-4 py-3.5 font-mono text-body-sm leading-relaxed text-[#e6e3f0]">
+					<pre className="m-0 min-h-12 overflow-x-auto whitespace-pre rounded-xl bg-[#17161d] px-3 py-2.5 font-mono text-helper leading-relaxed text-[#e6e3f0]">
 						{lines.length > 0 ? lines.join("\n") : "Fill in the field above to see the command."}
 					</pre>
 				</section>
 
 				<details className="group rounded-xl border border-outline-variant">
-					<summary className="cursor-pointer list-none px-4 py-3 text-body-md font-semibold text-on-surface">
+					<summary className="cursor-pointer list-none px-3 py-2 text-body-sm font-semibold text-on-surface">
 						Screen gestures
-						<span className="ml-2 text-body-sm font-normal text-on-surface-variant">
+						<span className="ml-2 text-helper font-normal text-on-surface-variant">
 							swipe and wait — no element needed
 						</span>
 					</summary>
@@ -447,7 +447,7 @@ function DialogBody({
 				<button
 					type="button"
 					disabled={disabled || lines.length === 0}
-					className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-outline-variant bg-surface-bright px-4 text-body-md font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
+					className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-outline-variant bg-surface-bright px-3 text-body-sm font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
 					onClick={() => finish(onInsertAndRun)}
 				>
 					<svg aria-hidden="true" className="size-3.5" fill="currentColor" viewBox="0 0 24 24">
@@ -458,7 +458,7 @@ function DialogBody({
 				<div className="flex items-center gap-3">
 					<button
 						type="button"
-						className="min-h-11 rounded-xl px-4 text-body-md font-semibold text-on-surface transition-colors hover:bg-surface-container"
+						className="min-h-9 rounded-xl px-3 text-body-sm font-semibold text-on-surface transition-colors hover:bg-surface-container"
 						onClick={onClose}
 					>
 						Cancel
@@ -466,7 +466,7 @@ function DialogBody({
 					<button
 						type="button"
 						disabled={disabled || lines.length === 0}
-						className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet px-5 text-body-md font-semibold text-on-violet transition-opacity disabled:opacity-50"
+						className="inline-flex min-h-9 items-center gap-2 rounded-xl bg-violet px-4 text-body-sm font-semibold text-on-violet transition-opacity disabled:opacity-50"
 						onClick={() => finish(onInsert)}
 					>
 						<Icon>
