@@ -1,37 +1,40 @@
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
-import type { DevicePlatform, SelectedDevice } from "@/features/devices/select-device-modal";
+import {
+	type DevicePlatform,
+	type SelectedDevice,
+	fetchPlatformDevices,
+	platformDevicesQueryKey,
+} from "@/features/devices/select-device-modal";
+import {
+	deviceForSession,
+	pickRememberedDevice,
+	readRememberedDevice,
+	writeRememberedDevice,
+} from "@/features/devices/session-device";
+import { SessionRunChip } from "@/features/devices/session-run-chip";
+import { offersWdaRebuild } from "@/features/devices/session-status";
 import { SessionToolbar } from "@/features/devices/session-toolbar";
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
 } from "@/features/devices/use-active-device-session";
+import { useRetargetOnAppSwitch } from "@/features/devices/use-retarget-on-app-switch";
+import { rebuildWebDriverAgent } from "@/features/devices/wda-setup";
 import { RunControls } from "@/features/test-cases/run-controls";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
 import { toast } from "@heroui/react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-
-function deviceFromSession(session: {
-	deviceId: string;
-	platform: DevicePlatform;
-}): SelectedDevice {
-	return {
-		id: session.deviceId,
-		platform: session.platform,
-		label: session.deviceId,
-		name: session.deviceId,
-		osVersion: "",
-		kind: "physical",
-	};
-}
+import type { ActiveDeviceResponse, LaneName } from "@yoqa/runner-client";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * The one top bar for the whole app: pick a device and connect, restart or
- * disconnect the runner's Active Device Session. Pages (Inspector, runs) read
- * the session from the shared query, so nothing else owns connect/disconnect.
+ * The one top bar for the whole app and the one place to manage the Active Session (the
+ * Device Session the Inspector and Runs share): pick a device, connect, restart or
+ * disconnect it from any page, and watch or cancel the Run that holds it. Pages read the
+ * session from the shared query, so nothing else owns connect/disconnect.
  */
 export function SessionBar() {
 	const queryClient = useQueryClient();
@@ -39,38 +42,84 @@ export function SessionBar() {
 	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const { selectedCaseIds } = useTestCaseSelection();
-	const onInspector = pathname.startsWith("/inspector");
 	const showRun = pathname.startsWith("/test-cases") && selectedCaseIds.length > 0;
-	const [platform, setPlatform] = useState<DevicePlatform>("ios");
+	const [remembered] = useState(readRememberedDevice);
+	const [platform, setPlatform] = useState<DevicePlatform>(remembered?.platform ?? "ios");
 	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [connecting, setConnecting] = useState(false);
+	/** The remembered device is offered once, at launch; a session or a pick replaces it. */
+	const rememberedPendingRef = useRef(remembered != null);
 
-	// A session started anywhere (Inspector, CLI) drives the bar's platform.
+	useRetargetOnAppSwitch();
+
+	const devicesQuery = useQuery({
+		queryKey: platformDevicesQueryKey(platform),
+		queryFn: () => fetchPlatformDevices(platform),
+		staleTime: 30_000,
+	});
+	const devices = devicesQuery.data;
+
+	// At launch, preselect the last connected device when the list still has it. Never
+	// connect; a device that is gone leaves the bar on "Select device".
 	useEffect(() => {
-		if (activeSession) setPlatform(activeSession.platform);
-	}, [activeSession]);
+		if (!rememberedPendingRef.current || !devices) return;
+		rememberedPendingRef.current = false;
+		const picked = pickRememberedDevice(remembered, devices);
+		if (picked) setDevice((current) => current ?? picked);
+	}, [devices, remembered]);
 
-	const connectTo = async (target: SelectedDevice) => {
-		const client = await getRunnerClient();
-		const info = await client.connectDevice({
-			deviceId: target.id,
-			platform: target.platform,
-			bundleId:
-				target.platform === "ios" ? selectedApp?.iosBundleId.trim() || undefined : undefined,
-			appPackage:
-				target.platform === "android"
-					? selectedApp?.androidApplicationId.trim() || undefined
-					: undefined,
-		});
-		invalidateActiveDeviceSession();
-		return info;
-	};
+	// A session started anywhere (desktop, CLI, a Run) drives the bar: its platform, and
+	// its device by the name the device list gives it. It is remembered for next launch.
+	const sessionDeviceId = activeSession?.deviceId;
+	const sessionPlatform = activeSession?.platform;
+	useEffect(() => {
+		if (!sessionDeviceId || !sessionPlatform) return;
+		rememberedPendingRef.current = false;
+		setPlatform(sessionPlatform);
+		writeRememberedDevice({ platform: sessionPlatform, deviceId: sessionDeviceId });
+		setDevice(
+			deviceForSession(
+				{ deviceId: sessionDeviceId, platform: sessionPlatform },
+				sessionPlatform === platform ? devices : undefined,
+			),
+		);
+	}, [sessionDeviceId, sessionPlatform, platform, devices]);
+
+	/**
+	 * Connect `target` for the selected app; the one connect path for Connect, Restart and
+	 * Run. The bar shows "Connecting…" meanwhile. Errors are the caller's to show.
+	 */
+	const connectDevice = useCallback(
+		async (target: SelectedDevice, lane?: LaneName): Promise<ActiveDeviceResponse> => {
+			setConnecting(true);
+			try {
+				const client = await getRunnerClient();
+				const info = await client.connectDevice({
+					deviceId: target.id,
+					platform: target.platform,
+					bundleId:
+						target.platform === "ios" ? selectedApp?.iosBundleId.trim() || undefined : undefined,
+					appPackage:
+						target.platform === "android"
+							? selectedApp?.androidApplicationId.trim() || undefined
+							: undefined,
+					...(lane ? { lane } : {}),
+				});
+				writeRememberedDevice({ platform: target.platform, deviceId: target.id });
+				queryClient.setQueryData(activeDeviceSessionQueryKey, info);
+				invalidateActiveDeviceSession();
+				return info;
+			} finally {
+				setConnecting(false);
+			}
+		},
+		[invalidateActiveDeviceSession, queryClient, selectedApp],
+	);
 
 	const handleConnect = async () => {
 		if (!device) return;
-		setConnecting(true);
 		try {
-			const info = await connectTo(device);
+			const info = await connectDevice(device);
 			toast.success(
 				info.streamReady === false
 					? "Connected — screenshot poll (MJPEG unavailable)"
@@ -78,13 +127,11 @@ export function SessionBar() {
 			);
 		} catch (error) {
 			showErrorToast(error, "Failed to connect device");
-		} finally {
-			setConnecting(false);
 		}
 	};
 
-	const handleRestart = async () => {
-		const target = device ?? (activeSession ? deviceFromSession(activeSession) : null);
+	const handleRestart = async ({ rebuildWda }: { rebuildWda: boolean }) => {
+		const target = device;
 		if (!target) {
 			showErrorToast(new Error("Select a device first"), "Nothing to restart");
 			return;
@@ -98,9 +145,15 @@ export function SessionBar() {
 				/* already dead / no session */
 			}
 			queryClient.setQueryData(activeDeviceSessionQueryKey, null);
-			if (!device) setDevice(target);
-			await connectTo(target);
-			toast.success("Session restarted");
+			if (rebuildWda) {
+				// The rebuild is for the Appium lane's WebDriverAgent, so reconnect on that lane.
+				await rebuildWebDriverAgent(target);
+				await connectDevice(target, "appium");
+				toast.success("Session restarted with a rebuilt WebDriverAgent");
+			} else {
+				await connectDevice(target);
+				toast.success("Session restarted");
+			}
 		} catch (error) {
 			invalidateActiveDeviceSession();
 			showErrorToast(error, "Failed to restart session");
@@ -126,30 +179,37 @@ export function SessionBar() {
 
 	return (
 		<header className="relative z-40 flex w-full shrink-0 flex-wrap items-center justify-end gap-3 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-5 py-3 shadow-soft backdrop-blur-md">
+			<SessionRunChip />
 			<SessionToolbar
 				platform={platform}
 				onPlatformChange={(next) => {
+					rememberedPendingRef.current = false;
 					setPlatform(next);
 					setDevice(null);
 				}}
 				device={device}
-				onDeviceSelect={setDevice}
+				onDeviceSelect={(selected) => {
+					rememberedPendingRef.current = false;
+					setDevice(selected);
+				}}
 				active={activeSession}
 				connecting={connecting}
 				live={Boolean(activeSession) && activeSession?.streamReady !== false}
 				onConnect={() => {
 					void handleConnect();
 				}}
-				onRestart={() => {
-					void handleRestart();
+				onRestart={(options) => {
+					void handleRestart(options);
 				}}
 				onDisconnect={() => {
 					void handleDisconnect();
 				}}
 				viewOnly={Boolean(activeSession?.heldByRun)}
-				canManageSession={onInspector}
+				offerWdaRebuild={offersWdaRebuild(activeSession)}
 			/>
-			{showRun ? <RunControls /> : null}
+			{showRun ? (
+				<RunControls connectDevice={connectDevice} connecting={connecting} device={device} />
+			) : null}
 		</header>
 	);
 }
