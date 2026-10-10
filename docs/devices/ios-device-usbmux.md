@@ -57,6 +57,6 @@ Ticket [#248](https://github.com/Aris-ngoy/qa-agent/issues/248) (spec [#233](htt
 
 - #249 (tap, long-press, drag, screenshot, the journal, the Lane contract suite) and #250 (snapshot, typing, `APP_BACKGROUNDED`, `RUNNER_WEDGED`).
 - `terminateApp`, `openUrl` and `backgroundApp` on `devicectl` aren't in any ticket yet. They need a process lookup (`devicectl device info processes`) to find the pid.
-- **Active Session adoption restarts the runner.** Before adopting, `acquireSessionForRun` health-checks with `getWindowSize`, which this slice rejects. So a Direct Active Session on a phone counts as dead, and the Run opens a fresh Direct session with a misleading "is dead" log. The Run still gets `direct`. #249's `viewport` command makes `getWindowSize` real and fixes this.
+- **Active Session adoption restarts the runner.** Before adopting, `acquireSessionForRun` health-checks with `getWindowSize`, which this slice rejects. So a Direct Active Session on a phone counts as dead, and the Run opens a fresh Direct session with a misleading "is dead" log. The Run still gets `direct`. #249's `viewport` command makes `getWindowSize` real and fixes this (done, see [ios-device-actions.md](./ios-device-actions.md)).
 - **Older iPhones' 40-hex UDIDs.** `looksLikePhysicalIosUdid` accepts only the `8-16` hex form, so an older phone is classified `ios-simulator`. `direct` then fails into Appium with a simulator-lane warning instead of reaching `device-ios`.
 - The action lock is a third copy of the `createLock` chain in the Android and iOS-simulator lanes.

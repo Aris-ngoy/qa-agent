@@ -6,7 +6,9 @@ import XCTest
 final class RunnerTests: XCTestCase {
     /// Not `testRun`: that name is XCTest's own `testRun` property, and the test never runs.
     func testServe() throws {
-        let server = try startRunner { line in
+        // A gesture XCUITest can't finish records a failure; the runner keeps serving.
+        continueAfterFailure = true
+        let server = try startRunner(device: PhoneDevice()) { line in
             print(line)
             fflush(stdout)
         }

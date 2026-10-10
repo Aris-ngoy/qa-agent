@@ -3,6 +3,10 @@
  * `{ "command", "commandId", ... }` body over a fresh tunnel (the runner closes the
  * connection after each reply), answered `{ "ok": true, "data" }` or
  * `{ "ok": false, "error": { "code", "message" } }`.
+ *
+ * Gestures are journaled on the runner by `commandId`. When a gesture's reply is lost on
+ * the cable, the link asks `status` about that id and takes the recorded reply. It never
+ * sends the gesture again, so a flaky cable can't double-tap.
  */
 
 import type { Duplex } from "node:stream";
@@ -12,6 +16,9 @@ export type OpenRunnerTunnel = () => Promise<Duplex>;
 
 /** How long a command may take before the runner counts as unreachable. */
 const COMMAND_TIMEOUT_MS = 10_000;
+
+/** How often a lost reply's `status` is asked again while the gesture is still running. */
+const PENDING_POLL_MS = 100;
 
 /** The runner answered, with an error. `code` is the runner's (`UNKNOWN_COMMAND`, …). */
 export class YoqaRunnerCommandError extends Error {
@@ -33,9 +40,27 @@ export class YoqaRunnerUnreachableError extends Error {
 }
 
 export type YoqaRunnerLink = {
-	/** Send one command and return its `data`. */
-	send: (command: string, fields?: Record<string, unknown>) => Promise<unknown>;
+	/**
+	 * Send one command and return its `data`. A `journaled` command (a gesture) whose reply
+	 * is lost is resolved through `status`, never resent.
+	 */
+	send: (
+		command: string,
+		fields?: Record<string, unknown>,
+		options?: { journaled?: boolean },
+	) => Promise<unknown>;
 };
+
+type Envelope = { ok?: unknown; data?: unknown; error?: { code?: unknown; message?: unknown } };
+
+/** The reply's `data`, or the runner's error; null when it isn't the runner's envelope. */
+function unwrap(reply: Envelope): { data: unknown } | null {
+	if (reply.ok === true) return { data: reply.data };
+	if (reply.ok === false && typeof reply.error?.code === "string") {
+		throw new YoqaRunnerCommandError(reply.error.code, String(reply.error.message ?? ""));
+	}
+	return null;
+}
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -106,46 +131,93 @@ export function createYoqaRunnerLink(
 	options: { timeoutMs?: number } = {},
 ): YoqaRunnerLink {
 	const timeoutMs = options.timeoutMs ?? COMMAND_TIMEOUT_MS;
-	return {
-		send: async (command, fields = {}) => {
-			const payload = JSON.stringify({ ...fields, command, commandId: crypto.randomUUID() });
-			const request = [
-				"POST / HTTP/1.1",
-				"Host: 127.0.0.1",
-				"Content-Type: application/json",
-				`Content-Length: ${Buffer.byteLength(payload)}`,
-				"Connection: close",
-				"",
-				payload,
-			].join("\r\n");
 
-			let tunnel: Duplex;
-			try {
-				tunnel = await openTunnel();
-			} catch (error) {
-				throw new YoqaRunnerUnreachableError(`Cannot reach YoqaRunner: ${errorMessage(error)}`);
-			}
-			let raw: Buffer;
-			try {
-				raw = await roundTrip(tunnel, request, timeoutMs, command);
-			} finally {
-				tunnel.destroy();
-			}
+	/** One request over a fresh tunnel. `sent` tells a lost reply from a tunnel that never opened. */
+	const exchange = async (command: string, payload: string, sent: { value: boolean }) => {
+		const request = [
+			"POST / HTTP/1.1",
+			"Host: 127.0.0.1",
+			"Content-Type: application/json",
+			`Content-Length: ${Buffer.byteLength(payload)}`,
+			"Connection: close",
+			"",
+			payload,
+		].join("\r\n");
 
-			const body = httpBody(raw);
-			let reply: { ok?: unknown; data?: unknown; error?: { code?: unknown; message?: unknown } };
-			try {
-				reply = body === null ? {} : JSON.parse(body);
-			} catch {
-				reply = {};
-			}
-			if (reply.ok === true) return reply.data;
-			if (reply.ok === false && typeof reply.error?.code === "string") {
-				throw new YoqaRunnerCommandError(reply.error.code, String(reply.error.message ?? ""));
-			}
-			throw new YoqaRunnerUnreachableError(
-				`Something other than YoqaRunner answered ${command}: ${raw.toString("utf8").slice(0, 120)}`,
-			);
-		},
+		let tunnel: Duplex;
+		try {
+			tunnel = await openTunnel();
+		} catch (error) {
+			throw new YoqaRunnerUnreachableError(`Cannot reach YoqaRunner: ${errorMessage(error)}`);
+		}
+		sent.value = true;
+		try {
+			return await roundTrip(tunnel, request, timeoutMs, command);
+		} finally {
+			tunnel.destroy();
+		}
 	};
+
+	const send: YoqaRunnerLink["send"] = async (command, fields = {}, sendOptions = {}) => {
+		const commandId = crypto.randomUUID();
+		const payload = JSON.stringify({ ...fields, command, commandId });
+		const sent = { value: false };
+		let raw: Buffer;
+		try {
+			raw = await exchange(command, payload, sent);
+		} catch (error) {
+			if (!sendOptions.journaled || !sent.value) throw error;
+			return resolveLostReply(command, commandId, error);
+		}
+
+		const body = httpBody(raw);
+		let reply: Envelope;
+		try {
+			reply = body === null ? {} : JSON.parse(body);
+		} catch {
+			reply = {};
+		}
+		const unwrapped = unwrap(reply);
+		if (unwrapped) return unwrapped.data;
+		throw new YoqaRunnerUnreachableError(
+			`Something other than YoqaRunner answered ${command}: ${raw.toString("utf8").slice(0, 120)}`,
+		);
+	};
+
+	/**
+	 * A gesture went out and its reply didn't come back. Ask `status` what the runner
+	 * recorded for its id: the reply once done, or `unknown` when it never arrived.
+	 */
+	const resolveLostReply = async (command: string, commandId: string, lost: unknown) => {
+		const deadline = performance.now() + timeoutMs;
+		while (true) {
+			let status: { command?: { state?: unknown; reply?: Envelope } };
+			try {
+				status = (await send("status", { statusCommandId: commandId })) as typeof status;
+			} catch {
+				throw lost;
+			}
+			const state = status?.command?.state;
+			if (state === "done") {
+				const unwrapped = unwrap(status.command?.reply ?? {});
+				if (unwrapped) return unwrapped.data;
+				throw new YoqaRunnerUnreachableError(`YoqaRunner recorded no reply for ${command}`);
+			}
+			if (state !== "pending") {
+				// The runner answered status, so it is reachable: the command alone was lost.
+				throw new YoqaRunnerCommandError(
+					"COMMAND_LOST",
+					`${command} never reached YoqaRunner and was not sent again (${errorMessage(lost)})`,
+				);
+			}
+			if (performance.now() >= deadline) {
+				throw new YoqaRunnerUnreachableError(
+					`YoqaRunner was still running ${command} after ${timeoutMs} ms`,
+				);
+			}
+			await Bun.sleep(PENDING_POLL_MS);
+		}
+	};
+
+	return { send };
 }
