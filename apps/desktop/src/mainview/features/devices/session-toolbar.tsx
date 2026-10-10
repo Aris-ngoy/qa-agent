@@ -50,7 +50,42 @@ function RestartIcon({ spinning }: { spinning: boolean }) {
 }
 
 const RESTART_BUTTON_CLASS =
-	"inline-flex size-10 items-center justify-center rounded-[10px] text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
+	"motion-fade-in inline-flex h-10 items-center gap-2 rounded-xl border border-outline-variant px-4 text-body-md font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
+
+function LockIcon() {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-3.5 shrink-0"
+			fill="none"
+			stroke="currentColor"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			strokeWidth="2"
+			viewBox="0 0 24 24"
+		>
+			<rect height="10" rx="2" width="14" x="5" y="11" />
+			<path d="M8 11V8a4 4 0 0 1 8 0v3" />
+		</svg>
+	);
+}
+
+function PlugIcon() {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-4"
+			fill="none"
+			stroke="currentColor"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			strokeWidth="2"
+			viewBox="0 0 24 24"
+		>
+			<path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0V8ZM12 16v5" />
+		</svg>
+	);
+}
 
 type SessionToolbarProps = {
 	platform: DevicePlatform;
@@ -59,7 +94,6 @@ type SessionToolbarProps = {
 	onDeviceSelect: (device: SelectedDevice) => void;
 	active: ActiveDeviceResponse | null;
 	connecting: boolean;
-	live: boolean;
 	onConnect: () => void;
 	onRestart: (options: { rebuildWda: boolean }) => void;
 	onDisconnect: () => void;
@@ -76,7 +110,6 @@ export function SessionToolbar({
 	onDeviceSelect,
 	active,
 	connecting,
-	live,
 	onConnect,
 	onRestart,
 	onDisconnect,
@@ -90,75 +123,89 @@ export function SessionToolbar({
 	/** A session's device the list does not have yet shows by its id. */
 	const deviceLabel = device?.label ?? active?.deviceId;
 
-	return (
-		<div className="flex flex-col items-end gap-1">
-			<div className="flex flex-wrap items-center justify-end gap-2">
-				<Select
-					aria-label="Platform"
-					className="w-28"
-					isDisabled={connected || connecting}
-					selectedKey={platform}
-					onSelectionChange={(key) => {
-						if (key === "ios" || key === "android") onPlatformChange(key);
-					}}
-				>
-					<Select.Trigger className="h-9">
-						<Select.Value />
-						<Select.Indicator />
-					</Select.Trigger>
-					<Select.Popover>
-						<ListBox>
-							{PLATFORMS.map((item) => (
-								<ListBox.Item key={item.id} id={item.id} textValue={item.label}>
-									{item.label}
-									<ListBox.ItemIndicator />
-								</ListBox.Item>
-							))}
-						</ListBox>
-					</Select.Popover>
-				</Select>
+	const platformLabel = PLATFORMS.find((item) => item.id === platform)?.label ?? platform;
 
-				<Button
-					className={[
-						"min-w-44 max-w-56 justify-start",
-						deviceLabel ? "font-mono text-body-sm" : "",
-					].join(" ")}
-					isDisabled={connecting || connected}
-					size="sm"
-					variant="secondary"
-					onPress={() => setPickerOpen(true)}
+	return (
+		<div className="flex flex-wrap items-center justify-end gap-3">
+			{connected && !viewOnly ? (
+				<span
+					className="motion-scale-in inline-flex h-10 max-w-64 items-center gap-2 rounded-xl bg-secondary-container/70 px-3 text-body-md font-semibold text-on-secondary-container"
+					title={[sessionPillLabel(active), active.laneWarning].filter(Boolean).join(" — ")}
 				>
 					<PhoneIcon />
-					<span className="truncate">{deviceLabel ?? "Select device"}</span>
-				</Button>
+					<span className="truncate">
+						{platformLabel} · {deviceLabel}
+					</span>
+				</span>
+			) : connected ? (
+				<span
+					className="motion-scale-in inline-flex h-10 max-w-64 items-center gap-2 rounded-xl bg-surface-container px-3 text-body-md text-on-surface-variant"
+					title="A test run holds this device"
+				>
+					<PhoneIcon />
+					<span className="truncate">
+						{platformLabel} · {deviceLabel}
+					</span>
+					<LockIcon />
+				</span>
+			) : (
+				<div className="motion-fade-in flex h-10 items-center rounded-xl bg-surface-container pr-1">
+					<Select
+						aria-label="Platform"
+						className="w-28"
+						isDisabled={connecting}
+						selectedKey={platform}
+						onSelectionChange={(key) => {
+							if (key === "ios" || key === "android") onPlatformChange(key);
+						}}
+					>
+						<Select.Trigger className="h-10 border-0 bg-transparent shadow-none">
+							<Select.Value />
+							<Select.Indicator />
+						</Select.Trigger>
+						<Select.Popover>
+							<ListBox>
+								{PLATFORMS.map((item) => (
+									<ListBox.Item key={item.id} id={item.id} textValue={item.label}>
+										{item.label}
+										<ListBox.ItemIndicator />
+									</ListBox.Item>
+								))}
+							</ListBox>
+						</Select.Popover>
+					</Select>
+					<span aria-hidden="true" className="h-5 w-px bg-outline-variant" />
+					<Button
+						className={[
+							"h-10 min-w-44 max-w-56 justify-start bg-transparent shadow-none",
+							deviceLabel ? "font-mono text-body-sm" : "",
+						].join(" ")}
+						isDisabled={connecting}
+						size="sm"
+						variant="ghost"
+						onPress={() => setPickerOpen(true)}
+					>
+						<PhoneIcon />
+						<span className="truncate">{deviceLabel ?? "Select device"}</span>
+					</Button>
+				</div>
+			)}
 
-				{connected ? (
+			<ServersDoctorPanel onOpenChange={setServersOpen} open={serversOpen} />
+
+			{connected ? (
+				viewOnly ? null : (
 					<>
-						<span
-							className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-2.5 py-1 text-body-sm font-semibold text-on-secondary-container"
-							title={active.laneWarning}
-						>
-							<span className="relative flex size-2">
-								<span
-									className={[
-										"absolute inline-flex size-full rounded-full bg-secondary opacity-60",
-										live ? "animate-ping" : "",
-									].join(" ")}
-								/>
-								<span className="relative inline-flex size-2 rounded-full bg-secondary" />
-							</span>
-							{sessionPillLabel(active)}
-						</span>
 						{offerWdaRebuild ? (
 							<Dropdown>
 								<Button
 									aria-label="Restart session"
 									className={RESTART_BUTTON_CLASS}
-									isDisabled={connecting || viewOnly}
-									isIconOnly
+									isDisabled={connecting}
 									variant="ghost"
 								>
 									<RestartIcon spinning={connecting} />
+									Restart session
 								</Button>
 								<Dropdown.Popover className="w-72">
 									<Dropdown.Menu
@@ -181,21 +228,20 @@ export function SessionToolbar({
 						) : (
 							<button
 								type="button"
-								aria-label="Restart session"
-								title="Restart session"
 								className={RESTART_BUTTON_CLASS}
-								disabled={connecting || viewOnly}
+								disabled={connecting}
 								onClick={() => {
 									onRestart({ rebuildWda: false });
 								}}
 							>
 								<RestartIcon spinning={connecting} />
+								Restart session
 							</button>
 						)}
 						<button
 							type="button"
-							className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] px-3 text-body-md font-semibold text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
-							disabled={connecting || viewOnly}
+							className="motion-fade-in inline-flex h-10 items-center gap-2 rounded-xl border border-error/30 px-4 text-body-md font-semibold text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
+							disabled={connecting}
 							onClick={() => {
 								onDisconnect();
 							}}
@@ -215,40 +261,35 @@ export function SessionToolbar({
 							Disconnect
 						</button>
 					</>
-				) : (
-					<>
-						<Button
-							isDisabled={!device || connecting}
-							size="sm"
-							variant="primary"
-							onPress={() => {
-								onConnect();
+				)
+			) : (
+				<>
+					{canRestart && device ? (
+						<button
+							type="button"
+							className={RESTART_BUTTON_CLASS}
+							disabled={connecting}
+							onClick={() => {
+								onRestart({ rebuildWda: false });
 							}}
 						>
-							{connecting ? "Connecting…" : "Connect"}
-						</Button>
-						{canRestart && device ? (
-							<Button
-								isDisabled={connecting}
-								size="sm"
-								variant="secondary"
-								onPress={() => {
-									onRestart({ rebuildWda: false });
-								}}
-							>
-								{connecting ? "Restarting…" : "Restart session"}
-							</Button>
-						) : null}
-					</>
-				)}
-				<ServersDoctorPanel onOpenChange={setServersOpen} open={serversOpen} />
-			</div>
-
-			{viewOnly ? (
-				<p className="text-helper text-on-surface-variant">
-					Test run in progress — watching live. Manual control resumes when the run finishes.
-				</p>
-			) : null}
+							<RestartIcon spinning={connecting} />
+							{connecting ? "Restarting…" : "Restart session"}
+						</button>
+					) : null}
+					<button
+						type="button"
+						className="motion-press motion-fade-in inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-body-md font-semibold text-on-primary transition-opacity disabled:opacity-40"
+						disabled={!device || connecting}
+						onClick={() => {
+							onConnect();
+						}}
+					>
+						<PlugIcon />
+						{connecting ? "Connecting…" : "Connect"}
+					</button>
+				</>
+			)}
 
 			<SelectDeviceModal
 				open={pickerOpen}
