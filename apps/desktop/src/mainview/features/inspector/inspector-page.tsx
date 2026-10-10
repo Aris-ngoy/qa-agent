@@ -8,6 +8,7 @@ import {
 	useActiveDeviceSession,
 } from "@/features/devices/use-active-device-session";
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
+import { ElementActionDialog } from "@/features/inspector/element-action-dialog";
 import { isDeviceSessionGone } from "@/features/inspector/inspect-session";
 import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
@@ -1136,17 +1137,6 @@ export function InspectorPage() {
 						onDoubleTap={handleDoubleTap}
 						onPointer={sendPointer}
 						onClearSelection={() => setSelection(null)}
-						snippetContext={snippetContext}
-						canChangeSelector={Boolean(selection?.element)}
-						onChangeSelector={handleChangeSelector}
-						onInsertLines={handleInsertLines}
-						onInsertAndRunLines={handleInsertAndRunLines}
-						onCopyLines={(lines) => {
-							void handleCopyLines(lines);
-						}}
-						gesturesDisabled={running || viewOnly}
-						onAddSwipe={handleAddSwipe}
-						onAddWait={handleAddWait}
 					/>
 				</div>
 
@@ -1180,6 +1170,24 @@ export function InspectorPage() {
 					/>
 				</div>
 			</div>
+
+			<ElementActionDialog
+				selection={liveControl ? null : selection}
+				elements={elements}
+				disabled={!connected || running || viewOnly}
+				snippetContext={snippetContext}
+				canChangeSelector={Boolean(selection?.element)}
+				onChangeSelector={handleChangeSelector}
+				onInsert={handleInsertLines}
+				onInsertAndRun={handleInsertAndRunLines}
+				onCopyLines={(lines) => {
+					void handleCopyLines(lines);
+				}}
+				onClose={() => setSelection(null)}
+				gesturesDisabled={running || viewOnly}
+				onAddSwipe={handleAddSwipe}
+				onAddWait={handleAddWait}
+			/>
 
 			<SaveAsTestCaseDialog
 				isOpen={saveOpen}
