@@ -8,7 +8,12 @@
  * of the screen. The screenshot is the whole screen too, so both coordinate spaces convert
  * the same way. Gestures are journaled on the runner, so a lost reply never double-taps.
  *
- * The tree, typing and the rest arrive in later slices (#250); until then they reject with
+ * The tree is the runner's `snapshot` of the app in front, shown as the same JSON the
+ * simulator's `yoqa-ax` tree uses. A snapshot never brings an app forward: an app that is
+ * not in front is `APP_BACKGROUNDED`. A stuck main thread on the phone is `RUNNER_WEDGED`.
+ * Both reach the caller as `YoqaRunnerCommandError`s with a plain message.
+ *
+ * Alerts, URLs and terminating an app arrive in later slices; until then they reject with
  * a clear message.
  */
 
@@ -16,6 +21,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
+import { yoqaAxTreeToSource } from "./ios-direct-lane";
 import {
 	type CapturedFrame,
 	DeadSessionError,
@@ -26,8 +32,13 @@ import {
 import { remember } from "./once";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 import { connectUsbmux } from "./usbmuxd";
+import type { YoqaAxNode } from "./yoqa-ax";
 import { type RunnerExec, type YoqaRunner, startYoqaRunner, yoqaRunnerDeps } from "./yoqa-runner";
-import { YoqaRunnerUnreachableError, createYoqaRunnerLink } from "./yoqa-runner-link";
+import {
+	YoqaRunnerCommandError,
+	YoqaRunnerUnreachableError,
+	createYoqaRunnerLink,
+} from "./yoqa-runner-link";
 
 /** A tap held longer than this is a long-press. */
 const LONG_PRESS_MIN_MS = 80;
@@ -36,6 +47,9 @@ const SWIPE_PRESS_MS = 50;
 /** A swipe's default movement time, also used for a live pointer drag. */
 const SWIPE_MS = 400;
 const DRAG_PRESS_MS = 500;
+/** Typed text is cut at a newline (return) and at a backspace character (delete). */
+const BACKSPACE = String.fromCharCode(8);
+const KEY_SEPARATORS = new RegExp(`(\\r?\\n|${BACKSPACE})`);
 
 /** A started `YoqaRunner`: its port on the phone, and how to stop it. */
 export type StartedRunner = Pick<YoqaRunner, "port" | "exited" | "stop">;
@@ -56,6 +70,23 @@ function errorMessage(error: unknown): string {
 /** 0–1000 to the 0.0–1.0 the runner takes; the conversion happens here, at the Lane's edge. */
 function fraction(norm: number): number {
 	return Math.min(1, Math.max(0, norm / 1000));
+}
+
+/** Plain-language messages for the runner's own errors; its code is kept. */
+function explainRunnerError(error: YoqaRunnerCommandError, app: string | undefined) {
+	if (error.code === "APP_BACKGROUNDED") {
+		return new YoqaRunnerCommandError(
+			error.code,
+			`${app ?? "The app"} is not in the foreground on the phone, so its screen was not read; it was not brought forward (${error.message})`,
+		);
+	}
+	if (error.code === "RUNNER_WEDGED") {
+		return new YoqaRunnerCommandError(
+			error.code,
+			`YoqaRunner's main thread is stuck on the phone and did not answer (${error.message}); stop the session and open a new one`,
+		);
+	}
+	return error;
 }
 
 function notYet(what: string): () => Promise<never> {
@@ -108,10 +139,13 @@ export async function createIosDeviceSession(
 
 	/** A runner the cable no longer reaches is a Dead Session, reported once. */
 	let notifiedDead = false;
+	/** The app a snapshot reads: the one the session was opened for, then the last one activated. */
+	let appId = options.bundleId;
 	const call = async (command: string, fields?: Record<string, unknown>, journaled = false) => {
 		try {
 			return await link.send(command, fields, { journaled });
 		} catch (error) {
+			if (error instanceof YoqaRunnerCommandError) throw explainRunnerError(error, appId);
 			if (!(error instanceof YoqaRunnerUnreachableError) || quitting) throw error;
 			if (!notifiedDead) {
 				notifiedDead = true;
@@ -128,6 +162,28 @@ export async function createIosDeviceSession(
 		}
 		return { width: size.width, height: size.height };
 	});
+
+	/** The runner's snapshot as the JSON the Screen reads, in the window's points. */
+	const pageSource = async () => {
+		const reply = (await call("snapshot", appId ? { bundleId: appId } : {})) as {
+			nodes?: unknown;
+		};
+		if (!Array.isArray(reply?.nodes)) throw new Error("YoqaRunner snapshot omitted its nodes");
+		return yoqaAxTreeToSource(
+			{ nodes: reply.nodes as YoqaAxNode[], degraded: reply.nodes.length === 0 },
+			await getWindowSize(),
+		);
+	};
+
+	/** Text goes in as typed; a newline presses return, and a backspace character presses delete. */
+	const typeText = async (text: string) => {
+		for (const part of text.split(KEY_SEPARATORS)) {
+			if (part === "") continue;
+			if (part === BACKSPACE) await call("keyboardDelete", {}, true);
+			else if (part === "\n" || part === "\r\n") await call("keyboardReturn", {}, true);
+			else await call("type", { text: part }, true);
+		}
+	};
 
 	const captureFrame = async (): Promise<CapturedFrame> => {
 		const shot = (await call("screenshot")) as { png?: unknown };
@@ -200,7 +256,7 @@ export async function createIosDeviceSession(
 		},
 		captureFrame,
 		screenshot,
-		pageSource: notYet("The Screen tree"),
+		pageSource,
 		getWindowSize,
 		tap: (x, y, tapOptions) => withActionLock(() => tapNorm(x, y, tapOptions?.durationMs)),
 		swipe: (x1, y1, x2, y2, durationMs = SWIPE_MS) =>
@@ -209,11 +265,22 @@ export async function createIosDeviceSession(
 			),
 		drag: (x1, y1, x2, y2, durationMs = 800) =>
 			withActionLock(() => dragNorm({ x: x1, y: y1 }, { x: x2, y: y2 }, durationMs, DRAG_PRESS_MS)),
-		type: notYet("Typing"),
-		activateApp: (appId) =>
-			devicectl(["device", "process", "launch", "--device", udid, appId], "devicectl launch"),
+		type: (text) => withActionLock(() => typeText(text)),
+		activateApp: async (id) => {
+			await devicectl(["device", "process", "launch", "--device", udid, id], "devicectl launch");
+			appId = id;
+		},
 		terminateApp: notYet("Terminating an app"),
-		backgroundApp: notYet("Backgrounding an app"),
+		backgroundApp: (seconds = 3) =>
+			withActionLock(async () => {
+				await call("button", { name: "home" }, true);
+				if (!appId) return;
+				await Bun.sleep(seconds * 1000);
+				await devicectl(
+					["device", "process", "launch", "--device", udid, appId],
+					"devicectl launch",
+				);
+			}),
 		openUrl: notYet("Opening a URL"),
 		acceptAlert: notYet("Accepting an alert"),
 		dismissAlert: notYet("Dismissing an alert"),
