@@ -17,6 +17,12 @@ export type OpenRunnerTunnel = () => Promise<Duplex>;
 /** How long a command may take before the runner counts as unreachable. */
 const COMMAND_TIMEOUT_MS = 10_000;
 
+/**
+ * A snapshot walks the whole tree of the app in front, one element query at a time. On a phone
+ * home screen that took Appium 11 s (2026-10-10), so it gets longer than a gesture does.
+ */
+const SNAPSHOT_TIMEOUT_MS = 30_000;
+
 /** How often a lost reply's `status` is asked again while the gesture is still running. */
 const PENDING_POLL_MS = 100;
 
@@ -128,9 +134,11 @@ function httpBody(raw: Buffer): string | null {
 
 export function createYoqaRunnerLink(
 	openTunnel: OpenRunnerTunnel,
-	options: { timeoutMs?: number } = {},
+	options: { timeoutMs?: number; snapshotTimeoutMs?: number } = {},
 ): YoqaRunnerLink {
 	const timeoutMs = options.timeoutMs ?? COMMAND_TIMEOUT_MS;
+	const snapshotTimeoutMs = options.snapshotTimeoutMs ?? SNAPSHOT_TIMEOUT_MS;
+	const timeoutFor = (command: string) => (command === "snapshot" ? snapshotTimeoutMs : timeoutMs);
 
 	/** One request over a fresh tunnel. `sent` tells a lost reply from a tunnel that never opened. */
 	const exchange = async (command: string, payload: string, sent: { value: boolean }) => {
@@ -152,7 +160,7 @@ export function createYoqaRunnerLink(
 		}
 		sent.value = true;
 		try {
-			return await roundTrip(tunnel, request, timeoutMs, command);
+			return await roundTrip(tunnel, request, timeoutFor(command), command);
 		} finally {
 			tunnel.destroy();
 		}
