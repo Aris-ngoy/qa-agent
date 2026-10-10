@@ -7,6 +7,7 @@ import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
 } from "@/features/devices/use-active-device-session";
+import { RunControls } from "@/features/test-cases/run-controls";
 import { toast } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -141,6 +142,7 @@ export function SessionBar() {
 				}}
 				viewOnly={Boolean(activeSession?.heldByRun)}
 			/>
+			<RunControls />
 		</header>
 	);
 }
