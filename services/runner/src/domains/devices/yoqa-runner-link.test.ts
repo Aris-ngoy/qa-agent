@@ -86,12 +86,30 @@ describe("createYoqaRunnerLink", () => {
 	});
 
 	test("a tunnel that can't open makes the runner unreachable", async () => {
-		const link = createYoqaRunnerLink(async () => {
-			throw new Error("usbmuxd does not list iPhone X");
-		});
+		const link = createYoqaRunnerLink(
+			async () => {
+				throw new Error("usbmuxd does not list iPhone X");
+			},
+			{ tunnelRetryMs: 1 },
+		);
 		const failure = link.send("status");
 		await expect(failure).rejects.toBeInstanceOf(YoqaRunnerUnreachableError);
 		await expect(failure).rejects.toThrow(/usbmuxd does not list iPhone X/);
+	});
+
+	test("a tunnel that fails once is retried instead of ending the session", async () => {
+		const runner = fakeRunner(() => ok({ state: "ready" }));
+		let calls = 0;
+		const link = createYoqaRunnerLink(
+			async () => {
+				calls += 1;
+				if (calls < 3) throw new Error("usbmuxd does not list iPhone X");
+				return runner.tunnel();
+			},
+			{ tunnelRetryMs: 1 },
+		);
+		expect(await link.send("status")).toEqual({ state: "ready" });
+		expect(calls).toBe(3);
 	});
 
 	test("a reply that isn't the runner's envelope makes the runner unreachable", async () => {
