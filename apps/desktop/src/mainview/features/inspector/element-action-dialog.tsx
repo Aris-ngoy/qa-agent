@@ -421,7 +421,7 @@ function DialogBody({
 							Copy
 						</button>
 					</div>
-					<pre className="m-0 min-h-12 whitespace-pre-wrap break-all rounded-xl bg-[#17161d] px-2.5 py-1 font-mono text-[10px] leading-snug text-[#e6e3f0]">
+					<pre className="m-0 min-h-12 whitespace-pre-wrap break-all rounded-xl bg-code px-2.5 py-1 font-mono text-[10px] leading-snug text-on-code">
 						{lines.length > 0 ? lines.join("\n") : "Fill in the field above to see the command."}
 					</pre>
 				</section>

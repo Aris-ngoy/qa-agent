@@ -143,7 +143,7 @@ export function ScriptPanel({
 								className={[
 									"min-h-8 rounded-md px-3 text-body-sm font-semibold transition-colors",
 									view === option
-										? "bg-surface-bright text-on-surface shadow-[0_1px_2px_rgba(27,26,34,0.12)]"
+										? "bg-surface-bright text-on-surface shadow-card"
 										: "text-on-surface-variant hover:text-on-surface",
 								].join(" ")}
 								onClick={() => setView(option)}
@@ -232,7 +232,7 @@ export function ScriptPanel({
 										className={[
 											"shrink-0 rounded-md px-2 py-0.5 text-helper font-semibold",
 											step.verb.toLowerCase().startsWith("assert")
-												? "bg-sky-100 text-sky-900"
+												? "bg-info-container text-on-info-container"
 												: "bg-violet-container text-on-violet-container",
 										].join(" ")}
 									>
@@ -268,7 +268,7 @@ export function ScriptPanel({
 			) : (
 				<textarea
 					aria-label="Yoqa shell script"
-					className="mx-4 mt-3 mb-2 min-h-72 resize-y rounded-xl border-0 bg-[#17161d] px-3.5 py-3 font-mono text-body-sm leading-[1.8] text-[#e6e3f0] outline-none focus-visible:ring-2 focus-visible:ring-violet disabled:opacity-60"
+					className="mx-4 mt-3 mb-2 min-h-72 resize-y rounded-xl border-0 bg-code px-3.5 py-3 font-mono text-body-sm leading-[1.8] text-on-code outline-none focus-visible:ring-2 focus-visible:ring-violet disabled:opacity-60"
 					disabled={editingDisabled}
 					rows={14}
 					spellCheck={false}
@@ -348,7 +348,7 @@ export function ScriptPanel({
 						{exportOpen ? (
 							<div
 								role="menu"
-								className="absolute right-0 bottom-full z-30 mb-1 flex min-w-44 flex-col rounded-xl border border-outline-variant bg-surface-bright p-1.5 shadow-[0_12px_32px_rgba(27,26,34,0.14)]"
+								className="absolute right-0 bottom-full z-30 mb-1 flex min-w-44 flex-col rounded-xl border border-outline-variant bg-surface-bright p-1.5 shadow-float"
 							>
 								<button
 									type="button"

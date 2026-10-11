@@ -237,7 +237,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 							aria-expanded={workspaceOpen}
 							aria-label={`Workspace: ${appLabel}. Switch application`}
 							className={[
-								"h-auto rounded-xl bg-transparent text-left text-sidebar-fg transition-colors duration-[var(--motion-fast)] data-[hovered=true]:bg-white/10",
+								"h-auto rounded-xl bg-transparent text-left text-sidebar-fg transition-colors duration-[var(--motion-fast)] data-[hovered=true]:bg-sidebar-fg/10",
 								collapsed
 									? "size-11 min-w-0 items-center justify-center p-0"
 									: "w-full flex-col items-stretch gap-0.5 px-2.5 py-2",
@@ -247,7 +247,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 							{collapsed ? (
 								<span
 									aria-hidden="true"
-									className="flex size-8 items-center justify-center rounded-full bg-white text-subheading font-semibold text-primary"
+									className="flex size-8 items-center justify-center rounded-full bg-sidebar-fg text-subheading font-semibold text-sidebar"
 								>
 									{appLabel.slice(0, 1).toUpperCase()}
 								</span>
@@ -352,7 +352,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 									{collapsed && item.badge !== undefined ? (
 										<span
 											aria-hidden="true"
-											className="motion-scale-in absolute -right-0.5 -top-0.5 size-2 rounded-full bg-white ring-2 ring-sidebar"
+											className="motion-scale-in absolute -right-0.5 -top-0.5 size-2 rounded-full bg-sidebar-fg ring-2 ring-sidebar"
 										/>
 									) : null}
 								</span>
@@ -361,7 +361,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 									{collapsed && item.badge !== undefined ? " (run in progress)" : ""}
 								</span>
 								{!collapsed && item.badge !== undefined ? (
-									<span className="motion-scale-in flex size-5 items-center justify-center rounded-full bg-white text-[10px] font-bold text-primary">
+									<span className="motion-scale-in flex size-5 items-center justify-center rounded-full bg-sidebar-fg text-[10px] font-bold text-sidebar">
 										{item.badge}
 									</span>
 								) : null}
@@ -391,11 +391,11 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				<div className="mt-6 flex flex-col gap-6">
 					<button
 						aria-label="Add application"
-						className={`flex items-center justify-center self-center rounded-2xl ${collapsed ? "size-11" : "size-12"} border border-dashed border-white/25 transition-colors duration-[var(--motion-fast)] hover:scale-105 hover:border-white/50`}
+						className={`flex items-center justify-center self-center rounded-2xl ${collapsed ? "size-11" : "size-12"} border border-dashed border-sidebar-fg/25 transition-colors duration-[var(--motion-fast)] hover:scale-105 hover:border-sidebar-fg/50`}
 						onClick={() => setModalOpen(true)}
 						type="button"
 					>
-						<span className="flex size-8 items-center justify-center rounded-full bg-white text-primary shadow-card transition-transform duration-[var(--motion-fast)]">
+						<span className="flex size-8 items-center justify-center rounded-full bg-sidebar-fg text-sidebar shadow-card transition-transform duration-[var(--motion-fast)]">
 							<svg
 								aria-hidden="true"
 								className="size-5"

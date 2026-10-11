@@ -418,8 +418,8 @@ function InstructionsPanel({
 				</div>
 			</div>
 
-			<aside className="h-fit rounded-2xl bg-[#f7f1d8] p-5 xl:sticky xl:top-2">
-				<div className="mb-3 flex size-8 items-center justify-center rounded-full bg-[#efd978]/80 text-[#8a6d12]">
+			<aside className="h-fit rounded-2xl bg-warning-container p-5 xl:sticky xl:top-2">
+				<div className="mb-3 flex size-8 items-center justify-center rounded-full bg-warning/30 text-on-warning-container">
 					<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
 						<path d="M9 21h6v-1.5H9V21zm3-19a6 6 0 00-3.5 10.9c.6.4 1 1 1.1 1.7V17h4.8v-2.4c.1-.7.5-1.3 1.1-1.7A6 6 0 0012 2z" />
 					</svg>
