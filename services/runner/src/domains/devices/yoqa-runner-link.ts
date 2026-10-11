@@ -47,7 +47,11 @@ export class YoqaRunnerCommandError extends Error {
 
 /** The runner could not be reached, or what answered was not the runner. */
 export class YoqaRunnerUnreachableError extends Error {
-	constructor(message: string) {
+	/** The tunnel could not open because the phone was briefly out of view; the runner may well be alive. */
+	constructor(
+		message: string,
+		readonly transient = false,
+	) {
 		super(message);
 		this.name = "YoqaRunnerUnreachableError";
 	}
@@ -167,7 +171,10 @@ export function createYoqaRunnerLink(
 				tunnel = await openTunnel();
 			} catch (error) {
 				if (attempt >= TUNNEL_ATTEMPTS) {
-					throw new YoqaRunnerUnreachableError(`Cannot reach YoqaRunner: ${errorMessage(error)}`);
+					throw new YoqaRunnerUnreachableError(
+						`Cannot reach YoqaRunner: ${errorMessage(error)}`,
+						(error as { transient?: unknown })?.transient === true,
+					);
 				}
 				await Bun.sleep(tunnelRetryMs * attempt);
 			}
