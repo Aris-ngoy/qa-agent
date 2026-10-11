@@ -13,6 +13,9 @@ import { createServersRoutes } from "./servers";
 import { createSessionRoutes } from "./session";
 import { createStatusRoutes } from "./status";
 
+/** Which runner process answered; the desktop logs it with a failed request. */
+export const RUNNER_PID_HEADER = "X-Yoqa-Runner-Pid";
+
 export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 	const app = new Hono();
 
@@ -34,8 +37,22 @@ export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 			},
 			allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 			allowHeaders: ["Content-Type", "Authorization"],
+			exposeHeaders: [RUNNER_PID_HEADER],
 		}),
 	);
+
+	// Every answer is live state: never let a webview reuse one (a 410 is cacheable by default).
+	// The pid tells a client which runner process answered.
+	app.use("*", async (c, next) => {
+		await next();
+		if (c.res.status === 101) return;
+		try {
+			c.res.headers.set("Cache-Control", "no-store");
+			c.res.headers.set(RUNNER_PID_HEADER, String(process.pid));
+		} catch {
+			// A proxied upstream response can have immutable headers; it is a stream, not cached state.
+		}
+	});
 
 	app.route("/", createHealthRoutes(settings, startedAt));
 	app.route("/", createStatusRoutes(settings));

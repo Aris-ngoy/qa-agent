@@ -168,6 +168,25 @@ describe("shared device session", () => {
 		expect(isActiveSessionHeldByRun()).toBe(false);
 	});
 
+	test("the Active Session says how the Inspector gets frames: Stream, or Screenshot Poll and why", async () => {
+		const streaming = await connectDevice({ deviceId: "dev-1", platform: "android" });
+		expect(streaming.streamState).toBe("ready");
+
+		// A cabled iPhone's Lane has no stream by design: that is not a failure.
+		directLane = (options) => createIosDeviceSession(options, fakePhone().deps);
+		const cabled = await connectDevice({ deviceId: PHONE_UDID, platform: "ios" });
+		expect(cabled.streamState).toBe("none");
+
+		// A stream that did not answer at connect time is a failure worth showing.
+		const fake = fakeLane("direct");
+		directLane = async (options) =>
+			Object.assign(await fake(options), {
+				stream: { ready: false, port: 9100, upstreamUrl: "http://127.0.0.1:9100/" },
+			});
+		const failed = await connectDevice({ deviceId: "dev-2", platform: "android" });
+		expect(failed.streamState).toBe("failed");
+	});
+
 	test("run adopts a matching Active Session and keeps it live after release", async () => {
 		await connectDevice({ deviceId: "dev-1", platform: "android" });
 		const before = getActiveSessionInfo();

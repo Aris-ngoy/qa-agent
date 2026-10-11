@@ -2,13 +2,38 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { type Plugin, defineConfig } from "vite";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const workspacePackages = path.resolve(rootDir, "../../packages");
 
+/** Dev only: print the webview's `devLog`/`devError` lines (sent over the HMR socket) here. */
+function webviewDevLog(): Plugin {
+	return {
+		name: "yoqa-webview-dev-log",
+		apply: "serve",
+		configureServer(server) {
+			server.ws.on(
+				"yoqa:dev-log",
+				(payload: { level?: string; message?: string; data?: unknown }) => {
+					const data =
+						payload.data === undefined ? "" : ` ${JSON.stringify(payload.data, null, 2)}`;
+					const line = `[yoqa:webview] ${payload.message ?? ""}${data}`;
+					if (payload.level === "error") console.error(line);
+					else console.log(line);
+				},
+			);
+		},
+	};
+}
+
 export default defineConfig({
-	plugins: [react(), tailwindcss()],
+	plugins: [
+		// React Compiler memoizes components and hooks at build time (React 19 target).
+		react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
+		tailwindcss(),
+		webviewDevLog(),
+	],
 	base: "./",
 	resolve: {
 		// Point at package sources so HMR watches them (not node_modules symlinks)

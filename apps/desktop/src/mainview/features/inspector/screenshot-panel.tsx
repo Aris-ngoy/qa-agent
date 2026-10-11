@@ -1,4 +1,6 @@
 import { coordsFromImageRect, isPickPointModifier } from "@/features/inspector/inspect-pointer";
+import type { InspectorFeed$ } from "@/features/inspector/inspector-feed";
+import { LiveFrame } from "@/features/inspector/live-frame";
 import {
 	type InspectorSelection,
 	activeSelectorCaption,
@@ -6,7 +8,8 @@ import {
 	pointOnlySelection,
 	selectionFromPoint,
 } from "@/features/inspector/selection";
-import type { ScreenElement } from "@yoqa/runner-client";
+import { useValue } from "@legendapp/state/react";
+import type { ActiveDeviceResponse, ScreenElement } from "@yoqa/runner-client";
 import {
 	type MouseEvent,
 	type PointerEvent,
@@ -44,16 +47,12 @@ function elementBoxPercent(element: ScreenElement): {
 }
 
 type ScreenshotPanelProps = {
-	imageUrl: string | null;
-	elements: ScreenElement[];
-	selection: InspectorSelection | null;
-	/** Initial connect / first frame only — not every live poll. */
-	loading: boolean;
-	/** True while warming / refreshing the accessibility tree. */
-	treeRefreshing: boolean;
-	live: boolean;
-	feedMode: "mjpeg" | "poll" | null;
-	liveControl: boolean;
+	feed$: InspectorFeed$;
+	/** The top bar's Active Session; the Inspector attaches to it only on Connect. */
+	session: ActiveDeviceResponse | null;
+	onConnect: () => void;
+	onDisconnect: () => void;
+	pageVisible: boolean;
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
 	/** Optional: notify parent after a local select so it can background-refresh a stale tree. */
@@ -66,15 +65,15 @@ type ScreenshotPanelProps = {
 	onClearSelection: () => void;
 };
 
+const HEADER_BUTTON_CLASS =
+	"inline-flex h-9 items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-bright px-3 text-body-sm font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
+
 export function ScreenshotPanel({
-	imageUrl,
-	elements,
-	selection,
-	loading,
-	treeRefreshing,
-	live,
-	feedMode,
-	liveControl,
+	feed$,
+	session,
+	onConnect,
+	onDisconnect,
+	pageVisible,
 	onLiveControlChange,
 	disabled,
 	onSelectWithPoint,
@@ -84,6 +83,16 @@ export function ScreenshotPanel({
 	onPointer,
 	onClearSelection,
 }: ScreenshotPanelProps) {
+	const attached = useValue(() => feed$.active.get() != null);
+	const hasFrame = useValue(() => feed$.imageUrl.get() != null);
+	const elements = useValue(feed$.elements);
+	const selection = useValue(feed$.selection);
+	const treeRefreshing = useValue(feed$.treeRefreshing);
+	const feedMode = useValue(feed$.feedMode);
+	const liveControl = useValue(feed$.liveControl);
+	const unreachable = useValue(feed$.unreachable);
+	const loading = useValue(() => feed$.bootLoading.get() && feed$.imageUrl.get() == null);
+	const live = attached && pageVisible && hasFrame;
 	const imgRef = useRef<HTMLImageElement | null>(null);
 	const pointerActiveRef = useRef(false);
 	/** Ignore click/contextmenu that follow a Control-pick pointerdown (macOS). */
@@ -312,8 +321,15 @@ export function ScreenshotPanel({
 			? elementBoxPercent(hoverElement)
 			: null;
 
-	const liveLabel =
-		feedMode === "poll" ? "Poll" : feedMode === "mjpeg" ? "Stream" : live ? "Live" : null;
+	const liveLabel = unreachable
+		? "Waiting for device"
+		: feedMode === "poll"
+			? "Poll"
+			: feedMode === "mjpeg"
+				? "Stream"
+				: live
+					? "Live"
+					: null;
 
 	const caption = selection ? activeSelectorCaption(selection) : null;
 	const viewRef = useRef<HTMLDivElement>(null);
@@ -374,6 +390,15 @@ export function ScreenshotPanel({
 								<path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
 								<path d="M21 3v5h-5" />
 							</svg>
+						</button>
+					) : null}
+					{attached ? (
+						<button type="button" className={HEADER_BUTTON_CLASS} onClick={onDisconnect}>
+							Disconnect
+						</button>
+					) : session ? (
+						<button type="button" className={HEADER_BUTTON_CLASS} onClick={onConnect}>
+							Connect
 						</button>
 					) : null}
 				</div>
@@ -446,17 +471,29 @@ export function ScreenshotPanel({
 					ref={viewRef}
 					className="relative flex min-h-56 items-center justify-center overflow-visible rounded-xl p-3"
 				>
-					{!imageUrl && !loading ? (
-						<div className="flex min-h-56 flex-col items-center justify-center gap-2 px-6 text-center">
-							<p className="text-body-sm font-medium text-on-surface">No live feed</p>
-							<p className="max-w-xs text-helper text-on-surface-variant">
-								Connect a device to stream the screen. Changes on the phone appear here
-								automatically.
+					{!hasFrame && !loading ? (
+						<div className="flex min-h-56 flex-col items-center justify-center gap-3 px-6 text-center">
+							<p className="text-body-sm font-medium text-on-surface">
+								{session ? "Inspector not connected" : "No device session"}
 							</p>
+							<p className="max-w-xs text-helper text-on-surface-variant">
+								{session
+									? "Connect to stream the screen and read its elements. The feed runs only while connected."
+									: "Connect a device from the top bar, then connect the Inspector to it."}
+							</p>
+							{session ? (
+								<button
+									type="button"
+									className="inline-flex min-h-10 items-center rounded-[10px] bg-primary px-4 text-body-md font-semibold text-on-primary transition-opacity hover:opacity-90"
+									onClick={onConnect}
+								>
+									Connect Inspector
+								</button>
+							) : null}
 						</div>
 					) : null}
 
-					{imageUrl ? (
+					{hasFrame ? (
 						<div className="relative w-fit max-w-full overflow-visible">
 							{/* biome-ignore lint/a11y/useKeyWithClickEvents: screenshot hit-testing is pointer-driven */}
 							<div
@@ -485,12 +522,10 @@ export function ScreenshotPanel({
 								onPointerCancel={disabled ? undefined : handlePointerUp}
 								onPointerLeave={handlePointerLeave}
 							>
-								<img
-									ref={imgRef}
-									alt="Live device screenshot"
+								<LiveFrame
+									src$={feed$.imageUrl}
+									imgRef={imgRef}
 									className="pointer-events-none block max-h-[max(260px,calc(100vh-27rem))] w-auto max-w-full rounded-[28px] shadow-float select-none"
-									draggable={false}
-									src={imageUrl}
 								/>
 								{hoverBox ? (
 									<span
@@ -571,7 +606,7 @@ export function ScreenshotPanel({
 					) : null}
 
 					{loading ? (
-						imageUrl ? (
+						hasFrame ? (
 							<div className="motion-fade-in absolute inset-0 flex items-center justify-center bg-surface/55 text-body-sm text-on-surface-variant backdrop-blur-[1px]">
 								Starting live feed…
 							</div>

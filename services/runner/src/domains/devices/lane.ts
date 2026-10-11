@@ -140,9 +140,27 @@ const DEAD_SESSION_RE =
 
 /** Stable error for a Device Session the lane has already dropped. */
 export class DeadSessionError extends Error {
-	constructor(message = "Device session ended") {
-		super(message);
+	constructor(message = "Device session ended", options?: ErrorOptions) {
+		super(message, options);
 		this.name = "DeadSessionError";
+	}
+}
+
+/**
+ * The Lane cannot reach the device right now, but the session is still inside its grace
+ * window (an Unreachable Session): the runner keeps it, and a later call may get through.
+ */
+export class DeviceUnreachableError extends Error {
+	constructor(
+		message: string,
+		/** How long the device has not answered. */
+		readonly unreachableMs: number,
+		/** How long the runner waits before the session becomes a Dead Session. */
+		readonly graceMs: number,
+		options?: ErrorOptions,
+	) {
+		super(message, options);
+		this.name = "DeviceUnreachableError";
 	}
 }
 

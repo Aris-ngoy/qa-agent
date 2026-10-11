@@ -26,20 +26,35 @@ import {
 	retargetActiveSession,
 } from "../../domains/devices/active-session";
 import { performActionBatch } from "../../domains/devices/batch";
+import { errorChain } from "../../domains/devices/error-chain";
 import {
 	ActionNotFoundError,
 	ActionValidationError,
 	getScreen,
 	performAction,
 } from "../../domains/devices/interaction";
+import { DeviceUnreachableError } from "../../domains/devices/lane";
 import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 
-function sessionErrorResponse(error: unknown) {
+/** Map a Device Session error to its HTTP answer, or null when the route should handle it. */
+export function sessionErrorResponse(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error);
 	if (error instanceof SessionBusyError) {
 		return {
 			status: 409 as const,
 			body: { error: error.message },
+		};
+	}
+	if (error instanceof DeviceUnreachableError) {
+		// An Unreachable Session: the runner keeps it until the grace runs out, then answers 410.
+		return {
+			status: 503 as const,
+			body: {
+				error: "Device unreachable",
+				detail: message,
+				unreachableMs: error.unreachableMs,
+				graceMs: error.graceMs,
+			},
 		};
 	}
 	if (isMissingAppiumSessionError(error)) {
@@ -49,6 +64,7 @@ function sessionErrorResponse(error: unknown) {
 			body: {
 				error: "Device session ended",
 				detail: message,
+				chain: errorChain(error),
 			},
 		};
 	}

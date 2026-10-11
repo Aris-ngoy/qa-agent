@@ -1,3 +1,4 @@
+import { devLog } from "@/app/dev-log";
 import { useEnterOnce } from "@/app/motion/use-enter-once";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
@@ -8,16 +9,11 @@ import {
 } from "@/features/devices/use-active-device-session";
 import { tapLinesForSelection } from "@/features/inspector/command-snippets";
 import { ElementActionDialog } from "@/features/inspector/element-action-dialog";
-import { isDeviceSessionGone } from "@/features/inspector/inspect-session";
+import { InspectorFeedController } from "@/features/inspector/inspector-feed";
 import { SaveAsTestCaseDialog } from "@/features/inspector/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/screenshot-panel";
 import { type RunLogEntry, ScriptPanel } from "@/features/inspector/script-panel";
-import {
-	type InspectorSelection,
-	appendScriptLines,
-	cycleChangeSelector,
-	selectionFromPoint,
-} from "@/features/inspector/selection";
+import { type InspectorSelection, appendScriptLines } from "@/features/inspector/selection";
 import {
 	type TestCase,
 	caseQueryKey,
@@ -25,14 +21,13 @@ import {
 	mapCatalogCase,
 } from "@/features/test-cases/data";
 import { toast } from "@heroui/react";
+import { useValue } from "@legendapp/state/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
 	type ActionRequest,
-	type ActiveDeviceResponse,
 	DEFAULT_SHELL_SCRIPT_HEADER,
 	type RunReportDocument,
-	type ScreenElement,
 	buildRunReportFromInspectorSession,
 	formatActionShellLine,
 	formatRunReportHtml,
@@ -48,8 +43,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const TREE_REFRESH_MS = 8000;
 /** Fallback screenshot poll when Appium MJPEG is unavailable. */
 const FALLBACK_SCREENSHOT_MS = 250;
-/** Background-refresh the cached tree if older than this on select. */
-const TREE_STALE_MS = 3000;
 
 type InspectorReportStep = {
 	index: number;
@@ -124,9 +117,41 @@ function defaultCaseNameFromScript(script: string): string {
 	return `Inspector script · ${stamp}`;
 }
 
-function bytesToImageBlob(bytes: Uint8Array, mime = "image/png"): Blob {
-	const copy = Uint8Array.from(bytes);
-	return new Blob([copy.buffer], { type: mime });
+type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+/**
+ * `work()`'s value, or what it threw. Keeps try/catch out of the component: the React
+ * Compiler skips any component with conditionals inside a try block.
+ */
+async function settle<T>(work: () => Promise<T>): Promise<Settled<T>> {
+	try {
+		return { ok: true, value: await work() };
+	} catch (error) {
+		return { ok: false, error };
+	}
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function exportRunReport(report: RunReportDocument, format: "html" | "md") {
+	try {
+		const baseName = suggestedRunReportBasename(report);
+		if (format === "html") {
+			downloadTextFile(`${baseName}.html`, formatRunReportHtml(report), "text/html;charset=utf-8");
+			notify("HTML report exported");
+		} else {
+			downloadTextFile(
+				`${baseName}.md`,
+				formatRunReportMarkdown(report),
+				"text/markdown;charset=utf-8",
+			);
+			notify("Markdown report exported");
+		}
+	} catch (error) {
+		showErrorToast(error, "Failed to export report");
+	}
 }
 
 function miniScriptFromLines(lines: string[]): string {
@@ -138,16 +163,23 @@ export function InspectorPage() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
-	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
+	const { activeSession } = useActiveDeviceSession();
 
-	const [active, setActive] = useState<ActiveDeviceResponse | null>(null);
-	const [bootLoading, setBootLoading] = useState(false);
-	const [imageUrl, setImageUrl] = useState<string | null>(null);
-	const [feedMode, setFeedMode] = useState<"mjpeg" | "poll" | null>(null);
-	const [liveControl, setLiveControl] = useState(false);
-	const [elements, setElements] = useState<ScreenElement[]>([]);
-	const [treeRefreshing, setTreeRefreshing] = useState(false);
-	const [selection, setSelection] = useState<InspectorSelection | null>(null);
+	const [controller] = useState(
+		() =>
+			new InspectorFeedController({
+				onSessionGone: () => {
+					queryClient.setQueryData(activeDeviceSessionQueryKey, null);
+					void queryClient.invalidateQueries({ queryKey: activeDeviceSessionQueryKey });
+				},
+			}),
+	);
+	const feed$ = controller.feed$;
+	const active = useValue(feed$.active);
+	const feedMode = useValue(feed$.feedMode);
+	const elements = useValue(feed$.elements);
+	const selection = useValue(feed$.selection);
+	const liveControl = useValue(feed$.liveControl);
 	const [script, setScript] = useState(DEFAULT_SHELL_SCRIPT_HEADER);
 	const [running, setRunning] = useState(false);
 	const [activeLineNumber, setActiveLineNumber] = useState<number | null>(null);
@@ -163,39 +195,8 @@ export function InspectorPage() {
 
 	const abortRef = useRef<AbortController | null>(null);
 	const logIdRef = useRef(0);
-	const imageUrlRef = useRef<string | null>(null);
-	const imageIsBlobRef = useRef(false);
-	const inFlightRef = useRef(false);
-	const activeRef = useRef<ActiveDeviceResponse | null>(null);
-	const elementsRef = useRef<ScreenElement[]>([]);
-	const treeUpdatedAtRef = useRef(0);
-	const selectionRef = useRef<InspectorSelection | null>(null);
 	const controlWsRef = useRef<WebSocket | null>(null);
 	const pointerSeqRef = useRef(0);
-	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
-	const sessionEpochRef = useRef(0);
-	/** Device id already adopted from the shared Active Session query. */
-	const adoptedDeviceIdRef = useRef<string | null>(null);
-	const feedModeRef = useRef<"mjpeg" | "poll" | null>(null);
-	const startLiveFeedRef = useRef<(deviceInfo: ActiveDeviceResponse) => Promise<void>>(
-		async () => {},
-	);
-
-	useEffect(() => {
-		activeRef.current = active;
-	}, [active]);
-
-	useEffect(() => {
-		elementsRef.current = elements;
-	}, [elements]);
-
-	useEffect(() => {
-		selectionRef.current = selection;
-	}, [selection]);
-
-	useEffect(() => {
-		feedModeRef.current = feedMode;
-	}, [feedMode]);
 
 	const pushLog = useCallback((text: string, tone: RunLogEntry["tone"] = "info") => {
 		logIdRef.current += 1;
@@ -203,356 +204,111 @@ export function InspectorPage() {
 		setLog((prev) => [...prev, { id, text, tone }]);
 	}, []);
 
-	const revokeImage = useCallback(() => {
-		if (imageUrlRef.current && imageIsBlobRef.current) {
-			URL.revokeObjectURL(imageUrlRef.current);
-		}
-		imageUrlRef.current = null;
-		imageIsBlobRef.current = false;
-		setImageUrl(null);
-	}, []);
+	/** Attach the Inspector to the Active Session. Only the user does this (Connect). */
+	const handleConnect = useCallback(() => {
+		if (!activeSession || feed$.active.peek()) return;
+		void controller.connect(activeSession);
+	}, [activeSession, controller, feed$]);
 
-	const setStreamImage = useCallback((url: string) => {
-		if (imageUrlRef.current && imageIsBlobRef.current) {
-			URL.revokeObjectURL(imageUrlRef.current);
-		}
-		imageUrlRef.current = url;
-		imageIsBlobRef.current = false;
-		setImageUrl(url);
-	}, []);
-
-	const setBlobImage = useCallback((bytes: Uint8Array) => {
-		const blob = bytesToImageBlob(bytes);
-		const nextUrl = URL.createObjectURL(blob);
-		if (imageUrlRef.current && imageIsBlobRef.current) {
-			URL.revokeObjectURL(imageUrlRef.current);
-		}
-		imageUrlRef.current = nextUrl;
-		imageIsBlobRef.current = true;
-		setImageUrl(nextUrl);
-	}, []);
-
-	const remountMjpegStream = useCallback(async () => {
-		if (feedModeRef.current !== "mjpeg" || !activeRef.current) return;
-		const client = await getRunnerClient();
-		setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
-	}, [setStreamImage]);
-
-	const clearSessionUi = useCallback(() => {
-		activeRef.current = null;
-		setActive(null);
-		setSelection(null);
-		setElements([]);
-		treeUpdatedAtRef.current = 0;
-		setTreeRefreshing(false);
-		setFeedMode(null);
-		setLiveControl(false);
-		controlWsRef.current?.close();
-		controlWsRef.current = null;
-		adoptedDeviceIdRef.current = null;
-		revokeImage();
-	}, [revokeImage]);
-
-	const handleSessionGone = useCallback(() => {
-		sessionEpochRef.current += 1;
-		clearSessionUi();
-		queryClient.setQueryData(activeDeviceSessionQueryKey, null);
-		invalidateActiveDeviceSession();
-		notify("Device session ended — reconnect from the top bar");
-	}, [clearSessionUi, invalidateActiveDeviceSession, queryClient]);
-
-	const refreshTree = useCallback(
-		async (options: { silent?: boolean } = {}): Promise<ScreenElement[] | null> => {
-			const silent = options.silent ?? false;
-			if (inFlightRef.current) return null;
-			if (!activeRef.current) return null;
-			const epoch = sessionEpochRef.current;
-			const pauseMjpeg = feedModeRef.current === "mjpeg";
-			inFlightRef.current = true;
-			setTreeRefreshing(true);
-			try {
-				const client = await getRunnerClient();
-				// pauseMjpeg aborts live stream proxies on the runner before pageSource
-				// (Appium Inspector Element Mode — source without dual-loading WDA).
-				const screen = await client.getScreen({ pauseMjpeg });
-				if (sessionEpochRef.current !== epoch || !activeRef.current) return null;
-				const next = screen.elements ?? [];
-				setElements(next);
-				treeUpdatedAtRef.current = Date.now();
-				return next;
-			} catch (error) {
-				if (sessionEpochRef.current !== epoch) return null;
-				if (isDeviceSessionGone(error)) {
-					// Background tree warm must not tear down a live stream. Confirm
-					// the runner actually dropped the session before prompting Restart.
-					if (silent) return null;
-					const stillActive = await getRunnerClient()
-						.then((client) => client.getActiveDevice())
-						.catch(() => null);
-					if (stillActive && stillActive.deviceId === activeRef.current?.deviceId) {
-						showErrorToast(error, "Failed to refresh screen tree");
-						return null;
-					}
-					handleSessionGone();
-					return null;
-				}
-				if (!silent) {
-					showErrorToast(error, "Failed to refresh screen tree");
-				}
-				return null;
-			} finally {
-				inFlightRef.current = false;
-				setTreeRefreshing(false);
-				if (pauseMjpeg && sessionEpochRef.current === epoch && activeRef.current) {
-					void remountMjpegStream();
-				}
-			}
-		},
-		[handleSessionGone, remountMjpegStream],
-	);
-
-	/**
-	 * Warm / refresh the cached accessibility tree (pauses MJPEG briefly under Stream).
-	 * Selection hit-tests locally against the cache — not on every click.
-	 */
-	const warmTree = useCallback(() => {
-		void refreshTree({ silent: true });
-	}, [refreshTree]);
+	const handleDisconnect = useCallback(() => controller.disconnect(), [controller]);
 
 	const handleLiveControlChange = useCallback(
-		(enabled: boolean) => {
-			setLiveControl(enabled);
-			if (!enabled && activeRef.current) {
-				// Entering Select mode: one pageSource warm so hover/click are instant.
-				warmTree();
-			}
-		},
-		[warmTree],
+		(enabled: boolean) => controller.setLiveControl(enabled),
+		[controller],
 	);
 
-	/** After a local select, refresh in the background if the cache is stale. */
+	const handleSelect = useCallback(
+		(next: InspectorSelection | null) => controller.select(next),
+		[controller],
+	);
+
 	const handleSelectWithPoint = useCallback(
 		(next: InspectorSelection) => {
-			const age = Date.now() - treeUpdatedAtRef.current;
-			if (age <= TREE_STALE_MS) return;
-			void (async () => {
-				const tree = await refreshTree({ silent: true });
-				if (!tree) return;
-				const current = selectionRef.current;
-				if (!current) return;
-				// Control-pick / coords-only: never snap back onto a tree node.
-				if (!next.element || !current.element) return;
-				// Only update if this is still the same click point the user just made.
-				if (current.pointX !== next.pointX || current.pointY !== next.pointY) return;
-				const refreshed = selectionFromPoint(tree, {
-					x: next.pointX,
-					y: next.pointY,
-				});
-				// Keep locator preference if the same element is still under the point.
-				const sameElement =
-					current.element &&
-					refreshed.element &&
-					(current.element.id ?? "") === (refreshed.element.id ?? "") &&
-					(current.element.label ?? "") === (refreshed.element.label ?? "") &&
-					current.element.x === refreshed.element.x &&
-					current.element.y === refreshed.element.y;
-				setSelection(
-					sameElement ? { ...refreshed, preferredLocator: current.preferredLocator } : refreshed,
-				);
-			})();
+			void controller.selectWithPoint(next);
 		},
-		[refreshTree],
+		[controller],
 	);
 
-	const handleChangeSelector = useCallback(() => {
-		setSelection((prev) => {
-			if (!prev) return prev;
-			return cycleChangeSelector(elementsRef.current, prev);
-		});
-	}, []);
+	const handleChangeSelector = useCallback(() => controller.cycleSelector(), [controller]);
 
 	const handleRefreshTree = useCallback(() => {
-		void refreshTree({ silent: false });
-	}, [refreshTree]);
-	const refreshPollFrame = useCallback(
-		async (options: { includeTree?: boolean; silent?: boolean } = {}) => {
-			const includeTree = options.includeTree ?? true;
-			const silent = options.silent ?? false;
-			if (inFlightRef.current) return;
-			if (!activeRef.current) return;
-			const epoch = sessionEpochRef.current;
-			inFlightRef.current = true;
-			if (!silent && !imageUrlRef.current) setBootLoading(true);
-			try {
-				const client = await getRunnerClient();
-				const bytesPromise = client.fetchScreenshotBytes();
-				const treePromise = includeTree ? client.getScreen() : Promise.resolve(null);
-				const [bytes, screen] = await Promise.all([bytesPromise, treePromise]);
-				if (sessionEpochRef.current !== epoch || !activeRef.current) return;
-				setBlobImage(bytes);
-				if (screen) {
-					setElements(screen.elements ?? []);
-					treeUpdatedAtRef.current = Date.now();
-				}
-			} catch (error) {
-				if (sessionEpochRef.current !== epoch) return;
-				if (isDeviceSessionGone(error)) {
-					if (silent) return;
-					const stillActive = await getRunnerClient()
-						.then((client) => client.getActiveDevice())
-						.catch(() => null);
-					if (stillActive && stillActive.deviceId === activeRef.current?.deviceId) {
-						showErrorToast(error, "Failed to refresh screen");
-						return;
-					}
-					handleSessionGone();
-					return;
-				}
-				if (!silent) {
-					showErrorToast(error, "Failed to refresh screen");
-				}
-			} finally {
-				inFlightRef.current = false;
-				setBootLoading(false);
-			}
-		},
-		[handleSessionGone, setBlobImage],
-	);
-
-	const startLiveFeed = useCallback(
-		async (deviceInfo: ActiveDeviceResponse) => {
-			setBootLoading(true);
-			try {
-				const client = await getRunnerClient();
-				if (deviceInfo.streamReady !== false && (deviceInfo.streamUrl || deviceInfo.mjpegPort)) {
-					setFeedMode("mjpeg");
-					// Cache-bust so a stuck <img> MJPEG connection is remounted.
-					setStreamImage(`${client.getStreamMjpegUrl()}?t=${Date.now()}`);
-					// Do not page-source while MJPEG is starting — WDA dies a few seconds later.
-					// Tree is loaded after script/commands (and on poll feed).
-				} else {
-					setFeedMode("poll");
-					await refreshPollFrame({ includeTree: true, silent: false });
-				}
-			} catch (error) {
-				showErrorToast(error, "Failed to start live feed");
-				setFeedMode("poll");
-				await refreshPollFrame({ includeTree: true, silent: true });
-			} finally {
-				setBootLoading(false);
-			}
-		},
-		[refreshPollFrame, setStreamImage],
-	);
-
-	startLiveFeedRef.current = startLiveFeed;
+		void controller.refreshTree({ silent: false });
+	}, [controller]);
 
 	useEffect(() => {
+		devLog("Inspector page visibility", { visibilityState: document.visibilityState });
 		const onVisibility = () => {
+			devLog("Inspector page visibility changed", { visibilityState: document.visibilityState });
 			setPageVisible(document.visibilityState === "visible");
 		};
 		document.addEventListener("visibilitychange", onVisibility);
 		return () => document.removeEventListener("visibilitychange", onVisibility);
 	}, []);
 
-	// Adopt the shared Active Session (connected from any mode — play bar, CLI,
-	// another inspector visit) and mirror external disconnects into local UI.
+	// The Inspector never attaches on its own, but it lets go when the Active Session it is
+	// attached to goes away: a disconnect, restart or another device from the top bar.
+	const sessionDeviceId = activeSession?.deviceId ?? null;
 	useEffect(() => {
-		if (!activeSession) {
-			// Query is still null after a local connect (refetch in flight). Don't
-			// wipe the feed unless this session was adopted from the shared query.
-			if (
-				activeRef.current &&
-				adoptedDeviceIdRef.current != null &&
-				adoptedDeviceIdRef.current === activeRef.current.deviceId
-			) {
-				sessionEpochRef.current += 1;
-				clearSessionUi();
-			}
-			return;
-		}
-		if (adoptedDeviceIdRef.current === activeSession.deviceId) return;
-		adoptedDeviceIdRef.current = activeSession.deviceId;
-		// Already showing this device locally (fresh connect) — keep the feed.
-		if (activeRef.current?.deviceId === activeSession.deviceId) return;
-		sessionEpochRef.current += 1;
-		activeRef.current = activeSession;
-		setActive(activeSession);
-		void startLiveFeedRef.current(activeSession);
-	}, [activeSession, clearSessionUi]);
+		const attached = feed$.active.peek();
+		if (!attached || attached.deviceId === sessionDeviceId) return;
+		controller.clear();
+	}, [controller, feed$, sessionDeviceId]);
 
 	// Switching app points the Active Session at it (top bar); the cached tree was read for
 	// the previous app, so the next selection reads the Screen again.
 	const selectedAppId = selectedApp?.id;
 	useEffect(() => {
 		if (!selectedAppId) return;
-		treeUpdatedAtRef.current = 0;
-	}, [selectedAppId]);
+		controller.markTreeStale();
+	}, [controller, selectedAppId]);
 
+	// Leaving the page detaches; the device session stays connected in the top bar.
 	useEffect(() => {
 		return () => {
 			abortRef.current?.abort();
-			controlWsRef.current?.close();
-			controlWsRef.current = null;
-			revokeImage();
+			controller.clear();
 		};
-	}, [revokeImage]);
+	}, [controller]);
 
 	// Accessibility tree refresh — only on poll feed. MJPEG + pageSource on the
 	// same WDA session routinely kills the stream a few seconds after connect.
 	useEffect(() => {
 		if (!active || !pageVisible || feedMode !== "poll") return;
-
-		let cancelled = false;
-		const tick = async () => {
-			if (cancelled || !activeRef.current) return;
-			await refreshTree({ silent: true });
+		const tick = () => {
+			if (feed$.unreachable.peek()) return;
+			void controller.refreshTree({ silent: true });
 		};
-
-		void tick();
-		const timer = window.setInterval(() => {
-			void tick();
-		}, TREE_REFRESH_MS);
-
-		return () => {
-			cancelled = true;
-			window.clearInterval(timer);
-		};
-	}, [active, feedMode, pageVisible, refreshTree]);
+		tick();
+		const timer = window.setInterval(tick, TREE_REFRESH_MS);
+		return () => window.clearInterval(timer);
+	}, [active, controller, feed$, feedMode, pageVisible]);
 
 	// Under Stream + Select mode, warm the tree once after connect (deferred so MJPEG can settle).
 	useEffect(() => {
 		if (!active || !pageVisible || feedMode !== "mjpeg" || liveControl) return;
-		if (treeUpdatedAtRef.current > 0) return;
+		if (controller.treeLoaded) return;
 		const timer = window.setTimeout(() => {
-			if (!activeRef.current || treeUpdatedAtRef.current > 0) return;
-			warmTree();
+			if (!feed$.active.peek() || controller.treeLoaded) return;
+			void controller.refreshTree({ silent: true });
 		}, 1500);
-		return () => {
-			window.clearTimeout(timer);
-		};
-	}, [active, feedMode, liveControl, pageVisible, warmTree]);
+		return () => window.clearTimeout(timer);
+	}, [active, controller, feed$, feedMode, liveControl, pageVisible]);
 
 	// Fallback PNG poll only when MJPEG is unavailable.
 	useEffect(() => {
-		if (!active || !pageVisible || feedMode !== "poll") return;
-
-		let cancelled = false;
-		const tick = async () => {
-			if (cancelled || !activeRef.current) return;
-			await refreshPollFrame({ includeTree: false, silent: true });
+		if (!active || feedMode !== "poll") return;
+		devLog(pageVisible ? "Screenshot poll started" : "Screenshot poll paused: page hidden", {
+			deviceId: active.deviceId,
+			visibilityState: document.visibilityState,
+		});
+		if (!pageVisible) return;
+		const tick = () => {
+			void controller.pollTick();
 		};
-
-		void tick();
-		const timer = window.setInterval(() => {
-			void tick();
-		}, FALLBACK_SCREENSHOT_MS);
-
-		return () => {
-			cancelled = true;
-			window.clearInterval(timer);
-		};
-	}, [active, feedMode, pageVisible, refreshPollFrame]);
+		tick();
+		const timer = window.setInterval(tick, FALLBACK_SCREENSHOT_MS);
+		return () => window.clearInterval(timer);
+	}, [active, controller, feedMode, pageVisible]);
 
 	// Live control WebSocket while the toggle is on.
 	useEffect(() => {
@@ -565,9 +321,8 @@ export function InspectorPage() {
 		let cancelled = false;
 		let ws: WebSocket | null = null;
 
-		void (async () => {
-			try {
-				const client = await getRunnerClient();
+		void getRunnerClient().then(
+			(client) => {
 				if (cancelled) return;
 				ws = new WebSocket(client.getControlWsUrl());
 				controlWsRef.current = ws;
@@ -576,13 +331,13 @@ export function InspectorPage() {
 						controlWsRef.current = null;
 					}
 				};
-			} catch (error) {
-				if (!cancelled) {
-					showErrorToast(error, "Failed to open live control");
-					setLiveControl(false);
-				}
-			}
-		})();
+			},
+			(error: unknown) => {
+				if (cancelled) return;
+				showErrorToast(error, "Failed to open live control");
+				controller.setLiveControl(false);
+			},
+		);
 
 		return () => {
 			cancelled = true;
@@ -591,7 +346,7 @@ export function InspectorPage() {
 				controlWsRef.current = null;
 			}
 		};
-	}, [active, liveControl, pageVisible]);
+	}, [active, controller, liveControl, pageVisible]);
 
 	const sendPointer = useCallback((phase: "begin" | "move" | "end", x: number, y: number) => {
 		const ws = controlWsRef.current;
@@ -614,10 +369,10 @@ export function InspectorPage() {
 
 	const handleDoubleTap = useCallback(
 		(next: InspectorSelection) => {
-			setSelection(next);
+			controller.select(next);
 			appendLines(tapLinesForSelection(next));
 		},
-		[appendLines],
+		[appendLines, controller],
 	);
 
 	const handleAddSwipe = useCallback(
@@ -643,31 +398,28 @@ export function InspectorPage() {
 		[appendLines],
 	);
 
-	const handleCopyLines = useCallback(async (lines: string[]) => {
+	const handleCopyLines = useCallback((lines: string[]) => {
 		if (lines.length === 0) return;
-		try {
-			await navigator.clipboard.writeText(lines.join("\n"));
-			notify("Copied command");
-		} catch (error) {
-			showErrorToast(error, "Failed to copy");
-		}
+		navigator.clipboard.writeText(lines.join("\n")).then(
+			() => notify("Copied command"),
+			(error: unknown) => showErrorToast(error, "Failed to copy"),
+		);
 	}, []);
 
 	const runLines = useCallback(
 		async (lines: string[], options: { resetLog: boolean; label: string }) => {
 			if (!active || running || lines.length === 0) return;
-			const controller = new AbortController();
-			abortRef.current = controller;
+			const aborter = new AbortController();
+			abortRef.current = aborter;
 			setRunning(true);
 			if (options.resetLog) {
 				setLog([]);
 			}
 			setActiveLineNumber(null);
 			pushLog(options.label);
-			try {
-				const client = await getRunnerClient();
-				const result = await runYoqaShellScript(client, miniScriptFromLines(lines), {
-					signal: controller.signal,
+			const outcome = await settle(async () =>
+				runYoqaShellScript(await getRunnerClient(), miniScriptFromLines(lines), {
+					signal: aborter.signal,
 					pauseAfterActionMs: 200,
 					onStep: async ({ step, status, error }) => {
 						setActiveLineNumber(step.lineNumber);
@@ -679,28 +431,26 @@ export function InspectorPage() {
 							pushLog(`✗ ${step.raw}: ${error ?? "failed"}`, "error");
 						}
 					},
-				});
-				if (result.ok) {
-					pushLog(`Done · ${result.completed}/${result.total} steps`, "ok");
-					notify("Command finished");
-				} else {
-					pushLog(result.error ?? "Command failed", "error");
-					if (result.error !== "Aborted") {
-						showErrorToast(result.error ?? "Command failed", "Command failed");
-					}
+				}),
+			);
+			if (!outcome.ok) {
+				pushLog(errorMessage(outcome.error), "error");
+				showErrorToast(outcome.error, "Command failed");
+			} else if (outcome.value.ok) {
+				pushLog(`Done · ${outcome.value.completed}/${outcome.value.total} steps`, "ok");
+				notify("Command finished");
+			} else {
+				pushLog(outcome.value.error ?? "Command failed", "error");
+				if (outcome.value.error !== "Aborted") {
+					showErrorToast(outcome.value.error ?? "Command failed", "Command failed");
 				}
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				pushLog(message, "error");
-				showErrorToast(error, "Command failed");
-			} finally {
-				setRunning(false);
-				setActiveLineNumber(null);
-				abortRef.current = null;
-				void refreshTree({ silent: true });
 			}
+			setRunning(false);
+			setActiveLineNumber(null);
+			abortRef.current = null;
+			void controller.refreshTree({ silent: true });
 		},
-		[active, pushLog, refreshTree, running],
+		[active, controller, pushLog, running],
 	);
 
 	const handleInsertAndRunLines = useCallback(
@@ -712,10 +462,11 @@ export function InspectorPage() {
 		[appendLines, runLines],
 	);
 
+	const appName = selectedApp?.name ?? null;
 	const handleRun = useCallback(async () => {
 		if (!active || running) return;
-		const controller = new AbortController();
-		abortRef.current = controller;
+		const aborter = new AbortController();
+		abortRef.current = aborter;
 		setRunning(true);
 		setLog([]);
 		setSessionReport(null);
@@ -724,10 +475,10 @@ export function InspectorPage() {
 		const startedAt = Date.now();
 		const reportSteps: InspectorReportStep[] = [];
 		let stepStartedAt = startedAt;
-		try {
+		const outcome = await settle(async () => {
 			const client = await getRunnerClient();
-			const result = await runYoqaShellScript(client, script, {
-				signal: controller.signal,
+			return runYoqaShellScript(client, script, {
+				signal: aborter.signal,
 				pauseAfterActionMs: 200,
 				onStep: async ({ index, step, status, error }) => {
 					setActiveLineNumber(step.lineNumber);
@@ -736,13 +487,8 @@ export function InspectorPage() {
 						pushLog(`→ L${step.lineNumber} ${step.raw}`);
 						return;
 					}
-					let screenshotBase64: string | null = null;
-					try {
-						const bytes = await client.fetchScreenshotBytes();
-						screenshotBase64 = bytesToBase64(bytes);
-					} catch {
-						/* screenshot optional for report */
-					}
+					// Screenshot is optional for the report.
+					const bytes = await client.fetchScreenshotBytes().catch(() => null);
 					const ok = status === "ok";
 					reportSteps.push({
 						index: index + 1,
@@ -751,7 +497,7 @@ export function InspectorPage() {
 						latencyMs: Math.max(0, Date.now() - stepStartedAt),
 						detail: ok ? null : (error ?? "failed"),
 						command: step.raw,
-						screenshotBase64,
+						screenshotBase64: bytes ? bytesToBase64(bytes) : null,
 					});
 					if (ok) {
 						pushLog(`✓ L${step.lineNumber}`, "ok");
@@ -760,67 +506,51 @@ export function InspectorPage() {
 					}
 				},
 			});
-			const finishedAt = Date.now();
-			const cancelled = result.error === "Aborted";
-			setSessionReport(
-				buildRunReportFromInspectorSession({
-					title: defaultCaseNameFromScript(script),
-					appLabel: selectedApp?.name ?? null,
-					deviceLabel: active.deviceId,
-					platform: active.platform,
-					ok: result.ok,
-					cancelled,
-					error: result.ok ? null : (result.error ?? "Script failed"),
-					startedAt,
-					finishedAt,
-					steps: reportSteps,
-				}),
-			);
-			if (result.ok) {
-				pushLog(`Done · ${result.completed}/${result.total} steps`, "ok");
-				notify("Script finished");
-			} else {
-				pushLog(result.error ?? "Script failed", "error");
-				if (result.error !== "Aborted") {
-					showErrorToast(result.error ?? "Script failed", "Script failed");
-				}
+		});
+		const result = outcome.ok
+			? outcome.value
+			: { ok: false as const, completed: 0, total: 0, error: errorMessage(outcome.error) };
+		setSessionReport(
+			buildRunReportFromInspectorSession({
+				title: defaultCaseNameFromScript(script),
+				appLabel: appName,
+				deviceLabel: active.deviceId,
+				platform: active.platform,
+				ok: result.ok,
+				cancelled: outcome.ok && result.error === "Aborted",
+				error: result.ok ? null : (result.error ?? "Script failed"),
+				startedAt,
+				finishedAt: Date.now(),
+				steps: reportSteps,
+			}),
+		);
+		if (!outcome.ok) {
+			pushLog(errorMessage(outcome.error), "error");
+			showErrorToast(outcome.error, "Script failed");
+		} else if (result.ok) {
+			pushLog(`Done · ${result.completed}/${result.total} steps`, "ok");
+			notify("Script finished");
+		} else {
+			pushLog(result.error ?? "Script failed", "error");
+			if (result.error !== "Aborted") {
+				showErrorToast(result.error ?? "Script failed", "Script failed");
 			}
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			pushLog(message, "error");
-			showErrorToast(error, "Script failed");
-			setSessionReport(
-				buildRunReportFromInspectorSession({
-					title: defaultCaseNameFromScript(script),
-					appLabel: selectedApp?.name ?? null,
-					deviceLabel: active.deviceId,
-					platform: active.platform,
-					ok: false,
-					error: message,
-					startedAt,
-					finishedAt: Date.now(),
-					steps: reportSteps,
-				}),
-			);
-		} finally {
-			setRunning(false);
-			setActiveLineNumber(null);
-			abortRef.current = null;
-			void refreshTree({ silent: true });
 		}
-	}, [active, pushLog, refreshTree, running, script, selectedApp?.name]);
+		setRunning(false);
+		setActiveLineNumber(null);
+		abortRef.current = null;
+		void controller.refreshTree({ silent: true });
+	}, [active, controller, pushLog, running, script, appName]);
 
 	const handleStop = useCallback(() => {
 		abortRef.current?.abort();
 	}, []);
 
-	const handleCopy = useCallback(async () => {
-		try {
-			await navigator.clipboard.writeText(script);
-			notify("Copied script");
-		} catch (error) {
-			showErrorToast(error, "Failed to copy script");
-		}
+	const handleCopy = useCallback(() => {
+		navigator.clipboard.writeText(script).then(
+			() => notify("Copied script"),
+			(error: unknown) => showErrorToast(error, "Failed to copy script"),
+		);
 	}, [script]);
 
 	const handleExport = useCallback(() => {
@@ -837,28 +567,8 @@ export function InspectorPage() {
 		(format: "html" | "md") => {
 			if (!sessionReport) return;
 			setExportingReport(true);
-			try {
-				const baseName = suggestedRunReportBasename(sessionReport);
-				if (format === "html") {
-					downloadTextFile(
-						`${baseName}.html`,
-						formatRunReportHtml(sessionReport),
-						"text/html;charset=utf-8",
-					);
-					notify("HTML report exported");
-				} else {
-					downloadTextFile(
-						`${baseName}.md`,
-						formatRunReportMarkdown(sessionReport),
-						"text/markdown;charset=utf-8",
-					);
-					notify("Markdown report exported");
-				}
-			} catch (error) {
-				showErrorToast(error, "Failed to export report");
-			} finally {
-				setExportingReport(false);
-			}
+			exportRunReport(sessionReport, format);
+			setExportingReport(false);
 		},
 		[sessionReport],
 	);
@@ -903,9 +613,11 @@ export function InspectorPage() {
 			}
 			setSavingCase(true);
 			setSaveError(null);
-			try {
+			const appId = selectedApp.id;
+			const caseScript = converted.script;
+			const outcome = await settle(async () => {
 				const client = await getRunnerClient();
-				const created = await client.createCase(selectedApp.id, {
+				const created = await client.createCase(appId, {
 					name,
 					flows: [
 						{
@@ -914,38 +626,35 @@ export function InspectorPage() {
 						},
 					],
 				});
-				const updated = await client.updateCase(created.id, {
-					script: converted.script,
-				});
-				const mapped = mapCatalogCase(updated);
+				return mapCatalogCase(await client.updateCase(created.id, { script: caseScript }));
+			});
+			if (outcome.ok) {
+				const mapped = outcome.value;
 				queryClient.setQueryData(caseQueryKey(mapped.id), mapped);
-				queryClient.setQueryData<TestCase[]>(casesQueryKey(selectedApp.id), (current) =>
+				queryClient.setQueryData<TestCase[]>(casesQueryKey(appId), (current) =>
 					current ? [mapped, ...current.filter((row) => row.id !== mapped.id)] : [mapped],
 				);
 				setSaveOpen(false);
 				notify(`Saved as #${mapped.number} ${mapped.name}`);
 				void navigate({ to: "/test-cases/$caseId", params: { caseId: mapped.id } });
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				setSaveError(message);
-				showErrorToast(error, "Failed to create test case");
-			} finally {
-				setSavingCase(false);
+			} else {
+				setSaveError(errorMessage(outcome.error));
+				showErrorToast(outcome.error, "Failed to create test case");
 			}
+			setSavingCase(false);
 		},
 		[elements, navigate, queryClient, script, selectedApp],
 	);
 
 	const connected = active != null;
-	const live = connected && pageVisible && imageUrl != null;
 	// A Run owns the shared session while live — the inspector becomes a viewer.
 	const viewOnly = connected && Boolean(activeSession?.heldByRun);
 
 	useEffect(() => {
 		if (viewOnly && liveControl) {
-			setLiveControl(false);
+			controller.setLiveControl(false);
 		}
-	}, [viewOnly, liveControl]);
+	}, [controller, viewOnly, liveControl]);
 	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(script);
 	const snippetContext = useMemo(
 		() => ({
@@ -967,22 +676,19 @@ export function InspectorPage() {
 			<div className="flex min-h-0 flex-1 gap-5">
 				<div className="min-w-75 flex-[0_1_360px] self-start">
 					<ScreenshotPanel
-						imageUrl={imageUrl}
-						elements={elements}
-						selection={selection}
-						loading={bootLoading && !imageUrl}
-						treeRefreshing={treeRefreshing}
-						live={live}
-						feedMode={feedMode}
-						liveControl={liveControl}
+						feed$={feed$}
+						session={activeSession}
+						onConnect={handleConnect}
+						onDisconnect={handleDisconnect}
+						pageVisible={pageVisible}
 						onLiveControlChange={handleLiveControlChange}
 						disabled={!connected || running || viewOnly}
-						onSelect={setSelection}
+						onSelect={handleSelect}
 						onSelectWithPoint={handleSelectWithPoint}
 						onRefreshTree={handleRefreshTree}
 						onDoubleTap={handleDoubleTap}
 						onPointer={sendPointer}
-						onClearSelection={() => setSelection(null)}
+						onClearSelection={() => handleSelect(null)}
 					/>
 				</div>
 
@@ -1003,7 +709,7 @@ export function InspectorPage() {
 						}}
 						onStop={handleStop}
 						onCopy={() => {
-							void handleCopy();
+							handleCopy();
 						}}
 						onExport={handleExport}
 						onExportReportHtml={() => {
@@ -1027,9 +733,9 @@ export function InspectorPage() {
 				onInsert={handleInsertLines}
 				onInsertAndRun={handleInsertAndRunLines}
 				onCopyLines={(lines) => {
-					void handleCopyLines(lines);
+					handleCopyLines(lines);
 				}}
-				onClose={() => setSelection(null)}
+				onClose={() => handleSelect(null)}
 				gesturesDisabled={running || viewOnly}
 				onAddSwipe={handleAddSwipe}
 				onAddWait={handleAddWait}

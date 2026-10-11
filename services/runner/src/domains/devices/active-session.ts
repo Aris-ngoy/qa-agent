@@ -1,4 +1,4 @@
-import type { Capability, DevicePlatform } from "@yoqa/runner-client";
+import type { Capability, DevicePlatform, StreamState } from "@yoqa/runner-client";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
 import { hasCustomCapabilities } from "./select-lane";
 import { type DeviceSession, createDeviceSession, isDeadSessionError } from "./session";
@@ -9,7 +9,10 @@ export type ActiveSessionInfo = {
 	connectedAt: number;
 	/** Port of the live MJPEG broadcaster, when the Lane offers one. */
 	mjpegPort?: number;
+	/** Compat for older clients: `streamState === "ready"`. */
 	streamReady: boolean;
+	/** The Frame Feed: a live Stream, or Screenshot Poll because the Lane has none or it failed. */
+	streamState: StreamState;
 	/** Relative path on the runner for the MJPEG proxy. */
 	streamUrl: string;
 	/** A Run currently owns this session for test execution (interactive actions are view-only). */
@@ -44,13 +47,20 @@ export class SessionBusyError extends Error {
 /** Compat alias — prefer `isDeadSessionError` from `./session`. */
 export const isMissingAppiumSessionError = isDeadSessionError;
 
+function streamStateOf(stream: DeviceSession["stream"]): StreamState {
+	if (!stream) return "none";
+	return stream.ready ? "ready" : "failed";
+}
+
 function toInfo(current: ActiveSession): ActiveSessionInfo {
+	const streamState = streamStateOf(current.session.stream);
 	return {
 		deviceId: current.deviceId,
 		platform: current.platform,
 		connectedAt: current.connectedAt,
 		mjpegPort: current.session.stream?.port,
-		streamReady: current.session.stream?.ready ?? false,
+		streamReady: streamState === "ready",
+		streamState,
 		streamUrl: current.streamUrl,
 		heldByRun: current.heldByRunId != null,
 		...(current.heldByRunId != null ? { heldByRunId: current.heldByRunId } : {}),

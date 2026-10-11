@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "qa-agent",
@@ -19,6 +18,7 @@
         "@fontsource/inter": "^5.3.0",
         "@heroui/react": "^3.2.3",
         "@heroui/styles": "^3.2.2",
+        "@legendapp/state": "3.0.0-beta.48",
         "@tanstack/react-query": "^5.81.5",
         "@tanstack/react-router": "^1.121.34",
         "@yoqa/runner-client": "workspace:*",
@@ -36,6 +36,7 @@
         "@types/react-dom": "^19.2.4",
         "@vitejs/plugin-react": "^4.7.0",
         "@yoqa/typescript-config": "workspace:*",
+        "babel-plugin-react-compiler": "1.0.0",
         "concurrently": "^9.2.1",
         "tailwindcss": "^4.1.18",
         "typescript": "^5.9.3",
@@ -310,6 +311,8 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
+    "@legendapp/state": ["@legendapp/state@3.0.0-beta.48", "", { "dependencies": { "use-sync-external-store": "^1.2.2" }, "peerDependencies": { "expo-sqlite": "^15.0.0" }, "optionalPeers": ["expo-sqlite"] }, "sha512-aa7vpUSoBHnXQhYf2x/10C0w1EiesegRhR7LuxnIcEPyZzZyuSF2mevf1jphlh0zzqwIJm9QxnsayDNn8/kwcA=="],
+
     "@malept/cross-spawn-promise": ["@malept/cross-spawn-promise@1.1.1", "", { "dependencies": { "cross-spawn": "^7.0.1" } }, "sha512-RTBGWL5FWQcg9orDOCcp4LvItNzUPcyEU9bwaeJX0rJ1IQxzucC48Y0/sQLp/g6t99IQgAlGIaesJS+gTn7tVQ=="],
 
     "@nodable/entities": ["@nodable/entities@3.0.0", "", {}, "sha512-8L9xFeTYKhm49xfIypoe2W5wV1m/3Z58kT+7kR9A8OyFxcPduI4VmxaUMQyKYrRjUoLLSXv6EKKID5Tvj9cUVw=="],
@@ -563,6 +566,8 @@
     "async": ["async@3.2.6", "", {}, "sha512-htCUDlxyyCLMgaM3xXg0C0LW2xqfuQ6p05pCEIsXuyQ+a1koYKTuBMzRNwmybfLgvJDMd0r1LTn4+E0Ti6C2AA=="],
 
     "b4a": ["b4a@1.8.1", "", { "peerDependencies": { "react-native-b4a": "*" }, "optionalPeers": ["react-native-b4a"] }, "sha512-aiqre1Nr0B/6DgE2N5vwTc+2/oQZ4Wh1t4NznYY4E00y8LCt6NqdRv81so00oo27D8MVKTpUa/MwUUtBLXCoDw=="],
+
+    "babel-plugin-react-compiler": ["babel-plugin-react-compiler@1.0.0", "", { "dependencies": { "@babel/types": "^7.26.0" } }, "sha512-Ixm8tFfoKKIPYdCCKYTsqv+Fd4IJ0DQqMyEimo+pxUOMUR9cVPlwTrFt9Avu+3cb6Zp3mAzl+t1MrG2fxxKsxw=="],
 
     "balanced-match": ["balanced-match@1.0.2", "", {}, "sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw=="],
 

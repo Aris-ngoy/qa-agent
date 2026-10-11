@@ -37,6 +37,8 @@ export class UsbmuxError extends Error {
 	constructor(
 		message: string,
 		readonly transient = false,
+		/** What usbmuxd listed when the phone was missing, as `udid (ConnectionType)`. */
+		readonly listed?: string[],
 	) {
 		super(message);
 		this.name = "UsbmuxError";
@@ -251,6 +253,7 @@ export async function connectUsbmux(
 				? `iPhone ${udid} is not on a USB cable (usbmuxd lists it over the network only). Connect it with a cable.`
 				: `usbmuxd does not list iPhone ${udid}. Connect it with a cable, unlock it and trust this Mac.`,
 			true,
+			devices.map((device) => `${device.udid} (${device.connectionType || "unknown"})`),
 		);
 	}
 	const socket = await openUsbmuxd(socketPath);

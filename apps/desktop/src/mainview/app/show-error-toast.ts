@@ -1,4 +1,6 @@
+import { devError } from "@/app/dev-log";
 import { toast } from "@heroui/react";
+import { RunnerRequestError } from "@yoqa/runner-client";
 
 const TITLE_MAX_LENGTH = 72;
 
@@ -54,7 +56,26 @@ export function summarizeError(message: string): SummarizedError {
 	return { title };
 }
 
+/**
+ * In dev builds, print the full error that a toast shortens: message, stack, cause and,
+ * for a failed runner request, its HTTP status, body (a Dead Session's `chain`) and which
+ * runner process answered.
+ */
+export function logDevError(context: string, error: unknown): void {
+	if (error instanceof RunnerRequestError) {
+		devError(`${context}: ${error.message}`, {
+			status: error.status,
+			answeredBy: error.answeredBy,
+			body: error.body,
+			stack: error.stack,
+		});
+		return;
+	}
+	devError(context, error);
+}
+
 export function showErrorToast(error: unknown, fallback: string): void {
+	logDevError(fallback, error);
 	const message = error instanceof Error ? error.message : fallback;
 	const { title, description } = summarizeError(message || fallback);
 	toast.danger(title, description ? { description } : undefined);

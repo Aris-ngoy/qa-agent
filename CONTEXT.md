@@ -22,6 +22,14 @@ _Avoid_: Run session (a Run adopts the Active Session), per-mode session
 A Device Session the runner still thinks is open but its Lane has already lost: Appium dropped it (invalid/missing session id), or a Direct lane's device tool says the device is gone.
 _Avoid_: disconnected (user-initiated), abandoned (implementation verb only)
 
+**Unreachable Session**:
+A Device Session whose device has briefly stopped answering, still inside the runner's grace window. The runner keeps it and says how long it will wait; if the device does not answer in time it becomes a Dead Session. Only the runner decides when an Unreachable Session is dead.
+_Avoid_: stalled, zombie, "gone but still listed"
+
+**Frame Feed**:
+How the Inspector gets a Device Session's frames: a live _Stream_, or _Screenshot Poll_ (one screenshot at a time). A Lane with no stream always uses Screenshot Poll, and that is normal; only a Stream that should be there and did not answer is a failure. The Frame Feed says nothing about whether the session is connected.
+_Avoid_: MJPEG unavailable (for a Lane that never streams), connecting (for a connected session without a Stream)
+
 **Appium Runtime**:
 The installed Appium binary and drivers Yoqa manages under its home directory.
 _Avoid_: Appium server (the listening process), Device Session

@@ -6,6 +6,7 @@ import type {
 	DoctorRepairResponse,
 	DoctorReport,
 	DoctorStep,
+	StreamState,
 } from "@yoqa/runner-client";
 import { loadSettings } from "../../settings";
 import { ensureRuntime, getRuntimeStatus, resolveAppium } from "../appium/application";
@@ -181,6 +182,12 @@ async function probeAdbDevices(): Promise<DoctorCheck> {
 	};
 }
 
+const STREAM_DETAIL: Record<StreamState, string> = {
+	ready: "",
+	none: " (screenshot poll)",
+	failed: " (stream not ready)",
+};
+
 async function probeSessionHealth(): Promise<DoctorCheck> {
 	const active = getActiveSessionInfo();
 	if (!active) {
@@ -194,11 +201,13 @@ async function probeSessionHealth(): Promise<DoctorCheck> {
 	return {
 		id: "device-session",
 		label: "Active device session",
-		status: active.streamReady ? "pass" : "warn",
-		detail: `${active.platform} ${active.deviceId}${active.streamReady ? "" : " (stream not ready)"}`,
-		fixHint: active.streamReady
-			? undefined
-			: "Disconnect and reconnect the device session if the inspector stream is stuck",
+		// Only a stream that should be there and is not is worth a warning.
+		status: active.streamState === "failed" ? "warn" : "pass",
+		detail: `${active.platform} ${active.deviceId}${STREAM_DETAIL[active.streamState]}`,
+		fixHint:
+			active.streamState === "failed"
+				? "Disconnect and reconnect the device session if the inspector stream is stuck"
+				: undefined,
 	};
 }
 
