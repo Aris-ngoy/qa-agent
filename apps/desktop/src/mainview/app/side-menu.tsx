@@ -220,7 +220,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 		<>
 			<aside
 				className={[
-					"side-menu electrobun-webkit-app-region-no-drag flex h-full shrink-0 flex-col overflow-hidden rounded-[var(--radius-platform)] bg-sidebar py-5 text-sidebar-fg shadow-float",
+					"side-menu electrobun-webkit-app-region-no-drag flex h-full shrink-0 flex-col overflow-hidden rounded-[var(--radius-platform)] border border-sidebar-fg/10 bg-sidebar py-5 text-sidebar-fg shadow-float",
 					collapsed ? "w-16 px-2.5" : "w-sidebar px-3.5",
 				].join(" ")}
 				id="side-menu"
