@@ -263,6 +263,10 @@ body {
 	opacity: 1;
 }
 
+.side-menu {
+	transition: width var(--motion-base) var(--ease-out);
+}
+
 .nav-active-pill {
 	position: absolute;
 	left: 0;
@@ -307,6 +311,7 @@ body {
 
 	.boot-splash-layer,
 	.boot-app-layer,
+	.side-menu,
 	.nav-active-pill {
 		transition: none !important;
 	}
