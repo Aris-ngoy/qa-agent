@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Yoqa</title>
+    <script>
+      // Runs before first paint so the saved theme never flashes light. Keep in sync with ui-preferences.ts.
+      (function () {
+        var mode = "system";
+        try {
+          var raw = localStorage.getItem("yoqa.themeMode");
+          if (raw === "light" || raw === "dark") mode = raw;
+        } catch (e) {}
+        var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        var theme = dark ? "dark" : "light";
+        var root = document.documentElement;
+        root.dataset.theme = theme;
+        root.style.colorScheme = theme;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
