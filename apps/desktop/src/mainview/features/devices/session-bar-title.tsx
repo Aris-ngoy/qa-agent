@@ -1,8 +1,12 @@
 import { useApps } from "@/features/apps/context";
 import { useActiveDeviceSession } from "@/features/devices/use-active-device-session";
+import { runQueryKey } from "@/features/runs/active-run-context";
+import { devicesQueryKey, formatDeviceShortLabel } from "@/features/runs/labels";
 import { caseQueryKey } from "@/features/test-cases/data";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, useRouterState } from "@tanstack/react-router";
+import { Link, useParams, useRouterState } from "@tanstack/react-router";
+import type { Device, Run } from "@yoqa/runner-client";
+import type { ReactNode } from "react";
 
 const PAGE_TITLES: Record<string, string> = {
 	"/": "Welcome",
@@ -19,16 +23,26 @@ const PAGE_TITLES: Record<string, string> = {
  */
 export function SessionBarTitle() {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
-	const { caseId } = useParams({ strict: false }) as { caseId?: string };
+	const { caseId, runId } = useParams({ strict: false }) as { caseId?: string; runId?: string };
 	const { selectedApp } = useApps();
 	const { activeSession } = useActiveDeviceSession();
 	const isCaseDetail = pathname.startsWith("/test-cases/") && Boolean(caseId);
+	const isRunDetail = pathname.startsWith("/runs/") && Boolean(runId);
 	const caseQuery = useQuery<{ name?: string }>({
 		queryKey: caseId ? caseQueryKey(caseId) : ["catalog", "case", "none"],
 		enabled: false,
 	});
+	const runQuery = useQuery<Run>({
+		queryKey: runId ? runQueryKey(runId) : ["runs", "none"],
+		enabled: false,
+	});
+	const run = isRunDetail ? runQuery.data : undefined;
+	const devicesQuery = useQuery<Device[]>({
+		queryKey: run ? devicesQueryKey(run.platform) : ["devices", "pending"],
+		enabled: false,
+	});
 
-	let caption = selectedApp?.name ?? "QA Agent";
+	let caption: ReactNode = selectedApp?.name ?? "QA Agent";
 	let title = PAGE_TITLES[pathname] ?? "QA Agent";
 	let status: "live" | "idle" | null = null;
 
@@ -39,20 +53,31 @@ export function SessionBarTitle() {
 	} else if (isCaseDetail) {
 		caption = "Test case";
 		title = caseQuery.data?.name || "Test case";
-	} else if (pathname.startsWith("/runs/")) {
-		caption = "Run";
+	} else if (isRunDetail) {
+		const device = (devicesQuery.data ?? []).find((row) => row.id === run?.deviceId);
+		const deviceLabel = run
+			? formatDeviceShortLabel(device, { deviceId: run.deviceId, platform: run.platform })
+			: null;
+		caption = (
+			<>
+				<Link className="hover:text-on-surface" to="/runs">
+					Runs
+				</Link>
+				{deviceLabel ? ` / ${deviceLabel}` : null}
+			</>
+		);
 		title = "Run details";
 	}
 
 	return (
-		<div className="mr-auto flex min-w-0 flex-col">
-			<span className="truncate text-helper text-on-surface-variant">{caption}</span>
-			<h1 className="m-0 flex min-w-0 items-center gap-2 text-[1rem] font-bold leading-6 text-on-surface">
+		<div className="mr-auto flex min-w-0 flex-col gap-px">
+			<span className="truncate text-[11px] leading-tight text-outline">{caption}</span>
+			<h1 className="m-0 flex min-w-0 items-center gap-2 text-[15px] font-semibold leading-tight tracking-tight text-on-surface">
 				{status ? (
 					<span
 						aria-hidden="true"
 						className={[
-							"size-2 shrink-0 rounded-full",
+							"size-1.5 shrink-0 rounded-full",
 							status === "live" ? "bg-secondary" : "bg-outline",
 						].join(" ")}
 					/>

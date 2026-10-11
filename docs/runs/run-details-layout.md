@@ -6,7 +6,7 @@ Make a finished run read like the Run details artboard: a status chip and the ca
 
 ## Plan summary
 
-- Restyle the detail page in the desktop app. The shared sidebar and session bar stay as they are; the artboard redraws them, and they belong to every page.
+- Restyle the detail page, then the shared side menu and session bar, to the artboard. The menu keeps the dark sidebar and the Yoqa mark: collapse control in the header, a workspace switcher, rounded nav items, and a quick-add button. The bar is 52px, with the page title, a compact device control, the theme switch, and Connect.
 - The mono line is model, OS and version, the full device id, the list date, the step count, and the wall-clock duration (`38s`, `1m 30s`). Duration is omitted when the run never started. A live run uses the time so far.
 - Each step is a number, the action, the yoqa command, and Passed or Failed. Decision and Verify sit on labeled rows. Verify is green when it passed, red when it failed, and muted while it is still pending. AI thoughts still expand under the step.
 - The screenshot sits in a phone frame. In review, bars under it pick the step, and the caption says `step 4 / 4`.
@@ -18,6 +18,7 @@ Make a finished run read like the Run details artboard: a status chip and the ca
 - `labels.ts` — `formatRunDuration`, `formatRunDetailMeta`.
 - `detail-page.tsx` — chip, title, meta line, export buttons, step rows, phone frame, and step pager.
 - `screenshot-crossfade.tsx` — the image fills the phone frame.
+- `session-bar.tsx`, `session-toolbar.tsx`, `session-bar-title.tsx`, `side-menu.tsx` — the top bar matches the artboard. The side menu keeps the dark sidebar and the Yoqa mark, with the collapse control in the menu. Run details titles the bar `Runs / {device}`.
 
 ## How to verify
 
