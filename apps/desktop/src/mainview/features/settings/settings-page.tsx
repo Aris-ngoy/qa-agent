@@ -35,13 +35,23 @@ import type {
 	XcodeInstallation,
 } from "../../../shared/ios-toolchain";
 import { ProvidersSection } from "./providers/providers-section";
+import type { ThemeMode } from "./ui-preferences";
+import { useThemeMode } from "./use-theme-mode";
 
-type SettingsSection = "ios" | "android" | "cli" | "provider" | "diagnostics";
+type SettingsSection = "appearance" | "ios" | "android" | "cli" | "provider" | "diagnostics";
 type IdentityFilter = "all" | SigningTier;
 
-const SETTINGS_SECTIONS: SettingsSection[] = ["ios", "android", "cli", "provider", "diagnostics"];
+const SETTINGS_SECTIONS: SettingsSection[] = [
+	"appearance",
+	"ios",
+	"android",
+	"cli",
+	"provider",
+	"diagnostics",
+];
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
+	{ id: "appearance", label: "Appearance" },
 	{ id: "ios", label: "iOS" },
 	{ id: "android", label: "Android" },
 	{ id: "cli", label: "CLI & Agents" },
@@ -159,6 +169,47 @@ function SectionCard({ children }: { children: ReactNode }) {
 		<div className="rounded-2xl border border-outline-variant/80 bg-surface-container-lowest p-6 shadow-card">
 			{children}
 		</div>
+	);
+}
+
+const THEME_OPTIONS: { id: ThemeMode; label: string }[] = [
+	{ id: "light", label: "Light" },
+	{ id: "dark", label: "Dark" },
+	{ id: "system", label: "System" },
+];
+
+function AppearanceSettings() {
+	const [mode, setMode] = useThemeMode();
+	return (
+		<SectionCard>
+			<h2 className="text-subheading text-on-surface">Theme</h2>
+			<Description className="mt-1">
+				Choose a theme, or follow your operating system's appearance.
+			</Description>
+			<Tabs
+				className="mt-4"
+				onSelectionChange={(key) => setMode(String(key) as ThemeMode)}
+				selectedKey={mode}
+			>
+				<Tabs.ListContainer>
+					<Tabs.List
+						aria-label="Theme"
+						className="relative w-fit gap-1 rounded-xl bg-surface-container p-1"
+					>
+						{THEME_OPTIONS.map((item) => (
+							<Tabs.Tab
+								className="relative z-[1] h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium text-on-surface-variant data-[selected=true]:font-semibold data-[selected=true]:!text-on-surface"
+								id={item.id}
+								key={item.id}
+							>
+								{item.label}
+								<Tabs.Indicator className="-z-10 rounded-lg bg-surface-container-lowest shadow-card" />
+							</Tabs.Tab>
+						))}
+					</Tabs.List>
+				</Tabs.ListContainer>
+			</Tabs>
+		</SectionCard>
 	);
 }
 
@@ -1014,7 +1065,7 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 
 export function SettingsPage() {
 	const search = useSearch({ from: "/settings" });
-	const initial = isSettingsSection(search.section) ? search.section : "ios";
+	const initial = isSettingsSection(search.section) ? search.section : "appearance";
 	const [section, setSection] = useState<SettingsSection>(initial);
 
 	useEffect(() => {
@@ -1050,6 +1101,11 @@ export function SettingsPage() {
 					</Tabs.ListContainer>
 				</SectionCard>
 
+				<Tabs.Panel className="pt-0 outline-none" id="appearance">
+					<SettingsSectionMotion active={section === "appearance"} sectionId="appearance">
+						<AppearanceSettings />
+					</SettingsSectionMotion>
+				</Tabs.Panel>
 				<Tabs.Panel className="pt-0 outline-none" id="ios">
 					<SettingsSectionMotion active={section === "ios"} sectionId="ios">
 						<IosSettings enabled={section === "ios"} />
