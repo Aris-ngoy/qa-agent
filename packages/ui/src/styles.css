@@ -151,7 +151,6 @@
 }
 
 /* Dark theme — selected by data-theme="dark" (set before first paint by apps/desktop/index.html) */
-.dark,
 [data-theme="dark"] {
 	color-scheme: dark;
 
