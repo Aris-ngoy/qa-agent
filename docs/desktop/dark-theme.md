@@ -29,5 +29,6 @@ Run the desktop app: pick Dark in Settings → Appearance; relaunch (no flash); 
 
 ## Follow-ups
 
-- Audit remaining hard-coded light colors (e.g. `bg-white`, brand gradients) in feature components.
+- Audit remaining hard-coded light colors (`bg-white`, brand gradients, `blob-actions`, `card-*` pastels) and verify contrast in dark.
+- Sync theme across windows via the `storage` event; add tests for the pre-paint script.
 - The inline script duplicates the storage key from `ui-preferences.ts`; keep in sync.
