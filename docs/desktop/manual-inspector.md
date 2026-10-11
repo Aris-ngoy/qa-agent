@@ -42,7 +42,7 @@ Give desktop users a **Maestro-like** inspector for manual end-to-end testing: c
 - **Save as test case** in the Script panel footer (requires selected app + convertible actions); recorded taps/inputs always include `--x/--y` so conversion does not depend on the live accessibility tree
 
 **Desktop — layout redesign (device + script columns)**
-- **One top bar for the whole app** (`features/devices/session-bar.tsx`): it owns the shared Active Session; the Inspector adopts it from the shared query. See [Session bar](./session-bar.md).
+- **One top bar for the whole app** (`features/devices/session-bar.tsx`): it owns the shared Active Session; the Inspector attaches to it only on **Connect** ([manual connect](./inspector-manual-connect.md)). See [Session bar](./session-bar.md).
 - Header carries the Platform / Device / Connect-Restart-Disconnect controls (`SessionToolbar`, restyled only; same picker modal). The app sidebar is untouched.
 - **Device** column: segmented **Inspect / Interact** toggle (maps to the existing Live control state), refresh-tree button, hint line.
 - Clicking an element (Live control off) opens the **element dialog**: *1. Command* (Tap, Assert visible, Long press, Double tap, Type text; "More commands" holds the old app/alert/wait/screenshot list), *2. Selector* (Label, ID, Label + ID, Point — only what the element supplies, each with a match count from the cached tree or a *Fragile* badge for raw points; defaults to the previously preferred locator), a live **Preview** with Copy, and **Run on device** / **Cancel** / **Add to script**. Swipe and wait live in a collapsible *Screen gestures* section of the same dialog. "Not this element?" cycles overlapping candidates (the old Change selector).

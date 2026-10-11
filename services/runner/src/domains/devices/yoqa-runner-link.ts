@@ -51,8 +51,9 @@ export class YoqaRunnerUnreachableError extends Error {
 	constructor(
 		message: string,
 		readonly transient = false,
+		options?: ErrorOptions,
 	) {
-		super(message);
+		super(message, options);
 		this.name = "YoqaRunnerUnreachableError";
 	}
 }
@@ -128,7 +129,11 @@ function roundTrip(tunnel: Duplex, request: string, timeoutMs: number, command: 
 		});
 		tunnel.once("error", (error) => {
 			clearTimeout(timer);
-			reject(new YoqaRunnerUnreachableError(`YoqaRunner connection failed: ${error.message}`));
+			reject(
+				new YoqaRunnerUnreachableError(`YoqaRunner connection failed: ${error.message}`, false, {
+					cause: error,
+				}),
+			);
 		});
 		// A usbmuxd tunnel arrives paused; read only once listening.
 		tunnel.resume();
@@ -174,6 +179,7 @@ export function createYoqaRunnerLink(
 					throw new YoqaRunnerUnreachableError(
 						`Cannot reach YoqaRunner: ${errorMessage(error)}`,
 						(error as { transient?: unknown })?.transient === true,
+						{ cause: error },
 					);
 				}
 				await Bun.sleep(tunnelRetryMs * attempt);

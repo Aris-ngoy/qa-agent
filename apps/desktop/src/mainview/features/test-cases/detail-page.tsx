@@ -772,6 +772,8 @@ function ScriptPanel({
 		setSteps(script.actions.map((action) => ({ ...action })));
 	}, [script, draggingIndex]);
 
+	const reduceMotion = useReducedMotion();
+
 	if (!script) {
 		return (
 			<div className={`${configCardClass} max-w-2xl`}>
@@ -884,8 +886,6 @@ function ScriptPanel({
 		{ id: "json", label: "JSON" },
 		{ id: "shell", label: "CLI shell" },
 	];
-
-	const reduceMotion = useReducedMotion();
 
 	return (
 		<div className="flex w-full max-w-2xl flex-col gap-5">

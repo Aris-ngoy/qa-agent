@@ -89,6 +89,7 @@ import {
 	type SetupPlatformRequest,
 	type SetupPlatformResponse,
 	type StepPhases,
+	type StreamState,
 	type UpdateAppRequest,
 	type UpdateCaseRequest,
 	type UpdateFlowRequest,
@@ -357,6 +358,7 @@ export {
 	type ScreenResponse,
 	type ScreenshotRequest,
 	type ScreenshotResponse,
+	type StreamState,
 	type ServerAction,
 	type ServerEntry,
 	type ServerKind,
@@ -476,6 +478,30 @@ function errorMessageFromBody(json: unknown, fallback: string): string {
 	return fallback;
 }
 
+/**
+ * A failed runner request. Keeps the HTTP status, the runner's JSON body (e.g. a Dead
+ * Session's `chain`) and which runner process answered, and when (`X-Yoqa-Runner-Pid`, `Date`).
+ */
+export class RunnerRequestError extends Error {
+	constructor(
+		message: string,
+		readonly status: number,
+		readonly body: unknown,
+		readonly answeredBy: { url: string; runnerPid: string | null; date: string | null },
+	) {
+		super(message);
+		this.name = "RunnerRequestError";
+	}
+}
+
+function requestError(json: unknown, fallback: string, response: Response): RunnerRequestError {
+	return new RunnerRequestError(errorMessageFromBody(json, fallback), response.status, json, {
+		url: response.url,
+		runnerPid: response.headers.get("X-Yoqa-Runner-Pid"),
+		date: response.headers.get("Date"),
+	});
+}
+
 export class RunnerClient {
 	readonly baseUrl: string;
 	private readonly fetchImpl: typeof fetch;
@@ -495,7 +521,7 @@ export class RunnerClient {
 		const response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(errorMessageFromBody(json, `${fallbackError}: HTTP ${response.status}`));
+			throw requestError(json, `${fallbackError}: HTTP ${response.status}`, response);
 		}
 		return json;
 	}
@@ -553,7 +579,7 @@ export class RunnerClient {
 		const json: unknown = await response.json().catch(() => null);
 
 		if (!response.ok) {
-			throw new Error(errorMessageFromBody(json, `Setup platform failed: HTTP ${response.status}`));
+			throw requestError(json, `Setup platform failed: HTTP ${response.status}`, response);
 		}
 
 		return setupPlatformResponseSchema.parse(json);
@@ -565,7 +591,7 @@ export class RunnerClient {
 		});
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(errorMessageFromBody(json, `Runtime status failed: HTTP ${response.status}`));
+			throw requestError(json, `Runtime status failed: HTTP ${response.status}`, response);
 		}
 		return runtimeStatusSchema.parse(json);
 	}
@@ -577,7 +603,7 @@ export class RunnerClient {
 		});
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(errorMessageFromBody(json, `Ensure runtime failed: HTTP ${response.status}`));
+			throw requestError(json, `Ensure runtime failed: HTTP ${response.status}`, response);
 		}
 		return ensureRuntimeResponseSchema.parse(json);
 	}
@@ -588,7 +614,7 @@ export class RunnerClient {
 		});
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(errorMessageFromBody(json, `List servers failed: HTTP ${response.status}`));
+			throw requestError(json, `List servers failed: HTTP ${response.status}`, response);
 		}
 		return listServersResponseSchema.parse(json);
 	}
@@ -600,9 +626,7 @@ export class RunnerClient {
 		});
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(
-				errorMessageFromBody(json, `Stop all servers failed: HTTP ${response.status}`),
-			);
+			throw requestError(json, `Stop all servers failed: HTTP ${response.status}`, response);
 		}
 		return serverMutationResponseSchema.parse(json);
 	}
@@ -620,7 +644,7 @@ export class RunnerClient {
 		);
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(errorMessageFromBody(json, `Stop server failed: HTTP ${response.status}`));
+			throw requestError(json, `Stop server failed: HTTP ${response.status}`, response);
 		}
 		return serverMutationResponseSchema.parse(json);
 	}
@@ -638,7 +662,7 @@ export class RunnerClient {
 		);
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(errorMessageFromBody(json, `Restart server failed: HTTP ${response.status}`));
+			throw requestError(json, `Restart server failed: HTTP ${response.status}`, response);
 		}
 		return serverMutationResponseSchema.parse(json);
 	}
@@ -649,7 +673,7 @@ export class RunnerClient {
 		});
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(errorMessageFromBody(json, `Doctor failed: HTTP ${response.status}`));
+			throw requestError(json, `Doctor failed: HTTP ${response.status}`, response);
 		}
 		return doctorReportSchema.parse(json);
 	}
@@ -667,7 +691,7 @@ export class RunnerClient {
 		});
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(errorMessageFromBody(json, `Doctor repair failed: HTTP ${response.status}`));
+			throw requestError(json, `Doctor repair failed: HTTP ${response.status}`, response);
 		}
 		return doctorRepairResponseSchema.parse(json);
 	}
@@ -1041,9 +1065,7 @@ export class RunnerClient {
 		if (response.status === 404) return null;
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(
-				errorMessageFromBody(json, `Get active device failed: HTTP ${response.status}`),
-			);
+			throw requestError(json, `Get active device failed: HTTP ${response.status}`, response);
 		}
 		return activeDeviceResponseSchema.parse(json);
 	}
@@ -1120,7 +1142,7 @@ export class RunnerClient {
 		const response = await this.fetchImpl(`${this.baseUrl}/screenshot/image`);
 		if (!response.ok) {
 			const json: unknown = await response.json().catch(() => null);
-			throw new Error(errorMessageFromBody(json, `Screenshot failed: HTTP ${response.status}`));
+			throw requestError(json, `Screenshot failed: HTTP ${response.status}`, response);
 		}
 		return new Uint8Array(await response.arrayBuffer());
 	}

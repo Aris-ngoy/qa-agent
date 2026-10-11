@@ -10,6 +10,25 @@ export function sessionPillLabel(session: Pick<ActiveDeviceResponse, "streamRead
 	return session.lane ? `${state} · ${LANE_LABELS[session.lane]}` : state;
 }
 
+/** The Frame Feed the runner reported; an older runner only says `streamReady`. */
+function streamStateOf(session: Pick<ActiveDeviceResponse, "streamReady" | "streamState">) {
+	return session.streamState ?? (session.streamReady === false ? "failed" : "ready");
+}
+
+/** The toast after Connect: a Lane without a stream polls by design; only a failed stream warns. */
+export function connectedToastMessage(
+	session: Pick<ActiveDeviceResponse, "streamReady" | "streamState">,
+): string {
+	switch (streamStateOf(session)) {
+		case "ready":
+			return "Connected — live stream on";
+		case "none":
+			return "Connected — screenshot poll";
+		case "failed":
+			return "Connected — screenshot poll (live stream unavailable)";
+	}
+}
+
 /**
  * The device "Restart & rebuild WebDriverAgent" rebuilds for, or null when it is not offered.
  * Only an iOS session on the Appium lane runs WebDriverAgent, and the rebuild needs the

@@ -16,7 +16,7 @@ import {
 	writeRememberedDevice,
 } from "@/features/devices/session-device";
 import { SessionRunChip } from "@/features/devices/session-run-chip";
-import { wdaRebuildTarget } from "@/features/devices/session-status";
+import { connectedToastMessage, wdaRebuildTarget } from "@/features/devices/session-status";
 import { SessionToolbar } from "@/features/devices/session-toolbar";
 import {
 	activeDeviceSessionQueryKey,
@@ -125,11 +125,7 @@ export function SessionBar() {
 		if (!device) return;
 		try {
 			const info = await connectDevice(device);
-			toast.success(
-				info.streamReady === false
-					? "Connected — screenshot poll (MJPEG unavailable)"
-					: "Connected — live stream on",
-			);
+			toast.success(connectedToastMessage(info));
 		} catch (error) {
 			showErrorToast(error, "Failed to connect device");
 		}

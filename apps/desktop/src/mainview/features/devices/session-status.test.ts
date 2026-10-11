@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { Device, RunTestStatus } from "@yoqa/runner-client";
-import { hasRunTarget, runChip, sessionPillLabel, wdaRebuildTarget } from "./session-status";
+import {
+	connectedToastMessage,
+	hasRunTarget,
+	runChip,
+	sessionPillLabel,
+	wdaRebuildTarget,
+} from "./session-status";
 
 const SESSION = { deviceId: "dev-1", platform: "ios" as const, connectedAt: 1 };
 
@@ -17,6 +23,30 @@ describe("sessionPillLabel", () => {
 
 	test("shows the live state alone when the runner does not name the Lane", () => {
 		expect(sessionPillLabel({ streamReady: true })).toBe("Live");
+	});
+});
+
+describe("connectedToastMessage", () => {
+	test("a Lane without a stream is a plain Screenshot Poll, not a failure", () => {
+		expect(connectedToastMessage({ streamState: "none", streamReady: false })).toBe(
+			"Connected — screenshot poll",
+		);
+	});
+
+	test("only a stream that failed says it is unavailable", () => {
+		expect(connectedToastMessage({ streamState: "failed", streamReady: false })).toBe(
+			"Connected — screenshot poll (live stream unavailable)",
+		);
+		expect(connectedToastMessage({ streamState: "ready", streamReady: true })).toBe(
+			"Connected — live stream on",
+		);
+	});
+
+	test("an older runner without streamState keeps the old reading of streamReady", () => {
+		expect(connectedToastMessage({ streamReady: false })).toBe(
+			"Connected — screenshot poll (live stream unavailable)",
+		);
+		expect(connectedToastMessage({})).toBe("Connected — live stream on");
 	});
 });
 

@@ -26,6 +26,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { looksLikePhysicalIosUdid } from "./appium-lane";
+import { errorChain } from "./error-chain";
 import {
 	type FrameRecorderDeps,
 	type FrameSource,
@@ -37,6 +38,7 @@ import {
 	type CapturedFrame,
 	DeadSessionError,
 	type DeviceSession,
+	DeviceUnreachableError,
 	type PointerPhase,
 	type SessionOptions,
 } from "./lane";
@@ -175,11 +177,21 @@ export async function createIosDeviceSession(
 	 */
 	let appId = options.bundleId;
 	const dead = (error: Error) => {
+		const unreachableMs =
+			unreachableSince === null ? undefined : Math.round(performance.now() - unreachableSince);
 		if (!notifiedDead) {
 			notifiedDead = true;
+			// The toast only has room for the outer message; the full chain goes to the runner log.
+			console.error(
+				`[yoqa-runner] Device session ended on iPhone ${udid}`,
+				JSON.stringify({ unreachableMs, graceMs, chain: errorChain(error) }, null, 2),
+			);
 			options.onSessionDead?.();
 		}
-		return new DeadSessionError(`Device session ended: ${error.message}`);
+		return Object.assign(
+			new DeadSessionError(`Device session ended: ${error.message}`, { cause: error }),
+			{ unreachableMs, graceMs },
+		);
 	};
 	const call = async (command: string, fields?: Record<string, unknown>, journaled = false) => {
 		try {
@@ -195,9 +207,15 @@ export async function createIosDeviceSession(
 			if (!(error instanceof YoqaRunnerUnreachableError) || quitting) throw error;
 			if (!error.transient) throw dead(error);
 			unreachableSince ??= performance.now();
-			if (performance.now() - unreachableSince < graceMs) {
+			const unreachableMs = Math.round(performance.now() - unreachableSince);
+			if (unreachableMs < graceMs) {
 				// Transient: the caller (the frame loop backs off and retries) may try again.
-				throw new Error(`YoqaRunner is briefly unreachable, retrying: ${error.message}`);
+				throw new DeviceUnreachableError(
+					`YoqaRunner is briefly unreachable, retrying: ${error.message}`,
+					unreachableMs,
+					graceMs,
+					{ cause: error },
+				);
 			}
 			throw dead(error);
 		}

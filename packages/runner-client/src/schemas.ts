@@ -916,12 +916,25 @@ export const connectDeviceRequestSchema = z.object({
 });
 export type ConnectDeviceRequest = z.infer<typeof connectDeviceRequestSchema>;
 
+/**
+ * How the Inspector gets a Device Session's frames (its Frame Feed): `ready` is a live Stream;
+ * `none` (the Lane has no stream) and `failed` (the stream did not answer) mean Screenshot Poll.
+ */
+export const streamStateSchema = z.union([
+	z.literal("ready"),
+	z.literal("none"),
+	z.literal("failed"),
+]);
+export type StreamState = z.infer<typeof streamStateSchema>;
+
 export const activeDeviceResponseSchema = z.object({
 	deviceId: z.string().min(1),
 	platform: devicePlatformSchema,
 	connectedAt: z.number().int().nonnegative(),
 	mjpegPort: z.number().int().positive().optional(),
+	/** Compat: `streamState === "ready"`. */
 	streamReady: z.boolean().optional(),
+	streamState: streamStateSchema.optional(),
 	/** Relative path on the runner (e.g. `/stream.mjpeg`). */
 	streamUrl: z.string().min(1).optional(),
 	/** A Run currently owns this session (interactive actions are view-only). */

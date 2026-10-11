@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { errorChain } from "./error-chain";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
-import { DeadSessionError, type SessionOptions } from "./lane";
+import { DeadSessionError, DeviceUnreachableError, type SessionOptions } from "./lane";
 import { cleanPageSource } from "./screen";
 import { UsbmuxError } from "./usbmuxd";
 import { YoqaRunnerCommandError } from "./yoqa-runner-link";
@@ -172,8 +173,10 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		);
 		phone.setCableDown(true);
 		const error = await session.tap(500, 500).catch((caught: unknown) => caught);
-		expect(error).toBeInstanceOf(Error);
+		// An Unreachable Session: the runner keeps it, and says how long it will wait.
+		expect(error).toBeInstanceOf(DeviceUnreachableError);
 		expect(error).not.toBeInstanceOf(DeadSessionError);
+		expect((error as DeviceUnreachableError).graceMs).toBeGreaterThan(0);
 		expect(dead).toBe(0);
 		phone.setCableDown(false);
 		await session.tap(500, 500);
@@ -193,9 +196,20 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 			{ ...phone.deps, unreachableGraceMs: 0 },
 		);
 		phone.setCableDown(true);
+		const log = spyOn(console, "error").mockImplementation(() => {});
 		const error = await session.tap(500, 500).catch((caught: unknown) => caught);
+		const logged = log.mock.calls.map((args) => String(args[1]));
+		log.mockRestore();
 		expect(error).toBeInstanceOf(DeadSessionError);
 		expect(dead).toBe(1);
+		// The usbmuxd miss stays reachable behind the Dead Session, and is logged once.
+		expect(errorChain(error).map((link) => link.name)).toEqual([
+			"DeadSessionError",
+			"YoqaRunnerUnreachableError",
+			"UsbmuxError",
+		]);
+		expect(logged).toHaveLength(1);
+		expect(logged[0]).toContain("usbmuxd does not list iPhone");
 		await session.quit();
 	});
 

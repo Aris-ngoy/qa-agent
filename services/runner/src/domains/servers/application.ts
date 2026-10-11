@@ -1,4 +1,4 @@
-import type { DevicePlatform } from "@yoqa/runner-client";
+import type { DevicePlatform, StreamState } from "@yoqa/runner-client";
 import { loadSettings } from "../../settings";
 import {
 	type ForeignAppiumInfo,
@@ -78,6 +78,12 @@ function runnerEntry(): ServerEntry {
 	};
 }
 
+const SESSION_STATUS: Record<StreamState, string> = {
+	ready: "connected",
+	none: "connected · screenshot poll",
+	failed: "connected · screenshot poll (stream failed)",
+};
+
 function sessionEntry(): ServerEntry | null {
 	const active = getActiveSessionInfo();
 	if (!active) return null;
@@ -86,7 +92,8 @@ function sessionEntry(): ServerEntry | null {
 		kind: "device-session",
 		ownership: "managed",
 		label: `Device session ${active.platform} ${active.deviceId}`,
-		status: active.streamReady ? "connected" : "connecting",
+		// The session is up whatever its Frame Feed; a Lane without a stream is not "connecting".
+		status: SESSION_STATUS[active.streamState],
 		port: active.mjpegPort,
 		deviceId: active.deviceId,
 		platform: active.platform,
