@@ -95,6 +95,23 @@
 	--color-on-violet: #ffffff;
 	--color-violet-container: #ece7fc;
 	--color-on-violet-container: #4a31b5;
+	--color-warning-container: #f6ecc4;
+	--color-on-warning-container: #6b5410;
+	--color-info-container: #d9ecf8;
+	--color-on-info-container: #1d4a66;
+
+	/* Theme-invariant surfaces: scrims over screenshots, code editors, the boot splash */
+	--color-scrim: #000000;
+	--color-on-scrim: #ffffff;
+	--color-code: #17161d;
+	--color-on-code: #e6e3f0;
+	--color-splash: #14131c;
+	--color-on-splash: #ffffff;
+	--color-splash-track: #2a2836;
+	--color-splash-accent: #e3dbf7;
+	--color-splash-muted: #8a8792;
+	--color-splash-subtle: #7d7889;
+	--color-splash-faint: #5c5865;
 
 	/* Typography */
 	--font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -232,6 +249,10 @@
 	--color-on-violet: #14102a;
 	--color-violet-container: #342c5c;
 	--color-on-violet-container: #ddd6f5;
+	--color-warning-container: #4a3f17;
+	--color-on-warning-container: #f1dfa0;
+	--color-info-container: #1f3a4d;
+	--color-on-info-container: #cfe6f5;
 	--shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.4);
 	--shadow-float: 0 16px 48px rgba(0, 0, 0, 0.5);
 	--shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);

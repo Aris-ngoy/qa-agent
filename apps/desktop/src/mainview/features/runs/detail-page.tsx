@@ -114,7 +114,7 @@ function VideoDialog({
 							// biome-ignore lint/a11y/useMediaCaption: a device screen recording has no audio track
 							<video
 								autoPlay
-								className="max-h-[70vh] w-full rounded-xl bg-black object-contain"
+								className="max-h-[70vh] w-full rounded-xl bg-scrim object-contain"
 								controls
 								src={url}
 							/>

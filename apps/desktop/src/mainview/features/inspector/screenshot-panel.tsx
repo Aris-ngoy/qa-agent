@@ -385,7 +385,7 @@ export function ScreenshotPanel({
 			>
 				<span
 					aria-hidden="true"
-					className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc((100%-0.75rem)/2)] rounded-lg bg-surface-bright shadow-[0_1px_2px_rgba(27,26,34,0.12)] transition-transform duration-300 ease-out motion-reduce:transition-none"
+					className="pointer-events-none absolute top-1 bottom-1 left-1 w-[calc((100%-0.75rem)/2)] rounded-lg bg-surface-bright shadow-card transition-transform duration-300 ease-out motion-reduce:transition-none"
 					style={{ transform: liveControl ? "translateX(calc(100% + 0.25rem))" : "none" }}
 				/>
 				{(["inspect", "interact"] as const).map((mode) => {
@@ -488,7 +488,7 @@ export function ScreenshotPanel({
 								<img
 									ref={imgRef}
 									alt="Live device screenshot"
-									className="pointer-events-none block max-h-[max(260px,calc(100vh-27rem))] w-auto max-w-full rounded-[28px] shadow-[0_12px_40px_-18px_rgba(0,0,0,0.45)] select-none"
+									className="pointer-events-none block max-h-[max(260px,calc(100vh-27rem))] w-auto max-w-full rounded-[28px] shadow-float select-none"
 									draggable={false}
 									src={imageUrl}
 								/>
@@ -518,7 +518,7 @@ export function ScreenshotPanel({
 										/>
 										<span
 											aria-hidden="true"
-											className="pointer-events-none absolute z-20 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[10px] text-white"
+											className="pointer-events-none absolute z-20 rounded bg-scrim/75 px-1.5 py-0.5 font-mono text-[10px] text-on-scrim"
 											style={{
 												left: `${pickHover.x / 10}%`,
 												top: `${pickHover.y / 10}%`,
@@ -546,7 +546,7 @@ export function ScreenshotPanel({
 								<>
 									{caption ? (
 										<div
-											className="pointer-events-none absolute z-10 max-w-[14rem] truncate rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white"
+											className="pointer-events-none absolute z-10 max-w-[14rem] truncate rounded bg-scrim/70 px-1.5 py-0.5 font-mono text-[10px] text-on-scrim"
 											style={{
 												left: `${selectionAnchor.left}%`,
 												top: `calc(${selectionAnchor.top + selectionAnchor.height}% + 4px)`,
@@ -556,7 +556,7 @@ export function ScreenshotPanel({
 										</div>
 									) : (
 										<div
-											className="pointer-events-none absolute z-10 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-white"
+											className="pointer-events-none absolute z-10 rounded bg-scrim/70 px-1.5 py-0.5 font-mono text-[10px] text-on-scrim"
 											style={{
 												left: `${selectionAnchor.left}%`,
 												top: `calc(${selectionAnchor.top + selectionAnchor.height}% + 4px)`,

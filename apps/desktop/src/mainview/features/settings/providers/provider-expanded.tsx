@@ -568,7 +568,7 @@ export function ProviderExpanded({
 									type="button"
 									onClick={() => setValue("accentColor", color.id, { shouldDirty: true })}
 								>
-									{selected ? <span className="text-[10px] font-bold text-white">✓</span> : null}
+									{selected ? <span className="text-[10px] font-bold text-on-scrim">✓</span> : null}
 								</button>
 							);
 						})}

@@ -44,6 +44,10 @@ body {
 		linear-gradient(160deg, #101119 0%, #14161f 45%, #12131a 100%);
 }
 
+[data-theme="dark"] .blob-actions {
+	background: linear-gradient(135deg, #5a4a86 0%, #4d4078 55%, #44386d 100%);
+}
+
 .blob-actions {
 	background: linear-gradient(135deg, #c4b0ea 0%, #a894d8 55%, #9b84d0 100%);
 	border-radius: 40% 60% 55% 45% / 55% 40% 60% 45%;
@@ -273,7 +277,7 @@ body {
 	right: 0;
 	top: 0;
 	border-radius: 9999px;
-	background: rgb(255 255 255 / 0.12);
+	background: color-mix(in srgb, var(--color-sidebar-fg) 12%, transparent);
 	transition: transform var(--motion-base) var(--ease-out), height var(--motion-base)
 		var(--ease-out);
 	pointer-events: none;
