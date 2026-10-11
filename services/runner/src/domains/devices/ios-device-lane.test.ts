@@ -108,9 +108,13 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		const phone = fakePhone();
 		const session = await createIosDeviceSession(options(), phone.deps);
 		expect(session.lane).toBe("direct");
-		expect(session.stream).toBeNull();
-		expect(phone.commands).toEqual(["status"]);
-		expect(phone.tunnels).toEqual([{ udid: PHONE_UDID, port: RUNNER_PORT }]);
+		expect(session.stream?.ready).toBe(true);
+		expect(phone.commands.slice(0, 2)).toEqual(["status", "recordStart"]);
+		expect(phone.bodies.find((body) => body.command === "recordStart")).toMatchObject({ fps: 12 });
+		expect(phone.tunnels.slice(0, 2)).toEqual([
+			{ udid: PHONE_UDID, port: RUNNER_PORT },
+			{ udid: PHONE_UDID, port: RUNNER_PORT },
+		]);
 		await session.quit();
 	});
 
@@ -210,6 +214,66 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		]);
 		expect(logged).toHaveLength(1);
 		expect(logged[0]).toContain("usbmuxd does not list iPhone");
+		await session.quit();
+	});
+
+	test("a cable miss on a frame or the tree keeps the device session", async () => {
+		const phone = fakePhone();
+		let dead = 0;
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, {
+				onSessionDead: () => {
+					dead += 1;
+				},
+			}),
+			{ ...phone.deps, unreachableGraceMs: 0 },
+		);
+		phone.setCableDown(true);
+		const warn = spyOn(console, "warn").mockImplementation(() => {});
+		const frameError = await session.captureFrame().catch((caught: unknown) => caught);
+		const treeError = await session.pageSource().catch((caught: unknown) => caught);
+		const warned = warn.mock.calls.map((args) => String(args[0]));
+		warn.mockRestore();
+		expect(frameError).toBeInstanceOf(DeviceUnreachableError);
+		expect(frameError).not.toBeInstanceOf(DeadSessionError);
+		expect(treeError).toBeInstanceOf(DeviceUnreachableError);
+		expect(dead).toBe(0);
+		expect(warned.join("\n")).toContain("Inspector session cannot reach");
+
+		phone.setCableDown(false);
+		await session.tap(500, 500);
+		expect(dead).toBe(0);
+
+		phone.setCableDown(true);
+		const log = spyOn(console, "error").mockImplementation(() => {});
+		const tapError = await session.tap(500, 500).catch((caught: unknown) => caught);
+		log.mockRestore();
+		expect(tapError).toBeInstanceOf(DeadSessionError);
+		expect(dead).toBe(1);
+		await session.quit();
+	});
+
+	test("inspector reads open one tunnel at a time", async () => {
+		const phone = fakePhone({
+			replies: { screenshot: { ok: true, data: { png: "aGk=" } } },
+		});
+		let open = 0;
+		let max = 0;
+		const connect = phone.deps.connect;
+		phone.deps.connect = async (udid, port) => {
+			open += 1;
+			max = Math.max(max, open);
+			await Bun.sleep(40);
+			try {
+				return await connect(udid, port);
+			} finally {
+				open -= 1;
+			}
+		};
+		const session = await createIosDeviceSession(options(), phone.deps);
+		max = 0;
+		await Promise.all([session.captureFrame(), session.captureFrame()]);
+		expect(max).toBe(1);
 		await session.quit();
 	});
 
@@ -357,10 +421,9 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		const recording = await session.startRecording?.(join(tmpdir(), `yoqa-lane-${Date.now()}.mp4`));
 		await Bun.sleep(100);
 		await recording?.stop();
-		expect(phone.commands).toEqual(
-			expect.arrayContaining(["recordStart", "recordFetch", "recordStop"]),
-		);
-		expect(phone.bodies.find((body) => body.command === "recordStart")).toMatchObject({ fps: 8 });
+		// The mirror starts the phone's recorder; the recording only pulls, and does not stop it.
+		expect(phone.commands).toEqual(["status", "recordStart", "recordFetch", "recordFetch"]);
+		expect(phone.bodies.find((body) => body.command === "recordStart")).toMatchObject({ fps: 12 });
 		expect(encoded[0]).toContain(".jpg'");
 		await session.quit();
 	});

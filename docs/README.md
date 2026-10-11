@@ -42,6 +42,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [desktop/servers-and-doctor.md](./desktop/servers-and-doctor.md) | Servers panel + `yoqa doctor` diagnostics |
 | [desktop/manual-inspector.md](./desktop/manual-inspector.md) | Script-first Manual Inspector (select → shell script → run) |
 | [desktop/inspector-manual-connect.md](./desktop/inspector-manual-connect.md) | Inspector attaches only on Connect; flicker-free frames; React Compiler + Legend State feed store |
+| [inspector/legend-state.md](./inspector/legend-state.md) | Inspector folder layout: components, runner API, Legend-State atoms, query hooks, utils |
 | [desktop/session-bar.md](./desktop/session-bar.md) | Top bar manages the shared Active Session on every page: connect-first Run, Run chip, WDA rebuild on Restart, app switch retargets |
 | [desktop/motion-system.md](./desktop/motion-system.md) | CSS View Transitions + shell/list motion polish |
 | [desktop/react-hook-form.md](./desktop/react-hook-form.md) | RHF + HeroUI form helpers for all data-entry forms |
@@ -71,6 +72,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/yoqa-ax-alerts.md](./devices/yoqa-ax-alerts.md) | `yoqa-ax` reads SpringBoard dialogs; accept and dismiss tap them through `yoqa-sim` (default since #245) |
 | [devices/yoqa-runner-status.md](./devices/yoqa-runner-status.md) | `YoqaRunner` (physical iOS): XCUITest runner signs with the newest Apple Development team, builds once per source/Xcode/team, answers `status` on the phone |
 | [devices/ios-device-usbmux.md](./devices/ios-device-usbmux.md) | `device-ios`: an explicit `direct` request on a cabled iPhone reaches `YoqaRunner` over usbmuxd; `status` must cross the cable first; `auto` picks it (promoted in #251) |
+| [devices/inspector-session.md](./devices/inspector-session.md) | Cabled iPhone: frame and tree reads use their own link and do not end the Device Session |
 | [devices/ios-device-actions.md](./devices/ios-device-actions.md) | `device-ios`: tap, long-press, drag and screenshot over `YoqaRunner`; gestures journaled (64), a lost reply resolved by `status`, never resent |
 | [devices/ios-device-observation.md](./devices/ios-device-observation.md) | `device-ios`: the Screen tree, typing and hardware buttons; `APP_BACKGROUNDED` and `RUNNER_WEDGED` (the main-thread gate) |
 | [devices/ios-device-benchmark.md](./devices/ios-device-benchmark.md) | `device-ios` vs Appium on a cabled iPhone: about 2.4x faster per tap once the snapshot is one read; promoted: `auto` picks it |

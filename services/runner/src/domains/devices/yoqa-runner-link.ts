@@ -24,9 +24,10 @@ const COMMAND_TIMEOUT_MS = 10_000;
 const SNAPSHOT_TIMEOUT_MS = 30_000;
 
 /**
- * Opening a tunnel runs a fresh usbmuxd `ListDevices` + `Connect`. With the inspector's frame loop
- * and tree reads going at once, usbmuxd can briefly fail one of them while the cable is fine, and
- * one miss would end the whole Device Session. Nothing has been sent yet, so retrying is safe.
+ * Opening a tunnel runs a fresh usbmuxd `ListDevices` + `Connect`. The inspector's frame loop
+ * and a gesture can both open one while the cable is fine, and usbmuxd can briefly fail one of
+ * them. Nothing has been sent yet, so retrying is safe. A miss on a gesture can still end the
+ * Device Session after its grace; a miss on a frame or the tree stays on the Inspector Session.
  */
 const TUNNEL_ATTEMPTS = 4;
 const TUNNEL_RETRY_MS = 150;

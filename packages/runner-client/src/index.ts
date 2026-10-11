@@ -518,7 +518,9 @@ export class RunnerClient {
 		init: RequestInit | undefined,
 		fallbackError: string,
 	): Promise<unknown> {
-		const response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
+		// A 410 is cacheable. WebKit will keep serving one for GET /screen after the phone
+		// is back, and the inspector then ends a session the runner still has.
+		const response = await this.fetchImpl(`${this.baseUrl}${path}`, { cache: "no-store", ...init });
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
 			throw requestError(json, `${fallbackError}: HTTP ${response.status}`, response);
@@ -1061,7 +1063,9 @@ export class RunnerClient {
 	}
 
 	async getActiveDevice(): Promise<ActiveDeviceResponse | null> {
-		const response = await this.fetchImpl(`${this.baseUrl}/devices/active`);
+		const response = await this.fetchImpl(`${this.baseUrl}/devices/active?_=${Date.now()}`, {
+			cache: "no-store",
+		});
 		if (response.status === 404) return null;
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
@@ -1098,6 +1102,8 @@ export class RunnerClient {
 		const params = new URLSearchParams();
 		if (options.full) params.set("full", "1");
 		if (options.pauseMjpeg) params.set("pauseMjpeg", "1");
+		// Distinct URL so a cached 410 for the bare path cannot be reused.
+		params.set("_", String(Date.now()));
 		const qs = params.toString();
 		const json = await this.requestJson(
 			`/screen${qs ? `?${qs}` : ""}`,
@@ -1139,7 +1145,9 @@ export class RunnerClient {
 	}
 
 	async fetchScreenshotBytes(): Promise<Uint8Array> {
-		const response = await this.fetchImpl(`${this.baseUrl}/screenshot/image`);
+		const response = await this.fetchImpl(`${this.baseUrl}/screenshot/image?_=${Date.now()}`, {
+			cache: "no-store",
+		});
 		if (!response.ok) {
 			const json: unknown = await response.json().catch(() => null);
 			throw requestError(json, `Screenshot failed: HTTP ${response.status}`, response);

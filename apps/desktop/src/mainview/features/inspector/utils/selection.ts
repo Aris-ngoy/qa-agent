@@ -1,4 +1,4 @@
-import { usableId, usableLabel } from "@/features/inspector/command-snippets";
+import { usableId, usableLabel } from "@/features/inspector/utils/command-snippets";
 import type { ScreenElement } from "@yoqa/runner-client";
 
 export type PreferredLocator = "id" | "label";

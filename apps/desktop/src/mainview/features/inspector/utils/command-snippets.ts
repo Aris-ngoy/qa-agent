@@ -1,4 +1,4 @@
-import type { InspectorSelection, PreferredLocator } from "@/features/inspector/selection";
+import type { InspectorSelection, PreferredLocator } from "@/features/inspector/utils/selection";
 import {
 	type ActionRequest,
 	formatActionShellLine,

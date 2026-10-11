@@ -1,12 +1,20 @@
 import { devLog } from "@/app/dev-log";
-import { getRunnerClient } from "@/app/runner-client";
 import { logDevError, showErrorToast } from "@/app/show-error-toast";
-import { isDeviceSessionGone, isDeviceUnreachable } from "@/features/inspector/inspect-session";
+import {
+	mjpegStreamUrl,
+	readScreen,
+	readScreenshotBytes,
+} from "@/features/inspector/data/api/screen";
+import {
+	isDeviceSessionGone,
+	isDeviceUnreachable,
+	isStaleSessionReply,
+} from "@/features/inspector/utils/inspect-session";
 import {
 	type InspectorSelection,
 	cycleChangeSelector,
 	selectionFromPoint,
-} from "@/features/inspector/selection";
+} from "@/features/inspector/utils/selection";
 import { toast } from "@heroui/react";
 import { type Observable, observable } from "@legendapp/state";
 import type { ActiveDeviceResponse, ScreenElement } from "@yoqa/runner-client";
@@ -68,7 +76,7 @@ type FeedControllerOptions = {
 };
 
 /**
- * Drives the Inspector feed outside React: attach (only on the user's Connect), stream or
+ * Drives the Inspector feed outside React: attach when a Device Session is up, stream or
  * poll frames, cache the accessibility tree, and detach. Plain class so the async request
  * plumbing stays out of the component the React Compiler optimizes.
  */
@@ -95,7 +103,7 @@ export class InspectorFeedController {
 		this.treeUpdatedAt = 0;
 	}
 
-	/** Attach to `session` and start its feed. Only the user's Connect calls this. */
+	/** Attach to `session` and start its feed. The page calls this when a Device Session is up, and from Connect. */
 	async connect(session: ActiveDeviceResponse): Promise<void> {
 		this.clear();
 		this.feed$.active.set(session);
@@ -167,10 +175,9 @@ export class InspectorFeedController {
 		this.inFlight = true;
 		this.feed$.treeRefreshing.set(true);
 		try {
-			const client = await getRunnerClient();
 			// pauseMjpeg aborts live stream proxies on the runner before pageSource
 			// (Appium Inspector Element Mode — source without dual-loading WDA).
-			const screen = await client.getScreen({ pauseMjpeg });
+			const screen = await readScreen({ pauseMjpeg });
 			if (this.epoch !== epoch || !this.feed$.active.peek()) return null;
 			const next = screen.elements ?? [];
 			this.feed$.elements.set(next);
@@ -178,7 +185,7 @@ export class InspectorFeedController {
 			return next;
 		} catch (error) {
 			if (this.epoch !== epoch) return null;
-			if (isDeviceUnreachable(error)) {
+			if (isDeviceUnreachable(error) || isStaleSessionReply(error)) {
 				this.noteUnreachable(error);
 				return null;
 			}
@@ -227,9 +234,8 @@ export class InspectorFeedController {
 		this.inFlight = true;
 		if (!silent && !this.feed$.imageUrl.peek()) this.feed$.bootLoading.set(true);
 		try {
-			const client = await getRunnerClient();
-			const bytesPromise = client.fetchScreenshotBytes();
-			const treePromise = includeTree ? client.getScreen() : Promise.resolve(null);
+			const bytesPromise = readScreenshotBytes();
+			const treePromise = includeTree ? readScreen() : Promise.resolve(null);
 			const [bytes, screen] = await Promise.all([bytesPromise, treePromise]);
 			if (this.epoch !== epoch || !this.feed$.active.peek()) return;
 			if (this.feed$.unreachable.peek()) {
@@ -244,7 +250,7 @@ export class InspectorFeedController {
 		} catch (error) {
 			if (this.epoch !== epoch) return;
 			// The runner owns the grace window: a 503 keeps the last frame, a 410 is final.
-			if (isDeviceUnreachable(error)) {
+			if (isDeviceUnreachable(error) || isStaleSessionReply(error)) {
 				this.noteUnreachable(error);
 				return;
 			}
@@ -264,8 +270,8 @@ export class InspectorFeedController {
 	}
 
 	/**
-	 * An Unreachable Session (short usbmuxd gaps): keep the last frame, poll slower and log
-	 * once. The runner answers 410 if the device does not come back within its grace.
+	 * The Inspector Session cannot reach the phone: keep the last frame, poll slower and log
+	 * once. That does not end the Device Session. A later 410 means a gesture's session died.
 	 */
 	private noteUnreachable(error: unknown): void {
 		if (this.feed$.unreachable.peek()) return;
@@ -276,11 +282,10 @@ export class InspectorFeedController {
 	private async startLiveFeed(deviceInfo: ActiveDeviceResponse): Promise<void> {
 		this.feed$.bootLoading.set(true);
 		try {
-			const client = await getRunnerClient();
 			if (deviceInfo.streamReady !== false && (deviceInfo.streamUrl || deviceInfo.mjpegPort)) {
 				this.feed$.feedMode.set("mjpeg");
 				// Cache-bust so a stuck <img> MJPEG connection is remounted.
-				this.setFrame(`${client.getStreamMjpegUrl()}?t=${Date.now()}`, false);
+				this.setFrame(`${await mjpegStreamUrl()}?t=${Date.now()}`, false);
 				// Do not page-source while MJPEG is starting — WDA dies a few seconds later.
 				// Tree is loaded after script/commands (and on poll feed).
 			} else {
@@ -298,8 +303,7 @@ export class InspectorFeedController {
 
 	private async remountMjpegStream(): Promise<void> {
 		if (this.feed$.feedMode.peek() !== "mjpeg" || !this.feed$.active.peek()) return;
-		const client = await getRunnerClient();
-		this.setFrame(`${client.getStreamMjpegUrl()}?t=${Date.now()}`, false);
+		this.setFrame(`${await mjpegStreamUrl()}?t=${Date.now()}`, false);
 	}
 
 	/** Show `url` as the frame, revoking the previous frame if it was a poll blob. */

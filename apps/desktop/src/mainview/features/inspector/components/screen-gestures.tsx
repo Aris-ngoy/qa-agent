@@ -1,4 +1,5 @@
-import { type SVGProps, useState } from "react";
+import { useObservable, useValue } from "@legendapp/state/react";
+import type { SVGProps } from "react";
 
 type Direction = "up" | "down" | "left" | "right";
 
@@ -39,7 +40,8 @@ const STEP_BTN =
 
 /** Global (non-element) script helpers — swipe + wait. Element / app actions live on the Selected element card. */
 export function ScreenGestures({ disabled, onAddSwipe, onAddWait }: ScreenGesturesProps) {
-	const [wait, setWait] = useState(1);
+	const wait$ = useObservable(MIN_WAIT);
+	const wait = useValue(wait$);
 
 	const swipe = (direction: Direction) => (
 		<button
@@ -98,7 +100,7 @@ export function ScreenGestures({ disabled, onAddSwipe, onAddWait }: ScreenGestur
 							aria-label="Less time"
 							className={STEP_BTN}
 							disabled={disabled || wait <= MIN_WAIT}
-							onClick={() => setWait((value) => Math.max(MIN_WAIT, value - 1))}
+							onClick={() => wait$.set((value) => Math.max(MIN_WAIT, value - 1))}
 						>
 							−
 						</button>
@@ -110,7 +112,7 @@ export function ScreenGestures({ disabled, onAddSwipe, onAddWait }: ScreenGestur
 							aria-label="More time"
 							className={STEP_BTN}
 							disabled={disabled || wait >= MAX_WAIT}
-							onClick={() => setWait((value) => Math.min(MAX_WAIT, value + 1))}
+							onClick={() => wait$.set((value) => Math.min(MAX_WAIT, value + 1))}
 						>
 							+
 						</button>

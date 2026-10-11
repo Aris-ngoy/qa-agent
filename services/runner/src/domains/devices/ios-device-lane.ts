@@ -7,16 +7,19 @@
  * Coordinates cross the Device Session as 0–1000 and reach the runner as 0.0–1.0 fractions
  * of the screen. The screenshot is the whole screen too, so both coordinate spaces convert
  * the same way. Gestures are journaled on the runner, so a lost reply never double-taps.
+ * Frame, tree and viewport reads use a separate Inspector Session: a usbmux miss there
+ * does not end the Device Session. A gesture still does, once the cable stays unreachable
+ * past the grace window.
  *
  * The tree is the runner's `snapshot` of the app in front, shown as the same JSON the
  * simulator's `yoqa-ax` tree uses. A snapshot never brings an app forward: an app that is
  * not in front is `APP_BACKGROUNDED`. A stuck main thread on the phone is `RUNNER_WEDGED`.
  * Both reach the caller as `YoqaRunnerCommandError`s with a plain message.
  *
- * Run recording is screenshots stitched into an mp4 by `ffmpeg` (`frame-recorder.ts`).
- *
- * A Run recording is captured on the phone (`recordStart`, then `recordFetch` batches of
- * JPEGs) and encoded by `ffmpeg` on the Mac (`frame-recorder.ts`); screenshots are the fallback.
+ * The Inspector's mirror is half-size JPEGs the phone captures in the background, served as
+ * MJPEG (`ios-device-preview.ts`), not a full PNG per poll. A Run recording reads the same
+ * capture and is encoded by `ffmpeg` (`frame-recorder.ts`); screenshots are the fallback
+ * when the phone has no recorder.
  *
  * Alerts, URLs and terminating an app arrive in later slices; until then they reject with
  * a clear message.
@@ -33,6 +36,7 @@ import {
 	recordFrames,
 	screenshotSource,
 } from "./frame-recorder";
+import { IOS_PREVIEW_CAPTURE, type PhonePreview, startPhonePreview } from "./ios-device-preview";
 import { yoqaAxTreeToSource } from "./ios-direct-lane";
 import {
 	type CapturedFrame,
@@ -66,8 +70,6 @@ const KEY_SEPARATORS = new RegExp(`(\\r?\\n|${BACKSPACE})`);
 
 /** How often the Mac pulls the recording's frames off the phone. */
 const RECORDING_PULL_MS = 400;
-/** What the phone captures for a video: half-size JPEGs, about 8 a second. */
-const RECORDING_CAPTURE = { fps: 8, scale: 0.5, quality: 0.6 };
 
 /** A started `YoqaRunner`: its port on the phone, and how to stop it. */
 export type StartedRunner = Pick<YoqaRunner, "port" | "exited" | "stop">;
@@ -88,8 +90,9 @@ export type IosDeviceDeps = {
 /**
  * One failed tunnel is not a dead phone: usbmuxd drops out for a moment while the inspector's
  * frame loop and tree reads hammer it, the screen locks, or USB re-enumerates, and the runner
- * is still alive on the phone. The session only dies when the runner process exits or the cable
- * has been unreachable for this long without a single command getting through.
+ * is still alive on the phone. A gesture's session dies when the runner process exits or the
+ * cable has been unreachable for this long without a single gesture getting through. Frame and
+ * tree reads use the Inspector Session and never end the Device Session.
  */
 const UNREACHABLE_GRACE_MS = 20_000;
 
@@ -144,9 +147,15 @@ export async function createIosDeviceSession(
 	}
 
 	const runner = await deps.startRunner(udid);
-	const link = createYoqaRunnerLink(() => deps.connect(udid, runner.port));
+	const openTunnel = () => deps.connect(udid, runner.port);
+	// Gestures and the runner's own status. A miss here can end the Device Session.
+	const controlLink = createYoqaRunnerLink(openTunnel);
+	// Frames, the tree and the viewport. A miss here stays on this link.
+	const inspectorLink = createYoqaRunnerLink(openTunnel);
+	// The live mirror's frame pull. It stays off the gesture link so a tap does not wait for a JPEG.
+	const previewLink = createYoqaRunnerLink(openTunnel);
 	try {
-		await link.send("status");
+		await controlLink.send("status");
 	} catch (error) {
 		await runner.stop().catch(() => undefined);
 		throw new Error(
@@ -164,6 +173,15 @@ export async function createIosDeviceSession(
 	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
 		const run = chain.then(fn, fn);
 		chain = run.catch(() => undefined);
+		return run;
+	};
+
+	// One inspector tunnel at a time, so a frame and a tree read do not open two usbmuxd
+	// connections together. Gestures stay on `withActionLock` and can run alongside a read.
+	let inspectorChain: Promise<unknown> = Promise.resolve();
+	const withInspectorLock = <T>(fn: () => Promise<T>): Promise<T> => {
+		const run = inspectorChain.then(fn, fn);
+		inspectorChain = run.catch(() => undefined);
 		return run;
 	};
 
@@ -195,7 +213,7 @@ export async function createIosDeviceSession(
 	};
 	const call = async (command: string, fields?: Record<string, unknown>, journaled = false) => {
 		try {
-			const reply = await link.send(command, fields, { journaled });
+			const reply = await controlLink.send(command, fields, { journaled });
 			unreachableSince = null;
 			return reply;
 		} catch (error) {
@@ -209,7 +227,7 @@ export async function createIosDeviceSession(
 			unreachableSince ??= performance.now();
 			const unreachableMs = Math.round(performance.now() - unreachableSince);
 			if (unreachableMs < graceMs) {
-				// Transient: the caller (the frame loop backs off and retries) may try again.
+				// Transient: the caller may try again. The Device Session stays.
 				throw new DeviceUnreachableError(
 					`YoqaRunner is briefly unreachable, retrying: ${error.message}`,
 					unreachableMs,
@@ -221,8 +239,46 @@ export async function createIosDeviceSession(
 		}
 	};
 
-	const getWindowSize = remember(async () => {
-		const size = (await call("viewport")) as { width?: unknown; height?: unknown };
+	/**
+	 * The Inspector Session: screenshot, snapshot and viewport. A cable miss answers
+	 * unreachable and leaves the Device Session connected, including past the grace
+	 * window. The runner exiting still ends it, through `runner.exited`.
+	 */
+	let inspectorUnreachableSince: number | null = null;
+	let inspectorGraceLogged = false;
+	const inspect = async (command: string, fields?: Record<string, unknown>) => {
+		try {
+			const reply = await inspectorLink.send(command, fields);
+			inspectorUnreachableSince = null;
+			inspectorGraceLogged = false;
+			return reply;
+		} catch (error) {
+			if (error instanceof YoqaRunnerCommandError) {
+				inspectorUnreachableSince = null;
+				inspectorGraceLogged = false;
+				throw explainRunnerError(error, appId);
+			}
+			if (!(error instanceof YoqaRunnerUnreachableError) || quitting) throw error;
+			inspectorUnreachableSince ??= performance.now();
+			const unreachableMs = Math.round(performance.now() - inspectorUnreachableSince);
+			if (unreachableMs >= graceMs && !inspectorGraceLogged) {
+				inspectorGraceLogged = true;
+				console.warn(
+					`[yoqa-runner] Inspector session cannot reach iPhone ${udid}; the device session stays connected`,
+					JSON.stringify({ unreachableMs, graceMs, chain: errorChain(error) }),
+				);
+			}
+			throw new DeviceUnreachableError(
+				`Inspector session cannot reach YoqaRunner: ${error.message}`,
+				unreachableMs,
+				graceMs,
+				{ cause: error },
+			);
+		}
+	};
+
+	const readWindowSize = remember(async () => {
+		const size = (await inspect("viewport")) as { width?: unknown; height?: unknown };
 		if (typeof size?.width !== "number" || typeof size?.height !== "number") {
 			throw new Error("YoqaRunner viewport omitted the screen size");
 		}
@@ -230,14 +286,14 @@ export async function createIosDeviceSession(
 	});
 
 	/** The runner's snapshot as the JSON the Screen reads, in the window's points. */
-	const pageSource = async () => {
-		const reply = (await call("snapshot", appId ? { bundleId: appId } : {})) as {
+	const readPageSource = async () => {
+		const reply = (await inspect("snapshot", appId ? { bundleId: appId } : {})) as {
 			nodes?: unknown;
 		};
 		if (!Array.isArray(reply?.nodes)) throw new Error("YoqaRunner snapshot omitted its nodes");
 		return yoqaAxTreeToSource(
 			{ nodes: reply.nodes as YoqaAxNode[], degraded: reply.nodes.length === 0 },
-			await getWindowSize(),
+			await readWindowSize(),
 		);
 	};
 
@@ -251,13 +307,25 @@ export async function createIosDeviceSession(
 		}
 	};
 
-	const captureFrame = async (): Promise<CapturedFrame> => {
-		const shot = (await call("screenshot")) as { png?: unknown };
+	const readFrame = async (): Promise<CapturedFrame> => {
+		const shot = (await inspect("screenshot")) as { png?: unknown };
 		if (typeof shot?.png !== "string" || shot.png.length === 0) {
 			throw new Error("YoqaRunner screenshot returned an empty frame");
 		}
 		return { base64: shot.png, mime: "image/png" };
 	};
+	const captureFrame = () => withInspectorLock(readFrame);
+	const pageSource = () => withInspectorLock(readPageSource);
+	const getWindowSize = () => withInspectorLock(readWindowSize);
+
+	let preview: PhonePreview | null = null;
+	try {
+		preview = await startPhonePreview((command, fields) => previewLink.send(command, fields));
+	} catch (error) {
+		console.warn(
+			`[yoqa-runner] live preview unavailable (${errorMessage(error)}); the inspector will poll screenshots`,
+		);
+	}
 
 	/** The phone captures JPEGs in the background; the Mac pulls them in batches. */
 	const runnerFrames = (): FrameSource => {
@@ -265,7 +333,10 @@ export async function createIosDeviceSession(
 		return {
 			intervalMs: RECORDING_PULL_MS,
 			start: async () => {
-				await call("recordStart", RECORDING_CAPTURE);
+				// The mirror already started the phone's recorder. Starting it again would
+				// drop the frames the inspector is showing.
+				if (preview) return;
+				await call("recordStart", IOS_PREVIEW_CAPTURE);
 			},
 			pull: async () => {
 				const reply = (await call("recordFetch", after === undefined ? {} : { after })) as {
@@ -285,6 +356,7 @@ export async function createIosDeviceSession(
 				return out;
 			},
 			stop: async () => {
+				if (preview) return;
 				await call("recordStop");
 			},
 		};
@@ -358,9 +430,11 @@ export async function createIosDeviceSession(
 
 	return {
 		lane: "direct",
-		stream: null,
+		stream: preview?.stream ?? null,
 		quit: async () => {
 			quitting = true;
+			await preview?.stop().catch(() => undefined);
+			preview = null;
 			// A failed stop is retried by the next quit; a finished one is not repeated.
 			stopping ??= runner.stop().catch((error: unknown) => {
 				stopping = null;

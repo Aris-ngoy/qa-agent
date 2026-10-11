@@ -8,8 +8,8 @@
 
 ## Plan summary
 
-- **Manual attach.** The top bar still owns the Device Session ([Session bar](./session-bar.md)). The Inspector attaches to it only when the user clicks **Connect** and stops its feed on **Disconnect**. Neither one touches the device session. The Inspector still detaches by itself when its session goes away (disconnect, restart, another device, or leaving the page). It never re-attaches by itself.
-- **Unreachable Session.** While the runner waits out its grace window for a device that stopped answering, it answers 503 `Device unreachable`. The Inspector keeps the last frame, shows **Waiting for device**, logs once, and drops the poll to about one try per second. The runner alone decides when the session is dead: its 410 ends the Inspector at once, with no desktop timer and no re-check (see [the session note](../sessions/2026-10-11-runner-tunnel-retry.md)).
+- **Attach with the device.** Opening **Inspector** with a Device Session already up, or connecting a device while the page is open, starts the feed. **Disconnect** stops only the feed for that session. A later session attaches again. The top bar still owns the Device Session.
+- **Unreachable Session.** While the phone is not answering, frame and tree reads answer 503 `Device unreachable`. The Inspector keeps the last frame, shows **Waiting for device**, logs once, and drops the poll to about one try per second. Those reads are the [Inspector Session](../devices/inspector-session.md): they do not end the Device Session, including after the grace window. A gesture that still cannot get through, or the runner exiting, is what answers 410 and ends it.
 - **Double-buffered frames.** Each new frame loads into a hidden `<img>` behind the one on screen and swaps in on `load`. Streams get a 1.5 s fallback because a multipart body may never fire `load`. The old slot then unmounts, which also closes the old MJPEG connection.
 - **Legend State for the feed.** Frame URL, feed mode, element tree, selection and the Inspect/Interact toggle now live in one observable. Only `LiveFrame` subscribes to the frame URL, so a poll tick re-renders that one component instead of the whole page and script panel. Code outside render reads values with `.peek()`, which replaces the old `useRef` mirrors kept in sync by effects.
 - **`useValue`, never `use$`.** The two are the same Legend hook, but the React Compiler recognises hooks by the `use` + capital-letter name pattern. It treats `use$` as a plain call and caches it in a conditional block, so the hook is skipped on re-render and React throws "Should have a queue" (seen on the first build of this change).
@@ -27,11 +27,11 @@
 
 ## How to verify
 
-1. Connect a device from the top bar, then open **Inspector**. It shows "Inspector not connected" and makes no `/screenshot` or `/stream.mjpeg` requests.
-2. Click **Connect**. The stream (or poll) starts. With the poll feed, frames update without blinking. Click an element: under Stream the tree refresh remounts the stream without a blank frame.
+1. Connect a device from the top bar, then open **Inspector**. The feed starts on its own (stream or poll). **Disconnect** stops only the feed; the top bar stays connected, and the card stays off until **Connect** or a new device session.
+2. With the poll feed, frames update without blinking. Click an element: under Stream the tree refresh remounts the stream without a blank frame.
 3. Click **Disconnect**. The feed stops and the top bar still shows the session as connected.
-4. Unplug the iPhone briefly. The badge reads **Waiting for device** and the terminal logs one `Device unreachable` line, not one per tick. Plug it back in within 20 s and frames resume. Leave it unplugged and the runner ends the session: the Inspector detaches with "Device session ended".
-5. Restart or disconnect from the top bar while attached. The Inspector detaches and waits for **Connect**.
+4. Unplug the iPhone. The badge reads **Waiting for device** and the terminal logs one `Device unreachable` line, not one per tick. The top bar stays connected. Plug it back in and frames resume. A gesture while it is still unplugged, past the grace window, is what ends the Device Session.
+5. Restart or disconnect from the top bar while the feed is up. The Inspector detaches. Connecting a device again attaches the feed on its own.
 6. Compiler coverage: build with the plugin's `logger` (or run it over `src/mainview`). `InspectorPage` compiles with no `CompileError`.
 
 ## Follow-ups

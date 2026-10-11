@@ -109,6 +109,12 @@
 			"skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
 			"computedHash": "ac2c94885f34ff8492dc12aa4543182f661f32ea1722b8d6b6c2c7045af33ae3"
 		},
+		"legend-state-best-practices": {
+			"source": "LegendApp/legend-skills",
+			"sourceType": "github",
+			"skillPath": "legend-state-best-practices/SKILL.md",
+			"computedHash": "8b715d31ac66687d0957210766b1c636c68629ea09c23f067fc220703dcf6f24"
+		},
 		"loop-me": {
 			"source": "mattpocock/skills",
 			"sourceType": "github",
