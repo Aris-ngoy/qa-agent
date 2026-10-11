@@ -149,3 +149,91 @@
 	--shadow-float: 0 16px 48px rgba(40, 48, 80, 0.12);
 	--shadow-card: 0 4px 20px rgba(40, 48, 80, 0.06);
 }
+
+/* Dark theme — selected by data-theme="dark" (set before first paint by apps/desktop/index.html) */
+.dark,
+[data-theme="dark"] {
+	color-scheme: dark;
+
+	/* HeroUI semantic tokens */
+	--background: #12131a;
+	--foreground: #ececf1;
+	--surface: #1b1d27;
+	--surface-foreground: #ececf1;
+	--surface-secondary: #222534;
+	--surface-secondary-foreground: #ececf1;
+	--surface-tertiary: #2a2d3e;
+	--surface-tertiary-foreground: #ececf1;
+	--overlay: #1f212d;
+	--overlay-foreground: #ececf1;
+	--muted: #9a9eab;
+	--default: #2a2d3e;
+	--default-foreground: #ececf1;
+	--accent: #ececf1;
+	--accent-foreground: #12131a;
+	--success: #4fb391;
+	--success-foreground: #0d1a15;
+	--warning: #d4b04a;
+	--warning-foreground: #1a1608;
+	--danger: #e57373;
+	--danger-foreground: #1c0c0c;
+	--border: #323548;
+	--separator: #323548;
+	--focus: #ececf1;
+	--link: #ececf1;
+	--field-background: #222534;
+	--field-foreground: #ececf1;
+	--field-placeholder: #6b6f7a;
+	--field-border: #323548;
+	--backdrop: rgb(0 0 0 / 0.6);
+	--overlay-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+	--surface-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+	--field-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+
+	/* Tailwind color tokens */
+	--color-background: #12131a;
+	--color-on-background: #ececf1;
+	--color-surface: #1b1d27;
+	--color-surface-dim: #151720;
+	--color-surface-bright: #2a2d3e;
+	--color-surface-container-lowest: #1b1d27;
+	--color-surface-container-low: #1f212d;
+	--color-surface-container: #232636;
+	--color-surface-container-high: #2a2d3e;
+	--color-surface-container-highest: #323548;
+	--color-surface-variant: #2a2d3e;
+	--color-on-surface: #ececf1;
+	--color-on-surface-variant: #9a9eab;
+	--color-inverse-surface: #ececf1;
+	--color-inverse-on-surface: #1b1d27;
+	--color-outline: #6b6f7a;
+	--color-outline-variant: #323548;
+	--color-surface-tint: #a99be0;
+	--color-primary: #ececf1;
+	--color-on-primary: #12131a;
+	--color-primary-container: #2a2d3e;
+	--color-on-primary-container: #c8c6c5;
+	--color-inverse-primary: #2a2a2e;
+	--color-secondary: #4fb391;
+	--color-on-secondary: #0d1a15;
+	--color-secondary-container: #1f4a3c;
+	--color-on-secondary-container: #bfe9da;
+	--color-tertiary: #a99be0;
+	--color-on-tertiary: #1a1530;
+	--color-tertiary-container: #3a3260;
+	--color-on-tertiary-container: #ddd6f5;
+	--color-error: #e57373;
+	--color-on-error: #1c0c0c;
+	--color-error-container: #4a2323;
+	--color-on-error-container: #f9d4d4;
+	--color-sidebar: #0d0e14;
+	--color-hover-surface: #232636;
+	--color-warning: #d4b04a;
+	--color-violet: #9d85f0;
+	--color-on-violet: #14102a;
+	--color-violet-container: #342c5c;
+	--color-on-violet-container: #ddd6f5;
+	--shadow-soft: 0 8px 32px rgba(0, 0, 0, 0.4);
+	--shadow-float: 0 16px 48px rgba(0, 0, 0, 0.5);
+	--shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
