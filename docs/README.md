@@ -28,6 +28,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [runs/cursor-vision-cli.md](./runs/cursor-vision-cli.md) | Cursor Agent CLI vision decide + grounding |
 | [runs/run-ui-and-cancel.md](./runs/run-ui-and-cancel.md) | Run list + detail, play→cancel, cancel/delete APIs |
 | [runs/runs-list-layout.md](./runs/runs-list-layout.md) | Runs list: status dot, result chip, Passed / Failed filters |
+| [runs/run-details-layout.md](./runs/run-details-layout.md) | Run details: status chip, device meta line, numbered steps, phone screenshot |
 | [runs/run-detail-thoughts.md](./runs/run-detail-thoughts.md) | Case/device labels + per-step expandable AI thoughts |
 | [providers/opencode-model-selection.md](./providers/opencode-model-selection.md) | OpenCode Free/Paid model picker + free default |
 | [providers/ai-sdk-settings-providers.md](./providers/ai-sdk-settings-providers.md) | Groq / Google / Vertex / Antigravity + Codex vision |
