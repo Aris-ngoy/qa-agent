@@ -242,7 +242,10 @@
 	--color-on-error: #1c0c0c;
 	--color-error-container: #4a2323;
 	--color-on-error-container: #f9d4d4;
-	--color-sidebar: #0d0e14;
+	--color-sidebar: #1e2030;
+	--color-sidebar-fg: #ececf1;
+	--color-sidebar-muted: #9a9eab;
+	--color-sidebar-active: #ffffff;
 	--color-hover-surface: #232636;
 	--color-warning: #d4b04a;
 	--color-violet: #9d85f0;
