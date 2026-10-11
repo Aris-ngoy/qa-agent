@@ -3,8 +3,9 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
-import type { SessionOptions } from "./lane";
+import { DeadSessionError, type SessionOptions } from "./lane";
 import { cleanPageSource } from "./screen";
+import { UsbmuxError } from "./usbmuxd";
 import { YoqaRunnerCommandError } from "./yoqa-runner-link";
 
 const PHONE_UDID = "00008120-000E6D813E2A601E";
@@ -45,6 +46,7 @@ function fakePhone(
 	const devicectl: string[][] = [];
 	const tunnels: Array<{ udid: string; port: number }> = [];
 	let stops = 0;
+	let cableDown = false;
 	let exit: (code: number) => void = () => undefined;
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
@@ -77,7 +79,8 @@ function fakePhone(
 		}),
 		connect: async (udid, port) => {
 			tunnels.push({ udid, port });
-			if (mode.tunnelFails) throw new Error("usbmuxd does not list iPhone");
+			if (mode.tunnelFails || cableDown)
+				throw new UsbmuxError("usbmuxd does not list iPhone", true);
 			return createConnection(server.port ?? 0, "127.0.0.1");
 		},
 		devicectl: async (args) => {
@@ -93,6 +96,9 @@ function fakePhone(
 		tunnels,
 		stops: () => stops,
 		runnerExits: () => exit(0),
+		setCableDown: (down: boolean) => {
+			cableDown = down;
+		},
 	};
 }
 
@@ -149,6 +155,46 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		);
 		phone.runnerExits();
 		await Bun.sleep(0);
+		expect(dead).toBe(1);
+		await session.quit();
+	});
+
+	test("a tunnel that drops for a moment is not a Dead Session", async () => {
+		const phone = fakePhone();
+		let dead = 0;
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, {
+				onSessionDead: () => {
+					dead += 1;
+				},
+			}),
+			phone.deps,
+		);
+		phone.setCableDown(true);
+		const error = await session.tap(500, 500).catch((caught: unknown) => caught);
+		expect(error).toBeInstanceOf(Error);
+		expect(error).not.toBeInstanceOf(DeadSessionError);
+		expect(dead).toBe(0);
+		phone.setCableDown(false);
+		await session.tap(500, 500);
+		expect(phone.bodies.at(-1)).toMatchObject({ command: "tap" });
+		await session.quit();
+	});
+
+	test("a cable that stays unreachable past the grace is a Dead Session", async () => {
+		const phone = fakePhone();
+		let dead = 0;
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, {
+				onSessionDead: () => {
+					dead += 1;
+				},
+			}),
+			{ ...phone.deps, unreachableGraceMs: 0 },
+		);
+		phone.setCableDown(true);
+		const error = await session.tap(500, 500).catch((caught: unknown) => caught);
+		expect(error).toBeInstanceOf(DeadSessionError);
 		expect(dead).toBe(1);
 		await session.quit();
 	});
