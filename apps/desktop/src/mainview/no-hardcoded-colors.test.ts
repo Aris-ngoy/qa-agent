@@ -16,7 +16,7 @@ const PROPS = "bg|text|border|ring|from|to|via|fill|stroke|divide|outline|decora
 /** Colors that cannot follow the theme: hex, rgb(a), white/black, and light-only palette shades. */
 const HARDCODED = [
 	/#[0-9a-fA-F]{3,8}\b/,
-	/\brgba?\(/,
+	/\b(rgba?|hsla?)\(/,
 	new RegExp(`\\b(${PROPS})-(white|black)\\b`),
 	new RegExp(`\\b(${PROPS})-(${PALETTE})-(50|100|200|300|800|900|950)\\b`),
 ];
