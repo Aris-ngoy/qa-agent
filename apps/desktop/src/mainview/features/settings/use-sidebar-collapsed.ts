@@ -16,7 +16,7 @@ export function useSidebarCollapsed(): [boolean, () => void] {
 export function useSidebarShortcut(): void {
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (!isToggleShortcut(event)) return;
+			if (event.repeat || event.isComposing || !isToggleShortcut(event)) return;
 			event.preventDefault();
 			sidebarStore.toggle();
 		};
