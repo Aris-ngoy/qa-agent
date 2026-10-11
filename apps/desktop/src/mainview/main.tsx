@@ -3,6 +3,7 @@ import { viewTransitionTypes } from "@/app/motion/route-rank";
 import { routeTree } from "@/app/route-tree";
 import { AppsProvider } from "@/features/apps/context";
 import { ActiveRunProvider } from "@/features/runs/active-run-context";
+import { SidebarShortcut } from "@/features/settings/sidebar-toggle";
 import { ThemeSync } from "@/features/settings/use-theme-mode";
 import { BootGate } from "@/features/splash/boot-gate";
 import { TestCaseSelectionProvider } from "@/features/test-cases/selection-context";
@@ -43,6 +44,7 @@ createRoot(rootElement).render(
 	<StrictMode>
 		<QueryClientProvider client={queryClient}>
 			<ThemeSync />
+			<SidebarShortcut />
 			<Toast.Provider />
 			<AppsProvider>
 				<TestCaseSelectionProvider>
