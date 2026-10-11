@@ -344,7 +344,7 @@ export function ScreenshotPanel({
 	return (
 		<section
 			aria-labelledby="inspector-device-heading"
-			className="flex flex-col gap-3.5 rounded-[18px] border border-outline-variant bg-surface-bright p-4"
+			className="flex flex-col gap-3.5 rounded-[var(--radius)] border border-outline-variant bg-surface-bright p-4"
 		>
 			<div className="flex items-center justify-between gap-2">
 				<h2 id="inspector-device-heading" className="text-subheading text-on-surface">
@@ -400,7 +400,7 @@ export function ScreenshotPanel({
 
 			<fieldset
 				aria-label="Pointer mode"
-				className="relative m-0 grid min-w-0 grid-cols-2 gap-1 rounded-[10px] border-0 bg-surface-container p-1"
+				className="relative m-0 grid min-w-0 grid-cols-2 gap-1 rounded-[var(--radius)] border-0 bg-surface-container p-1"
 			>
 				<span
 					aria-hidden="true"
@@ -478,7 +478,7 @@ export function ScreenshotPanel({
 							{session ? (
 								<button
 									type="button"
-									className="inline-flex min-h-10 items-center rounded-[10px] bg-primary px-4 text-body-md font-semibold text-on-primary transition-opacity hover:opacity-90"
+									className="inline-flex min-h-10 items-center rounded-[var(--radius)] bg-primary px-4 text-body-md font-semibold text-on-primary transition-opacity hover:opacity-90"
 									onClick={onConnect}
 								>
 									Connect Inspector

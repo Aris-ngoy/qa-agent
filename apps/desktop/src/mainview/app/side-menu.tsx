@@ -2,19 +2,12 @@ import { openExternalUrl } from "@/app/desktop-rpc";
 import { AddApplicationModal } from "@/features/apps/add-application-modal";
 import { useApps } from "@/features/apps/context";
 import { useActiveRun } from "@/features/runs/active-run-context";
+import { SidebarToggle } from "@/features/settings/sidebar-toggle";
 import { useSidebarCollapsed } from "@/features/settings/use-sidebar-collapsed";
 import { YoqaMark } from "@/features/splash/yoqa-mark";
 import { Button, Dropdown, Label, Separator, Tooltip } from "@heroui/react";
 import { Link } from "@tanstack/react-router";
-import {
-	type ReactNode,
-	type SVGProps,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { type ReactNode, type SVGProps, useMemo, useState } from "react";
 
 const DOCS_URL = "https://yoqa.arisn.dev/docs/quickstart";
 
@@ -22,10 +15,12 @@ function NavIcon(props: SVGProps<SVGSVGElement>) {
 	return (
 		<svg
 			aria-hidden="true"
-			className="size-5"
+			className="size-4"
 			fill="none"
 			stroke="currentColor"
-			strokeWidth="1.6"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			strokeWidth="1.8"
 			viewBox="0 0 24 24"
 			{...props}
 		/>
@@ -43,7 +38,7 @@ function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
 			viewBox="0 0 24 24"
 			{...props}
 		>
-			<path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+			<path d="M8 9l4-4 4 4M8 15l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
 		</svg>
 	);
 }
@@ -63,14 +58,11 @@ function RailTip({
 	);
 }
 
-function BookIcon() {
+function DocsIcon() {
 	return (
 		<NavIcon>
-			<path
-				d="M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 016.5 22H20V2H6.5A2.5 2.5 0 004 4.5v15z"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-			/>
+			<path d="M4 4h10l6 6v10H4z" />
+			<path d="M14 4v6h6" />
 		</NavIcon>
 	);
 }
@@ -83,6 +75,18 @@ type NavItem = {
 };
 
 const ADD_APP_KEY = "add-application";
+
+/** Two letters for the collapsed workspace tile: first and last word, or the first two characters. */
+function appInitials(name: string): string {
+	const words = name
+		.trim()
+		.split(/\s+/)
+		.filter((word) => word.length > 0 && word.toLowerCase() !== "and");
+	const first = words[0];
+	const last = words.length > 1 ? words[words.length - 1] : undefined;
+	if (first && last) return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
+	return (first?.slice(0, 2) ?? "Y").toUpperCase();
+}
 
 type SideMenuProps = {
 	activePath?: string;
@@ -104,9 +108,6 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 	const [modalOpen, setModalOpen] = useState(false);
 	const [workspaceOpen, setWorkspaceOpen] = useState(false);
 	const appLabel = selectedApp?.name ?? "Yoqa";
-	const navRef = useRef<HTMLElement | null>(null);
-	const itemRefs = useRef<Map<string, HTMLElement>>(new Map());
-	const [pill, setPill] = useState<{ top: number; height: number } | null>(null);
 
 	const navItems = useMemo((): NavItem[] => {
 		return [
@@ -115,7 +116,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				to: "/test-cases",
 				icon: (
 					<NavIcon>
-						<path d="M8 6h11M8 12h11M8 18h11M4 6h.01M4 12h.01M4 18h.01" strokeLinecap="round" />
+						<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />
 					</NavIcon>
 				),
 			},
@@ -124,7 +125,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				to: "/runs",
 				icon: (
 					<NavIcon>
-						<path d="M8 5.5v13l11-6.5L8 5.5Z" strokeLinejoin="round" />
+						<path d="M7 4.5v15l12-7.5z" />
 					</NavIcon>
 				),
 				badge: isRunLive ? 1 : undefined,
@@ -134,12 +135,8 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				to: "/inspector",
 				icon: (
 					<NavIcon>
-						<path
-							d="M10.5 19.5 3 12l7.5-7.5M13.5 4.5 21 12l-7.5 7.5"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-						/>
-						<circle cx="12" cy="12" r="2.25" />
+						<path d="M12 3l9 9-9 9-9-9z" />
+						<circle cx="12" cy="12" r="2.5" />
 					</NavIcon>
 				),
 			},
@@ -148,9 +145,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				to: "/configuration",
 				icon: (
 					<NavIcon>
-						<path d="M4 7h10M18 7h2M4 17h2M10 17h10" strokeLinecap="round" />
-						<circle cx="16" cy="7" r="2.25" />
-						<circle cx="8" cy="17" r="2.25" />
+						<path d="M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4" />
 					</NavIcon>
 				),
 			},
@@ -175,193 +170,140 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 		];
 	}, [isRunLive]);
 
-	const activeLabel = useMemo(() => {
-		const active = navItems.find((item) => isNavActive(item.to, activePath));
-		return active?.label ?? null;
-	}, [navItems, activePath]);
-
-	useLayoutEffect(() => {
-		const nav = navRef.current;
-		if (!nav || !activeLabel) {
-			setPill(null);
-			return;
-		}
-		const el = itemRefs.current.get(activeLabel);
-		if (!el) {
-			setPill(null);
-			return;
-		}
-		const navBox = nav.getBoundingClientRect();
-		const itemBox = el.getBoundingClientRect();
-		setPill({
-			top: itemBox.top - navBox.top,
-			height: itemBox.height,
-		});
-	}, [activeLabel]);
-
-	useEffect(() => {
-		const onResize = () => {
-			const nav = navRef.current;
-			if (!nav || !activeLabel) return;
-			const el = itemRefs.current.get(activeLabel);
-			if (!el) return;
-			const navBox = nav.getBoundingClientRect();
-			const itemBox = el.getBoundingClientRect();
-			setPill({
-				top: itemBox.top - navBox.top,
-				height: itemBox.height,
-			});
-		};
-		window.addEventListener("resize", onResize);
-		return () => window.removeEventListener("resize", onResize);
-	}, [activeLabel]);
-
 	return (
 		<>
 			<aside
 				className={[
-					"side-menu electrobun-webkit-app-region-no-drag flex h-full shrink-0 flex-col overflow-hidden rounded-[var(--radius-platform)] border border-sidebar-fg/10 bg-sidebar py-5 text-sidebar-fg shadow-float",
-					collapsed ? "w-16 px-2.5" : "w-sidebar px-3.5",
+					"side-menu electrobun-webkit-app-region-no-drag flex h-full shrink-0 flex-col overflow-hidden rounded-[var(--radius)] border border-sidebar-fg/10 bg-sidebar py-3.5 text-sidebar-fg shadow-float",
+					collapsed ? "w-[68px] items-center px-2" : "w-[244px] px-3",
 				].join(" ")}
 				id="side-menu"
 			>
-				<div
-					className={[
-						"mb-7 flex flex-col gap-3",
-						collapsed ? "items-center" : "items-start px-1",
-					].join(" ")}
-				>
-					<YoqaMark className="size-8 shrink-0" />
-					<Dropdown isOpen={workspaceOpen} onOpenChange={setWorkspaceOpen}>
-						<Button
-							aria-expanded={workspaceOpen}
-							aria-label={`Workspace: ${appLabel}. Switch application`}
-							className={[
-								"h-auto rounded-xl bg-transparent text-left text-sidebar-fg transition-colors duration-[var(--motion-fast)] data-[hovered=true]:bg-sidebar-fg/10",
-								collapsed
-									? "size-11 min-w-0 items-center justify-center p-0"
-									: "w-full flex-col items-stretch gap-0.5 px-2.5 py-2",
-							].join(" ")}
-							variant="ghost"
-						>
-							{collapsed ? (
-								<span
-									aria-hidden="true"
-									className="flex size-8 items-center justify-center rounded-full bg-sidebar-fg text-subheading font-semibold text-sidebar"
-								>
-									{appLabel.slice(0, 1).toUpperCase()}
-								</span>
-							) : (
-								<>
-									<p className="text-body-sm text-sidebar-muted">Workspace</p>
-									<span className="flex min-w-0 items-center gap-1.5">
-										<span className="min-w-0 truncate text-subheading font-semibold tracking-tight text-sidebar-fg">
-											{appLabel}
-										</span>
-										<span
-											className={`text-sidebar-muted transition-transform duration-[var(--motion-fast)] ${workspaceOpen ? "rotate-180" : ""}`}
-										>
-											<ChevronDownIcon />
-										</span>
-									</span>
-								</>
-							)}
-						</Button>
-						<Dropdown.Popover className="w-64">
-							<Dropdown.Menu
-								onAction={(key) => {
-									if (String(key) === ADD_APP_KEY) {
-										setModalOpen(true);
-										return;
-									}
-									selectApp(String(key));
-								}}
-								selectedKeys={selectedApp ? new Set([selectedApp.id]) : new Set()}
-								selectionMode="single"
-							>
-								{apps.length > 0 ? (
-									apps.map((app) => (
-										<Dropdown.Item id={app.id} key={app.id} textValue={app.name}>
-											<span
-												aria-hidden="true"
-												className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-helper font-semibold text-on-primary"
-											>
-												{app.name.slice(0, 1)}
-											</span>
-											<Label>{app.name}</Label>
-										</Dropdown.Item>
-									))
-								) : (
-									<Dropdown.Item id="empty" isDisabled textValue="No applications yet">
-										<Label className="text-on-surface-variant">No applications yet.</Label>
-									</Dropdown.Item>
-								)}
-								<Separator />
-								<Dropdown.Item id={ADD_APP_KEY} textValue="Add application">
-									<svg
-										aria-hidden="true"
-										className="size-4 text-primary"
-										fill="none"
-										stroke="currentColor"
-										strokeWidth="1.75"
-										viewBox="0 0 24 24"
-									>
-										<path d="M12 5v14M5 12h14" strokeLinecap="round" />
-									</svg>
-									<Label className="font-medium text-primary">Add application</Label>
-								</Dropdown.Item>
-							</Dropdown.Menu>
-						</Dropdown.Popover>
-					</Dropdown>
-				</div>
+				{collapsed ? (
+					<div className="mb-1 flex flex-col items-center gap-1">
+						<YoqaMark className="size-8 shrink-0" />
+						<SidebarToggle />
+					</div>
+				) : (
+					<div className="flex h-9 items-center justify-between pr-0.5 pl-1.5">
+						<div className="flex items-center gap-2.5">
+							<YoqaMark className="size-8 shrink-0" />
+							<span className="text-sm font-semibold tracking-tight">Yoqa</span>
+						</div>
+						<SidebarToggle />
+					</div>
+				)}
 
-				<nav className="relative flex flex-1 flex-col gap-1" ref={navRef}>
-					{pill ? (
-						<span
-							aria-hidden="true"
-							className="nav-active-pill"
-							style={{
-								height: pill.height,
-								transform: `translateY(${pill.top}px)`,
+				<Dropdown isOpen={workspaceOpen} onOpenChange={setWorkspaceOpen}>
+					<Button
+						aria-expanded={workspaceOpen}
+						aria-label={`Workspace: ${appLabel}. Switch application`}
+						className={[
+							"h-auto bg-transparent text-left text-sidebar-fg shadow-none",
+							collapsed
+								? "my-2.5 size-7 min-w-0 items-center justify-center rounded-[var(--radius)] p-0"
+								: "my-3.5 w-full items-center gap-2.5 rounded-[var(--radius)] border border-sidebar-fg/15 bg-sidebar-fg/8 px-3 py-2.5",
+						].join(" ")}
+						variant="ghost"
+					>
+						{collapsed ? (
+							<span
+								aria-hidden="true"
+								className="flex size-7 items-center justify-center rounded-[var(--radius)] bg-warning text-[11px] font-semibold text-on-warning-container"
+								title={appLabel}
+							>
+								{appInitials(appLabel)}
+							</span>
+						) : (
+							<>
+								<span className="flex min-w-0 flex-1 flex-col">
+									<span className="text-[11px] text-sidebar-muted">Workspace</span>
+									<span className="truncate text-[13px] font-medium">{appLabel}</span>
+								</span>
+								<span className="text-sidebar-muted">
+									<ChevronDownIcon />
+								</span>
+							</>
+						)}
+					</Button>
+					<Dropdown.Popover className="w-64">
+						<Dropdown.Menu
+							onAction={(key) => {
+								if (String(key) === ADD_APP_KEY) {
+									setModalOpen(true);
+									return;
+								}
+								selectApp(String(key));
 							}}
-						/>
-					) : null}
+							selectedKeys={selectedApp ? new Set([selectedApp.id]) : new Set()}
+							selectionMode="single"
+						>
+							{apps.length > 0 ? (
+								apps.map((app) => (
+									<Dropdown.Item id={app.id} key={app.id} textValue={app.name}>
+										<span
+											aria-hidden="true"
+											className="flex size-6 shrink-0 items-center justify-center rounded-[var(--radius)] bg-warning text-[10px] font-semibold text-on-warning-container"
+										>
+											{appInitials(app.name)}
+										</span>
+										<Label>{app.name}</Label>
+									</Dropdown.Item>
+								))
+							) : (
+								<Dropdown.Item id="empty" isDisabled textValue="No applications yet">
+									<Label className="text-on-surface-variant">No applications yet.</Label>
+								</Dropdown.Item>
+							)}
+							<Separator />
+							<Dropdown.Item id={ADD_APP_KEY} textValue="Add application">
+								<svg
+									aria-hidden="true"
+									className="size-4 text-primary"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="1.75"
+									viewBox="0 0 24 24"
+								>
+									<path d="M12 5v14M5 12h14" strokeLinecap="round" />
+								</svg>
+								<Label className="font-medium text-primary">Add application</Label>
+							</Dropdown.Item>
+						</Dropdown.Menu>
+					</Dropdown.Popover>
+				</Dropdown>
+
+				<nav className="flex min-h-0 flex-1 flex-col gap-1">
 					{navItems.map((item) => {
 						const isActive = isNavActive(item.to, activePath);
 						const className = [
-							"group relative z-[1] flex items-center rounded-full py-2.5 text-body-md transition-colors duration-[var(--motion-fast)]",
-							collapsed ? "justify-center px-0" : "gap-2.5 px-3",
+							"flex items-center rounded-[var(--radius)] text-sm font-medium transition-colors duration-[var(--motion-fast)]",
+							collapsed ? "mx-auto h-11 w-[52px] justify-center" : "h-11 gap-3 px-3.5",
 							isActive
-								? "font-semibold text-sidebar-active"
-								: "text-sidebar-muted hover:text-sidebar-fg",
+								? "bg-sidebar-fg/12 text-sidebar-fg"
+								: "text-sidebar-muted hover:bg-sidebar-fg/10 hover:text-sidebar-fg",
 							item.to ? "" : "cursor-default opacity-70",
 						].join(" ");
 
-						const setItemRef = (node: HTMLElement | null) => {
-							if (node) {
-								itemRefs.current.set(item.label, node);
-							} else {
-								itemRefs.current.delete(item.label);
-							}
-						};
-
 						const content = (
 							<>
-								<span className={`relative ${isActive ? "text-sidebar-active" : ""}`}>
-									{item.icon}
-									{collapsed && item.badge !== undefined ? (
-										<span
-											aria-hidden="true"
-											className="motion-scale-in absolute -right-0.5 -top-0.5 size-2 rounded-full bg-sidebar-fg ring-2 ring-sidebar"
-										/>
-									) : null}
+								<span className={isActive ? "text-violet" : ""}>
+									<span className="relative">
+										{item.icon}
+										{collapsed && item.badge !== undefined ? (
+											<span
+												aria-hidden="true"
+												className="motion-scale-in absolute -top-0.5 -right-0.5 size-2 rounded-full bg-violet ring-2 ring-sidebar"
+											/>
+										) : null}
+									</span>
 								</span>
 								<span className={collapsed ? "sr-only" : "flex-1"}>
 									{item.label}
 									{collapsed && item.badge !== undefined ? " (run in progress)" : ""}
 								</span>
 								{!collapsed && item.badge !== undefined ? (
-									<span className="motion-scale-in flex size-5 items-center justify-center rounded-full bg-sidebar-fg text-[10px] font-bold text-sidebar">
+									<span className="motion-scale-in flex size-5 items-center justify-center rounded-full bg-violet text-[10px] font-bold text-on-violet">
 										{item.badge}
 									</span>
 								) : null}
@@ -370,68 +312,76 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 
 						if (item.to) {
 							return (
-								<div key={item.label} className="relative" ref={setItemRef}>
-									<RailTip enabled={collapsed} label={item.label}>
-										<Link className={className} to={item.to}>
-											{content}
-										</Link>
-									</RailTip>
-								</div>
+								<RailTip enabled={collapsed} key={item.label} label={item.label}>
+									<Link className={className} to={item.to}>
+										{content}
+									</Link>
+								</RailTip>
 							);
 						}
 
 						return (
-							<span key={item.label} className={className} ref={setItemRef}>
+							<span className={className} key={item.label}>
 								{content}
 							</span>
 						);
 					})}
 				</nav>
 
-				<div className="mt-6 flex flex-col gap-6">
+				<div
+					className={["mt-3 flex flex-col", collapsed ? "items-center gap-2" : "gap-2"].join(" ")}
+				>
 					<button
 						aria-label="Add application"
-						className={`flex items-center justify-center self-center rounded-2xl ${collapsed ? "size-11" : "size-12"} border border-dashed border-sidebar-fg/25 transition-colors duration-[var(--motion-fast)] hover:scale-105 hover:border-sidebar-fg/50`}
+						className="mb-1 flex size-[46px] items-center justify-center self-center rounded-full border border-dashed border-sidebar-fg/30 p-0"
 						onClick={() => setModalOpen(true)}
 						type="button"
 					>
-						<span className="flex size-8 items-center justify-center rounded-full bg-sidebar-fg text-sidebar shadow-card transition-transform duration-[var(--motion-fast)]">
+						<span className="flex size-[34px] items-center justify-center rounded-full bg-sidebar-fg text-sidebar">
 							<svg
 								aria-hidden="true"
-								className="size-5"
+								className="size-4"
 								fill="none"
 								stroke="currentColor"
-								strokeWidth="2"
+								strokeLinecap="round"
+								strokeWidth="2.4"
 								viewBox="0 0 24 24"
 							>
-								<path d="M12 5v14M5 12h14" strokeLinecap="round" />
+								<path d="M12 5v14M5 12h14" />
 							</svg>
 						</span>
 					</button>
 
-					<div className={`flex flex-col gap-2 pt-2 ${collapsed ? "items-center" : "px-2"}`}>
-						<RailTip enabled={collapsed} label="Docs">
-							<a
-								aria-label="Docs"
-								className={
-									collapsed
-										? "flex justify-center rounded-full py-2 text-sidebar-muted hover:text-sidebar-fg"
-										: "text-helper font-medium text-sidebar-muted underline-offset-2 hover:text-sidebar-fg hover:underline"
-								}
-								href={DOCS_URL}
-								onClick={(event) => {
-									event.preventDefault();
-									void openExternalUrl(DOCS_URL);
-								}}
-								rel="noreferrer"
-							>
-								{collapsed ? <BookIcon /> : "Docs"}
-							</a>
-						</RailTip>
-						{collapsed ? null : (
-							<p className="text-helper text-sidebar-muted">Phase 1 · local only</p>
-						)}
-					</div>
+					<RailTip enabled={collapsed} label="Docs">
+						<a
+							aria-label="Docs"
+							className={
+								collapsed
+									? "flex h-11 w-[52px] items-center justify-center rounded-[var(--radius)] text-sidebar-muted hover:bg-sidebar-fg/10 hover:text-sidebar-fg"
+									: "flex items-center gap-2 px-2 text-[13px] text-sidebar-muted hover:text-sidebar-fg"
+							}
+							href={DOCS_URL}
+							onClick={(event) => {
+								event.preventDefault();
+								void openExternalUrl(DOCS_URL);
+							}}
+							rel="noreferrer"
+						>
+							<DocsIcon />
+							{collapsed ? <span className="sr-only">Docs</span> : "Docs"}
+						</a>
+					</RailTip>
+					{collapsed ? (
+						<span
+							className="mb-1 block size-1.5 rounded-full bg-warning"
+							title="Phase 1 · local only"
+						/>
+					) : (
+						<span className="inline-flex items-center gap-1.5 px-2 font-mono text-[11px] text-sidebar-muted">
+							<span className="block size-1.5 rounded-full bg-warning" />
+							Phase 1 · local only
+						</span>
+					)}
 				</div>
 			</aside>
 

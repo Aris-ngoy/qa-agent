@@ -152,7 +152,7 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 			<button
 				aria-label={isRunLive ? "Cancel run" : "Run tests"}
 				className={[
-					"motion-press inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-5 text-body-md font-semibold disabled:opacity-40",
+					"motion-press inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-semibold disabled:opacity-40",
 					isRunLive ? "bg-error text-on-error" : "bg-inverse-surface text-inverse-on-surface",
 				].join(" ")}
 				disabled={isRunLive ? cancelMutation.isPending : !canRun}

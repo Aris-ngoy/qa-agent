@@ -6,7 +6,7 @@ export function SidebarShortcut(): null {
 	return null;
 }
 
-/** Top-bar button that collapses the side menu to its icon rail and back. */
+/** Side-menu button that collapses the menu to its icon rail and back. */
 export function SidebarToggle() {
 	const [collapsed, toggle] = useSidebarCollapsed();
 	return (
@@ -14,17 +14,19 @@ export function SidebarToggle() {
 			aria-controls="side-menu"
 			aria-expanded={!collapsed}
 			aria-label={collapsed ? "Expand side menu" : "Collapse side menu"}
-			className="flex size-9 shrink-0 items-center justify-center rounded-full text-on-surface-variant transition-colors duration-[var(--motion-fast)] hover:bg-surface-container hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+			className="flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-muted transition-colors duration-[var(--motion-fast)] hover:bg-sidebar-fg/10 hover:text-sidebar-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
 			onClick={toggle}
 			title={collapsed ? "Expand side menu (⌘B)" : "Collapse side menu (⌘B)"}
 			type="button"
 		>
 			<svg
 				aria-hidden="true"
-				className="size-5"
+				className="size-4"
 				fill="none"
 				stroke="currentColor"
-				strokeWidth="1.6"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				strokeWidth="1.8"
 				viewBox="0 0 24 24"
 			>
 				<rect height="16" rx="3" width="18" x="3" y="4" />

@@ -82,7 +82,7 @@ function FilterButton({
 		<button
 			aria-pressed={active}
 			className={[
-				"h-[26px] rounded-[6px] px-2.5",
+				"h-[26px] rounded-[var(--radius)] px-2.5",
 				active ? "bg-surface-container-high text-on-surface" : "text-on-surface-variant",
 			].join(" ")}
 			onClick={onPress}
@@ -153,7 +153,7 @@ function RunRow({
 				<span>
 					<span
 						className={[
-							"inline-flex h-5 items-center rounded-[5px] px-[7px] font-mono text-[11px] font-medium",
+							"inline-flex h-5 items-center rounded-[var(--radius)] px-[7px] font-mono text-[11px] font-medium",
 							TONE_CHIP[result.tone],
 						].join(" ")}
 					>
@@ -290,7 +290,7 @@ export function RunsListPage() {
 	return (
 		<div className="flex min-h-0 w-full max-w-[1240px] flex-1 flex-col gap-4">
 			<div className="flex flex-wrap items-center gap-2">
-				<div className="flex rounded-[9px] border border-outline-variant bg-surface-container-lowest p-[3px] text-helper font-medium">
+				<div className="flex rounded-[var(--radius)] border border-outline-variant bg-surface-container-lowest p-[3px] text-helper font-medium">
 					<FilterButton active={filter === "all"} onPress={() => setFilter("all")}>
 						All <span className="text-outline">{runs.length}</span>
 					</FilterButton>
@@ -311,13 +311,13 @@ export function RunsListPage() {
 					{runsQuery.error instanceof Error ? runsQuery.error.message : "Failed to load runs"}
 				</p>
 			) : runs.length === 0 ? (
-				<div className="motion-fade-up rounded-[12px] border border-outline-variant bg-surface-container-lowest px-6 py-12 text-center">
+				<div className="motion-fade-up rounded-[var(--radius)] border border-outline-variant bg-surface-container-lowest px-6 py-12 text-center">
 					<p className="text-body-sm text-on-surface-variant">
 						No runs yet. Select test cases and press Play to start one.
 					</p>
 				</div>
 			) : (
-				<div className="overflow-x-auto rounded-[12px] border border-outline-variant bg-surface-container-lowest">
+				<div className="overflow-x-auto rounded-[var(--radius)] border border-outline-variant bg-surface-container-lowest">
 					<div className="min-w-[780px]">
 						<div
 							className={[

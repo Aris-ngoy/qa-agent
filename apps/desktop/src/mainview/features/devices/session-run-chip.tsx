@@ -49,10 +49,10 @@ export function SessionRunChip() {
 	const percent = total > 0 ? Math.round((finished / total) * 100) : 0;
 
 	return (
-		<div className="motion-fade-in flex items-center gap-3">
-			<span aria-hidden="true" className="h-8 w-px bg-outline-variant" />
-			<div className="flex w-52 flex-col gap-1">
-				<div className="flex items-baseline justify-between text-body-sm">
+		<div className="motion-fade-in flex items-center gap-2">
+			<span aria-hidden="true" className="h-4 w-px bg-outline-variant" />
+			<div className="flex w-40 flex-col gap-1">
+				<div className="flex items-baseline justify-between text-xs">
 					{chip.runId ? (
 						<Link
 							className="font-semibold text-primary hover:underline"
@@ -79,7 +79,7 @@ export function SessionRunChip() {
 			</div>
 			{chip.runId ? (
 				<button
-					className="inline-flex h-10 items-center gap-2 rounded-xl border border-error/30 px-4 text-body-md font-semibold text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
+					className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-error/30 px-3 text-xs font-medium text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
 					disabled={cancelMutation.isPending}
 					onClick={() => {
 						if (chip.runId) cancelMutation.mutate(chip.runId);
