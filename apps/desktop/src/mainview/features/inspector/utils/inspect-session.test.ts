@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { RunnerRequestError } from "@yoqa/runner-client";
-import { isDeviceSessionGone, isDeviceUnreachable } from "./inspect-session";
+import { isDeviceSessionGone, isDeviceUnreachable, isStaleSessionReply } from "./inspect-session";
 
 describe("isDeviceSessionGone", () => {
 	test("matches runner 410 payloads", () => {
@@ -31,6 +31,20 @@ describe("isDeviceUnreachable", () => {
 			answeredBy,
 		);
 		expect(isDeviceUnreachable(error)).toBe(true);
+		expect(isDeviceSessionGone(error)).toBe(false);
+	});
+
+	test("a cached 410 with no runner pid does not end the session", () => {
+		const error = new RunnerRequestError(
+			"Device session ended: Cannot reach YoqaRunner: usbmuxd does not list iPhone",
+			410,
+			{
+				error: "Device session ended",
+				detail: "Device session ended: Cannot reach YoqaRunner: usbmuxd does not list iPhone",
+			},
+			{ url: "http://127.0.0.1:7420/screen", runnerPid: null, date: null },
+		);
+		expect(isStaleSessionReply(error)).toBe(true);
 		expect(isDeviceSessionGone(error)).toBe(false);
 	});
 

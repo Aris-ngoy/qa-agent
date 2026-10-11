@@ -1,23 +1,20 @@
-import { coordsFromImageRect, isPickPointModifier } from "@/features/inspector/inspect-pointer";
-import type { InspectorFeed$ } from "@/features/inspector/inspector-feed";
-import { LiveFrame } from "@/features/inspector/live-frame";
+import { LiveFrame } from "@/features/inspector/components/live-frame";
+import type { InspectorFeed$ } from "@/features/inspector/data/state/feed";
+import {
+	coordsFromImageRect,
+	isPickPointModifier,
+} from "@/features/inspector/utils/inspect-pointer";
 import {
 	type InspectorSelection,
 	activeSelectorCaption,
 	hitTestElements,
 	pointOnlySelection,
 	selectionFromPoint,
-} from "@/features/inspector/selection";
-import { useValue } from "@legendapp/state/react";
+} from "@/features/inspector/utils/selection";
+import type { Observable } from "@legendapp/state";
+import { useObservable, useObserveEffect, useValue } from "@legendapp/state/react";
 import type { ActiveDeviceResponse, ScreenElement } from "@yoqa/runner-client";
-import {
-	type MouseEvent,
-	type PointerEvent,
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-} from "react";
+import { type MouseEvent, type PointerEvent, useCallback, useEffect, useRef } from "react";
 
 function isSameSelection(a: InspectorSelection, b: InspectorSelection): boolean {
 	if (a.preferredLocator !== b.preferredLocator) return false;
@@ -46,13 +43,20 @@ function elementBoxPercent(element: ScreenElement): {
 	};
 }
 
+type PointerUi = {
+	hoverElement: ScreenElement | null;
+	pickPointHeld: boolean;
+	pickHover: { x: number; y: number } | null;
+	viewHeight: number | null;
+};
+
 type ScreenshotPanelProps = {
 	feed$: InspectorFeed$;
+	visible$: Observable<boolean>;
 	/** The top bar's Active Session; the Inspector attaches to it only on Connect. */
 	session: ActiveDeviceResponse | null;
 	onConnect: () => void;
 	onDisconnect: () => void;
-	pageVisible: boolean;
 	onLiveControlChange: (enabled: boolean) => void;
 	disabled: boolean;
 	/** Optional: notify parent after a local select so it can background-refresh a stale tree. */
@@ -70,10 +74,10 @@ const HEADER_BUTTON_CLASS =
 
 export function ScreenshotPanel({
 	feed$,
+	visible$,
 	session,
 	onConnect,
 	onDisconnect,
-	pageVisible,
 	onLiveControlChange,
 	disabled,
 	onSelectWithPoint,
@@ -92,31 +96,37 @@ export function ScreenshotPanel({
 	const liveControl = useValue(feed$.liveControl);
 	const unreachable = useValue(feed$.unreachable);
 	const loading = useValue(() => feed$.bootLoading.get() && feed$.imageUrl.get() == null);
+	const pageVisible = useValue(visible$);
+	const pointer$ = useObservable<PointerUi>({
+		hoverElement: null,
+		pickPointHeld: false,
+		pickHover: null,
+		viewHeight: null,
+	});
+	const pickPointHeld = useValue(pointer$.pickPointHeld);
+	const viewHeight = useValue(pointer$.viewHeight);
 	const live = attached && pageVisible && hasFrame;
 	const imgRef = useRef<HTMLImageElement | null>(null);
 	const pointerActiveRef = useRef(false);
 	/** Ignore click/contextmenu that follow a Control-pick pointerdown (macOS). */
 	const pickAtMsRef = useRef(0);
-	const [hoverElement, setHoverElement] = useState<ScreenElement | null>(null);
-	const [pickPointHeld, setPickPointHeld] = useState(false);
-	const [pickHover, setPickHover] = useState<{ x: number; y: number } | null>(null);
 
-	useEffect(() => {
-		if (liveControl) {
-			setHoverElement(null);
-			setPickHover(null);
+	useObserveEffect(() => {
+		if (feed$.liveControl.get()) {
+			pointer$.hoverElement.set(null);
+			pointer$.pickHover.set(null);
 		}
-	}, [liveControl]);
+	});
 
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key !== "Control") return;
-			setPickPointHeld(event.type === "keydown");
-			if (event.type === "keyup") setPickHover(null);
+			pointer$.pickPointHeld.set(event.type === "keydown");
+			if (event.type === "keyup") pointer$.pickHover.set(null);
 		};
 		const onBlur = () => {
-			setPickPointHeld(false);
-			setPickHover(null);
+			pointer$.pickPointHeld.set(false);
+			pointer$.pickHover.set(null);
 		};
 		window.addEventListener("keydown", onKey);
 		window.addEventListener("keyup", onKey);
@@ -126,7 +136,7 @@ export function ScreenshotPanel({
 			window.removeEventListener("keyup", onKey);
 			window.removeEventListener("blur", onBlur);
 		};
-	}, []);
+	}, [pointer$]);
 
 	const canInspect = !disabled && !liveControl;
 	const pickingPoint = canInspect && pickPointHeld;
@@ -146,11 +156,11 @@ export function ScreenshotPanel({
 				onClearSelection();
 				return;
 			}
-			setHoverElement(null);
+			pointer$.hoverElement.set(null);
 			onSelect(next);
 			if (options.refreshTree !== false) onSelectWithPoint?.(next);
 		},
-		[onClearSelection, onSelect, onSelectWithPoint, selection],
+		[onClearSelection, onSelect, onSelectWithPoint, pointer$, selection],
 	);
 
 	const recentlyPicked = useCallback(() => Date.now() - pickAtMsRef.current < 400, []);
@@ -217,30 +227,29 @@ export function ScreenshotPanel({
 			if (liveControl || disabled || pointerActiveRef.current) return;
 			const picking = isPickPointModifier(event) || pickPointHeld;
 			if (picking) {
-				setHoverElement(null);
-				setPickHover(coordsAtEvent(event));
+				pointer$.hoverElement.set(null);
+				pointer$.pickHover.set(coordsAtEvent(event));
 				return;
 			}
-			setPickHover(null);
+			pointer$.pickHover.set(null);
 			if (elements.length === 0) {
-				setHoverElement(null);
+				pointer$.hoverElement.set(null);
 				return;
 			}
 			const point = coordsAtEvent(event);
 			if (!point) {
-				setHoverElement(null);
+				pointer$.hoverElement.set(null);
 				return;
 			}
-			const hit = hitTestElements(elements, point.x, point.y);
-			setHoverElement(hit);
+			pointer$.hoverElement.set(hitTestElements(elements, point.x, point.y));
 		},
-		[coordsAtEvent, disabled, elements, liveControl, pickPointHeld],
+		[coordsAtEvent, disabled, elements, liveControl, pickPointHeld, pointer$],
 	);
 
 	const handlePointerLeave = useCallback(() => {
-		setHoverElement(null);
-		setPickHover(null);
-	}, []);
+		pointer$.hoverElement.set(null);
+		pointer$.pickHover.set(null);
+	}, [pointer$]);
 
 	const handlePointerDown = useCallback(
 		(event: PointerEvent<HTMLElement>) => {
@@ -307,20 +316,6 @@ export function ScreenshotPanel({
 			}
 		: null;
 
-	const hoverBox =
-		hoverElement &&
-		!liveControl &&
-		!pickingPoint &&
-		!(
-			selection?.element &&
-			hoverElement.x === selection.element.x &&
-			hoverElement.y === selection.element.y &&
-			hoverElement.width === selection.element.width &&
-			hoverElement.height === selection.element.height
-		)
-			? elementBoxPercent(hoverElement)
-			: null;
-
 	const liveLabel = unreachable
 		? "Waiting for device"
 		: feedMode === "poll"
@@ -333,15 +328,14 @@ export function ScreenshotPanel({
 
 	const caption = selection ? activeSelectorCaption(selection) : null;
 	const viewRef = useRef<HTMLDivElement>(null);
-	const [viewHeight, setViewHeight] = useState<number | null>(null);
 	// Track the view's natural height so the card eases to its new size instead of jumping.
 	useEffect(() => {
 		const el = viewRef.current;
 		if (!el || typeof ResizeObserver === "undefined") return;
-		const observer = new ResizeObserver(() => setViewHeight(el.offsetHeight));
+		const observer = new ResizeObserver(() => pointer$.viewHeight.set(el.offsetHeight));
 		observer.observe(el);
 		return () => observer.disconnect();
-	}, []);
+	}, [pointer$]);
 	const showRefreshing = treeRefreshing && elements.length === 0;
 	const inspectHint = pickingPoint
 		? "Picking x,y · click to set point"
@@ -527,43 +521,12 @@ export function ScreenshotPanel({
 									imgRef={imgRef}
 									className="pointer-events-none block max-h-[max(260px,calc(100vh-27rem))] w-auto max-w-full rounded-[28px] shadow-float select-none"
 								/>
-								{hoverBox ? (
-									<span
-										aria-hidden="true"
-										className="pointer-events-none absolute border border-dashed border-secondary/70 bg-secondary/10"
-										style={{
-											left: `${hoverBox.left}%`,
-											top: `${hoverBox.top}%`,
-											width: `${hoverBox.width}%`,
-											height: `${hoverBox.height}%`,
-										}}
-									/>
-								) : null}
-								{pickHover && pickingPoint ? (
-									<>
-										<span
-											aria-hidden="true"
-											className="pointer-events-none absolute left-0 h-px w-full bg-secondary/80"
-											style={{ top: `${pickHover.y / 10}%` }}
-										/>
-										<span
-											aria-hidden="true"
-											className="pointer-events-none absolute top-0 h-full w-px bg-secondary/80"
-											style={{ left: `${pickHover.x / 10}%` }}
-										/>
-										<span
-											aria-hidden="true"
-											className="pointer-events-none absolute z-20 rounded bg-scrim/75 px-1.5 py-0.5 font-mono text-[10px] text-on-scrim"
-											style={{
-												left: `${pickHover.x / 10}%`,
-												top: `${pickHover.y / 10}%`,
-												transform: "translate(8px, 8px)",
-											}}
-										>
-											{pickHover.x},{pickHover.y}
-										</span>
-									</>
-								) : null}
+								<PointerChrome
+									pointer$={pointer$}
+									pickingPoint={pickingPoint}
+									liveControl={liveControl}
+									selection={selection}
+								/>
 								{selection && selectionAnchor && !liveControl ? (
 									<span
 										aria-hidden="true"
@@ -630,5 +593,76 @@ export function ScreenshotPanel({
 				and click to pick exact x, y coordinates
 			</p>
 		</section>
+	);
+}
+
+/** Hover box and Control-pick crosshair. The only subscriber of those fields, so pointer moves skip the panel. */
+function PointerChrome({
+	pointer$,
+	pickingPoint,
+	liveControl,
+	selection,
+}: {
+	pointer$: Observable<PointerUi>;
+	pickingPoint: boolean;
+	liveControl: boolean;
+	selection: InspectorSelection | null;
+}) {
+	const hoverElement = useValue(pointer$.hoverElement);
+	const pickHover = useValue(pointer$.pickHover);
+	const hoverBox =
+		hoverElement &&
+		!liveControl &&
+		!pickingPoint &&
+		!(
+			selection?.element &&
+			hoverElement.x === selection.element.x &&
+			hoverElement.y === selection.element.y &&
+			hoverElement.width === selection.element.width &&
+			hoverElement.height === selection.element.height
+		)
+			? elementBoxPercent(hoverElement)
+			: null;
+
+	return (
+		<>
+			{hoverBox ? (
+				<span
+					aria-hidden="true"
+					className="pointer-events-none absolute border border-dashed border-secondary/70 bg-secondary/10"
+					style={{
+						left: `${hoverBox.left}%`,
+						top: `${hoverBox.top}%`,
+						width: `${hoverBox.width}%`,
+						height: `${hoverBox.height}%`,
+					}}
+				/>
+			) : null}
+			{pickHover && pickingPoint ? (
+				<>
+					<span
+						aria-hidden="true"
+						className="pointer-events-none absolute left-0 h-px w-full bg-secondary/80"
+						style={{ top: `${pickHover.y / 10}%` }}
+					/>
+					<span
+						aria-hidden="true"
+						className="pointer-events-none absolute top-0 h-full w-px bg-secondary/80"
+						style={{ left: `${pickHover.x / 10}%` }}
+					/>
+					<span
+						aria-hidden="true"
+						className="pointer-events-none absolute z-20 rounded bg-scrim/75 px-1.5 py-0.5 font-mono text-[10px] text-on-scrim"
+						style={{
+							left: `${pickHover.x / 10}%`,
+							top: `${pickHover.y / 10}%`,
+							transform: "translate(8px, 8px)",
+						}}
+					>
+						{pickHover.x},{pickHover.y}
+					</span>
+				</>
+			) : null}
+		</>
 	);
 }

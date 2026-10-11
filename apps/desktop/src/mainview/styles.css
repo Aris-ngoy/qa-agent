@@ -31,6 +31,9 @@ body {
 }
 
 .dashboard-canvas {
+	/* One layer for the shell, so composited inspector frames and the blurred
+	   session bar stay behind portaled dialogs. */
+	isolation: isolate;
 	background: radial-gradient(ellipse 80% 60% at 20% 10%, rgb(201 184 232 / 0.35), transparent 55%),
 		radial-gradient(ellipse 70% 50% at 85% 20%, rgb(168 213 196 / 0.28), transparent 50%),
 		radial-gradient(ellipse 60% 45% at 60% 90%, rgb(232 180 196 / 0.22), transparent 45%),
@@ -56,6 +59,17 @@ body {
 /* --- Page content View Transition target --- */
 .app-page {
 	view-transition-name: app-page;
+}
+
+/* A named page is captured into the view-transition layer, which paints above
+   portaled dialogs. Drop the name while a dialog is open. */
+html:has([data-slot="modal-backdrop"]) .app-page {
+	view-transition-name: none;
+}
+
+/* Above the session bar (z-40). Popovers set their own inline z-index. */
+[data-slot="modal-backdrop"] {
+	z-index: 80;
 }
 
 ::view-transition-old(app-page),

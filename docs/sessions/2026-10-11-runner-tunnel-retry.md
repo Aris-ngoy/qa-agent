@@ -56,4 +56,4 @@ What shipped:
 
 How to verify: `bun test services/runner/src/domains/devices services/runner/src/interfaces/http apps/desktop/src/mainview/features`. On a cabled iPhone: Connect shows "Connected — screenshot poll", Servers shows `connected · screenshot poll`; pull the cable for under 20 s and the frame freezes then resumes; past 20 s the Inspector says the session ended.
 
-Follow-ups: `errorChain` test failed once in five full-suite runs (order-dependent); the Appium and other Direct lanes do not raise Unreachable Session yet.
+Follow-ups: `errorChain` test failed once in five full-suite runs (order-dependent); the Appium and other Direct lanes do not raise Unreachable Session yet. Frame and tree reads later moved to the [Inspector Session](../devices/inspector-session.md), so a usbmux miss on the inspector poll no longer ends the Device Session at all.

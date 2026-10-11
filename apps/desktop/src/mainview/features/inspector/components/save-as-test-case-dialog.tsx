@@ -1,5 +1,6 @@
 import { Button, Input, Label, Modal, TextField } from "@heroui/react";
-import { useEffect, useState } from "react";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { useEffect } from "react";
 
 type SaveAsTestCaseDialogProps = {
 	isOpen: boolean;
@@ -24,11 +25,12 @@ export function SaveAsTestCaseDialog({
 	error,
 	onConfirm,
 }: SaveAsTestCaseDialogProps) {
-	const [name, setName] = useState(defaultName);
+	const name$ = useObservable(defaultName);
+	const name = useValue(name$);
 
 	useEffect(() => {
-		if (isOpen) setName(defaultName);
-	}, [defaultName, isOpen]);
+		if (isOpen) name$.set(defaultName);
+	}, [defaultName, isOpen, name$]);
 
 	const canSave = name.trim().length > 0 && actionCount > 0 && !saving;
 
@@ -53,7 +55,12 @@ export function SaveAsTestCaseDialog({
 							</p>
 						</Modal.Header>
 						<Modal.Body className="gap-3">
-							<TextField className="w-full" value={name} onChange={setName} isRequired>
+							<TextField
+								className="w-full"
+								value={name}
+								onChange={(value) => name$.set(value)}
+								isRequired
+							>
 								<Label className="mb-1 text-helper text-on-surface-variant">Name</Label>
 								<Input
 									placeholder="e.g. Settings — open General"

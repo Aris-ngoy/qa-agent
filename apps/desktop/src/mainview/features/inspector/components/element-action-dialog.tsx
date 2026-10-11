@@ -1,3 +1,4 @@
+import { ScreenGestures } from "@/features/inspector/components/screen-gestures";
 import {
 	type CommandSnippet,
 	type SelectorKind,
@@ -11,12 +12,13 @@ import {
 	selectorCommands,
 	selectorOptions,
 	usableLabel,
-} from "@/features/inspector/command-snippets";
-import { ScreenGestures } from "@/features/inspector/screen-gestures";
-import type { InspectorSelection } from "@/features/inspector/selection";
+} from "@/features/inspector/utils/command-snippets";
+import type { InspectorSelection } from "@/features/inspector/utils/selection";
 import { Input, Label, Modal, TextField } from "@heroui/react";
+import { batch } from "@legendapp/state";
+import { useObservable, useValue } from "@legendapp/state/react";
 import type { ScreenElement } from "@yoqa/runner-client";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
 
 type Direction = "up" | "down" | "left" | "right";
 
@@ -170,15 +172,27 @@ function DialogBody({
 	onAddWait,
 }: ElementActionDialogProps & { selection: InspectorSelection }) {
 	const editable = isEditableElementType(selection.element?.type);
-	const [choice, setChoice] = useState<CommandChoice>({
-		kind: "step",
-		command: editable ? "inputText" : "tap",
+	const form$ = useObservable<{
+		choice: CommandChoice;
+		selector: SelectorKind;
+		text: string;
+		assertText: string;
+		moreOpen: boolean;
+		moreValue: string | null;
+	}>({
+		choice: { kind: "step", command: editable ? "inputText" : "tap" },
+		selector: defaultSelectorKind(selection),
+		text: "",
+		assertText: usableLabel(selection.element) ?? "",
+		moreOpen: false,
+		moreValue: null,
 	});
-	const [selector, setSelector] = useState<SelectorKind>(() => defaultSelectorKind(selection));
-	const [text, setText] = useState("");
-	const [assertText, setAssertText] = useState(usableLabel(selection.element) ?? "");
-	const [moreOpen, setMoreOpen] = useState(false);
-	const [moreValue, setMoreValue] = useState<string | null>(null);
+	const choice = useValue(form$.choice);
+	const selector = useValue(form$.selector);
+	const text = useValue(form$.text);
+	const assertText = useValue(form$.assertText);
+	const moreOpen = useValue(form$.moreOpen);
+	const moreValue = useValue(form$.moreValue);
 
 	const options = useMemo(() => selectorOptions(selection, elements), [selection, elements]);
 	const moreCommands = useMemo(
@@ -223,8 +237,10 @@ function DialogBody({
 	};
 
 	const choose = (next: CommandChoice) => {
-		setChoice(next);
-		setMoreValue(null);
+		batch(() => {
+			form$.choice.set(next);
+			form$.moreValue.set(null);
+		});
 	};
 
 	const badge = typeBadge(selection);
@@ -288,7 +304,7 @@ function DialogBody({
 						type="button"
 						aria-expanded={moreOpen}
 						className="w-fit text-[10px] font-semibold text-on-violet-container underline-offset-2 hover:underline"
-						onClick={() => setMoreOpen((open) => !open)}
+						onClick={() => form$.moreOpen.toggle()}
 					>
 						{moreOpen ? "Fewer commands" : "More commands (app, alerts, wait, screenshot)…"}
 					</button>
@@ -321,7 +337,9 @@ function DialogBody({
 					<TextField
 						className="w-full"
 						value={stepCommand === "assertVisible" ? assertText : text}
-						onChange={stepCommand === "assertVisible" ? setAssertText : setText}
+						onChange={(value) =>
+							stepCommand === "assertVisible" ? form$.assertText.set(value) : form$.text.set(value)
+						}
 					>
 						<Label className="mb-1 text-[10px] font-semibold text-on-surface">
 							{stepCommand === "assertVisible" ? "Text that should be visible" : "Text to type"}
@@ -337,7 +355,7 @@ function DialogBody({
 					<TextField
 						className="w-full"
 						value={moreValue ?? initialMoreValue(activeMore.id)}
-						onChange={setMoreValue}
+						onChange={(value) => form$.moreValue.set(value)}
 					>
 						<Label className="mb-1 text-[10px] font-semibold text-on-surface">
 							{activeMore.needsPrompt === "seconds"
@@ -375,7 +393,7 @@ function DialogBody({
 											name="inspector-selector"
 											className="sr-only"
 											checked={checked}
-											onChange={() => setSelector(option.kind)}
+											onChange={() => form$.selector.set(option.kind)}
 										/>
 										<span
 											aria-hidden="true"

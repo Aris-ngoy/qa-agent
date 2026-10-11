@@ -15,16 +15,20 @@ The control path a Device Session uses to drive its device: the _Appium lane_ (t
 _Avoid_: driver (Provider drivers), backend (runner / cloud), adapter, transport, engine
 
 **Active Session**:
-The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes, unless the Run sets custom Appium capabilities and the session is not on the Appium lane: then it is replaced with an Appium session and the Run report says why; it stays live until the user disconnects or connects another device. Its target app (what a Lane that remembers an app reads or relaunches) follows the Run that adopts it, or the app the user selects while no Run holds it, without reconnecting.
-_Avoid_: Run session (a Run adopts the Active Session), per-mode session
+The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes, unless the Run sets custom Appium capabilities and the session is not on the Appium lane: then it is replaced with an Appium session and the Run report says why; it stays live until the user disconnects or connects another device. Its target app (what a Lane that remembers an app reads or relaunches) follows the Run that adopts it, or the app the user selects while no Run holds it, without reconnecting. On a cabled iPhone, frame and tree reads go through the Inspector Session and do not end this one.
+_Avoid_: Run session (a Run adopts the Active Session), a second Device Session per mode
 
 **Dead Session**:
 A Device Session the runner still thinks is open but its Lane has already lost: Appium dropped it (invalid/missing session id), or a Direct lane's device tool says the device is gone.
 _Avoid_: disconnected (user-initiated), abandoned (implementation verb only)
 
 **Unreachable Session**:
-A Device Session whose device has briefly stopped answering, still inside the runner's grace window. The runner keeps it and says how long it will wait; if the device does not answer in time it becomes a Dead Session. Only the runner decides when an Unreachable Session is dead.
+A Device Session whose device has briefly stopped answering, still inside the runner's grace window. The runner keeps it and says how long it will wait; if a gesture still cannot get through in time it becomes a Dead Session. Only the runner decides when an Unreachable Session is dead. The Inspector Session stays unreachable without becoming a Dead Session.
 _Avoid_: stalled, zombie, "gone but still listed"
+
+**Inspector Session**:
+On a cabled iPhone, the link `device-ios` uses for a screenshot, the accessibility tree and the viewport. It is not a second Device Session and it does not start a second `YoqaRunner`. A usbmux miss on it answers unreachable and leaves the Device Session connected. Gestures use the Device Session's own link, and that link still ends the session when the phone stays unreachable past the grace window or the runner exits.
+_Avoid_: a second Device Session, a second YoqaRunner, the Active Session itself
 
 **Frame Feed**:
 How the Inspector gets a Device Session's frames: a live _Stream_, or _Screenshot Poll_ (one screenshot at a time). A Lane with no stream always uses Screenshot Poll, and that is normal; only a Stream that should be there and did not answer is a failure. The Frame Feed says nothing about whether the session is connected.

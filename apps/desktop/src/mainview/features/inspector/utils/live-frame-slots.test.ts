@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { nextSlots, promoteSlot } from "@/features/inspector/live-frame";
+import { EMPTY_SLOTS, nextSlots, promoteSlot } from "@/features/inspector/utils/live-frame-slots";
 
-const EMPTY = { a: null, b: null, front: "a" as const };
+const EMPTY = EMPTY_SLOTS;
 
 describe("nextSlots", () => {
 	test("first frame goes straight to the front", () => {

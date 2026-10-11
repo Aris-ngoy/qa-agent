@@ -1,24 +1,12 @@
-import { buildScriptStepsView, runProgress } from "@/features/inspector/script-steps";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-
-export type RunLogEntry = {
-	id: string;
-	text: string;
-	tone: "info" | "ok" | "error";
-};
+import type { InspectorScript$ } from "@/features/inspector/data/state/script";
+import { buildScriptStepsView, runProgress } from "@/features/inspector/utils/script-steps";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 
 type ScriptPanelProps = {
-	script: string;
-	onScriptChange: (value: string) => void;
-	/** Editing is locked while a Run is in flight. */
-	editingDisabled: boolean;
-	activeLineNumber: number | null;
-	running: boolean;
+	script$: InspectorScript$;
 	canRun: boolean;
 	canSaveAsCase: boolean;
-	canExportReport: boolean;
-	exportingReport: boolean;
-	log: RunLogEntry[];
 	onRun: () => void;
 	onStop: () => void;
 	onCopy: () => void;
@@ -64,16 +52,9 @@ function ButtonIcon({
 }
 
 export function ScriptPanel({
-	script,
-	onScriptChange,
-	editingDisabled,
-	activeLineNumber,
-	running,
+	script$,
 	canRun,
 	canSaveAsCase,
-	canExportReport,
-	exportingReport,
-	log,
 	onRun,
 	onStop,
 	onCopy,
@@ -82,8 +63,16 @@ export function ScriptPanel({
 	onExportReportMarkdown,
 	onSaveAsCase,
 }: ScriptPanelProps) {
-	const [view, setView] = useState<ScriptView>("steps");
-	const [exportOpen, setExportOpen] = useState(false);
+	const script = useValue(script$.text);
+	const running = useValue(script$.running);
+	const activeLineNumber = useValue(script$.activeLineNumber);
+	const log = useValue(script$.log);
+	const exportingReport = useValue(script$.exportingReport);
+	const canExportReport = useValue(script$.report) != null;
+	const view$ = useObservable<ScriptView>("steps");
+	const exportOpen$ = useObservable(false);
+	const view = useValue(view$);
+	const exportOpen = useValue(exportOpen$);
 	const exportRef = useRef<HTMLDivElement | null>(null);
 
 	const stepsView = useMemo(
@@ -97,10 +86,10 @@ export function ScriptPanel({
 	useEffect(() => {
 		if (!exportOpen) return;
 		const onPointerDown = (event: PointerEvent) => {
-			if (!exportRef.current?.contains(event.target as Node)) setExportOpen(false);
+			if (!exportRef.current?.contains(event.target as Node)) exportOpen$.set(false);
 		};
 		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") setExportOpen(false);
+			if (event.key === "Escape") exportOpen$.set(false);
 		};
 		document.addEventListener("pointerdown", onPointerDown);
 		document.addEventListener("keydown", onKey);
@@ -108,7 +97,7 @@ export function ScriptPanel({
 			document.removeEventListener("pointerdown", onPointerDown);
 			document.removeEventListener("keydown", onKey);
 		};
-	}, [exportOpen]);
+	}, [exportOpen, exportOpen$]);
 
 	const groupsByLine = new Map<number, string[]>();
 	for (const group of stepsView.groups) {
@@ -146,7 +135,7 @@ export function ScriptPanel({
 										? "bg-surface-bright text-on-surface shadow-card"
 										: "text-on-surface-variant hover:text-on-surface",
 								].join(" ")}
-								onClick={() => setView(option)}
+								onClick={() => view$.set(option)}
 							>
 								{option === "steps" ? "Steps" : "Code"}
 							</button>
@@ -269,11 +258,11 @@ export function ScriptPanel({
 				<textarea
 					aria-label="Yoqa shell script"
 					className="mx-4 mt-3 mb-2 min-h-72 resize-y rounded-xl border-0 bg-code px-3.5 py-3 font-mono text-body-sm leading-[1.8] text-on-code outline-none focus-visible:ring-2 focus-visible:ring-violet disabled:opacity-60"
-					disabled={editingDisabled}
+					disabled={running}
 					rows={14}
 					spellCheck={false}
 					value={script}
-					onChange={(event) => onScriptChange(event.target.value)}
+					onChange={(event) => script$.text.set(event.target.value)}
 				/>
 			)}
 
@@ -335,7 +324,7 @@ export function ScriptPanel({
 							disabled={running}
 							aria-haspopup="menu"
 							aria-expanded={exportOpen}
-							onClick={() => setExportOpen((open) => !open)}
+							onClick={() => exportOpen$.toggle()}
 						>
 							<ButtonIcon>
 								<path d="M12 3v12M7 10l5 5 5-5M4 21h16" />
@@ -355,7 +344,7 @@ export function ScriptPanel({
 									role="menuitem"
 									className={menuItem}
 									onClick={() => {
-										setExportOpen(false);
+										exportOpen$.set(false);
 										onExport();
 									}}
 								>
@@ -367,7 +356,7 @@ export function ScriptPanel({
 									disabled={exportDisabled || !canExportReport}
 									className={menuItem}
 									onClick={() => {
-										setExportOpen(false);
+										exportOpen$.set(false);
 										onExportReportHtml();
 									}}
 								>
@@ -379,7 +368,7 @@ export function ScriptPanel({
 									disabled={exportDisabled || !canExportReport}
 									className={menuItem}
 									onClick={() => {
-										setExportOpen(false);
+										exportOpen$.set(false);
 										onExportReportMarkdown();
 									}}
 								>
