@@ -45,6 +45,8 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [desktop/motion-system.md](./desktop/motion-system.md) | CSS View Transitions + shell/list motion polish |
 | [desktop/react-hook-form.md](./desktop/react-hook-form.md) | RHF + HeroUI form helpers for all data-entry forms |
 | [desktop/error-toast.md](./desktop/error-toast.md) | HeroUI danger toasts with summarized run errors |
+| [desktop/ui-preferences.md](./desktop/ui-preferences.md) | Storage-backed theme mode + sidebar-collapsed preferences module |
+| [desktop/dark-theme.md](./desktop/dark-theme.md) | Dark theme: data-theme tokens, pre-paint script, Settings → Appearance |
 | [runs/wda-rebuild-skip.md](./runs/wda-rebuild-skip.md) | Runs panel Skip/Rebuild → iOS WDA `--force` |
 | [runs/vision-no-screenshot-fail.md](./runs/vision-no-screenshot-fail.md) | Harden agent against “no screenshot” hallucinations |
 | [runs/vision-first-screen-mode.md](./runs/vision-first-screen-mode.md) | Run agent decides from the screenshot and `x,y`; tree is opt-in (`screenMode`) |
