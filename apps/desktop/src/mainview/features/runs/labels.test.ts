@@ -3,7 +3,9 @@ import type { Device, Run, RunTest } from "@yoqa/runner-client";
 import {
 	filterRuns,
 	formatRunContextCaption,
+	formatRunDetailMeta,
 	formatRunDeviceLines,
+	formatRunDuration,
 	formatRunListDate,
 	runListResult,
 } from "./labels";
@@ -140,6 +142,68 @@ describe("formatRunDeviceLines", () => {
 			title: "emulator-5554",
 			meta: "Android",
 		});
+	});
+});
+
+describe("formatRunDuration", () => {
+	test("reads a short run in seconds, as on the run details artboard", () => {
+		expect(formatRunDuration(38_000)).toBe("38s");
+	});
+
+	test("keeps leftover seconds once a run passes a minute", () => {
+		expect(formatRunDuration(90_000)).toBe("1m 30s");
+	});
+
+	test("keeps hours when a run runs that long", () => {
+		expect(formatRunDuration(7_500_000)).toBe("2h 5m");
+	});
+});
+
+describe("formatRunDetailMeta", () => {
+	const at = Date.UTC(2026, 9, 10, 23, 38);
+
+	test("lines up model, OS, the full device id, the date, the steps, and the duration", () => {
+		expect(
+			formatRunDetailMeta({
+				device: iphone,
+				fallback: { deviceId: iphone.id, platform: "ios" },
+				at,
+				stepCount: 4,
+				durationMs: 38_000,
+				locale: "en-US",
+				timeZone: "UTC",
+			}),
+		).toBe(
+			"iPhone15,4 · iOS 27.0.1 · 00008120-000E6D1234567890 · Oct 10, 11:38 PM · 4 steps · 38s",
+		);
+	});
+
+	test("says step, not steps, when the run recorded one", () => {
+		expect(
+			formatRunDetailMeta({
+				device: iphone,
+				fallback: { deviceId: iphone.id, platform: "ios" },
+				at,
+				stepCount: 1,
+				durationMs: null,
+				locale: "en-US",
+				timeZone: "UTC",
+			}),
+		).toBe("iPhone15,4 · iOS 27.0.1 · 00008120-000E6D1234567890 · Oct 10, 11:38 PM · 1 step");
+	});
+
+	test("without a listed device, names the platform and the full id", () => {
+		expect(
+			formatRunDetailMeta({
+				device: undefined,
+				fallback: { deviceId: "emulator-5554", platform: "android" },
+				at,
+				stepCount: 0,
+				durationMs: null,
+				locale: "en-US",
+				timeZone: "UTC",
+			}),
+		).toBe("Android · emulator-5554 · Oct 10, 11:38 PM · 0 steps");
 	});
 });
 

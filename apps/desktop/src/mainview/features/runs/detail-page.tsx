@@ -5,17 +5,19 @@ import { useApps } from "@/features/apps/context";
 import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
 import {
 	type CaseLabelMeta,
+	type RunListTone,
 	devicesQueryKey,
 	formatCaseLabel,
 	formatDeviceLabel,
-	formatDeviceShortLabel,
+	formatRunDetailMeta,
+	runListResult,
 } from "@/features/runs/labels";
 import { ScreenshotCrossfade } from "@/features/runs/screenshot-crossfade";
 import { useArrivingIds, useFollowLatest } from "@/features/runs/use-follow-latest";
 import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { Button, Modal, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { useParams } from "@tanstack/react-router";
 import type { Device, Run, RunStatus, RunStep, RunTest } from "@yoqa/runner-client";
 import {
 	buildRunReportFromCatalogRun,
@@ -29,12 +31,26 @@ import {
 } from "@yoqa/runner-client";
 import { useEffect, useMemo, useState } from "react";
 
-const BUILD_LABELS: Record<string, string> = {
-	rebuild: "Rebuild",
-	skip: "Skip",
-};
+const STEP_ROW =
+	"grid grid-cols-[24px_minmax(0,1fr)] gap-3.5 border-t border-outline-variant py-3.5 first:border-t-transparent";
 
 const LIVE_STATUSES = new Set<RunStatus>(["queued", "running"]);
+
+const STATUS_PILL: Record<RunListTone, string> = {
+	passed: "bg-secondary/12 text-on-secondary-container",
+	failed: "bg-error/12 text-on-error-container",
+	empty: "bg-on-surface/5 text-on-surface-variant",
+	cancelled: "bg-on-surface/5 text-on-surface-variant",
+	live: "bg-violet-container text-on-violet-container",
+};
+
+const STATUS_DOT: Record<RunListTone, string> = {
+	passed: "bg-secondary",
+	failed: "bg-error",
+	empty: "bg-outline",
+	cancelled: "bg-outline",
+	live: "bg-violet motion-live-dot",
+};
 
 function PlayIcon() {
 	return (
@@ -219,71 +235,35 @@ function CaseVideos({
 	);
 }
 
-function formatWhen(ms: number): string {
-	const date = new Date(ms);
-	const now = new Date();
-	const sameDay =
-		date.getFullYear() === now.getFullYear() &&
-		date.getMonth() === now.getMonth() &&
-		date.getDate() === now.getDate();
-	const time = new Intl.DateTimeFormat(undefined, {
-		hour: "2-digit",
-		minute: "2-digit",
-	}).format(date);
-	if (sameDay) return `Today ${time}`;
-	return new Intl.DateTimeFormat(undefined, {
-		month: "short",
-		day: "numeric",
-		hour: "2-digit",
-		minute: "2-digit",
-	}).format(date);
-}
-
-function statusLabel(status: RunStatus): string {
-	switch (status) {
-		case "queued":
-			return "Queued";
-		case "running":
-			return "Running";
-		case "passed":
-			return "Passed";
-		case "errored":
-			return "Errored";
-		case "cancelled":
-			return "Cancelled";
-	}
-}
-
-function RunStatusPill({ status }: { status: RunStatus }) {
-	if (status === "passed") {
-		return (
-			<span className="inline-flex items-center gap-1.5 rounded-full bg-secondary-container/70 px-3 py-1.5 text-body-sm font-semibold text-on-secondary-container">
-				<span className="size-1.5 rounded-full bg-secondary" />
-				Passed
-			</span>
-		);
-	}
-	if (status === "errored") {
-		return (
-			<span className="inline-flex items-center gap-1.5 rounded-full bg-error-container/70 px-3 py-1.5 text-body-sm font-semibold text-on-error-container">
-				<span className="size-1.5 rounded-full bg-error" />
-				Errored
-			</span>
-		);
-	}
-	if (status === "cancelled") {
-		return (
-			<span className="inline-flex items-center gap-1.5 rounded-full bg-surface-container px-3 py-1.5 text-body-sm font-semibold text-on-surface-variant">
-				<span className="size-1.5 rounded-full bg-on-surface-variant/60" />
-				Cancelled
-			</span>
-		);
-	}
+function RunStatusPill({ run }: { run: Run }) {
+	const result = runListResult(run);
 	return (
-		<span className="inline-flex items-center gap-1.5 rounded-full bg-primary-container/80 px-3 py-1.5 text-body-sm font-semibold text-on-primary-container">
-			<span className="motion-live-dot size-1.5 rounded-full bg-primary" />
-			{statusLabel(status)}
+		<span
+			className={[
+				"inline-flex h-[22px] items-center gap-1.5 rounded-md px-2 text-xs font-medium",
+				STATUS_PILL[result.tone],
+			].join(" ")}
+		>
+			<span className={["size-1.5 rounded-full", STATUS_DOT[result.tone]].join(" ")} />
+			{result.label}
 		</span>
+	);
+}
+
+function DownloadIcon() {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-[13px]"
+			fill="none"
+			stroke="currentColor"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			strokeWidth="2"
+			viewBox="0 0 24 24"
+		>
+			<path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+		</svg>
 	);
 }
 
@@ -298,9 +278,12 @@ function stepCommandText(step: RunStep): string | null {
 function StepCommand({ command }: { command: string | null }) {
 	if (!command) return null;
 	return (
-		<p className="mt-1 truncate font-mono text-helper text-on-surface-variant" title={command}>
+		<code
+			className="max-w-full min-w-0 shrink truncate rounded-md border border-outline-variant bg-surface-container px-2 py-0.5 font-mono text-xs text-on-surface-variant"
+			title={command}
+		>
 			{command}
-		</p>
+		</code>
 	);
 }
 
@@ -343,22 +326,33 @@ function StepCycle({ action }: { action: unknown }) {
 		typeof cycle.decision?.reason === "string" && cycle.decision.reason.trim()
 			? cycle.decision.reason.trim()
 			: null;
+	const verifyTone =
+		cycle.verify.type === "verify" ? "passed" : cycle.verify.type === "fail" ? "failed" : "pending";
+	const verifyText = cycle.verify.reason
+		? `${verifyLabel(cycle.verify.type)} — ${cycle.verify.reason}`
+		: verifyLabel(cycle.verify.type);
+	const verifyClass =
+		verifyTone === "passed"
+			? "text-on-secondary-container"
+			: verifyTone === "failed"
+				? "text-error"
+				: "text-outline";
+	const decisionText = decisionReason || decision;
+
 	return (
-		<div className="mt-1.5 space-y-1 text-body-sm text-on-surface-variant">
-			<p>
-				<span className="font-medium text-on-surface">Action. </span>
-				{cycle.action ? actionSummary(cycle.action) : "Look at the screen"}
-			</p>
-			<p>
-				<span className="font-medium text-on-surface">Decision. </span>
-				{decision}
-				{decisionReason ? ` — ${decisionReason}` : ""}
-			</p>
-			<p>
-				<span className="font-medium text-on-surface">Verify. </span>
-				{verifyLabel(cycle.verify.type)}
-				{cycle.verify.reason ? ` — ${cycle.verify.reason}` : ""}
-			</p>
+		<div className="flex flex-col gap-1.5 text-[13px] leading-normal text-on-surface/80">
+			<div className="flex gap-3">
+				<span className="w-16 shrink-0 pt-0.5 text-[11px] font-medium tracking-[0.06em] text-outline uppercase">
+					Decision
+				</span>
+				<span>{decisionText}</span>
+			</div>
+			<div className="flex gap-3">
+				<span className="w-16 shrink-0 pt-0.5 text-[11px] font-medium tracking-[0.06em] text-outline uppercase">
+					Verify
+				</span>
+				<span className={verifyClass}>{verifyText}</span>
+			</div>
 		</div>
 	);
 }
@@ -376,7 +370,7 @@ function StepAiThoughts({ reason, thoughts }: { reason: string | null; thoughts:
 				<>
 					<button
 						aria-expanded={open}
-						className="mt-1 inline-flex items-center gap-1 text-helper font-medium text-on-surface-variant transition-colors hover:text-on-surface"
+						className="inline-flex items-center gap-1 text-xs text-outline transition-colors hover:text-on-surface"
 						onClick={() => setOpen((value) => !value)}
 						type="button"
 					>
@@ -432,115 +426,110 @@ function firstReviewStep(run: Run): RunStep | null {
 	return steps.find((step) => step.screenshotUri) ?? steps[0] ?? null;
 }
 
-function StepIndicator({
-	ok,
+function StepNumber({
 	index,
-	reviewMode,
+	ok,
 }: {
-	ok: boolean;
-	index: number;
-	reviewMode: boolean;
+	index: number | null;
+	ok: boolean | null;
 }) {
-	if (reviewMode && ok) {
-		return (
-			<span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-on-secondary">
-				<svg
-					aria-hidden="true"
-					className="size-3.5"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="2.5"
-					viewBox="0 0 24 24"
-				>
-					<path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-				</svg>
-			</span>
-		);
-	}
-	if (reviewMode && !ok) {
-		return (
-			<span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-error-container text-on-error-container">
-				<svg
-					aria-hidden="true"
-					className="size-3.5"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="2.5"
-					viewBox="0 0 24 24"
-				>
-					<path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-				</svg>
-			</span>
-		);
-	}
+	const tone =
+		ok === null
+			? "bg-surface-container text-outline"
+			: ok
+				? "bg-secondary/15 text-on-secondary-container"
+				: "bg-error/15 text-on-error-container";
 	return (
 		<span
 			className={[
-				"relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full text-helper font-semibold",
-				ok ? "bg-on-surface text-surface" : "bg-error-container text-on-error-container",
+				"flex size-[22px] items-center justify-center rounded-full font-mono text-[11px] font-semibold",
+				tone,
 			].join(" ")}
 		>
-			{index}
+			{index ?? "…"}
 		</span>
 	);
 }
 
-type StepStatusKind = "completed" | "failed" | "passed" | "in_progress" | "executing";
-
-function StepStatusLabel({
-	status,
-	className,
-}: {
-	status: StepStatusKind;
-	className?: string;
-}) {
-	const label =
-		status === "completed"
-			? "Completed"
-			: status === "failed"
-				? "Failed"
-				: status === "passed"
-					? "Passed"
-					: status === "executing"
-						? "Executing…"
-						: "In progress…";
-	const colorClass =
-		status === "completed" || status === "passed"
-			? "text-secondary"
-			: status === "failed"
-				? "text-error"
-				: "text-on-surface-variant";
+function StepOutcome({ ok }: { ok: boolean }) {
 	return (
-		<p className={[className ?? "mt-1", "text-helper font-medium", colorClass].join(" ")}>
-			{status === "executing" ? (
-				<span className="inline-flex items-center gap-1.5">
-					<span className="motion-live-dot size-1.5 rounded-full bg-primary" />
-					{label}
-				</span>
+		<span className={["text-xs", ok ? "text-on-secondary-container" : "text-error"].join(" ")}>
+			{ok ? "Passed" : "Failed"}
+		</span>
+	);
+}
+
+function StepRow({
+	step,
+	index,
+	selected,
+	arriving,
+	onSelect,
+}: {
+	step: RunStep;
+	index: number;
+	selected: boolean;
+	arriving: boolean;
+	onSelect: (() => void) | null;
+}) {
+	const { reason, thoughts } = stepReasoning(step);
+	const cycle = readStepCycle(step.action);
+	const showThoughts = Boolean(cycle ? thoughts : reason || thoughts);
+	const heading = (
+		<div className="flex min-w-0 flex-wrap items-center gap-2.5">
+			<span className="text-sm font-semibold">{actionSummary(step.action)}</span>
+			<StepCommand command={stepCommandText(step)} />
+			<span className="min-w-2 flex-1" />
+			<StepOutcome ok={step.ok} />
+		</div>
+	);
+	const body = (
+		<>
+			<StepNumber index={index} ok={step.ok} />
+			<div className="flex min-w-0 flex-col gap-2">
+				{heading}
+				<StepCycle action={step.action} />
+			</div>
+		</>
+	);
+
+	return (
+		<li className={[STEP_ROW, arriving ? "motion-step-in" : ""].join(" ")}>
+			{onSelect ? (
+				<button
+					aria-current={selected ? "step" : undefined}
+					className="col-span-2 grid grid-cols-subgrid rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+					onClick={onSelect}
+					type="button"
+				>
+					{body}
+				</button>
 			) : (
-				label
+				body
 			)}
-		</p>
+			{showThoughts ? (
+				<div className="col-start-2 row-start-2">
+					<StepAiThoughts reason={cycle ? null : reason} thoughts={thoughts} />
+				</div>
+			) : null}
+		</li>
 	);
 }
 
 function InProgressStepRow({ command }: { command?: string | null }) {
 	return (
-		<li className="relative flex items-start gap-3">
-			<span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-container text-helper font-semibold text-on-surface-variant">
-				…
-			</span>
-			<div className="min-w-0 flex-1">
+		<li className={STEP_ROW}>
+			<StepNumber index={null} ok={null} />
+			<div className="flex min-w-0 flex-wrap items-center gap-2.5">
 				{command ? (
-					<>
-						<p className="truncate font-mono text-body-md text-on-surface" title={command}>
-							{command}
-						</p>
-						<StepStatusLabel status="executing" />
-					</>
+					<StepCommand command={command} />
 				) : (
-					<StepStatusLabel className="mt-0.5" status="in_progress" />
+					<span className="text-sm text-on-surface-variant">In progress…</span>
 				)}
+				<span className="ml-auto inline-flex items-center gap-1.5 text-xs text-on-surface-variant">
+					<span className="motion-live-dot size-1.5 rounded-full bg-violet" />
+					Executing…
+				</span>
 			</div>
 		</li>
 	);
@@ -709,14 +698,6 @@ export function RunDetailPage() {
 			? primaryTest.caseId
 			: "Run";
 
-	const buildLabel = run?.buildId ? (BUILD_LABELS[run.buildId] ?? run.buildId) : "App on device";
-	const deviceLabel = run
-		? formatDeviceShortLabel(device, { deviceId: run.deviceId, platform: run.platform })
-		: "—";
-	const deviceDetailLabel = run
-		? formatDeviceLabel(device, { deviceId: run.deviceId, platform: run.platform })
-		: null;
-
 	const steps = useMemo(() => {
 		if (!run) return [] as RunStep[];
 		return flattenSteps(run);
@@ -775,60 +756,66 @@ export function RunDetailPage() {
 		);
 	}
 
-	return (
-		<div className="flex h-full min-h-0 flex-1 flex-col gap-5">
-			<div className="motion-fade-up flex flex-wrap items-center justify-between gap-3">
-				<p className="text-body-sm text-on-surface-variant">
-					<Link
-						className="transition-colors duration-[var(--motion-fast)] hover:text-on-surface"
-						to="/runs"
-					>
-						Runs
-					</Link>{" "}
-					<span className="text-on-surface-variant/70">›</span> {buildLabel} · {deviceLabel}
-				</p>
-				<p className="text-body-sm text-on-surface-variant">
-					{formatWhen(run.startedAt ?? run.createdAt)}
-				</p>
-			</div>
+	const durationMs =
+		run.startedAt != null && (run.finishedAt != null || isLive)
+			? (run.finishedAt ?? Date.now()) - run.startedAt
+			: null;
+	const meta = formatRunDetailMeta({
+		device,
+		fallback: { deviceId: run.deviceId, platform: run.platform },
+		at: run.startedAt ?? run.createdAt,
+		stepCount: steps.length,
+		durationMs,
+	});
+	const shotIndex = shotStep ? steps.findIndex((step) => step.id === shotStep.id) : -1;
+	const stepNumber = new Map(steps.map((step, index) => [step.id, index + 1]));
 
-			<div className="flex flex-wrap items-center justify-between gap-4">
-				<div className="flex min-w-0 flex-wrap items-center gap-3">
-					<RunStatusPill status={run.status} />
-					<h1 className="truncate text-headline-md font-semibold text-on-surface">{title}</h1>
+	return (
+		<div className="flex h-full min-h-0 w-full max-w-[1320px] flex-1 flex-col gap-5">
+			<div className="flex flex-wrap items-start gap-4">
+				<div className="flex min-w-[280px] flex-1 flex-col gap-2">
+					<div className="flex flex-wrap items-center gap-2.5">
+						<RunStatusPill run={run} />
+						<h2 className="m-0 text-xl font-semibold tracking-tight text-on-surface">{title}</h2>
+					</div>
+					<p className="font-mono text-xs text-outline" title={run.deviceId}>
+						{meta}
+					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					{reviewMode ? (
 						<>
-							<Button
-								className="h-10 rounded-full px-4 shadow-none"
-								isDisabled={exportingFormat !== null}
-								onPress={() => {
+							<button
+								className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-3 text-xs font-medium text-on-surface disabled:opacity-50"
+								disabled={exportingFormat !== null}
+								onClick={() => {
 									void exportReport("html");
 								}}
-								variant="secondary"
+								type="button"
 							>
+								<DownloadIcon />
 								{exportingFormat === "html" ? "Exporting…" : "Export HTML"}
-							</Button>
-							<Button
-								className="h-10 rounded-full px-4 shadow-none"
-								isDisabled={exportingFormat !== null}
-								onPress={() => {
+							</button>
+							<button
+								className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-3 text-xs font-medium text-on-surface disabled:opacity-50"
+								disabled={exportingFormat !== null}
+								onClick={() => {
 									void exportReport("md");
 								}}
-								variant="secondary"
+								type="button"
 							>
+								<DownloadIcon />
 								{exportingFormat === "md" ? "Exporting…" : "Export Markdown"}
-							</Button>
+							</button>
 						</>
 					) : null}
 					{showStop ? (
 						<Button
-							className="h-10 gap-2 rounded-full bg-error px-5 text-on-error shadow-none data-[hovered=true]:opacity-90"
+							className="h-[30px] gap-1.5 rounded-lg bg-error px-3 text-xs text-on-error shadow-none data-[hovered=true]:opacity-90"
 							isDisabled={cancelMutation.isPending}
 							onPress={() => cancelMutation.mutate()}
 						>
-							<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
+							<svg aria-hidden="true" className="size-3.5" fill="currentColor" viewBox="0 0 24 24">
 								<rect height="12" rx="1" width="12" x="6" y="6" />
 							</svg>
 							Stop
@@ -837,22 +824,15 @@ export function RunDetailPage() {
 				</div>
 			</div>
 
-			{deviceDetailLabel ? (
-				<p className="text-body-sm text-on-surface-variant" title={run.deviceId}>
-					{deviceDetailLabel}
-					{device ? <span className="text-on-surface-variant/70"> · {run.deviceId}</span> : null}
-				</p>
-			) : null}
-
 			{run.error ? (
 				<p className="rounded-xl bg-error-container/50 px-4 py-3 text-body-sm text-on-error-container">
 					{run.error}
 				</p>
 			) : null}
 
-			<div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] lg:grid-rows-[minmax(0,1fr)]">
+			<div className="flex min-h-0 flex-1 flex-wrap items-start gap-5">
 				<section
-					className="min-h-0 overflow-y-auto rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-5 shadow-soft"
+					className="min-h-0 min-w-0 flex-[999] basis-[480px] overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest px-5 pt-1 pb-2"
 					onKeyDown={follow.onUserScroll}
 					onPointerDown={follow.onUserScroll}
 					onScroll={follow.onScroll}
@@ -864,105 +844,41 @@ export function RunDetailPage() {
 						const caseLabel = formatCaseLabel(caseNameById.get(test.caseId), test.caseId);
 						const testSteps = test.steps ?? [];
 						return (
-							<div className="mb-8 last:mb-0" key={test.id}>
-								<div className="mb-4 flex items-center gap-3">
-									<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-on-surface text-body-sm font-semibold text-surface">
-										{testIndex + 1}
-									</span>
-									<div className="min-w-0">
-										<p className="truncate rounded-full bg-surface-container px-3 py-1 text-body-sm font-medium text-on-surface">
-											{caseLabel}
-										</p>
-										<p className="mt-1 text-helper text-on-surface-variant">
-											{test.status === "running"
-												? "In progress…"
-												: test.status === "queued"
-													? "Waiting…"
-													: test.status === "cancelled"
-														? "Cancelled"
-														: test.status === "passed"
-															? "Complete"
-															: (test.error ?? "Errored")}
-										</p>
-									</div>
-								</div>
-
-								<ul className="relative ml-3 space-y-5 before:absolute before:bottom-3 before:left-[0.6875rem] before:top-3 before:w-px before:bg-outline-variant/70">
-									{testSteps.map((step) => {
-										const isSelected = reviewMode && selectedStepId === step.id;
-										const { reason, thoughts } = stepReasoning(step);
-										const cycle = readStepCycle(step.action);
-
-										if (reviewMode) {
-											return (
-												<li className="relative" key={step.id}>
-													<div className="flex items-start gap-3">
-														<button
-															aria-current={isSelected ? "step" : undefined}
-															className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left outline-none transition-colors hover:bg-surface-container/40 focus-visible:ring-2 focus-visible:ring-primary/40"
-															onClick={() => setSelectedStepId(step.id)}
-															type="button"
-														>
-															<StepIndicator
-																index={step.idx + 1}
-																ok={step.ok}
-																reviewMode={reviewMode}
-															/>
-															<div className="min-w-0 flex-1">
-																<p
-																	className={[
-																		"text-body-md font-medium text-on-surface",
-																		isSelected
-																			? "rounded-lg bg-surface-container px-2 py-1 -mx-2"
-																			: "",
-																	].join(" ")}
-																>
-																	{actionSummary(step.action)}
-																</p>
-																<StepCommand command={stepCommandText(step)} />
-																<StepStatusLabel status={step.ok ? "passed" : "failed"} />
-															</div>
-														</button>
-													</div>
-													<div className="ml-9">
-														<StepCycle action={step.action} />
-														<StepAiThoughts reason={cycle ? null : reason} thoughts={thoughts} />
-													</div>
-												</li>
-											);
-										}
-
-										return (
-											<li
-												className={[
-													"relative flex items-start gap-3",
-													isLive && isArriving(step.id) ? "motion-step-in" : "",
-												].join(" ")}
-												key={step.id}
-											>
-												<StepIndicator index={step.idx + 1} ok={step.ok} reviewMode={reviewMode} />
-												<div className="min-w-0 flex-1">
-													<p className="text-body-md font-medium text-on-surface">
-														{actionSummary(step.action)}
-													</p>
-													<StepCommand command={stepCommandText(step)} />
-													<StepStatusLabel status={step.ok ? "completed" : "failed"} />
-													<StepCycle action={step.action} />
-													<StepAiThoughts reason={cycle ? null : reason} thoughts={thoughts} />
-												</div>
-											</li>
-										);
-									})}
+							<div key={test.id}>
+								{run.tests.length > 1 ? (
+									<p
+										className={[
+											"pt-3.5 text-sm font-medium text-on-surface",
+											testIndex > 0 ? "border-t border-outline-variant" : "",
+										].join(" ")}
+									>
+										{caseLabel}
+									</p>
+								) : null}
+								{test.error ? (
+									<p className="py-3 text-sm text-error">{test.error}</p>
+								) : test.status === "cancelled" ? (
+									<p className="py-3 text-sm text-on-surface-variant">Cancelled</p>
+								) : test.status === "queued" ? (
+									<p className="py-3 text-sm text-on-surface-variant">Waiting…</p>
+								) : null}
+								<ul>
+									{testSteps.map((step) => (
+										<StepRow
+											arriving={isLive && isArriving(step.id)}
+											index={stepNumber.get(step.id) ?? step.idx + 1}
+											key={step.id}
+											onSelect={reviewMode ? () => setSelectedStepId(step.id) : null}
+											selected={reviewMode && selectedStepId === step.id}
+											step={step}
+										/>
+									))}
 									{test.status === "queued" || test.status === "running" ? (
 										<InProgressStepRow command={test.currentCommand} />
 									) : testSteps.length === 0 ? (
-										<li className="relative flex items-start gap-3">
-											<span className="relative z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-container text-helper font-semibold text-on-surface-variant">
-												…
-											</span>
-											<p className="pt-0.5 text-body-sm text-on-surface-variant">
-												No steps recorded
-											</p>
+										<li className={STEP_ROW}>
+											<StepNumber index={null} ok={null} />
+											<p className="text-sm text-on-surface-variant">No steps recorded</p>
 										</li>
 									) : null}
 								</ul>
@@ -971,7 +887,7 @@ export function RunDetailPage() {
 					})}
 
 					{steps.length === 0 && run.tests.length === 0 ? (
-						<p className="text-body-md text-on-surface-variant">No tests in this run.</p>
+						<p className="py-4 text-sm text-on-surface-variant">No tests in this run.</p>
 					) : null}
 
 					{isLive && !follow.following ? (
@@ -988,9 +904,14 @@ export function RunDetailPage() {
 					) : null}
 				</section>
 
-				<aside className="flex min-h-[20rem] flex-col gap-3 lg:overflow-hidden rounded-[var(--radius-platform)] bg-surface-container-lowest/80 p-4 shadow-soft">
-					<p className="text-helper font-medium text-on-surface-variant">Screenshot</p>
-					<div className="flex min-h-0 flex-1 items-start justify-center">
+				<aside className="flex w-full max-w-[360px] min-w-[280px] flex-1 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+					<div className="flex justify-between text-xs text-outline">
+						<span className="font-medium text-on-surface-variant">Screenshot</span>
+						<span className="font-mono">
+							{shotIndex >= 0 ? `step ${shotIndex + 1} / ${steps.length}` : "—"}
+						</span>
+					</div>
+					<div className="relative aspect-[9/19.5] overflow-hidden rounded-[28px] border-[6px] border-outline-variant bg-surface-container">
 						{screenshotUrl ? (
 							<ScreenshotCrossfade
 								alt={
@@ -1001,39 +922,44 @@ export function RunDetailPage() {
 								src={screenshotUrl}
 							/>
 						) : (
-							<div className="flex flex-col items-center gap-2 px-6 text-center">
-								<div className="flex size-40 items-center justify-center rounded-[2rem] border border-dashed border-outline-variant bg-surface-container/50">
-									<svg
-										aria-hidden="true"
-										className="size-10 text-on-surface-variant/50"
-										fill="none"
-										stroke="currentColor"
-										strokeWidth="1.5"
-										viewBox="0 0 24 24"
-									>
-										<rect height="16" rx="2" width="10" x="7" y="4" />
-										<path d="M11 17h2" strokeLinecap="round" />
-									</svg>
-								</div>
-								<p className="text-body-sm text-on-surface-variant">
-									{isLive
-										? "Screenshot will appear as steps run"
-										: shotStep
-											? "No screenshot for this step"
-											: "No screenshot available"}
-								</p>
+							<div className="flex h-full items-center justify-center px-5 text-center text-xs text-outline">
+								{isLive
+									? "Screenshot will appear as steps run"
+									: shotStep
+										? "No screenshot for this step"
+										: "No screenshot available"}
 							</div>
 						)}
 					</div>
+					{reviewMode && steps.length > 0 ? (
+						<div className="flex flex-wrap justify-center gap-1.5">
+							{steps.map((step, index) => {
+								const selected = shotStep?.id === step.id;
+								return (
+									<button
+										aria-current={selected ? "step" : undefined}
+										aria-label={`Show step ${index + 1}`}
+										className={[
+											"h-1 w-[18px] rounded-sm",
+											selected ? "bg-primary" : "bg-outline",
+										].join(" ")}
+										key={step.id}
+										onClick={() => setSelectedStepId(step.id)}
+										type="button"
+									/>
+								);
+							})}
+						</div>
+					) : null}
 					{reviewMode ? (
 						<CaseVideos
 							label={(test) => formatCaseLabel(caseNameById.get(test.caseId), test.caseId)}
-							tests={run.tests}
 							onDelete={async (test) => {
 								const client = await getRunnerClient();
 								await client.deleteRunTestVideo(runId, test.id);
 								await queryClient.invalidateQueries({ queryKey: runQueryKey(runId) });
 							}}
+							tests={run.tests}
 							videoUrl={(test) => videoClient?.testUrl(test.id) ?? null}
 						/>
 					) : null}
