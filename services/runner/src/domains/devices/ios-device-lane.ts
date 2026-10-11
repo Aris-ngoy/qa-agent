@@ -79,7 +79,17 @@ export type IosDeviceDeps = {
 	devicectl: RunnerExec;
 	/** `ffmpeg` for Run recording; the host's own when omitted. */
 	recorder?: FrameRecorderDeps;
+	/** How long the runner may stay unreachable before the session is dead; `UNREACHABLE_GRACE_MS` when omitted. */
+	unreachableGraceMs?: number;
 };
+
+/**
+ * One failed tunnel is not a dead phone: usbmuxd drops out for a moment while the inspector's
+ * frame loop and tree reads hammer it, the screen locks, or USB re-enumerates, and the runner
+ * is still alive on the phone. The session only dies when the runner process exits or the cable
+ * has been unreachable for this long without a single command getting through.
+ */
+const UNREACHABLE_GRACE_MS = 20_000;
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -157,22 +167,39 @@ export async function createIosDeviceSession(
 
 	/** A runner the cable no longer reaches is a Dead Session, reported once. */
 	let notifiedDead = false;
+	const graceMs = deps.unreachableGraceMs ?? UNREACHABLE_GRACE_MS;
+	let unreachableSince: number | null = null;
 	/**
 	 * The app a snapshot reads: the one the session was opened for, then the last one
 	 * activated or set as the target.
 	 */
 	let appId = options.bundleId;
+	const dead = (error: Error) => {
+		if (!notifiedDead) {
+			notifiedDead = true;
+			options.onSessionDead?.();
+		}
+		return new DeadSessionError(`Device session ended: ${error.message}`);
+	};
 	const call = async (command: string, fields?: Record<string, unknown>, journaled = false) => {
 		try {
-			return await link.send(command, fields, { journaled });
+			const reply = await link.send(command, fields, { journaled });
+			unreachableSince = null;
+			return reply;
 		} catch (error) {
-			if (error instanceof YoqaRunnerCommandError) throw explainRunnerError(error, appId);
-			if (!(error instanceof YoqaRunnerUnreachableError) || quitting) throw error;
-			if (!notifiedDead) {
-				notifiedDead = true;
-				options.onSessionDead?.();
+			if (error instanceof YoqaRunnerCommandError) {
+				// The runner answered, so the cable is fine.
+				unreachableSince = null;
+				throw explainRunnerError(error, appId);
 			}
-			throw new DeadSessionError(`Device session ended: ${error.message}`);
+			if (!(error instanceof YoqaRunnerUnreachableError) || quitting) throw error;
+			if (!error.transient) throw dead(error);
+			unreachableSince ??= performance.now();
+			if (performance.now() - unreachableSince < graceMs) {
+				// Transient: the caller (the frame loop backs off and retries) may try again.
+				throw new Error(`YoqaRunner is briefly unreachable, retrying: ${error.message}`);
+			}
+			throw dead(error);
 		}
 	};
 

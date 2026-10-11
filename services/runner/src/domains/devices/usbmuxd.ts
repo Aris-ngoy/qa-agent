@@ -30,7 +30,14 @@ export type UsbmuxDevice = {
 
 /** usbmuxd is unreachable, the phone isn't on a cable, or the port can't be opened. */
 export class UsbmuxError extends Error {
-	constructor(message: string) {
+	/**
+	 * The phone or usbmuxd is momentarily out of view (not listed, daemon hiccup), which clears
+	 * on its own. A refused port is not: nothing is listening on the phone any more.
+	 */
+	constructor(
+		message: string,
+		readonly transient = false,
+	) {
 		super(message);
 		this.name = "UsbmuxError";
 	}
@@ -144,7 +151,7 @@ function openUsbmuxd(socketPath: string): Promise<Socket> {
 			resolve(socket);
 		});
 		const onError = (error: Error) =>
-			reject(new UsbmuxError(`Cannot reach usbmuxd at ${socketPath}: ${error.message}`));
+			reject(new UsbmuxError(`Cannot reach usbmuxd at ${socketPath}: ${error.message}`, true));
 		socket.once("error", onError);
 	});
 }
@@ -182,11 +189,11 @@ function exchange(socket: Socket, request: Buffer): Promise<{ [key: string]: Pli
 		};
 		const onError = (error: Error) => {
 			cleanup();
-			reject(new UsbmuxError(`usbmuxd: ${error.message}`));
+			reject(new UsbmuxError(`usbmuxd: ${error.message}`, true));
 		};
 		const onClose = () => {
 			cleanup();
-			reject(new UsbmuxError("usbmuxd closed the connection before replying"));
+			reject(new UsbmuxError("usbmuxd closed the connection before replying", true));
 		};
 		socket.on("data", onData);
 		socket.once("error", onError);
@@ -243,6 +250,7 @@ export async function connectUsbmux(
 			listed
 				? `iPhone ${udid} is not on a USB cable (usbmuxd lists it over the network only). Connect it with a cable.`
 				: `usbmuxd does not list iPhone ${udid}. Connect it with a cable, unlock it and trust this Mac.`,
+			true,
 		);
 	}
 	const socket = await openUsbmuxd(socketPath);
