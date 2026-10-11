@@ -1,36 +1,52 @@
 import { staggerStyle, useEnterOnce } from "@/app/motion/use-enter-once";
 import { getRunnerClient } from "@/app/runner-client";
 import { useApps } from "@/features/apps/context";
+import { useActiveDeviceSession } from "@/features/devices/use-active-device-session";
 import { useActiveRun } from "@/features/runs/active-run-context";
 import {
 	type CaseLabelMeta,
+	type RunListFilter,
+	type RunListTone,
 	devicesQueryKey,
-	formatDeviceLabel,
+	filterRuns,
 	formatRunCaseSummary,
+	formatRunContextCaption,
+	formatRunDeviceLines,
+	formatRunListDate,
+	runListResult,
 } from "@/features/runs/labels";
 import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
-import { Button } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import type { Device, Run } from "@yoqa/runner-client";
-import { useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 const BUILD_LABELS: Record<string, string> = {
 	rebuild: "Rebuild",
 	skip: "Skip",
 };
 
+const ROW_GRID =
+	"grid grid-cols-[28px_minmax(200px,1.6fr)_minmax(200px,1.4fr)_110px_150px_36px] items-center gap-3.5 px-4";
+
+const TONE_DOT: Record<RunListTone, string> = {
+	passed: "bg-secondary ring-[3px] ring-secondary/15",
+	failed: "bg-error ring-[3px] ring-error/15",
+	empty: "bg-outline",
+	cancelled: "bg-outline",
+	live: "bg-violet motion-live-dot",
+};
+
+const TONE_CHIP: Record<RunListTone, string> = {
+	passed: "bg-secondary/12 text-on-secondary-container",
+	failed: "bg-error/12 text-on-error-container",
+	empty: "bg-on-surface/5 text-on-surface-variant",
+	cancelled: "bg-on-surface/5 text-on-surface-variant",
+	live: "bg-violet-container text-on-violet-container",
+};
+
 export function runsListQueryKey(appId: string) {
 	return ["runs", "list", appId] as const;
-}
-
-function formatWhen(ms: number): string {
-	return new Intl.DateTimeFormat(undefined, {
-		day: "numeric",
-		month: "short",
-		hour: "2-digit",
-		minute: "2-digit",
-	}).format(new Date(ms));
 }
 
 function buildLabel(buildId: string | null): string {
@@ -38,67 +54,147 @@ function buildLabel(buildId: string | null): string {
 	return BUILD_LABELS[buildId] ?? buildId;
 }
 
-function testCounts(run: Run): { total: number; passed: number; failed: number } {
-	const total = run.tests.length;
-	const passed = run.tests.filter((test) => test.status === "passed").length;
-	const failed = run.tests.filter(
-		(test) => test.status === "errored" || test.status === "cancelled",
-	).length;
-	return { total, passed, failed };
-}
-
 function PlatformGlyph({ platform }: { platform: Run["platform"] }) {
 	if (platform === "android") {
 		return (
-			<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
+			<svg aria-hidden="true" className="size-[11px]" fill="currentColor" viewBox="0 0 24 24">
 				<path d="M17.6 9.48 19.44 6.3a.55.55 0 0 0-.95-.55l-1.9 3.29A8.1 8.1 0 0 0 12 7.75c-1.6 0-3.08.46-4.34 1.26L5.76 5.75a.55.55 0 1 0-.95.55l1.84 3.18A7.9 7.9 0 0 0 4 15.25v.5c0 .97.78 1.75 1.75 1.75h.5v2.75c0 .55.45 1 1 1s1-.45 1-1v-2.75h7.5v2.75c0 .55.45 1 1 1s1-.45 1-1v-2.75h.5c.97 0 1.75-.78 1.75-1.75v-.5c0-2.2-.9-4.18-2.4-5.52ZM8.25 14a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm7.5 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" />
 			</svg>
 		);
 	}
 	return (
-		<svg aria-hidden="true" className="size-4" fill="currentColor" viewBox="0 0 24 24">
-			<path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11Z" />
+		<svg aria-hidden="true" className="size-[11px]" fill="currentColor" viewBox="0 0 24 24">
+			<path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9s-2-.9-3.4-.9c-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.6 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.5 1-1.4 1.3-2.8 1.4-2.8-.1 0-2.7-1-2.7-4.2zM14 5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4z" />
 		</svg>
 	);
 }
 
-function TestsCell({
+function FilterButton({
+	active,
+	onPress,
+	children,
+}: {
+	active: boolean;
+	onPress: () => void;
+	children: ReactNode;
+}) {
+	return (
+		<button
+			aria-pressed={active}
+			className={[
+				"h-[26px] rounded-[6px] px-2.5",
+				active ? "bg-surface-container-high text-on-surface" : "text-on-surface-variant",
+			].join(" ")}
+			onClick={onPress}
+			type="button"
+		>
+			{children}
+		</button>
+	);
+}
+
+function RunRow({
 	run,
 	caseNameById,
+	device,
+	deleting,
+	onDelete,
+	index,
+	stagger,
 }: {
 	run: Run;
 	caseNameById: Map<string, CaseLabelMeta>;
+	device: Device | undefined;
+	deleting: boolean;
+	onDelete: () => void;
+	index: number;
+	stagger: boolean;
 }) {
-	const { total, passed, failed } = testCounts(run);
-	const summary = formatRunCaseSummary(run, caseNameById);
-	if (total === 0) {
-		return <span className="text-body-sm text-on-surface-variant">—</span>;
-	}
-	const counts =
-		failed > 0 ? (
-			<span className="text-on-surface-variant">
-				(<span className="text-secondary">{passed}</span>
-				{" / "}
-				<span className="text-error">{failed}</span>)
-			</span>
-		) : (
-			<span className="text-on-surface-variant">
-				(<span className="text-secondary">{passed || total}</span>)
-			</span>
-		);
+	const result = runListResult(run);
+	const deviceLines = formatRunDeviceLines(device, {
+		deviceId: run.deviceId,
+		platform: run.platform,
+	});
+	const testTitle = run.tests.length === 0 ? "Empty run" : formatRunCaseSummary(run, caseNameById);
+
 	return (
-		<span className="flex min-w-0 flex-col gap-0.5 text-body-sm text-on-surface">
-			<span className="truncate font-medium">{summary}</span>
-			<span className="tabular-nums text-helper text-on-surface-variant">{counts}</span>
-		</span>
+		<li
+			className={[
+				"group relative border-t border-outline-variant transition-colors duration-[var(--motion-fast)] hover:bg-hover-surface",
+				stagger ? "motion-fade-up" : "",
+			].join(" ")}
+			style={staggerStyle(index, stagger)}
+		>
+			<Link
+				className={[
+					ROW_GRID,
+					"h-14 text-on-surface no-underline outline-none focus-visible:bg-hover-surface",
+				].join(" ")}
+				params={{ runId: run.id }}
+				to="/runs/$runId"
+			>
+				<span
+					aria-label={result.label}
+					className={["size-2 rounded-full", TONE_DOT[result.tone]].join(" ")}
+				/>
+				<span className="flex min-w-0 flex-col">
+					<span className="truncate text-body-sm font-medium">{testTitle}</span>
+					<span className="flex items-center gap-[5px] text-xs text-outline">
+						<PlatformGlyph platform={run.platform} />
+						{buildLabel(run.buildId)}
+					</span>
+				</span>
+				<span className="flex min-w-0 flex-col">
+					<span className="truncate text-body-sm text-on-surface/80">{deviceLines.title}</span>
+					<span className="truncate font-mono text-[11px] text-outline" title={run.deviceId}>
+						{deviceLines.meta}
+					</span>
+				</span>
+				<span>
+					<span
+						className={[
+							"inline-flex h-5 items-center rounded-[5px] px-[7px] font-mono text-[11px] font-medium",
+							TONE_CHIP[result.tone],
+						].join(" ")}
+					>
+						{result.chip}
+					</span>
+				</span>
+				<span className="text-body-sm text-on-surface-variant">
+					{formatRunListDate(run.startedAt ?? run.createdAt)}
+				</span>
+				<span className="size-8" />
+			</Link>
+			<button
+				aria-label="Delete run"
+				className="pointer-events-none absolute top-1/2 right-4 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-sm text-outline opacity-0 transition-opacity duration-[var(--motion-fast)] group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-hover-surface hover:text-on-surface focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:opacity-40"
+				disabled={deleting}
+				onClick={onDelete}
+				type="button"
+			>
+				<svg
+					aria-hidden="true"
+					className="size-[15px]"
+					fill="none"
+					stroke="currentColor"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+					strokeWidth="1.8"
+					viewBox="0 0 24 24"
+				>
+					<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+				</svg>
+			</button>
+		</li>
 	);
 }
 
 export function RunsListPage() {
-	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
 	const { activeRunId, setActiveRun } = useActiveRun();
+	const { activeSession } = useActiveDeviceSession();
+	const [filter, setFilter] = useState<RunListFilter>("all");
 
 	const runsQuery = useQuery({
 		queryKey: selectedApp ? runsListQueryKey(selectedApp.id) : ["runs", "list", "none"],
@@ -177,7 +273,11 @@ export function RunsListPage() {
 	});
 
 	const runs = runsQuery.data ?? [];
+	const visible = filterRuns(runs, filter);
 	const stagger = useEnterOnce(runsQuery.isSuccess && runs.length > 0);
+	const caption = formatRunContextCaption(
+		activeSession ? deviceById.get(activeSession.deviceId) : undefined,
+	);
 
 	if (!selectedApp) {
 		return (
@@ -188,7 +288,22 @@ export function RunsListPage() {
 	}
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col gap-5">
+		<div className="flex min-h-0 w-full max-w-[1240px] flex-1 flex-col gap-4">
+			<div className="flex flex-wrap items-center gap-2">
+				<div className="flex rounded-[9px] border border-outline-variant bg-surface-container-lowest p-[3px] text-helper font-medium">
+					<FilterButton active={filter === "all"} onPress={() => setFilter("all")}>
+						All <span className="text-outline">{runs.length}</span>
+					</FilterButton>
+					<FilterButton active={filter === "passed"} onPress={() => setFilter("passed")}>
+						Passed
+					</FilterButton>
+					<FilterButton active={filter === "failed"} onPress={() => setFilter("failed")}>
+						Failed
+					</FilterButton>
+				</div>
+				{caption ? <span className="ml-auto text-xs text-outline">{caption}</span> : null}
+			</div>
+
 			{runsQuery.isLoading ? (
 				<p className="text-body-md text-on-surface-variant">Loading runs…</p>
 			) : runsQuery.isError ? (
@@ -196,104 +311,48 @@ export function RunsListPage() {
 					{runsQuery.error instanceof Error ? runsQuery.error.message : "Failed to load runs"}
 				</p>
 			) : runs.length === 0 ? (
-				<div className="motion-fade-up rounded-[var(--radius-platform)] border border-outline-variant/60 bg-surface-container-lowest/80 px-6 py-12 text-center shadow-soft">
-					<p className="text-body-md text-on-surface-variant">
+				<div className="motion-fade-up rounded-[12px] border border-outline-variant bg-surface-container-lowest px-6 py-12 text-center">
+					<p className="text-body-sm text-on-surface-variant">
 						No runs yet. Select test cases and press Play to start one.
 					</p>
 				</div>
 			) : (
-				<div className="overflow-hidden rounded-[var(--radius-platform)] border border-outline-variant/60 bg-surface-container-lowest shadow-soft">
-					<div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(6rem,0.7fr)_2.5rem] gap-3 border-b border-outline-variant/60 px-4 py-3 text-helper font-medium text-on-surface-variant">
-						<span>Build</span>
-						<span>Device</span>
-						<span>Tests</span>
-						<span>Date</span>
-						<span className="sr-only">Actions</span>
+				<div className="overflow-x-auto rounded-[12px] border border-outline-variant bg-surface-container-lowest">
+					<div className="min-w-[780px]">
+						<div
+							className={[
+								ROW_GRID,
+								"h-10 text-[11px] font-medium tracking-[0.06em] text-outline uppercase",
+							].join(" ")}
+						>
+							<span />
+							<span>Test</span>
+							<span>Device</span>
+							<span>Result</span>
+							<span>Date</span>
+							<span className="sr-only">Actions</span>
+						</div>
+						{visible.length === 0 ? (
+							<p className="border-t border-outline-variant px-4 py-8 text-center text-body-sm text-on-surface-variant">
+								{filter === "passed" ? "No passed runs." : "No failed runs."}
+							</p>
+						) : (
+							<ul>
+								{visible.map((run, index) => (
+									<RunRow
+										caseNameById={caseNameById}
+										deleting={deleteMutation.isPending}
+										device={deviceById.get(run.deviceId)}
+										index={index}
+										key={run.id}
+										onDelete={() => deleteMutation.mutate(run.id)}
+										run={run}
+										stagger={stagger}
+									/>
+								))}
+							</ul>
+						)}
 					</div>
-					<ul>
-						{runs.map((run, index) => (
-							<li
-								className={[
-									"grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(6rem,0.7fr)_2.5rem] items-center gap-3 border-b border-outline-variant/50 px-4 py-3.5 last:border-b-0 transition-colors duration-[var(--motion-fast)] hover:bg-surface-container/40",
-									stagger ? "motion-fade-up" : "",
-								]
-									.filter(Boolean)
-									.join(" ")}
-								key={run.id}
-								style={staggerStyle(index, stagger)}
-							>
-								<Link
-									className="flex min-w-0 items-center gap-2.5 text-body-sm font-medium text-on-surface"
-									params={{ runId: run.id }}
-									to="/runs/$runId"
-								>
-									<span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface-container text-on-surface-variant">
-										<PlatformGlyph platform={run.platform} />
-									</span>
-									<span className="truncate">{buildLabel(run.buildId)}</span>
-								</Link>
-								<button
-									className="flex min-w-0 items-center gap-2 text-left text-body-sm text-on-surface"
-									onClick={() => void navigate({ to: "/runs/$runId", params: { runId: run.id } })}
-									type="button"
-								>
-									<svg
-										aria-hidden="true"
-										className="size-4 shrink-0 text-on-surface-variant"
-										fill="none"
-										stroke="currentColor"
-										strokeWidth="1.75"
-										viewBox="0 0 24 24"
-									>
-										<rect height="14" rx="2" width="16" x="4" y="5" />
-										<path d="M8 19h8" strokeLinecap="round" />
-									</svg>
-									<span className="truncate">
-										{formatDeviceLabel(deviceById.get(run.deviceId), {
-											deviceId: run.deviceId,
-											platform: run.platform,
-										})}
-									</span>
-								</button>
-								<button
-									className="min-w-0 text-left"
-									onClick={() => void navigate({ to: "/runs/$runId", params: { runId: run.id } })}
-									type="button"
-								>
-									<TestsCell caseNameById={caseNameById} run={run} />
-								</button>
-								<button
-									className="text-left text-body-sm text-on-surface-variant"
-									onClick={() => void navigate({ to: "/runs/$runId", params: { runId: run.id } })}
-									type="button"
-								>
-									{formatWhen(run.startedAt ?? run.createdAt)}
-								</button>
-								<Button
-									aria-label="Delete run"
-									className="size-8 min-w-0 rounded-full bg-transparent p-0 text-on-surface-variant shadow-none data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
-									isDisabled={deleteMutation.isPending}
-									onPress={() => deleteMutation.mutate(run.id)}
-									variant="ghost"
-								>
-									<svg
-										aria-hidden="true"
-										className="size-4"
-										fill="none"
-										stroke="currentColor"
-										strokeWidth="1.75"
-										viewBox="0 0 24 24"
-									>
-										<path
-											d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"
-											strokeLinecap="round"
-											strokeLinejoin="round"
-										/>
-									</svg>
-								</Button>
-							</li>
-						))}
-					</ul>
 				</div>
 			)}
 		</div>
