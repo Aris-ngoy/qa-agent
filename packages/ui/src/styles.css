@@ -38,7 +38,7 @@
 	--field-border-width: 1px;
 	--backdrop: rgb(0 0 0 / 0.35);
 	--radius: 0.75rem;
-	--field-radius: 9999px;
+	--field-radius: var(--radius);
 	--overlay-shadow: 0 12px 40px rgba(40, 48, 80, 0.1);
 	--surface-shadow: 0 8px 32px rgba(40, 48, 80, 0.08);
 	--field-shadow: 0 2px 12px rgba(40, 48, 80, 0.06);
@@ -140,16 +140,16 @@
 	--text-helper--line-height: 1rem;
 	--text-helper--font-weight: 400;
 
-	/* Radius — stepped scale; use --radius-platform for window chrome */
-	--radius-sm: 0.5rem;
-	--radius-DEFAULT: 0.75rem;
-	--radius-md: 1rem;
-	--radius-lg: 1.25rem;
-	--radius-xl: 1.5rem;
-	--radius-2xl: 1.75rem;
+	/* One corner for surfaces and controls. Circles use --radius-full. */
+	--radius-sm: var(--radius);
+	--radius-DEFAULT: var(--radius);
+	--radius-md: var(--radius);
+	--radius-lg: var(--radius);
+	--radius-xl: var(--radius);
+	--radius-2xl: var(--radius);
+	--radius-3xl: var(--radius);
 	--radius-full: 9999px;
-	/* Native window corner (macOS Big Sur+ ≈ 10pt; Win11 ≈ 8px) */
-	--radius-platform: 14px;
+	--radius-platform: var(--radius);
 
 	/* Layout spacing */
 	--spacing-sidebar: 220px;

@@ -54,9 +54,10 @@ Make the app's single top bar the one place to manage the **Active Session** (se
 
 **What shipped**
 - `session-bar-title.tsx`: caption over title per route; the Inspector shows "Live session" / "No device connected" with a dot; a test case shows its name (read from the detail page's query cache). Pages dropped their own `h1`.
-- `session-toolbar.tsx`: grouped platform + device picker, purple **Connect**, green device pill, outlined **Restart session** / **Disconnect**; while a Run holds the session the pill is grey and locked and the controls are hidden.
-- `run-controls.tsx`: dark **Run test** pill (hidden while a Run holds the session; the chip's **Stop** takes over).
-- Servers & doctor button is a 40px rounded square. Inspector: the device card stays put while the script panel scrolls, shows a shimmer placeholder while the feed starts, slides the Inspect / Use device highlight and eases its height. Existing `motion-*` classes carry the bar's animations; all respect reduced motion.
+- `session-toolbar.tsx`: 32px grouped platform + device picker, a light/dark theme switch (the pressed side follows the effective theme; clicking sets light or dark), **Connect**, device pill, outlined **Restart session** / **Disconnect**. While a Run holds the session the pill is grey and locked and the controls are hidden.
+- `run-controls.tsx`: **Run test** (hidden while a Run holds the session; the chip's **Stop** takes over).
+- Servers & doctor button is a 32px rounded square. Inspector: the device card stays put while the script panel scrolls, shows a shimmer placeholder while the feed starts, slides the Inspect / Use device highlight and eases its height. Existing `motion-*` classes carry the bar's animations; all respect reduced motion.
+- The bar itself is a 52px card (the shared `--radius`, `border-outline-variant`). A run detail captions it `Runs / {device}` and titles it "Run details".
 
 **How to verify:** open each page and check the title; walk Inspector through not connected, connected and a held session; start a Run and watch the progress bar and Stop.
 

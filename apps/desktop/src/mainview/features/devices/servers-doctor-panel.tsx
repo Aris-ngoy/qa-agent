@@ -164,14 +164,14 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 				aria-haspopup="dialog"
 				aria-label="Servers and doctor"
 				className={[
-					"flex size-10 shrink-0 items-center justify-center rounded-xl border border-outline-variant bg-surface-container-lowest text-on-surface transition-colors hover:bg-surface-container",
+					"flex size-8 shrink-0 items-center justify-center rounded-lg border border-outline-variant bg-surface-container-low text-outline transition-colors hover:bg-hover-surface hover:text-on-surface",
 					open ? "ring-2 ring-primary/40" : "",
 				].join(" ")}
 				onClick={() => onOpenChange(!open)}
 				title="Servers & doctor"
 				type="button"
 			>
-				<ServerIcon className="size-5" />
+				<ServerIcon className="size-[15px]" />
 			</button>
 
 			{open ? (

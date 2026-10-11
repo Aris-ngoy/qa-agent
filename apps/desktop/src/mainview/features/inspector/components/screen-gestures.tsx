@@ -34,7 +34,7 @@ function Arrow({ direction, ...props }: { direction: Direction } & SVGProps<SVGS
 }
 
 const PAD_BTN =
-	"inline-flex items-center justify-center rounded-[10px] border border-outline-variant bg-surface-bright text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
+	"inline-flex items-center justify-center rounded-[var(--radius)] border border-outline-variant bg-surface-bright text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
 const STEP_BTN =
 	"inline-flex size-10 items-center justify-center bg-surface-bright text-lg text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
 
@@ -60,7 +60,7 @@ export function ScreenGestures({ disabled, onAddSwipe, onAddWait }: ScreenGestur
 	return (
 		<section
 			aria-labelledby="inspector-gestures-heading"
-			className="flex flex-col gap-3.5 rounded-[18px] border border-outline-variant bg-surface-bright p-4"
+			className="flex flex-col gap-3.5 rounded-[var(--radius)] border border-outline-variant bg-surface-bright p-4"
 		>
 			<div className="flex flex-col gap-0.5">
 				<h2 id="inspector-gestures-heading" className="m-0 text-subheading text-on-surface">
@@ -93,7 +93,7 @@ export function ScreenGestures({ disabled, onAddSwipe, onAddWait }: ScreenGestur
 					</span>
 					<fieldset
 						aria-labelledby="inspector-wait-label"
-						className="m-0 flex w-fit min-w-0 items-center overflow-hidden rounded-[10px] border border-outline-variant p-0"
+						className="m-0 flex w-fit min-w-0 items-center overflow-hidden rounded-[var(--radius)] border border-outline-variant p-0"
 					>
 						<button
 							type="button"

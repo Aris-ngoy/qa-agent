@@ -290,19 +290,6 @@ html:has([data-slot="modal-backdrop"]) .app-page {
 	transition: width var(--motion-base) var(--ease-out);
 }
 
-.nav-active-pill {
-	position: absolute;
-	left: 0;
-	right: 0;
-	top: 0;
-	border-radius: 9999px;
-	background: color-mix(in srgb, var(--color-sidebar-fg) 12%, transparent);
-	transition: transform var(--motion-base) var(--ease-out), height var(--motion-base)
-		var(--ease-out);
-	pointer-events: none;
-	z-index: 0;
-}
-
 @media (prefers-reduced-motion: reduce) {
 	:root {
 		--motion-fast: 0ms;
@@ -334,8 +321,7 @@ html:has([data-slot="modal-backdrop"]) .app-page {
 
 	.boot-splash-layer,
 	.boot-app-layer,
-	.side-menu,
-	.nav-active-pill {
+	.side-menu {
 		transition: none !important;
 	}
 }

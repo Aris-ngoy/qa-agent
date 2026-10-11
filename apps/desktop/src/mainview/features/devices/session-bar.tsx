@@ -24,7 +24,6 @@ import {
 } from "@/features/devices/use-active-device-session";
 import { useRetargetOnAppSwitch } from "@/features/devices/use-retarget-on-app-switch";
 import { rebuildWebDriverAgent } from "@/features/devices/wda-setup";
-import { SidebarToggle } from "@/features/settings/sidebar-toggle";
 import { RunControls } from "@/features/test-cases/run-controls";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
 import { toast } from "@heroui/react";
@@ -189,8 +188,7 @@ export function SessionBar() {
 	};
 
 	return (
-		<header className="relative z-40 flex min-h-[76px] w-full shrink-0 flex-wrap items-center justify-end gap-x-4 gap-y-3 rounded-[var(--radius-platform)] bg-surface-container-lowest/90 px-6 py-3 shadow-soft backdrop-blur-md">
-			<SidebarToggle />
+		<header className="relative z-40 flex h-[52px] w-full shrink-0 items-center gap-3 rounded-2xl border border-outline-variant bg-surface-container-lowest pr-3 pl-5">
 			<SessionBarTitle />
 			<SessionToolbar
 				platform={platform}

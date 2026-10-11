@@ -27,9 +27,9 @@ const STATUS_TONE = {
 } as const;
 
 const ICON_BTN =
-	"inline-flex size-10 items-center justify-center rounded-[10px] border border-outline-variant bg-surface-bright text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
+	"inline-flex size-10 items-center justify-center rounded-[var(--radius)] border border-outline-variant bg-surface-bright text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
 const TEXT_BTN =
-	"inline-flex min-h-10 items-center gap-1.5 rounded-[10px] border border-outline-variant bg-surface-bright px-3 text-body-md font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
+	"inline-flex min-h-10 items-center gap-1.5 rounded-[var(--radius)] border border-outline-variant bg-surface-bright px-3 text-body-md font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50";
 
 function ButtonIcon({
 	children,
@@ -113,7 +113,7 @@ export function ScriptPanel({
 	return (
 		<section
 			aria-labelledby="inspector-script-heading"
-			className="flex min-w-0 flex-col rounded-[18px] border border-outline-variant bg-surface-bright"
+			className="flex min-w-0 flex-col rounded-[var(--radius)] border border-outline-variant bg-surface-bright"
 		>
 			<div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant px-4 py-3.5">
 				<div className="flex items-center gap-3">
@@ -145,7 +145,7 @@ export function ScriptPanel({
 				{running ? (
 					<button
 						type="button"
-						className="inline-flex min-h-10 items-center gap-2 rounded-[10px] bg-error px-4 text-body-md font-semibold text-on-error"
+						className="inline-flex min-h-10 items-center gap-2 rounded-[var(--radius)] bg-error px-4 text-body-md font-semibold text-on-error"
 						onClick={onStop}
 					>
 						<ButtonIcon className="size-3.5">
@@ -157,7 +157,7 @@ export function ScriptPanel({
 					<button
 						type="button"
 						disabled={!canRun}
-						className="inline-flex min-h-10 items-center gap-2 rounded-[10px] bg-primary px-4 text-body-md font-semibold text-on-primary transition-opacity disabled:opacity-50"
+						className="inline-flex min-h-10 items-center gap-2 rounded-[var(--radius)] bg-primary px-4 text-body-md font-semibold text-on-primary transition-opacity disabled:opacity-50"
 						onClick={onRun}
 					>
 						<svg aria-hidden="true" className="size-3.5" fill="currentColor" viewBox="0 0 24 24">
@@ -208,7 +208,7 @@ export function ScriptPanel({
 								))}
 								<div
 									className={[
-										"flex min-h-11 items-center gap-3 rounded-[10px] px-2 text-body-md transition-colors",
+										"flex min-h-11 items-center gap-3 rounded-[var(--radius)] px-2 text-body-md transition-colors",
 										step.status === "running"
 											? "bg-violet-container/60"
 											: "hover:bg-surface-container-low",
@@ -380,7 +380,7 @@ export function ScriptPanel({
 					<button
 						type="button"
 						disabled={running || !canSaveAsCase}
-						className="inline-flex min-h-10 items-center gap-2 rounded-[10px] bg-violet px-4 text-body-md font-semibold text-on-violet transition-opacity disabled:opacity-50"
+						className="inline-flex min-h-10 items-center gap-2 rounded-[var(--radius)] bg-violet px-4 text-body-md font-semibold text-on-violet transition-opacity disabled:opacity-50"
 						onClick={onSaveAsCase}
 					>
 						<ButtonIcon>
