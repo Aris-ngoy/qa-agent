@@ -23,6 +23,14 @@ const COMMAND_TIMEOUT_MS = 10_000;
  */
 const SNAPSHOT_TIMEOUT_MS = 30_000;
 
+/**
+ * Opening a tunnel runs a fresh usbmuxd `ListDevices` + `Connect`. With the inspector's frame loop
+ * and tree reads going at once, usbmuxd can briefly fail one of them while the cable is fine, and
+ * one miss would end the whole Device Session. Nothing has been sent yet, so retrying is safe.
+ */
+const TUNNEL_ATTEMPTS = 4;
+const TUNNEL_RETRY_MS = 150;
+
 /** How often a lost reply's `status` is asked again while the gesture is still running. */
 const PENDING_POLL_MS = 100;
 
@@ -134,10 +142,11 @@ function httpBody(raw: Buffer): string | null {
 
 export function createYoqaRunnerLink(
 	openTunnel: OpenRunnerTunnel,
-	options: { timeoutMs?: number; snapshotTimeoutMs?: number } = {},
+	options: { timeoutMs?: number; snapshotTimeoutMs?: number; tunnelRetryMs?: number } = {},
 ): YoqaRunnerLink {
 	const timeoutMs = options.timeoutMs ?? COMMAND_TIMEOUT_MS;
 	const snapshotTimeoutMs = options.snapshotTimeoutMs ?? SNAPSHOT_TIMEOUT_MS;
+	const tunnelRetryMs = options.tunnelRetryMs ?? TUNNEL_RETRY_MS;
 	const timeoutFor = (command: string) => (command === "snapshot" ? snapshotTimeoutMs : timeoutMs);
 
 	/** One request over a fresh tunnel. `sent` tells a lost reply from a tunnel that never opened. */
@@ -152,11 +161,16 @@ export function createYoqaRunnerLink(
 			payload,
 		].join("\r\n");
 
-		let tunnel: Duplex;
-		try {
-			tunnel = await openTunnel();
-		} catch (error) {
-			throw new YoqaRunnerUnreachableError(`Cannot reach YoqaRunner: ${errorMessage(error)}`);
+		let tunnel: Duplex | undefined;
+		for (let attempt = 1; !tunnel; attempt++) {
+			try {
+				tunnel = await openTunnel();
+			} catch (error) {
+				if (attempt >= TUNNEL_ATTEMPTS) {
+					throw new YoqaRunnerUnreachableError(`Cannot reach YoqaRunner: ${errorMessage(error)}`);
+				}
+				await Bun.sleep(tunnelRetryMs * attempt);
+			}
 		}
 		sent.value = true;
 		try {
