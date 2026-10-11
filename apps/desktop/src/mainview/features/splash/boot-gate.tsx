@@ -42,29 +42,29 @@ function SplashScreen({ phase, message, onRetry }: SplashScreenProps) {
 	const isError = phase === "error";
 
 	return (
-		<div className="electrobun-webkit-app-region-drag flex h-full min-h-0 flex-col bg-[#14131c] px-8 pt-12 pb-8 text-white">
+		<div className="electrobun-webkit-app-region-drag flex h-full min-h-0 flex-col bg-splash px-8 pt-12 pb-8 text-on-splash">
 			<div className="flex flex-1 flex-col items-center justify-center">
 				<div className="flex w-full max-w-[280px] flex-col items-center">
 					<YoqaMark className={phase === "ready" ? "mb-5 motion-fade-in" : "mb-5"} />
-					<p className="text-center text-body-md text-[#8a8792]">Local QA host · Workspace</p>
+					<p className="text-center text-body-md text-splash-muted">Local QA host · Workspace</p>
 
 					<div className="mt-11 w-full max-w-[160px]">
 						<div
 							aria-valuemax={100}
 							aria-valuemin={0}
 							aria-valuenow={progress}
-							className="h-1 w-full overflow-hidden rounded-sm bg-[#2a2836]"
+							className="h-1 w-full overflow-hidden rounded-sm bg-splash-track"
 							role="progressbar"
 							tabIndex={-1}
 						>
 							<div
-								className="h-full rounded-sm bg-[#e3dbf7] transition-[width] duration-500 ease-out"
+								className="h-full rounded-sm bg-splash-accent transition-[width] duration-500 ease-out"
 								style={{ width: `${progress}%` }}
 							/>
 						</div>
 						<p
 							className={`mt-3.5 text-center text-body-sm ${
-								isError ? "text-danger" : "text-[#7d7889]"
+								isError ? "text-danger" : "text-splash-subtle"
 							}`}
 						>
 							{statusText}
@@ -74,7 +74,7 @@ function SplashScreen({ phase, message, onRetry }: SplashScreenProps) {
 					{isError ? (
 						<div className="electrobun-webkit-app-region-no-drag mt-6 flex flex-col items-center">
 							<Button
-								className="rounded-full bg-[#e3dbf7] text-[#14131c]"
+								className="rounded-full bg-splash-accent text-splash"
 								onPress={onRetry}
 								variant="primary"
 							>
@@ -85,7 +85,7 @@ function SplashScreen({ phase, message, onRetry }: SplashScreenProps) {
 				</div>
 			</div>
 
-			<p className="text-center text-helper text-[#5c5865]">Phase 1 · local only</p>
+			<p className="text-center text-helper text-splash-faint">Phase 1 · local only</p>
 		</div>
 	);
 }

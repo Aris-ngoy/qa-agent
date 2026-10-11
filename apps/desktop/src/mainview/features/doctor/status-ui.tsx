@@ -14,13 +14,13 @@ export function doctorStatusPillClass(status: DoctorCheckStatus): string {
 	if (status === "fail") {
 		return "bg-error-container text-on-error-container";
 	}
-	return "bg-amber-100 text-amber-900";
+	return "bg-warning-container text-on-warning-container";
 }
 
 export function doctorStatusDotClass(status: DoctorCheckStatus): string {
 	if (status === "pass") return "bg-secondary";
 	if (status === "fail") return "bg-error";
-	return "bg-amber-500";
+	return "bg-warning";
 }
 
 /** Soft row tint behind each check. */
@@ -31,7 +31,7 @@ export function doctorStatusRowClass(status: DoctorCheckStatus): string {
 	if (status === "fail") {
 		return "border border-error/30 bg-error-container/60";
 	}
-	return "border border-amber-300/80 bg-amber-50";
+	return "border border-warning/40 bg-warning-container/50";
 }
 
 export function doctorStepSeverityClass(severity: "error" | "warn" | "info"): string {
@@ -39,7 +39,7 @@ export function doctorStepSeverityClass(severity: "error" | "warn" | "info"): st
 		return "border border-error/30 bg-error-container/60";
 	}
 	if (severity === "warn") {
-		return "border border-amber-300/80 bg-amber-50";
+		return "border border-warning/40 bg-warning-container/50";
 	}
 	return "border border-secondary/25 bg-secondary-container/50";
 }
@@ -49,7 +49,7 @@ export function doctorStepSeverityPillClass(severity: "error" | "warn" | "info")
 		return "bg-error-container text-on-error-container";
 	}
 	if (severity === "warn") {
-		return "bg-amber-100 text-amber-900";
+		return "bg-warning-container text-on-warning-container";
 	}
 	return "bg-secondary-container text-on-secondary-container";
 }

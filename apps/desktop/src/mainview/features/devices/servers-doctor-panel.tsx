@@ -340,7 +340,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 												? "bg-secondary-container/70 text-on-secondary-container"
 												: failingCount > 0
 													? "bg-error-container/70 text-on-error-container"
-													: "bg-amber-100 text-amber-900",
+													: "bg-warning-container text-on-warning-container",
 										].join(" ")}
 									>
 										{doctorQuery.data.ok
