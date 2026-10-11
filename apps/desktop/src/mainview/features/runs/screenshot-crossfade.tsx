@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
-const IMAGE_CLASS =
-	"max-h-[min(70vh,40rem)] w-auto max-w-full rounded-2xl object-contain shadow-card lg:max-h-full";
+const IMAGE_CLASS = "h-full w-full object-contain";
 
 /** Matches `--motion-slow`; the swap only drops the old image after the fade has run. */
 const SWAP_MS = 400;
@@ -27,14 +26,14 @@ export function ScreenshotCrossfade({ src, alt }: { src: string; alt: string }) 
 	}, [incoming]);
 
 	return (
-		<div className="motion-fade-in relative flex h-full min-h-0 w-full items-start justify-center">
+		<div className="motion-fade-in relative h-full min-h-0 w-full">
 			<img alt={alt} className={IMAGE_CLASS} src={base} />
 			{incoming && incoming.src !== base ? (
 				<img
 					alt={alt}
 					className={[
 						IMAGE_CLASS,
-						"pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 transition-opacity duration-[var(--motion-slow)]",
+						"pointer-events-none absolute inset-0 transition-opacity duration-[var(--motion-slow)]",
 						incoming.loaded ? "opacity-100" : "opacity-0",
 					].join(" ")}
 					key={incoming.src}

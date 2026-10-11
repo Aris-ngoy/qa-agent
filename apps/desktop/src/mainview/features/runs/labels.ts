@@ -140,6 +140,54 @@ export function formatRunDeviceLines(
 	};
 }
 
+/** Wall-clock length of a run, as on the details artboard (`38s`, `1m 30s`). */
+export function formatRunDuration(ms: number): string {
+	const totalSeconds = Math.max(0, Math.round(ms / 1000));
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	if (hours > 0) {
+		const parts = [`${hours}h`];
+		if (minutes > 0) parts.push(`${minutes}m`);
+		if (seconds > 0) parts.push(`${seconds}s`);
+		return parts.join(" ");
+	}
+	if (minutes === 0) return `${seconds}s`;
+	if (seconds === 0) return `${minutes}m`;
+	return `${minutes}m ${seconds}s`;
+}
+
+function formatRunStepCount(count: number): string {
+	return count === 1 ? "1 step" : `${count} steps`;
+}
+
+/**
+ * The mono line under a run's title: model, OS, the full device id, when it
+ * ran, how many steps, and how long. Duration is omitted when unknown.
+ */
+export function formatRunDetailMeta(input: {
+	device: Device | undefined;
+	fallback: { deviceId: string; platform: Run["platform"] };
+	at: number;
+	stepCount: number;
+	durationMs: number | null;
+	locale?: string;
+	timeZone?: string;
+}): string {
+	const os = platformLabel(input.fallback.platform);
+	const model = input.device?.model?.trim();
+	const identity = input.device
+		? [model || input.device.name, `${os} ${input.device.osVersion}`, input.fallback.deviceId]
+		: [os, input.fallback.deviceId];
+	const parts = [
+		...identity,
+		formatRunListDate(input.at, input.locale, input.timeZone),
+		formatRunStepCount(input.stepCount),
+	];
+	if (input.durationMs != null) parts.push(formatRunDuration(input.durationMs));
+	return parts.join(" · ");
+}
+
 /** Right-hand caption on the list: today plus the connected device. Absent without one. */
 export function formatRunContextCaption(device: Device | undefined): string | null {
 	if (!device) return null;
