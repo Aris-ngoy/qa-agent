@@ -14,6 +14,8 @@ on:
   pull_request:
     paths:
       - examples/expo-demo/**
+      - native/yoqa-sim/**
+      - native/yoqa-ax/**
       - packages/cli/**
       - packages/runner-client/**
       - services/runner/**
@@ -22,6 +24,8 @@ on:
     branches: [main]
     paths:
       - examples/expo-demo/**
+      - native/yoqa-sim/**
+      - native/yoqa-ax/**
       - packages/cli/**
       - packages/runner-client/**
       - services/runner/**
@@ -108,9 +112,32 @@ jobs:
       - name: Install idb
         run: bash examples/expo-demo/yoqa/install-idb.sh
 
+      # The simulator Direct default is yoqa-sim (frames, input) + yoqa-ax (the tree, from
+      # inside the simulator). Without them the lane falls back to idb, whose describe-all
+      # can't find the frontmost app on this runner. The bin paths go to the runner's env,
+      # so this must run before it starts.
+      - name: Build yoqa-sim and yoqa-ax
+        run: |
+          (cd native/yoqa-sim && xcrun swift build -c release)
+          sim_bin="$(cd native/yoqa-sim && xcrun swift build -c release --show-bin-path)/yoqa-sim"
+          ax_args=(-c release --triple "$(uname -m)-apple-ios17.0-simulator" --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)")
+          (cd native/yoqa-ax && xcrun swift build "${ax_args[@]}")
+          ax_bin="$(cd native/yoqa-ax && xcrun swift build "${ax_args[@]}" --show-bin-path)/yoqa-ax"
+          test -x "$sim_bin" && test -x "$ax_bin"
+          echo "YOQA_SIM_BIN=$sim_bin" >> "$GITHUB_ENV"
+          echo "YOQA_AX_BIN=$ax_bin" >> "$GITHUB_ENV"
+
+      # Start the runner ourselves so its log lands in the failure artifacts.
       - name: Start Yoqa runner
         run: |
-          yoqa health
+          mkdir -p artifacts
+          nohup yoqa serve >artifacts/runner.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:7420/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat artifacts/runner.log
+          exit 1
 
       - name: Boot iPhone simulator
         id: sim
@@ -210,9 +237,8 @@ jobs:
 
   android:
     # First green on 2026-09-26 (run 36200906689), after `Setup Android SDK`
-    # stopped installing the retired `tools` package. Not reliable yet: 1 of the
-    # 2 runs carrying that fix failed the smoke step on a Pixel Launcher ANR
-    # dialog, so read red here as flake until shown otherwise. See #147.
+    # stopped installing the retired `tools` package. A Pixel Launcher ANR dialog
+    # used to cover the demo now and then; ci-android.sh now hides error dialogs. See #147.
     name: Android Emulator
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'both' || github.event.inputs.platform == 'android'
     runs-on: ubuntu-latest
@@ -283,9 +309,17 @@ jobs:
         working-directory: examples/expo-demo
         run: npm ci
 
+      # Start the runner ourselves so its log lands in the failure artifacts.
       - name: Start Yoqa runner
         run: |
-          yoqa health
+          mkdir -p artifacts
+          nohup yoqa serve >artifacts/runner.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:7420/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat artifacts/runner.log
+          exit 1
 
       - name: Build Android .apk (cache miss)
         if: steps.demo-apk.outputs.cache-hit != 'true'

@@ -42,6 +42,11 @@ capture_failure() {
 
 trap capture_failure ERR
 
+# A cold CI emulator often has Pixel Launcher hit an ANR, and its dialog can cover the demo
+# mid-run, after the wait loop below has seen the app. Hide error dialogs for the whole run
+# (the system then closes the stuck app instead of asking).
+adb -s "$SERIAL" shell settings put global hide_error_dialogs 1 || true
+
 if [ -n "${YOQA_DEMO_APK:-}" ]; then
 	if [ ! -f "$YOQA_DEMO_APK" ]; then
 		echo "Cached APK not found: ${YOQA_DEMO_APK}" >&2
