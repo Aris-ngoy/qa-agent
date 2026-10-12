@@ -18,11 +18,13 @@ export default {
 			"dist/assets/": "views/mainview/assets/",
 			"resources/runner/yoqa-runner": "runner/yoqa-runner",
 			"resources/runner/yoqa": "runner/yoqa",
+			"resources/runner/yoqa-runner-src.tar.gz": "runner/yoqa-runner-src.tar.gz",
 			"resources/skills/yoqa-testing.tar.gz": "skills/yoqa-testing.tar.gz",
 		},
 		asarUnpack: [
 			"runner/yoqa-runner",
 			"runner/yoqa",
+			"runner/yoqa-runner-src.tar.gz",
 			"skills/yoqa-testing.tar.gz",
 			"*.node",
 			"*.dll",

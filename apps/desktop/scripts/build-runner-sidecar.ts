@@ -3,6 +3,8 @@
  * - Hono runner sidecar (`yoqa-runner`)
  * - CLI binary (`yoqa`)
  * - Agent skill archive (`yoqa-testing.tar.gz`)
+ * - YoqaRunner source archive (`yoqa-runner-src.tar.gz`): the runner builds the iPhone
+ *   XCUITest runner from it, since a compiled binary cannot reach `native/yoqa-runner`
  *
  * Invoked via electrobun `scripts.preBuild` (cwd = apps/desktop).
  *
@@ -25,6 +27,10 @@ const runnerOutfile = join(outDir, "yoqa-runner");
 const cliOutfile = join(outDir, "yoqa");
 const skillSourceDir = join(repoRoot, "packages/skill/yoqa-testing");
 const skillArchive = join(skillsOutDir, "yoqa-testing.tar.gz");
+const yoqaRunnerSourceDir = join(repoRoot, "native/yoqa-runner");
+const yoqaRunnerArchive = join(outDir, "yoqa-runner-src.tar.gz");
+/** What `xcodebuild build-for-testing` needs; SwiftPM tests and state stay behind. */
+const yoqaRunnerEntries = ["YoqaRunner", "YoqaRunnerUITests", "Sources", "YoqaRunner.xcodeproj"];
 
 async function compileBinary(
 	entry: string,
@@ -89,6 +95,33 @@ if (tarCode !== 0) {
 }
 if (!(await Bun.file(skillArchive).exists())) {
 	throw new Error(`Skill archive missing after pack: ${skillArchive}`);
+}
+
+await rm(yoqaRunnerArchive, { force: true });
+console.log(`[yoqa desktop] packing YoqaRunner source → ${yoqaRunnerArchive}`);
+const runnerTar = Bun.spawn(
+	[
+		"tar",
+		"-czf",
+		yoqaRunnerArchive,
+		"--exclude",
+		"xcuserdata",
+		"--exclude",
+		".DS_Store",
+		"-C",
+		yoqaRunnerSourceDir,
+		...yoqaRunnerEntries,
+	],
+	{
+		stdout: "inherit",
+		stderr: "inherit",
+		stdin: "ignore",
+		env: { ...process.env, COPYFILE_DISABLE: "1" },
+	},
+);
+const runnerTarCode = await runnerTar.exited;
+if (runnerTarCode !== 0) {
+	throw new Error(`YoqaRunner source pack failed (exit ${runnerTarCode})`);
 }
 
 console.log(`[yoqa desktop] packaged resources ready (${dirname(runnerOutfile)})`);
