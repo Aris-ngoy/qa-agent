@@ -1,12 +1,5 @@
 import { integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-/** Appium capability row stored as JSON on apps/cases. */
-export type CapabilityRow = {
-	id: string;
-	key: string;
-	value: string;
-};
-
 export const apps = sqliteTable(
 	"apps",
 	{
@@ -19,7 +12,7 @@ export const apps = sqliteTable(
 		iosBundleId: text("ios_bundle_id").notNull().default(""),
 		iosAppStoreId: text("ios_app_store_id").notNull().default(""),
 		androidApplicationId: text("android_application_id").notNull().default(""),
-		/** JSON array of CapabilityRow */
+		/** Legacy JSON. Catalog reads ignore it; an App does not carry capabilities. */
 		appiumCaps: text("appium_caps").notNull().default("[]"),
 		createdAt: integer("created_at").notNull(),
 		updatedAt: integer("updated_at").notNull(),
@@ -58,7 +51,7 @@ export const cases = sqliteTable("cases", {
 		.references(() => apps.id, { onDelete: "cascade" }),
 	number: integer("number").notNull(),
 	title: text("title").notNull(),
-	/** JSON array of CapabilityRow */
+	/** Legacy JSON. Catalog reads ignore it; a Test Case does not carry capabilities. */
 	appiumCaps: text("appium_caps").notNull().default("[]"),
 	/** 1 when every run of this case records a screen video. */
 	recordVideo: integer("record_video").notNull().default(0),

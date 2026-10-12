@@ -33,12 +33,6 @@ import {
 
 type DetailTab = "instructions" | "configuration" | "script";
 
-type Capability = {
-	id: string;
-	key: string;
-	value: string;
-};
-
 type GalleryImage = {
 	id: string;
 	name: string;
@@ -48,7 +42,6 @@ type FormValues = {
 	name: string;
 	tags: string[];
 	flows: TestFlow[];
-	capabilities: Capability[];
 	recordVideo: boolean;
 	galleryImages: GalleryImage[];
 	locale: string | null;
@@ -149,7 +142,6 @@ function formFromCase(testCase: TestCase): FormValues {
 		name: testCase.name,
 		tags: [...testCase.tags],
 		flows: testCase.flows.map((flow) => ({ ...flow })),
-		capabilities: testCase.capabilities.map((cap) => ({ ...cap })),
 		recordVideo: testCase.recordVideo,
 		galleryImages: [],
 		locale: null,
@@ -466,15 +458,6 @@ function ConfigurationPanel({
 }) {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const galleryImages = useWatch({ control, name: "galleryImages" }) ?? [];
-	const {
-		fields: capabilityFields,
-		append,
-		remove,
-	} = useFieldArray({
-		control,
-		name: "capabilities",
-		keyName: "fieldId",
-	});
 
 	return (
 		<div className="flex w-full max-w-2xl flex-col gap-5">
@@ -500,60 +483,6 @@ function ConfigurationPanel({
 						</Switch>
 					)}
 				/>
-			</section>
-
-			<section className={configCardClass}>
-				<div className="mb-5">
-					<h2 className="mb-1.5 text-headline-md text-on-surface">Appium Capabilities</h2>
-					<p className="text-body-md text-on-surface-variant">
-						Custom capabilities passed to the driver. Overrides app-level capabilities.
-					</p>
-				</div>
-
-				{capabilityFields.length > 0 ? (
-					<ul className="mb-4 flex list-none flex-col gap-3 p-0">
-						{capabilityFields.map((cap, index) => (
-							<li className="flex items-start gap-2" key={cap.fieldId}>
-								<RhfTextField
-									aria-label="Capability key"
-									className="min-w-0 flex-1"
-									control={control}
-									inputClassName={fieldInputClass}
-									name={`capabilities.${index}.key`}
-									placeholder="appium:autoLaunch"
-								/>
-								<RhfTextField
-									aria-label="Capability value"
-									className="min-w-0 flex-1"
-									control={control}
-									inputClassName={fieldInputClass}
-									name={`capabilities.${index}.value`}
-									placeholder="false"
-								/>
-								<Button
-									aria-label="Remove capability"
-									className="size-10 min-w-10 shrink-0 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
-									onPress={() => remove(index)}
-									type="button"
-									variant="ghost"
-								>
-									<TrashIcon />
-								</Button>
-							</li>
-						))}
-					</ul>
-				) : null}
-
-				<button
-					className={softButtonClass}
-					onClick={() => append({ id: `cap_${crypto.randomUUID()}`, key: "", value: "" })}
-					type="button"
-				>
-					<svg aria-hidden="true" className="size-[18px]" fill="currentColor" viewBox="0 0 20 20">
-						<path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
-					</svg>
-					Add capability
-				</button>
 			</section>
 
 			<section className={configCardClass}>
@@ -1242,7 +1171,6 @@ const emptyDefaults: FormValues = {
 	name: "",
 	tags: [],
 	flows: [],
-	capabilities: [],
 	recordVideo: false,
 	galleryImages: [],
 	locale: null,
@@ -1303,9 +1231,6 @@ export function TestCaseDetailPage() {
 						expectedResult: flow.expectedResult,
 						flowId: flow.flowId ?? null,
 					})),
-					capabilities: next.capabilities
-						.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
-						.filter((cap) => cap.key.length > 0),
 					recordVideo: next.recordVideo,
 				}),
 			);
@@ -1343,9 +1268,6 @@ export function TestCaseDetailPage() {
 						instructions: flow.instructions,
 						expectedResult: flow.expectedResult,
 					})),
-					capabilities: form.capabilities
-						.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
-						.filter((cap) => cap.key.length > 0),
 					recordVideo: form.recordVideo,
 				}),
 			);
@@ -1424,9 +1346,6 @@ export function TestCaseDetailPage() {
 		saveMutation.mutate({
 			...values,
 			name: values.name.trim(),
-			capabilities: values.capabilities
-				.map((cap) => ({ ...cap, key: cap.key.trim(), value: cap.value.trim() }))
-				.filter((cap) => cap.key.length > 0),
 		});
 	};
 
