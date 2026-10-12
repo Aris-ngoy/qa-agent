@@ -9,7 +9,7 @@ Use `react-hook-form` for every data-entry form in the desktop app, replacing ha
 - Install `react-hook-form` in `@yoqa/desktop` only.
 - Bind HeroUI `TextField` / `Select` via thin `Controller` wrappers (`RhfTextField`, `RhfSelectField`).
 - Keep validation as RHF `rules` (trim/required/step guards). No Zod / `@hookform/resolvers` in the UI — Zod stays API-only in `@yoqa/runner-client`.
-- Use `useFieldArray` for dynamic rows (capabilities, env vars, flows).
+- Use `useFieldArray` for dynamic rows (flows).
 - Leave search filters, device-run selects, and settings toolchain preference `Select`s as local state (not submit forms).
 
 ## What shipped
@@ -34,8 +34,8 @@ Patterns:
 
 1. `cd apps/desktop && bun run check`
 2. Create an app (modal); confirm empty name disables Create and Enter submits when valid
-3. Edit app settings (name/context/caps); Save enables only when dirty
-4. Edit a test case (flows, tags, capabilities, locale); Save / duplicate still work
+3. Edit app settings (name, context, identifiers); Save enables only when dirty
+4. Edit a test case (flows, tags, record video); Save / duplicate still work
 5. Add a provider through the wizard; edit an existing provider and Save
 
 ## Follow-ups
