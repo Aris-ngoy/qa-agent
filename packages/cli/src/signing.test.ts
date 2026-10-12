@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { Device, IosSigningStatus } from "@yoqa/runner-client";
-import { formatSigningCheck, formatSigningStatus, pickCheckDevice } from "./signing";
+import {
+	formatDeveloperNotTrusted,
+	formatSigningCheck,
+	formatSigningStatus,
+	pickCheckDevice,
+} from "./signing";
 
 const status: IosSigningStatus = {
 	team: "T4L8PFGHBJ",
@@ -109,5 +114,23 @@ describe("pickCheckDevice", () => {
 		expect(() => pickCheckDevice(undefined, [phone("U1"), phone("U2")])).toThrow(
 			/Several iPhones.*\n {2}U1/,
 		);
+	});
+});
+
+describe("formatDeveloperNotTrusted", () => {
+	test("says what to tap on the phone and how to connect again", () => {
+		const text = formatDeveloperNotTrusted(
+			{
+				error: "Developer not trusted on the iPhone",
+				code: "DEVELOPER_NOT_TRUSTED",
+				detail: "…",
+				team: "T4L8PFGHBJ",
+				certificate: "Apple Development: a@b.c (63L33U439U)",
+			},
+			"yoqa devices connect U1 --platform ios",
+		);
+		expect(text).toContain("YoqaRunner is installed");
+		expect(text).toContain("2. Under Developer App, tap Apple Development: a@b.c (63L33U439U)");
+		expect(text).toContain("Then connect again: yoqa devices connect U1 --platform ios");
 	});
 });

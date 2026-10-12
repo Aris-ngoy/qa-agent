@@ -19,6 +19,7 @@ import {
 	readSavedTeam,
 	resolveSigningTeam,
 	saveTeam,
+	xcodeTeams,
 	yoqaRunnerDeps,
 } from "./yoqa-runner";
 
@@ -28,46 +29,6 @@ export class InvalidTeamIdError extends Error {
 		super(`"${value}" is not an Apple team ID (ten letters and digits, e.g. T4L8PFGHBJ)`);
 		this.name = "InvalidTeamIdError";
 	}
-}
-
-type XcodeTeam = { id: string; name: string | null; personal: boolean | null };
-
-/**
- * Teams from Xcode › Settings › Accounts: `IDEProvisioningTeamByIdentifier` in Xcode's defaults,
- * `{ accountId: [{ teamID, teamName, isFreeProvisioningTeam }] }`. Empty when Xcode has none.
- */
-export function parseXcodeTeams(json: string): XcodeTeam[] {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(json);
-	} catch {
-		return [];
-	}
-	if (!parsed || typeof parsed !== "object") return [];
-	const teams = new Map<string, XcodeTeam>();
-	for (const account of Object.values(parsed)) {
-		if (!Array.isArray(account)) continue;
-		for (const entry of account) {
-			const id = normalizeTeamId(entry?.teamID);
-			if (!id || teams.has(id)) continue;
-			teams.set(id, {
-				id,
-				name: typeof entry.teamName === "string" ? entry.teamName : null,
-				personal:
-					typeof entry.isFreeProvisioningTeam === "boolean" ? entry.isFreeProvisioningTeam : null,
-			});
-		}
-	}
-	return [...teams.values()];
-}
-
-async function xcodeTeams(deps: YoqaRunnerDeps): Promise<XcodeTeam[]> {
-	const result = await deps.exec([
-		"sh",
-		"-c",
-		"defaults export com.apple.dt.Xcode - | plutil -extract IDEProvisioningTeamByIdentifier json -o - -",
-	]);
-	return result.exitCode === 0 ? parseXcodeTeams(result.stdout) : [];
 }
 
 /** Which team signs, where it came from, and every team this Mac can sign with. */

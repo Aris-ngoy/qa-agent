@@ -18,6 +18,7 @@ import {
 import { SessionRunChip } from "@/features/devices/session-run-chip";
 import { connectedToastMessage } from "@/features/devices/session-status";
 import { SessionToolbar } from "@/features/devices/session-toolbar";
+import { TrustDeveloperDialog } from "@/features/devices/trust-developer-dialog";
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
@@ -28,7 +29,12 @@ import { useTestCaseSelection } from "@/features/test-cases/selection-context";
 import { toast } from "@heroui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
-import type { ActiveDeviceResponse, LaneName } from "@yoqa/runner-client";
+import {
+	type ActiveDeviceResponse,
+	type DeveloperNotTrusted,
+	type LaneName,
+	developerNotTrusted,
+} from "@yoqa/runner-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -48,6 +54,11 @@ export function SessionBar() {
 	const [platform, setPlatform] = useState<DevicePlatform>(remembered?.platform ?? "ios");
 	const [device, setDevice] = useState<SelectedDevice | null>(null);
 	const [connecting, setConnecting] = useState(false);
+	/** A Personal Team's runner is installed but not trusted on the iPhone: the trust steps. */
+	const [untrusted, setUntrusted] = useState<{
+		info: DeveloperNotTrusted;
+		target: Pick<SelectedDevice, "id" | "platform">;
+	} | null>(null);
 	/** The remembered device is offered once, at launch; a session or a pick replaces it. */
 	const rememberedPendingRef = useRef(remembered != null);
 
@@ -118,12 +129,48 @@ export function SessionBar() {
 		[invalidateActiveDeviceSession, queryClient, selectedApp],
 	);
 
+	/** A connect error: the trust steps when the iPhone must trust the developer, else a toast. */
+	const reportConnectError = (
+		error: unknown,
+		target: Pick<SelectedDevice, "id" | "platform">,
+		fallback: string,
+	) => {
+		const info = developerNotTrusted(error);
+		if (info) {
+			setUntrusted({ info, target });
+			return;
+		}
+		showErrorToast(error, fallback);
+	};
+
 	const handleConnect = async () => {
 		if (!device) return;
 		try {
 			const info = await connectDevice(device);
 			toast.success(connectedToastMessage(info));
 		} catch (error) {
+			reportConnectError(error, device, "Failed to connect device");
+		}
+	};
+
+	/** After the user trusted the developer: connect again; the build is reused, so it only launches. */
+	const handleTrustedReconnect = async () => {
+		if (!untrusted) return;
+		try {
+			const info = await connectDevice(untrusted.target);
+			setUntrusted(null);
+			toast.success(connectedToastMessage(info));
+		} catch (error) {
+			if (developerNotTrusted(error)) {
+				showErrorToast(
+					new Error(
+						"The iPhone still does not trust the developer. Check the steps, then try again.",
+					),
+					"Still not trusted",
+				);
+				return;
+			}
+			setUntrusted(null);
 			showErrorToast(error, "Failed to connect device");
 		}
 	};
@@ -149,7 +196,7 @@ export function SessionBar() {
 			toast.success("Session restarted");
 		} catch (error) {
 			invalidateActiveDeviceSession();
-			showErrorToast(error, "Failed to restart session");
+			reportConnectError(error, target, "Failed to restart session");
 		} finally {
 			setConnecting(false);
 		}
@@ -202,6 +249,14 @@ export function SessionBar() {
 			{showRun && !activeSession?.heldByRun ? (
 				<RunControls connectDevice={connectDevice} connecting={connecting} device={device} />
 			) : null}
+			<TrustDeveloperDialog
+				onClose={() => setUntrusted(null)}
+				onReconnect={() => {
+					void handleTrustedReconnect();
+				}}
+				reconnecting={connecting}
+				untrusted={untrusted?.info ?? null}
+			/>
 		</header>
 	);
 }

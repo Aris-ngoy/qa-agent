@@ -25,8 +25,9 @@ export class DirectLaneStartError extends Error {
 	constructor(
 		message: string,
 		readonly warnings: string[],
+		options?: ErrorOptions,
 	) {
-		super(message);
+		super(message, options);
 		this.name = "DirectLaneStartError";
 	}
 }
@@ -65,7 +66,7 @@ export function createDirectLane(
 				}
 			}
 		}
-		throw new DirectLaneStartError(errorMessage(lastError), warnings);
+		throw new DirectLaneStartError(errorMessage(lastError), warnings, { cause: lastError });
 	};
 }
 

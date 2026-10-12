@@ -5,6 +5,7 @@ import { appendFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	DeveloperNotTrustedError,
 	type RunnerProcess,
 	type YoqaRunnerDeps,
 	YoqaRunnerError,
@@ -46,6 +47,8 @@ function fakeMac() {
 		buildFailure: null as string | null,
 		resignFailure: false,
 		hostIcon: true,
+		/** `IDEProvisioningTeamByIdentifier` from Xcode's defaults, as JSON; null when Xcode has none. */
+		xcodeTeams: null as string | null,
 		builds: [] as Array<{ team?: string; udid?: string }>,
 		resigns: [] as string[][],
 	};
@@ -62,6 +65,7 @@ function fakeMac() {
 			return ok(profilePlist(profile.expires, profile.devices));
 		}
 		if (tool === "xcodebuild" && args[0] === "-version") return ok(mac.xcodeVersion);
+		if (tool === "sh" && mac.xcodeTeams !== null) return ok(mac.xcodeTeams);
 		if (tool === "plutil" && args[0] === "-extract") return ok(HOST_ICONS);
 		if (tool === "plutil" && args[0] === "-insert") {
 			await appendFile(args.at(-1) ?? "", `\n${args[1]}=${args[3]}`);
@@ -316,6 +320,14 @@ describe("prepareYoqaRunner", () => {
 
 type Launch = { command: string[]; env: Record<string, string> };
 
+/** What xcodebuild 27 prints about a second in on a phone that does not trust the developer. */
+const UNTRUSTED_LAUNCH = `22:19:43.629 xcodebuild[15529:507058] Test operation failure: Error Domain=XCTHTestOperationCoordinatorErrorDomain Code=4 "Failed to install or launch the test runner" UserInfo={NSLocalizedDescription=Failed to install or launch the test runner, NSUnderlyingError=0x7901f62400 {Error Domain=IDELaunchCoreDevice Code=0 "The application could not be launched because the Developer App Certificate is not trusted." UserInfo={NSLocalizedRecoverySuggestion=Verify that the Developer App certificate for your account is trusted on your device. Open Settings on the device and navigate to General -> VPN & Device Management, then select your Developer App certificate to trust it.}}}`;
+
+/** Xcode's account list with one team, free or paid. */
+function xcodeTeam(teamID: string, isFreeProvisioningTeam: boolean): string {
+	return JSON.stringify({ account: [{ teamID, teamName: "Test Person", isFreeProvisioningTeam }] });
+}
+
 /**
  * `xcodebuild test-without-building` at what the Mac reads from it: its output, ending in the
  * runner's `YOQA_RUNNER_LISTENING port=N` (on `TEST_RUNNER_YOQA_RUNNER_PORT` when given), or
@@ -454,7 +466,7 @@ describe("startYoqaRunner", () => {
 		const { deps } = await setup();
 		// xcodebuild 27 prints this about a second in, then never exits.
 		const xcodebuild = fakeXcodebuildTest({
-			waiting: `22:19:43.629 xcodebuild[15529:507058] Test operation failure: Error Domain=XCTHTestOperationCoordinatorErrorDomain Code=4 "Failed to install or launch the test runner" UserInfo={NSLocalizedDescription=Failed to install or launch the test runner, NSUnderlyingError=0x7901f62400 {Error Domain=IDELaunchCoreDevice Code=0 "The application could not be launched because the Developer App Certificate is not trusted." UserInfo={NSLocalizedRecoverySuggestion=Verify that the Developer App certificate for your account is trusted on your device. Open Settings on the device and navigate to General -> VPN & Device Management, then select your Developer App certificate to trust it.}}}`,
+			waiting: UNTRUSTED_LAUNCH,
 		});
 		const started = Date.now();
 		const failure = startYoqaRunner(UDID, {
@@ -468,6 +480,33 @@ describe("startYoqaRunner", () => {
 		);
 		expect(Date.now() - started).toBeLessThan(1_000);
 		expect(xcodebuild.kills()).toBe(1);
+	});
+
+	test("on a free Personal Team, an untrusted developer asks the user to trust it and reconnect", async () => {
+		const { mac, deps } = await setup();
+		mac.xcodeTeams = xcodeTeam("NEWTEAM222", true);
+		const xcodebuild = fakeXcodebuildTest({ waiting: UNTRUSTED_LAUNCH });
+		const failure = startYoqaRunner(UDID, { ...deps, spawn: xcodebuild.spawn });
+		await expect(failure).rejects.toBeInstanceOf(DeveloperNotTrustedError);
+		await expect(failure).rejects.toMatchObject({
+			team: "NEWTEAM222",
+			certificate: "Apple Development: Test Person (NEWID22222)",
+			message: expect.stringMatching(
+				/installed on the iPhone.*VPN & Device Management, tap "Apple Development: Test Person \(NEWID22222\)" under Developer App, tap Trust, then connect again/,
+			),
+		});
+		expect(xcodebuild.kills()).toBe(1);
+	});
+
+	test("on a paid team, an untrusted developer is a plain failure", async () => {
+		const { mac, deps } = await setup();
+		mac.xcodeTeams = xcodeTeam("NEWTEAM222", false);
+		const failure = startYoqaRunner(UDID, {
+			...deps,
+			spawn: fakeXcodebuildTest({ waiting: UNTRUSTED_LAUNCH }).spawn,
+		});
+		await expect(failure).rejects.toThrow(/Trust the developer on the iPhone/);
+		await expect(failure).rejects.not.toBeInstanceOf(DeveloperNotTrustedError);
 	});
 
 	test("a phone that stays locked times out with the fix", async () => {

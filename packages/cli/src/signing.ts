@@ -1,4 +1,9 @@
-import type { Device, IosSigningCheckResponse, IosSigningStatus } from "@yoqa/runner-client";
+import type {
+	DeveloperNotTrusted,
+	Device,
+	IosSigningCheckResponse,
+	IosSigningStatus,
+} from "@yoqa/runner-client";
 
 const SOURCE_LABEL: Record<NonNullable<IosSigningStatus["source"]>, string> = {
 	env: "from YOQA_IOS_TEAM_ID",
@@ -68,4 +73,20 @@ export function pickCheckDevice(requested: string | undefined, devices: Device[]
 	}
 	const list = phones.map((device) => `  ${device.id}  ${device.owner ?? device.name}`).join("\n");
 	throw new Error(`Several iPhones are connected; pass --device <udid>:\n${list}`);
+}
+
+/**
+ * `yoqa devices connect` on an iPhone that does not trust a free Personal Team yet: the runner
+ * is installed, so the user trusts it on the phone and runs the same connect again.
+ */
+export function formatDeveloperNotTrusted(info: DeveloperNotTrusted, retry: string): string {
+	const certificate = info.certificate ?? `the Apple Development certificate of team ${info.team}`;
+	return [
+		"YoqaRunner is installed, but the iPhone does not trust your Personal Team yet.",
+		"On the iPhone (unlocked, online):",
+		"  1. Open Settings › General › VPN & Device Management",
+		`  2. Under Developer App, tap ${certificate}`,
+		"  3. Tap Trust, then Trust again",
+		`Then connect again: ${retry}`,
+	].join("\n");
 }
