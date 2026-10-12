@@ -450,6 +450,26 @@ describe("startYoqaRunner", () => {
 		expect(xcodebuild.kills()).toBe(1);
 	});
 
+	test("an untrusted developer fails at once with the fix, though xcodebuild keeps waiting", async () => {
+		const { deps } = await setup();
+		// xcodebuild 27 prints this about a second in, then never exits.
+		const xcodebuild = fakeXcodebuildTest({
+			waiting: `22:19:43.629 xcodebuild[15529:507058] Test operation failure: Error Domain=XCTHTestOperationCoordinatorErrorDomain Code=4 "Failed to install or launch the test runner" UserInfo={NSLocalizedDescription=Failed to install or launch the test runner, NSUnderlyingError=0x7901f62400 {Error Domain=IDELaunchCoreDevice Code=0 "The application could not be launched because the Developer App Certificate is not trusted." UserInfo={NSLocalizedRecoverySuggestion=Verify that the Developer App certificate for your account is trusted on your device. Open Settings on the device and navigate to General -> VPN & Device Management, then select your Developer App certificate to trust it.}}}`,
+		});
+		const started = Date.now();
+		const failure = startYoqaRunner(UDID, {
+			...deps,
+			spawn: xcodebuild.spawn,
+			readyTimeoutMs: 60_000,
+		});
+		await expect(failure).rejects.toBeInstanceOf(YoqaRunnerError);
+		await expect(failure).rejects.toThrow(
+			/could not start for team NEWTEAM222: .*Developer App Certificate is not trusted.*Trust the developer on the iPhone/,
+		);
+		expect(Date.now() - started).toBeLessThan(1_000);
+		expect(xcodebuild.kills()).toBe(1);
+	});
+
 	test("a phone that stays locked times out with the fix", async () => {
 		const { deps } = await setup();
 		const xcodebuild = fakeXcodebuildTest({
