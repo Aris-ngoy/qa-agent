@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CaseScript } from "./schemas";
-import {
-	formatCaseScriptJson,
-	formatCaseScriptShell,
-	suggestedScriptBasename,
-} from "./script-format";
+import { formatCaseScriptShell, suggestedScriptBasename } from "./script-format";
 
 const script: CaseScript = {
 	version: 1,
@@ -15,14 +11,6 @@ const script: CaseScript = {
 		{ type: "wait", ms: 1500 },
 	],
 };
-
-describe("formatCaseScriptJson", () => {
-	test("pretty-prints JSON with trailing newline", () => {
-		const out = formatCaseScriptJson(script);
-		expect(out.endsWith("\n")).toBe(true);
-		expect(JSON.parse(out)).toEqual(script);
-	});
-});
 
 describe("formatCaseScriptShell", () => {
 	test("emits bash replay lines with escaped quotes", () => {

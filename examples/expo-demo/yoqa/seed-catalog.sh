@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-SCRIPT="$ROOT/examples/expo-demo/yoqa/smoke.yoqa.json"
+SCRIPT="$ROOT/examples/expo-demo/yoqa/smoke.yoqa.yaml"
 
 if ! yoqa apps get DEMO >/dev/null 2>&1; then
 	yoqa apps create --name "Yoqa Demo" --prefix DEMO \

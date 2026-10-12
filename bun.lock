@@ -64,6 +64,7 @@
       "name": "@yoqa/runner-client",
       "version": "0.0.0",
       "dependencies": {
+        "yaml": "2.9.0",
         "zod": "^3.25.67",
       },
       "devDependencies": {

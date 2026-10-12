@@ -103,6 +103,10 @@ _Avoid_: cost, tokens (alone), billing
 A small, user-maintained notes document attached to one catalog app, available as decide context so recurring screens and flows are handled correctly.
 _Avoid_: memory, learned context, app summary
 
+**Flow**:
+A named, reusable natural-language step (instructions and an expected result) kept on one catalog App and referenced by its Test Cases.
+_Avoid_: Case Script, Case Script file (a replay of Actions is never a Flow)
+
 ### Runs
 
 **Run**:
@@ -118,5 +122,9 @@ The module that runs one Test Case against a Device Session (script replay or ag
 _Avoid_: executeRun (orchestration + persistence around cases)
 
 **Case Script**:
-A saved, coords-based replay of Actions for a Test Case (no live decide).
-_Avoid_: shell script (inspector/CLI step language), agent instructions
+A saved replay of Actions for a Test Case, run without any live decide. A tap targets a label, an id, or x,y. There is one Case Script model: the catalog stores it, the Inspector edits it, and a Case Script file carries it.
+_Avoid_: Flow (catalog term), shell script (an export, not the Case Script), agent instructions
+
+**Case Script file**:
+A Case Script written as YAML (`*.yoqa.yaml`), the default format for import and export. A legacy `.yoqa.json` file is still read as a Case Script file. A shell export is a one-way convenience: it can be run, but it is not a Case Script file.
+_Avoid_: flow YAML, flow file, test file

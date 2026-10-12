@@ -1,6 +1,6 @@
 ---
 title: Manual Inspector
-description: Explore the device UI, build shell scripts, and save actions without writing locator code.
+description: Explore the device UI, record a Case Script file (YAML), and save it as a test case without writing locator code.
 ---
 
 The Manual Inspector is a desktop surface for **exploring** a connected device the way a QA engineer would, then turning what you did into a reusable script.
@@ -16,12 +16,12 @@ The Manual Inspector is a desktop surface for **exploring** a connected device t
     View the live screen. Select elements to target actions (tap, swipe, input, lifecycle).
   </Step>
 
-  <Step title="Build a shell script">
-    Actions append to a script (CLI-shaped commands) instead of requiring you to invent locators by hand.
+  <Step title="Record a Case Script">
+    Actions append to the editor as a [Case Script file](/docs/case-script-files) (`- tap: Home`, `- wait: 500`, …) instead of requiring you to invent locators by hand. Edit it in the **YAML** tab. **Open** loads a `.yoqa.yaml` file. Pasting an old `yoqa` shell script converts it.
   </Step>
 
   <Step title="Run or save">
-    Execute the script against the session, export a report, or keep it for later regression.
+    Run the script against the session, highlighting each action in turn. Export it as `.yoqa.yaml` (or shell), export a report, or **Save as test case** to keep exactly these actions for later regression.
   </Step>
 </Steps>
 

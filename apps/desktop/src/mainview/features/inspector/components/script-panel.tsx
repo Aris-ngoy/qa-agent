@@ -1,6 +1,7 @@
 import type { InspectorScript$ } from "@/features/inspector/data/state/script";
 import { buildScriptStepsView, runProgress } from "@/features/inspector/utils/script-steps";
 import { useObservable, useValue } from "@legendapp/state/react";
+import { CASE_SCRIPT_FILE_ACCEPT } from "@yoqa/runner-client";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
 
 type ScriptPanelProps = {
@@ -11,6 +12,11 @@ type ScriptPanelProps = {
 	onStop: () => void;
 	onCopy: () => void;
 	onExport: () => void;
+	onExportShell: () => void;
+	/** Load a Case Script file (YAML, legacy JSON, or shell) into the editor. */
+	onOpenFile: (text: string, fileName: string) => void;
+	/** Returns true when it handled the paste (legacy shell is converted to actions). */
+	onPasteText: (text: string) => boolean;
 	onExportReportHtml: () => void;
 	onExportReportMarkdown: () => void;
 	onSaveAsCase: () => void;
@@ -59,10 +65,14 @@ export function ScriptPanel({
 	onStop,
 	onCopy,
 	onExport,
+	onExportShell,
+	onOpenFile,
+	onPasteText,
 	onExportReportHtml,
 	onExportReportMarkdown,
 	onSaveAsCase,
 }: ScriptPanelProps) {
+	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const script = useValue(script$.text);
 	const running = useValue(script$.running);
 	const activeLineNumber = useValue(script$.activeLineNumber);
@@ -137,7 +147,7 @@ export function ScriptPanel({
 								].join(" ")}
 								onClick={() => view$.set(option)}
 							>
-								{option === "steps" ? "Steps" : "Code"}
+								{option === "steps" ? "Steps" : "YAML"}
 							</button>
 						))}
 					</fieldset>
@@ -192,7 +202,8 @@ export function ScriptPanel({
 			{view === "steps" ? (
 				stepsView.steps.length === 0 ? (
 					<p className="m-3 rounded-xl bg-surface-container px-3 py-6 text-center text-body-sm text-on-surface-variant">
-						No steps yet. Select an element on the device, or write commands in the Code tab.
+						No steps yet. Select an element on the device, write actions in the YAML tab, or open a
+						Case Script file.
 					</p>
 				) : (
 					<ol className="m-0 flex max-h-140 list-none flex-col gap-0.5 overflow-auto px-2 pt-3 pb-2">
@@ -256,20 +267,25 @@ export function ScriptPanel({
 				)
 			) : (
 				<textarea
-					aria-label="Yoqa shell script"
+					aria-label="Case Script file (YAML)"
 					className="mx-4 mt-3 mb-2 min-h-72 resize-y rounded-xl border-0 bg-code px-3.5 py-3 font-mono text-body-sm leading-[1.8] text-on-code outline-none focus-visible:ring-2 focus-visible:ring-violet disabled:opacity-60"
 					disabled={running}
 					rows={14}
 					spellCheck={false}
 					value={script}
 					onChange={(event) => script$.text.set(event.target.value)}
+					onPaste={(event) => {
+						if (onPasteText(event.clipboardData.getData("text"))) event.preventDefault();
+					}}
 				/>
 			)}
 
 			{stepsView.errors.length > 0 ? (
 				<p className="m-0 px-4 pb-2 text-helper text-error">
-					{stepsView.errors.length} line{stepsView.errors.length === 1 ? "" : "s"} can’t be parsed
-					(first: L{stepsView.errors[0]?.lineNumber}). Fix in the Code tab.
+					{stepsView.errors.length} problem{stepsView.errors.length === 1 ? "" : "s"} in the script
+					(first:{" "}
+					{stepsView.errors[0]?.lineNumber != null ? `L${stepsView.errors[0].lineNumber} ` : ""}
+					{stepsView.errors[0]?.message}). Fix in the YAML tab.
 				</p>
 			) : null}
 
@@ -304,6 +320,30 @@ export function ScriptPanel({
 					{stepCount === 0 ? "No steps yet" : `${stepCount} step${stepCount === 1 ? "" : "s"}`}
 				</span>
 				<div className="flex gap-2">
+					<input
+						ref={fileInputRef}
+						type="file"
+						accept={CASE_SCRIPT_FILE_ACCEPT}
+						className="hidden"
+						onChange={(event) => {
+							const file = event.target.files?.[0];
+							event.target.value = "";
+							if (!file) return;
+							void file.text().then((text) => onOpenFile(text, file.name));
+						}}
+					/>
+					<button
+						type="button"
+						aria-label="Open Case Script file"
+						title="Open Case Script file (.yoqa.yaml, .yoqa.json, or .sh)"
+						className={ICON_BTN}
+						disabled={running}
+						onClick={() => fileInputRef.current?.click()}
+					>
+						<ButtonIcon>
+							<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+						</ButtonIcon>
+					</button>
 					<button
 						type="button"
 						aria-label="Copy script"
@@ -346,6 +386,17 @@ export function ScriptPanel({
 									onClick={() => {
 										exportOpen$.set(false);
 										onExport();
+									}}
+								>
+									Case Script (.yoqa.yaml)
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									className={menuItem}
+									onClick={() => {
+										exportOpen$.set(false);
+										onExportShell();
 									}}
 								>
 									Shell script (.sh)

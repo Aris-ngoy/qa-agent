@@ -165,6 +165,17 @@ yoqa action restart-app --app-id com.example.app
 yoqa action background-app
 ```
 
+## Case Script files
+
+Replay a saved [Case Script file](/docs/case-script-files) (`*.yoqa.yaml`) on the active device, with no AI agent:
+
+```bash
+yoqa script validate ./login.yoqa.yaml      # offline: no runner, no device
+yoqa script run ./login.yoqa.yaml           # ok / error / skipped per action
+yoqa script export APP 3 --out ./login.yoqa.yaml
+yoqa cases update APP 3 --script-file ./login.yoqa.yaml
+```
+
 ## Test management
 
 Catalog commands take the app **prefix** as `APP` (`yoqa apps list`).

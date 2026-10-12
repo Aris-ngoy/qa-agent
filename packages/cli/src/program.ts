@@ -4,12 +4,17 @@ import {
 	type ActionResponse,
 	type DevicePlatform,
 	WaitForRunTimeoutError,
-	caseScriptSchema,
+	caseScriptActionCommand,
 	createCaseFlowsSchema,
 	createRunnerClient,
 	formatAssertShellLine,
+	formatCaseScriptFile,
+	formatCaseScriptFileAction,
+	formatCaseScriptFileErrors,
+	formatCaseScriptShell,
+	parseCaseScriptFile,
+	runCaseScript,
 	runYoqaShellScript,
-	screenHasText,
 	updateCaseFlowsSchema,
 	waitForRun,
 } from "@yoqa/runner-client";
@@ -53,10 +58,6 @@ import {
 
 function runnerBaseUrl(): string {
 	return runnerBaseUrlFromEnv();
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 const program = new Command();
@@ -106,6 +107,8 @@ program
 
 program.hook("preAction", async (_thisCommand, actionCommand) => {
 	if (commandChainIncludes(actionCommand, "serve")) return;
+	// Checking a Case Script file is offline: no runner, no device.
+	if (commandChainIncludes(actionCommand, "script") && actionCommand.name() === "validate") return;
 	if (shouldSkipAutostart()) return;
 	try {
 		await ensureRunner({ mode: "detached" });
@@ -127,13 +130,15 @@ async function resolveAppId(
 	return { id: match.id, prefix: match.prefix, name: match.name };
 }
 
+/** A Case Script file: `*.yoqa.yaml` (or a legacy `.yoqa.json`). */
 async function loadCaseScriptFile(file: string) {
-	const raw = await readFile(file, "utf8");
-	const parsed = caseScriptSchema.safeParse(JSON.parse(raw) as unknown);
-	if (!parsed.success) {
-		throw new Error(`Invalid CaseScript: ${parsed.error.message}`);
+	const parsed = parseCaseScriptFile(await readFile(file, "utf8"));
+	if (!parsed.ok) {
+		throw new Error(
+			`Invalid Case Script file ${file}:\n${formatCaseScriptFileErrors(parsed.errors)}`,
+		);
 	}
-	return parsed.data;
+	return parsed;
 }
 
 /** Flow steps for a new case: a JSON array of `{flowId}` and/or `{instructions, expectedResult}`. */
@@ -1042,7 +1047,10 @@ casesCmd
 	.requiredOption("--title <title>", "Case title")
 	.option("--tag <tag>", "Tag to attach (repeatable; created if missing)", collect, [])
 	.option("--flows-file <path>", "Path to a JSON array of flow steps")
-	.option("--script-file <path>", "Path to a .yoqa.json CaseScript to attach")
+	.option(
+		"--script-file <path>",
+		"Path to a Case Script file (.yoqa.yaml, or legacy .yoqa.json) to attach",
+	)
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(
@@ -1067,7 +1075,7 @@ casesCmd
 				});
 				if (options.scriptFile) {
 					created = await c.updateCase(created.id, {
-						script: await loadCaseScriptFile(options.scriptFile),
+						script: (await loadCaseScriptFile(options.scriptFile)).script,
 					});
 				}
 				if (options.json) {
@@ -1089,7 +1097,10 @@ casesCmd
 	.option("--title <title>", "New title")
 	.option("--tag <tag>", "Replace tags with these (repeatable)", collect, [])
 	.option("--flows-file <path>", "Path to a JSON array of flow steps (replaces all flows)")
-	.option("--script-file <path>", "Path to a .yoqa.json CaseScript to attach")
+	.option(
+		"--script-file <path>",
+		"Path to a Case Script file (.yoqa.yaml, or legacy .yoqa.json) to attach",
+	)
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
@@ -1114,7 +1125,9 @@ casesCmd
 					name: options.title,
 					tags: options.tag.length > 0 ? options.tag : undefined,
 					flows: options.flowsFile ? await loadUpdateCaseFlowsFile(options.flowsFile) : undefined,
-					script: options.scriptFile ? await loadCaseScriptFile(options.scriptFile) : undefined,
+					script: options.scriptFile
+						? (await loadCaseScriptFile(options.scriptFile)).script
+						: undefined,
 				});
 				if (options.json) {
 					console.log(JSON.stringify(updated, null, 2));
@@ -1656,182 +1669,144 @@ runsCmd
 		},
 	);
 
-// --- script (exported CaseScript JSON) ---
+// --- script (Case Script files) ---
 
-const scriptCmd = program.command("script").description("Replay exported CaseScript files");
+const scriptCmd = program
+	.command("script")
+	.description("Validate, replay, and export Case Script files (*.yoqa.yaml)");
+
+scriptCmd
+	.command("validate")
+	.argument("<file>", "Path to a Case Script file (.yoqa.yaml, or legacy .yoqa.json)")
+	.option("--json", "Print the parsed Case Script, or the errors, as JSON")
+	.description("Check a Case Script file without a runner or device")
+	.action(async (file: string, options: { json?: boolean }) => {
+		try {
+			const parsed = parseCaseScriptFile(await readFile(file, "utf8"));
+			if (options.json) {
+				console.log(
+					JSON.stringify(
+						parsed.ok
+							? { ok: true, name: parsed.name, script: parsed.script }
+							: { ok: false, errors: parsed.errors },
+						null,
+						2,
+					),
+				);
+			} else if (parsed.ok) {
+				const count = parsed.script.actions.length;
+				console.log(`ok ${file}: ${count} action${count === 1 ? "" : "s"}`);
+			} else {
+				console.error(`${file}:\n${formatCaseScriptFileErrors(parsed.errors)}`);
+			}
+			if (!parsed.ok) process.exitCode = 1;
+		} catch (error) {
+			fail("script validate", error);
+		}
+	});
 
 scriptCmd
 	.command("run")
-	.argument("<file>", "Path to a .yoqa.json / CaseScript JSON file")
+	.argument("<file>", "Path to a Case Script file (.yoqa.yaml, or legacy .yoqa.json)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON per step")
+	.option("--json", "Print raw JSON per action")
+	.description("Replay a Case Script file on the active device session")
 	.action(async (file: string, options: { baseUrl: string; json?: boolean }) => {
 		try {
-			const script = await loadCaseScriptFile(file);
+			const { script } = await loadCaseScriptFile(file);
 			const c = client(options.baseUrl);
 			const active = await c.getActiveDevice();
 			if (!active) {
 				throw new Error("No active device session. Connect first: yoqa devices connect <id>");
 			}
 
-			let idx = 0;
-			for (const action of script.actions) {
-				idx += 1;
-				if (action.type === "wait") {
-					const ms = Math.min(3000, Math.max(500, action.ms));
-					if (options.json) {
-						console.log(JSON.stringify({ ok: true, kind: "wait", ms, step: idx }, null, 2));
-					} else {
-						console.log(`ok wait ${ms}ms (${idx}/${script.actions.length})`);
-					}
-					await sleep(ms);
-					continue;
-				}
-
-				if (action.type === "assert") {
-					const timeoutMs = action.timeoutMs ?? 5_000;
-					const deadline = Date.now() + timeoutMs;
-					for (;;) {
-						const screen = await c.getScreen();
-						const found = screenHasText(screen.elements, action.text);
-						if (action.assertion === "visible" && found) break;
-						if (action.assertion === "not-visible" && !found) break;
-						if (Date.now() >= deadline) {
-							throw new Error(
-								action.assertion === "visible"
-									? `Expected visible text not found within ${Math.round(timeoutMs / 1000)}s: ${action.text}`
-									: `Unexpected text still visible after ${Math.round(timeoutMs / 1000)}s: ${action.text}`,
-							);
-						}
-						await sleep(400);
-					}
+			const result = await runCaseScript(c, script, {
+				pauseAfterActionMs: 800,
+				onStep: ({ index, total, action, status, error, response }) => {
+					if (status === "running") return;
+					const step = index + 1;
 					if (options.json) {
 						console.log(
 							JSON.stringify(
 								{
-									ok: true,
-									kind: "assert",
-									assertion: action.assertion,
-									text: action.text,
-									step: idx,
+									ok: status === "ok",
+									status,
+									type: action.type,
+									step,
+									command: caseScriptActionCommand(action),
+									...(error ? { error } : {}),
+									...(response ? { response } : {}),
 								},
 								null,
 								2,
 							),
 						);
-					} else {
-						console.log(`ok assert ${action.assertion} (${idx}/${script.actions.length})`);
+						return;
 					}
-					continue;
-				}
+					const line = formatCaseScriptFileAction(action);
+					if (status === "ok") console.log(`ok ${line} (${step}/${total})`);
+					else if (status === "error") console.error(`error ${line} (${step}/${total}): ${error}`);
+					else console.log(`skipped ${line} (${step}/${total})`);
+				},
+			});
 
-				if (action.type === "alert") {
-					const body = await c.performAction({
-						kind: "alert",
-						alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
-					});
-					if (options.json) {
-						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
-					} else {
-						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
-					}
-					await sleep(800);
-					continue;
-				}
-
-				if (action.type === "swipe" || action.type === "drag") {
-					const body = await c.performAction({
-						kind: action.type,
-						x: action.x,
-						y: action.y,
-						x2: action.x2,
-						y2: action.y2,
-						durationMs: action.durationMs,
-					});
-					if (options.json) {
-						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
-					} else {
-						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
-					}
-					await sleep(800);
-					continue;
-				}
-
-				if (
-					action.type === "activate-app" ||
-					action.type === "terminate-app" ||
-					action.type === "restart-app"
-				) {
-					const body = await c.performAction({ kind: action.type, appId: action.appId });
-					if (options.json) {
-						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
-					} else {
-						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
-					}
-					await sleep(800);
-					continue;
-				}
-
-				if (action.type === "background-app") {
-					const body = await c.performAction({
-						kind: "background-app",
-						seconds: action.seconds,
-					});
-					if (options.json) {
-						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
-					} else {
-						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
-					}
-					await sleep(800);
-					continue;
-				}
-
-				if (action.type === "open-url") {
-					const body = await c.performAction({ kind: "open-url", url: action.url });
-					if (options.json) {
-						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
-					} else {
-						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
-					}
-					await sleep(800);
-					continue;
-				}
-
-				if (action.type === "type") {
-					const body = await c.performAction({ kind: "input", text: action.text });
-					if (options.json) {
-						console.log(JSON.stringify({ ...body, step: idx }, null, 2));
-					} else {
-						console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
-					}
-					await sleep(800);
-					continue;
-				}
-
-				const tapBody: ActionRequest = { kind: "tap" };
-				if (action.label) tapBody.label = action.label;
-				if (action.id) tapBody.id = action.id;
-				if (action.x != null) tapBody.x = action.x;
-				if (action.y != null) tapBody.y = action.y;
-				if (action.double) tapBody.double = true;
-				if (action.durationMs != null) tapBody.durationMs = action.durationMs;
-				const body = await c.performAction(tapBody);
-
-				if (options.json) {
-					console.log(JSON.stringify({ ...body, step: idx }, null, 2));
-				} else {
-					console.log(`ok ${body.kind} (${idx}/${script.actions.length})`);
-				}
-				await sleep(800);
+			if (!result.ok) {
+				throw new Error(
+					`action ${(result.failedIndex ?? 0) + 1}/${result.total} failed: ${result.error ?? "failed"}`,
+				);
 			}
-
 			if (!options.json) {
-				console.log(`done ${script.actions.length} steps`);
+				console.log(`done ${result.total} action${result.total === 1 ? "" : "s"}`);
 			}
 		} catch (error) {
 			fail("script run", error);
 		}
 	});
+
+scriptCmd
+	.command("export")
+	.argument("<app>", "App prefix or id")
+	.argument("<number>", "Case number", (v) => Number(v))
+	.option("--format <format>", "yaml | shell", "yaml")
+	.option("--out <file>", "Write to this file instead of stdout")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.description("Print or save a Test Case's Case Script as a Case Script file (or shell)")
+	.action(
+		async (
+			appArg: string,
+			number: number,
+			options: { format: string; out?: string; baseUrl: string },
+		) => {
+			try {
+				if (options.format !== "yaml" && options.format !== "shell") {
+					throw new Error("--format must be yaml or shell");
+				}
+				const c = client(options.baseUrl);
+				const resolved = await resolveAppId(c, appArg);
+				const cases = await c.listCases(resolved.id);
+				const found = cases.find((item) => item.number === number);
+				if (!found) throw new Error(`Case #${number} not found`);
+				const detail = await c.getCase(found.id);
+				if (!detail.script) throw new Error(`Case #${number} has no Case Script yet`);
+				const text =
+					options.format === "shell"
+						? formatCaseScriptShell(detail.script, {
+								caseNumber: detail.number,
+								caseName: detail.name,
+								appPrefix: resolved.prefix,
+							})
+						: formatCaseScriptFile(detail.script, { name: detail.name });
+				if (options.out) {
+					await writeFile(options.out, text, "utf8");
+					console.log(`wrote ${options.out}`);
+				} else {
+					process.stdout.write(text);
+				}
+			} catch (error) {
+				fail("script export", error);
+			}
+		},
+	);
 
 program
 	.command("benchmark")
