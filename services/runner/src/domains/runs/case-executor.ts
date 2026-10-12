@@ -216,19 +216,36 @@ async function runTextAssert(input: {
 	timeoutMs: number;
 }): Promise<void> {
 	const deadline = input.clock.now() + input.timeoutMs;
+	const seconds = Math.round(input.timeoutMs / 1000);
 	for (;;) {
 		if (input.isAborted()) {
 			throw new Error("Aborted");
 		}
-		const screen = await input.readScreen(input.session);
-		const found = screenHasText(screen.elements, input.text);
-		if (input.assertion === "visible" && found) return;
-		if (input.assertion === "not-visible" && !found) return;
+		// A read can fail while the app is still coming up (e.g. idb's axbridge finds no
+		// frontmost app right after launch). That is "not there yet", so keep polling until
+		// the deadline; only a Dead Session ends the assert at once.
+		let readError: unknown = null;
+		let elements: ScreenElement[] | null = null;
+		try {
+			elements = (await input.readScreen(input.session)).elements ?? [];
+		} catch (error) {
+			if (isDeadSessionError(error)) throw error;
+			readError = error;
+		}
+		if (elements) {
+			const found = screenHasText(elements, input.text);
+			if (input.assertion === "visible" && found) return;
+			if (input.assertion === "not-visible" && !found) return;
+		}
 		if (input.clock.now() >= deadline) {
+			if (readError) {
+				const message = readError instanceof Error ? readError.message : String(readError);
+				throw new Error(`Could not read the screen within ${seconds}s: ${message}`);
+			}
 			throw new Error(
 				input.assertion === "visible"
-					? `Expected visible text not found within ${Math.round(input.timeoutMs / 1000)}s: ${input.text}`
-					: `Unexpected text still visible after ${Math.round(input.timeoutMs / 1000)}s: ${input.text}`,
+					? `Expected visible text not found within ${seconds}s: ${input.text}`
+					: `Unexpected text still visible after ${seconds}s: ${input.text}`,
 			);
 		}
 		await input.clock.sleep(400);
@@ -500,23 +517,19 @@ export async function executeScriptCase(
 					timeoutSeconds: timeoutMs / 1000,
 				});
 				await withCurrentCommand(setCurrentCommand, command, async () => {
-					const deadline = clock.now() + timeoutMs;
-					for (;;) {
-						if (deps.isAborted()) {
-							return;
-						}
-						const screen = await readScreen(deps.session);
-						const found = screenHasText(screen.elements, action.text);
-						if (assertion === "visible" && found) break;
-						if (assertion === "not-visible" && !found) break;
-						if (clock.now() >= deadline) {
-							throw new Error(
-								assertion === "visible"
-									? `Expected visible text not found within ${Math.round(timeoutMs / 1000)}s: ${action.text}`
-									: `Unexpected text still visible after ${Math.round(timeoutMs / 1000)}s: ${action.text}`,
-							);
-						}
-						await clock.sleep(400);
+					try {
+						await runTextAssert({
+							session: deps.session,
+							readScreen,
+							clock,
+							isAborted: deps.isAborted,
+							assertion,
+							text: action.text,
+							timeoutMs,
+						});
+					} catch (error) {
+						if (deps.isAborted()) return;
+						throw error;
 					}
 					if (deps.isAborted()) {
 						return;

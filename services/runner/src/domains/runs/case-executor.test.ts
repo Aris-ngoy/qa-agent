@@ -6,6 +6,7 @@ import type {
 	ScreenElement,
 	StepPhases,
 } from "@yoqa/runner-client";
+import { DeadSessionError } from "../devices/lane";
 import type { DeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import type { AgentDecision } from "./agent";
@@ -128,6 +129,77 @@ describe("executeScriptCase", () => {
 
 		expect(status).toBe("passed");
 		expect(actions).toEqual([{ kind: "tap", label: "Increment" }]);
+	});
+
+	describe("an assert whose Screen read fails", () => {
+		const assertScript: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "assert", assertion: "visible", text: "Yoqa Demo", timeoutMs: 2_000 }],
+		};
+
+		function run(readScreen: () => Promise<{ elements?: ScreenElement[] }>) {
+			let now = 0;
+			const steps: Array<{ ok: boolean; detail: unknown }> = [];
+			const status = executeScriptCase({
+				script: assertScript,
+				session: fakeSession(),
+				isAborted: () => false,
+				appendStep: async (step) => {
+					steps.push({ ok: step.ok, detail: step.detail });
+				},
+				performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+				readScreen,
+				clock: {
+					sleep: async (ms) => {
+						now += ms;
+					},
+					now: () => now,
+				},
+				settleMs: 0,
+			});
+			return { status, steps };
+		}
+
+		it("keeps polling until the app is frontmost, then passes", async () => {
+			let reads = 0;
+			const { status } = run(async () => {
+				reads += 1;
+				if (reads < 3) {
+					throw new Error(
+						"idb describe-all: axbridge could not resolve the frontmost application using the window-server strategy",
+					);
+				}
+				return {
+					elements: [{ label: "Yoqa Demo", type: "Text", x: 0, y: 0, width: 10, height: 10 }],
+				};
+			});
+			expect(await status).toBe("passed");
+			expect(reads).toBe(3);
+		});
+
+		it("fails at the deadline with the read error", async () => {
+			const { status, steps } = run(async () => {
+				throw new Error("axbridge could not resolve the frontmost application");
+			});
+			expect(await status).toBe("errored");
+			expect(String(steps.at(-1)?.detail)).toContain(
+				"Could not read the screen within 2s: axbridge could not resolve the frontmost application",
+			);
+		});
+
+		it("ends at once on a Dead Session", async () => {
+			let reads = 0;
+			const outcome = run(async () => {
+				reads += 1;
+				throw new DeadSessionError("Device session ended: simulator gone");
+			}).status.then(
+				(status) => status,
+				(error: unknown) => error,
+			);
+			await outcome;
+			expect(reads).toBe(1);
+		});
 	});
 
 	it("replays accept-alert", async () => {
