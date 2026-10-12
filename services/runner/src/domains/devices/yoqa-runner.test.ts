@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { appendFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -30,6 +31,8 @@ type Result = { stdout: string; stderr: string; exitCode: number };
  * A Mac at the commands the runner build uses: the keychain, `xcodebuild -version`, and an
  * `xcodebuild build-for-testing` that writes an `.xctestrun` and a provisioning profile into
  * the derived data path (or fails with `buildFailure`). `security cms` decodes that profile.
+ * The host app comes out with its compiled AppIcon; `plutil` and `codesign` patch and re-sign
+ * the runner app (`resignFailure` makes the re-sign fail).
  */
 function fakeMac() {
 	const mac = {
@@ -39,7 +42,10 @@ function fakeMac() {
 		profileDays: 7,
 		profileDevices: [UDID],
 		buildFailure: null as string | null,
+		resignFailure: false,
+		hostIcon: true,
 		builds: [] as Array<{ team?: string; udid?: string }>,
+		resigns: [] as string[][],
 	};
 	const profiles = new Map<string, { expires: Date; devices: string[] }>();
 
@@ -54,6 +60,21 @@ function fakeMac() {
 			return ok(profilePlist(profile.expires, profile.devices));
 		}
 		if (tool === "xcodebuild" && args[0] === "-version") return ok(mac.xcodeVersion);
+		if (tool === "plutil" && args[0] === "-extract") return ok(HOST_ICONS);
+		if (tool === "plutil" && args[0] === "-insert") {
+			await appendFile(args.at(-1) ?? "", `\n${args[1]}=${args[3]}`);
+			return ok("");
+		}
+		if (tool === "codesign" && args[0] === "-d") {
+			const prefix = args.find((arg) => arg.startsWith("--extract-certificates="));
+			await writeFile(`${prefix?.split("=")[1]}0`, LEAF_CERTIFICATE);
+			return ok("");
+		}
+		if (tool === "codesign" && args[0] === "--force") {
+			mac.resigns.push(args);
+			if (mac.resignFailure) return { stdout: "", stderr: "errSecInternalComponent", exitCode: 1 };
+			return ok("");
+		}
 		if (tool === "xcodebuild" && args.includes("build-for-testing")) {
 			const setting = (name: string) =>
 				args.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1);
@@ -66,6 +87,7 @@ function fakeMac() {
 			const products = join(args[args.indexOf("-derivedDataPath") + 1] ?? "", "Build/Products");
 			for (const app of ["YoqaRunner.app", "YoqaRunnerUITests-Runner.app"]) {
 				await mkdir(join(products, "Debug-iphoneos", app), { recursive: true });
+				await writeFile(join(products, "Debug-iphoneos", app, "Info.plist"), app);
 				const path = join(products, "Debug-iphoneos", app, "embedded.mobileprovision");
 				await writeFile(path, "profile");
 				profiles.set(path, {
@@ -73,12 +95,25 @@ function fakeMac() {
 					devices: [...mac.profileDevices],
 				});
 			}
+			const host = join(products, "Debug-iphoneos", "YoqaRunner.app");
+			for (const file of mac.hostIcon ? ["AppIcon60x60@2x.png", "Assets.car"] : []) {
+				await writeFile(join(host, file), file);
+			}
 			await writeFile(join(products, "YoqaRunner_iphoneos27.0-arm64.xctestrun"), "<plist/>");
 			return ok("** TEST BUILD SUCCEEDED **");
 		}
 		return { stdout: "", stderr: `unexpected command: ${command.join(" ")}`, exitCode: 127 };
 	};
 	return { mac, exec };
+}
+
+const HOST_ICONS = '{"CFBundlePrimaryIcon":{"CFBundleIconName":"AppIcon"}}';
+const LEAF_CERTIFICATE = "leaf certificate DER";
+const LEAF_SHA1 = createHash("sha1").update(LEAF_CERTIFICATE).digest("hex").toUpperCase();
+
+/** The built runner app, where `xcodebuild test-without-building` installs it from. */
+function runnerApp(xctestrun: string): string {
+	return join(xctestrun, "..", "Debug-iphoneos", "YoqaRunnerUITests-Runner.app");
 }
 
 function profilePlist(expires: Date, devices: string[]): string {
@@ -286,6 +321,55 @@ function fakeXcodebuildTest(mode: { exit?: string; silent?: boolean; waiting?: s
 	};
 	return { spawn, launches, kills: () => kills };
 }
+
+describe("prepareYoqaRunner brands the runner app", () => {
+	test("the runner gets the host app's icon and is re-signed with its own certificate", async () => {
+		const { mac, deps } = await setup();
+		const { xctestrun } = await prepareYoqaRunner(UDID, deps);
+		const app = runnerApp(xctestrun);
+		expect(existsSync(join(app, "AppIcon60x60@2x.png"))).toBe(true);
+		expect(existsSync(join(app, "Assets.car"))).toBe(true);
+		expect(await readFile(join(app, "Info.plist"), "utf8")).toContain(
+			`CFBundleIcons=${HOST_ICONS}`,
+		);
+		expect(mac.resigns).toHaveLength(1);
+		expect(mac.resigns[0]).toContain(LEAF_SHA1);
+		expect(mac.resigns[0]).toContain("--preserve-metadata=identifier,entitlements,flags,runtime");
+	});
+
+	test("a runner that cannot be re-signed is left as Xcode signed it, and still runs", async () => {
+		const { mac, deps } = await setup();
+		mac.resignFailure = true;
+		const build = await prepareYoqaRunner(UDID, deps);
+		const app = runnerApp(build.xctestrun);
+		expect(build.action).toBe("built");
+		expect(existsSync(join(app, "AppIcon60x60@2x.png"))).toBe(false);
+		expect(await readFile(join(app, "Info.plist"), "utf8")).toBe("YoqaRunnerUITests-Runner.app");
+		expect(existsSync(join(app, "embedded.mobileprovision"))).toBe(true);
+	});
+
+	test("a build cached before the runner was branded rebuilds once", async () => {
+		const { mac, deps } = await setup();
+		await prepareYoqaRunner(UDID, deps);
+		const [key] = await readdir(deps.cacheRoot);
+		const manifestPath = join(deps.cacheRoot, key ?? "", "build.json");
+		const { version: _, ...unversioned } = JSON.parse(await readFile(manifestPath, "utf8"));
+		await writeFile(manifestPath, JSON.stringify(unversioned));
+		expect((await prepareYoqaRunner(UDID, deps)).action).toBe("built");
+		expect((await prepareYoqaRunner(UDID, deps)).action).toBe("reused");
+		expect(mac.builds).toHaveLength(2);
+	});
+
+	test("a host app without an icon leaves the runner as Xcode signed it", async () => {
+		const { mac, deps } = await setup();
+		mac.hostIcon = false;
+		const { xctestrun } = await prepareYoqaRunner(UDID, deps);
+		expect(mac.resigns).toEqual([]);
+		expect(await readFile(join(runnerApp(xctestrun), "Info.plist"), "utf8")).toBe(
+			"YoqaRunnerUITests-Runner.app",
+		);
+	});
+});
 
 describe("startYoqaRunner", () => {
 	test("starts the runner on the phone and reads its port from the log", async () => {
