@@ -1,32 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { DIRECT_IMPLEMENTATIONS, deviceClassFor } from "./direct-lane";
-import {
-	directImplementationOrder,
-	directOptIn,
-	hasCustomCapabilities,
-	selectLane,
-} from "./select-lane";
-
-describe("hasCustomCapabilities", () => {
-	test("empty lists are not custom", () => {
-		expect(hasCustomCapabilities([], [])).toBe(false);
-	});
-
-	test("a Case or App capability pins the Appium lane", () => {
-		expect(hasCustomCapabilities([{ key: "appium:autoLaunch" }], [])).toBe(true);
-		expect(hasCustomCapabilities([], [{ key: "appWaitActivity" }])).toBe(true);
-	});
-
-	test("blank keys do not count", () => {
-		expect(hasCustomCapabilities([{ key: "  " }], [])).toBe(false);
-	});
-});
+import { directImplementationOrder, directOptIn, selectLane } from "./select-lane";
 
 describe("selectLane", () => {
-	test("defaults to Appium when Direct is not available", () => {
-		expect(
+	test("fails the connect when Direct is not available", () => {
+		expect(() =>
 			selectLane({ requested: "auto", available: ["appium"], appCaps: [], caseCaps: [] }),
-		).toEqual({ lane: "appium", fallback: false });
+		).toThrow("Direct lane is not available");
 	});
 
 	test("auto-picks Direct when that lane is available", () => {
@@ -40,7 +20,7 @@ describe("selectLane", () => {
 		).toEqual({ lane: "direct", fallback: false });
 	});
 
-	test("custom capabilities pin Appium even when Direct is requested", () => {
+	test("custom capabilities do not change the Lane", () => {
 		expect(
 			selectLane({
 				requested: "direct",
@@ -48,39 +28,29 @@ describe("selectLane", () => {
 				appCaps: [{ key: "appium:autoLaunch" }],
 				caseCaps: [],
 			}),
-		).toEqual({
-			lane: "appium",
-			fallback: false,
-			reason: "capabilities",
-			warning: "Custom Appium capabilities pin the Appium lane",
-		});
+		).toEqual({ lane: "direct", fallback: false });
 	});
 
-	test("forced Direct falls back to Appium when that lane cannot start", () => {
-		expect(
+	test("an explicit Direct request fails when that lane is not available", () => {
+		expect(() =>
 			selectLane({
 				requested: "direct",
 				available: ["appium"],
 				appCaps: [],
 				caseCaps: [],
 			}),
-		).toEqual({
-			lane: "appium",
-			fallback: true,
-			reason: "unsupported",
-			warning: "Direct lane is not available; fell back to Appium",
-		});
+		).toThrow("Direct lane is not available");
 	});
 
-	test("an explicit Appium request stays on Appium even if Direct exists", () => {
-		expect(
+	test("an explicit Appium request fails the connect", () => {
+		expect(() =>
 			selectLane({
 				requested: "appium",
 				available: ["appium", "direct"],
 				appCaps: [],
 				caseCaps: [],
 			}),
-		).toEqual({ lane: "appium", fallback: false });
+		).toThrow("The Appium lane cannot be opened");
 	});
 });
 
@@ -167,7 +137,7 @@ describe("physical-iOS Direct lane", () => {
 		expect(DIRECT_IMPLEMENTATIONS["ios-device"].map((i) => i.name)).toEqual(["device-ios"]);
 	});
 
-	test("auto picks Direct for a phone, and custom capabilities still pin Appium", () => {
+	test("auto picks Direct for a phone, and custom capabilities do not change that", () => {
 		const base = { available: ["appium", "direct"] as const, requested: "auto" as const };
 		expect(selectLane({ ...base, appCaps: [], caseCaps: [] })).toEqual({
 			lane: "direct",
@@ -175,6 +145,6 @@ describe("physical-iOS Direct lane", () => {
 		});
 		expect(
 			selectLane({ ...base, appCaps: [{ key: "appium:autoLaunch" }], caseCaps: [] }).lane,
-		).toBe("appium");
+		).toBe("direct");
 	});
 });

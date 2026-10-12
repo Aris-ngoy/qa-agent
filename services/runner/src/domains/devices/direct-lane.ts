@@ -19,7 +19,8 @@ export type DirectImplementation = DirectImplementationInfo & { open: LaneFactor
 
 /**
  * Every Direct implementation tried in a failed start, with the warnings from each
- * fallback inside the Direct lane, so the Appium fallback can keep them.
+ * fallback inside the Direct lane. The connect fails with this error; it does not
+ * open the Appium lane.
  */
 export class DirectLaneStartError extends Error {
 	constructor(
@@ -38,8 +39,8 @@ function errorMessage(error: unknown): string {
 /**
  * The Direct lane for one device class. It tries its implementations in order
  * (see `directImplementationOrder`) and falls back once per step, loudly: each
- * fallback adds a Lane warning to the session (ADR-0004). When none starts it
- * throws a `DirectLaneStartError`, and the caller falls back to Appium.
+ * fallback adds a Lane warning to the session. When none starts it throws a
+ * `DirectLaneStartError`, and the connect fails with that error.
  */
 export function createDirectLane(
 	implementations: readonly DirectImplementation[],
