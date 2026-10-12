@@ -320,8 +320,18 @@ describe("prepareYoqaRunner", () => {
 
 type Launch = { command: string[]; env: Record<string, string> };
 
-/** What xcodebuild 27 prints about a second in on a phone that does not trust the developer. */
-const UNTRUSTED_LAUNCH = `22:19:43.629 xcodebuild[15529:507058] Test operation failure: Error Domain=XCTHTestOperationCoordinatorErrorDomain Code=4 "Failed to install or launch the test runner" UserInfo={NSLocalizedDescription=Failed to install or launch the test runner, NSUnderlyingError=0x7901f62400 {Error Domain=IDELaunchCoreDevice Code=0 "The application could not be launched because the Developer App Certificate is not trusted." UserInfo={NSLocalizedRecoverySuggestion=Verify that the Developer App certificate for your account is trusted on your device. Open Settings on the device and navigate to General -> VPN & Device Management, then select your Developer App certificate to trust it.}}}`;
+/**
+ * What xcodebuild 27 prints to stdout on a phone that does not trust the developer: the launch
+ * report about a second in, and the summary when it exits (captured from a real iPhone).
+ */
+const UNTRUSTED_LAUNCH =
+	"2026-10-12 22:47:04.474 xcodebuild[18538:540097]  IDELaunchReport: d24264c6b8d48340:d24264c6b8d48b00:Launching YoqaRunnerUITests Finished with error: The application could not be launched because the Developer App Certificate is not trusted.";
+const UNTRUSTED_SUMMARY = `${UNTRUSTED_LAUNCH}
+Testing failed:
+	The application could not be launched because the Developer App Certificate is not trusted.
+	YoqaRunnerUITests-Runner encountered an error (Failed to install or launch the test runner. (Underlying Error: The application could not be launched because the Developer App Certificate is not trusted. Verify that the Developer App certificate for your account is trusted on your device. Open Settings on the device and navigate to General -> VPN & Device Management, then select your Developer App certificate to trust it.))
+
+** TEST EXECUTE FAILED **`;
 
 /** Xcode's account list with one team, free or paid. */
 function xcodeTeam(teamID: string, isFreeProvisioningTeam: boolean): string {
@@ -462,9 +472,8 @@ describe("startYoqaRunner", () => {
 		expect(xcodebuild.kills()).toBe(1);
 	});
 
-	test("an untrusted developer fails at once with the fix, though xcodebuild keeps waiting", async () => {
+	test("an untrusted developer fails at the launch report, without waiting for xcodebuild", async () => {
 		const { deps } = await setup();
-		// xcodebuild 27 prints this about a second in, then never exits.
 		const xcodebuild = fakeXcodebuildTest({
 			waiting: UNTRUSTED_LAUNCH,
 		});
@@ -476,7 +485,7 @@ describe("startYoqaRunner", () => {
 		});
 		await expect(failure).rejects.toBeInstanceOf(YoqaRunnerError);
 		await expect(failure).rejects.toThrow(
-			/could not start for team NEWTEAM222: .*Developer App Certificate is not trusted.*Trust the developer on the iPhone/,
+			/could not start for team NEWTEAM222: The application could not be launched because the Developer App Certificate is not trusted\. Trust the developer on the iPhone/,
 		);
 		expect(Date.now() - started).toBeLessThan(1_000);
 		expect(xcodebuild.kills()).toBe(1);
@@ -496,6 +505,26 @@ describe("startYoqaRunner", () => {
 			),
 		});
 		expect(xcodebuild.kills()).toBe(1);
+	});
+
+	test("an untrusted developer reported only when xcodebuild exits is caught too", async () => {
+		const { mac, deps } = await setup();
+		mac.xcodeTeams = xcodeTeam("NEWTEAM222", true);
+		const failure = startYoqaRunner(UDID, {
+			...deps,
+			spawn: fakeXcodebuildTest({ exit: UNTRUSTED_SUMMARY }).spawn,
+		});
+		await expect(failure).rejects.toBeInstanceOf(DeveloperNotTrustedError);
+	});
+
+	test("xcodebuild never collects device diagnostics, which would prompt for a sudo password", async () => {
+		const { deps } = await setup();
+		const xcodebuild = fakeXcodebuildTest();
+		const runner = await startYoqaRunner(UDID, { ...deps, spawn: xcodebuild.spawn });
+		const command = xcodebuild.launches[0]?.command ?? [];
+		const flag = command.indexOf("-collect-test-diagnostics");
+		expect(command.slice(flag, flag + 2)).toEqual(["-collect-test-diagnostics", "never"]);
+		await runner.stop();
 	});
 
 	test("on a paid team, an untrusted developer is a plain failure", async () => {

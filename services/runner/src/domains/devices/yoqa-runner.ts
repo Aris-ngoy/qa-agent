@@ -447,9 +447,11 @@ export function explainBuildFailure(
 	]
 		.slice(0, 2)
 		.map((text) => (/[.!?]$/.test(text ?? "") ? text : `${text}.`));
+	const launchError = output.match(/Finished with error: ([^\n]+)/)?.[1]?.trim();
 	const detail =
 		errors.slice(0, 2).join(" ") ||
 		nsErrors.join(" ") ||
+		launchError ||
 		output.trim().split("\n").slice(-5).join(" ");
 	const fix = (() => {
 		if (/device is locked|Unlock .* to Continue/i.test(output)) {
@@ -597,10 +599,12 @@ export type YoqaRunner = {
 const READY_TIMEOUT_MS = 120_000;
 const LISTENING_RE = /YOQA_RUNNER_LISTENING port=(\d+)/;
 /**
- * xcodebuild could not launch the runner on the phone (an untrusted developer, for one). It
- * prints this and then waits for the runner forever, so it ends the wait at once.
+ * xcodebuild could not launch the runner on the phone (an untrusted developer, for one). The
+ * `IDELaunchReport` line comes about a second in; the summary only once xcodebuild is done.
+ * Either one ends the wait: the runner will not start.
  */
-const LAUNCH_FAILED_RE = /Failed to install or launch the test runner/;
+const LAUNCH_FAILED_RE =
+	/IDELaunchReport: .*Finished with error:|Failed to install or launch the test runner/;
 const OUTPUT_TAIL_CHARS = 16_000;
 
 /**
@@ -645,6 +649,10 @@ export async function startYoqaRunner(
 			"-destination",
 			`id=${udid}`,
 			"-only-testing:YoqaRunnerUITests/RunnerTests/testServe",
+			// On a failed launch xcodebuild otherwise runs `devicectl diagnose`, which runs
+			// `sudo`: a Password prompt on the terminal, and no answer until it is typed.
+			"-collect-test-diagnostics",
+			"never",
 		],
 		env,
 	);
