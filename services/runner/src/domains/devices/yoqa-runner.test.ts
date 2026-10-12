@@ -11,6 +11,7 @@ import {
 	YoqaRunnerError,
 	prepareYoqaRunner,
 	resolveSigningTeam,
+	resolveYoqaRunnerProject,
 	saveTeam,
 	startYoqaRunner,
 } from "./yoqa-runner";
@@ -142,6 +143,7 @@ async function setup(env: Record<string, string> = {}) {
 	cleanup.push(root);
 	const projectDir = join(root, "project");
 	await mkdir(join(projectDir, "YoqaRunnerUITests"), { recursive: true });
+	await mkdir(join(projectDir, "YoqaRunner.xcodeproj"), { recursive: true });
 	await writeFile(join(projectDir, "YoqaRunnerUITests/RunnerTests.swift"), "// v1");
 	const { mac, exec } = fakeMac();
 	const deps: YoqaRunnerDeps = {
@@ -156,6 +158,17 @@ async function setup(env: Record<string, string> = {}) {
 }
 
 describe("prepareYoqaRunner", () => {
+	test("a missing Xcode project is reported as a broken install, not a signing problem", async () => {
+		const { mac, deps, projectDir } = await setup();
+		await rm(join(projectDir, "YoqaRunner.xcodeproj"), { recursive: true });
+		const failure = prepareYoqaRunner(UDID, deps);
+		await expect(failure).rejects.toThrow(
+			`YoqaRunner's Xcode project is missing from this install (looked in ${projectDir}). Reinstall yoqa, or set YOQA_RUNNER_PROJECT`,
+		);
+		await expect(failure).rejects.toBeInstanceOf(YoqaRunnerError);
+		expect(mac.builds).toEqual([]);
+	});
+
 	test("signs with the team of the newest Apple Development identity in the keychain", async () => {
 		const { mac, deps } = await setup();
 		const build = await prepareYoqaRunner(UDID, deps);
@@ -548,5 +561,61 @@ describe("startYoqaRunner", () => {
 		).rejects.toThrow(
 			/YOQA_RUNNER_LISTENING within 50 ms for team NEWTEAM222: Unlock Test’s iPhone to Continue\. Unlock the iPhone/,
 		);
+	});
+});
+
+describe("resolveYoqaRunnerProject", () => {
+	async function locations(env: Record<string, string> = {}) {
+		const root = await mkdtemp(join(tmpdir(), "yoqa-runner-project-"));
+		cleanup.push(root);
+		return {
+			root,
+			at: {
+				env,
+				checkout: join(root, "checkout"),
+				archive: join(root, "app/yoqa-runner-src.tar.gz"),
+				cacheRoot: join(root, "cache"),
+			},
+		};
+	}
+
+	async function pack(root: string, archive: string, version: string) {
+		const source = join(root, `source-${version}`);
+		await mkdir(join(source, "YoqaRunner.xcodeproj"), { recursive: true });
+		await writeFile(join(source, "YoqaRunner.xcodeproj/project.pbxproj"), version);
+		await mkdir(join(archive, ".."), { recursive: true });
+		const tar = Bun.spawnSync(["tar", "-czf", archive, "-C", source, "YoqaRunner.xcodeproj"]);
+		expect(tar.exitCode).toBe(0);
+	}
+
+	test("YOQA_RUNNER_PROJECT wins", async () => {
+		const { at } = await locations({ YOQA_RUNNER_PROJECT: " /src/yoqa-runner " });
+		expect(resolveYoqaRunnerProject(at)).toBe("/src/yoqa-runner");
+	});
+
+	test("a checkout with the Xcode project is used in place", async () => {
+		const { at } = await locations();
+		await mkdir(join(at.checkout, "YoqaRunner.xcodeproj"), { recursive: true });
+		expect(resolveYoqaRunnerProject(at)).toBe(at.checkout);
+	});
+
+	test("a packaged install unpacks its archive once, and again when the archive changes", async () => {
+		const { root, at } = await locations();
+		await pack(root, at.archive, "v1");
+		const first = resolveYoqaRunnerProject(at);
+		expect(first.startsWith(join(at.cacheRoot, "source"))).toBe(true);
+		expect(readFileSync(join(first, "YoqaRunner.xcodeproj/project.pbxproj"), "utf8")).toBe("v1");
+		expect(resolveYoqaRunnerProject(at)).toBe(first);
+
+		await pack(root, at.archive, "v2");
+		const second = resolveYoqaRunnerProject(at);
+		expect(second).not.toBe(first);
+		expect(readFileSync(join(second, "YoqaRunner.xcodeproj/project.pbxproj"), "utf8")).toBe("v2");
+	});
+
+	test("with neither, the checkout path, so the error names where it looked", async () => {
+		const { at } = await locations();
+		expect(resolveYoqaRunnerProject(at)).toBe(at.checkout);
+		expect(existsSync(at.cacheRoot)).toBe(false);
 	});
 });

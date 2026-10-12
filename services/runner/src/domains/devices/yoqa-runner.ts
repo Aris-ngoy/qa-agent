@@ -10,7 +10,7 @@
  */
 
 import { X509Certificate, createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { copyFile, cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -23,7 +23,7 @@ export type RunnerExec = (command: string[]) => Promise<RunnerExecResult>;
 export type YoqaRunnerDeps = {
 	exec: RunnerExec;
 	env: Record<string, string | undefined>;
-	/** `native/yoqa-runner`. */
+	/** `native/yoqa-runner`, or the copy unpacked from a packaged install. */
 	projectDir: string;
 	/** Where builds are cached, one derived-data directory per cache key. */
 	cacheRoot: string;
@@ -495,6 +495,11 @@ export function prepareYoqaRunner(udid: string, deps: YoqaRunnerDeps): Promise<Y
 }
 
 async function prepare(udid: string, deps: YoqaRunnerDeps): Promise<YoqaRunnerBuild> {
+	if (!existsSync(join(deps.projectDir, "YoqaRunner.xcodeproj"))) {
+		throw new YoqaRunnerError(
+			`YoqaRunner's Xcode project is missing from this install (looked in ${deps.projectDir}). Reinstall yoqa, or set YOQA_RUNNER_PROJECT to a native/yoqa-runner checkout.`,
+		);
+	}
 	const team = await signingTeam(deps);
 	const [sources, xcode] = await Promise.all([
 		hashSources(deps.projectDir),
@@ -740,8 +745,52 @@ async function execCommand(command: string[]): Promise<RunnerExecResult> {
 	}
 }
 
+/** The runner's sources as the desktop app ships them, beside the compiled runner binary. */
+export const RUNNER_SOURCE_ARCHIVE = "yoqa-runner-src.tar.gz";
+
+export type RunnerProjectLocations = {
+	env: Record<string, string | undefined>;
+	/** `native/yoqa-runner` in a checkout. */
+	checkout: string;
+	/** {@link RUNNER_SOURCE_ARCHIVE} in a packaged install. */
+	archive: string;
+	cacheRoot: string;
+};
+
+/**
+ * `YOQA_RUNNER_PROJECT`, else the checkout, else the packaged archive unpacked once under
+ * `cacheRoot/source/<archive hash>`. A compiled runner's `import.meta.dir` is Bun's virtual
+ * filesystem, so the checkout path there is `/native/yoqa-runner` and only the archive works.
+ * When none is found, the checkout path, so the missing-project error names it.
+ */
+export function resolveYoqaRunnerProject(at: RunnerProjectLocations): string {
+	const fromEnv = at.env.YOQA_RUNNER_PROJECT?.trim();
+	if (fromEnv) return fromEnv;
+	if (existsSync(join(at.checkout, "YoqaRunner.xcodeproj"))) return at.checkout;
+	if (!existsSync(at.archive)) return at.checkout;
+	const key = createHash("sha256").update(readFileSync(at.archive)).digest("hex").slice(0, 16);
+	const dir = join(at.cacheRoot, "source", key);
+	if (existsSync(join(dir, "YoqaRunner.xcodeproj"))) return dir;
+	const staging = `${dir}.${process.pid}.tmp`;
+	rmSync(staging, { recursive: true, force: true });
+	mkdirSync(staging, { recursive: true });
+	const tar = Bun.spawnSync(["tar", "-xzf", at.archive, "-C", staging]);
+	if (tar.exitCode !== 0) {
+		rmSync(staging, { recursive: true, force: true });
+		return at.checkout;
+	}
+	try {
+		renameSync(staging, dir);
+	} catch {
+		// Another runner unpacked the same archive first.
+		rmSync(staging, { recursive: true, force: true });
+	}
+	return dir;
+}
+
 /** The real Mac: the keychain, xcodebuild, `~/.yoqa/yoqa-runner`, and `native/yoqa-runner`. */
 export function yoqaRunnerDeps(): StartYoqaRunnerDeps {
+	const cacheRoot = join(homedir(), ".yoqa", "yoqa-runner");
 	return {
 		exec: execCommand,
 		spawn: (command, env) =>
@@ -752,8 +801,13 @@ export function yoqaRunnerDeps(): StartYoqaRunnerDeps {
 				stderr: "pipe",
 			}),
 		env: process.env,
-		projectDir: join(import.meta.dir, "../../../../../native/yoqa-runner"),
-		cacheRoot: join(homedir(), ".yoqa", "yoqa-runner"),
+		projectDir: resolveYoqaRunnerProject({
+			env: process.env,
+			checkout: join(import.meta.dir, "../../../../../native/yoqa-runner"),
+			archive: join(dirname(process.execPath), RUNNER_SOURCE_ARCHIVE),
+			cacheRoot,
+		}),
+		cacheRoot,
 		settingsPath: join(homedir(), ".yoqa", "ios-signing.json"),
 		now: () => new Date(),
 	};
