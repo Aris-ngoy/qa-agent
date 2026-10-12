@@ -95,8 +95,7 @@
 							"guide/best-practices-iap",
 							"guide/best-practices-cross-app",
 							"guide/best-practices-non-native-ui",
-							"guide/best-practices-app-state",
-							"guide/best-practices-appium-capabilities"
+							"guide/best-practices-app-state"
 						]
 					}
 				]
