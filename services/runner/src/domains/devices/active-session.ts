@@ -1,7 +1,6 @@
-import type { Capability, DevicePlatform, StreamState } from "@yoqa/runner-client";
+import type { DevicePlatform, StreamState } from "@yoqa/runner-client";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
-import { refuseAppiumRequest } from "./select-lane";
-import { type DeviceSession, createDeviceSession, isDeadSessionError } from "./session";
+import { type DeviceSession, createDeviceSession } from "./session";
 
 export type ActiveSessionInfo = {
 	deviceId: string;
@@ -43,9 +42,6 @@ export class SessionBusyError extends Error {
 		this.name = "SessionBusyError";
 	}
 }
-
-/** Compat alias — prefer `isDeadSessionError` from `./session`. */
-export const isMissingAppiumSessionError = isDeadSessionError;
 
 function streamStateOf(stream: DeviceSession["stream"]): StreamState {
 	if (!stream) return "none";
@@ -100,7 +96,7 @@ export function abandonActiveSession(): ActiveSessionInfo | null {
 	active = null;
 	abortAllMjpegProxies();
 	console.warn(
-		`[yoqa-runner] abandoned dead Appium session for ${info?.platform} ${info?.deviceId}`,
+		`[yoqa-runner] abandoned dead device session for ${info?.platform} ${info?.deviceId}`,
 	);
 	return info;
 }
@@ -108,8 +104,6 @@ export function abandonActiveSession(): ActiveSessionInfo | null {
 async function createAndRegister(options: {
 	deviceId: string;
 	platform: DevicePlatform;
-	appCaps?: Capability[];
-	caseCaps?: Capability[];
 	bundleId?: string;
 	appPackage?: string;
 	requestedLane?: import("./lane").LaneName | "auto";
@@ -118,8 +112,6 @@ async function createAndRegister(options: {
 	const session = await createDeviceSession({
 		platform: options.platform,
 		deviceId: options.deviceId,
-		appCaps: options.appCaps ?? [],
-		caseCaps: options.caseCaps ?? [],
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
 		requestedLane: options.requestedLane,
@@ -149,17 +141,12 @@ export async function connectDevice(options: {
 	platform: DevicePlatform;
 	bundleId?: string;
 	appPackage?: string;
-	appCaps?: Capability[];
-	caseCaps?: Capability[];
 	requestedLane?: import("./lane").LaneName | "auto";
 }): Promise<ActiveSessionInfo> {
 	if (isActiveSessionHeldByRun()) {
 		throw new SessionBusyError(
 			"A run is using the device session. Cancel the run before connecting another device.",
 		);
-	}
-	if (options.requestedLane === "appium") {
-		refuseAppiumRequest();
 	}
 	if (active) {
 		await disconnectDevice();
@@ -182,7 +169,7 @@ export async function disconnectDevice(): Promise<ActiveSessionInfo | null> {
 	const info = getActiveSessionInfo();
 	const session = active.session;
 	// Drop the handle first so new stream proxies refuse; then cut upstream
-	// MJPEG so WebDriverAgentRunner can actually terminate on deleteSession.
+	// MJPEG so the device tool can actually terminate when the session ends.
 	active = null;
 	abortAllMjpegProxies();
 	try {
@@ -216,12 +203,10 @@ export function retargetActiveSession(app: {
  * Run-side acquisition of the shared Device Session.
  *
  * - Adopts the Active Session when it already targets the requested device
- *   (no reconnect, no WDA relaunch) and marks it held by this run. Custom
- *   capabilities do not change the Lane and do not replace a Direct session.
+ *   (no reconnect, no relaunch) and marks it held by this run.
  * - Replaces an unheld Active Session pointing at another device (device change).
- * - Opens a fresh Direct session when there is none to adopt. Asking for the
- *   Appium lane fails this connect before the Active Session is dropped. A
- *   failed Direct start fails it with that error.
+ * - Opens a fresh Direct session when there is none to adopt. A failed
+ *   Direct start fails it with that error.
  * - When another run owns the shared session, creates a detached session that
  *   is not registered as Active and is quit again at release. A held session on
  *   the same device is never replaced: that request fails with `SessionBusyError`.
@@ -230,8 +215,6 @@ export async function acquireSessionForRun(options: {
 	runId: string;
 	deviceId: string;
 	platform: DevicePlatform;
-	appCaps?: Capability[];
-	caseCaps?: Capability[];
 	bundleId?: string;
 	appPackage?: string;
 	requestedLane?: import("./lane").LaneName | "auto";
@@ -247,8 +230,6 @@ export async function acquireSessionForRun(options: {
 		const session = await createDeviceSession({
 			platform: options.platform,
 			deviceId: options.deviceId,
-			appCaps: options.appCaps ?? [],
-			caseCaps: options.caseCaps ?? [],
 			bundleId: options.bundleId,
 			appPackage: options.appPackage,
 			requestedLane: options.requestedLane,
@@ -272,10 +253,6 @@ export async function acquireSessionForRun(options: {
 		}
 	}
 
-	if (options.requestedLane === "appium") {
-		refuseAppiumRequest();
-	}
-
 	if (current && current.deviceId === options.deviceId) {
 		console.warn(
 			`[yoqa-runner] active session for ${options.deviceId} is dead — creating a fresh one for the run`,
@@ -290,8 +267,6 @@ export async function acquireSessionForRun(options: {
 	const session = await createAndRegister({
 		deviceId: options.deviceId,
 		platform: options.platform,
-		appCaps: options.appCaps,
-		caseCaps: options.caseCaps,
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
 		requestedLane: options.requestedLane,

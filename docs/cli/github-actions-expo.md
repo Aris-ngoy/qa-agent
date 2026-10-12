@@ -33,7 +33,7 @@ Customer-equivalent (published CLI, not this repo’s workflow):
   with:
     node-version: "22"
 - run: npm i -g @yoqa/cli
-- run: yoqa health && yoqa runtime ensure
+- run: yoqa health
 ```
 
 Then install a build, `yoqa devices connect`, and run `examples/expo-demo/yoqa/seed-catalog.sh` followed by `yoqa runs create DEMO --cases 1 --mode script --wait` (or `./yoqa/ci-smoke.sh` for connector-only).

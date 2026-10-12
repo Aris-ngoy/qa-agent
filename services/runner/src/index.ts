@@ -1,9 +1,7 @@
-import { ensureAndroidSdkEnv } from "./domains/appium/android-sdk";
-import { ensureHostToolPath } from "./domains/appium/host-path";
-import { stopAppiumServer } from "./domains/appium/server";
+import { ensureAndroidSdkEnv } from "./domains/android-toolchain/android-sdk";
+import { ensureHostToolPath } from "./domains/android-toolchain/host-path";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
 import { recoverInterruptedRecordings } from "./domains/runs/application";
-import { installAppiumSessionBridge } from "./domains/servers/application";
 import { createApp } from "./interfaces/http/app";
 import {
 	type ControlWsData,
@@ -14,9 +12,8 @@ import { loadSettings } from "./settings";
 
 // Finder/Dock launches get a stripped PATH — include Homebrew + agent CLIs before probes.
 ensureHostToolPath();
-// GUI apps also omit ANDROID_HOME; UiAutomator2 requires it even when adb is on PATH.
+// GUI apps also omit ANDROID_HOME; the Android Direct lane needs it even when adb is on PATH.
 ensureAndroidSdkEnv();
-installAppiumSessionBridge();
 
 const settings = loadSettings();
 const startedAt = Date.now();
@@ -69,8 +66,8 @@ const server = Bun.serve<ControlWsData>({
 console.log(`[yoqa-runner] listening on http://${server.hostname}:${server.port}`);
 
 function shutdown(signal: string): void {
-	console.log(`[yoqa-runner] ${signal} — stopping managed Appium`);
-	void stopAppiumServer().finally(() => process.exit(0));
+	console.log(`[yoqa-runner] ${signal} — stopping`);
+	process.exit(0);
 }
 
 process.once("SIGINT", () => shutdown("SIGINT"));

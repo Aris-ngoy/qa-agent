@@ -33,8 +33,6 @@ function options(overrides: Partial<SessionOptions> = {}): SessionOptions {
 	return {
 		platform: "ios",
 		deviceId: SIM_UDID,
-		appCaps: [],
-		caseCaps: [],
 		...overrides,
 	};
 }
@@ -71,7 +69,7 @@ function recordingIdb(): { idb: IdbExec; calls: string[][] } {
 }
 
 describe("createIosDirectSession", () => {
-	test("rejects Android so connect can fall back to Appium", async () => {
+	test("rejects Android", async () => {
 		await expect(
 			createIosDirectSession(options({ platform: "android", deviceId: "emulator-5554" }), {
 				idb: async () => ok(),
@@ -79,10 +77,10 @@ describe("createIosDirectSession", () => {
 		).rejects.toThrow(/iOS simulators only/);
 	});
 
-	test("rejects a physical iOS UDID so connect stays on Appium", async () => {
+	test("rejects a physical iOS UDID", async () => {
 		await expect(
 			createIosDirectSession(options({ deviceId: PHONE_UDID }), { idb: async () => ok() }),
-		).rejects.toThrow(/physical iOS stays on Appium/);
+		).rejects.toThrow(/supports simulators only/);
 	});
 
 	test("connects over idb and names the Direct lane", async () => {

@@ -14,7 +14,7 @@ describe("startRunRecording", () => {
 		expect(result).toEqual({ unavailable: "The direct lane cannot record video" });
 	});
 
-	test("tells the user to install ffmpeg when Appium cannot find it", async () => {
+	test("tells the user to install ffmpeg when the recorder cannot find it", async () => {
 		const result = await startRunRecording(
 			sessionWith(async () => {
 				throw new Error(

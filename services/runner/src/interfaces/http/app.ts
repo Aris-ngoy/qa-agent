@@ -8,7 +8,6 @@ import { createDoctorRoutes } from "./doctor";
 import { createHealthRoutes } from "./health";
 import { createProviderRoutes } from "./providers";
 import { createRunsRoutes } from "./runs";
-import { createRuntimeRoutes } from "./runtime";
 import { createServersRoutes } from "./servers";
 import { createSessionRoutes } from "./session";
 import { createStatusRoutes } from "./status";
@@ -58,7 +57,6 @@ export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 	app.route("/", createStatusRoutes(settings));
 	app.route("/", createDevicesRoutes());
 	app.route("/", createSessionRoutes());
-	app.route("/", createRuntimeRoutes());
 	app.route("/", createServersRoutes());
 	app.route("/", createDoctorRoutes());
 	app.route("/", createCatalogRoutes());

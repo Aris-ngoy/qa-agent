@@ -1,5 +1,5 @@
 /**
- * Clean Appium page source into a compact element list with relative 0–1000 boxes.
+ * Clean a page source into a compact element list with relative 0–1000 boxes.
  * Drops zero-size / offscreen / pure layout containers (ARCHITECTURE §4.2).
  */
 
@@ -238,7 +238,7 @@ function walkIdbNodes(
 	}
 }
 
-/** idb `--format complete` (and a bare element array) into the same Screen as Appium XML. */
+/** idb `--format complete` (and a bare element array) into the same Screen as the XML. */
 export function cleanIdbCompleteSource(
 	raw: string,
 	window: { width: number; height: number },

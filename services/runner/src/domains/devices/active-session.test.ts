@@ -53,13 +53,12 @@ function fakeLane(lane: LaneName): LaneFactory {
 let directLane: LaneFactory = fakeLane("direct");
 
 // Keep every real export (session.test.ts relies on them) and open sessions through
-// the real Lane selection with fake Lane factories, so no device or Appium is needed.
+// the real Lane selection with fake Lane factories, so no device is needed.
 const realCreateDeviceSession = actualSession.createDeviceSession;
 mock.module("./session", () => ({
 	...actualSession,
 	createDeviceSession: (options: actualSession.SessionOptions) =>
 		realCreateDeviceSession(options, {
-			appium: fakeLane("appium"),
 			direct: (laneOptions) => directLane(laneOptions),
 		}),
 }));
@@ -377,7 +376,7 @@ describe("shared device session", () => {
 		expect(createdFakeSessions.every((session) => session.lane === "direct")).toBe(true);
 	});
 
-	test("a failed Direct start fails the connect and does not open an Appium session", async () => {
+	test("a failed Direct start fails the connect and opens no other session", async () => {
 		directLane = async () => {
 			throw new Error("idb companion refused");
 		};
@@ -399,105 +398,6 @@ describe("shared device session", () => {
 		expect(createdCount).toBe(0);
 	});
 
-	test("asking for the Appium lane fails without dropping the Direct Active Session", async () => {
-		await connectDevice({ deviceId: "dev-1", platform: "android" });
-
-		await expect(
-			connectDevice({ deviceId: "dev-1", platform: "android", requestedLane: "appium" }),
-		).rejects.toThrow("The Appium lane cannot be opened");
-		await expect(
-			connectDevice({ deviceId: "dev-2", platform: "android", requestedLane: "appium" }),
-		).rejects.toThrow("The Appium lane cannot be opened");
-		await expect(
-			acquireSessionForRun({
-				runId: "run_a",
-				deviceId: "dev-2",
-				platform: "android",
-				requestedLane: "appium",
-			}),
-		).rejects.toThrow("The Appium lane cannot be opened");
-
-		expect(getActiveSessionInfo()?.deviceId).toBe("dev-1");
-		expect(getActiveSessionInfo()?.lane).toBe("direct");
-		expect(createdFakeSessions[0]?.quitCalls).toBe(0);
-		expect(createdCount).toBe(1);
-
-		const stale = createdFakeSessions[0];
-		if (!stale) throw new Error("expected a created session");
-		stale.healthy = false;
-		await expect(
-			acquireSessionForRun({
-				runId: "run_a",
-				deviceId: "dev-1",
-				platform: "android",
-				requestedLane: "appium",
-			}),
-		).rejects.toThrow("The Appium lane cannot be opened");
-		expect(getActiveSessionInfo()?.deviceId).toBe("dev-1");
-		expect(stale.quitCalls).toBe(0);
-	});
-
-	test("requesting the Appium lane fails the connect and opens no session", async () => {
-		await expect(
-			connectDevice({ deviceId: "dev-1", platform: "android", requestedLane: "appium" }),
-		).rejects.toThrow("The Appium lane cannot be opened");
-		expect(getActiveSessionInfo()).toBeNull();
-
-		await expect(
-			acquireSessionForRun({
-				runId: "run_a",
-				deviceId: "dev-1",
-				platform: "android",
-				requestedLane: "appium",
-			}),
-		).rejects.toThrow("The Appium lane cannot be opened");
-		expect(createdCount).toBe(0);
-	});
-
-	test("a Run that asks for Appium adopts a Direct Active Session instead of replacing it", async () => {
-		await connectDevice({ deviceId: "dev-1", platform: "android" });
-		expect(getActiveSessionInfo()?.lane).toBe("direct");
-
-		const acquired = await acquireSessionForRun({
-			runId: "run_a",
-			deviceId: "dev-1",
-			platform: "android",
-			requestedLane: "appium",
-		});
-		expect(createdCount).toBe(1);
-		expect(acquired.session.lane).toBe("direct");
-		expect(acquired.session.laneWarning).toBeUndefined();
-
-		await releaseSessionFromRun("run_a", acquired.session, acquired.shared);
-	});
-
-	test("custom capabilities do not change the Lane or replace a Direct Active Session", async () => {
-		const connected = await connectDevice({
-			deviceId: "dev-1",
-			platform: "android",
-			appCaps: [{ id: "cap-1", key: "appium:autoLaunch", value: "false" }],
-		});
-		expect(connected.lane).toBe("direct");
-		expect(connected.laneWarning).toBeUndefined();
-		const direct = createdFakeSessions[0];
-
-		const acquired = await acquireSessionForRun({
-			runId: "run_a",
-			deviceId: "dev-1",
-			platform: "android",
-			appCaps: [{ id: "cap-1", key: "appium:autoLaunch", value: "false" }],
-			caseCaps: [{ id: "cap-2", key: "appium:appActivity", value: ".Main" }],
-		});
-		expect(direct?.quitCalls).toBe(0);
-		expect(createdCount).toBe(1);
-		expect(acquired.session.lane).toBe("direct");
-		expect(acquired.session.laneWarning).toBeUndefined();
-		expect(getActiveSessionInfo()?.lane).toBe("direct");
-		expect(getActiveSessionInfo()?.heldByRun).toBe(true);
-
-		await releaseSessionFromRun("run_a", acquired.session, acquired.shared);
-	});
-
 	test("a session held by another Run on the same device is never replaced", async () => {
 		await connectDevice({ deviceId: "dev-1", platform: "android" });
 		const held = await acquireSessionForRun({
@@ -511,7 +411,6 @@ describe("shared device session", () => {
 				runId: "run_b",
 				deviceId: "dev-1",
 				platform: "android",
-				appCaps: [{ id: "cap-1", key: "appium:autoLaunch", value: "false" }],
 			}),
 		).rejects.toBeInstanceOf(SessionBusyError);
 		expect(createdFakeSessions[0]?.quitCalls).toBe(0);

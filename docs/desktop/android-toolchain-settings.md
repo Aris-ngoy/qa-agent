@@ -34,3 +34,7 @@ Let users see the Android SDK and JDK paths Yoqa detected, and override them whe
 
 - Folder picker for SDK / JDK paths
 - Surface the same overrides in Diagnostics / doctor output
+
+## Update: Appium removed ([#289](../devices/remove-appium-lane.md))
+
+The settings stay and now feed the Android Direct lane (adb and its tooling) instead of a managed Appium Server. Wherever this note says Appium reads the paths, read "the Direct lane".

@@ -4,53 +4,22 @@ import { directImplementationOrder, directOptIn, selectLane } from "./select-lan
 
 describe("selectLane", () => {
 	test("fails the connect when Direct is not available", () => {
-		expect(() =>
-			selectLane({ requested: "auto", available: ["appium"], appCaps: [], caseCaps: [] }),
-		).toThrow("Direct lane is not available");
+		expect(() => selectLane({ requested: "auto", available: [] })).toThrow(
+			"Direct lane is not available",
+		);
 	});
 
-	test("auto-picks Direct when that lane is available", () => {
-		expect(
-			selectLane({
-				requested: "auto",
-				available: ["appium", "direct"],
-				appCaps: [],
-				caseCaps: [],
-			}),
-		).toEqual({ lane: "direct", fallback: false });
-	});
-
-	test("custom capabilities do not change the Lane", () => {
-		expect(
-			selectLane({
-				requested: "direct",
-				available: ["appium", "direct"],
-				appCaps: [{ key: "appium:autoLaunch" }],
-				caseCaps: [],
-			}),
-		).toEqual({ lane: "direct", fallback: false });
+	test("auto picks Direct when that lane is available", () => {
+		expect(selectLane({ requested: "auto", available: ["direct"] })).toEqual({
+			lane: "direct",
+			fallback: false,
+		});
 	});
 
 	test("an explicit Direct request fails when that lane is not available", () => {
-		expect(() =>
-			selectLane({
-				requested: "direct",
-				available: ["appium"],
-				appCaps: [],
-				caseCaps: [],
-			}),
-		).toThrow("Direct lane is not available");
-	});
-
-	test("an explicit Appium request fails the connect", () => {
-		expect(() =>
-			selectLane({
-				requested: "appium",
-				available: ["appium", "direct"],
-				appCaps: [],
-				caseCaps: [],
-			}),
-		).toThrow("The Appium lane cannot be opened");
+		expect(() => selectLane({ requested: "direct", available: [] })).toThrow(
+			"Direct lane is not available",
+		);
 	});
 });
 
@@ -137,14 +106,10 @@ describe("physical-iOS Direct lane", () => {
 		expect(DIRECT_IMPLEMENTATIONS["ios-device"].map((i) => i.name)).toEqual(["device-ios"]);
 	});
 
-	test("auto picks Direct for a phone, and custom capabilities do not change that", () => {
-		const base = { available: ["appium", "direct"] as const, requested: "auto" as const };
-		expect(selectLane({ ...base, appCaps: [], caseCaps: [] })).toEqual({
+	test("auto picks Direct for a phone", () => {
+		expect(selectLane({ available: ["direct"], requested: "auto" })).toEqual({
 			lane: "direct",
 			fallback: false,
 		});
-		expect(
-			selectLane({ ...base, appCaps: [{ key: "appium:autoLaunch" }], caseCaps: [] }).lane,
-		).toBe("direct");
 	});
 });

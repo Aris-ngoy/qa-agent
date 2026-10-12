@@ -1,9 +1,9 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
 import { startAndroidDevtools } from "./android-devtools";
 import { createAndroidDirectSession } from "./android-direct-lane";
-import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { createIosDeviceSession } from "./ios-device-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
+import { looksLikePhysicalIosUdid } from "./ios-udid";
 import type { LaneFactory } from "./lane";
 import {
 	type DeviceClass,
@@ -19,8 +19,7 @@ export type DirectImplementation = DirectImplementationInfo & { open: LaneFactor
 
 /**
  * Every Direct implementation tried in a failed start, with the warnings from each
- * fallback inside the Direct lane. The connect fails with this error; it does not
- * open the Appium lane.
+ * fallback inside the Direct lane. The connect fails with this error.
  */
 export class DirectLaneStartError extends Error {
 	constructor(
@@ -123,7 +122,7 @@ export const DIRECT_IMPLEMENTATIONS: Record<DeviceClass, DirectImplementation[]>
 	"ios-device": [
 		{
 			// `YoqaRunner` on a cabled iPhone, over a usbmuxd tunnel (#247, #248). Promoted in #251:
-			// about 2.4x faster than Appium per tap.
+			// about 2.4x faster per tap than the WebDriver path it replaced.
 			name: "device-ios",
 			promoted: true,
 			open: (options) => createIosDeviceSession(options),

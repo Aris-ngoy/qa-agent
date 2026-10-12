@@ -2,7 +2,9 @@
 
 **Product:** Yoqa (`yoqa.arisn.dev`) · **Code name:** `qa-agent`
 
-This document is the product design and build architecture for Yoqa: desktop + local runner + Appium + agent skill, with optional cloud later.
+This document is the product design and build architecture for Yoqa: desktop + local runner + agent skill, with optional cloud later.
+
+> **Appium is gone.** A Lane is Direct only ([ADR-0005](docs/adr/0005-direct-only-lane.md)): adb on Android, `device-sim` (or idb_companion) on iOS simulators, `YoqaRunner` on a cabled iPhone. The runner no longer installs, starts, or checks an Appium Server, and Apps and Cases carry no Appium capabilities. Sections below that describe Appium, WebDriverIO, `appium_caps`, or a bundled Appium runtime are the original design and are historical.
 
 Related: public docs in [`apps/docs/`](apps/docs/) (Mintlify) and engineering notes under [`docs/`](docs/).
 
@@ -498,8 +500,7 @@ repo/
 │           ├── settings.ts           # listen host/port/version (not product prefs)
 │           ├── domains/
 │           │   ├── devices/          # Device Session, Screen, Action, Active Session, MJPEG
-│           │   ├── appium/           # Appium Runtime + Appium Server ensureServer
-│           │   ├── ios/              # WDA / signing prep
+│           │   ├── android-toolchain/ # Android SDK / JDK env and host tool PATH
 │           │   ├── providers/        # Provider adapters + vision completion
 │           │   ├── runs/             # Run orchestration + Case executor + agent prompts
 │           │   ├── catalog/          # apps, cases, flows
@@ -519,7 +520,7 @@ repo/
 |--------|------|
 | `devices/` Device Session | create/attach, gestures, screenshots, Dead Session errors; Active Session registry |
 | `devices/` Screen & Action | `getScreen`, `performAction` (incl. Grounding); MJPEG pause on Screen read |
-| `appium/` | Runtime install + listening Appium Server |
+| `android-toolchain/` | Android SDK / JDK env and host tool PATH for the Direct lane |
 | `providers/` | probe/validate/listModels + optional decide/ground; catalog for Settings UI |
 | `runs/` Case executor | one case with injected session/decide/clock/abort; uses Screen & Action |
 | `packages/cli` | thin HTTP client to local runner |

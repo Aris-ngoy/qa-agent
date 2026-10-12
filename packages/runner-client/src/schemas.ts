@@ -12,7 +12,7 @@ export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export const devicePlatformSchema = z.union([z.literal("ios"), z.literal("android")]);
 export type DevicePlatform = z.infer<typeof devicePlatformSchema>;
 
-export const laneNameSchema = z.union([z.literal("appium"), z.literal("direct")]);
+export const laneNameSchema = z.literal("direct");
 export type LaneName = z.infer<typeof laneNameSchema>;
 
 export const deviceKindSchema = z.union([
@@ -46,106 +46,16 @@ export const listDevicesResponseSchema = z.object({
 
 export type ListDevicesResponse = z.infer<typeof listDevicesResponseSchema>;
 
-export const appiumDriverSchema = z.union([z.literal("xcuitest"), z.literal("uiautomator2")]);
-export type AppiumDriver = z.infer<typeof appiumDriverSchema>;
-
-export const iosWdaActionSchema = z.union([
-	z.literal("reused"),
-	z.literal("reinstalled"),
-	z.literal("built"),
-]);
-
-export type IosWdaAction = z.infer<typeof iosWdaActionSchema>;
-
-export const setupPlatformRequestSchema = z.object({
-	platform: devicePlatformSchema,
-	deviceId: z.string().min(1).optional(),
-	kind: deviceKindSchema.optional(),
-	/** Absolute path to Xcode Contents/Developer (iOS physical) */
-	xcodeDeveloperDir: z.string().min(1).optional(),
-	/** Apple Development team ID (iOS physical) */
-	developmentTeam: z.string().min(1).optional(),
-	/** Full codesigning identity name, e.g. "Apple Development: …" (iOS physical) */
-	codeSignIdentity: z.string().min(1).optional(),
-	/** Force a full WebDriverAgent rebuild/install even when prep is reusable */
-	force: z.boolean().optional(),
-});
-
-export type SetupPlatformRequest = z.infer<typeof setupPlatformRequestSchema>;
-
-export const setupPlatformResponseSchema = z.object({
-	ok: z.literal(true),
-	platform: devicePlatformSchema,
-	driver: appiumDriverSchema,
-	appiumVersion: z.string().min(1),
-	driverVersion: z.string().optional(),
-	alreadyInstalled: z.boolean(),
-	message: z.string().min(1),
-	/** True when WebDriverAgent was ensured on a physical iOS device (any action) */
-	wdaInstalled: z.boolean().optional(),
-	/** Bundle ID of the installed WebDriverAgent runner */
-	wdaBundleId: z.string().min(1).optional(),
-	/** Whether WDA was reused, reinstalled from cache, or freshly built */
-	wdaAction: iosWdaActionSchema.optional(),
-});
-
-export type SetupPlatformResponse = z.infer<typeof setupPlatformResponseSchema>;
-
-export const setupPlatformErrorSchema = z.object({
+export const runnerErrorSchema = z.object({
 	error: z.string().min(1),
 	detail: z.string().optional(),
 });
 
-export type SetupPlatformError = z.infer<typeof setupPlatformErrorSchema>;
-
-export const runtimeCheckIdSchema = z.union([
-	z.literal("node"),
-	z.literal("npm"),
-	z.literal("appium"),
-	z.literal("xcuitest"),
-	z.literal("uiautomator2"),
-	z.literal("xcode"),
-	z.literal("adb"),
-]);
-
-export type RuntimeCheckId = z.infer<typeof runtimeCheckIdSchema>;
-
-export const runtimeCheckSchema = z.object({
-	id: runtimeCheckIdSchema,
-	label: z.string().min(1),
-	ok: z.boolean(),
-	required: z.boolean(),
-	detail: z.string().optional(),
-});
-
-export type RuntimeCheck = z.infer<typeof runtimeCheckSchema>;
-
-export const runtimeStatusSchema = z.object({
-	ready: z.boolean(),
-	appiumVersion: z.string().optional(),
-	appiumSource: z.union([z.literal("system"), z.literal("managed")]).optional(),
-	checks: z.array(runtimeCheckSchema),
-});
-
-export type RuntimeStatus = z.infer<typeof runtimeStatusSchema>;
-
-export const ensureRuntimeResponseSchema = z.object({
-	ok: z.literal(true),
-	ready: z.boolean(),
-	status: runtimeStatusSchema,
-	installed: z.array(setupPlatformResponseSchema),
-	message: z.string().min(1),
-});
-
-export type EnsureRuntimeResponse = z.infer<typeof ensureRuntimeResponseSchema>;
+export type RunnerError = z.infer<typeof runnerErrorSchema>;
 
 // --- Servers lifecycle ---
 
-export const serverKindSchema = z.union([
-	z.literal("appium"),
-	z.literal("runner"),
-	z.literal("device-session"),
-]);
+export const serverKindSchema = z.union([z.literal("runner"), z.literal("device-session")]);
 export type ServerKind = z.infer<typeof serverKindSchema>;
 
 export const serverOwnershipSchema = z.union([
@@ -194,11 +104,7 @@ export const doctorCheckStatusSchema = z.union([
 ]);
 export type DoctorCheckStatus = z.infer<typeof doctorCheckStatusSchema>;
 
-export const doctorRepairIdSchema = z.union([
-	z.literal("ensure-runtime"),
-	z.literal("stop-foreign-appium"),
-	z.literal("disconnect-session"),
-]);
+export const doctorRepairIdSchema = z.literal("disconnect-session");
 export type DoctorRepairId = z.infer<typeof doctorRepairIdSchema>;
 
 export const doctorCheckSchema = z.object({
@@ -1103,9 +1009,6 @@ export const yoqaStatusResponseSchema = z.object({
 	runner: z.object({
 		ok: z.boolean(),
 		version: z.string().optional(),
-	}),
-	runtime: z.object({
-		ready: z.boolean(),
 	}),
 	provider: z.object({
 		configured: z.boolean(),

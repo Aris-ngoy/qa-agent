@@ -176,7 +176,7 @@ export class InspectorFeedController {
 		this.feed$.treeRefreshing.set(true);
 		try {
 			// pauseMjpeg aborts live stream proxies on the runner before pageSource
-			// (Appium Inspector Element Mode — source without dual-loading WDA).
+			// (the stream is paused while the tree is read).
 			const screen = await readScreen({ pauseMjpeg });
 			if (this.epoch !== epoch || !this.feed$.active.peek()) return null;
 			const next = screen.elements ?? [];
@@ -286,7 +286,7 @@ export class InspectorFeedController {
 				this.feed$.feedMode.set("mjpeg");
 				// Cache-bust so a stuck <img> MJPEG connection is remounted.
 				this.setFrame(`${await mjpegStreamUrl()}?t=${Date.now()}`, false);
-				// Do not page-source while MJPEG is starting — WDA dies a few seconds later.
+				// Do not page-source while MJPEG is starting — the session can die a few seconds later.
 				// Tree is loaded after script/commands (and on poll feed).
 			} else {
 				this.feed$.feedMode.set("poll");

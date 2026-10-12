@@ -1,6 +1,6 @@
 # Yoqa
 
-Local-first agentic mobile QA: devices under Appium, runs driven by scripts or the Yoqa agent, BYO providers for vision and decide.
+Local-first agentic mobile QA: devices driven directly, runs driven by scripts or the Yoqa agent, BYO providers for vision and decide.
 
 ## Language
 
@@ -11,7 +11,7 @@ A live connection to one device (or simulator/emulator) through one Lane, includ
 _Avoid_: Active session handle alone, WebDriver session (implementation detail), runner session
 
 **Lane**:
-The control path a Device Session uses to drive its device: the _Appium lane_ (through the Appium Server) or a _Direct lane_ (straight to the platform tooling, bypassing Appium, for speed). A connect opens the Direct lane, or it fails. `auto` and an explicit Direct request open Direct when it can start. Asking for the Appium lane fails the connect. If Direct cannot start, the connect fails with that error; there is no second try on Appium. Android Direct is adb; iOS simulators are driven by our resident `yoqa-sim` and `yoqa-ax` (`device-sim`) with idb_companion as its fallback. A cabled iPhone is driven through our XCUITest `YoqaRunner` over usbmuxd (`device-ios`). Within a device class the Direct lane picks its implementation (a new one only when opted in, until it clears the benchmark gate) and falls back once, loudly, to the existing implementation; the Lane name stays `direct`. A Device Session has exactly one Lane for its whole life. An App and a Test Case do not carry Appium capabilities. Saved keys are ignored and are not shown. They do not change the Lane or how an app is launched. The Run report names the Lane that ran.
+The control path a Device Session uses to drive its device. A Lane is Direct only: straight to the platform tooling, with no WebDriver server in between. There is no other Lane and no capability that selects one. A connect opens the Direct lane, or it fails. `auto` and an explicit `direct` request open Direct when it can start; a client cannot name any other Lane. If Direct cannot start, the connect fails with that error. Yoqa does not install, start, or check an Appium Server. Android Direct is adb; iOS simulators are driven by our resident `yoqa-sim` and `yoqa-ax` (`device-sim`) with idb_companion as its fallback. A cabled iPhone is driven through our XCUITest `YoqaRunner` over usbmuxd (`device-ios`). Within a device class the Direct lane picks its implementation (a new one only when opted in, until it clears the benchmark gate) and falls back once, loudly, to the existing implementation; the Lane name stays `direct`. A Device Session has exactly one Lane for its whole life. An App and a Test Case do not carry capabilities. Saved keys are ignored and are not shown. They do not change the Lane or how an app is launched. The Run report names the Lane that ran.
 _Avoid_: driver (Provider drivers), backend (runner / cloud), adapter, transport, engine
 
 **Active Session**:
@@ -19,7 +19,7 @@ The single Device Session shared across modes (connector / inspector / runs). A 
 _Avoid_: Run session (a Run adopts the Active Session), a second Device Session per mode
 
 **Dead Session**:
-A Device Session the runner still thinks is open but its Lane has already lost: Appium dropped it (invalid/missing session id), or a Direct lane's device tool says the device is gone.
+A Device Session the runner still thinks is open but its Lane has already lost: the Direct lane's device tool says the device is gone.
 _Avoid_: disconnected (user-initiated), abandoned (implementation verb only)
 
 **Unreachable Session**:
@@ -34,19 +34,11 @@ _Avoid_: a second Device Session, a second YoqaRunner, the Active Session itself
 How the Inspector gets a Device Session's frames: a live _Stream_, or _Screenshot Poll_ (one screenshot at a time). A Lane with no stream always uses Screenshot Poll, and that is normal; only a Stream that should be there and did not answer is a failure. The Frame Feed says nothing about whether the session is connected.
 _Avoid_: MJPEG unavailable (for a Lane that never streams), connecting (for a connected session without a Stream)
 
-**Appium Runtime**:
-The installed Appium binary and drivers Yoqa manages under its home directory.
-_Avoid_: Appium server (the listening process), Device Session
-
-**Appium Server**:
-The listening Appium process Device Sessions attach to.
-_Avoid_: Appium Runtime, WebDriver hub (generic)
-
 ### Screen & action
 
 **Screen**:
 A reading of the device UI for agents: cleaned element tree with relative coordinates 0–1000, or the raw accessibility tree when full fidelity is requested. On the Android Direct lane the tree is system-wide (permission sheets, ANR dialogs). On the iOS Direct lane the tree is idb axbridge complete, including a system `modal`. The built-in Run agent does not see a Screen unless the Run opts into tree Screen mode.
-_Avoid_: page source (Appium term alone), DOM
+_Avoid_: page source (WebDriver term alone), DOM
 
 **Screen mode**:
 How a Run presents the device to the agent when it decides. _Vision_ (the default) shows only the screenshot with the instruction; the agent names points by x,y. _Tree_ (opt-in per Run) also attaches the Screen.

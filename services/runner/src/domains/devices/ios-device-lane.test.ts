@@ -17,8 +17,6 @@ function options(deviceId = PHONE_UDID, extra: Partial<SessionOptions> = {}): Se
 	return {
 		platform: "ios",
 		deviceId,
-		appCaps: [],
-		caseCaps: [],
 		requestedLane: "direct",
 		...extra,
 	};

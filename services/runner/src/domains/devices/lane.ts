@@ -1,19 +1,17 @@
-import type { Capability, DevicePlatform } from "@yoqa/runner-client";
+import type { DevicePlatform } from "@yoqa/runner-client";
 
 /**
- * The control path a Device Session uses (see `Lane` in CONTEXT.md and ADR-0004).
- * `appium` is always registered. `direct` is registered for Android (adb) and iOS simulators (idb).
+ * The control path a Device Session uses (see `Lane` in CONTEXT.md and ADR-0005).
+ * A Lane is Direct only: Android over adb, an iOS simulator, or a cabled iPhone.
  */
-export type LaneName = "appium" | "direct";
+export type LaneName = "direct";
 
 export type SessionOptions = {
 	platform: DevicePlatform;
 	deviceId: string;
-	appCaps: Capability[];
-	caseCaps: Capability[];
 	bundleId?: string;
 	appPackage?: string;
-	/** User-requested Lane. `auto` (default) picks Direct when that factory exists. */
+	/** User-requested Lane. `auto` (default) is Direct. */
 	requestedLane?: LaneName | "auto";
 	/** Called once when the lane reports the session is gone. */
 	onSessionDead?: () => void;
@@ -96,7 +94,7 @@ export type DeviceSession = {
 	/**
 	 * Point the session at another app (bundle id / package) without reconnecting or
 	 * launching anything: what a Lane that remembers its app reads or relaunches from now
-	 * on. Undefined forgets the app. A Lane that remembers none ignores it (Appium).
+	 * on. Undefined forgets the app.
 	 */
 	setTargetApp: (appId: string | undefined) => void;
 	terminateApp: (appId: string) => Promise<void>;

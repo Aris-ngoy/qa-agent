@@ -71,6 +71,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/device-lanes-foundation.md](./devices/device-lanes-foundation.md) | Lane contract suite, capability-pinned adoption, Direct implementations, wired iPhones |
 | [devices/no-appium-acquire.md](./devices/no-appium-acquire.md) | Session acquire never opens the Appium lane: Direct, or the connect fails |
 | [catalog/no-appium-capabilities.md](./catalog/no-appium-capabilities.md) | Apps and Cases no longer carry Appium capabilities |
+| [devices/remove-appium-lane.md](./devices/remove-appium-lane.md) | The Appium lane, server, and runtime are removed: a Lane is Direct only ([ADR-0005](./adr/0005-direct-only-lane.md)) |
 | [devices/android-latest-frame.md](./devices/android-latest-frame.md) | `device-android`: capture-frame from a background `screencap` loop (opt-in) |
 | [devices/ios-sim-promotion.md](./devices/ios-sim-promotion.md) | `device-sim` (yoqa-sim + yoqa-ax) is the iOS-simulator Direct default, benchmarked against idb_companion |
 | [devices/yoqa-ax-alerts.md](./devices/yoqa-ax-alerts.md) | `yoqa-ax` reads SpringBoard dialogs; accept and dismiss tap them through `yoqa-sim` (default since #245) |

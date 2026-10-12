@@ -2,8 +2,8 @@ import { mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { type PointerSize, toPx } from "./android-gestures";
-import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { requireIdbBins } from "./idb-companion";
+import { looksLikePhysicalIosUdid } from "./ios-udid";
 import {
 	type CapturedFrame,
 	DeadSessionError,
@@ -189,8 +189,8 @@ export async function captureViaSimctl(udid: string): Promise<Uint8Array> {
 }
 
 /**
- * iOS-simulator Device Session over idb_companion — no Appium server.
- * Android and physical iOS are rejected so connect can fall back to Appium (ADR-0004).
+ * iOS-simulator Device Session over idb_companion. Android and physical iOS are
+ * rejected, so a wrong platform fails the connect.
  */
 export async function createIosDirectSession(
 	options: SessionOptions,
@@ -200,7 +200,7 @@ export async function createIosDirectSession(
 		throw new Error("iOS Direct lane supports iOS simulators only");
 	}
 	if (looksLikePhysicalIosUdid(options.deviceId)) {
-		throw new Error("iOS Direct lane supports simulators only; physical iOS stays on Appium");
+		throw new Error("iOS Direct lane supports simulators only");
 	}
 
 	const connectIdb = deps.idb ?? defaultIdb();
@@ -210,7 +210,7 @@ export async function createIosDirectSession(
 			.stdout,
 	);
 	if (described.target_type && described.target_type !== "simulator") {
-		throw new Error("iOS Direct lane supports simulators only; physical iOS stays on Appium");
+		throw new Error("iOS Direct lane supports simulators only");
 	}
 
 	const idb = guardToolLoss(connectIdb, idbLostDevice, options.onSessionDead);

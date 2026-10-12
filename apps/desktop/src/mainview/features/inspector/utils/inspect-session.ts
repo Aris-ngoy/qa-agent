@@ -10,7 +10,7 @@ export function isStaleSessionReply(error: unknown): boolean {
 	return !Array.isArray(body?.chain) && error.answeredBy.runnerPid == null;
 }
 
-/** True when a runner/Appium error means the Device Session is gone. */
+/** True when a runner error means the Device Session is gone. */
 export function isDeviceSessionGone(error: unknown): boolean {
 	if (isStaleSessionReply(error)) return false;
 	const message = error instanceof Error ? error.message : String(error);

@@ -121,7 +121,7 @@ function fakeSims(options: { failSpawn?: boolean; noStream?: boolean } = {}): Fa
 
 async function open(sims?: FakeSims) {
 	return createIosDirectSession(
-		{ platform: "ios", deviceId: UDID, appCaps: [], caseCaps: [] },
+		{ platform: "ios", deviceId: UDID },
 		{
 			idb: fakeIdb(),
 			screenshotFallback: async () => {
@@ -248,7 +248,7 @@ describe("iOS-simulator Direct lane: device-sim", () => {
 	test("backgrounding the app presses home on yoqa-sim, then relaunches with idb_companion", async () => {
 		const sims = fakeSims();
 		const session = await createIosDirectSession(
-			{ platform: "ios", deviceId: UDID, appCaps: [], caseCaps: [], bundleId: "com.demo" },
+			{ platform: "ios", deviceId: UDID, bundleId: "com.demo" },
 			{ idb: fakeIdb(), yoqaSim: sims.spawn },
 		);
 		await session.backgroundApp(0);
@@ -260,7 +260,7 @@ describe("iOS-simulator Direct lane: device-sim", () => {
 	test("a new target app is the one backgrounding relaunches, and setting it launches nothing", async () => {
 		const sims = fakeSims();
 		const session = await createIosDirectSession(
-			{ platform: "ios", deviceId: UDID, appCaps: [], caseCaps: [], bundleId: "com.app-a" },
+			{ platform: "ios", deviceId: UDID, bundleId: "com.app-a" },
 			{ idb: fakeIdb(), yoqaSim: sims.spawn },
 		);
 		session.setTargetApp("com.app-b");
@@ -384,7 +384,7 @@ describe("iOS-simulator Direct lane: device-sim with yoqa-ax", () => {
 		sims: FakeSims = fakeSims(),
 	) {
 		return createIosDirectSession(
-			{ platform: "ios", deviceId: UDID, appCaps: [], caseCaps: [], onLaneWarning },
+			{ platform: "ios", deviceId: UDID, onLaneWarning },
 			{ idb: fakeIdb(), yoqaSim: sims.spawn, yoqaAx: ax.start },
 		);
 	}

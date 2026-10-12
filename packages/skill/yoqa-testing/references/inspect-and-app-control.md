@@ -28,7 +28,7 @@ is right.
 ```bash
 yoqa screen                        # cleaned element list
 yoqa screen --json                 # same list as JSON — includes each element's id, type, enabled, visible
-yoqa screen --full                 # raw Appium page source (JSON-wrapped, very long)
+yoqa screen --full                 # raw accessibility tree (JSON-wrapped, very long)
 ```
 
 Use `yoqa screen` when the screenshot is not enough: you need an exact label or `--id` to target

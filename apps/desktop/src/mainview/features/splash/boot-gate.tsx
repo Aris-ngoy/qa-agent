@@ -5,7 +5,7 @@ import { createRunnerClient } from "@yoqa/runner-client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { YoqaMark } from "./yoqa-mark";
 
-type BootPhase = "starting" | "checking" | "installing" | "ready" | "error";
+type BootPhase = "starting" | "checking" | "ready" | "error";
 
 const CROSSFADE_MS = 400;
 
@@ -21,9 +21,7 @@ function splashForPhase(
 		case "starting":
 			return { progress: 30, statusText: "Starting local services..." };
 		case "checking":
-			return { progress: 55, statusText: "Checking test runtime..." };
-		case "installing":
-			return { progress: 80, statusText: "Installing missing drivers..." };
+			return { progress: 70, statusText: "Checking the local runner..." };
 		case "ready":
 			return { progress: 100, statusText: "Ready" };
 		case "error":
@@ -150,24 +148,6 @@ export function BootGate({ children }: BootGateProps) {
 				if (controller.signal.aborted) return;
 
 				setPhase("checking");
-
-				let status = await client.getRuntimeStatus({ signal: controller.signal });
-				if (controller.signal.aborted) return;
-
-				if (!status.ready) {
-					setPhase("installing");
-
-					const ensured = await client.ensureRuntime({ signal: controller.signal });
-					if (controller.signal.aborted) return;
-					status = ensured.status;
-				}
-
-				if (!status.ready) {
-					const failed = status.checks
-						.filter((check) => check.required && !check.ok)
-						.map((check) => check.label);
-					throw new Error(`Missing required tools: ${failed.join(", ")}`);
-				}
 
 				setPhase("ready");
 				await sleep(350);
