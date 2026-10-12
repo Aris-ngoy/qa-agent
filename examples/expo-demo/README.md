@@ -38,7 +38,7 @@ yoqa runs create DEMO --cases 1 --mode script --wait
 # or connector-only: ./yoqa/ci-smoke.sh
 ```
 
-CI runs the catalog CaseScript ([`yoqa/smoke.yoqa.json`](./yoqa/smoke.yoqa.json)): `assert` + `tap --label` (no vision / agent). Download `yoqa-expo-demo-*-report` from the GitHub Actions **run** Artifacts section for the HTML report. `ci-smoke.sh` is the same steps via `yoqa assert` / `yoqa action` for local debugging without a catalog.
+CI runs the catalog CaseScript ([`yoqa/smoke.yoqa.yaml`](./yoqa/smoke.yoqa.json)): `assert` + `tap --label` (no vision / agent). Download `yoqa-expo-demo-*-report` from the GitHub Actions **run** Artifacts section for the HTML report. `ci-smoke.sh` is the same steps via `yoqa assert` / `yoqa action` for local debugging without a catalog.
 
 ## CI
 

@@ -2,27 +2,34 @@ import { describe, expect, test } from "bun:test";
 import { buildScriptStepsView, runProgress } from "./script-steps";
 
 const script = [
-	"#!/usr/bin/env bash",
-	"# Yoqa inspector script",
-	"set -euo pipefail",
-	"",
-	"# Discover",
-	"yoqa action tap --label 'Discover' --x 100 --y 925",
-	"yoqa assert visible --text 'Profile'",
-	"sleep 2",
+	"version: 1",
+	"name: Discover",
+	"actions:",
+	"  # Open Discover",
+	"  - tap: { label: Discover, x: 100, y: 925 }",
+	"  # Check",
+	"  - assert: Profile",
+	"  - wait: 2000",
 ].join("\n");
 
 describe("buildScriptStepsView", () => {
-	test("parses runnable lines into steps and keeps mid-script comments as groups", () => {
+	test("reads actions into steps and keeps mid-script comments as groups", () => {
 		const view = buildScriptStepsView(script, null, false);
 		expect(view.steps.map((step) => step.verb)).toEqual(["Tap", "Assert", "Wait"]);
-		expect(view.steps[0]).toMatchObject({ text: "“Discover”", meta: "100, 925", status: "idle" });
+		expect(view.steps[0]).toMatchObject({
+			lineNumber: 5,
+			text: "“Discover”",
+			meta: "100, 925",
+			status: "idle",
+		});
 		expect(view.steps[1]?.text).toBe("“Profile” is visible");
+		expect(view.steps[2]?.text).toBe("2 s");
+		expect(view.groups).toEqual([{ beforeLineNumber: 6, text: "Check" }]);
 	});
 
-	test("header comments before the first step are not groups", () => {
+	test("comments before the first step are not groups", () => {
 		const view = buildScriptStepsView(script, null, false);
-		expect(view.groups).toEqual([]);
+		expect(view.groups.some((group) => group.text === "Open Discover")).toBe(false);
 	});
 
 	test("splits steps around the active line while running", () => {
@@ -36,8 +43,15 @@ describe("buildScriptStepsView", () => {
 		expect(view.steps.every((step) => step.status === "idle")).toBe(true);
 	});
 
-	test("reports unparseable lines", () => {
-		const view = buildScriptStepsView("rm -rf /", null, false);
-		expect(view.errors).toHaveLength(1);
+	test("an empty Case Script file has no steps and no errors", () => {
+		const view = buildScriptStepsView("version: 1\nactions:\n", null, false);
+		expect(view).toEqual({ groups: [], steps: [], errors: [] });
+	});
+
+	test("reports invalid actions with their line", () => {
+		const view = buildScriptStepsView("version: 1\nactions:\n  - tapp: Home\n", null, false);
+		expect(view.steps).toEqual([]);
+		expect(view.errors[0]?.lineNumber).toBe(3);
+		expect(view.errors[0]?.message).toStartWith("action 1: unknown action");
 	});
 });

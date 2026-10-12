@@ -1,5 +1,7 @@
 # Saved scripts + script vs AI run mode
 
+> **Update:** the import/export format is now the YAML Case Script file (`*.yoqa.yaml`); JSON export is gone (legacy `.yoqa.json` still loads). See [case-script-yaml.md](./case-script-yaml.md).
+
 ## Goal
 
 After a successful AI agent run, persist a replayable script on the test case so later runs can skip the model. When a selected case already has a script, prompt the user to choose saved script (default) or AI agent. Let users inspect, edit, delete, and export scripts for the Yoqa CLI.

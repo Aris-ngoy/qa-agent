@@ -63,12 +63,26 @@ appends a compact summary to `$GITHUB_STEP_SUMMARY`.
 
 ## Exported scripts (no agent)
 
-After a successful agent run, the desktop app can export a CaseScript JSON file. Replay it without
-calling the model:
+After a successful agent run, Yoqa saves a Case Script on the test case. Export it as a Case Script
+file (`*.yoqa.yaml`) and replay it without calling the model:
 
 ```bash
+yoqa script export APP 3 --out ./login.yoqa.yaml
+yoqa script validate ./login.yoqa.yaml
 yoqa devices connect <device-id> --platform ios
-yoqa script run ./login.yoqa.json
+yoqa script run ./login.yoqa.yaml
 ```
 
-A CaseScript replays taps (by `--label`/`--id`/coordinates), text input, waits, and assertions.
+A Case Script replays taps (by label, id, or coordinates), text input, waits, assertions, alerts,
+and app lifecycle. One action per line, for example:
+
+```yaml
+version: 1
+actions:
+  - tap: Login
+  - type: ada@example.com
+  - assert: Welcome
+```
+
+`yoqa script run` stops at the first failing action and exits non-zero. Legacy `.yoqa.json` files
+still load.

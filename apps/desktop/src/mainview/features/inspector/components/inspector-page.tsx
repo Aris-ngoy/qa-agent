@@ -8,7 +8,7 @@ import { useInspectorFeed } from "@/features/inspector/hooks/use-inspector-feed"
 import { useScriptSession } from "@/features/inspector/hooks/use-script-session";
 import { defaultCaseNameFromScript, scriptHasBody } from "@/features/inspector/utils/script-text";
 import { useValue } from "@legendapp/state/react";
-import { shellToCaseScript } from "@yoqa/runner-client";
+import { formatCaseScriptFileErrors, parseCaseScriptFile } from "@yoqa/runner-client";
 import { useMemo } from "react";
 
 export function InspectorPage() {
@@ -28,9 +28,7 @@ export function InspectorPage() {
 	const saveOpen = useValue(script.script$.saveOpen);
 	const savingCase = useValue(script.script$.saving);
 	const saveError = useValue(script.script$.saveError);
-	const casePreview = useValue(() =>
-		shellToCaseScript(script.script$.text.get(), { elements: feed.feed$.elements.get() }),
-	);
+	const casePreview = useMemo(() => parseCaseScriptFile(scriptText), [scriptText]);
 
 	const connected = feed.active != null;
 	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(scriptText);
@@ -81,6 +79,9 @@ export function InspectorPage() {
 						onStop={script.handleStop}
 						onCopy={script.handleCopy}
 						onExport={script.handleExport}
+						onExportShell={script.handleExportShell}
+						onOpenFile={script.handleOpenFile}
+						onPasteText={script.handlePasteText}
 						onExportReportHtml={() => {
 							script.handleExportReport("html");
 						}}
@@ -113,11 +114,8 @@ export function InspectorPage() {
 				onOpenChange={script.setSaveOpen}
 				defaultName={defaultCaseNameFromScript(scriptText)}
 				appName={selectedApp?.name ?? null}
-				actionCount={casePreview.script?.actions.length ?? 0}
-				warnings={[
-					...casePreview.warnings,
-					...casePreview.errors.map((err) => `L${err.lineNumber}: parse error — ${err.message}`),
-				]}
+				actionCount={casePreview.ok ? casePreview.script.actions.length : 0}
+				warnings={casePreview.ok ? [] : formatCaseScriptFileErrors(casePreview.errors).split("\n")}
 				saving={savingCase}
 				error={saveError}
 				onConfirm={(name) => {

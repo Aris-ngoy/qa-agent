@@ -23,6 +23,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [adr/0001-device-session-ownership.md](./adr/0001-device-session-ownership.md) | Device Session under `devices/`, exclusive per device |
 | [adr/0002-provider-vision-capability.md](./adr/0002-provider-vision-capability.md) | Provider adapters + runner catalog |
 | [adr/0003-case-executor-test-seam.md](./adr/0003-case-executor-test-seam.md) | Case executor as Run test seam |
+| [adr/0006-case-script-file-yaml.md](./adr/0006-case-script-file-yaml.md) | A Case Script file is YAML; no separate Flow model |
 | [runs/selection-and-runs-mvp.md](./runs/selection-and-runs-mvp.md) | Test case selection + local `POST /runs` MVP |
 | [runs/ai-sdk-vision.md](./runs/ai-sdk-vision.md) | Vision decide + grounding via Vercel AI SDK |
 | [runs/cursor-vision-cli.md](./runs/cursor-vision-cli.md) | Cursor Agent CLI vision decide + grounding |
@@ -42,7 +43,8 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [cli/headless-runner.md](./cli/headless-runner.md) | Headless `yoqa serve` / auto-start for CI |
 | [desktop/cli-and-agents.md](./desktop/cli-and-agents.md) | Settings CLI/skill install + full `yoqa` agent CLI |
 | [desktop/servers-and-doctor.md](./desktop/servers-and-doctor.md) | Servers panel + `yoqa doctor` diagnostics |
-| [desktop/manual-inspector.md](./desktop/manual-inspector.md) | Script-first Manual Inspector (select → shell script → run) |
+| [desktop/manual-inspector.md](./desktop/manual-inspector.md) | Script-first Manual Inspector (select → Case Script file → run) |
+| [runs/case-script-yaml.md](./runs/case-script-yaml.md) | Case Script files: YAML default import/export, `yoqa script validate/run/export`, shared replay |
 | [desktop/inspector-manual-connect.md](./desktop/inspector-manual-connect.md) | Inspector attaches only on Connect; flicker-free frames; React Compiler + Legend State feed store |
 | [inspector/legend-state.md](./inspector/legend-state.md) | Inspector folder layout: components, runner API, Legend-State atoms, query hooks, utils |
 | [desktop/session-bar.md](./desktop/session-bar.md) | Top bar manages the shared Active Session on every page: connect-first Run, Run chip, WDA rebuild on Restart, app switch retargets |

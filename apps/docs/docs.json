@@ -51,7 +51,7 @@
 					{
 						"group": "Testing",
 						"icon": "mobile",
-						"pages": ["docs/apps", "docs/test-cases"]
+						"pages": ["docs/apps", "docs/test-cases", "docs/case-script-files"]
 					},
 					{
 						"group": "Local",

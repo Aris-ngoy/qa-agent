@@ -101,11 +101,6 @@ function actionToShellLine(action: CaseScriptAction): string {
 	return `sleep ${seconds}`;
 }
 
-/** Pretty-printed CaseScript JSON for viewing / `yoqa script run`. */
-export function formatCaseScriptJson(script: CaseScript): string {
-	return `${JSON.stringify(script, null, 2)}\n`;
-}
-
 /** Bash script that replays via `yoqa action` + `sleep` on an active device session. */
 export function formatCaseScriptShell(script: CaseScript, meta: CaseScriptExportMeta = {}): string {
 	const titleParts = [
@@ -117,7 +112,7 @@ export function formatCaseScriptShell(script: CaseScript, meta: CaseScriptExport
 		"#!/usr/bin/env bash",
 		`# Yoqa exported script — ${title}`,
 		"# Requires an active device session: yoqa devices connect <id>",
-		"# Prefer JSON + `yoqa script run <file.yoqa.json>` for structured replay.",
+		"# Prefer the Case Script file: `yoqa script run <file.yoqa.yaml>`.",
 		"set -euo pipefail",
 		"",
 		...script.actions.map(actionToShellLine),

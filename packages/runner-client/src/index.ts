@@ -13,6 +13,7 @@ import {
 	type CaseRunStatus,
 	type CaseScript,
 	type CaseScriptAction,
+	type CaseScriptActionType,
 	type CatalogApp,
 	type CatalogCase,
 	type CatalogError,
@@ -101,6 +102,7 @@ import {
 	caseFlowStepSchema,
 	caseRunStatusSchema,
 	caseScriptActionSchema,
+	caseScriptActionSchemaByType,
 	caseScriptSchema,
 	catalogAppSchema,
 	catalogCaseSchema,
@@ -191,6 +193,7 @@ export {
 	caseFlowStepSchema,
 	caseRunStatusSchema,
 	caseScriptActionSchema,
+	caseScriptActionSchemaByType,
 	caseScriptSchema,
 	connectDeviceRequestSchema,
 	controlMessageSchema,
@@ -274,6 +277,7 @@ export {
 	type CaseRunStatus,
 	type CaseScript,
 	type CaseScriptAction,
+	type CaseScriptActionType,
 	type ConnectDeviceRequest,
 	type ControlMessage,
 	type ControlPointerMessage,
@@ -348,7 +352,6 @@ export {
 };
 
 export {
-	formatCaseScriptJson,
 	formatCaseScriptShell,
 	suggestedScriptBasename,
 	type CaseScriptExportMeta,
@@ -412,6 +415,40 @@ export {
 	type ShellToCaseScriptOptions,
 	type ShellToCaseScriptResult,
 } from "./shell-script";
+
+export {
+	CASE_SCRIPT_FILE_ACCEPT,
+	CASE_SCRIPT_FILE_EXTENSION,
+	caseScriptFileLinesFromShell,
+	emptyCaseScriptFile,
+	formatCaseScriptFile,
+	formatCaseScriptFileAction,
+	formatCaseScriptFileActionLine,
+	formatCaseScriptFileErrors,
+	looksLikeShellScript,
+	parseCaseScriptFile,
+	shellToCaseScriptActions,
+	shellToCaseScriptFile,
+	toCaseScriptFileText,
+	type CaseScriptFileError,
+	type FormatCaseScriptFileOptions,
+	type ParseCaseScriptFileOptions,
+	type ParseCaseScriptFileResult,
+	type ParsedCaseScriptFile,
+	type ShellToCaseScriptActionsResult,
+} from "./case-script-file";
+
+export {
+	DEFAULT_ASSERT_TIMEOUT_MS,
+	caseScriptActionCommand,
+	caseScriptActionRequest,
+	runCaseScript,
+	type CaseScriptReplayClient,
+	type CaseScriptReplayEvent,
+	type CaseScriptReplayStatus,
+	type RunCaseScriptOptions,
+	type RunCaseScriptResult,
+} from "./case-script-replay";
 
 export { decodeXmlEntities } from "./xml-entities";
 
