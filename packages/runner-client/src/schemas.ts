@@ -252,61 +252,73 @@ const caseScriptDragSchema = z.object({
 	reason: z.string().optional(),
 });
 
-const caseScriptAppIdSchema = z.union([
-	z.object({
-		type: z.literal("activate-app"),
+function caseScriptAppIdSchema<T extends "activate-app" | "terminate-app" | "restart-app">(
+	type: T,
+) {
+	return z.object({
+		type: z.literal(type),
 		appId: z.string().min(1),
 		reason: z.string().optional(),
-	}),
-	z.object({
-		type: z.literal("terminate-app"),
-		appId: z.string().min(1),
-		reason: z.string().optional(),
-	}),
-	z.object({
-		type: z.literal("restart-app"),
-		appId: z.string().min(1),
-		reason: z.string().optional(),
-	}),
-]);
+	});
+}
 
-export const caseScriptActionSchema = z.union([
-	caseScriptTapSchema,
-	caseScriptSwipeSchema,
-	caseScriptDragSchema,
-	z.object({
+/** One schema per Case Script action type, so a Case Script file can report errors per action. */
+export const caseScriptActionSchemaByType = {
+	tap: caseScriptTapSchema,
+	swipe: caseScriptSwipeSchema,
+	drag: caseScriptDragSchema,
+	type: z.object({
 		type: z.literal("type"),
 		text: z.string(),
 		reason: z.string().optional(),
 	}),
-	z.object({
+	wait: z.object({
 		type: z.literal("wait"),
 		ms: z.number().min(0).max(10_000),
 		reason: z.string().optional(),
 	}),
-	z.object({
+	assert: z.object({
 		type: z.literal("assert"),
 		assertion: z.union([z.literal("visible"), z.literal("not-visible")]).default("visible"),
 		text: z.string().min(1),
 		timeoutMs: z.number().min(0).max(120_000).optional(),
 		reason: z.string().optional(),
 	}),
-	z.object({
+	alert: z.object({
 		type: z.literal("alert"),
 		alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).default("accept"),
 		reason: z.string().optional(),
 	}),
-	caseScriptAppIdSchema,
-	z.object({
+	"activate-app": caseScriptAppIdSchema("activate-app"),
+	"terminate-app": caseScriptAppIdSchema("terminate-app"),
+	"restart-app": caseScriptAppIdSchema("restart-app"),
+	"background-app": z.object({
 		type: z.literal("background-app"),
 		seconds: z.number().min(0).max(120).optional(),
 		reason: z.string().optional(),
 	}),
-	z.object({
+	"open-url": z.object({
 		type: z.literal("open-url"),
 		url: z.string().min(1),
 		reason: z.string().optional(),
 	}),
+} as const;
+
+export type CaseScriptActionType = keyof typeof caseScriptActionSchemaByType;
+
+export const caseScriptActionSchema = z.union([
+	caseScriptActionSchemaByType.tap,
+	caseScriptActionSchemaByType.swipe,
+	caseScriptActionSchemaByType.drag,
+	caseScriptActionSchemaByType.type,
+	caseScriptActionSchemaByType.wait,
+	caseScriptActionSchemaByType.assert,
+	caseScriptActionSchemaByType.alert,
+	caseScriptActionSchemaByType["activate-app"],
+	caseScriptActionSchemaByType["terminate-app"],
+	caseScriptActionSchemaByType["restart-app"],
+	caseScriptActionSchemaByType["background-app"],
+	caseScriptActionSchemaByType["open-url"],
 ]);
 
 export type CaseScriptAction = z.infer<typeof caseScriptActionSchema>;

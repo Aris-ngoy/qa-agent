@@ -1,10 +1,10 @@
-import { type ShellScriptStep, parseYoqaShellScript, tokenizeShellLine } from "@yoqa/runner-client";
+import { type CaseScriptAction, parseCaseScriptFile } from "@yoqa/runner-client";
 
 export type StepStatus = "passed" | "running" | "queued" | "idle";
 
 export type ScriptStepRow = {
 	lineNumber: number;
-	/** 1-based position among runnable steps. */
+	/** 1-based position among the Case Script's actions. */
 	index: number;
 	verb: string;
 	text: string;
@@ -16,82 +16,105 @@ export type ScriptStepsView = {
 	/** Comment headings by the line they precede, so the list can group steps. */
 	groups: Array<{ beforeLineNumber: number; text: string }>;
 	steps: ScriptStepRow[];
-	errors: Array<{ lineNumber: number; message: string }>;
+	errors: Array<{ lineNumber: number | null; message: string }>;
 };
 
-function flag(tokens: string[], name: string): string | null {
-	const at = tokens.indexOf(name);
-	return at >= 0 ? (tokens[at + 1] ?? null) : null;
-}
+const VERBS: Record<CaseScriptAction["type"], string> = {
+	tap: "Tap",
+	swipe: "Swipe",
+	drag: "Drag",
+	type: "Type",
+	wait: "Wait",
+	assert: "Assert",
+	alert: "Alert",
+	"activate-app": "Activate app",
+	"terminate-app": "Terminate app",
+	"restart-app": "Restart app",
+	"background-app": "Background app",
+	"open-url": "Open URL",
+};
 
-function capitalise(value: string): string {
-	return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function describeStep(step: ShellScriptStep): Pick<ScriptStepRow, "verb" | "text" | "meta"> {
-	switch (step.kind) {
-		case "sleep":
-			return { verb: "Wait", text: `${step.seconds} s`, meta: "" };
-		case "screenshot":
-			return { verb: "Screenshot", text: step.path ?? "", meta: "" };
-		case "assert":
+function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | "text" | "meta"> {
+	const verb =
+		action.type === "tap" && action.durationMs != null ? "Long press" : VERBS[action.type];
+	switch (action.type) {
+		case "tap": {
+			const target = action.label ?? action.id;
 			return {
-				verb: "Assert",
-				text: `“${step.text}” is ${step.assertion === "visible" ? "visible" : "not visible"}`,
-				meta: "",
-			};
-		case "action": {
-			const tokens = tokenizeShellLine(step.raw);
-			const target = flag(tokens, "--label") ?? flag(tokens, "--id") ?? flag(tokens, "--text");
-			const x = flag(tokens, "--x");
-			const y = flag(tokens, "--y");
-			return {
-				verb: capitalise(step.action.kind),
+				verb: action.double ? "Double tap" : verb,
 				text: target ? `“${target}”` : "",
-				meta: x != null && y != null ? `${x}, ${y}` : "",
+				meta: action.x != null && action.y != null ? `${action.x}, ${action.y}` : "",
 			};
 		}
+		case "swipe":
+		case "drag":
+			return { verb, text: "", meta: `${action.x}, ${action.y} → ${action.x2}, ${action.y2}` };
+		case "type":
+			return { verb, text: `“${action.text}”`, meta: "" };
+		case "wait":
+			return { verb, text: `${action.ms / 1000} s`, meta: "" };
+		case "assert":
+			return {
+				verb,
+				text: `“${action.text}” is ${action.assertion === "visible" ? "visible" : "not visible"}`,
+				meta: "",
+			};
+		case "alert":
+			return { verb, text: action.alertAction === "dismiss" ? "Dismiss" : "Accept", meta: "" };
+		case "activate-app":
+		case "terminate-app":
+		case "restart-app":
+			return { verb, text: action.appId, meta: "" };
+		case "background-app":
+			return { verb, text: action.seconds != null ? `${action.seconds} s` : "", meta: "" };
+		case "open-url":
+			return { verb, text: action.url, meta: "" };
 	}
 }
 
 /**
- * Read-only structured view of a script: comment lines become group headings,
- * runnable lines become steps. While a run is in flight the active line splits
- * steps into passed (before) / running / queued (after).
+ * Read-only structured view of the editor's Case Script file: comment lines inside
+ * `actions:` become group headings, actions become steps. While a run is in flight the
+ * active line splits steps into passed (before) / running / queued (after).
  */
 export function buildScriptStepsView(
 	script: string,
 	activeLineNumber: number | null,
 	running: boolean,
 ): ScriptStepsView {
-	const parsed = parseYoqaShellScript(script);
-	const lines = script.split(/\r?\n/);
+	const parsed = parseCaseScriptFile(script, { allowEmpty: true });
+	if (!parsed.ok) {
+		return {
+			groups: [],
+			steps: [],
+			errors: parsed.errors.map(({ line, action, message }) => ({
+				lineNumber: line,
+				message: action != null ? `action ${action}: ${message}` : message,
+			})),
+		};
+	}
+	const firstStepLine = parsed.actionLines[0] ?? Number.POSITIVE_INFINITY;
 	const groups: ScriptStepsView["groups"] = [];
-	lines.forEach((line, i) => {
+	script.split(/\r?\n/).forEach((line, i) => {
 		const trimmed = line.trim();
-		// Skip the shebang and the header boilerplate comments before the first step.
-		if (!trimmed.startsWith("#") || trimmed.startsWith("#!")) return;
+		if (!trimmed.startsWith("#")) return;
 		const text = trimmed.replace(/^#+\s*/, "");
-		if (text) groups.push({ beforeLineNumber: i + 1, text });
+		if (text && i + 1 > firstStepLine) groups.push({ beforeLineNumber: i + 1, text });
 	});
-	const firstStepLine = parsed.steps[0]?.lineNumber ?? Number.POSITIVE_INFINITY;
-	const steps = parsed.steps.map((step, i): ScriptStepRow => {
+	const steps = parsed.script.actions.map((action, i): ScriptStepRow => {
+		const lineNumber = parsed.actionLines[i] ?? 0;
 		let status: StepStatus = "idle";
 		if (running && activeLineNumber != null) {
 			status =
-				step.lineNumber < activeLineNumber
+				lineNumber < activeLineNumber
 					? "passed"
-					: step.lineNumber === activeLineNumber
+					: lineNumber === activeLineNumber
 						? "running"
 						: "queued";
 		}
-		return { lineNumber: step.lineNumber, index: i + 1, ...describeStep(step), status };
+		return { lineNumber, index: i + 1, ...describeAction(action), status };
 	});
-	return {
-		groups: groups.filter((group) => group.beforeLineNumber > firstStepLine),
-		steps,
-		errors: parsed.errors.map(({ lineNumber, message }) => ({ lineNumber, message })),
-	};
+	return { groups, steps, errors: [] };
 }
 
 export function runProgress(view: ScriptStepsView): {

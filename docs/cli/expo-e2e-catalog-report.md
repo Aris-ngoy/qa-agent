@@ -18,7 +18,7 @@ Rejected: generating a second HTML dialect from PNG folders; agent mode in CI; c
 
 - CaseScript: `tap` may use `label` / `id`; new `assert` action (`visible` / `not-visible`).
 - CLI: `yoqa apps create`, `yoqa cases create|update --script-file`.
-- Demo: [`examples/expo-demo/yoqa/smoke.yoqa.json`](../../examples/expo-demo/yoqa/smoke.yoqa.json), [`seed-catalog.sh`](../../examples/expo-demo/yoqa/seed-catalog.sh). `ci-ios.sh` / `ci-android.sh` create a catalog run. [`ci-smoke.sh`](../../examples/expo-demo/yoqa/ci-smoke.sh) remains for connector-only local debugging.
+- Demo: [`examples/expo-demo/yoqa/smoke.yoqa.yaml`](../../examples/expo-demo/yoqa/smoke.yoqa.json), [`seed-catalog.sh`](../../examples/expo-demo/yoqa/seed-catalog.sh). `ci-ios.sh` / `ci-android.sh` create a catalog run. [`ci-smoke.sh`](../../examples/expo-demo/yoqa/ci-smoke.sh) remains for connector-only local debugging.
 - Workflow: HTML artifact + Job Summary; iOS WDA derivedData cache (compile happens on `yoqa devices connect` after the Expo build).
 
 ## How to verify

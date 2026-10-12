@@ -1,0 +1,87 @@
+---
+title: Case Script files
+description: The YAML format for saved, replayable test steps — record, edit, import, export, and replay without the AI agent.
+---
+
+A **Case Script** is a saved replay of Actions for a test case. It runs without the AI agent, so it is fast, deterministic, and needs no provider. A **Case Script file** is that Case Script written as YAML (`*.yoqa.yaml`). It is the default format everywhere you import or export one:
+
+- the Manual Inspector's editor
+- a test case's **Script** tab
+- `yoqa script run`
+- `yoqa cases create|update --script-file`
+
+```yaml
+version: 1
+name: Bottom navigation        # optional; the default test case name on save
+actions:
+  - restart-app: com.example.app
+  - tap: Home                                  # tap the element labelled "Home"
+  - tap: { label: Search, x: 500, y: 930 }
+  - tap: { x: 120, y: 940, durationMs: 800 }   # long press
+  - swipe: { x: 500, y: 800, x2: 500, y2: 200 }
+  - type: hello
+  - wait: 500                                  # milliseconds
+  - assert: Welcome                            # wait until "Welcome" is visible
+  - assert: { text: Error, assertion: not-visible, timeoutMs: 3000 }
+  - alert: accept
+  - open-url: myapp://settings
+```
+
+## File shape
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `version` | yes | Always `1`. |
+| `name` | no | Test case name. The Inspector uses it as the default name when you save. |
+| `actions` | yes | The list of actions, replayed in order. |
+| `sourceRunId` | no | The agent Run that recorded this Case Script. Written for you on export. |
+
+Each action is a single-key map: the key is the action name, and the value is either a short form or a map of fields. Coordinates use Yoqa's 0–1000 screen space, so a Case Script works across screen sizes. Comments (`# …`) are allowed and group the steps after them in the Inspector. They are not kept once the Case Script is saved to a test case.
+
+## Actions
+
+| Action | Short form | Fields |
+| --- | --- | --- |
+| `tap` | `tap: Home` (label) | `label`, `id`, `x`, `y`, `double`, `durationMs` (long press), `reason` |
+| `swipe` | none | `x`, `y`, `x2`, `y2`, `durationMs`, `reason` |
+| `drag` | none | `x`, `y`, `x2`, `y2`, `durationMs`, `reason` |
+| `type` | `type: hello` (text) | `text`, `reason` |
+| `wait` | `wait: 500` (ms) | `ms` (0–10000), `reason` |
+| `assert` | `assert: Welcome` (visible) | `text`, `assertion` (`visible` / `not-visible`), `timeoutMs` (default 5000), `reason` |
+| `alert` | `alert: accept` | `alertAction` (`accept` / `dismiss`), `reason` |
+| `activate-app` | `activate-app: com.example.app` | `appId`, `reason` |
+| `terminate-app` | `terminate-app: com.example.app` | `appId`, `reason` |
+| `restart-app` | `restart-app: com.example.app` | `appId`, `reason` |
+| `background-app` | `background-app: 3` (seconds) | `seconds`, `reason` |
+| `open-url` | `open-url: myapp://path` | `url`, `reason` |
+
+A `tap` needs a `label`, an `id`, or both `x` and `y`. When a tap has a `label` or `id`, Yoqa finds the element on the current screen and taps it. `x` and `y` are a fallback position.
+
+Unknown keys, unknown actions, and out-of-range values are errors. Each error names its line, so a typo never turns into a silent no-op:
+
+```text
+Line 5, action 3: unknown action "tapp" (expected one of: tap, swipe, drag, …)
+```
+
+## Replay from the CLI
+
+```bash
+yoqa script validate ./login.yoqa.yaml          # offline check: no runner, no device
+yoqa devices connect <device-id> --platform ios
+yoqa script run ./login.yoqa.yaml               # stops at the first failing action
+yoqa script export APP 3 --out ./login.yoqa.yaml  # save case #3's Case Script
+yoqa cases update APP 3 --script-file ./login.yoqa.yaml
+```
+
+`yoqa script run` prints `ok` for each action, `error` for the one that failed, and `skipped` for each action after it. It exits non-zero on failure. Add `--json` for machine-readable output.
+
+## In the desktop app
+
+- **Manual Inspector:** the script editor is a Case Script file. Selecting elements appends actions, and **Run script** highlights each one in turn. **Open** loads a `.yoqa.yaml` (or a legacy `.yoqa.json` / `.sh`) file. **Export** saves `.yoqa.yaml` or shell. See [Manual Inspector](/docs/manual-inspector).
+- **Test case → Script tab:** view the Case Script as Steps, YAML, or Shell. You can **Edit YAML**, **Export YAML**, or **Import…** a file to replace it.
+
+## Migrating from `.yoqa.json` and `.sh`
+
+- **`.yoqa.json` files** (the previous export format) still work everywhere, unchanged. Open one in the Inspector, or run `yoqa script export`, to get the YAML version.
+- **Inspector shell scripts (`.sh`)** convert once when you open or paste them in the Inspector. Lines that have no Case Script action, such as `yoqa screenshot`, are listed in the run log. Every replayed action already captures a screenshot.
+- **Shell export** is still available as a secondary option for one-off terminal use.

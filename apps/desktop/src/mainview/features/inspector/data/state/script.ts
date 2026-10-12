@@ -1,6 +1,6 @@
 import { appendScriptLines } from "@/features/inspector/utils/selection";
 import { type Observable, batch } from "@legendapp/state";
-import { DEFAULT_SHELL_SCRIPT_HEADER, type RunReportDocument } from "@yoqa/runner-client";
+import { type RunReportDocument, emptyCaseScriptFile } from "@yoqa/runner-client";
 
 export type RunLogEntry = {
 	id: string;
@@ -9,6 +9,7 @@ export type RunLogEntry = {
 };
 
 export type InspectorScriptState = {
+	/** The editor's Case Script file (YAML). */
 	text: string;
 	running: boolean;
 	activeLineNumber: number | null;
@@ -24,7 +25,7 @@ export type InspectorScript$ = Observable<InspectorScriptState>;
 
 export function initialScriptState(): InspectorScriptState {
 	return {
-		text: DEFAULT_SHELL_SCRIPT_HEADER,
+		text: emptyCaseScriptFile(),
 		running: false,
 		activeLineNumber: null,
 		log: [],
@@ -36,8 +37,9 @@ export function initialScriptState(): InspectorScriptState {
 	};
 }
 
+/** Append action lines under `actions:`, restoring the header if the editor was cleared. */
 export function appendScript(script$: InspectorScript$, lines: string[]) {
-	script$.text.set((prev) => appendScriptLines(prev, lines));
+	script$.text.set((prev) => appendScriptLines(prev.trim() ? prev : emptyCaseScriptFile(), lines));
 }
 
 export function pushLog(script$: InspectorScript$, entry: RunLogEntry) {

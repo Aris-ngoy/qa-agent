@@ -1,5 +1,7 @@
 # Manual UI Inspector (script-first)
 
+> **Update:** the editor now holds a YAML Case Script file instead of `yoqa` shell, and Save as test case no longer converts shell → CaseScript. See [../runs/case-script-yaml.md](../runs/case-script-yaml.md).
+
 ## Goal
 
 Give desktop users a **Maestro-like** inspector for manual end-to-end testing: connect a device, select an element on the live screenshot, choose an action from the Selected element card (Insert / Insert & Run / Copy), build a runnable `yoqa` shell script, and **save it as a catalog test case** with a replayable CaseScript.

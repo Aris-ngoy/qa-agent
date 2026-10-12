@@ -14,12 +14,16 @@ import { AlertDialog, Button, Form, Switch, Tabs } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
+	CASE_SCRIPT_FILE_ACCEPT,
+	CASE_SCRIPT_FILE_EXTENSION,
 	type CaseScript,
 	type CaseScriptAction,
-	caseScriptSchema,
-	formatCaseScriptJson,
+	formatCaseScriptFile,
+	formatCaseScriptFileErrors,
 	formatCaseScriptShell,
+	parseCaseScriptFile,
 	suggestedScriptBasename,
+	toCaseScriptFileText,
 } from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useRef, useState } from "react";
 import {
@@ -657,7 +661,7 @@ function downloadTextFile(filename: string, contents: string, mime: string) {
 	URL.revokeObjectURL(url);
 }
 
-type ScriptViewMode = "steps" | "json" | "shell";
+type ScriptViewMode = "steps" | "yaml" | "shell";
 
 function ScriptPanel({
 	script,
@@ -686,12 +690,13 @@ function ScriptPanel({
 	const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 	const stepsRef = useRef(steps);
 	stepsRef.current = steps;
+	const importInputRef = useRef<HTMLInputElement | null>(null);
 
 	const exportMeta = { caseNumber, caseName };
 
 	useEffect(() => {
 		if (!editing && script) {
-			setDraft(formatCaseScriptJson(script).trimEnd());
+			setDraft(formatCaseScriptFile(script).trimEnd());
 			setEditError(null);
 		}
 	}, [script, editing]);
@@ -703,14 +708,68 @@ function ScriptPanel({
 
 	const reduceMotion = useReducedMotion();
 
+	/** Replace the Case Script from a Case Script file (YAML, legacy JSON, or shell). */
+	const importFile = async (file: File) => {
+		setActionError(null);
+		setEditError(null);
+		const converted = toCaseScriptFileText(await file.text());
+		const parsed = converted.text
+			? parseCaseScriptFile(converted.text, { savedAt: Date.now() })
+			: null;
+		if (!parsed?.ok) {
+			setActionError(
+				`Can’t import ${file.name}:\n${formatCaseScriptFileErrors(parsed ? parsed.errors : converted.errors)}`,
+			);
+			return;
+		}
+		try {
+			await onSaveScript(parsed.script);
+			setEditing(false);
+			if (converted.warnings.length > 0) {
+				setActionError(`Imported ${file.name} with warnings:\n${converted.warnings.join("\n")}`);
+			}
+		} catch (error) {
+			setActionError(error instanceof Error ? error.message : "Failed to import script");
+		}
+	};
+
+	const importInput = (
+		<input
+			accept={CASE_SCRIPT_FILE_ACCEPT}
+			className="hidden"
+			onChange={(event) => {
+				const file = event.target.files?.[0];
+				event.target.value = "";
+				if (file) void importFile(file);
+			}}
+			ref={importInputRef}
+			type="file"
+		/>
+	);
+
 	if (!script) {
 		return (
 			<div className={`${configCardClass} max-w-2xl`}>
 				<h2 className="mb-1.5 text-headline-md text-on-surface">Saved script</h2>
-				<p className="text-body-md text-on-surface-variant">
+				<p className="mb-4 text-body-md text-on-surface-variant">
 					No script yet. After a successful AI agent run, Yoqa saves the tap, type, wait, and alert
-					actions here so you can replay the case without calling the model.
+					actions here so you can replay the case without calling the model. You can also import a
+					Case Script file ({CASE_SCRIPT_FILE_EXTENSION}).
 				</p>
+				{importInput}
+				<Button
+					className="rounded-lg"
+					isDisabled={busy}
+					onPress={() => importInputRef.current?.click()}
+					variant="secondary"
+				>
+					Import…
+				</Button>
+				{actionError ? (
+					<p className="mt-3 whitespace-pre-line text-body-sm text-error" role="alert">
+						{actionError}
+					</p>
+				) : null}
 			</div>
 		);
 	}
@@ -733,44 +792,41 @@ function ScriptPanel({
 	};
 
 	const startEdit = () => {
-		setDraft(formatCaseScriptJson(script).trimEnd());
+		setDraft(formatCaseScriptFile(script).trimEnd());
 		setEditError(null);
 		setActionError(null);
 		setEditing(true);
-		setView("json");
+		setView("yaml");
 	};
 
 	const cancelEdit = () => {
 		setEditing(false);
 		setEditError(null);
-		setDraft(formatCaseScriptJson(script).trimEnd());
+		setDraft(formatCaseScriptFile(script).trimEnd());
 	};
 
 	const saveEdit = async () => {
 		setEditError(null);
 		setActionError(null);
-		let parsedJson: unknown;
-		try {
-			parsedJson = JSON.parse(draft) as unknown;
-		} catch {
-			setEditError("Invalid JSON");
-			return;
-		}
-		const parsed = caseScriptSchema.safeParse(parsedJson);
-		if (!parsed.success) {
-			setEditError(parsed.error.issues[0]?.message ?? "Invalid CaseScript");
+		const parsed = parseCaseScriptFile(draft, { savedAt: Date.now() });
+		if (!parsed.ok) {
+			setEditError(formatCaseScriptFileErrors(parsed.errors));
 			return;
 		}
 		try {
-			await onSaveScript(parsed.data);
+			await onSaveScript(parsed.script);
 			setEditing(false);
 		} catch (error) {
 			setActionError(error instanceof Error ? error.message : "Failed to save script");
 		}
 	};
 
-	const exportJson = () => {
-		downloadTextFile(`${baseName}.yoqa.json`, formatCaseScriptJson(script), "application/json");
+	const exportYaml = () => {
+		downloadTextFile(
+			`${baseName}${CASE_SCRIPT_FILE_EXTENSION}`,
+			formatCaseScriptFile(script, { name: caseName }),
+			"application/yaml",
+		);
 	};
 
 	const exportShell = () => {
@@ -812,8 +868,8 @@ function ScriptPanel({
 
 	const viewTabs: { id: ScriptViewMode; label: string }[] = [
 		{ id: "steps", label: "Steps" },
-		{ id: "json", label: "JSON" },
-		{ id: "shell", label: "CLI shell" },
+		{ id: "yaml", label: "YAML" },
+		{ id: "shell", label: "Shell" },
 	];
 
 	return (
@@ -848,7 +904,7 @@ function ScriptPanel({
 					className="w-full"
 					onSelectionChange={(key) => {
 						const next = String(key) as ScriptViewMode;
-						if (editing && next !== "json") return;
+						if (editing && next !== "yaml") return;
 						setView(next);
 					}}
 					selectedKey={view}
@@ -862,7 +918,7 @@ function ScriptPanel({
 								<Tabs.Tab
 									className="relative z-[1] h-auto min-h-9 rounded-lg px-3.5 py-1.5 text-body-sm font-medium text-on-surface-variant transition-[color,opacity] duration-[var(--motion-fast)] data-[selected=true]:font-semibold data-[selected=true]:!text-on-surface"
 									id={tab.id}
-									isDisabled={editing && tab.id !== "json"}
+									isDisabled={editing && tab.id !== "yaml"}
 									key={tab.id}
 								>
 									{tab.label}
@@ -901,15 +957,24 @@ function ScriptPanel({
 									onPress={startEdit}
 									variant="secondary"
 								>
-									Edit JSON
+									Edit YAML
 								</Button>
 								<Button
 									className="rounded-lg"
 									isDisabled={busy}
-									onPress={exportJson}
+									onPress={exportYaml}
 									variant="secondary"
 								>
-									Export JSON
+									Export YAML
+								</Button>
+								{importInput}
+								<Button
+									className="rounded-lg"
+									isDisabled={busy}
+									onPress={() => importInputRef.current?.click()}
+									variant="secondary"
+								>
+									Import…
 								</Button>
 								<Button
 									className="rounded-lg"
@@ -932,12 +997,12 @@ function ScriptPanel({
 					</div>
 
 					{editError ? (
-						<p className="mb-3 text-body-sm text-error" role="alert">
+						<p className="mb-3 whitespace-pre-line text-body-sm text-error" role="alert">
 							{editError}
 						</p>
 					) : null}
 					{actionError ? (
-						<p className="mb-3 text-body-sm text-error" role="alert">
+						<p className="mb-3 whitespace-pre-line text-body-sm text-error" role="alert">
 							{actionError}
 						</p>
 					) : null}
@@ -1052,17 +1117,17 @@ function ScriptPanel({
 						) : null}
 					</Tabs.Panel>
 
-					<Tabs.Panel className="pt-0 outline-none" id="json">
-						{view === "json" ? (
+					<Tabs.Panel className="pt-0 outline-none" id="yaml">
+						{view === "yaml" ? (
 							<div
 								className={
 									reduceMotion ? "flex flex-col gap-2" : "motion-fade-up flex flex-col gap-2"
 								}
-								key={`json-${editing ? "edit" : "view"}`}
+								key={`yaml-${editing ? "edit" : "view"}`}
 							>
 								{editing ? (
 									<textarea
-										aria-label="CaseScript JSON"
+										aria-label="Case Script file (YAML)"
 										className={`${fieldAreaClass} min-h-[22rem] font-mono text-body-sm leading-relaxed`}
 										onChange={(event) => setDraft(event.target.value)}
 										spellCheck={false}
@@ -1070,13 +1135,14 @@ function ScriptPanel({
 									/>
 								) : (
 									<pre className="max-h-[28rem] overflow-auto rounded-xl border border-outline-variant bg-surface-container px-4 py-3 font-mono text-body-sm leading-relaxed text-on-surface">
-										{formatCaseScriptJson(script).trimEnd()}
+										{formatCaseScriptFile(script).trimEnd()}
 									</pre>
 								)}
 								<p className="text-body-sm text-on-surface-variant">
 									Replay with{" "}
 									<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
-										yoqa script run {baseName}.yoqa.json
+										yoqa script run {baseName}
+										{CASE_SCRIPT_FILE_EXTENSION}
 									</code>{" "}
 									after connecting a device.
 								</p>
@@ -1104,7 +1170,7 @@ function ScriptPanel({
 									<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
 										sleep
 									</code>
-									. Prefer JSON +{" "}
+									. Prefer the Case Script file +{" "}
 									<code className="rounded bg-surface-container px-1.5 py-0.5 text-helper">
 										yoqa script run
 									</code>{" "}
