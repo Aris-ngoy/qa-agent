@@ -10,7 +10,7 @@
 
 import { X509Certificate, createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 
@@ -125,7 +125,12 @@ async function hashSources(projectDir: string): Promise<string> {
 	return hash.digest("hex");
 }
 
+/** Bump when the steps after `build-for-testing` change, so older cached builds redo them. */
+const MANIFEST_VERSION = 2;
+
 type Manifest = {
+	/** Absent before the runner app was branded (version 2). */
+	version?: number;
 	team: string;
 	xctestrun: string;
 	/** The earliest provisioning-profile expiry in the build (a free profile lasts about 7 days). */
@@ -170,6 +175,7 @@ async function readProfiles(products: string, exec: RunnerExec): Promise<Profile
 
 function usableFor(manifest: Manifest, udid: string, now: Date): boolean {
 	return (
+		manifest.version === MANIFEST_VERSION &&
 		existsSync(manifest.xctestrun) &&
 		Date.parse(manifest.profileExpiresAt) > now.getTime() &&
 		(manifest.devices === null || manifest.devices.includes(udid))
@@ -188,6 +194,86 @@ async function findXctestrun(products: string): Promise<string | null> {
 	const entries = await readdir(products).catch(() => [] as string[]);
 	const name = entries.find((entry) => entry.endsWith(".xctestrun"));
 	return name ? join(products, name) : null;
+}
+
+/**
+ * Gives `YoqaRunnerUITests-Runner.app` the host app's icon. Xcode copies the runner from its
+ * XCTRunner template after the UI-test target's build phases, so no build setting reaches it:
+ * the compiled AppIcon and its `CFBundleIcons` are copied in, and the runner is re-signed with
+ * the certificate Xcode signed it with, keeping its identifier and entitlements.
+ *
+ * The icon is cosmetic, so the work happens on a copy that replaces the runner only once it is
+ * signed. Returns why branding was skipped, or null.
+ */
+async function brandRunnerApp(products: string, exec: RunnerExec): Promise<string | null> {
+	const platform = join(products, "Debug-iphoneos");
+	const host = join(platform, "YoqaRunner.app");
+	const runner = join(platform, "YoqaRunnerUITests-Runner.app");
+	const staging = join(products, "branding");
+	const copy = join(staging, "YoqaRunnerUITests-Runner.app");
+	const run = async (command: string[]): Promise<string> => {
+		const result = await exec(command);
+		if (result.exitCode !== 0) {
+			throw new Error(
+				`${command.slice(0, 2).join(" ")}: ${(result.stderr || result.stdout).trim()}`,
+			);
+		}
+		return result.stdout;
+	};
+	try {
+		const icons = (await readdir(host)).filter(
+			(name) => name.startsWith("AppIcon") || name === "Assets.car",
+		);
+		if (!icons.some((name) => name.startsWith("AppIcon"))) return "the host app has no AppIcon";
+		await rm(staging, { recursive: true, force: true });
+		await cp(runner, copy, { recursive: true, verbatimSymlinks: true });
+		for (const name of icons) await copyFile(join(host, name), join(copy, name));
+		const plist = await run([
+			"plutil",
+			"-extract",
+			"CFBundleIcons",
+			"json",
+			"-o",
+			"-",
+			join(host, "Info.plist"),
+		]);
+		await run([
+			"plutil",
+			"-insert",
+			"CFBundleIcons",
+			"-json",
+			plist.trim(),
+			join(copy, "Info.plist"),
+		]);
+		const certificates = join(staging, "certificate");
+		await run(["codesign", "-d", `--extract-certificates=${certificates}`, runner]);
+		const identity = createHash("sha1")
+			.update(await readFile(`${certificates}0`))
+			.digest("hex")
+			.toUpperCase();
+		await run([
+			"codesign",
+			"--force",
+			"--sign",
+			identity,
+			"--preserve-metadata=identifier,entitlements,flags,runtime",
+			"--generate-entitlement-der",
+			copy,
+		]);
+		const unbranded = join(staging, "unbranded.app");
+		await rename(runner, unbranded);
+		try {
+			await rename(copy, runner);
+		} catch (error) {
+			await rename(unbranded, runner);
+			throw error;
+		}
+		return null;
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	} finally {
+		await rm(staging, { recursive: true, force: true });
+	}
 }
 
 /** `xcodebuild -version`, which is part of the cache key. */
@@ -306,6 +392,8 @@ export async function prepareYoqaRunner(
 		throw new YoqaRunnerError(explainBuildFailure(`${build.stdout}\n${build.stderr}`, team));
 	}
 	const products = join(derivedData, "Build/Products");
+	const unbranded = await brandRunnerApp(products, deps.exec);
+	if (unbranded) console.warn(`[yoqa-runner] the runner keeps Xcode's blank icon: ${unbranded}`);
 	const xctestrun = await findXctestrun(products);
 	const profiles = await readProfiles(products, deps.exec);
 	if (!xctestrun || profiles.length === 0) {
@@ -313,6 +401,7 @@ export async function prepareYoqaRunner(
 	}
 	const restricted = profiles.flatMap((profile) => (profile.devices ? [profile.devices] : []));
 	const manifest: Manifest = {
+		version: MANIFEST_VERSION,
 		team,
 		xctestrun,
 		profileExpiresAt: new Date(Math.min(...profiles.map((p) => p.expiresAt))).toISOString(),
