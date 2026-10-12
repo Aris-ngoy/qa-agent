@@ -421,6 +421,20 @@ describe("shared device session", () => {
 		expect(getActiveSessionInfo()?.lane).toBe("direct");
 		expect(createdFakeSessions[0]?.quitCalls).toBe(0);
 		expect(createdCount).toBe(1);
+
+		const stale = createdFakeSessions[0];
+		if (!stale) throw new Error("expected a created session");
+		stale.healthy = false;
+		await expect(
+			acquireSessionForRun({
+				runId: "run_a",
+				deviceId: "dev-1",
+				platform: "android",
+				requestedLane: "appium",
+			}),
+		).rejects.toThrow("The Appium lane cannot be opened");
+		expect(getActiveSessionInfo()?.deviceId).toBe("dev-1");
+		expect(stale.quitCalls).toBe(0);
 	});
 
 	test("requesting the Appium lane fails the connect and opens no session", async () => {
