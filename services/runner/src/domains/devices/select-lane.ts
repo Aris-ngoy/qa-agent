@@ -5,29 +5,14 @@ export type LaneRequest = LaneName | "auto";
 export type LaneChoice = {
 	lane: LaneName;
 	fallback: boolean;
-	reason?: "capabilities" | "unsupported";
 	warning?: string;
 };
 
-/** Asking for the Appium lane fails the connect. The lane itself is still in the tree. */
-export function refuseAppiumRequest(): never {
-	throw new Error("The Appium lane cannot be opened");
-}
-
-/**
- * Pick the Lane for a Device Session. A connect opens Direct, or it fails.
- * Custom capabilities do not change the Lane. Asking for the Appium lane fails
- * the connect; this does not remove the Appium lane, it only stops choosing it.
- */
+/** Pick the Lane for a Device Session. A Lane is Direct only, so a connect opens Direct or fails. */
 export function selectLane(input: {
 	requested: LaneRequest;
 	available: readonly LaneName[];
-	appCaps: Array<{ key: string }>;
-	caseCaps: Array<{ key: string }>;
 }): LaneChoice {
-	if (input.requested === "appium") {
-		refuseAppiumRequest();
-	}
 	if (!input.available.includes("direct")) {
 		throw new Error("Direct lane is not available");
 	}
@@ -37,7 +22,6 @@ export function selectLane(input: {
 export function availableLanes(factories: Partial<Record<LaneName, unknown>>): LaneName[] {
 	const names: LaneName[] = [];
 	if (factories.direct) names.push("direct");
-	if (factories.appium) names.push("appium");
 	return names;
 }
 

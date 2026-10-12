@@ -34,7 +34,7 @@ Yoqa is an AI agent that tests your apps and games visually — no locator scrip
 | **Device connector (CLI)** | Your coding agent (`yoqa screenshot` → `yoqa action`) | Debugging a feature you just built |
 | **Yoqa agent (runs)** | Yoqa's perception → decision → action loop | Smoke / regression on saved test cases |
 
-Both modes use **Appium** under the hood (XCUITest on iOS, UiAutomator2 on Android). You bring your own vision model via [AI Providers](/docs/providers).
+Both modes drive the device directly (adb on Android, the simulator tools on iOS simulators, an on-device runner on a cabled iPhone). You bring your own vision model via [AI Providers](/docs/providers).
 
 ## Roadmap
 

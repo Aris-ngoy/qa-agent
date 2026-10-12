@@ -9,7 +9,6 @@ import {
 	androidAdbLane,
 	androidDevtoolsLane,
 	androidLatestFrameLane,
-	appiumLane,
 	iosDeviceLane,
 	iosIdbLane,
 	iosYoqaAxLane,
@@ -22,7 +21,6 @@ import { SCREENSHOT_DIR } from "./screenshot-retention";
  * joins by adding its harness to this list.
  */
 const LANES: Array<() => LaneHarness> = [
-	appiumLane,
 	androidAdbLane,
 	androidLatestFrameLane,
 	androidDevtoolsLane,

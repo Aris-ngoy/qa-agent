@@ -20,7 +20,7 @@ export type BenchmarkSuite = {
 	arms: BenchmarkScreenArm[];
 };
 
-/** Versioned Appium-lane gate suite. Hardware runs should keep this version. */
+/** Versioned gate suite. Hardware runs should keep this version. */
 export const DEFAULT_BENCHMARK_SUITE: BenchmarkSuite = {
 	version: BENCHMARK_SUITE_VERSION,
 	repeats: 5,

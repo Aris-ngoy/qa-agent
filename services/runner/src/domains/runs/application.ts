@@ -182,7 +182,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 		status: runRow.status as RunStatus,
 		executionMode: parseRunExecutionMode(runRow.executionMode),
 		screenMode: parseRunScreenMode(runRow.screenMode),
-		lane: runRow.lane === "direct" || runRow.lane === "appium" ? runRow.lane : undefined,
+		lane: runRow.lane === "direct" ? runRow.lane : undefined,
 		laneWarning: runRow.laneWarning ?? undefined,
 		error: runRow.error,
 		createdAt: runRow.createdAt,
@@ -504,19 +504,14 @@ export async function executeRun(runId: string): Promise<void> {
 		const requestedLane = runRow?.requestedLane;
 		// Adopt the shared Active Session when it already targets this device;
 		// otherwise connect (replacing any unheld session) and keep it live after.
-		// Stored Appium capabilities are not applied to connect or launch.
 		const acquired = await acquireSessionForRun({
 			runId,
 			deviceId: run.deviceId,
 			platform: run.platform,
-			appCaps: [],
-			caseCaps: [],
 			bundleId: app.iosBundleId || undefined,
 			appPackage: app.androidApplicationId || undefined,
 			requestedLane:
-				requestedLane === "direct" || requestedLane === "appium" || requestedLane === "auto"
-					? requestedLane
-					: undefined,
+				requestedLane === "direct" || requestedLane === "auto" ? requestedLane : undefined,
 		});
 		const activeSession = acquired.session;
 		session = activeSession;
@@ -810,7 +805,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		status: runRow.status as RunStatus,
 		executionMode: parseRunExecutionMode(runRow.executionMode),
 		screenMode: parseRunScreenMode(runRow.screenMode),
-		lane: runRow.lane === "direct" || runRow.lane === "appium" ? runRow.lane : undefined,
+		lane: runRow.lane === "direct" ? runRow.lane : undefined,
 		laneWarning: runRow.laneWarning ?? undefined,
 		error: runRow.error,
 		createdAt: runRow.createdAt,

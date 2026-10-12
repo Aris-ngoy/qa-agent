@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 
 /** Accessibility tree refresh when using screenshot poll (not during MJPEG). */
 const TREE_REFRESH_MS = 8000;
-/** Fallback screenshot poll when Appium MJPEG is unavailable. */
+/** Fallback screenshot poll when the MJPEG stream is unavailable. */
 const FALLBACK_SCREENSHOT_MS = 250;
 
 /**
@@ -107,7 +107,7 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 	}, [controller]);
 
 	// Accessibility tree refresh — only on poll feed. MJPEG + pageSource on the
-	// same WDA session routinely kills the stream a few seconds after connect.
+	// same device session routinely kills the stream a few seconds after connect.
 	useObserveEffect(
 		(): "off" | "run" => {
 			if (feed$.active.get() == null || !page$.visible.get() || feed$.feedMode.get() !== "poll") {

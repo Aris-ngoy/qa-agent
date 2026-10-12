@@ -199,7 +199,7 @@ program
 
 program
 	.command("status")
-	.description("Show local runner, runtime, provider, and active device status")
+	.description("Show local runner, provider, and active device status")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -212,7 +212,6 @@ program
 			console.log(
 				`runner: ${body.runner.ok ? "ok" : "down"}${body.runner.version ? ` (${body.runner.version})` : ""}`,
 			);
-			console.log(`runtime: ${body.runtime.ready ? "ready" : "not ready"}`);
 			console.log(
 				`provider: ${
 					body.provider.configured
@@ -304,7 +303,7 @@ devices
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
-	.option("--lane <lane>", "appium | direct | auto (Android / iOS sim auto → Direct)")
+	.option("--lane <lane>", "direct | auto (the only Lane is Direct)")
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
@@ -324,8 +323,8 @@ devices
 					throw new Error("--platform must be ios or android");
 				}
 				const lane = options.lane;
-				if (lane != null && lane !== "appium" && lane !== "direct" && lane !== "auto") {
-					throw new Error("--lane must be appium, direct, or auto");
+				if (lane != null && lane !== "direct" && lane !== "auto") {
+					throw new Error("--lane must be direct or auto");
 				}
 				const body = await client(options.baseUrl).connectDevice({
 					deviceId,
@@ -338,7 +337,7 @@ devices
 					console.log(JSON.stringify(body, null, 2));
 					return;
 				}
-				console.log(`connected ${body.platform} ${body.deviceId} lane ${body.lane ?? "appium"}`);
+				console.log(`connected ${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}`);
 				if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 			} catch (error) {
 				fail("devices connect", error);
@@ -363,7 +362,7 @@ devices
 				console.log(JSON.stringify(body, null, 2));
 				return;
 			}
-			console.log(`${body.platform} ${body.deviceId} lane ${body.lane ?? "appium"}`);
+			console.log(`${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}`);
 			if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 		} catch (error) {
 			fail("devices active", error);
@@ -372,7 +371,7 @@ devices
 
 devices
 	.command("disconnect")
-	.description("Close the active Appium session")
+	.description("Close the active Device Session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -394,7 +393,7 @@ program
 	.command("screen")
 	.description("Inspect the active device screen (cleaned tree by default)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--full", "Return raw Appium page source")
+	.option("--full", "Return the raw accessibility tree")
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; full?: boolean; json?: boolean }) => {
 		try {
@@ -612,137 +611,11 @@ addActionOptions(
 	}
 });
 
-// --- setup / runtime (existing) ---
-
-const setup = program
-	.command("setup")
-	.description("Install Appium and the platform driver (xcuitest / uiautomator2)");
-
-setup
-	.command("ios")
-	.description("Ensure Appium + xcuitest; optionally build and install WDA on a physical device")
-	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.option("--device <udid>", "Physical device UDID to install WebDriverAgent on")
-	.option("--kind <kind>", "Device kind: physical | simulator", "physical")
-	.option("--xcode <path>", "Xcode Contents/Developer path (DEVELOPER_DIR)")
-	.option("--team <teamId>", "Apple Development team ID")
-	.option("--identity <name>", 'Codesigning identity name, e.g. "Apple Development: …"')
-	.option("--force", "Force a full WebDriverAgent rebuild even when prep is reusable")
-	.action(
-		async (options: {
-			baseUrl: string;
-			json?: boolean;
-			device?: string;
-			kind?: string;
-			xcode?: string;
-			team?: string;
-			identity?: string;
-			force?: boolean;
-		}) => {
-			try {
-				const kind =
-					options.kind === "simulator" || options.kind === "physical" ? options.kind : undefined;
-				const body = await client(options.baseUrl).setupPlatform({
-					platform: "ios",
-					deviceId: options.device,
-					kind,
-					xcodeDeveloperDir: options.xcode,
-					developmentTeam: options.team,
-					codeSignIdentity: options.identity,
-					force: options.force === true,
-				});
-				if (options.json) {
-					console.log(JSON.stringify(body, null, 2));
-					return;
-				}
-				console.log(body.message);
-				console.log(`driver: ${body.driver}${body.driverVersion ? ` ${body.driverVersion}` : ""}`);
-				console.log(`appium: ${body.appiumVersion}`);
-				if (body.wdaInstalled) {
-					const action = body.wdaAction ?? "built";
-					console.log(`wda: ${action} (${body.wdaBundleId ?? "unknown bundle"})`);
-				}
-			} catch (error) {
-				fail("setup ios", error);
-			}
-		},
-	);
-
-setup
-	.command("android")
-	.description("Ensure Appium + uiautomator2 driver are installed")
-	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
-		try {
-			const body = await client(options.baseUrl).setupPlatform("android");
-			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
-				return;
-			}
-			console.log(body.message);
-			console.log(`driver: ${body.driver}${body.driverVersion ? ` ${body.driverVersion}` : ""}`);
-			console.log(`appium: ${body.appiumVersion}`);
-		} catch (error) {
-			fail("setup android", error);
-		}
-	});
-
-const runtime = program
-	.command("runtime")
-	.description("Check or ensure the local Appium runtime (drivers + host tools)");
-
-runtime
-	.command("status")
-	.description("Show readiness of Appium, drivers, and host tools")
-	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
-		try {
-			const body = await client(options.baseUrl).getRuntimeStatus();
-			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
-				return;
-			}
-			console.log(body.ready ? "ready" : "not ready");
-			for (const check of body.checks) {
-				const mark = check.ok ? "ok" : check.required ? "FAIL" : "warn";
-				console.log(`  [${mark}] ${check.label}${check.detail ? ` — ${check.detail}` : ""}`);
-			}
-			if (!body.ready) process.exitCode = 1;
-		} catch (error) {
-			fail("runtime status", error);
-		}
-	});
-
-runtime
-	.command("ensure")
-	.description("Install Appium + both platform drivers if missing")
-	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
-		try {
-			const body = await client(options.baseUrl).ensureRuntime();
-			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
-				return;
-			}
-			console.log(body.message);
-			for (const check of body.status.checks) {
-				const mark = check.ok ? "ok" : check.required ? "FAIL" : "warn";
-				console.log(`  [${mark}] ${check.label}${check.detail ? ` — ${check.detail}` : ""}`);
-			}
-		} catch (error) {
-			fail("runtime ensure", error);
-		}
-	});
-
 // --- servers / doctor ---
 
 const servers = program
 	.command("servers")
-	.description("List or control local Appium, runner, and device sessions")
+	.description("List or control the local runner and device sessions")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -810,7 +683,7 @@ servers
 
 servers
 	.command("stop-all")
-	.description("Stop Appium processes and disconnect the device session (does not stop the runner)")
+	.description("Disconnect the device session (does not stop the runner)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(async (options: { baseUrl: string; json?: boolean }) => {
@@ -876,10 +749,10 @@ servers
 
 program
 	.command("doctor")
-	.description("Diagnose local tooling, drivers, and leftover Appium processes")
+	.description("Diagnose local tooling and the device session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.option("--fix", "Apply safe repairs (ensure runtime, stop foreign Appium, disconnect session)")
+	.option("--fix", "Apply safe repairs (disconnect a stuck session)")
 	.action(async (options: { baseUrl: string; json?: boolean; fix?: boolean }) => {
 		try {
 			const c = client(options.baseUrl);
@@ -1646,7 +1519,7 @@ runsCmd
 		"--screen-mode <mode>",
 		"vision | tree — what the agent sees: screenshot only, or also the accessibility tree (default: vision)",
 	)
-	.option("--lane <lane>", "appium | direct | auto — Android / iOS sim auto → Direct")
+	.option("--lane <lane>", "direct | auto")
 	.option(
 		"--record-video",
 		"Record a screen video of every case in the run, even cases not set to record",
@@ -1731,11 +1604,9 @@ runsCmd
 				}
 
 				const lane =
-					options.lane === "appium" || options.lane === "direct" || options.lane === "auto"
-						? options.lane
-						: undefined;
+					options.lane === "direct" || options.lane === "auto" ? options.lane : undefined;
 				if (options.lane && !lane) {
-					throw new Error("--lane must be appium, direct, or auto");
+					throw new Error("--lane must be direct or auto");
 				}
 
 				let run = await c.createRun({
@@ -1970,7 +1841,7 @@ program
 	.option("--repeats <n>", "Tap-to-result repeats (default: suite repeats)", (v) => Number(v))
 	.option("--suite <path>", "Versioned suite JSON (default: built-in v1)")
 	.option("--tools <list>", "Comma-separated: yoqa,argent (default: yoqa)", "yoqa")
-	.option("--lane <lane>", "Yoqa Lane: appium | direct | auto", "auto")
+	.option("--lane <lane>", "Yoqa Lane: direct | auto", "auto")
 	.option("--arms <list>", "Yoqa Screen arms: vision,tree (default: suite arms)")
 	.option("--app <id>", "Catalog App id for Case arms (required when the suite has cases)")
 	.option("--out <path>", "Write the JSON report to this path")
@@ -1996,10 +1867,8 @@ program
 					throw new Error("--platform must be ios or android");
 				}
 				const lane =
-					options.lane === "appium" || options.lane === "direct" || options.lane === "auto"
-						? options.lane
-						: undefined;
-				if (options.lane && !lane) throw new Error("--lane must be appium, direct, or auto");
+					options.lane === "direct" || options.lane === "auto" ? options.lane : undefined;
+				if (options.lane && !lane) throw new Error("--lane must be direct or auto");
 				const suite = options.suite
 					? parseBenchmarkSuite(JSON.parse(await readFile(options.suite, "utf8")))
 					: DEFAULT_BENCHMARK_SUITE;

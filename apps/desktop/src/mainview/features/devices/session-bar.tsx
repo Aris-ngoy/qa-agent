@@ -16,14 +16,13 @@ import {
 	writeRememberedDevice,
 } from "@/features/devices/session-device";
 import { SessionRunChip } from "@/features/devices/session-run-chip";
-import { connectedToastMessage, wdaRebuildTarget } from "@/features/devices/session-status";
+import { connectedToastMessage } from "@/features/devices/session-status";
 import { SessionToolbar } from "@/features/devices/session-toolbar";
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
 } from "@/features/devices/use-active-device-session";
 import { useRetargetOnAppSwitch } from "@/features/devices/use-retarget-on-app-switch";
-import { rebuildWebDriverAgent } from "@/features/devices/wda-setup";
 import { RunControls } from "@/features/test-cases/run-controls";
 import { useTestCaseSelection } from "@/features/test-cases/selection-context";
 import { toast } from "@heroui/react";
@@ -89,7 +88,6 @@ export function SessionBar() {
 	const sessionDevices = activeSession?.platform === platform ? devices : undefined;
 	/** The session's device from the list; null while unlisted (the bar then shows its id). */
 	const sessionDevice = activeSession ? deviceForSession(activeSession, sessionDevices) : null;
-	const rebuildTarget = wdaRebuildTarget(activeSession, sessionDevices);
 
 	/**
 	 * Connect `target` for the selected app; the one connect path for Connect, Restart and
@@ -130,20 +128,12 @@ export function SessionBar() {
 		}
 	};
 
-	const handleRestart = async ({ rebuildWda }: { rebuildWda: boolean }) => {
+	const handleRestart = async () => {
 		const target = activeSession
 			? { id: activeSession.deviceId, platform: activeSession.platform }
 			: device;
 		if (!target) {
 			showErrorToast(new Error("Select a device first"), "Nothing to restart");
-			return;
-		}
-		// The rebuild needs the device's real kind, so it is only offered for a listed device.
-		if (rebuildWda && !rebuildTarget) {
-			showErrorToast(
-				new Error("The device list does not have this device, so its kind is unknown"),
-				"Cannot rebuild WebDriverAgent",
-			);
 			return;
 		}
 		setConnecting(true);
@@ -155,15 +145,8 @@ export function SessionBar() {
 				/* already dead / no session */
 			}
 			queryClient.setQueryData(activeDeviceSessionQueryKey, null);
-			if (rebuildWda && rebuildTarget) {
-				// The rebuild is for the Appium lane's WebDriverAgent, so reconnect on that lane.
-				await rebuildWebDriverAgent(rebuildTarget);
-				await connectDevice(target, "appium");
-				toast.success("Session restarted with a rebuilt WebDriverAgent");
-			} else {
-				await connectDevice(target);
-				toast.success("Session restarted");
-			}
+			await connectDevice(target);
+			toast.success("Session restarted");
 		} catch (error) {
 			invalidateActiveDeviceSession();
 			showErrorToast(error, "Failed to restart session");
@@ -207,14 +190,13 @@ export function SessionBar() {
 				onConnect={() => {
 					void handleConnect();
 				}}
-				onRestart={(options) => {
-					void handleRestart(options);
+				onRestart={() => {
+					void handleRestart();
 				}}
 				onDisconnect={() => {
 					void handleDisconnect();
 				}}
 				viewOnly={Boolean(activeSession?.heldByRun)}
-				offerWdaRebuild={rebuildTarget != null}
 			/>
 			<SessionRunChip />
 			{showRun && !activeSession?.heldByRun ? (

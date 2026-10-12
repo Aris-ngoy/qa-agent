@@ -9,19 +9,19 @@ import {
 import { defaultLanesFor, openDeviceSession } from "./open-session";
 
 function options(deviceId: string): SessionOptions {
-	return { platform: "android", deviceId, appCaps: [], caseCaps: [] };
+	return { platform: "android", deviceId };
 }
 
 type FakeLaneSession = DeviceSession & { quitCalls: number };
 
-function fakeLane(lane: "appium" | "direct" = "direct"): {
+function fakeLane(): {
 	factory: LaneFactory;
 	created: FakeLaneSession[];
 } {
 	const created: FakeLaneSession[] = [];
 	const factory: LaneFactory = async () => {
 		const session = {
-			lane,
+			lane: "direct",
 			stream: null,
 			quitCalls: 0,
 			quit: async () => {
@@ -77,69 +77,16 @@ describe("openDeviceSession (lane dispatcher)", () => {
 		await second.quit();
 	});
 
-	test("auto-picks Direct when that factory exists and there are no custom capabilities", async () => {
-		const { factory: appium, created: appiumCreated } = fakeLane();
-		const created: FakeLaneSession[] = [];
-		const direct: LaneFactory = async () => {
-			const session = {
-				lane: "direct",
-				stream: null,
-				quitCalls: 0,
-				quit: async () => {
-					session.quitCalls += 1;
-				},
-			} as unknown as FakeLaneSession;
-			created.push(session);
-			return session;
-		};
-		const session = await openDeviceSession(options("dev-lane-auto-direct"), { appium, direct });
-		expect(created).toHaveLength(1);
-		expect(appiumCreated).toHaveLength(0);
-		expect(session.lane).toBe("direct");
-		await session.quit();
-	});
-
-	test("a failed Direct start fails the connect and does not open an Appium session", async () => {
-		const { factory: appium, created } = fakeLane("appium");
+	test("a failed Direct start fails the connect and opens nothing else", async () => {
 		const direct: LaneFactory = async () => {
 			throw new Error("idb companion refused");
 		};
 		await expect(
 			openDeviceSession(
 				{ ...options("dev-lane-direct-fail"), requestedLane: "direct" },
-				{ appium, direct },
+				{ direct },
 			),
 		).rejects.toThrow("idb companion refused");
-		expect(created).toHaveLength(0);
-	});
-
-	test("Direct with no factory fails the connect and does not open an Appium session", async () => {
-		const { factory, created } = fakeLane("appium");
-		await expect(
-			openDeviceSession(
-				{ ...options("dev-lane-direct"), requestedLane: "direct" },
-				{ appium: factory },
-			),
-		).rejects.toThrow("Direct lane is not available");
-		expect(created).toHaveLength(0);
-	});
-
-	test("custom capabilities do not change the Lane when Direct is available", async () => {
-		const { factory: appium, created: appiumCreated } = fakeLane("appium");
-		const { factory: direct, created: directCreated } = fakeLane();
-		const session = await openDeviceSession(
-			{
-				...options("dev-lane-pin"),
-				requestedLane: "direct",
-				appCaps: [{ id: "cap-1", key: "appium:autoLaunch", value: "false" }],
-			},
-			{ appium, direct },
-		);
-		expect(directCreated).toHaveLength(1);
-		expect(appiumCreated).toHaveLength(0);
-		expect(session.lane).toBe("direct");
-		expect(session.laneWarning).toBeUndefined();
-		await session.quit();
 	});
 
 	test("a failing Direct factory registers nothing and surfaces the error", async () => {
@@ -182,9 +129,7 @@ describe("openDeviceSession (lane dispatcher)", () => {
 
 		test("with no new implementation registered, the existing one opens the session", async () => {
 			const existing = directImpl("adb", { promoted: true });
-			const { factory: appium } = fakeLane();
 			const session = await openDeviceSession(options("dev-impl-1"), {
-				appium,
 				direct: createDirectLane([existing.impl]),
 			});
 			expect(existing.opened).toEqual(["adb"]);
@@ -196,9 +141,7 @@ describe("openDeviceSession (lane dispatcher)", () => {
 		test("a registered new implementation is not used unless opted in", async () => {
 			const fresh = directImpl("device-android");
 			const existing = directImpl("adb", { promoted: true });
-			const { factory: appium } = fakeLane();
 			const session = await openDeviceSession(options("dev-impl-2"), {
-				appium,
 				direct: createDirectLane([fresh.impl, existing.impl]),
 			});
 			expect(fresh.opened).toEqual([]);
@@ -209,9 +152,7 @@ describe("openDeviceSession (lane dispatcher)", () => {
 		test("an opted-in new implementation opens the session on the Direct lane", async () => {
 			const fresh = directImpl("device-android");
 			const existing = directImpl("adb", { promoted: true });
-			const { factory: appium } = fakeLane();
 			const session = await openDeviceSession(options("dev-impl-3"), {
-				appium,
 				direct: createDirectLane([fresh.impl, existing.impl], "device-android"),
 			});
 			expect(fresh.opened).toEqual(["device-android"]);
@@ -224,13 +165,10 @@ describe("openDeviceSession (lane dispatcher)", () => {
 		test("a new implementation that fails to start falls back to the existing one, loudly", async () => {
 			const fresh = directImpl("device-android", { fails: true });
 			const existing = directImpl("adb", { promoted: true });
-			const { factory: appium, created } = fakeLane();
 			const session = await openDeviceSession(options("dev-impl-4"), {
-				appium,
 				direct: createDirectLane([fresh.impl, existing.impl], "device-android"),
 			});
 			expect(existing.opened).toEqual(["adb"]);
-			expect(created).toHaveLength(0);
 			expect(session.lane).toBe("direct");
 			expect(session.laneWarning).toMatch(/device-android failed to start; fell back to adb/);
 			await session.quit();
@@ -239,9 +177,7 @@ describe("openDeviceSession (lane dispatcher)", () => {
 		test("a fallback keeps the warning the implementation it fell back to gave", async () => {
 			const fresh = directImpl("device-android", { fails: true });
 			const existing = directImpl("adb", { promoted: true, warning: "Android helper unavailable" });
-			const { factory: appium } = fakeLane();
 			const session = await openDeviceSession(options("dev-impl-warn"), {
-				appium,
 				direct: createDirectLane([fresh.impl, existing.impl], "device-android"),
 			});
 			expect(session.laneWarning).toMatch(/device-android failed to start; fell back to adb/);
@@ -249,17 +185,14 @@ describe("openDeviceSession (lane dispatcher)", () => {
 			await session.quit();
 		});
 
-		test("when both Direct implementations fail, the connect fails and Appium is not opened", async () => {
+		test("when both Direct implementations fail, the connect fails", async () => {
 			const fresh = directImpl("device-android", { fails: true });
 			const existing = directImpl("adb", { promoted: true, fails: true });
-			const { factory: appium, created } = fakeLane("appium");
 			await expect(
 				openDeviceSession(options("dev-impl-5"), {
-					appium,
 					direct: createDirectLane([fresh.impl, existing.impl], "device-android"),
 				}),
 			).rejects.toThrow("adb would not start");
-			expect(created).toHaveLength(0);
 		});
 	});
 
@@ -274,10 +207,8 @@ describe("openDeviceSession (lane dispatcher)", () => {
 			reportLaneFallback(lane, opened, "yoqa-sim failed; using idb_companion");
 			return lane;
 		};
-		const { factory: appium, created } = fakeLane();
-		const session = await openDeviceSession(options("dev-early-warning"), { appium, direct });
+		const session = await openDeviceSession(options("dev-early-warning"), { direct });
 		expect(session.lane).toBe("direct");
-		expect(created).toHaveLength(0);
 		expect(session.laneWarning).toBe("yoqa-sim failed; using idb_companion");
 		await session.quit();
 	});
@@ -292,11 +223,10 @@ describe("openDeviceSession (lane dispatcher)", () => {
 				quit: async () => undefined,
 			} as unknown as DeviceSession;
 		};
-		const { factory: appium } = fakeLane();
 		const seen: string[] = [];
 		const session = await openDeviceSession(
 			{ ...options("dev-late-warning"), onLaneWarning: (warning) => seen.push(warning) },
-			{ appium, direct },
+			{ direct },
 		);
 		expect(session.laneWarning).toBeUndefined();
 
@@ -316,8 +246,6 @@ describe("openDeviceSession on a cabled physical iPhone", () => {
 	const phone = (requestedLane: SessionOptions["requestedLane"]): SessionOptions => ({
 		platform: "ios",
 		deviceId: PHONE,
-		appCaps: [],
-		caseCaps: [],
 		requestedLane,
 	});
 	function directLane(fail?: string) {
@@ -335,54 +263,33 @@ describe("openDeviceSession on a cabled physical iPhone", () => {
 	}
 
 	test("auto opens the Direct lane", async () => {
-		const { factory: appium, created } = fakeLane();
 		const direct = directLane();
-		const session = await openDeviceSession(phone("auto"), { appium, direct: direct.factory });
+		const session = await openDeviceSession(phone("auto"), { direct: direct.factory });
 		expect(session.lane).toBe("direct");
 		expect(session.laneWarning).toBeUndefined();
 		expect(direct.opened).toEqual([PHONE]);
-		expect(created).toHaveLength(0);
 		await session.quit();
 	});
 
-	test("auto fails the connect when the runner can't start and does not open Appium", async () => {
-		const { factory: appium, created } = fakeLane("appium");
+	test("auto fails the connect when the runner can't start", async () => {
 		const direct = directLane("YoqaRunner status did not cross the cable to port 8100");
-		await expect(
-			openDeviceSession(phone("auto"), { appium, direct: direct.factory }),
-		).rejects.toThrow("YoqaRunner status did not cross the cable to port 8100");
-		expect(created).toHaveLength(0);
-	});
-
-	test("custom capabilities keep a phone on Direct under auto", async () => {
-		const { factory: appium, created } = fakeLane("appium");
-		const direct = directLane();
-		const session = await openDeviceSession(
-			{ ...phone("auto"), appCaps: [{ key: "appium:autoLaunch" } as never] },
-			{ appium, direct: direct.factory },
+		await expect(openDeviceSession(phone("auto"), { direct: direct.factory })).rejects.toThrow(
+			"YoqaRunner status did not cross the cable to port 8100",
 		);
-		expect(session.lane).toBe("direct");
-		expect(direct.opened).toEqual([PHONE]);
-		expect(created).toHaveLength(0);
-		await session.quit();
 	});
 
 	test("an explicit direct request opens the Direct lane", async () => {
-		const { factory: appium, created } = fakeLane();
 		const direct = directLane();
-		const session = await openDeviceSession(phone("direct"), { appium, direct: direct.factory });
+		const session = await openDeviceSession(phone("direct"), { direct: direct.factory });
 		expect(session.lane).toBe("direct");
 		expect(direct.opened).toEqual([PHONE]);
-		expect(created).toHaveLength(0);
 		await session.quit();
 	});
 
-	test("a direct request whose status fails does not open an Appium session", async () => {
-		const { factory: appium, created } = fakeLane("appium");
+	test("a direct request whose status fails opens nothing else", async () => {
 		const direct = directLane("YoqaRunner status did not cross the cable to port 8100");
-		await expect(
-			openDeviceSession(phone("direct"), { appium, direct: direct.factory }),
-		).rejects.toThrow("YoqaRunner status did not cross the cable to port 8100");
-		expect(created).toHaveLength(0);
+		await expect(openDeviceSession(phone("direct"), { direct: direct.factory })).rejects.toThrow(
+			"YoqaRunner status did not cross the cable to port 8100",
+		);
 	});
 });

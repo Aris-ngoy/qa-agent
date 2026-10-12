@@ -1,5 +1,4 @@
 import type { DevicePlatform } from "@yoqa/runner-client";
-import { createAppiumSession } from "./appium-lane";
 import { defaultDirectLane } from "./direct-lane";
 import {
 	type DeviceSession,
@@ -19,7 +18,6 @@ const openByDeviceId = new Map<string, DeviceSession>();
  */
 export function defaultLanesFor(platform: DevicePlatform): Partial<Record<LaneName, LaneFactory>> {
 	return {
-		appium: createAppiumSession,
 		...(platform === "android" || platform === "ios"
 			? { direct: defaultDirectLane(platform) }
 			: {}),
@@ -31,12 +29,8 @@ function mergeLanes(
 	lanes: Partial<Record<LaneName, LaneFactory | undefined>>,
 ): Partial<Record<LaneName, LaneFactory>> {
 	const defaults = defaultLanesFor(platform);
-	const merged =
-		Object.keys(lanes).length > 0 ? { appium: defaults.appium, ...lanes } : { ...defaults };
-	const out: Partial<Record<LaneName, LaneFactory>> = {};
-	if (merged.appium) out.appium = merged.appium;
-	if (merged.direct) out.direct = merged.direct;
-	return out;
+	const merged = Object.keys(lanes).length > 0 ? lanes : defaults;
+	return merged.direct ? { direct: merged.direct } : {};
 }
 
 async function releaseExistingSession(deviceId: string): Promise<void> {
@@ -67,8 +61,8 @@ async function openOnLane(
 
 /**
  * Open the one Device Session for a device (`createDeviceSession` in `session.ts` calls this).
- * The Lane is chosen before any session is quit, so an Appium request fails without
- * touching the current one. Any session already open on that device is then quit
+ * The Lane is chosen before any session is quit, so a connect that cannot open Direct fails
+ * without touching the current one. Any session already open on that device is then quit
  * (ADR-0001) before the new one starts, whichever Lane it ran on. The session lives
  * on exactly one Lane for its whole life. `lanes` lets tests inject a fake lane.
  */
@@ -80,8 +74,6 @@ export async function openDeviceSession(
 	const choice = selectLane({
 		requested: options.requestedLane ?? "auto",
 		available: availableLanes(merged),
-		appCaps: options.appCaps,
-		caseCaps: options.caseCaps,
 	});
 	await releaseExistingSession(options.deviceId);
 

@@ -14,9 +14,9 @@ export const runs = sqliteTable("runs", {
 	executionMode: text("execution_mode").notNull().default("auto"),
 	/** vision | tree — what the agent sees. Rows from before Screen modes read as tree. */
 	screenMode: text("screen_mode").notNull().default("tree"),
-	/** appium | direct | auto — requested at create. */
+	/** direct | auto — requested at create. */
 	requestedLane: text("requested_lane"),
-	/** appium | direct — Lane that ran. Null on rows from before Lanes. */
+	/** direct — Lane that ran. Null on rows from before Lanes, or that ran on a removed Lane. */
 	lane: text("lane"),
 	laneWarning: text("lane_warning"),
 	/** 1 when the Run was started asking to record every case, whatever the cases say. */

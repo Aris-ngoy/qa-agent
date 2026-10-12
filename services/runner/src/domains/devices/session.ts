@@ -1,7 +1,6 @@
 import type { DeviceSession, LaneFactory, LaneName, SessionOptions } from "./lane";
 import { openDeviceSession } from "./open-session";
 
-export { mergeCapabilities } from "./appium-lane";
 export {
 	type CapturedFrame,
 	DeadSessionError,

@@ -1,6 +1,6 @@
 /**
  * Accept / dismiss native alerts, including Android runtime permission sheets
- * that are not WebDriver Alert objects (`acceptAlert` → "no such alert").
+ * that a WebDriver-style alert call cannot see.
  */
 
 import { isAndroidDriver } from "./android-gestures";

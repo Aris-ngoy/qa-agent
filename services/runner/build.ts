@@ -1,6 +1,5 @@
 /**
  * Bundle the runner for npm: Bun-compatible ESM with inlined workspace deps.
- * webdriver / webdriverio stay external (dynamic import, same as the desktop compile).
  */
 const result = await Bun.build({
 	entrypoints: ["./src/index.ts"],
@@ -10,7 +9,6 @@ const result = await Bun.build({
 	minify: false,
 	sourcemap: "none",
 	packages: "bundle",
-	external: ["webdriver", "webdriverio"],
 });
 
 if (!result.success) {

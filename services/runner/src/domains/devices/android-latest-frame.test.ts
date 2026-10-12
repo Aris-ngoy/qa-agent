@@ -53,7 +53,7 @@ function gatedAdb() {
 
 function open(adb: AdbExec) {
 	return createAndroidDirectSession(
-		{ platform: "android", deviceId: "emulator-5554", appCaps: [], caseCaps: [] },
+		{ platform: "android", deviceId: "emulator-5554" },
 		{ adb, resolveSerial: async () => "emulator-5554", backgroundCapture: { idleMs: 60_000 } },
 	);
 }
@@ -139,7 +139,7 @@ describe("Android Direct lane with a background capture", () => {
 			return ok();
 		};
 		const session = await createAndroidDirectSession(
-			{ platform: "android", deviceId: "emulator-5554", appCaps: [], caseCaps: [] },
+			{ platform: "android", deviceId: "emulator-5554" },
 			{ adb, resolveSerial: async () => "emulator-5554", backgroundCapture: { idleMs: 20 } },
 		);
 		await session.captureFrame();

@@ -1,4 +1,4 @@
-/** Live MJPEG proxy fetches into WDA/UIA2 — must be aborted before deleteSession. */
+/** Live MJPEG proxy fetches from the device tool — must be aborted before the session ends. */
 const proxies = new Set<AbortController>();
 
 /** Register a proxy AbortController; removed automatically when aborted. */
@@ -15,7 +15,7 @@ export function trackMjpegProxy(): AbortController {
 	return controller;
 }
 
-/** Cancel every open `/stream.mjpeg` upstream so WDA can exit. Returns true if any proxy was open. */
+/** Cancel every open `/stream.mjpeg` upstream so the device tool can exit. Returns true if any proxy was open. */
 export function abortAllMjpegProxies(): boolean {
 	const had = proxies.size > 0;
 	for (const controller of [...proxies]) {

@@ -1,27 +1,27 @@
-/** Connected Android device as Appium sees it: ADB serial, optional AVD name. */
+/** A connected Android device as adb lists it: ADB serial, optional AVD name. */
 export type ConnectedAndroidDevice = {
 	serial: string;
 	avdName: string | null;
 };
 
-export type AndroidAppiumIdentity = {
-	/** ADB serial for `appium:udid`. Omitted when the target is an AVD that is not running. */
+export type AndroidIdentity = {
+	/** ADB serial. Omitted when the target is an AVD that is not running. */
 	udid?: string;
-	/** AVD name for `appium:avd` so Appium can attach or launch the emulator. */
+	/** AVD name, so a stopped emulator can be told apart from an unknown serial. */
 	avd?: string;
 };
 
 /**
- * Map a Yoqa Android device id to Appium capabilities.
+ * Map a Yoqa Android device id to an adb serial and AVD name.
  *
  * Device list uses the AVD name as the stable id for emulators (`Pixel_10`),
- * but UiAutomator2 only accepts ADB serials (`emulator-5554`) as `appium:udid`.
+ * but adb only accepts serials (`emulator-5554`).
  */
-export function matchAndroidAppiumIdentity(
+export function matchAndroidIdentity(
 	deviceId: string,
 	connected: ConnectedAndroidDevice[],
 	knownAvds: string[] = [],
-): AndroidAppiumIdentity {
+): AndroidIdentity {
 	const id = deviceId.trim();
 	if (!id) return {};
 

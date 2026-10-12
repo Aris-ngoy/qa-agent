@@ -3,11 +3,9 @@
  * a real Lane with its device tool faked, and reads back what reached the device.
  */
 import { createConnection } from "node:net";
-import type { Browser } from "webdriverio";
 import { encodeRgbaPng } from "../runs/coord-grid";
 import type { AdbExec, AdbResult, AndroidDirectDeps } from "./android-direct-lane";
 import { createAndroidDirectSession } from "./android-direct-lane";
-import { createAppiumSession } from "./appium-lane";
 import { createIosDeviceSession } from "./ios-device-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
@@ -58,47 +56,6 @@ function frameAfterTaps(taps: number, scale = 1): string {
 
 const ANDROID_DUMP = `<?xml version="1.0"?><hierarchy><node class="android.widget.Button" text="${BUTTON.label}" clickable="true" enabled="true" bounds="[0,0][100,40]" /></hierarchy>`;
 
-export function appiumLane(): LaneHarness {
-	const taps: Array<{ x: number; y: number }> = [];
-	let dead = false;
-	const alive = <T>(value: T): Promise<T> =>
-		dead ? Promise.reject(new Error("invalid session id")) : Promise.resolve(value);
-	const browser = {
-		capabilities: { platformName: "Android" },
-		getWindowSize: () => alive({ ...DEVICE }),
-		takeScreenshot: () => alive(frameAfterTaps(taps.length)),
-		getPageSource: () => alive(ANDROID_DUMP),
-		execute: (command: string, params?: { x?: number; y?: number }) => {
-			if (!dead && command === "mobile: clickGesture" && params) {
-				taps.push({ x: params.x ?? -1, y: params.y ?? -1 });
-			}
-			return alive(null);
-		},
-		performActions: () => alive(undefined),
-		releaseActions: () => alive(undefined),
-		deleteSession: () => alive(undefined),
-	} as unknown as Browser;
-	return {
-		name: "Appium (faked WebDriver)",
-		open: ({ onSessionDead }) =>
-			createAppiumSession(
-				{
-					platform: "android",
-					deviceId: "emulator-5554",
-					appCaps: [],
-					caseCaps: [],
-					onSessionDead,
-				},
-				{ connect: async () => ({ browser, mjpegPort: 9100, streamReady: false }) },
-			),
-		taps: () => taps,
-		frame: (count) => frameAfterTaps(count),
-		killTool: () => {
-			dead = true;
-		},
-	};
-}
-
 function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneHarness {
 	const taps: Array<{ x: number; y: number }> = [];
 	let dead = false;
@@ -133,8 +90,6 @@ function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneH
 				{
 					platform: "android",
 					deviceId: "emulator-5554",
-					appCaps: [],
-					caseCaps: [],
 					onSessionDead,
 				},
 				{ adb, resolveSerial: async () => "emulator-5554", ...deps },
@@ -294,7 +249,7 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 		name,
 		open: ({ onSessionDead }) =>
 			createIosDirectSession(
-				{ platform: "ios", deviceId: udid, appCaps: [], caseCaps: [], onSessionDead },
+				{ platform: "ios", deviceId: udid, onSessionDead },
 				{
 					idb,
 					screenshotFallback: async () => {
@@ -368,8 +323,6 @@ export function iosDeviceLane(): LaneHarness {
 				{
 					platform: "ios",
 					deviceId: "00008120-000E6D813E2A601E",
-					appCaps: [],
-					caseCaps: [],
 					onSessionDead,
 				},
 				{

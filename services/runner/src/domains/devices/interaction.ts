@@ -13,10 +13,10 @@ import { cleanPageSource } from "./screen";
 import type { DeviceSession } from "./session";
 
 export type GetScreenOptions = {
-	/** When true, return raw Appium page source instead of the cleaned 0–1000 tree. */
+	/** When true, return the raw accessibility tree instead of the cleaned 0–1000 tree. */
 	full?: boolean;
 	/**
-	 * Abort live `/stream.mjpeg` proxies before pageSource (iOS WDA cannot dual-load).
+	 * Abort live `/stream.mjpeg` proxies before pageSource (the device tool cannot serve both at once).
 	 * Default true. Inspector remounts the stream after the call.
 	 */
 	pauseMjpeg?: boolean;
@@ -42,7 +42,7 @@ async function readScreen(
 }
 
 /**
- * Read the device Screen. Pauses MJPEG proxies first so iOS WDA is not
+ * Read the device Screen. Pauses MJPEG proxies first so the device tool is not
  * dual-loaded (stream + pageSource); Inspector remounts the stream afterward.
  */
 export async function getScreen(
