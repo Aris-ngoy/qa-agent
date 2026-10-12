@@ -134,6 +134,38 @@ describe("runCaseScript", () => {
 		});
 	});
 
+	test("keeps polling an assert through failed screen reads", async () => {
+		const device = fakeDevice({ screens: [[], ["Yoqa Demo"]] });
+		let failures = 2;
+		const flaky: CaseScriptReplayClient = {
+			...device.client,
+			getScreen: async () => {
+				if (failures > 0) {
+					failures -= 1;
+					throw new Error("axbridge could not resolve the frontmost application");
+				}
+				return device.client.getScreen();
+			},
+		};
+		const result = await runCaseScript(
+			flaky,
+			script({ type: "assert", assertion: "visible", text: "Yoqa Demo", timeoutMs: 5_000 }),
+			{ sleep: device.sleep, now: device.now, assertPollMs: 100 },
+		);
+		expect(result.ok).toBe(true);
+		expect(device.screenReads()).toBe(2);
+	});
+
+	test("fails an assert whose screen never reads, naming the read error", async () => {
+		const device = fakeDevice();
+		const result = await runCaseScript(
+			{ ...device.client, getScreen: async () => Promise.reject(new Error("no frontmost app")) },
+			script({ type: "assert", assertion: "not-visible", text: "Error", timeoutMs: 1_000 }),
+			{ sleep: device.sleep, now: device.now, assertPollMs: 400 },
+		);
+		expect(result.error).toBe("Could not read the screen within 1s: no frontmost app");
+	});
+
 	test("stops at the first failure and reports the rest as skipped", async () => {
 		const device = fakeDevice({ failOn: "swipe" });
 		const steps = collect();

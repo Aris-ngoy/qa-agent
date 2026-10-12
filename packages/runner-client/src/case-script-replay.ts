@@ -165,13 +165,23 @@ export async function runCaseScript(
 		const timeoutMs =
 			action.timeoutMs ?? options.defaultAssertTimeoutMs ?? DEFAULT_ASSERT_TIMEOUT_MS;
 		const deadline = now() + timeoutMs;
+		const seconds = Math.round(timeoutMs / 1000);
 		for (;;) {
 			if (options.signal?.aborted) throw abortError();
-			const screen = await client.getScreen();
-			const found = screenHasText(screen.elements, action.text);
-			if (action.assertion === "visible" ? found : !found) return;
+			// A read can fail while the app is still coming up; that is "not there yet".
+			let readError: unknown = null;
+			try {
+				const screen = await client.getScreen();
+				const found = screenHasText(screen.elements, action.text);
+				if (action.assertion === "visible" ? found : !found) return;
+			} catch (error) {
+				readError = error;
+			}
 			if (now() >= deadline) {
-				const seconds = Math.round(timeoutMs / 1000);
+				if (readError) {
+					const message = readError instanceof Error ? readError.message : String(readError);
+					throw new Error(`Could not read the screen within ${seconds}s: ${message}`);
+				}
 				throw new Error(
 					action.assertion === "visible"
 						? `Expected visible text not found within ${seconds}s: ${action.text}`
