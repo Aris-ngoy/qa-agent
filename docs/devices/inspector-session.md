@@ -8,7 +8,7 @@ The UI inspector's screenshot poll was ending the Device Session. `GET /screen` 
 
 - **Two links, one runner.** `device-ios` still starts one `YoqaRunner`. Gestures, recording and the startup `status` use the control link. Screenshot, snapshot and viewport use the Inspector Session, a second link to the same port.
 - **A miss on the Inspector Session stays there.** It answers 503 `Device unreachable` and does not call `onSessionDead`, including after the grace window. The inspector keeps the last frame and shows **Waiting for device**. The top bar stays connected. Frames resume when the phone answers again.
-- **A miss on a gesture still ends the Device Session** once the cable has been unreachable past the grace window, and so does the runner process exiting.
+- **A miss on a gesture still ends the Device Session** once the cable has been unreachable past the grace window, and so does the runner process exiting. Once the runner has exited, later Inspector reads also answer 410 as a Dead Session (the tool is gone; that is not a cable miss).
 - **One inspector tunnel at a time.** A frame and a tree read queue on that link, so they do not open two usbmuxd connections together. A gesture can still run alongside a read.
 - Rejected: a second Device Session or a second `YoqaRunner` (XCUITest allows one runner on the phone), and treating every usbmux miss as fatal again.
 
