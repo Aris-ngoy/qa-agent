@@ -31,6 +31,7 @@ import {
 	executeAgentCase as runAgentCase,
 	executeScriptCase as runScriptCase,
 } from "./case-executor";
+import { reportedLane, reportedLaneWarning } from "./legacy-lane";
 import {
 	CUT_OFF_NOTE,
 	RUN_VIDEO_DIR,
@@ -182,8 +183,8 @@ async function loadRun(runId: string): Promise<Run | null> {
 		status: runRow.status as RunStatus,
 		executionMode: parseRunExecutionMode(runRow.executionMode),
 		screenMode: parseRunScreenMode(runRow.screenMode),
-		lane: runRow.lane === "direct" ? runRow.lane : undefined,
-		laneWarning: runRow.laneWarning ?? undefined,
+		lane: reportedLane(runRow.lane),
+		laneWarning: reportedLaneWarning(runRow.laneWarning),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -805,8 +806,8 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		status: runRow.status as RunStatus,
 		executionMode: parseRunExecutionMode(runRow.executionMode),
 		screenMode: parseRunScreenMode(runRow.screenMode),
-		lane: runRow.lane === "direct" ? runRow.lane : undefined,
-		laneWarning: runRow.laneWarning ?? undefined,
+		lane: reportedLane(runRow.lane),
+		laneWarning: reportedLaneWarning(runRow.laneWarning),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
