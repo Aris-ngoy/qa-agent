@@ -1,6 +1,6 @@
 import type { Capability, DevicePlatform, StreamState } from "@yoqa/runner-client";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
-import { hasCustomCapabilities } from "./select-lane";
+import { refuseAppiumRequest } from "./select-lane";
 import { type DeviceSession, createDeviceSession, isDeadSessionError } from "./session";
 
 export type ActiveSessionInfo = {
@@ -158,6 +158,9 @@ export async function connectDevice(options: {
 			"A run is using the device session. Cancel the run before connecting another device.",
 		);
 	}
+	if (options.requestedLane === "appium") {
+		refuseAppiumRequest();
+	}
 	if (active) {
 		await disconnectDevice();
 	}
@@ -213,12 +216,12 @@ export function retargetActiveSession(app: {
  * Run-side acquisition of the shared Device Session.
  *
  * - Adopts the Active Session when it already targets the requested device
- *   (no reconnect, no WDA relaunch) and marks it held by this run, whatever its
- *   Lane — unless the Run's App or first Case sets custom Appium capabilities and
- *   the session is not on the Appium lane. Then the session is replaced with an
- *   Appium session and the Run carries a Lane warning saying why (ADR-0004).
+ *   (no reconnect, no WDA relaunch) and marks it held by this run. Custom
+ *   capabilities do not change the Lane and do not replace a Direct session.
  * - Replaces an unheld Active Session pointing at another device (device change).
- * - Opens a fresh session on the Run's requested Lane when there is none to adopt.
+ * - Opens a fresh Direct session when there is none to adopt. Asking for the
+ *   Appium lane fails this connect before the Active Session is dropped. A
+ *   failed Direct start fails it with that error.
  * - When another run owns the shared session, creates a detached session that
  *   is not registered as Active and is quit again at release. A held session on
  *   the same device is never replaced: that request fails with `SessionBusyError`.
@@ -254,32 +257,27 @@ export async function acquireSessionForRun(options: {
 		return { session, shared: false };
 	}
 
-	let replacedWarning: string | undefined;
 	if (current && current.deviceId === options.deviceId) {
-		const pinned =
-			current.session.lane !== "appium" &&
-			hasCustomCapabilities(options.appCaps ?? [], options.caseCaps ?? []);
-		if (pinned) {
-			replacedWarning = `Custom Appium capabilities pin the Appium lane; replaced the ${laneLabel(current.session.lane)} Active Session`;
-			console.warn(`[yoqa-runner] ${replacedWarning} for ${options.deviceId}`);
-		} else {
-			// Health-check before adopting: a stale session (device restarted,
-			// Appium dropped it) must not fail the whole run.
-			const healthy = await current.session
-				.getWindowSize()
-				.then(() => true)
-				.catch(() => false);
-			if (healthy) {
-				current.heldByRunId = options.runId;
-				// The session may have been opened for another app; the Run reads its own.
-				current.session.setTargetApp(targetAppFor(options));
-				return { session: current.session, shared: true };
-			}
-			console.warn(
-				`[yoqa-runner] active session for ${options.deviceId} is dead — creating a fresh one for the run`,
-			);
+		// Health-check before adopting: a stale session (device restarted,
+		// its Lane dropped it) must not fail the whole run.
+		const healthy = await current.session
+			.getWindowSize()
+			.then(() => true)
+			.catch(() => false);
+		if (healthy) {
+			current.heldByRunId = options.runId;
+			// The session may have been opened for another app; the Run reads its own.
+			current.session.setTargetApp(targetAppFor(options));
+			return { session: current.session, shared: true };
 		}
+		console.warn(
+			`[yoqa-runner] active session for ${options.deviceId} is dead — creating a fresh one for the run`,
+		);
 		await disconnectDevice().catch(() => undefined);
+	}
+
+	if (options.requestedLane === "appium") {
+		refuseAppiumRequest();
 	}
 
 	if (active) {
@@ -296,11 +294,6 @@ export async function acquireSessionForRun(options: {
 		requestedLane: options.requestedLane,
 		heldByRunId: options.runId,
 	});
-	if (replacedWarning) {
-		// The replacement reason already says capabilities pin Appium; keep any other warning.
-		const others = session.laneWarning?.split("; ").filter((w) => !replacedWarning?.startsWith(w));
-		session.laneWarning = [replacedWarning, ...(others ?? [])].join("; ");
-	}
 	return { session, shared: true };
 }
 
@@ -311,10 +304,6 @@ function targetAppFor(options: {
 	appPackage?: string;
 }): string | undefined {
 	return options.platform === "ios" ? options.bundleId : options.appPackage;
-}
-
-function laneLabel(lane: import("./lane").LaneName): string {
-	return lane === "direct" ? "Direct" : "Appium";
 }
 
 /**
