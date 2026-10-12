@@ -209,6 +209,20 @@ export const iosSigningCheckResponseSchema = z.object({
 });
 export type IosSigningCheckResponse = z.infer<typeof iosSigningCheckResponseSchema>;
 
+/**
+ * A connect that failed with HTTP 428: YoqaRunner is built and installed on the iPhone, but
+ * the phone does not trust the free Personal Team's developer yet. Trust it, then reconnect.
+ */
+export const developerNotTrustedSchema = z.object({
+	error: z.string(),
+	code: z.literal("DEVELOPER_NOT_TRUSTED"),
+	detail: z.string().min(1),
+	team: z.string().min(1),
+	/** What the phone lists under Developer App, e.g. "Apple Development: …"; null if unknown. */
+	certificate: z.string().nullable(),
+});
+export type DeveloperNotTrusted = z.infer<typeof developerNotTrustedSchema>;
+
 // --- Catalog: apps / cases / flows / tags ---
 
 export const capabilitySchema = z.object({

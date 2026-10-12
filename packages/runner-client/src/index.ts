@@ -29,6 +29,7 @@ import {
 	type CreateProviderRequest,
 	type CreateRunRequest,
 	type CreateTagRequest,
+	type DeveloperNotTrusted,
 	type Device,
 	type DeviceKind,
 	type DevicePlatform,
@@ -126,6 +127,7 @@ import {
 	createProviderRequestSchema,
 	createRunRequestSchema,
 	createTagRequestSchema,
+	developerNotTrustedSchema,
 	deviceKindSchema,
 	devicePlatformSchema,
 	deviceSchema,
@@ -223,6 +225,7 @@ export {
 	deviceSchema,
 	doctorRepairRequestSchema,
 	doctorRepairResponseSchema,
+	developerNotTrustedSchema,
 	doctorReportSchema,
 	iosSigningCheckRequestSchema,
 	iosSigningCheckResponseSchema,
@@ -315,6 +318,7 @@ export {
 	type DoctorRepairRequest,
 	type DoctorRepairResponse,
 	type DoctorReport,
+	type DeveloperNotTrusted,
 	type DoctorStep,
 	type IosSigningCheckRequest,
 	type IosSigningCheckResponse,
@@ -525,6 +529,13 @@ export class RunnerRequestError extends Error {
 		super(message);
 		this.name = "RunnerRequestError";
 	}
+}
+
+/** The 428 a connect answers when the iPhone does not trust the developer yet; else null. */
+export function developerNotTrusted(error: unknown): DeveloperNotTrusted | null {
+	if (!(error instanceof RunnerRequestError) || error.status !== 428) return null;
+	const parsed = developerNotTrustedSchema.safeParse(error.body);
+	return parsed.success ? parsed.data : null;
 }
 
 function requestError(json: unknown, fallback: string, response: Response): RunnerRequestError {

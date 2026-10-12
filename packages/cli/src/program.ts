@@ -8,6 +8,7 @@ import {
 	caseScriptActionCommand,
 	createCaseFlowsSchema,
 	createRunnerClient,
+	developerNotTrusted,
 	formatAssertShellLine,
 	formatCaseScriptFile,
 	formatCaseScriptFileAction,
@@ -56,7 +57,12 @@ import {
 	resolveReportRunId,
 	shouldFailOnRunStatus,
 } from "./report";
-import { formatSigningCheck, formatSigningStatus, pickCheckDevice } from "./signing";
+import {
+	formatDeveloperNotTrusted,
+	formatSigningCheck,
+	formatSigningStatus,
+	pickCheckDevice,
+} from "./signing";
 
 function runnerBaseUrl(): string {
 	return runnerBaseUrlFromEnv();
@@ -352,6 +358,17 @@ devices
 				console.log(`connected ${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}`);
 				if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 			} catch (error) {
+				const untrusted = developerNotTrusted(error);
+				if (untrusted && !options.json) {
+					console.error(
+						formatDeveloperNotTrusted(
+							untrusted,
+							`yoqa devices connect ${deviceId} --platform ${options.platform}`,
+						),
+					);
+					process.exitCode = 1;
+					return;
+				}
 				fail("devices connect", error);
 			}
 		},

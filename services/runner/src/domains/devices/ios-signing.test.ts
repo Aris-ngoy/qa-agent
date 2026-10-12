@@ -7,10 +7,9 @@ import {
 	InvalidTeamIdError,
 	checkIosSigning,
 	getIosSigning,
-	parseXcodeTeams,
 	setIosSigningTeam,
 } from "./ios-signing";
-import { type YoqaRunnerDeps, YoqaRunnerError, saveTeam } from "./yoqa-runner";
+import { type YoqaRunnerDeps, YoqaRunnerError, parseXcodeTeams, saveTeam } from "./yoqa-runner";
 
 // The keychain fixtures hold one usable Apple Development identity on 2026-10-10: team NEWTEAM222.
 const fixture = (name: string) => readFileSync(join(import.meta.dir, "fixtures", name), "utf8");

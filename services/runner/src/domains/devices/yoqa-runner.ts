@@ -51,6 +51,27 @@ export class YoqaRunnerError extends Error {
 	}
 }
 
+/**
+ * A free Personal Team's runner is built and installed on the iPhone, but the phone has not
+ * trusted its developer yet, so it cannot launch. Only the user can trust it on the phone;
+ * the next connect reuses the build and launches.
+ */
+export class DeveloperNotTrustedError extends YoqaRunnerError {
+	constructor(
+		readonly team: string,
+		/** The certificate the phone lists under Developer App, e.g. "Apple Development: …". */
+		readonly certificate: string | null,
+	) {
+		const which = certificate
+			? `"${certificate}"`
+			: `the Apple Development certificate of team ${team}`;
+		super(
+			`YoqaRunner is installed on the iPhone, but the iPhone does not trust its developer yet. On the iPhone, open Settings › General › VPN & Device Management, tap ${which} under Developer App, tap Trust, then connect again.`,
+		);
+		this.name = "DeveloperNotTrustedError";
+	}
+}
+
 /** An Apple Development identity: its team (the certificate's OU) and common name. */
 export type SigningIdentity = {
 	team: string;
@@ -146,6 +167,46 @@ export async function resolveSigningTeam(
 	if (saved) return { team: saved, source: "saved" };
 	const newest = (await keychainIdentities(deps))[0];
 	return newest ? { team: newest.team, source: "keychain" } : null;
+}
+
+export type XcodeTeam = { id: string; name: string | null; personal: boolean | null };
+
+/**
+ * Teams from Xcode › Settings › Accounts: `IDEProvisioningTeamByIdentifier` in Xcode's defaults,
+ * `{ accountId: [{ teamID, teamName, isFreeProvisioningTeam }] }`. Empty when Xcode has none.
+ */
+export function parseXcodeTeams(json: string): XcodeTeam[] {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(json);
+	} catch {
+		return [];
+	}
+	if (!parsed || typeof parsed !== "object") return [];
+	const teams = new Map<string, XcodeTeam>();
+	for (const account of Object.values(parsed)) {
+		if (!Array.isArray(account)) continue;
+		for (const entry of account) {
+			const id = normalizeTeamId(entry?.teamID);
+			if (!id || teams.has(id)) continue;
+			teams.set(id, {
+				id,
+				name: typeof entry.teamName === "string" ? entry.teamName : null,
+				personal:
+					typeof entry.isFreeProvisioningTeam === "boolean" ? entry.isFreeProvisioningTeam : null,
+			});
+		}
+	}
+	return [...teams.values()];
+}
+
+export async function xcodeTeams(deps: YoqaRunnerDeps): Promise<XcodeTeam[]> {
+	const result = await deps.exec([
+		"sh",
+		"-c",
+		"defaults export com.apple.dt.Xcode - | plutil -extract IDEProvisioningTeamByIdentifier json -o - -",
+	]);
+	return result.exitCode === 0 ? parseXcodeTeams(result.stdout) : [];
 }
 
 /** How the user picks another team, for the end of an error message. */
@@ -368,6 +429,9 @@ function xcodebuildErrors(output: string): string[] {
 	return [...new Set(errors)].filter(Boolean);
 }
 
+/** The phone has not trusted the developer, so it will not launch the runner. */
+const UNTRUSTED_RE = /Untrusted Developer|is not trusted|not been explicitly trusted/i;
+
 /** What went wrong while signing or building, and what the user does about it. */
 export function explainBuildFailure(
 	output: string,
@@ -391,7 +455,7 @@ export function explainBuildFailure(
 		if (/device is locked|Unlock .* to Continue/i.test(output)) {
 			return "Unlock the iPhone, keep it unlocked, then connect again.";
 		}
-		if (/Untrusted Developer|is not trusted|not been explicitly trusted/i.test(output)) {
+		if (UNTRUSTED_RE.test(output)) {
 			return "Trust the developer on the iPhone in Settings › General › VPN & Device Management, then connect again.";
 		}
 		if (/Developer Mode/i.test(output)) {
@@ -627,6 +691,7 @@ export async function startYoqaRunner(
 	if ("port" in outcome) return { port: outcome.port, build, exited: child.exited, stop };
 	await stop();
 	if ("exited" in outcome || "launchFailed" in outcome) {
+		if (UNTRUSTED_RE.test(output())) await throwIfPersonalTeamUntrusted(build.team, deps);
 		throw new YoqaRunnerError(explainBuildFailure(output(), build.team, "could not start"));
 	}
 	throw new YoqaRunnerError(
@@ -636,6 +701,18 @@ export async function startYoqaRunner(
 			`did not print YOQA_RUNNER_LISTENING within ${readyTimeoutMs} ms`,
 		),
 	);
+}
+
+/**
+ * On a free Personal Team the phone must trust the developer once, by hand; the runner is
+ * already installed, so this says how and asks for a reconnect. A paid team's development
+ * build is trusted when Xcode installs it, so there the plain failure stands.
+ */
+async function throwIfPersonalTeamUntrusted(team: string, deps: YoqaRunnerDeps): Promise<void> {
+	const account = (await xcodeTeams(deps)).find((item) => item.id === team);
+	if (account?.personal !== true) return;
+	const identity = (await keychainIdentities(deps)).find((item) => item.team === team);
+	throw new DeveloperNotTrustedError(team, identity?.name ?? null);
 }
 
 async function execCommand(command: string[]): Promise<RunnerExecResult> {

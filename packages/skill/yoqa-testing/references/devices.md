@@ -55,6 +55,11 @@ When a connect fails with "Check that team … can sign for this iPhone", run `y
 registers the phone with the team and refreshes the profile, or says what to fix (sign in to Xcode,
 unlock the phone, Developer Mode). A free Personal Team's profile lasts 7 days and covers 3 devices.
 
+On a free Personal Team, the first connect to an iPhone installs YoqaRunner and then stops: the phone
+must trust the developer once, by hand. `yoqa devices connect` exits 1 and prints what to tap
+(Settings › General › VPN & Device Management › the "Apple Development: …" entry › Trust). **Ask the user
+to do that on the phone**, then run the same connect again; it reuses the build and only launches.
+
 ## Disconnect
 
 ```bash

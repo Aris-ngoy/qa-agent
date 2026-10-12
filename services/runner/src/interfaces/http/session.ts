@@ -34,10 +34,34 @@ import {
 } from "../../domains/devices/interaction";
 import { DeviceUnreachableError, isDeadSessionError } from "../../domains/devices/lane";
 import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
+import { DeveloperNotTrustedError } from "../../domains/devices/yoqa-runner";
 
 /** Map a Device Session error to its HTTP answer, or null when the route should handle it. */
+/** The first error in `error`'s cause chain that is a `DeveloperNotTrustedError`. */
+function developerNotTrusted(error: unknown): DeveloperNotTrustedError | null {
+	for (let current = error, depth = 0; current instanceof Error && depth < 8; depth++) {
+		if (current instanceof DeveloperNotTrustedError) return current;
+		current = current.cause;
+	}
+	return null;
+}
+
 export function sessionErrorResponse(error: unknown) {
 	const message = error instanceof Error ? error.message : String(error);
+	const untrusted = developerNotTrusted(error);
+	if (untrusted) {
+		// Built and installed; only the user can trust the developer on the phone, then reconnect.
+		return {
+			status: 428 as const,
+			body: {
+				error: "Developer not trusted on the iPhone",
+				code: "DEVELOPER_NOT_TRUSTED" as const,
+				detail: untrusted.message,
+				team: untrusted.team,
+				certificate: untrusted.certificate,
+			},
+		};
+	}
 	if (error instanceof SessionBusyError) {
 		return {
 			status: 409 as const,
