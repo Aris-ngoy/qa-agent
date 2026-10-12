@@ -30,9 +30,10 @@ bun run check
 grep -rniE "appium" apps/desktop/src packages/cli/src services/runner/src packages/runner-client/src --include='*.ts' --include='*.tsx' | grep -v test
 ```
 
-The grep should list only the catalog's leftover `appium_caps` column. In the desktop app, connect a device: the pill says `Direct`, Servers lists no Appium, and Doctor has no Appium checks. `yoqa devices connect <id> --platform android --lane appium` fails with `--lane must be direct or auto`.
+The grep should list only the catalog's leftover `appium_caps` column and a few stale WebDriver comments. In the desktop app, connect a device: the pill says `Direct`, Servers lists no Appium, and Doctor has no Appium checks. `yoqa devices connect <id> --platform android --lane appium` fails with `--lane must be direct or auto`.
 
 ## Follow-ups
 
 - Drop the `appium_caps` column from `apps` and `cases` with a migration.
+- Delete the WebDriver-only leftovers in `devices/android-gestures.ts` and `devices/android-alerts.ts` (keep `toPx`, `pngSizeFromBase64`, and the label constants), and collapse the single-case `select-lane.ts` plumbing.
 - Prune the historical Appium design in [`ARCHITECTURE.md`](../../ARCHITECTURE.md) and the older notes under `docs/` that describe the Appium lane.

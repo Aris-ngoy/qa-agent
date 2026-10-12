@@ -42,7 +42,7 @@ Never fire an action blind.
 | -------- | ------------- | -------- |
 | Screenshot | ~2× | Default — sees everything on screen, including system sheets |
 | `yoqa screen` | ~1× | Fallback — exact ids and labels, or text too small to read |
-| `yoqa screen --full` | ~7× | Rare — need raw Appium dump |
+| `yoqa screen --full` | ~7× | Rare — need raw accessibility tree |
 
 The element list only sees the app's own accessibility tree. A system sheet (App Store install, permission prompt) can cover the app while the list keeps describing the screen underneath, so trust the screenshot when they disagree. The built-in Yoqa agent works the same way: [vision-first](/guide/best-practices-games) by default, tree opt-in with `--screen-mode tree`.
 
