@@ -502,6 +502,12 @@ function requestError(json: unknown, fallback: string, response: Response): Runn
 	});
 }
 
+/** Bypass the HTTP cache. WebKit keeps serving a cached 410 after the device is back. */
+function uncached(init?: RequestInit): RequestInit {
+	// Bun's RequestInit (undici) omits `cache`; the option is still sent.
+	return { cache: "no-store", ...init } as RequestInit;
+}
+
 export class RunnerClient {
 	readonly baseUrl: string;
 	private readonly fetchImpl: typeof fetch;
@@ -518,9 +524,7 @@ export class RunnerClient {
 		init: RequestInit | undefined,
 		fallbackError: string,
 	): Promise<unknown> {
-		// A 410 is cacheable. WebKit will keep serving one for GET /screen after the phone
-		// is back, and the inspector then ends a session the runner still has.
-		const response = await this.fetchImpl(`${this.baseUrl}${path}`, { cache: "no-store", ...init });
+		const response = await this.fetchImpl(`${this.baseUrl}${path}`, uncached(init));
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
 			throw requestError(json, `${fallbackError}: HTTP ${response.status}`, response);
@@ -1063,9 +1067,10 @@ export class RunnerClient {
 	}
 
 	async getActiveDevice(): Promise<ActiveDeviceResponse | null> {
-		const response = await this.fetchImpl(`${this.baseUrl}/devices/active?_=${Date.now()}`, {
-			cache: "no-store",
-		});
+		const response = await this.fetchImpl(
+			`${this.baseUrl}/devices/active?_=${Date.now()}`,
+			uncached(),
+		);
 		if (response.status === 404) return null;
 		const json: unknown = await response.json().catch(() => null);
 		if (!response.ok) {
@@ -1145,9 +1150,10 @@ export class RunnerClient {
 	}
 
 	async fetchScreenshotBytes(): Promise<Uint8Array> {
-		const response = await this.fetchImpl(`${this.baseUrl}/screenshot/image?_=${Date.now()}`, {
-			cache: "no-store",
-		});
+		const response = await this.fetchImpl(
+			`${this.baseUrl}/screenshot/image?_=${Date.now()}`,
+			uncached(),
+		);
 		if (!response.ok) {
 			const json: unknown = await response.json().catch(() => null);
 			throw requestError(json, `Screenshot failed: HTTP ${response.status}`, response);
