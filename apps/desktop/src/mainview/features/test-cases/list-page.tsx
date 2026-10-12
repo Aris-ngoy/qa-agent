@@ -1,4 +1,6 @@
 import { staggerStyle, useEnterOnce } from "@/app/motion/use-enter-once";
+import { Pager } from "@/app/pagination/pager";
+import { usePagination } from "@/app/pagination/use-pagination";
 import { getRunnerClient } from "@/app/runner-client";
 import { useApps } from "@/features/apps/context";
 import {
@@ -90,6 +92,7 @@ export function TestCasesPage() {
 			return haystack.includes(query);
 		});
 	}, [casesQuery.data, filter]);
+	const pagination = usePagination(rows, `${selectedApp?.id}:${filter.trim().toLowerCase()}`);
 
 	const allFilteredSelected =
 		rows.length > 0 && rows.every((row) => selectedCaseIds.includes(row.id));
@@ -215,7 +218,7 @@ export function TestCasesPage() {
 								</td>
 							</tr>
 						) : (
-							rows.map((row, index) => (
+							pagination.slice.items.map((row, index) => (
 								<tr
 									className={[
 										"cursor-pointer transition-colors duration-[var(--motion-fast)] hover:bg-surface-container-low",
@@ -286,12 +289,11 @@ export function TestCasesPage() {
 					</tbody>
 				</table>
 
-				<div className="flex items-center justify-between border-t border-outline-variant/70 px-6 py-4">
-					<span className="text-body-sm text-on-surface-variant">
-						Showing {rows.length === 0 ? "0" : `1-${rows.length}`} of {casesQuery.data?.length ?? 0}{" "}
-						test cases
-					</span>
-				</div>
+				<Pager
+					className="border-t border-outline-variant/70 px-6 py-4"
+					noun="test cases"
+					pagination={pagination}
+				/>
 			</div>
 		</div>
 	);

@@ -1,4 +1,6 @@
 import { staggerStyle, useEnterOnce } from "@/app/motion/use-enter-once";
+import { Pager } from "@/app/pagination/pager";
+import { usePagination } from "@/app/pagination/use-pagination";
 import { getRunnerClient } from "@/app/runner-client";
 import { useApps } from "@/features/apps/context";
 import { useActiveDeviceSession } from "@/features/devices/use-active-device-session";
@@ -274,6 +276,7 @@ export function RunsListPage() {
 
 	const runs = runsQuery.data ?? [];
 	const visible = filterRuns(runs, filter);
+	const pagination = usePagination(visible, `${selectedApp?.id}:${filter}`);
 	const stagger = useEnterOnce(runsQuery.isSuccess && runs.length > 0);
 	const caption = formatRunContextCaption(
 		activeSession ? deviceById.get(activeSession.deviceId) : undefined,
@@ -338,7 +341,7 @@ export function RunsListPage() {
 							</p>
 						) : (
 							<ul>
-								{visible.map((run, index) => (
+								{pagination.slice.items.map((run, index) => (
 									<RunRow
 										caseNameById={caseNameById}
 										deleting={deleteMutation.isPending}
@@ -353,6 +356,11 @@ export function RunsListPage() {
 							</ul>
 						)}
 					</div>
+					<Pager
+						className="sticky left-0 border-t border-outline-variant px-4 py-3"
+						noun="runs"
+						pagination={pagination}
+					/>
 				</div>
 			)}
 		</div>
