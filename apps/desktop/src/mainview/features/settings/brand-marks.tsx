@@ -1,5 +1,3 @@
-import type { SigningTier } from "../../../shared/ios-toolchain";
-
 /** Xcode's blue is a third-party brand color, the same in every theme. */
 export function XcodeMark() {
 	return (
@@ -12,7 +10,8 @@ export function XcodeMark() {
 	);
 }
 
-export function TierBadge({ tier }: { tier: SigningTier }) {
+/** A signing team's Apple Developer membership. */
+export function TierBadge({ tier }: { tier: "Paid" | "Personal" }) {
 	return (
 		<span
 			className={[

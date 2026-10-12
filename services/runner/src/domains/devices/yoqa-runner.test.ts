@@ -9,6 +9,8 @@ import {
 	type YoqaRunnerDeps,
 	YoqaRunnerError,
 	prepareYoqaRunner,
+	resolveSigningTeam,
+	saveTeam,
 	startYoqaRunner,
 } from "./yoqa-runner";
 
@@ -143,6 +145,7 @@ async function setup(env: Record<string, string> = {}) {
 		env,
 		projectDir,
 		cacheRoot: join(root, "cache"),
+		settingsPath: join(root, "ios-signing.json"),
 		now: () => NOW,
 	};
 	return { mac, deps, projectDir };
@@ -167,6 +170,43 @@ describe("prepareYoqaRunner", () => {
 		expect((await prepareYoqaRunner(UDID, deps)).team).toBe("PICKED9999");
 	});
 
+	test("a saved team signs over the keychain", async () => {
+		const { mac, deps } = await setup();
+		await saveTeam(deps.settingsPath, "SAVED77777");
+		expect((await prepareYoqaRunner(UDID, deps)).team).toBe("SAVED77777");
+		expect(mac.builds).toEqual([{ team: "SAVED77777", udid: UDID }]);
+	});
+
+	test("YOQA_IOS_TEAM_ID wins over the saved team", async () => {
+		const { deps } = await setup({ YOQA_IOS_TEAM_ID: "PICKED9999" });
+		await saveTeam(deps.settingsPath, "SAVED77777");
+		expect(await resolveSigningTeam(deps)).toEqual({ team: "PICKED9999", source: "env" });
+	});
+
+	test("clearing the saved team goes back to the keychain", async () => {
+		const { deps } = await setup();
+		await saveTeam(deps.settingsPath, "SAVED77777");
+		await saveTeam(deps.settingsPath, null);
+		expect(await resolveSigningTeam(deps)).toEqual({ team: "NEWTEAM222", source: "keychain" });
+	});
+
+	test("a build reports its profile expiry and the phones it lists", async () => {
+		const { deps } = await setup();
+		const build = await prepareYoqaRunner(UDID, deps);
+		expect(build.profileExpiresAt).toBe(new Date(NOW.getTime() + 7 * 86_400_000).toISOString());
+		expect(build.devices).toEqual([UDID]);
+	});
+
+	test("two builds at once run one after the other", async () => {
+		const { mac, deps } = await setup();
+		const [first, second] = await Promise.all([
+			prepareYoqaRunner(UDID, deps),
+			prepareYoqaRunner(UDID, deps),
+		]);
+		expect([first.action, second.action]).toEqual(["built", "reused"]);
+		expect(mac.builds).toHaveLength(1);
+	});
+
 	test("without a working xcodebuild it says so instead of building", async () => {
 		const { mac, deps } = await setup();
 		mac.xcodeVersion = "";
@@ -188,7 +228,7 @@ describe("prepareYoqaRunner", () => {
 		mac.identities = "     0 valid identities found\n";
 		const failure = prepareYoqaRunner(UDID, deps);
 		await expect(failure).rejects.toBeInstanceOf(YoqaRunnerError);
-		await expect(failure).rejects.toThrow(/Xcode › Settings › Accounts.*YOQA_IOS_TEAM_ID/);
+		await expect(failure).rejects.toThrow(/Xcode › Settings › Accounts.*yoqa signing use/);
 		expect(mac.builds).toEqual([]);
 	});
 
@@ -240,7 +280,7 @@ describe("prepareYoqaRunner", () => {
 		[
 			"no account for the team",
 			`/x/YoqaRunner.xcodeproj: error: No Account for Team "NEWTEAM222". Add a new account in Accounts settings or verify that your accounts have valid credentials. (in target 'YoqaRunner' from project 'YoqaRunner')`,
-			/NEWTEAM222.*Xcode › Settings › Accounts.*YOQA_IOS_TEAM_ID/,
+			/NEWTEAM222.*Xcode › Settings › Accounts.*Settings › iOS/,
 		],
 		[
 			"no Apple account in Xcode at all (Xcode 27)",

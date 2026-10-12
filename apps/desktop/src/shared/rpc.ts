@@ -42,7 +42,6 @@ export type DesktopRPC = {
 			setIosToolchainSelection: {
 				params: {
 					xcodeDeveloperDir?: string | null;
-					signingIdentityHash?: string | null;
 				};
 				response: IosToolchainPreferences;
 			};

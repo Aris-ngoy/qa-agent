@@ -40,6 +40,11 @@ import {
 	type DoctorReport,
 	type DoctorStep,
 	type HealthResponse,
+	type IosSigningCheckRequest,
+	type IosSigningCheckResponse,
+	type IosSigningSource,
+	type IosSigningStatus,
+	type IosSigningTeam,
 	type LaneName,
 	type ListAppsResponse,
 	type ListBuildsResponse,
@@ -82,6 +87,7 @@ import {
 	type ServerKind,
 	type ServerMutationResponse,
 	type ServerOwnership,
+	type SetIosSigningTeamRequest,
 	type StepPhases,
 	type StreamState,
 	type UpdateAppRequest,
@@ -127,6 +133,11 @@ import {
 	doctorRepairResponseSchema,
 	doctorReportSchema,
 	healthResponseSchema,
+	iosSigningCheckRequestSchema,
+	iosSigningCheckResponseSchema,
+	iosSigningSourceSchema,
+	iosSigningStatusSchema,
+	iosSigningTeamSchema,
 	laneNameSchema,
 	listAppsResponseSchema,
 	listBuildsResponseSchema,
@@ -164,6 +175,7 @@ import {
 	screenshotRequestSchema,
 	screenshotResponseSchema,
 	serverMutationResponseSchema,
+	setIosSigningTeamRequestSchema,
 	stepPhasesSchema,
 	updateAppRequestSchema,
 	updateCaseFlowsSchema,
@@ -212,6 +224,12 @@ export {
 	doctorRepairRequestSchema,
 	doctorRepairResponseSchema,
 	doctorReportSchema,
+	iosSigningCheckRequestSchema,
+	iosSigningCheckResponseSchema,
+	iosSigningSourceSchema,
+	iosSigningStatusSchema,
+	iosSigningTeamSchema,
+	setIosSigningTeamRequestSchema,
 	healthResponseSchema,
 	laneNameSchema,
 	listAppsResponseSchema,
@@ -298,6 +316,12 @@ export {
 	type DoctorRepairResponse,
 	type DoctorReport,
 	type DoctorStep,
+	type IosSigningCheckRequest,
+	type IosSigningCheckResponse,
+	type IosSigningSource,
+	type IosSigningStatus,
+	type IosSigningTeam,
+	type SetIosSigningTeamRequest,
 	type HealthResponse,
 	type LaneName,
 	type ListAppsResponse,
@@ -663,6 +687,55 @@ export class RunnerClient {
 			throw requestError(json, `Doctor repair failed: HTTP ${response.status}`, response);
 		}
 		return doctorRepairResponseSchema.parse(json);
+	}
+
+	async getIosSigning(options: { signal?: AbortSignal } = {}): Promise<IosSigningStatus> {
+		const response = await this.fetchImpl(`${this.baseUrl}/ios/signing`, {
+			signal: options.signal,
+		});
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw requestError(json, `iOS signing failed: HTTP ${response.status}`, response);
+		}
+		return iosSigningStatusSchema.parse(json);
+	}
+
+	/** Saves the signing team for physical iPhones; null goes back to the keychain's newest. */
+	async setIosSigningTeam(
+		team: string | null,
+		options: { signal?: AbortSignal } = {},
+	): Promise<IosSigningStatus> {
+		const body = setIosSigningTeamRequestSchema.parse({ team });
+		const response = await this.fetchImpl(`${this.baseUrl}/ios/signing`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+			signal: options.signal,
+		});
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw requestError(json, `Set iOS signing team failed: HTTP ${response.status}`, response);
+		}
+		return iosSigningStatusSchema.parse(json);
+	}
+
+	/** Signs (or reuses) YoqaRunner for one cabled iPhone; it can take minutes on a first build. */
+	async checkIosSigning(
+		request: IosSigningCheckRequest,
+		options: { signal?: AbortSignal } = {},
+	): Promise<IosSigningCheckResponse> {
+		const body = iosSigningCheckRequestSchema.parse(request);
+		const response = await this.fetchImpl(`${this.baseUrl}/ios/signing/check`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+			signal: options.signal,
+		});
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw requestError(json, `iOS signing check failed: HTTP ${response.status}`, response);
+		}
+		return iosSigningCheckResponseSchema.parse(json);
 	}
 
 	async listApps(): Promise<CatalogApp[]> {

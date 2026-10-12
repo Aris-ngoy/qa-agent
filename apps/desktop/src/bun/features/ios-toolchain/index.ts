@@ -2,8 +2,6 @@ import { basename, join } from "node:path";
 import type {
 	IosToolchainPreferences,
 	IosToolchainSnapshot,
-	SigningIdentity,
-	SigningTier,
 	XcodeInstallation,
 } from "../../../shared/ios-toolchain";
 import { patchStoredSettings, readStoredSettings } from "../app-settings/store";
@@ -30,7 +28,6 @@ async function readPreferences(): Promise<IosToolchainPreferences> {
 	const parsed = await readStoredSettings();
 	return {
 		xcodeDeveloperDir: parsed.ios?.xcodeDeveloperDir ?? null,
-		signingIdentityHash: parsed.ios?.signingIdentityHash ?? null,
 	};
 }
 
@@ -118,185 +115,29 @@ async function listXcodeInstallations(
 	}));
 }
 
-type ParsedIdentityLine = {
-	hash: string;
-	name: string;
-	valid: boolean;
-};
-
-function parseIdentityLines(output: string): ParsedIdentityLine[] {
-	const results: ParsedIdentityLine[] = [];
-	for (const line of output.split("\n")) {
-		const match = line.match(/^\s*\d+\)\s+([A-F0-9]+)\s+"([^"]+)"(.*)$/i);
-		if (!match) continue;
-		const hash = match[1] ?? "";
-		const name = match[2] ?? "";
-		const suffix = match[3] ?? "";
-		if (!hash || !name) continue;
-		const valid = !/CSSMERR_/i.test(suffix);
-		results.push({ hash, name, valid });
-	}
-	return results;
-}
-
-async function readCertificateSubject(name: string): Promise<string | null> {
-	const pem = await runCommand(["security", "find-certificate", "-c", name, "-p"]);
-	if (pem.exitCode !== 0 || !pem.stdout.includes("BEGIN CERTIFICATE")) {
-		return null;
-	}
-	const proc = Bun.spawn(["openssl", "x509", "-noout", "-subject"], {
-		stdin: new Blob([pem.stdout]),
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-	if (exitCode !== 0) return null;
-	return stdout.trim();
-}
-
-/**
- * Parse a DN attribute from an openssl `-subject` line.
- * Supports LibreSSL slash form (`/OU=TEAM`) and OpenSSL 3 comma form (`OU=TEAM, O=Name`).
- */
-function subjectField(subject: string, key: string): string | null {
-	const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const slash = subject.match(new RegExp(`/${escaped}=([^/]+)`));
-	if (slash?.[1]) return slash[1].trim();
-
-	const comma = subject.match(new RegExp(`(?:^|,)\\s*${escaped}\\s*=\\s*([^,]+)`, "i"));
-	if (comma?.[1]) return comma[1].trim();
-
-	return null;
-}
-
-/** Team ID in parentheses at the end of an Apple identity name, e.g. `… (63L33U439U)`. */
-function teamIdFromIdentityName(name: string): string | null {
-	const match = name.match(/\(([A-Z0-9]{10})\)$/);
-	return match?.[1] ?? null;
-}
-
-function isCorporateOrganization(organization: string): boolean {
-	return /\b(GmbH|Inc\.?|LLC|Ltd\.?|Corp\.?|Limited|Company|AG|SAS|B\.?V\.?|Oy|Studios|Technologies|Software|Apps)\b/i.test(
-		organization,
-	);
-}
-
-function classifyTier(
-	organization: string,
-	teamId: string,
-	distributionTeamIds: Set<string>,
-): SigningTier {
-	if (distributionTeamIds.has(teamId) || isCorporateOrganization(organization)) {
-		return "Paid";
-	}
-	return "Personal";
-}
-
-function isDevelopmentIdentity(name: string): boolean {
-	return /^Apple Development:/i.test(name) || /^iPhone Developer:/i.test(name);
-}
-
-function isDistributionIdentity(name: string): boolean {
-	return /Distribution:/i.test(name);
-}
-
-async function listSigningIdentities(): Promise<SigningIdentity[]> {
-	const { stdout, exitCode } = await runCommand([
-		"security",
-		"find-identity",
-		"-v",
-		"-p",
-		"codesigning",
-	]);
-	if (exitCode !== 0) return [];
-
-	const parsed = parseIdentityLines(stdout).filter((item) => item.valid);
-	const distributionTeamIds = new Set<string>();
-	const development: Array<ParsedIdentityLine & { teamId: string; organization: string }> = [];
-
-	for (const item of parsed) {
-		const subject = await readCertificateSubject(item.name);
-		const teamId =
-			(subject ? subjectField(subject, "OU") : null) ?? teamIdFromIdentityName(item.name);
-		const organization = (subject ? subjectField(subject, "O") : null) ?? "Personal Team";
-		if (!teamId) continue;
-
-		if (isDistributionIdentity(item.name)) {
-			distributionTeamIds.add(teamId);
-			continue;
-		}
-		if (!isDevelopmentIdentity(item.name)) continue;
-
-		development.push({
-			...item,
-			teamId,
-			organization,
-		});
-	}
-
-	const identities: SigningIdentity[] = development.map((item) => {
-		const tier = classifyTier(item.organization, item.teamId, distributionTeamIds);
-		return {
-			id: item.hash,
-			hash: item.hash,
-			name: item.name,
-			teamId: item.teamId,
-			organization: item.organization,
-			tier,
-			label: `${item.teamId} ${item.name}`,
-		};
-	});
-
-	return identities;
-}
-
 export async function getIosToolchainSnapshot(): Promise<IosToolchainSnapshot> {
 	const preferences = await readPreferences();
-	const [xcodes, identities] = await Promise.all([
-		listXcodeInstallations(preferences.xcodeDeveloperDir),
-		listSigningIdentities(),
-	]);
-
+	const xcodes = await listXcodeInstallations(preferences.xcodeDeveloperDir);
 	const selectedXcode = xcodes.find((item) => item.isSelected) ?? null;
-	const selectedIdentity =
-		(preferences.signingIdentityHash &&
-			identities.find((item) => item.hash === preferences.signingIdentityHash)) ||
-		identities.find((item) => item.tier === "Paid") ||
-		identities[0] ||
-		null;
-
 	const resolved: IosToolchainPreferences = {
 		xcodeDeveloperDir: selectedXcode?.developerDir ?? preferences.xcodeDeveloperDir,
-		signingIdentityHash: selectedIdentity?.hash ?? preferences.signingIdentityHash,
 	};
 
 	// Persist resolved defaults so later runner install can read them
-	if (
-		resolved.xcodeDeveloperDir !== preferences.xcodeDeveloperDir ||
-		resolved.signingIdentityHash !== preferences.signingIdentityHash
-	) {
+	if (resolved.xcodeDeveloperDir !== preferences.xcodeDeveloperDir) {
 		await writePreferences(resolved);
 	}
 
-	return {
-		xcodes,
-		identities,
-		preferences: resolved,
-	};
+	return { xcodes, preferences: resolved };
 }
 
 export async function setIosToolchainSelection(params: {
 	xcodeDeveloperDir?: string | null;
-	signingIdentityHash?: string | null;
 }): Promise<IosToolchainPreferences> {
 	const current = await readPreferences();
 	const next: IosToolchainPreferences = {
 		xcodeDeveloperDir:
 			params.xcodeDeveloperDir === undefined ? current.xcodeDeveloperDir : params.xcodeDeveloperDir,
-		signingIdentityHash:
-			params.signingIdentityHash === undefined
-				? current.signingIdentityHash
-				: params.signingIdentityHash,
 	};
 	await writePreferences(next);
 	return next;

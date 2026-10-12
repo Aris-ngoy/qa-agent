@@ -6,6 +6,7 @@ import { createCatalogRoutes } from "./catalog";
 import { createDevicesRoutes } from "./devices";
 import { createDoctorRoutes } from "./doctor";
 import { createHealthRoutes } from "./health";
+import { createIosSigningRoutes } from "./ios-signing";
 import { createProviderRoutes } from "./providers";
 import { createRunsRoutes } from "./runs";
 import { createServersRoutes } from "./servers";
@@ -59,6 +60,7 @@ export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 	app.route("/", createSessionRoutes());
 	app.route("/", createServersRoutes());
 	app.route("/", createDoctorRoutes());
+	app.route("/", createIosSigningRoutes());
 	app.route("/", createCatalogRoutes());
 	app.route("/", createBuildsRoutes());
 	app.route("/", createProviderRoutes());
@@ -67,7 +69,7 @@ export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 	app.get("/", (c) =>
 		c.json({
 			name: "yoqa-runner",
-			docs: "GET /health · GET /status · GET /doctor · GET /servers · GET /devices · POST /devices/connect · GET /screen · GET /screenshot/image · GET /stream.mjpeg · WS /ws/control · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds",
+			docs: "GET /health · GET /status · GET /doctor · /ios/signing · GET /servers · GET /devices · POST /devices/connect · GET /screen · GET /screenshot/image · GET /stream.mjpeg · WS /ws/control · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds",
 		}),
 	);
 

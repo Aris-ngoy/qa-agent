@@ -48,8 +48,8 @@ The `.app` bundle will be at `build/Build/Products/Debug-iphonesimulator/<Scheme
 # from the project settings (preferred)
 xcrun xcodebuild -showBuildSettings -scheme <SchemeName> | grep DEVELOPMENT_TEAM
 
-# or from the keychain (team ID is in parentheses after the certificate name)
-security find-identity -v -p codesigning
+# or the teams this Mac can sign with (the parentheses in a certificate name are not the team ID)
+yoqa signing
 ```
 
 ### Step 2. Archive
