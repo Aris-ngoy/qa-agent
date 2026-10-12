@@ -37,6 +37,24 @@ yoqa devices connect <device_id> --platform ios --bundle-id com.example.app
 yoqa devices connect <device_id> --platform android --app-package com.example.app
 ```
 
+## Physical iPhone signing
+
+Connecting a cabled iPhone first signs and builds YoqaRunner for it with one Apple team. The team is
+`YOQA_IOS_TEAM_ID` if set, else the team saved with `yoqa signing use` (or in the desktop's
+Settings › iOS), else the team of the newest Apple Development certificate in the keychain.
+
+```bash
+yoqa signing                       # the team in use, where it came from, and every team on this Mac
+yoqa signing use <TeamID>          # sign with this team from now on (desktop and CLI share it)
+yoqa signing use auto              # back to the newest certificate in the keychain
+yoqa signing check                 # sign for the one cabled iPhone now; exits 1 with the fix
+yoqa signing check --device <udid> --json
+```
+
+When a connect fails with "Check that team … can sign for this iPhone", run `yoqa signing check`: it
+registers the phone with the team and refreshes the profile, or says what to fix (sign in to Xcode,
+unlock the phone, Developer Mode). A free Personal Team's profile lasts 7 days and covers 3 devices.
+
 ## Disconnect
 
 ```bash

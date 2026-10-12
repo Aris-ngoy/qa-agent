@@ -78,6 +78,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/ios-sim-promotion.md](./devices/ios-sim-promotion.md) | `device-sim` (yoqa-sim + yoqa-ax) is the iOS-simulator Direct default, benchmarked against idb_companion |
 | [devices/yoqa-ax-alerts.md](./devices/yoqa-ax-alerts.md) | `yoqa-ax` reads SpringBoard dialogs; accept and dismiss tap them through `yoqa-sim` (default since #245) |
 | [devices/yoqa-runner-status.md](./devices/yoqa-runner-status.md) | `YoqaRunner` (physical iOS): XCUITest runner signs with the newest Apple Development team, builds once per source/Xcode/team, answers `status` on the phone |
+| [devices/ios-signing-team.md](./devices/ios-signing-team.md) | The physical-iOS signing team is one runner setting: `yoqa signing` / Settings › iOS choose it, `yoqa signing check` / **Check** sign for a cabled iPhone; `YOQA_IOS_TEAM_ID` still wins |
 | [devices/ios-device-usbmux.md](./devices/ios-device-usbmux.md) | `device-ios`: an explicit `direct` request on a cabled iPhone reaches `YoqaRunner` over usbmuxd; `status` must cross the cable first; `auto` picks it (promoted in #251) |
 | [devices/inspector-session.md](./devices/inspector-session.md) | Cabled iPhone: frame and tree reads use their own link and do not end the Device Session |
 | [devices/ios-device-actions.md](./devices/ios-device-actions.md) | `device-ios`: tap, long-press, drag and screenshot over `YoqaRunner`; gestures journaled (64), a lost reply resolved by `status`, never resent |

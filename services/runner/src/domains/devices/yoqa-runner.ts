@@ -3,16 +3,17 @@
  * physical-iOS Direct implementation. Its UI-test method binds 127.0.0.1 on the phone and
  * announces `YOQA_RUNNER_LISTENING port=N`.
  *
- * It must be signed before anything runs: automatic signing for the team of the newest Apple
- * Development identity in the keychain (`YOQA_IOS_TEAM_ID` overrides), built once with
- * `xcodebuild build-for-testing` and cached by source hash, Xcode version and team.
+ * It must be signed before anything runs: automatic signing for one team, built once with
+ * `xcodebuild build-for-testing` and cached by source hash, Xcode version and team. The team is
+ * `YOQA_IOS_TEAM_ID`, else the team saved from Settings or `yoqa signing use`, else the team of
+ * the newest Apple Development identity in the keychain.
  */
 
 import { X509Certificate, createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { copyFile, cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 export type RunnerExecResult = { stdout: string; stderr: string; exitCode: number };
 
@@ -26,6 +27,8 @@ export type YoqaRunnerDeps = {
 	projectDir: string;
 	/** Where builds are cached, one derived-data directory per cache key. */
 	cacheRoot: string;
+	/** The saved signing team, `{ "team": "…" }`; absent until one is chosen. */
+	settingsPath: string;
 	now: () => Date;
 };
 
@@ -34,6 +37,10 @@ export type YoqaRunnerBuild = {
 	/** The `.xctestrun` that `xcodebuild test-without-building` runs. */
 	xctestrun: string;
 	action: "built" | "reused";
+	/** The earliest provisioning-profile expiry in the build. */
+	profileExpiresAt: string;
+	/** The phones every profile lists, or null when a profile provisions all devices. */
+	devices: string[] | null;
 };
 
 /** The runner could not be signed, built or started; the message says what to fix. */
@@ -44,7 +51,13 @@ export class YoqaRunnerError extends Error {
 	}
 }
 
-type Identity = { team: string; issuedAt: number };
+/** An Apple Development identity: its team (the certificate's OU) and common name. */
+export type SigningIdentity = {
+	team: string;
+	name: string;
+	issuedAt: number;
+	expiresAt: number;
+};
 
 /**
  * Valid Apple Development identities: certificates from `find-certificate` whose SHA-1 is
@@ -55,13 +68,13 @@ export function readSigningIdentities(
 	findIdentity: string,
 	findCertificate: string,
 	now: Date,
-): Identity[] {
+): SigningIdentity[] {
 	const usable = new Set<string>();
 	for (const line of findIdentity.split("\n")) {
 		const match = line.match(/^\s*\d+\)\s+([0-9A-F]{40})\s+"Apple Development:[^"]*"\s*$/);
 		if (match?.[1]) usable.add(match[1]);
 	}
-	const identities: Identity[] = [];
+	const identities: SigningIdentity[] = [];
 	const certificates = findCertificate.matchAll(
 		/SHA-1 hash:\s*([0-9A-F]{40})\s*(-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----)/g,
 	);
@@ -74,29 +87,78 @@ export function readSigningIdentities(
 			continue;
 		}
 		const team = certificate.subject.match(/^OU=(.+)$/m)?.[1]?.trim();
+		const name = certificate.subject.match(/^CN=(.+)$/m)?.[1]?.trim() ?? "Apple Development";
 		const issuedAt = Date.parse(certificate.validFrom);
-		if (!team || Date.parse(certificate.validTo) <= now.getTime()) continue;
-		identities.push({ team, issuedAt });
+		const expiresAt = Date.parse(certificate.validTo);
+		if (!team || expiresAt <= now.getTime()) continue;
+		identities.push({ team, name, issuedAt, expiresAt });
 	}
 	return identities;
 }
 
-async function signingTeam(deps: YoqaRunnerDeps): Promise<string> {
-	const override = deps.env.YOQA_IOS_TEAM_ID?.trim().toUpperCase();
-	if (override) return override;
+/** The keychain's usable Apple Development identities, newest first. */
+export async function keychainIdentities(deps: YoqaRunnerDeps): Promise<SigningIdentity[]> {
 	const [identity, certificate] = await Promise.all([
 		deps.exec(["security", "find-identity", "-v", "-p", "codesigning"]),
 		deps.exec(["security", "find-certificate", "-a", "-Z", "-p", "-c", "Apple Development"]),
 	]);
-	const newest = readSigningIdentities(identity.stdout, certificate.stdout, deps.now()).sort(
+	return readSigningIdentities(identity.stdout, certificate.stdout, deps.now()).sort(
 		(a, b) => b.issuedAt - a.issuedAt,
-	)[0];
-	if (!newest) {
+	);
+}
+
+/** A ten-character Apple team ID, upper-cased; null when `value` is not one. */
+export function normalizeTeamId(value: string | null | undefined): string | null {
+	const team = value?.trim().toUpperCase() ?? "";
+	return /^[A-Z0-9]{10}$/.test(team) ? team : null;
+}
+
+/** The team saved in `settingsPath`, or null when none is (or the file is unreadable). */
+export async function readSavedTeam(settingsPath: string): Promise<string | null> {
+	try {
+		const parsed = JSON.parse(await readFile(settingsPath, "utf8")) as { team?: unknown };
+		return typeof parsed.team === "string" ? normalizeTeamId(parsed.team) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Saves the signing team; null goes back to the keychain's newest identity. */
+export async function saveTeam(settingsPath: string, team: string | null): Promise<void> {
+	if (team === null) {
+		await rm(settingsPath, { force: true });
+		return;
+	}
+	await mkdir(dirname(settingsPath), { recursive: true });
+	await writeFile(settingsPath, `${JSON.stringify({ team }, null, 2)}\n`);
+}
+
+/** Where the signing team came from, highest precedence first. */
+export type SigningTeamSource = "env" | "saved" | "keychain";
+
+/** `YOQA_IOS_TEAM_ID`, else the saved team, else the newest identity's team; null when none. */
+export async function resolveSigningTeam(
+	deps: YoqaRunnerDeps,
+): Promise<{ team: string; source: SigningTeamSource } | null> {
+	const override = deps.env.YOQA_IOS_TEAM_ID?.trim().toUpperCase();
+	if (override) return { team: override, source: "env" };
+	const saved = await readSavedTeam(deps.settingsPath);
+	if (saved) return { team: saved, source: "saved" };
+	const newest = (await keychainIdentities(deps))[0];
+	return newest ? { team: newest.team, source: "keychain" } : null;
+}
+
+/** How the user picks another team, for the end of an error message. */
+const CHOOSE_TEAM = "choose another team in Settings › iOS or with `yoqa signing use <team>`";
+
+async function signingTeam(deps: YoqaRunnerDeps): Promise<string> {
+	const resolved = await resolveSigningTeam(deps);
+	if (!resolved) {
 		throw new YoqaRunnerError(
-			"No Apple Development signing identity in the keychain. Sign in to Xcode › Settings › Accounts with your Apple ID (a free account works), or set YOQA_IOS_TEAM_ID.",
+			`No Apple Development signing identity in the keychain. Sign in to Xcode › Settings › Accounts with your Apple ID (a free account works), or ${CHOOSE_TEAM}.`,
 		);
 	}
-	return newest.team;
+	return resolved.team;
 }
 
 /** What the build depends on, besides the team. Tests and SwiftPM state are not built. */
@@ -288,7 +350,7 @@ function xcodeVersion(result: RunnerExecResult): string {
 }
 
 /** Per team, so two teams on one Mac never fight over one App ID. */
-function bundleIdFor(team: string): string {
+export function bundleIdFor(team: string): string {
 	return `dev.yoqa.runner.${team.toLowerCase()}`;
 }
 
@@ -329,30 +391,37 @@ export function explainBuildFailure(
 			return "Turn on Developer Mode in Settings › Privacy & Security › Developer Mode on the iPhone, then connect again.";
 		}
 		if (/No Accounts?(?: for Team|:| found| with)|not signed in/i.test(output)) {
-			return `Xcode has no account for team ${team}. Sign in with that team's Apple ID in Xcode › Settings › Accounts, or set YOQA_IOS_TEAM_ID to a team you are signed in to.`;
+			return `Xcode has no account for team ${team}. Sign in with that team's Apple ID in Xcode › Settings › Accounts, or ${CHOOSE_TEAM}.`;
 		}
 		if (
 			/cannot be registered|is not available|Failed Registering Bundle Identifier/i.test(output)
 		) {
-			return `The App ID ${bundleIdFor(team)} is not available to team ${team}. Set YOQA_IOS_TEAM_ID to the team that registered it.`;
+			return `The App ID ${bundleIdFor(team)} is not available to team ${team}. Use the team that registered it: ${CHOOSE_TEAM}.`;
 		}
 		if (
 			/No (?:signing certificate|profiles? for)|requires a provisioning profile|Provisioning profile/i.test(
 				output,
 			)
 		) {
-			return `Team ${team} has no usable development certificate or profile. Open Xcode › Settings › Accounts, select the team and choose Manage Certificates, or set YOQA_IOS_TEAM_ID.`;
+			return `Team ${team} has no usable development certificate or profile. Open Xcode › Settings › Accounts, select the team and choose Manage Certificates, or ${CHOOSE_TEAM}.`;
 		}
-		return `Check that team ${team} can sign for this iPhone in Xcode, or set YOQA_IOS_TEAM_ID.`;
+		return `Check that team ${team} can sign for this iPhone (\`yoqa signing check --device <udid>\`), or ${CHOOSE_TEAM}.`;
 	})();
 	return `YoqaRunner ${what} for team ${team}: ${detail} ${fix}`;
 }
 
+/** One build at a time: a signing check and a session must not share a derived-data path. */
+let preparing: Promise<unknown> = Promise.resolve();
+
 /** Sign and build the runner for this phone, or reuse the cached build. */
-export async function prepareYoqaRunner(
-	udid: string,
-	deps: YoqaRunnerDeps,
-): Promise<YoqaRunnerBuild> {
+export function prepareYoqaRunner(udid: string, deps: YoqaRunnerDeps): Promise<YoqaRunnerBuild> {
+	const run = () => prepare(udid, deps);
+	const next = preparing.then(run, run);
+	preparing = next.catch(() => undefined);
+	return next;
+}
+
+async function prepare(udid: string, deps: YoqaRunnerDeps): Promise<YoqaRunnerBuild> {
 	const team = await signingTeam(deps);
 	const [sources, xcode] = await Promise.all([
 		hashSources(deps.projectDir),
@@ -367,7 +436,13 @@ export async function prepareYoqaRunner(
 
 	const cached = await readManifest(manifestPath);
 	if (cached && usableFor(cached, udid, deps.now())) {
-		return { team: cached.team, xctestrun: cached.xctestrun, action: "reused" };
+		return {
+			team: cached.team,
+			xctestrun: cached.xctestrun,
+			action: "reused",
+			profileExpiresAt: cached.profileExpiresAt,
+			devices: cached.devices,
+		};
 	}
 
 	const derivedData = join(dir, "DerivedData");
@@ -414,7 +489,13 @@ export async function prepareYoqaRunner(
 	};
 	await mkdir(dir, { recursive: true });
 	await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
-	return { team, xctestrun, action: "built" };
+	return {
+		team,
+		xctestrun,
+		action: "built",
+		profileExpiresAt: manifest.profileExpiresAt,
+		devices: manifest.devices,
+	};
 }
 
 /** The `xcodebuild test-without-building` process that hosts the runner. */
@@ -570,6 +651,7 @@ export function yoqaRunnerDeps(): StartYoqaRunnerDeps {
 		env: process.env,
 		projectDir: join(import.meta.dir, "../../../../../native/yoqa-runner"),
 		cacheRoot: join(homedir(), ".yoqa", "yoqa-runner"),
+		settingsPath: join(homedir(), ".yoqa", "ios-signing.json"),
 		now: () => new Date(),
 	};
 }

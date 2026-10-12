@@ -22,25 +22,20 @@ import {
 } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
-import { type ReactNode, type SVGProps, useEffect, useMemo, useState } from "react";
+import { type ReactNode, type SVGProps, useEffect, useState } from "react";
 import type {
 	AndroidPathSource,
 	AndroidToolchainSnapshot,
 } from "../../../shared/android-toolchain";
 import type { CliEnvironmentSnapshot } from "../../../shared/cli-environment";
-import type {
-	IosToolchainSnapshot,
-	SigningIdentity,
-	SigningTier,
-	XcodeInstallation,
-} from "../../../shared/ios-toolchain";
-import { TierBadge, XcodeMark } from "./brand-marks";
+import type { IosToolchainSnapshot, XcodeInstallation } from "../../../shared/ios-toolchain";
+import { XcodeMark } from "./brand-marks";
+import { IosSigningCard } from "./ios-signing-card";
 import { ProvidersSection } from "./providers/providers-section";
 import type { ThemeMode } from "./ui-preferences";
 import { useThemeMode } from "./use-theme-mode";
 
 type SettingsSection = "appearance" | "ios" | "android" | "cli" | "provider" | "diagnostics";
-type IdentityFilter = "all" | SigningTier;
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
 	"appearance",
@@ -192,51 +187,9 @@ function xcodeLabel(item: XcodeInstallation): string {
 	return `${item.appName} ${item.version}`;
 }
 
-function IdentityFilterBar({
-	value,
-	counts,
-	onChange,
-}: {
-	value: IdentityFilter;
-	counts: { all: number; Paid: number; Personal: number };
-	onChange: (next: IdentityFilter) => void;
-}) {
-	const options: { id: IdentityFilter; label: string; count: number }[] = [
-		{ id: "all", label: "All", count: counts.all },
-		{ id: "Paid", label: "Paid", count: counts.Paid },
-		{ id: "Personal", label: "Personal", count: counts.Personal },
-	];
-
-	return (
-		<div className="mb-3 flex flex-wrap gap-1.5">
-			{options.map((option) => {
-				const isActive = option.id === value;
-				return (
-					<button
-						key={option.id}
-						className={[
-							"rounded-full px-3 py-1 text-body-sm transition-colors",
-							isActive
-								? "bg-primary font-semibold text-on-primary"
-								: "bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface",
-						].join(" ")}
-						onClick={() => onChange(option.id)}
-						type="button"
-					>
-						{option.label}
-						<span className="ml-1.5 opacity-70">{option.count}</span>
-					</button>
-				);
-			})}
-		</div>
-	);
-}
-
 function IosSettings({ enabled }: { enabled: boolean }) {
 	const queryClient = useQueryClient();
-	const [tierFilter, setTierFilter] = useState<IdentityFilter>("all");
 	const [xcodeId, setXcodeId] = useState<string | null>(null);
-	const [signingId, setSigningId] = useState<string | null>(null);
 
 	const toolchainQuery = useQuery({
 		queryKey: IOS_TOOLCHAIN_QUERY_KEY,
@@ -248,35 +201,13 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 	useEffect(() => {
 		if (!toolchainQuery.data) return;
 		setXcodeId(toolchainQuery.data.preferences.xcodeDeveloperDir);
-		setSigningId(toolchainQuery.data.preferences.signingIdentityHash);
 	}, [toolchainQuery.data]);
 
 	const xcodes = toolchainQuery.data?.xcodes ?? [];
-	const identities = toolchainQuery.data?.identities ?? [];
-
-	const filteredIdentities = useMemo(() => {
-		if (tierFilter === "all") return identities;
-		return identities.filter((item) => item.tier === tierFilter);
-	}, [identities, tierFilter]);
-
 	const selectedXcode = xcodes.find((item) => item.id === xcodeId) ?? null;
-	const selectedSigning =
-		identities.find((item) => item.id === signingId) ??
-		filteredIdentities.find((item) => item.id === signingId) ??
-		null;
-
-	const counts = useMemo(
-		() => ({
-			all: identities.length,
-			Paid: identities.filter((item) => item.tier === "Paid").length,
-			Personal: identities.filter((item) => item.tier === "Personal").length,
-		}),
-		[identities],
-	);
 
 	const persistSelection = async (next: {
 		xcodeDeveloperDir?: string | null;
-		signingIdentityHash?: string | null;
 	}) => {
 		const preferences = await getDesktopRpc().request.setIosToolchainSelection(next);
 		queryClient.setQueryData<IosToolchainSnapshot>(IOS_TOOLCHAIN_QUERY_KEY, (current) => {
@@ -289,12 +220,6 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 		if (key == null) return;
 		setXcodeId(key);
 		void persistSelection({ xcodeDeveloperDir: key });
-	};
-
-	const handleSigningChange = (key: string | null) => {
-		if (key == null) return;
-		setSigningId(key);
-		void persistSelection({ signingIdentityHash: key });
 	};
 
 	return (
@@ -368,95 +293,7 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 			</SectionCard>
 
 			<SectionCard>
-				<h3 className="text-subheading font-semibold text-on-surface">Code Signing Identity</h3>
-				<p className="mt-1 mb-3 text-body-md text-on-surface-variant">
-					Certificate used to sign the app when running tests on a real device.
-				</p>
-
-				{toolchainQuery.isLoading ? (
-					<p className="text-body-md text-on-surface-variant">Scanning code signing identities…</p>
-				) : toolchainQuery.isError ? (
-					<p className="text-body-md text-error">
-						Could not read signing certificates from Keychain.
-					</p>
-				) : identities.length === 0 ? (
-					<p className="text-body-md text-on-surface-variant">
-						No Apple Development certificates found. Sign in to Xcode → Settings → Accounts and
-						create a certificate.
-					</p>
-				) : (
-					<>
-						<IdentityFilterBar counts={counts} onChange={setTierFilter} value={tierFilter} />
-						{filteredIdentities.length === 0 ? (
-							<p className="text-body-md text-on-surface-variant">
-								No {tierFilter === "all" ? "" : `${tierFilter.toLowerCase()} `}certificates match
-								this filter.
-							</p>
-						) : (
-							<Select
-								aria-label="Code Signing Identity"
-								selectedKey={
-									filteredIdentities.some((item) => item.id === signingId) ? signingId : null
-								}
-								onSelectionChange={(key) => handleSigningChange(key == null ? null : String(key))}
-							>
-								<Select.Trigger className="h-12 w-full items-center gap-3 rounded-xl border border-outline-variant bg-surface-container px-3.5 shadow-none">
-									<Select.Value>
-										{({ isPlaceholder }) => {
-											const visible =
-												selectedSigning &&
-												filteredIdentities.some((item) => item.id === selectedSigning.id)
-													? selectedSigning
-													: null;
-											return isPlaceholder || !visible ? (
-												"Select identity"
-											) : (
-												<span className="flex min-w-0 items-center gap-2.5">
-													<TierBadge tier={visible.tier} />
-													<span className="truncate text-body-md text-on-surface">
-														{visible.label}
-													</span>
-												</span>
-											);
-										}}
-									</Select.Value>
-									<Select.Indicator className="text-on-surface-variant" />
-								</Select.Trigger>
-								<Select.Popover className="max-h-80">
-									<ListBox>
-										{filteredIdentities.map((item: SigningIdentity) => (
-											<ListBox.Item id={item.id} key={item.id} textValue={item.label}>
-												<span className="flex min-w-0 items-center gap-2.5">
-													<TierBadge tier={item.tier} />
-													<span className="truncate">{item.label}</span>
-												</span>
-												<ListBox.ItemIndicator />
-											</ListBox.Item>
-										))}
-									</ListBox>
-								</Select.Popover>
-							</Select>
-						)}
-					</>
-				)}
-
-				<div className="mt-3 rounded-xl border border-outline-variant bg-surface-container-low/70 px-4 py-3.5 text-body-sm text-on-surface">
-					<p className="font-semibold">Paid Apple Developer account</p>
-					<ul className="mt-1 list-disc space-y-0.5 pl-5 text-on-surface-variant">
-						<li>Device must be registered in your Apple Developer account</li>
-						<li>The app build must be signed with the same Team ID</li>
-					</ul>
-					<p className="mt-3 font-semibold">Personal Apple Developer account</p>
-					<ul className="mt-1 list-disc space-y-0.5 pl-5 text-on-surface-variant">
-						<li>
-							No manual portal registration — keep the device connected so Xcode can register it
-							during the first YoqaRunner build
-						</li>
-						<li>
-							On first use, trust the certificate in Settings → General → VPN & Device Management
-						</li>
-					</ul>
-				</div>
+				<IosSigningCard enabled={enabled} />
 			</SectionCard>
 		</div>
 	);

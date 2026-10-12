@@ -144,6 +144,71 @@ export const doctorRepairResponseSchema = z.object({
 });
 export type DoctorRepairResponse = z.infer<typeof doctorRepairResponseSchema>;
 
+/** Where the physical-iOS signing team came from, highest precedence first. */
+export const iosSigningSourceSchema = z.union([
+	z.literal("env"),
+	z.literal("saved"),
+	z.literal("keychain"),
+]);
+export type IosSigningSource = z.infer<typeof iosSigningSourceSchema>;
+
+/** A team this Mac can sign with: from Xcode › Accounts, the keychain, or both. */
+export const iosSigningTeamSchema = z.object({
+	id: z.string().min(1),
+	/** Xcode's team name, else the certificate's common name. */
+	name: z.string().nullable(),
+	/** A free Personal Team (7-day profiles, 3 devices); null when Xcode did not say. */
+	personal: z.boolean().nullable(),
+	/** Signed in to Xcode › Settings › Accounts, so Xcode can make a certificate on this Mac. */
+	inXcode: z.boolean(),
+	/** The newest usable Apple Development certificate for the team on this Mac. */
+	certificate: z
+		.object({
+			name: z.string().min(1),
+			expiresAt: z.string().min(1),
+		})
+		.nullable(),
+});
+export type IosSigningTeam = z.infer<typeof iosSigningTeamSchema>;
+
+export const iosSigningStatusSchema = z.object({
+	/** The team the next YoqaRunner build signs with; null when there is none. */
+	team: z.string().nullable(),
+	source: iosSigningSourceSchema.nullable(),
+	/** The team saved from Settings or `yoqa signing use`. */
+	saved: z.string().nullable(),
+	/** `YOQA_IOS_TEAM_ID` in the runner's environment; it wins over the saved team. */
+	envOverride: z.string().nullable(),
+	/** The App ID YoqaRunner is registered under for `team`. */
+	bundleId: z.string().nullable(),
+	teams: z.array(iosSigningTeamSchema),
+});
+export type IosSigningStatus = z.infer<typeof iosSigningStatusSchema>;
+
+export const setIosSigningTeamRequestSchema = z.object({
+	/** A ten-character team ID, or null to sign with the keychain's newest identity. */
+	team: z.string().nullable(),
+});
+export type SetIosSigningTeamRequest = z.infer<typeof setIosSigningTeamRequestSchema>;
+
+export const iosSigningCheckRequestSchema = z.object({
+	deviceId: z.string().min(1),
+});
+export type IosSigningCheckRequest = z.infer<typeof iosSigningCheckRequestSchema>;
+
+/** A real signed build for one iPhone; `ok: false` carries what to fix in `message`. */
+export const iosSigningCheckResponseSchema = z.object({
+	ok: z.boolean(),
+	deviceId: z.string().min(1),
+	team: z.string().nullable(),
+	action: z.union([z.literal("built"), z.literal("reused")]).nullable(),
+	profileExpiresAt: z.string().nullable(),
+	/** The phones the profile lists, or null when it provisions all devices. */
+	devices: z.array(z.string()).nullable(),
+	message: z.string().min(1),
+});
+export type IosSigningCheckResponse = z.infer<typeof iosSigningCheckResponseSchema>;
+
 // --- Catalog: apps / cases / flows / tags ---
 
 export const capabilitySchema = z.object({

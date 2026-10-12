@@ -3,6 +3,7 @@ import {
 	type ActionRequest,
 	type ActionResponse,
 	type DevicePlatform,
+	RunnerRequestError,
 	WaitForRunTimeoutError,
 	caseScriptActionCommand,
 	createCaseFlowsSchema,
@@ -55,6 +56,7 @@ import {
 	resolveReportRunId,
 	shouldFailOnRunStatus,
 } from "./report";
+import { formatSigningCheck, formatSigningStatus, pickCheckDevice } from "./signing";
 
 function runnerBaseUrl(): string {
 	return runnerBaseUrlFromEnv();
@@ -74,7 +76,12 @@ function client(baseUrl: string) {
 function fail(command: string, error: unknown): void {
 	const message = error instanceof Error ? error.message : String(error);
 	console.error(`yoqa ${command} failed: ${message}`);
-	if (!message.includes("yoqa serve") && !message.includes("Bun")) {
+	// A runner that answered with an error is up; the hint is for one that did not answer.
+	if (
+		!(error instanceof RunnerRequestError) &&
+		!message.includes("yoqa serve") &&
+		!message.includes("Bun")
+	) {
 		console.error("Is the runner up? Try: yoqa serve");
 	}
 	process.exitCode = 1;
@@ -799,6 +806,65 @@ program
 			if (!report.ok) process.exitCode = 1;
 		} catch (error) {
 			fail("doctor", error);
+		}
+	});
+
+// --- signing (physical iPhones) ---
+
+const signing = program
+	.command("signing")
+	.description("Choose and check the Apple team that signs YoqaRunner for physical iPhones")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(async (options: { baseUrl: string; json?: boolean }) => {
+		try {
+			const status = await client(options.baseUrl).getIosSigning();
+			console.log(options.json ? JSON.stringify(status, null, 2) : formatSigningStatus(status));
+		} catch (error) {
+			fail("signing", error);
+		}
+	});
+
+signing
+	.command("use")
+	.description(
+		"Sign with this team ID from now on (desktop and CLI); `auto` uses the newest certificate",
+	)
+	.argument("<team>", "Ten-character Apple team ID, or auto")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.action(async (team: string, options: { baseUrl: string; json?: boolean }) => {
+		try {
+			const status = await client(options.baseUrl).setIosSigningTeam(
+				team.toLowerCase() === "auto" ? null : team,
+			);
+			console.log(options.json ? JSON.stringify(status, null, 2) : formatSigningStatus(status));
+		} catch (error) {
+			fail("signing use", error);
+		}
+	});
+
+signing
+	.command("check")
+	.description(
+		"Sign YoqaRunner for a cabled iPhone now; registers the phone and refreshes the profile",
+	)
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.option("--device <udid>", "iPhone UDID (default: the one cabled iPhone)")
+	.action(async (options: { baseUrl: string; json?: boolean; device?: string }) => {
+		try {
+			const c = client(options.baseUrl);
+			const deviceId = pickCheckDevice(
+				options.device,
+				options.device ? [] : (await c.listDevices("ios")).devices,
+			);
+			if (!options.json) console.error(`Signing YoqaRunner for ${deviceId}…`);
+			const check = await c.checkIosSigning({ deviceId });
+			console.log(options.json ? JSON.stringify(check, null, 2) : formatSigningCheck(check));
+			if (!check.ok) process.exitCode = 1;
+		} catch (error) {
+			fail("signing check", error);
 		}
 	});
 
