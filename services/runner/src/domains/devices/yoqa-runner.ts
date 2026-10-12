@@ -375,11 +375,18 @@ export function explainBuildFailure(
 	what = "could not be built",
 ): string {
 	const errors = xcodebuildErrors(output);
-	// A device-prep wait (locked phone, Developer Mode) is an NSError, not an `error:` line.
-	const nsError = output.match(/Error Domain=\S+ Code=-?\d+ "([^"]+)"/)?.[1];
+	// A device-prep wait (locked phone, Developer Mode) or a launch failure is an NSError, not an
+	// `error:` line. The outer one is generic ("Failed to install or launch the test runner"); the
+	// one it wraps says why ("…the Developer App Certificate is not trusted.").
+	const nsErrors = [
+		...new Set([...output.matchAll(/Error Domain=\S+ Code=-?\d+ "([^"]+)"/g)].map((m) => m[1])),
+	]
+		.slice(0, 2)
+		.map((text) => (/[.!?]$/.test(text ?? "") ? text : `${text}.`));
 	const detail =
 		errors.slice(0, 2).join(" ") ||
-		(nsError ? `${nsError}.` : output.trim().split("\n").slice(-5).join(" "));
+		nsErrors.join(" ") ||
+		output.trim().split("\n").slice(-5).join(" ");
 	const fix = (() => {
 		if (/device is locked|Unlock .* to Continue/i.test(output)) {
 			return "Unlock the iPhone, keep it unlocked, then connect again.";
@@ -525,6 +532,11 @@ export type YoqaRunner = {
 
 const READY_TIMEOUT_MS = 120_000;
 const LISTENING_RE = /YOQA_RUNNER_LISTENING port=(\d+)/;
+/**
+ * xcodebuild could not launch the runner on the phone (an untrusted developer, for one). It
+ * prints this and then waits for the runner forever, so it ends the wait at once.
+ */
+const LAUNCH_FAILED_RE = /Failed to install or launch the test runner/;
 const OUTPUT_TAIL_CHARS = 16_000;
 
 /**
@@ -585,9 +597,14 @@ export async function startYoqaRunner(
 	const announced = new Promise<number>((resolve) => {
 		announce = resolve;
 	});
+	let launchFailed: () => void = () => undefined;
+	const failed = new Promise<{ launchFailed: true }>((resolve) => {
+		launchFailed = () => resolve({ launchFailed: true });
+	});
 	const onLine = (line: string) => {
 		const match = line.match(LISTENING_RE);
 		if (match?.[1]) announce(Number(match[1]));
+		if (LAUNCH_FAILED_RE.test(line)) launchFailed();
 	};
 	const stdout = drain(child.stdout, onLine);
 	const stderr = drain(child.stderr, onLine);
@@ -600,6 +617,7 @@ export async function startYoqaRunner(
 			await Promise.all([stdout.done, stderr.done]);
 			return { exited: true } as const;
 		}),
+		failed,
 		new Promise<{ timedOut: true }>((resolve) => {
 			timer = setTimeout(() => resolve({ timedOut: true }), readyTimeoutMs);
 		}),
@@ -608,7 +626,7 @@ export async function startYoqaRunner(
 
 	if ("port" in outcome) return { port: outcome.port, build, exited: child.exited, stop };
 	await stop();
-	if ("exited" in outcome) {
+	if ("exited" in outcome || "launchFailed" in outcome) {
 		throw new YoqaRunnerError(explainBuildFailure(output(), build.team, "could not start"));
 	}
 	throw new YoqaRunnerError(

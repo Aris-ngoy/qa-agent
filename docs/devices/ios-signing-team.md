@@ -18,6 +18,7 @@ A cabled iPhone only runs `YoqaRunner` once it is signed for one Apple team (see
 - **HTTP:** `GET /ios/signing`, `PUT /ios/signing { team | null }` (400 for a malformed team ID), `POST /ios/signing/check { deviceId }`. The schemas are in `@yoqa/runner-client` (`iosSigningStatusSchema`, `iosSigningCheckResponseSchema`, …), with the client methods `getIosSigning`, `setIosSigningTeam` and `checkIosSigning`.
 - **CLI:** `yoqa signing` (status), `yoqa signing use <team|auto>`, and `yoqa signing check [--device <udid>]`, which defaults to the one cabled iPhone and exits 1 with the fix. All three take `--json`. A runner that answered with an error no longer gets the "Is the runner up?" hint.
 - **Desktop:** Settings › iOS has a **Signing team** card ([`ios-signing-card.tsx`](../../apps/desktop/src/mainview/features/settings/ios-signing-card.tsx)). It offers Automatic or a team (with Personal/Paid badge, whether it is in Xcode, and certificate expiry), a notice when `YOQA_IOS_TEAM_ID` overrides it, the App ID, and **Check** per cabled iPhone. The desktop's keychain scan and `signingIdentityHash` preference are gone, and so is the unused `settings-modal.tsx`.
+- **Untrusted developer fails fast.** On a phone that has not trusted the developer yet (Settings › General › VPN & Device Management), `xcodebuild test-without-building` prints "Failed to install or launch the test runner … the Developer App Certificate is not trusted" about a second in, then waits forever, and does not retry once the developer is trusted. Connect used to sit on "Connecting" for the full 120 s ready timeout. `startYoqaRunner` now ends the wait on that line, stops xcodebuild, and fails with the wrapped reason plus the fix.
 - **Skill:** `references/devices.md` documents `yoqa signing`, and `builds-ios-native.md` no longer says the team ID is in a certificate's name.
 
 ## How to verify
@@ -26,7 +27,8 @@ A cabled iPhone only runs `YoqaRunner` once it is signed for one Apple team (see
 2. With a runner up: `yoqa signing` lists the Mac's teams and marks the one in use with its source.
 3. `yoqa signing use <TeamID>`. The desktop's Settings › iOS shows the same team, and `~/.yoqa/ios-signing.json` holds it. `yoqa signing use auto` removes the file.
 4. Cable and unlock an iPhone, then run `yoqa signing check`, or press **Check** in the desktop. The result says the team can sign for it and when the profile expires. With a team Xcode has no account for, it fails with "Xcode has no account for team …" and exits 1.
-5. Start the runner with `YOQA_IOS_TEAM_ID=…`. `yoqa signing` and the desktop say it overrides the saved team.
+5. On an iPhone that has not trusted the developer, connect fails within seconds with "Trust the developer on the iPhone in Settings › General › VPN & Device Management", not after 120 s.
+6. Start the runner with `YOQA_IOS_TEAM_ID=…`. `yoqa signing` and the desktop say it overrides the saved team.
 
 ## Follow-ups
 
