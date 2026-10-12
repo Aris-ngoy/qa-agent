@@ -9,10 +9,7 @@ import type {
 	StreamState,
 } from "@yoqa/runner-client";
 import { loadSettings } from "../../settings";
-import { ensureRuntime, getRuntimeStatus, resolveAppium } from "../appium/application";
-import { ensureHostToolPath } from "../appium/host-path";
-import type { ResolvedAppium } from "../appium/models";
-import { listForeignAppium, stopAllForeignAppium } from "../appium/server";
+import { ensureHostToolPath } from "../android-toolchain/host-path";
 import { disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
 import { listServers } from "../servers/application";
 
@@ -44,67 +41,6 @@ async function which(bin: string): Promise<string | null> {
 	if (exitCode !== 0) return null;
 	const path = stdout.trim().split("\n")[0]?.trim();
 	return path || null;
-}
-
-function appiumArgs(appium: ResolvedAppium, args: string[]): string[] {
-	if (appium.invokeViaNode) {
-		return [appium.nodeBin ?? "node", appium.bin, ...args];
-	}
-	return [appium.bin, ...args];
-}
-
-function parseDoctorRequiredFixes(output: string): number | null {
-	const match = output.match(/(\d+)\s+required\s+fixes?\s+needed/i);
-	if (!match) return null;
-	return Number(match[1]);
-}
-
-async function runDriverDoctor(
-	appium: ResolvedAppium,
-	driver: "xcuitest" | "uiautomator2",
-): Promise<DoctorCheck> {
-	const { stdout, stderr, exitCode } = await runCommand(
-		appiumArgs(appium, ["driver", "doctor", driver]),
-		{ env: appium.env, cwd: appium.cwd },
-	);
-	const combined = `${stdout}\n${stderr}`;
-	if (/unknown command|not support|does not support/i.test(combined)) {
-		return {
-			id: `doctor-${driver}`,
-			label: `${driver} Appium doctor`,
-			status: "warn",
-			detail: "Doctor not supported for this driver build",
-			fixHint: "Upgrade the driver or rely on install + smoke checks",
-		};
-	}
-
-	const required = parseDoctorRequiredFixes(combined);
-	if (required === null && exitCode !== 0) {
-		return {
-			id: `doctor-${driver}`,
-			label: `${driver} Appium doctor`,
-			status: "warn",
-			detail: combined.trim().slice(0, 240) || `exit ${exitCode}`,
-			fixHint: `Run: appium driver doctor ${driver}`,
-		};
-	}
-
-	if (required !== null && required > 0) {
-		return {
-			id: `doctor-${driver}`,
-			label: `${driver} Appium doctor`,
-			status: "fail",
-			detail: `${required} required fix(es) needed`,
-			fixHint: `Run: appium driver doctor ${driver} and resolve required fixes`,
-		};
-	}
-
-	return {
-		id: `doctor-${driver}`,
-		label: `${driver} Appium doctor`,
-		status: "pass",
-		detail: required === 0 ? "0 required fixes needed" : "Doctor completed",
-	};
 }
 
 async function probeJava(): Promise<DoctorCheck> {
@@ -214,9 +150,7 @@ async function probeSessionHealth(): Promise<DoctorCheck> {
 export async function getDoctorReport(): Promise<DoctorReport> {
 	ensureHostToolPath();
 	const settings = loadSettings();
-	const runtime = await getRuntimeStatus();
 	const servers = await listServers();
-	const foreign = await listForeignAppium();
 	const checks: DoctorCheck[] = [];
 
 	checks.push({
@@ -226,56 +160,10 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 		detail: `v${settings.version} on :${settings.port} (pid ${process.pid})`,
 	});
 
-	for (const check of runtime.checks) {
-		checks.push({
-			id: check.id,
-			label: check.label,
-			status: check.ok ? "pass" : check.required ? "fail" : "warn",
-			detail: check.detail,
-			fixHint: check.ok
-				? undefined
-				: check.required
-					? "Run: yoqa runtime ensure (or Repair in Diagnostics)"
-					: undefined,
-		});
-	}
-
 	checks.push(await probeJava());
 	checks.push(await probeXcodeSelect());
 	checks.push(await probeAdbDevices());
 	checks.push(await probeSessionHealth());
-
-	if (foreign.length > 0) {
-		checks.push({
-			id: "foreign-appium",
-			label: "Foreign Appium processes",
-			status: "warn",
-			detail: `${foreign.length} foreign listener(s) on Appium ports`,
-			fixHint: "Stop foreign Appium from the Servers panel or: yoqa doctor --fix",
-		});
-	} else {
-		checks.push({
-			id: "foreign-appium",
-			label: "Foreign Appium processes",
-			status: "pass",
-			detail: "None detected on ports 4723–4743",
-		});
-	}
-
-	try {
-		const appium = await resolveAppium();
-		checks.push(await runDriverDoctor(appium, "xcuitest"));
-		checks.push(await runDriverDoctor(appium, "uiautomator2"));
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		checks.push({
-			id: "doctor-drivers",
-			label: "Appium driver doctor",
-			status: "fail",
-			detail: message,
-			fixHint: "Install Appium first: yoqa runtime ensure",
-		});
-	}
 
 	const steps: DoctorStep[] = [];
 	for (const check of checks) {
@@ -284,27 +172,13 @@ export async function getDoctorReport(): Promise<DoctorReport> {
 				severity: "error",
 				title: check.label,
 				detail: check.fixHint ?? check.detail ?? "Fix this check",
-				repair:
-					check.id === "node" ||
-					check.id === "npm" ||
-					check.id === "appium" ||
-					check.id === "xcuitest" ||
-					check.id === "uiautomator2" ||
-					check.id === "doctor-drivers"
-						? "ensure-runtime"
-						: undefined,
 			});
 		} else if (check.status === "warn" && check.fixHint) {
 			steps.push({
 				severity: "warn",
 				title: check.label,
 				detail: check.fixHint,
-				repair:
-					check.id === "foreign-appium"
-						? "stop-foreign-appium"
-						: check.id === "device-session"
-							? "disconnect-session"
-							: undefined,
+				repair: check.id === "device-session" ? "disconnect-session" : undefined,
 			});
 		}
 	}
@@ -323,15 +197,7 @@ export async function repairDoctor(repairs: DoctorRepairId[]): Promise<DoctorRep
 	const parts: string[] = [];
 
 	for (const repair of unique) {
-		if (repair === "ensure-runtime") {
-			const result = await ensureRuntime();
-			parts.push(result.message);
-		} else if (repair === "stop-foreign-appium") {
-			const count = await stopAllForeignAppium();
-			parts.push(
-				count > 0 ? `Stopped ${count} foreign Appium process(es)` : "No foreign Appium to stop",
-			);
-		} else if (repair === "disconnect-session") {
+		if (repair === "disconnect-session") {
 			const info = await disconnectDevice();
 			parts.push(
 				info ? `Disconnected ${info.platform} ${info.deviceId}` : "No active device session",

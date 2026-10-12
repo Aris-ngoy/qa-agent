@@ -50,4 +50,3 @@ replaces the current session. Disconnect when you're done so another run can tak
 
 - Prefer a booted simulator over a physical device for speed
 - If `yoqa devices connect` fails, run `yoqa doctor --fix` — see [Environment](environment.md)
-- An iOS physical device needs WebDriverAgent installed first: `yoqa setup ios --device <udid> --kind physical`

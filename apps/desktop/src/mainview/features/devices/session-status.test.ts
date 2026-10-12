@@ -1,12 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { Device, RunTestStatus } from "@yoqa/runner-client";
-import {
-	connectedToastMessage,
-	hasRunTarget,
-	runChip,
-	sessionPillLabel,
-	wdaRebuildTarget,
-} from "./session-status";
+import type { RunTestStatus } from "@yoqa/runner-client";
+import { connectedToastMessage, hasRunTarget, runChip, sessionPillLabel } from "./session-status";
 
 const SESSION = { deviceId: "dev-1", platform: "ios" as const, connectedAt: 1 };
 
@@ -17,7 +11,7 @@ function runWith(statuses: RunTestStatus[]) {
 describe("sessionPillLabel", () => {
 	test("names the Lane next to the live state", () => {
 		expect(sessionPillLabel({ streamReady: true, lane: "direct" })).toBe("Live · Direct");
-		expect(sessionPillLabel({ lane: "appium" })).toBe("Live · Appium");
+		expect(sessionPillLabel({ lane: "direct" })).toBe("Live · Direct");
 		expect(sessionPillLabel({ streamReady: false, lane: "direct" })).toBe("Connected · Direct");
 	});
 
@@ -47,39 +41,6 @@ describe("connectedToastMessage", () => {
 			"Connected — screenshot poll (live stream unavailable)",
 		);
 		expect(connectedToastMessage({})).toBe("Connected — live stream on");
-	});
-});
-
-describe("wdaRebuildTarget", () => {
-	const simulator: Device = {
-		id: "B75001FB-B91D-4F94-80A7-3E371A641D27",
-		name: "iPhone 17 Pro",
-		osVersion: "26.0",
-		platform: "ios",
-		kind: "simulator",
-	};
-	const onAppium = { ...SESSION, deviceId: simulator.id, lane: "appium" as const };
-
-	test("an iOS Appium-lane session rebuilds on its listed device, with that device's real kind", () => {
-		expect(wdaRebuildTarget(onAppium, [simulator])).toMatchObject({
-			id: simulator.id,
-			kind: "simulator",
-		});
-	});
-
-	test("offers no rebuild when the device list does not have the device", () => {
-		expect(wdaRebuildTarget(onAppium, [])).toBeNull();
-		expect(wdaRebuildTarget(onAppium, undefined)).toBeNull();
-	});
-
-	test("offers no rebuild off the Appium lane, on Android, or without a session", () => {
-		expect(wdaRebuildTarget({ ...onAppium, lane: "direct" }, [simulator])).toBeNull();
-		expect(
-			wdaRebuildTarget({ ...onAppium, platform: "android" }, [
-				{ ...simulator, platform: "android" },
-			]),
-		).toBeNull();
-		expect(wdaRebuildTarget(null, [simulator])).toBeNull();
 	});
 });
 

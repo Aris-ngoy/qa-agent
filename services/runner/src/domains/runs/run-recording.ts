@@ -42,7 +42,7 @@ export async function startRunRecording(
 		recording = await session.startRecording(path);
 	} catch (error) {
 		const message = errorMessage(error);
-		// Appium shells out to ffmpeg to record iOS; say what to do instead of showing its error.
+		// A missing ffmpeg is a fix the user can make; say so instead of showing the raw error.
 		if (/ffmpeg.*not found/i.test(message)) {
 			return {
 				unavailable:

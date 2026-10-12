@@ -46,7 +46,7 @@ GitHub Actions:
 - run: yoqa doctor
 ```
 
-Host Node/npm must be on `PATH` for managed Appium (`~/.yoqa/runtime`). Cache that directory between jobs. iOS still needs `macos-*` + Xcode; this is not a cloud device farm.
+iOS still needs `macos-*` + Xcode; this is not a cloud device farm.
 
 ## Follow-ups
 

@@ -18,8 +18,6 @@ function options(overrides: Partial<SessionOptions> = {}): SessionOptions {
 	return {
 		platform: "android",
 		deviceId: "emulator-5554",
-		appCaps: [],
-		caseCaps: [],
 		...overrides,
 	};
 }
@@ -43,7 +41,7 @@ function recordingAdb(): { adb: AdbExec; calls: string[][] } {
 }
 
 describe("createAndroidDirectSession", () => {
-	test("rejects iOS so connect can fall back to Appium", async () => {
+	test("rejects iOS", async () => {
 		await expect(
 			createAndroidDirectSession(options({ platform: "ios" }), {
 				adb: async () => ok(),

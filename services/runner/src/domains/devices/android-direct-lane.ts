@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { ensureAndroidSdkEnv } from "../appium/android-sdk";
+import { ensureAndroidSdkEnv } from "../android-toolchain/android-sdk";
 import {
 	encodeAdbInputText,
 	findDumpNodeBounds,
@@ -20,7 +20,7 @@ import {
 	devtoolsTreeToDump,
 } from "./android-devtools";
 import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
-import { resolveAndroidAppiumIdentity } from "./application";
+import { resolveAndroidIdentity } from "./application";
 import { createFrameLoop } from "./frame-loop";
 import {
 	type DeviceSession,
@@ -127,7 +127,7 @@ function resolveAdbBin(): string {
 }
 
 async function defaultResolveSerial(deviceId: string): Promise<string> {
-	const identity = await resolveAndroidAppiumIdentity(deviceId);
+	const identity = await resolveAndroidIdentity(deviceId);
 	if (!identity.udid) {
 		throw new Error(`Android device ${deviceId} is not connected`);
 	}
@@ -154,8 +154,7 @@ function createLock() {
 }
 
 /**
- * Android Device Session over adb — no Appium server. iOS is rejected so connect
- * can fall back to the Appium lane (ADR-0004).
+ * Android Device Session over adb. iOS is rejected, so a wrong platform fails the connect.
  */
 export async function createAndroidDirectSession(
 	options: SessionOptions,

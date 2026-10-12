@@ -450,7 +450,7 @@ function IosSettings({ enabled }: { enabled: boolean }) {
 					<ul className="mt-1 list-disc space-y-0.5 pl-5 text-on-surface-variant">
 						<li>
 							No manual portal registration — keep the device connected so Xcode can register it
-							during the first WebDriverAgent build
+							during the first YoqaRunner build
 						</li>
 						<li>
 							On first use, trust the certificate in Settings → General → VPN & Device Management
@@ -589,8 +589,8 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				Paths Appium uses for local Android tests. Detected from your system; override only if you
-				need a different SDK or JDK.
+				Paths the Android Direct lane uses for local Android tests. Detected from your system;
+				override only if you need a different SDK or JDK.
 			</p>
 
 			{toolchainQuery.isLoading ? (
@@ -646,7 +646,7 @@ function AndroidSettings({ enabled }: { enabled: boolean }) {
 				</Button>
 				{dirty ? (
 					<p className="text-body-sm text-on-surface-variant">
-						Saving restarts the local runner so Appium picks up the new paths.
+						Saving restarts the local runner so the Direct lane picks up the new paths.
 					</p>
 				) : null}
 			</div>
@@ -919,7 +919,7 @@ function DiagnosticsSettings({ enabled }: { enabled: boolean }) {
 	return (
 		<div className="flex flex-col gap-6">
 			<p className="text-body-md text-on-surface-variant">
-				System checks for Node, Appium, drivers, host tools, and leftover processes. Same report as{" "}
+				System checks for Java, Xcode, adb, and the device session. Same report as{" "}
 				<code className="font-mono text-helper">yoqa doctor</code>.
 			</p>
 

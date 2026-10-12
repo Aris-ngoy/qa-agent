@@ -1,6 +1,8 @@
 ---
-status: accepted
+status: superseded by [ADR-0005](./0005-direct-only-lane.md)
 ---
+
+> Superseded: Appium is no longer a Lane. A Lane is Direct only. The benchmark gate and the one-Lane-per-session rule below still describe how Direct implementations are promoted.
 
 # A Device Session runs on one Lane: Appium or Direct
 

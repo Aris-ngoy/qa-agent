@@ -54,7 +54,7 @@ The `yoqa` CLI talks to the **local runner**. If nothing is listening on `http:/
 
 ## CI / CD
 
-Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later steps reuse it. Host **Node/npm** must be on `PATH` so managed Appium can install under `~/.yoqa/runtime`.
+Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later steps reuse it.
 
 ```yaml
 - uses: oven-sh/setup-bun@v2
@@ -65,7 +65,6 @@ Install Bun and `@yoqa/cli`. The first `yoqa` command starts the runner; later s
     node-version: "22"
 - run: npm install -g @yoqa/cli
 - run: yoqa health
-- run: yoqa runtime ensure
 ```
 
 This repo also ships a full device smoke against an Expo fixture (builds CLI from source, iOS Simulator on `macos-26` + Android Emulator on Ubuntu + KVM, no AI provider): see the **Demo Expo E2E** workflow and `examples/expo-demo`. Copy that YAML if you want `yoqa assert` / `yoqa action --label` in your own app repo. Each action writes a screenshot under `artifacts/screenshots`.
@@ -79,7 +78,7 @@ yoqa serve --stop          # SIGTERM a runner this CLI started (~/.yoqa/runner.p
 
 Override the runner URL with `YOQA_RUNNER_HOST` / `YOQA_RUNNER_PORT` / `YOQA_RUNNER_URL`. Pin a binary with `YOQA_RUNNER_BIN`.
 
-Device runs need a simulator or emulator and Appium drivers (`yoqa doctor --fix` / `yoqa runtime ensure`). Description grounding and agent runs also need provider secrets. GitHub-hosted iOS needs `macos-*` + Xcode. This is not a cloud device farm — cache `~/.yoqa/runtime` between jobs to skip reinstalling Appium.
+Device runs need a simulator or emulator (`yoqa doctor --fix` for a stuck session). Description grounding and agent runs also need provider secrets. GitHub-hosted iOS needs `macos-*` + Xcode. This is not a cloud device farm.
 
 ## Doctor & servers
 
@@ -88,13 +87,13 @@ yoqa doctor                                  # color bullets: green pass / red f
 yoqa doctor --fix                              # apply safe repairs only
 yoqa doctor --json
 
-yoqa servers                                 # list Appium / runner / device session
-yoqa servers stop-all                        # stop Appium + disconnect session (not the runner)
+yoqa servers                                 # list the runner and device session
+yoqa servers stop-all                        # disconnect the session (not the runner)
 yoqa servers stop <id>
 yoqa servers restart <id>
 ```
 
-`yoqa runtime status` / `ensure` remain the thin install-readiness commands. Prefer `yoqa doctor` when something is broken or foreign Appium processes are stuck.
+Prefer `yoqa doctor` when something is broken or a session is stuck.
 
 In the desktop app: **Servers** button next to Play, and **Settings → Diagnostics**.
 
@@ -104,7 +103,7 @@ In the desktop app: **Servers** button next to Play, and **Settings → Diagnost
 yoqa devices ios                             # list devices & simulators (--all for every simulator)
 yoqa devices android                         # list devices & emulators (--all for every emulator)
 yoqa devices connect <device-id>             # open a session (full id from the list)
-yoqa devices connect <device-id> --lane auto # appium | direct | auto (Android auto → Direct)
+yoqa devices connect <device-id> --lane auto # direct | auto
 yoqa devices active                          # show the connected device (includes Lane)
 yoqa devices disconnect
 ```
@@ -114,7 +113,7 @@ yoqa devices disconnect
 ```bash
 yoqa screenshot ./shot.png                   # save a PNG — look at it first
 yoqa screen                                  # cleaned element tree + relative coords (0–1000)
-yoqa screen --full                           # raw Appium accessibility tree
+yoqa screen --full                           # raw accessibility tree
 ```
 
 In agent loops, look at a screenshot first and tap the centre of the control with `--x` / `--y`. Use `yoqa screen` as the fallback for exact ids and labels. Details: [CLI for agents](/guide/cli-for-agents).

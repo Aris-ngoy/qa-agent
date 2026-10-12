@@ -6,7 +6,6 @@ import {
 	type ActionResultScreenshot,
 	type ActiveDeviceResponse,
 	type AiProvider,
-	type AppiumDriver,
 	type Build,
 	type CallUsage,
 	type Capability,
@@ -39,9 +38,7 @@ import {
 	type DoctorRepairResponse,
 	type DoctorReport,
 	type DoctorStep,
-	type EnsureRuntimeResponse,
 	type HealthResponse,
-	type IosWdaAction,
 	type LaneName,
 	type ListAppsResponse,
 	type ListBuildsResponse,
@@ -74,8 +71,7 @@ import {
 	type RunStep,
 	type RunTest,
 	type RunTestStatus,
-	type RuntimeCheck,
-	type RuntimeStatus,
+	type RunnerError,
 	type ScreenElement,
 	type ScreenResponse,
 	type ScreenshotRequest,
@@ -85,9 +81,6 @@ import {
 	type ServerKind,
 	type ServerMutationResponse,
 	type ServerOwnership,
-	type SetupPlatformError,
-	type SetupPlatformRequest,
-	type SetupPlatformResponse,
 	type StepPhases,
 	type StreamState,
 	type UpdateAppRequest,
@@ -102,7 +95,6 @@ import {
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	aiProviderSchema,
-	appiumDriverSchema,
 	buildSchema,
 	callUsageSchema,
 	capabilitySchema,
@@ -132,9 +124,7 @@ import {
 	doctorRepairRequestSchema,
 	doctorRepairResponseSchema,
 	doctorReportSchema,
-	ensureRuntimeResponseSchema,
 	healthResponseSchema,
-	iosWdaActionSchema,
 	laneNameSchema,
 	listAppsResponseSchema,
 	listBuildsResponseSchema,
@@ -167,15 +157,11 @@ import {
 	runStepSchema,
 	runTestSchema,
 	runTestStatusSchema,
-	runtimeCheckSchema,
-	runtimeStatusSchema,
+	runnerErrorSchema,
 	screenResponseSchema,
 	screenshotRequestSchema,
 	screenshotResponseSchema,
 	serverMutationResponseSchema,
-	setupPlatformErrorSchema,
-	setupPlatformRequestSchema,
-	setupPlatformResponseSchema,
 	stepPhasesSchema,
 	updateAppRequestSchema,
 	updateCaseFlowsSchema,
@@ -194,7 +180,6 @@ export {
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	aiProviderSchema,
-	appiumDriverSchema,
 	buildSchema,
 	callUsageSchema,
 	capabilitySchema,
@@ -224,9 +209,7 @@ export {
 	doctorRepairRequestSchema,
 	doctorRepairResponseSchema,
 	doctorReportSchema,
-	ensureRuntimeResponseSchema,
 	healthResponseSchema,
-	iosWdaActionSchema,
 	laneNameSchema,
 	listAppsResponseSchema,
 	listBuildsResponseSchema,
@@ -260,15 +243,11 @@ export {
 	stepPhasesSchema,
 	runTestSchema,
 	runTestStatusSchema,
-	runtimeCheckSchema,
-	runtimeStatusSchema,
 	screenResponseSchema,
 	screenshotRequestSchema,
 	screenshotResponseSchema,
 	serverMutationResponseSchema,
-	setupPlatformErrorSchema,
-	setupPlatformRequestSchema,
-	setupPlatformResponseSchema,
+	runnerErrorSchema,
 	updateAppRequestSchema,
 	updateCaseFlowsSchema,
 	updateCaseRequestSchema,
@@ -283,7 +262,6 @@ export {
 	type ActionResultScreenshot,
 	type ActiveDeviceResponse,
 	type AiProvider,
-	type AppiumDriver,
 	type Build,
 	type CallUsage,
 	type Capability,
@@ -316,9 +294,7 @@ export {
 	type DoctorRepairResponse,
 	type DoctorReport,
 	type DoctorStep,
-	type EnsureRuntimeResponse,
 	type HealthResponse,
-	type IosWdaAction,
 	type LaneName,
 	type ListAppsResponse,
 	type ListBuildsResponse,
@@ -352,8 +328,6 @@ export {
 	type StepPhases,
 	type RunTest,
 	type RunTestStatus,
-	type RuntimeCheck,
-	type RuntimeStatus,
 	type ScreenElement,
 	type ScreenResponse,
 	type ScreenshotRequest,
@@ -364,9 +338,7 @@ export {
 	type ServerKind,
 	type ServerMutationResponse,
 	type ServerOwnership,
-	type SetupPlatformError,
-	type SetupPlatformRequest,
-	type SetupPlatformResponse,
+	type RunnerError,
 	type UpdateAppRequest,
 	type UpdateCaseRequest,
 	type UpdateFlowRequest,
@@ -451,7 +423,7 @@ export type RunnerClientOptions = {
 const DEFAULT_BASE_URL = "http://127.0.0.1:7420";
 
 function errorMessageFromBody(json: unknown, fallback: string): string {
-	const parsedError = setupPlatformErrorSchema.safeParse(json);
+	const parsedError = runnerErrorSchema.safeParse(json);
 	if (parsedError.success) {
 		return parsedError.data.detail
 			? `${parsedError.data.error}: ${parsedError.data.detail}`
@@ -566,52 +538,6 @@ export class RunnerClient {
 	async listAndroidDevices(options?: { includeUnavailable?: boolean }): Promise<Device[]> {
 		const result = await this.listDevices("android", options);
 		return result.devices.map((device) => deviceSchema.parse(device));
-	}
-
-	async setupPlatform(
-		request: SetupPlatformRequest | DevicePlatform,
-		options: { signal?: AbortSignal } = {},
-	): Promise<SetupPlatformResponse> {
-		const body = setupPlatformRequestSchema.parse(
-			typeof request === "string" ? { platform: request } : request,
-		);
-		const response = await this.fetchImpl(`${this.baseUrl}/devices/setup`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(body),
-			signal: options.signal,
-		});
-
-		const json: unknown = await response.json().catch(() => null);
-
-		if (!response.ok) {
-			throw requestError(json, `Setup platform failed: HTTP ${response.status}`, response);
-		}
-
-		return setupPlatformResponseSchema.parse(json);
-	}
-
-	async getRuntimeStatus(options: { signal?: AbortSignal } = {}): Promise<RuntimeStatus> {
-		const response = await this.fetchImpl(`${this.baseUrl}/runtime`, {
-			signal: options.signal,
-		});
-		const json: unknown = await response.json().catch(() => null);
-		if (!response.ok) {
-			throw requestError(json, `Runtime status failed: HTTP ${response.status}`, response);
-		}
-		return runtimeStatusSchema.parse(json);
-	}
-
-	async ensureRuntime(options: { signal?: AbortSignal } = {}): Promise<EnsureRuntimeResponse> {
-		const response = await this.fetchImpl(`${this.baseUrl}/runtime/ensure`, {
-			method: "POST",
-			signal: options.signal,
-		});
-		const json: unknown = await response.json().catch(() => null);
-		if (!response.ok) {
-			throw requestError(json, `Ensure runtime failed: HTTP ${response.status}`, response);
-		}
-		return ensureRuntimeResponseSchema.parse(json);
 	}
 
 	async listServers(options: { signal?: AbortSignal } = {}): Promise<ListServersResponse> {
@@ -1138,7 +1064,7 @@ export class RunnerClient {
 		return cacheBust != null ? `${url}?t=${cacheBust}` : url;
 	}
 
-	/** Proxied Appium MJPEG stream for the Inspector live feed. */
+	/** Proxied MJPEG stream for the Inspector live feed. */
 	getStreamMjpegUrl(): string {
 		return `${this.baseUrl}/stream.mjpeg`;
 	}

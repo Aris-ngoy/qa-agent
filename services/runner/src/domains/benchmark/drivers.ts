@@ -6,7 +6,7 @@ export type YoqaBenchmarkClient = {
 	connectDevice: (request: {
 		deviceId: string;
 		platform: DevicePlatform;
-		lane?: "appium" | "direct" | "auto";
+		lane?: "direct" | "auto";
 	}) => Promise<unknown>;
 	getScreen: () => Promise<{ elements?: ScreenElement[] }>;
 	performAction: (request: {
@@ -26,7 +26,7 @@ export type YoqaBenchmarkClient = {
 		platform: DevicePlatform;
 		executionMode: "agent";
 		screenMode?: "vision" | "tree";
-		lane?: "appium" | "direct" | "auto";
+		lane?: "direct" | "auto";
 	}) => Promise<Pick<Run, "id">>;
 	waitForRun?: (runId: string) => Promise<Pick<Run, "status" | "tests">>;
 };
@@ -36,7 +36,7 @@ export function yoqaBenchmarkDriver(
 	options: {
 		deviceId: string;
 		platform: DevicePlatform;
-		lane?: "appium" | "direct" | "auto";
+		lane?: "direct" | "auto";
 		screenMode?: "vision" | "tree";
 		appId?: string;
 	},

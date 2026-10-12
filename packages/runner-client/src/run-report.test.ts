@@ -366,13 +366,13 @@ describe("Screen mode in the report", () => {
 	test("names the Lane that ran", () => {
 		const doc = {
 			...sampleDoc(),
-			lane: "appium",
-			laneWarning: "Direct lane is not available; fell back to Appium",
+			lane: "direct",
+			laneWarning: "yoqa-sim failed; using idb_companion",
 		};
-		expect(formatRunReportMarkdown(doc)).toContain("| Lane | appium |");
-		expect(formatRunReportMarkdown(doc)).toContain("fell back to Appium");
-		expect(formatRunReportGithubSummary(doc)).toContain("| Lane | appium |");
-		expect(formatRunReportHtml(doc)).toContain("appium");
+		expect(formatRunReportMarkdown(doc)).toContain("| Lane | direct |");
+		expect(formatRunReportMarkdown(doc)).toContain("using idb_companion");
+		expect(formatRunReportGithubSummary(doc)).toContain("| Lane | direct |");
+		expect(formatRunReportHtml(doc)).toContain("direct");
 	});
 
 	test("omits the Screen row when the run has no Screen mode", () => {

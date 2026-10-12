@@ -19,7 +19,7 @@ const COMMAND_TIMEOUT_MS = 10_000;
 
 /**
  * A snapshot walks the whole tree of the app in front, one element query at a time. On a phone
- * home screen that took Appium 11 s (2026-10-10), so it gets longer than a gesture does.
+ * home screen that took the old WebDriver path 11 s (2026-10-10), so it gets longer than a gesture does.
  */
 const SNAPSHOT_TIMEOUT_MS = 30_000;
 

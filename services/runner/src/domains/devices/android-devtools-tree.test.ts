@@ -83,7 +83,7 @@ function fakeHelper(
 async function open(devtools?: StartAndroidDevtools, adbOptions?: { helperLeftRunning?: boolean }) {
 	const { adb, calls } = fakeAdb(adbOptions);
 	const session = await createAndroidDirectSession(
-		{ platform: "android", deviceId: "emulator-5554", appCaps: [], caseCaps: [] },
+		{ platform: "android", deviceId: "emulator-5554" },
 		{ adb, resolveSerial: async () => "emulator-5554", ...(devtools ? { devtools } : {}) },
 	);
 	const dumps = () => calls.filter((args) => args.includes("uiautomator")).length;

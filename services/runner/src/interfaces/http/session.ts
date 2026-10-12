@@ -21,7 +21,6 @@ import {
 	disconnectDevice,
 	getActiveSessionInfo,
 	isActiveSessionHeldByRun,
-	isMissingAppiumSessionError,
 	requireActiveSession,
 	retargetActiveSession,
 } from "../../domains/devices/active-session";
@@ -33,7 +32,7 @@ import {
 	getScreen,
 	performAction,
 } from "../../domains/devices/interaction";
-import { DeviceUnreachableError } from "../../domains/devices/lane";
+import { DeviceUnreachableError, isDeadSessionError } from "../../domains/devices/lane";
 import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 
 /** Map a Device Session error to its HTTP answer, or null when the route should handle it. */
@@ -57,7 +56,7 @@ export function sessionErrorResponse(error: unknown) {
 			},
 		};
 	}
-	if (isMissingAppiumSessionError(error)) {
+	if (isDeadSessionError(error)) {
 		abandonActiveSession();
 		return {
 			status: 410 as const,
@@ -219,7 +218,7 @@ export function createSessionRoutes() {
 				return c.json(
 					{
 						error: "MJPEG stream not available",
-						detail: "Device connected without a reachable Appium MJPEG broadcaster",
+						detail: "Device connected without a reachable MJPEG broadcaster",
 					},
 					503,
 				);

@@ -28,7 +28,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
-import { looksLikePhysicalIosUdid } from "./appium-lane";
 import { errorChain } from "./error-chain";
 import {
 	type FrameRecorderDeps,
@@ -38,6 +37,7 @@ import {
 } from "./frame-recorder";
 import { IOS_PREVIEW_CAPTURE, type PhonePreview, startPhonePreview } from "./ios-device-preview";
 import { yoqaAxTreeToSource } from "./ios-direct-lane";
+import { looksLikePhysicalIosUdid } from "./ios-udid";
 import {
 	type CapturedFrame,
 	DeadSessionError,

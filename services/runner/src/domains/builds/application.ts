@@ -2,7 +2,7 @@ import { basename, extname } from "node:path";
 import type { Build, CreateBuildRequest } from "@yoqa/runner-client";
 import { desc, eq } from "drizzle-orm";
 import { getCatalogDb } from "../catalog/db";
-import { resolveAndroidAppiumIdentity } from "../devices/application";
+import { resolveAndroidIdentity } from "../devices/application";
 import { builds } from "./schema";
 
 export class BuildNotFoundError extends Error {
@@ -159,7 +159,7 @@ export async function installBuildOnDevice(options: {
 		);
 	}
 
-	const identity = await resolveAndroidAppiumIdentity(deviceId);
+	const identity = await resolveAndroidIdentity(deviceId);
 	const serial = identity.udid;
 	if (!serial) {
 		throw new Error(

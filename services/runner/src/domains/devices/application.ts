@@ -2,11 +2,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Device } from "@yoqa/runner-client";
-import { resolveAndroidSdkRoot } from "../appium/android-sdk";
+import { resolveAndroidSdkRoot } from "../android-toolchain/android-sdk";
 import {
-	type AndroidAppiumIdentity,
+	type AndroidIdentity,
 	type ConnectedAndroidDevice,
-	matchAndroidAppiumIdentity,
+	matchAndroidIdentity,
 	parseAdbEmuAvdName,
 } from "./android-identity";
 import { idleWiredUdids, parseDevicectlDevices } from "./devicectl";
@@ -422,9 +422,7 @@ async function listAndroidAvds(
 	return devices;
 }
 
-export async function resolveAndroidAppiumIdentity(
-	deviceId: string,
-): Promise<AndroidAppiumIdentity> {
+export async function resolveAndroidIdentity(deviceId: string): Promise<AndroidIdentity> {
 	const [adb, emulatorBin] = await Promise.all([resolveAdb(), resolveEmulator()]);
 	const connected: ConnectedAndroidDevice[] = [];
 
@@ -454,7 +452,7 @@ export async function resolveAndroidAppiumIdentity(
 		}
 	}
 
-	return matchAndroidAppiumIdentity(deviceId, connected, knownAvds);
+	return matchAndroidIdentity(deviceId, connected, knownAvds);
 }
 
 export async function listAndroidDevices(options: ListDevicesOptions = {}): Promise<Device[]> {

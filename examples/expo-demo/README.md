@@ -30,7 +30,6 @@ bun run --filter @yoqa/cli build
 bun run --filter @yoqa/runner build
 export YOQA_REPO_ROOT="$(git rev-parse --show-toplevel)"
 yoqa health
-yoqa runtime ensure
 yoqa devices android --booted-only   # or: yoqa devices ios --booted-only
 yoqa devices connect <device-id> --platform android --app-package ai.yoqa.demo
 # yoqa devices connect <udid> --platform ios --bundle-id ai.yoqa.demo

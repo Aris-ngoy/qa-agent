@@ -7,7 +7,7 @@ import { ServersDoctorPanel } from "@/features/devices/servers-doctor-panel";
 import { sessionPillLabel } from "@/features/devices/session-status";
 import { resolveTheme } from "@/features/settings/ui-preferences";
 import { useThemeMode } from "@/features/settings/use-theme-mode";
-import { Button, Dropdown, Label, ListBox, Select } from "@heroui/react";
+import { Button, ListBox, Select } from "@heroui/react";
 import type { ActiveDeviceResponse } from "@yoqa/runner-client";
 import { type ReactNode, type SVGProps, useState, useSyncExternalStore } from "react";
 
@@ -158,12 +158,10 @@ type SessionToolbarProps = {
 	active: ActiveDeviceResponse | null;
 	connecting: boolean;
 	onConnect: () => void;
-	onRestart: (options: { rebuildWda: boolean }) => void;
+	onRestart: () => void;
 	onDisconnect: () => void;
 	/** A Run owns the shared session — watch-only until it finishes. */
 	viewOnly: boolean;
-	/** Restart also offers to rebuild WebDriverAgent (an iOS session on the Appium lane). */
-	offerWdaRebuild: boolean;
 };
 
 export function SessionToolbar({
@@ -177,7 +175,6 @@ export function SessionToolbar({
 	onRestart,
 	onDisconnect,
 	viewOnly,
-	offerWdaRebuild,
 }: SessionToolbarProps) {
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [serversOpen, setServersOpen] = useState(false);
@@ -260,48 +257,17 @@ export function SessionToolbar({
 			{connected ? (
 				viewOnly ? null : (
 					<>
-						{offerWdaRebuild ? (
-							<Dropdown>
-								<Button
-									aria-label="Restart session"
-									className={RESTART_BUTTON_CLASS}
-									isDisabled={connecting}
-									variant="ghost"
-								>
-									<RestartIcon spinning={connecting} />
-									Restart session
-								</Button>
-								<Dropdown.Popover className="w-72">
-									<Dropdown.Menu
-										onAction={(key) => {
-											onRestart({ rebuildWda: String(key) === "restart-rebuild-wda" });
-										}}
-									>
-										<Dropdown.Item id="restart" textValue="Restart session">
-											<Label>Restart session</Label>
-										</Dropdown.Item>
-										<Dropdown.Item
-											id="restart-rebuild-wda"
-											textValue="Restart & rebuild WebDriverAgent"
-										>
-											<Label>Restart &amp; rebuild WebDriverAgent</Label>
-										</Dropdown.Item>
-									</Dropdown.Menu>
-								</Dropdown.Popover>
-							</Dropdown>
-						) : (
-							<button
-								type="button"
-								className={RESTART_BUTTON_CLASS}
-								disabled={connecting}
-								onClick={() => {
-									onRestart({ rebuildWda: false });
-								}}
-							>
-								<RestartIcon spinning={connecting} />
-								Restart session
-							</button>
-						)}
+						<button
+							type="button"
+							className={RESTART_BUTTON_CLASS}
+							disabled={connecting}
+							onClick={() => {
+								onRestart();
+							}}
+						>
+							<RestartIcon spinning={connecting} />
+							Restart session
+						</button>
 						<button
 							type="button"
 							className="motion-fade-in inline-flex h-8 items-center gap-1.5 rounded-lg border border-error/30 px-3 text-xs font-medium text-error transition-colors hover:bg-error-container/50 disabled:opacity-50"
@@ -334,7 +300,7 @@ export function SessionToolbar({
 							className={RESTART_BUTTON_CLASS}
 							disabled={connecting}
 							onClick={() => {
-								onRestart({ rebuildWda: false });
+								onRestart();
 							}}
 						>
 							<RestartIcon spinning={connecting} />

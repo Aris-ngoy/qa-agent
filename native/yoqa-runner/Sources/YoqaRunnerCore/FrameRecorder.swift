@@ -2,8 +2,7 @@ import Foundation
 
 /// Captures the screen on the phone, in the background, so a Run recording does not pay a
 /// cable round trip per frame. Frames are JPEGs with the milliseconds since `start`; the Mac
-/// pulls them in batches with `fetch` and encodes the video. This is what WebDriverAgent's
-/// MJPEG server does for Appium, with a pull instead of a push.
+/// pulls them in batches with `fetch` and encodes the video.
 ///
 /// Memory is bounded: past `maxBytes` the oldest frames are dropped, and a recording nobody
 /// has pulled from for `idleSeconds` stops itself, so a lost Mac cannot leave it running.
