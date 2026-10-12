@@ -9,17 +9,15 @@ export type LaneChoice = {
 	warning?: string;
 };
 
-export function hasCustomCapabilities(
-	appCaps: Array<{ key: string }>,
-	caseCaps: Array<{ key: string }>,
-): boolean {
-	return [...appCaps, ...caseCaps].some((cap) => cap.key.trim().length > 0);
+/** Asking for the Appium lane fails the connect. The lane itself is still in the tree. */
+export function refuseAppiumRequest(): never {
+	throw new Error("The Appium lane cannot be opened");
 }
 
 /**
- * Pick the Lane for a Device Session (ADR-0004). Custom Appium capabilities always
- * pin Appium. Direct is chosen automatically when that factory exists; a forced
- * Direct request falls back to Appium when it cannot start.
+ * Pick the Lane for a Device Session. A connect opens Direct, or it fails.
+ * Custom capabilities do not change the Lane. Asking for the Appium lane fails
+ * the connect; this does not remove the Appium lane, it only stops choosing it.
  */
 export function selectLane(input: {
 	requested: LaneRequest;
@@ -27,39 +25,19 @@ export function selectLane(input: {
 	appCaps: Array<{ key: string }>;
 	caseCaps: Array<{ key: string }>;
 }): LaneChoice {
-	const available = new Set(input.available);
-	if (hasCustomCapabilities(input.appCaps, input.caseCaps)) {
-		return {
-			lane: "appium",
-			fallback: false,
-			reason: "capabilities",
-			warning: "Custom Appium capabilities pin the Appium lane",
-		};
-	}
 	if (input.requested === "appium") {
-		return { lane: "appium", fallback: false };
+		refuseAppiumRequest();
 	}
-	if (input.requested === "direct" || input.requested === "auto") {
-		if (available.has("direct")) {
-			return { lane: "direct", fallback: false };
-		}
-		if (input.requested === "direct") {
-			return {
-				lane: "appium",
-				fallback: true,
-				reason: "unsupported",
-				warning: "Direct lane is not available; fell back to Appium",
-			};
-		}
+	if (!input.available.includes("direct")) {
+		throw new Error("Direct lane is not available");
 	}
-	return { lane: "appium", fallback: false };
+	return { lane: "direct", fallback: false };
 }
 
 export function availableLanes(factories: Partial<Record<LaneName, unknown>>): LaneName[] {
 	const names: LaneName[] = [];
-	if (factories.appium) names.push("appium");
 	if (factories.direct) names.push("direct");
-	if (!names.includes("appium")) names.unshift("appium");
+	if (factories.appium) names.push("appium");
 	return names;
 }
 
