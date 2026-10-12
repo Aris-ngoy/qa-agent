@@ -104,10 +104,27 @@ describe("createIosDirectSession", () => {
 		await session.openUrl("https://yoqa.arisn.dev");
 		expect(calls.some((c) => c[0] === "ui" && c[1] === "tap" && c.includes("hid"))).toBe(true);
 		expect(calls.some((c) => c[0] === "ui" && c[1] === "swipe")).toBe(true);
-		expect(calls.some((c) => c[0] === "ui" && c[1] === "text" && c.includes("hello"))).toBe(true);
+		expect(calls.filter((c) => c[0] === "ui" && c[1] === "text").map((c) => c[2])).toEqual([
+			"h",
+			"e",
+			"l",
+			"l",
+			"o",
+		]);
 		expect(calls.some((c) => c[0] === "launch" && c.includes("com.demo"))).toBe(true);
 		expect(calls.some((c) => c[0] === "terminate" && c.includes("com.demo"))).toBe(true);
 		expect(calls.some((c) => c[0] === "open" && c.includes("https://yoqa.arisn.dev"))).toBe(true);
+		await session.quit();
+	});
+
+	test("type keeps an emoji with its skin tone in one idb call", async () => {
+		const { idb, calls } = recordingIdb();
+		const session = await createIosDirectSession(options({ bundleId: "com.demo" }), { idb });
+		await session.type("A👍🏽");
+		expect(calls.filter((c) => c[0] === "ui" && c[1] === "text").map((c) => c[2])).toEqual([
+			"A",
+			"👍🏽",
+		]);
 		await session.quit();
 	});
 

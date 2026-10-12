@@ -10,7 +10,7 @@ type Mode = "ok" | "no-stream" | "exit" | "silent";
  * Stands in for the `yoqa-sim` process at its wire protocol: it prints `api_ready` for a
  * real loopback server that serves `/screenshot`, then `stream_ready`, and stops serving
  * when killed. `no-stream` prints no `stream_ready`; `exit` dies before `api_ready`;
- * `silent` never prints it.
+ * `silent` never prints it, only a stderr line.
  */
 function fakeYoqaSim(mode: Mode = "ok") {
 	const launched: string[][] = [];
@@ -45,7 +45,9 @@ function fakeYoqaSim(mode: Mode = "ok") {
 			err.close();
 			exit(code);
 		};
-		if (mode === "exit") {
+		if (mode === "silent") {
+			err.enqueue(encoder.encode("waiting for the simulator framebuffer\n"));
+		} else if (mode === "exit") {
 			err.enqueue(encoder.encode("SimulatorKit not found under /Applications/Xcode.app\n"));
 			die(3);
 		} else if (mode === "ok" || mode === "no-stream") {
@@ -190,7 +192,7 @@ describe("spawnYoqaSim", () => {
 		fake = fakeYoqaSim("silent");
 		await expect(
 			spawnYoqaSim(UDID, { command: ["/opt/yoqa-sim"], spawn: fake.spawn, readyTimeoutMs: 200 }),
-		).rejects.toThrow(/no api_ready within 200 ms/);
+		).rejects.toThrow(/no api_ready within 200 ms: waiting for the simulator framebuffer/);
 		expect(fake.kills()).toBe(1);
 	});
 

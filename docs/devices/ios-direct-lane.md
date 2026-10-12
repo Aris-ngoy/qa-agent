@@ -7,7 +7,7 @@ Run connect, tap, swipe, drag, type, app lifecycle, open URL, and screenshot on 
 ## Plan summary
 
 - The Direct factory is registered for iOS. Auto-pick and `--lane direct` use it on simulators; custom capabilities still pin Appium. Physical UDIDs (`00008120-…` shape) throw so connect falls back once (existing dispatcher).
-- Gestures and screenshots go through the official `idb` client (`ui tap --api hid`, `ui swipe`, `ui text`, `screenshot`, `launch` / `terminate` / `open`). Tree reads are `ui describe-all --api axbridge --format complete`; Screen mapping is [ios-direct-tree-settle.md](./ios-direct-tree-settle.md). No MJPEG (`stream: null`).
+- Gestures and screenshots go through the official `idb` client (`ui tap --api hid`, `ui swipe`, `ui text`, `screenshot`, `launch` / `terminate` / `open`). Tree reads are `ui describe-all --api axbridge --format complete`; Screen mapping is [ios-direct-tree-settle.md](./ios-direct-tree-settle.md). No MJPEG (`stream: null`). `type` sends one `ui text` per grapheme: a single call sends every key at once, and a controlled React Native `TextInput` keeps only the first (the Expo smoke typed "Ada" and got "A").
 - Companion comes from `YOQA_IDB_COMPANION`, `~/.yoqa/idb/idb_companion`, or `PATH` — the GitHub `facebook/idb` v1.6.5 macOS binary. Homebrew `facebook/fb` tap trust is not required.
 - Rejected: translating Appium capabilities onto idb, switching Lane mid-session, and driving physical iOS through companion.
 
