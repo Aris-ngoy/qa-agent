@@ -12,7 +12,7 @@ android {
         minSdk = 24
         targetSdk = 36
         // Bump together with DEVTOOLS_VERSION_CODE in services/runner/src/domains/devices/android-devtools.ts.
-        versionCode = 1
+        versionCode = 2
         versionName = "0.1.0"
     }
 
