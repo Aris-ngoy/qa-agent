@@ -2,7 +2,7 @@
 
 ## Goal
 
-Connecting a device or starting a Run never opens the Appium lane. The Device Session is on the Direct lane, or the connect fails. Ticket [#287](https://github.com/Aris-ngoy/qa-agent/issues/287). Vocabulary: **Lane**, **Device Session**, **Active Session** in [`CONTEXT.md`](../../CONTEXT.md). The Appium lane, the managed Appium Server, and stored capability fields stay until [#288](https://github.com/Aris-ngoy/qa-agent/issues/288) and [#289](https://github.com/Aris-ngoy/qa-agent/issues/289).
+Connecting a device or starting a Run never opens the Appium lane. The Device Session is on the Direct lane, or the connect fails. Ticket [#287](https://github.com/Aris-ngoy/qa-agent/issues/287). Vocabulary: **Lane**, **Device Session**, **Active Session** in [`CONTEXT.md`](../../CONTEXT.md). The Appium lane and the managed Appium Server stay until [#289](https://github.com/Aris-ngoy/qa-agent/issues/289). Apps and Cases no longer carry capability fields ([#288](https://github.com/Aris-ngoy/qa-agent/issues/288), [no-appium-capabilities](../catalog/no-appium-capabilities.md)).
 
 This contradicts [ADR-0004](../adr/0004-device-session-lanes.md): a Direct start no longer falls back to Appium, an Appium request is no longer an override, and custom capabilities no longer pin the Appium lane. [#289](https://github.com/Aris-ngoy/qa-agent/issues/289) writes the superseding ADR. Until then, this doc is the record of the contradiction.
 
@@ -33,5 +33,4 @@ bun test services/runner/src/domains/devices/active-session.test.ts \
 
 ## Follow-ups
 
-- [#288](https://github.com/Aris-ngoy/qa-agent/issues/288): Apps and Cases no longer have Appium capabilities.
-- [#289](https://github.com/Aris-ngoy/qa-agent/issues/289): remove the Appium lane, server, and runtime, and supersede [ADR-0004](../adr/0004-device-session-lanes.md).
+- [#289](https://github.com/Aris-ngoy/qa-agent/issues/289): remove the Appium lane, server, and runtime, and supersede [ADR-0004](../adr/0004-device-session-lanes.md). [#288](https://github.com/Aris-ngoy/qa-agent/issues/288) dropped capability fields; see [no-appium-capabilities](../catalog/no-appium-capabilities.md).

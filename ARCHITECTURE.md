@@ -10,7 +10,7 @@ Related: public docs in [`apps/docs/`](apps/docs/) (Mintlify) and engineering no
 
 ## 1. Product thesis
 
-**Visual, natural-language mobile QA.** An agent tests iOS/Android apps and games from screenshots (and optional cleaned accessibility trees for coding agents), without locator scripts. Device control is **Appium under the hood** ([Appium capabilities](https://yoqa.arisn.dev/guide/best-practices-appium-capabilities)): XCUITest (iOS) / UiAutomator2 (Android).
+**Visual, natural-language mobile QA.** An agent tests iOS/Android apps and games from screenshots (and optional cleaned accessibility trees for coding agents), without locator scripts. Device control is **Appium under the hood**: XCUITest (iOS) / UiAutomator2 (Android).
 
 Two complementary modes:
 
@@ -42,9 +42,6 @@ Two complementary modes:
 - Gestures: tap / double / long-press, swipe, drag, text input
 - App lifecycle: activate, terminate, restart, background
 - System: open URL/deeplink, accept/dismiss alerts
-- **Custom Appium capabilities** (app-level + case-level; case overrides app):
-  - e.g. `appium:autoLaunch=false`
-  - Android: `appium:appActivity`, `appium:appWaitActivity` (wildcards)
 
 ### 2.3 Screen reading (for coding agents)
 
@@ -74,13 +71,11 @@ Perception → Decision → Action loop from **screenshots** ([how it works](htt
 App
 ├── identifiers: name, bundle_id / package_name, store ids
 ├── app_context (shared rules, credentials, screen names)
-├── appium_capabilities (defaults)
 ├── Tags
 ├── Reusable Flows (name, instructions, result)
 ├── Test Cases
 │   ├── title, tags[]
-│   ├── flows[] → inline {instructions, result} OR {id: reusableFlowId}
-│   └── case-level appium_capabilities (override)
+│   └── flows[] → inline {instructions, result} OR {id: reusableFlowId}
 └── Builds (.ipa/.app/.apk, metadata)
 Runs
 └── cases[] → per-test pass/fail, steps, screenshots/video
@@ -222,10 +217,6 @@ services/runner/src/
 ```text
 connect(device_id):
   resolve platform + udid
-  merge capabilities:
-    defaults
-    + app-level caps
-    + case-level caps (on run)
   create Appium session (XCUITest | UiAutomator2)
   store session in ActiveSession registry
 
@@ -238,12 +229,6 @@ screen(cleaned=True):
   source = driver.page_source / get_page_source
   if cleaned: filter noise, emit {label, type, bounds_rel_0_1000}[]
   else: return raw
-```
-
-**Capability merge** (see [Appium capabilities](https://yoqa.arisn.dev/guide/best-practices-appium-capabilities)):
-
-```
-effective = defaults ∪ app.caps ∪ case.caps   # later keys win
 ```
 
 ### 4.2 Cleaned element tree
@@ -554,14 +539,13 @@ Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done
 | [Device preparation](https://yoqa.arisn.dev/docs/device-preparation) | Xcode/adb readiness checks | [ ] |
 | [Local builds](https://yoqa.arisn.dev/docs/local-builds) | `.ipa/.app/.apk` register & install | [ ] |
 | [Apps](https://yoqa.arisn.dev/docs/apps) | name, bundle/package, store ids, context | [ ] |
-| [Test cases](https://yoqa.arisn.dev/docs/test-cases) | flows, tags, case Appium caps | [ ] |
+| [Test cases](https://yoqa.arisn.dev/docs/test-cases) | flows, tags | [ ] |
 | [CLI](https://yoqa.arisn.dev/docs/cli) | devices/screen/action/apps/cases/flows/builds/runs | [~] |
 | [CLI for agents](https://yoqa.arisn.dev/guide/cli-for-agents) | skill + inspect→act→verify | [~] |
 | [How agent works](https://yoqa.arisn.dev/guide/how-yoqa-agent-works) | perception loop, memory, limits | [ ] |
 | [Writing test cases](https://yoqa.arisn.dev/guide/writing-test-cases) | app_context, reusable flows | [ ] |
 | Local vs cloud | capability matrix | [ ] |
 | Cloud / Cloud builds / CI/CD | farm, upload, pipeline | [ ] |
-| [Appium capabilities](https://yoqa.arisn.dev/guide/best-practices-appium-capabilities) | merge + autoLaunch/activity | [~] |
 | Best practices: [state](https://yoqa.arisn.dev/guide/best-practices-app-state), [cross-app](https://yoqa.arisn.dev/guide/best-practices-cross-app), [cross-platform](https://yoqa.arisn.dev/guide/best-practices-cross-platform), [games](https://yoqa.arisn.dev/guide/best-practices-games), [IAP](https://yoqa.arisn.dev/guide/best-practices-iap), [non-native](https://yoqa.arisn.dev/guide/best-practices-non-native-ui) | product behaviors / guides | [ ] |
 
 ### Public API (planned)
@@ -578,7 +562,6 @@ Legend: `[ ]` not started · `[~]` Phase 1 scoped · `[x]` done
 
 ## References
 
-- [Appium Capabilities](https://yoqa.arisn.dev/guide/best-practices-appium-capabilities)
 - [How Yoqa agent works](https://yoqa.arisn.dev/guide/how-yoqa-agent-works)
 - [CLI](https://yoqa.arisn.dev/docs/cli)
 - [CLI for agents](https://yoqa.arisn.dev/guide/cli-for-agents)
