@@ -79,7 +79,7 @@ export function devtoolsTreeToDump(
 export const DEVTOOLS_PACKAGE = "yoqa.android.devtools";
 const DEVTOOLS_INSTRUMENTATION = `${DEVTOOLS_PACKAGE}/.DevtoolsInstrumentation`;
 /** Bump with `versionCode` in `native/android-devtools/app/build.gradle.kts`. */
-export const DEVTOOLS_VERSION_CODE = 1;
+export const DEVTOOLS_VERSION_CODE = 2;
 /** The port the helper listens on, on the device's loopback. */
 export const DEVTOOLS_DEVICE_PORT = 7421;
 
