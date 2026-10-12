@@ -270,14 +270,17 @@ export async function acquireSessionForRun(options: {
 			current.session.setTargetApp(targetAppFor(options));
 			return { session: current.session, shared: true };
 		}
-		console.warn(
-			`[yoqa-runner] active session for ${options.deviceId} is dead — creating a fresh one for the run`,
-		);
-		await disconnectDevice().catch(() => undefined);
 	}
 
 	if (options.requestedLane === "appium") {
 		refuseAppiumRequest();
+	}
+
+	if (current && current.deviceId === options.deviceId) {
+		console.warn(
+			`[yoqa-runner] active session for ${options.deviceId} is dead — creating a fresh one for the run`,
+		);
+		await disconnectDevice().catch(() => undefined);
 	}
 
 	if (active) {
