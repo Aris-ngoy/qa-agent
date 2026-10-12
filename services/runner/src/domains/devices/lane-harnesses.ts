@@ -356,6 +356,11 @@ export function iosDeviceLane(): LaneHarness {
 		},
 	});
 	runner.unref();
+	// A dead tool on this Lane is the YoqaRunner process exiting, not a cable miss on a frame.
+	let reportExit: (code: number) => void = () => undefined;
+	const exited = new Promise<number>((resolve) => {
+		reportExit = resolve;
+	});
 	return {
 		name: "Physical iOS Direct: device-ios (faked YoqaRunner)",
 		open: ({ onSessionDead }) =>
@@ -370,7 +375,7 @@ export function iosDeviceLane(): LaneHarness {
 				{
 					startRunner: async () => ({
 						port: 49_733,
-						exited: new Promise<number>(() => undefined),
+						exited,
 						stop: async () => undefined,
 					}),
 					connect: async () => createConnection(runner.port ?? 0, "127.0.0.1"),
@@ -381,6 +386,7 @@ export function iosDeviceLane(): LaneHarness {
 		frame: (count) => frameAfterTaps(count, IOS_SCREENSHOT_SCALE),
 		killTool: () => {
 			runner.stop(true);
+			reportExit(1);
 		},
 	};
 }
