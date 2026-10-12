@@ -165,9 +165,6 @@ export async function createIosDeviceSession(
 
 	let quitting = false;
 	let stopping: Promise<void> | null = null;
-	void runner.exited.then(() => {
-		if (!quitting) options.onSessionDead?.();
-	});
 
 	let chain: Promise<unknown> = Promise.resolve();
 	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -187,6 +184,7 @@ export async function createIosDeviceSession(
 
 	/** A runner the cable no longer reaches is a Dead Session, reported once. */
 	let notifiedDead = false;
+	let sessionEnded: DeadSessionError | null = null;
 	const graceMs = deps.unreachableGraceMs ?? UNREACHABLE_GRACE_MS;
 	let unreachableSince: number | null = null;
 	/**
@@ -206,12 +204,19 @@ export async function createIosDeviceSession(
 			);
 			options.onSessionDead?.();
 		}
-		return Object.assign(
+		sessionEnded = Object.assign(
 			new DeadSessionError(`Device session ended: ${error.message}`, { cause: error }),
 			{ unreachableMs, graceMs },
 		);
+		return sessionEnded;
 	};
+	// The process exiting ends the Device Session; later gestures and Inspector reads both
+	// surface as a Dead Session (a cable miss on a read alone does not).
+	void runner.exited.then(() => {
+		if (!quitting) dead(new Error("YoqaRunner exited"));
+	});
 	const call = async (command: string, fields?: Record<string, unknown>, journaled = false) => {
+		if (sessionEnded) throw sessionEnded;
 		try {
 			const reply = await controlLink.send(command, fields, { journaled });
 			unreachableSince = null;
@@ -247,6 +252,7 @@ export async function createIosDeviceSession(
 	let inspectorUnreachableSince: number | null = null;
 	let inspectorGraceLogged = false;
 	const inspect = async (command: string, fields?: Record<string, unknown>) => {
+		if (sessionEnded) throw sessionEnded;
 		try {
 			const reply = await inspectorLink.send(command, fields);
 			inspectorUnreachableSince = null;

@@ -150,6 +150,7 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 	test("a runner that exits on its own is a Dead Session", async () => {
 		const phone = fakePhone();
 		let dead = 0;
+		const log = spyOn(console, "error").mockImplementation(() => {});
 		const session = await createIosDeviceSession(
 			options(PHONE_UDID, {
 				onSessionDead: () => {
@@ -161,6 +162,11 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		phone.runnerExits();
 		await Bun.sleep(0);
 		expect(dead).toBe(1);
+		const frameError = await session.captureFrame().catch((caught: unknown) => caught);
+		const tapError = await session.tap(500, 500).catch((caught: unknown) => caught);
+		log.mockRestore();
+		expect(frameError).toBeInstanceOf(DeadSessionError);
+		expect(tapError).toBeInstanceOf(DeadSessionError);
 		await session.quit();
 	});
 
