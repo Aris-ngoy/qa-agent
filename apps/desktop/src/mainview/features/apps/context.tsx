@@ -11,12 +11,6 @@ import {
 	useState,
 } from "react";
 
-export type AppiumCapability = {
-	id: string;
-	key: string;
-	value: string;
-};
-
 export type Application = {
 	id: string;
 	name: string;
@@ -25,19 +19,12 @@ export type Application = {
 	iosBundleId: string;
 	iosAppStoreId: string;
 	androidApplicationId: string;
-	capabilities: AppiumCapability[];
 };
 
 export type ApplicationUpdates = Partial<
 	Pick<
 		Application,
-		| "name"
-		| "context"
-		| "knowledge"
-		| "iosBundleId"
-		| "iosAppStoreId"
-		| "androidApplicationId"
-		| "capabilities"
+		"name" | "context" | "knowledge" | "iosBundleId" | "iosAppStoreId" | "androidApplicationId"
 	>
 >;
 
@@ -66,7 +53,6 @@ function mapCatalogApp(app: CatalogApp): Application {
 		iosBundleId: app.iosBundleId,
 		iosAppStoreId: app.iosAppStoreId,
 		androidApplicationId: app.androidApplicationId,
-		capabilities: app.capabilities.map((cap) => ({ ...cap })),
 	};
 }
 

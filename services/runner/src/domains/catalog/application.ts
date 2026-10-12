@@ -1,5 +1,4 @@
 import {
-	type Capability,
 	type CaseFlowStep,
 	type CaseRunStatus,
 	type CatalogApp,
@@ -18,33 +17,10 @@ import {
 import { and, asc, desc, eq, max } from "drizzle-orm";
 import { parseCaseScript } from "../runs/script";
 import { getCatalogDb } from "./db";
-import { type CapabilityRow, apps, caseFlows, caseTags, cases, flows, tags } from "./schema";
+import { apps, caseFlows, caseTags, cases, flows, tags } from "./schema";
 
 function newId(prefix: string): string {
 	return `${prefix}_${crypto.randomUUID()}`;
-}
-
-function parseCapabilities(raw: string): Capability[] {
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		if (!Array.isArray(parsed)) return [];
-		return parsed
-			.filter(
-				(item): item is CapabilityRow =>
-					typeof item === "object" &&
-					item !== null &&
-					typeof (item as CapabilityRow).id === "string" &&
-					typeof (item as CapabilityRow).key === "string" &&
-					typeof (item as CapabilityRow).value === "string",
-			)
-			.map((item) => ({ id: item.id, key: item.key, value: item.value }));
-	} catch {
-		return [];
-	}
-}
-
-function serializeCapabilities(caps: Capability[]): string {
-	return JSON.stringify(caps.map((cap) => ({ id: cap.id, key: cap.key, value: cap.value })));
 }
 
 function mapApp(row: typeof apps.$inferSelect): CatalogApp {
@@ -57,7 +33,7 @@ function mapApp(row: typeof apps.$inferSelect): CatalogApp {
 		iosBundleId: row.iosBundleId,
 		iosAppStoreId: row.iosAppStoreId,
 		androidApplicationId: row.androidApplicationId,
-		capabilities: parseCapabilities(row.appiumCaps),
+		capabilities: [],
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 	};
@@ -162,7 +138,7 @@ async function loadCaseDetail(caseId: string): Promise<CatalogCase | null> {
 		name: row.title,
 		tags: tagRows.map((t) => t.name),
 		flows: steps,
-		capabilities: parseCapabilities(row.appiumCaps),
+		capabilities: [],
 		recordVideo: row.recordVideo === 1,
 		hasScript: script !== null,
 		scriptSavedAt: row.scriptSavedAt ?? null,
@@ -341,10 +317,6 @@ export async function updateApp(appId: string, input: UpdateAppRequest): Promise
 			iosBundleId: input.iosBundleId ?? existing.iosBundleId,
 			iosAppStoreId: input.iosAppStoreId ?? existing.iosAppStoreId,
 			androidApplicationId: input.androidApplicationId ?? existing.androidApplicationId,
-			appiumCaps:
-				input.capabilities !== undefined
-					? serializeCapabilities(input.capabilities)
-					: existing.appiumCaps,
 			updatedAt: Date.now(),
 		})
 		.where(eq(apps.id, appId));
@@ -418,7 +390,7 @@ export async function createCase(appId: string, input: CreateCaseRequest): Promi
 		appId,
 		number,
 		title: name,
-		appiumCaps: serializeCapabilities(input.capabilities ?? []),
+		appiumCaps: "[]",
 		recordVideo: input.recordVideo ? 1 : 0,
 		lastRunAt: null,
 		lastRunStatus: null,
@@ -456,10 +428,6 @@ export async function updateCase(caseId: string, input: UpdateCaseRequest): Prom
 		.update(cases)
 		.set({
 			title: name,
-			appiumCaps:
-				input.capabilities !== undefined
-					? serializeCapabilities(input.capabilities)
-					: existing.appiumCaps,
 			...(input.recordVideo !== undefined ? { recordVideo: input.recordVideo ? 1 : 0 } : {}),
 			...(input.script !== undefined
 				? input.script === null
