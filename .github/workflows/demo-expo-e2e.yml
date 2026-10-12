@@ -96,6 +96,18 @@ jobs:
         working-directory: examples/expo-demo
         run: npm ci
 
+      # The iOS simulator Direct lane drives the simulator through idb_companion; without it
+      # `yoqa devices connect` fails. Pinned release + checksums live in install-idb.sh.
+      - name: Restore cached idb
+        id: idb
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.yoqa/idb
+          key: idb-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('examples/expo-demo/yoqa/install-idb.sh') }}
+
+      - name: Install idb
+        run: bash examples/expo-demo/yoqa/install-idb.sh
+
       - name: Start Yoqa runner
         run: |
           yoqa health
