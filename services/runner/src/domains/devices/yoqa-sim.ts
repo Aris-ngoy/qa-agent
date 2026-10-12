@@ -181,13 +181,22 @@ export async function spawnYoqaSim(udid: string, options: SpawnYoqaSimOptions): 
 		}),
 	]).finally(() => clearTimeout(timer));
 
+	/** The last stderr lines, or "" when the pipe stays open past the grace period. */
+	const stderrTail = async () => {
+		const text = await Promise.race([stderr, Bun.sleep(STOP_GRACE_MS).then(() => "")]);
+		return text.trim().split("\n").slice(-3).join(" ");
+	};
+
 	if (announced === "timeout") {
 		await stop();
-		throw new Error(`yoqa-sim printed no api_ready within ${timeoutMs} ms`);
+		const detail = await stderrTail();
+		throw new Error(
+			`yoqa-sim printed no api_ready within ${timeoutMs} ms${detail ? `: ${detail}` : ""}`,
+		);
 	}
 	if (!announced) {
 		const code = await proc.exited;
-		const detail = (await stderr).trim().split("\n").slice(-3).join(" ");
+		const detail = await stderrTail();
 		stopped = true;
 		throw new Error(`yoqa-sim exited (${code}) before api_ready${detail ? `: ${detail}` : ""}`);
 	}

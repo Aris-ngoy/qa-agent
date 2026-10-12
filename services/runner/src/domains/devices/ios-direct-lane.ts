@@ -24,6 +24,8 @@ import { type SpawnYoqaSim, type YoqaSim, YoqaSimUnreachableError } from "./yoqa
 
 const IOS_ACCEPT_LABELS = ["Allow While Using App", "Allow Once", "Allow", "OK"] as const;
 const IOS_DISMISS_LABELS = ["Don't Allow", "Don’t Allow", "Don't allow"] as const;
+/** What `type` sends per idb call: a whole emoji or accented letter, never half of one. */
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 export type IdbResult = {
 	stdout: string;
@@ -455,9 +457,16 @@ export async function createIosDirectSession(
 		await withActionLock(() => swipeNorm(x1, y1, x2, y2, durationMs));
 	};
 
+	/**
+	 * One `idb ui text` per character. A single call sends every key at once, and a
+	 * controlled React Native TextInput keeps only the first: its re-render for "A" lands
+	 * while "da" is in flight and resets the field. Each call's own spawn spaces the keys.
+	 */
 	const type = async (text: string) => {
 		await withActionLock(async () => {
-			await run(["ui", "text", text, "--udid", udid], "idb ui text");
+			for (const { segment } of graphemes.segment(text)) {
+				await run(["ui", "text", segment, "--udid", udid], "idb ui text");
+			}
 		});
 	};
 
