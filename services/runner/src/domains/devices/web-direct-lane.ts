@@ -152,17 +152,22 @@ export async function createWebDirectSession(
 		return { x: (xNorm / 1000) * viewport.width, y: (yNorm / 1000) * viewport.height };
 	};
 
+	/** A left-button mouse event; only a press holds the button down. */
 	const mouse = (
 		type: "mousePressed" | "mouseReleased" | "mouseMoved",
 		point: { x: number; y: number },
-	) =>
-		call("Input.dispatchMouseEvent", {
+	) => {
+		if (type === "mouseMoved") {
+			return call("Input.dispatchMouseEvent", { type, ...point, button: "none", buttons: 0 });
+		}
+		return call("Input.dispatchMouseEvent", {
 			type,
 			...point,
-			button: type === "mouseMoved" ? "none" : "left",
-			buttons: type === "mouseReleased" ? 0 : type === "mousePressed" ? 1 : 0,
-			...(type === "mouseMoved" ? {} : { clickCount: 1 }),
+			button: "left",
+			buttons: type === "mousePressed" ? 1 : 0,
+			clickCount: 1,
 		});
+	};
 
 	const click = async (xNorm: number, yNorm: number, holdMs = 0) => {
 		const point = await toPage(xNorm, yNorm);
