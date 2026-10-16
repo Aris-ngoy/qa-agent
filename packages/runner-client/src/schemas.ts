@@ -9,7 +9,11 @@ export const healthResponseSchema = z.object({
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
-export const devicePlatformSchema = z.union([z.literal("ios"), z.literal("android")]);
+export const devicePlatformSchema = z.union([
+	z.literal("ios"),
+	z.literal("android"),
+	z.literal("web"),
+]);
 export type DevicePlatform = z.infer<typeof devicePlatformSchema>;
 
 export const laneNameSchema = z.literal("direct");
@@ -19,6 +23,7 @@ export const deviceKindSchema = z.union([
 	z.literal("physical"),
 	z.literal("simulator"),
 	z.literal("emulator"),
+	z.literal("browser"),
 ]);
 export type DeviceKind = z.infer<typeof deviceKindSchema>;
 

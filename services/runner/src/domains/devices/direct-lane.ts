@@ -11,6 +11,7 @@ import {
 	directImplementationOrder,
 	directOptIn,
 } from "./select-lane";
+import { createWebDirectSession } from "./web-direct-lane";
 import { type StartYoqaAx, resolveYoqaAxBin, startYoqaAx } from "./yoqa-ax";
 import { resolveYoqaSimBin, spawnYoqaSim } from "./yoqa-sim";
 
@@ -77,6 +78,8 @@ export function deviceClassFor(platform: DevicePlatform, deviceId: string): Devi
 			return "android";
 		case "ios":
 			return looksLikePhysicalIosUdid(deviceId) ? "ios-device" : "ios-simulator";
+		case "web":
+			return "web";
 	}
 }
 
@@ -131,6 +134,14 @@ export const DIRECT_IMPLEMENTATIONS: Record<DeviceClass, DirectImplementation[]>
 			name: "device-ios",
 			promoted: true,
 			open: (options) => createIosDeviceSession(options),
+		},
+	],
+	web: [
+		{
+			// CDP straight to a Chromium browser the user started with a debug port (ADR-0007).
+			name: "cdp",
+			promoted: true,
+			open: (options) => createWebDirectSession(options),
 		},
 	],
 };

@@ -8,6 +8,8 @@ export function platformLabel(platform: Run["platform"] | Device["platform"]): s
 			return "iOS";
 		case "android":
 			return "Android";
+		case "web":
+			return "Web";
 	}
 }
 

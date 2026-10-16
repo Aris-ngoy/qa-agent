@@ -14,6 +14,10 @@ describe("appStartTarget", () => {
 		expect(appStartTarget({ ...app, androidApplicationId: "" }, "android")).toBeUndefined();
 		expect(appStartTarget(null, "ios")).toBeUndefined();
 	});
+
+	test("is undefined on web, where an App has no start target yet", () => {
+		expect(appStartTarget(app, "web")).toBeUndefined();
+	});
 });
 
 describe("startTargetRequest", () => {
@@ -27,5 +31,6 @@ describe("startTargetRequest", () => {
 	test("names no field without a start target", () => {
 		expect(startTargetRequest("ios", undefined)).toEqual({});
 		expect(startTargetRequest("android", undefined)).toEqual({});
+		expect(startTargetRequest("web", "https://example.com")).toEqual({});
 	});
 });

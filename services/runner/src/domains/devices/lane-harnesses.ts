@@ -6,10 +6,12 @@ import { createConnection } from "node:net";
 import { encodeRgbaPng } from "../runs/coord-grid";
 import type { AdbExec, AdbResult, AndroidDirectDeps } from "./android-direct-lane";
 import { createAndroidDirectSession } from "./android-direct-lane";
+import { startFakeCdp } from "./fake-cdp";
 import { createIosDeviceSession } from "./ios-device-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
 import type { DeviceSession } from "./lane";
+import { createWebDirectSession } from "./web-direct-lane";
 import type { StartYoqaAx } from "./yoqa-ax";
 import { type SpawnYoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
@@ -341,5 +343,36 @@ export function iosDeviceLane(): LaneHarness {
 			runner.stop(true);
 			reportExit(1);
 		},
+	};
+}
+
+/**
+ * Web Direct: a user-started Chromium attached by its debug port, faked as a local CDP
+ * endpoint. Clicks are recorded in the page's CSS pixels, and its screenshot is the
+ * viewport at 2× those pixels, as on a Retina display.
+ */
+export function webCdpLane(): LaneHarness {
+	const browser = startFakeCdp({
+		viewport: DEVICE,
+		deviceScaleFactor: 2,
+		nodes: [
+			{
+				role: "button",
+				name: BUTTON.label,
+				box: { x: 0, y: 0, width: 100, height: 40 },
+			},
+		],
+	});
+	return {
+		name: "Web Direct: an attached Chromium (faked CDP endpoint)",
+		open: ({ onSessionDead }) =>
+			createWebDirectSession({
+				platform: "web",
+				deviceId: `chromium-cdp-${browser.port}`,
+				onSessionDead,
+			}),
+		taps: () => browser.clicks,
+		frame: (count) => browser.frame(count),
+		killTool: () => browser.kill(),
 	};
 }

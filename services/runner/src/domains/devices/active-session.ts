@@ -275,7 +275,10 @@ export async function acquireSessionForRun(options: {
 	return { session, shared: true };
 }
 
-/** The app id a session on this platform targets: the iOS bundle id or the Android package. */
+/**
+ * The app id a session on this platform targets: the iOS bundle id or the Android package.
+ * A web session targets no app.
+ */
 function targetAppFor(options: {
 	platform: DevicePlatform;
 	bundleId?: string;
@@ -286,6 +289,8 @@ function targetAppFor(options: {
 			return options.bundleId;
 		case "android":
 			return options.appPackage;
+		case "web":
+			return undefined;
 	}
 }
 

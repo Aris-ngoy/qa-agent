@@ -14,12 +14,13 @@ const openByDeviceId = new Map<string, DeviceSession>();
 
 /**
  * Direct: Android over adb, iOS simulator over idb_companion, a cabled iPhone over
- * `YoqaRunner`, each picking its implementation inside the Direct lane (`direct-lane.ts`).
+ * `YoqaRunner`, a Chromium browser over CDP, each picking its implementation inside the Direct lane (`direct-lane.ts`).
  */
 export function defaultLanesFor(platform: DevicePlatform): Partial<Record<LaneName, LaneFactory>> {
 	switch (platform) {
 		case "android":
 		case "ios":
+		case "web":
 			return { direct: defaultDirectLane(platform) };
 	}
 }

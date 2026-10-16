@@ -1,7 +1,12 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
 import { Modal, Tabs } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
-import { type Device, type DevicePlatform, createRunnerClient } from "@yoqa/runner-client";
+import {
+	type Device,
+	type DeviceKind,
+	type DevicePlatform,
+	createRunnerClient,
+} from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useMemo, useState } from "react";
 
 export type { DevicePlatform };
@@ -12,7 +17,7 @@ export type SelectedDevice = {
 	name: string;
 	osVersion: string;
 	platform: DevicePlatform;
-	kind: "physical" | "simulator" | "emulator";
+	kind: DeviceKind;
 };
 
 type DeviceTab = "local" | "simulators";
@@ -23,7 +28,7 @@ type DeviceRow = {
 	owner?: string;
 	osVersion: string;
 	state?: string;
-	kind: "physical" | "simulator" | "emulator";
+	kind: DeviceKind;
 	/** Listed but not a target (e.g. an iPhone paired over Wi-Fi only); shown instead of picking it. */
 	unavailableReason?: string;
 };
@@ -63,6 +68,14 @@ const PLATFORM_COPY: Record<
 			"Device is unlocked",
 			"This computer is authorized for debugging",
 			"Device is connected to the internet",
+		],
+	},
+	web: {
+		title: "Select Device — Web",
+		simulatorLabel: "Browsers",
+		localChecklist: [
+			"Chrome, Edge or Brave is started with --remote-debugging-port",
+			"It uses a non-default profile (--user-data-dir)",
 		],
 	},
 };

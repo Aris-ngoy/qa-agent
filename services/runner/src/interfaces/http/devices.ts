@@ -14,7 +14,7 @@ export function createDevicesRoutes() {
 		const parsedPlatform = devicePlatformSchema.safeParse(platformParam);
 		if (!parsedPlatform.success) {
 			return c.json(
-				{ error: "Query param platform is required and must be 'ios' or 'android'" },
+				{ error: "Query param platform is required and must be 'ios', 'android' or 'web'" },
 				400,
 			);
 		}
