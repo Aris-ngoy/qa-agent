@@ -58,6 +58,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [desktop/dark-mode-coverage.md](./desktop/dark-mode-coverage.md) | Hardcoded colors migrated to tokens + a guard test |
 | [desktop/theme-and-collapsible-sidebar.md](./desktop/theme-and-collapsible-sidebar.md) | Dark sidebar card styling + overview of the theme/side-menu feature set |
 | [runs/wda-rebuild-skip.md](./runs/wda-rebuild-skip.md) | Runs panel Skip/Rebuild → iOS WDA `--force` |
+| [agents/sandcastle.md](./agents/sandcastle.md) | Sandcastle AFK agents on `ready-for-agent` tickets, landing on an integration branch |
 | [runs/vision-no-screenshot-fail.md](./runs/vision-no-screenshot-fail.md) | Harden agent against “no screenshot” hallucinations |
 | [runs/vision-first-screen-mode.md](./runs/vision-first-screen-mode.md) | Run agent decides from the screenshot and `x,y`; tree is opt-in (`screenMode`) |
 | [runs/game-tap-grid.md](./runs/game-tap-grid.md) | Coordinate grid so game taps use the screenshot point |

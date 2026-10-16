@@ -14,7 +14,9 @@
 			"**/.build/**",
 			"**/view-transition-types.css",
 			"examples/expo-demo/**",
-			"apps/video/**"
+			"apps/video/**",
+			".sandcastle/worktrees/**",
+			".sandcastle/logs/**"
 		]
 	},
 	"formatter": {
