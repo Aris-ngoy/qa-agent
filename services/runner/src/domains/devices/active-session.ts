@@ -281,7 +281,12 @@ function targetAppFor(options: {
 	bundleId?: string;
 	appPackage?: string;
 }): string | undefined {
-	return options.platform === "ios" ? options.bundleId : options.appPackage;
+	switch (options.platform) {
+		case "ios":
+			return options.bundleId;
+		case "android":
+			return options.appPackage;
+	}
 }
 
 /**

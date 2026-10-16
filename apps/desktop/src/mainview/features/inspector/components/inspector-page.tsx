@@ -8,7 +8,11 @@ import { useInspectorFeed } from "@/features/inspector/hooks/use-inspector-feed"
 import { useScriptSession } from "@/features/inspector/hooks/use-script-session";
 import { defaultCaseNameFromScript, scriptHasBody } from "@/features/inspector/utils/script-text";
 import { useValue } from "@legendapp/state/react";
-import { formatCaseScriptFileErrors, parseCaseScriptFile } from "@yoqa/runner-client";
+import {
+	appStartTarget,
+	formatCaseScriptFileErrors,
+	parseCaseScriptFile,
+} from "@yoqa/runner-client";
 import { useMemo } from "react";
 
 export function InspectorPage() {
@@ -34,12 +38,10 @@ export function InspectorPage() {
 	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(scriptText);
 	const snippetContext = useMemo(
 		() => ({
-			defaultAppId:
-				feed.active?.platform === "android"
-					? (selectedApp?.androidApplicationId.trim() ?? "")
-					: (selectedApp?.iosBundleId.trim() ?? ""),
+			// Without a session the snippets name the iOS bundle id.
+			defaultAppId: appStartTarget(selectedApp, feed.active?.platform ?? "ios") ?? "",
 		}),
-		[feed.active?.platform, selectedApp?.androidApplicationId, selectedApp?.iosBundleId],
+		[feed.active?.platform, selectedApp],
 	);
 
 	return (

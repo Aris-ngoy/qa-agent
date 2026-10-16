@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Device } from "@yoqa/runner-client";
+import type { Device, DevicePlatform } from "@yoqa/runner-client";
 import { resolveAndroidSdkRoot } from "../android-toolchain/android-sdk";
 import {
 	type AndroidIdentity,
@@ -483,9 +483,13 @@ export async function listAndroidDevices(options: ListDevicesOptions = {}): Prom
 }
 
 export async function listDevices(
-	platform: "ios" | "android",
+	platform: DevicePlatform,
 	options: ListDevicesOptions = {},
 ): Promise<Device[]> {
-	if (platform === "ios") return listIosDevices(options);
-	return listAndroidDevices(options);
+	switch (platform) {
+		case "ios":
+			return listIosDevices(options);
+		case "android":
+			return listAndroidDevices(options);
+	}
 }

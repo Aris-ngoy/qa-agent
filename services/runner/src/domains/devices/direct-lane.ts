@@ -72,8 +72,12 @@ export function createDirectLane(
 
 /** The device class a device belongs to; a physical iPhone is told apart by its UDID. */
 export function deviceClassFor(platform: DevicePlatform, deviceId: string): DeviceClass {
-	if (platform === "android") return "android";
-	return looksLikePhysicalIosUdid(deviceId) ? "ios-device" : "ios-simulator";
+	switch (platform) {
+		case "android":
+			return "android";
+		case "ios":
+			return looksLikePhysicalIosUdid(deviceId) ? "ios-device" : "ios-simulator";
+	}
 }
 
 /**

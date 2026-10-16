@@ -11,7 +11,7 @@ import type {
 	RunTestStatus,
 	StepPhases,
 } from "@yoqa/runner-client";
-import { stepPhasesSchema } from "@yoqa/runner-client";
+import { appStartTarget, startTargetRequest, stepPhasesSchema } from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
 import { getApp, getCase, getCaseScriptJson, saveCaseScript } from "../catalog/application";
@@ -503,14 +503,14 @@ export async function executeRun(runId: string): Promise<void> {
 
 		const runRow = (await db.select().from(runs).where(eq(runs.id, runId)))[0];
 		const requestedLane = runRow?.requestedLane;
+		const startTarget = appStartTarget(app, run.platform);
 		// Adopt the shared Active Session when it already targets this device;
 		// otherwise connect (replacing any unheld session) and keep it live after.
 		const acquired = await acquireSessionForRun({
 			runId,
 			deviceId: run.deviceId,
 			platform: run.platform,
-			bundleId: app.iosBundleId || undefined,
-			appPackage: app.androidApplicationId || undefined,
+			...startTargetRequest(run.platform, startTarget),
 			requestedLane:
 				requestedLane === "direct" || requestedLane === "auto" ? requestedLane : undefined,
 		});
@@ -574,10 +574,7 @@ export async function executeRun(runId: string): Promise<void> {
 						auth,
 						caseMode,
 						screenMode: run.screenMode ?? "tree",
-						defaultAppId:
-							run.platform === "ios"
-								? app.iosBundleId || undefined
-								: app.androidApplicationId || undefined,
+						defaultAppId: startTarget,
 					}),
 			);
 			// The Run was deleted while this case was recording; do not leave its video behind.
