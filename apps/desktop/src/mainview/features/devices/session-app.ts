@@ -1,17 +1,17 @@
 import type { Application } from "@/features/apps/context";
 import {
 	type ActiveDeviceResponse,
+	type DevicePlatform,
 	type RetargetDeviceRequest,
 	appStartTarget,
 	startTargetRequest,
 } from "@yoqa/runner-client";
-import type { DevicePlatform } from "./select-device-modal";
 
 type SessionHold = Pick<ActiveDeviceResponse, "deviceId" | "connectedAt" | "heldByRun">;
 
 /**
  * The app a session on `platform` targets, as connect and retarget requests name it: the
- * App's start target in the field its platform reads (as the runner's `targetAppFor` reads them).
+ * App's start target in the field the runner's `targetAppFor` reads for that platform.
  * Empty when the app has no id for that platform.
  */
 export function appTargetFor(
