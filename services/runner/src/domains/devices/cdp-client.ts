@@ -124,12 +124,13 @@ export async function connectCdp(
 	url: string,
 	options: { commandTimeoutMs?: number; connectTimeoutMs?: number } = {},
 ): Promise<CdpClient> {
+	const connectTimeoutMs = options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS;
 	const socket = new WebSocket(url);
 	await new Promise<void>((resolve, reject) => {
 		const timer = setTimeout(() => {
 			socket.close();
-			reject(new Error(`No DevTools socket at ${url} within ${CONNECT_TIMEOUT_MS} ms`));
-		}, options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS);
+			reject(new Error(`No DevTools socket at ${url} within ${connectTimeoutMs} ms`));
+		}, connectTimeoutMs);
 		socket.addEventListener("open", () => {
 			clearTimeout(timer);
 			resolve();

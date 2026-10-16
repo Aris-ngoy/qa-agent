@@ -7,11 +7,6 @@
 const ATTACH_ID = /^chromium-cdp-(\d{1,5})$/;
 const PROBE_TIMEOUT_MS = 2_000;
 
-/** The device id of a user-started Chromium on `port`. */
-export function chromiumCdpDeviceId(port: number): string {
-	return `chromium-cdp-${port}`;
-}
-
 /** The debug port an attach device id names, or null when it is not one. */
 export function attachPortOf(deviceId: string): number | null {
 	const match = ATTACH_ID.exec(deviceId);
