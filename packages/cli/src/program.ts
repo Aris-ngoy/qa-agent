@@ -45,7 +45,7 @@ import {
 	shouldSkipAutostart,
 	stopOwnedRunner,
 } from "./ensure-runner";
-import { PLATFORM_DEVICES_DESCRIPTION, parsePlatform } from "./platform";
+import { PLATFORM_DEVICES_DESCRIPTION, connectPlatform, parsePlatform } from "./platform";
 import {
 	DEFAULT_RUN_WAIT_TIMEOUT_SECONDS,
 	type ReportCommandOptions,
@@ -315,8 +315,8 @@ for (const platform of Object.keys(PLATFORM_DEVICES_DESCRIPTION) as DevicePlatfo
 devices
 	.command("connect")
 	.description("Open a Device Session on a device")
-	.argument("<deviceId>", "Device UDID / serial")
-	.requiredOption("--platform <platform>", "ios | android")
+	.argument("<deviceId>", "Device UDID / serial, or chromium-cdp-<port> for a Chromium you started")
+	.option("--platform <platform>", "ios | android | web (web for chromium-cdp-<port>)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
@@ -327,7 +327,7 @@ devices
 			deviceId: string,
 			options: {
 				baseUrl: string;
-				platform: string;
+				platform?: string;
 				bundleId?: string;
 				appPackage?: string;
 				lane?: string;
@@ -335,7 +335,7 @@ devices
 			},
 		) => {
 			try {
-				const platform = parsePlatform(options.platform);
+				const platform = connectPlatform(deviceId, options.platform);
 				const lane = options.lane;
 				if (lane != null && lane !== "direct" && lane !== "auto") {
 					throw new Error("--lane must be direct or auto");
@@ -1915,6 +1915,7 @@ program
 		}) => {
 			try {
 				const platform = parsePlatform(options.platform);
+				if (platform === "web") throw new Error("benchmark runs on ios or android only");
 				const lane =
 					options.lane === "direct" || options.lane === "auto" ? options.lane : undefined;
 				if (options.lane && !lane) throw new Error("--lane must be direct or auto");

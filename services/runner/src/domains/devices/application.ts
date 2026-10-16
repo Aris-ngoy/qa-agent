@@ -491,5 +491,9 @@ export async function listDevices(
 			return listIosDevices(options);
 		case "android":
 			return listAndroidDevices(options);
+		case "web":
+			// Nothing lists a user-started browser's debug port: it is attached by naming the
+			// port (`chromium-cdp-<port>`), never found by a scan.
+			return [];
 	}
 }

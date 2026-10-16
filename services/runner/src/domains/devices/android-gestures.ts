@@ -70,6 +70,7 @@ export function screenshotPointerSize(
 ): PointerSize {
 	switch (platform) {
 		case "ios":
+		case "web":
 			return window;
 		case "android":
 			if (!screenshot || screenshot.width < 1 || screenshot.height < 1) return window;

@@ -2,7 +2,8 @@ import type { DevicePlatform } from "@yoqa/runner-client";
 
 /**
  * The control path a Device Session uses (see `Lane` in CONTEXT.md and ADR-0005).
- * A Lane is Direct only: Android over adb, an iOS simulator, or a cabled iPhone.
+ * A Lane is Direct only: Android over adb, an iOS simulator, a cabled iPhone, or a
+ * Chromium browser over CDP.
  */
 export type LaneName = "direct";
 

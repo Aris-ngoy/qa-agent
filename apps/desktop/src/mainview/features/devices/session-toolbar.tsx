@@ -11,8 +11,14 @@ import { Button, ListBox, Select } from "@heroui/react";
 import { type ActiveDeviceResponse, devicePlatformSchema } from "@yoqa/runner-client";
 import { type ReactNode, type SVGProps, useState, useSyncExternalStore } from "react";
 
-const PLATFORM_LABELS: Record<DevicePlatform, string> = { ios: "iOS", android: "Android" };
-const PLATFORMS = (Object.keys(PLATFORM_LABELS) as DevicePlatform[]).map((id) => ({
+const PLATFORM_LABELS: Record<DevicePlatform, string> = {
+	ios: "iOS",
+	android: "Android",
+	web: "Web",
+};
+/** The platforms the bar offers. Web joins once the desktop can pick a browser. */
+const PICKER_PLATFORMS: DevicePlatform[] = ["ios", "android"];
+const PLATFORMS = PICKER_PLATFORMS.map((id) => ({
 	id,
 	label: PLATFORM_LABELS[id],
 }));

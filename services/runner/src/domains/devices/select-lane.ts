@@ -28,9 +28,10 @@ export function availableLanes(factories: Partial<Record<LaneName, unknown>>): L
 /**
  * A class of device the Direct lane serves. Each class has its own implementations,
  * newest first (`device-android` before adb, `device-sim` before idb_companion). A cabled
- * physical iPhone (`ios-device`) has one, `device-ios`.
+ * physical iPhone (`ios-device`) has one, `device-ios`, and a Chromium browser (`web`) has
+ * one, `cdp`.
  */
-export type DeviceClass = "android" | "ios-simulator" | "ios-device";
+export type DeviceClass = "android" | "ios-simulator" | "ios-device" | "web";
 
 /** One way the Direct lane can drive a device class. Only `name` and `promoted` matter here. */
 export type DirectImplementationInfo = {
@@ -59,6 +60,7 @@ const OPT_IN_ENV: Record<DeviceClass, string> = {
 	android: "YOQA_DIRECT_ANDROID",
 	"ios-simulator": "YOQA_DIRECT_IOS_SIMULATOR",
 	"ios-device": "YOQA_DIRECT_IOS_DEVICE",
+	web: "YOQA_DIRECT_WEB",
 };
 
 /** The Direct implementation a device class is opted into (`YOQA_DIRECT_ANDROID=device-android`). */

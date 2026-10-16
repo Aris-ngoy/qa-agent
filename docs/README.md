@@ -24,6 +24,8 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [adr/0002-provider-vision-capability.md](./adr/0002-provider-vision-capability.md) | Provider adapters + runner catalog |
 | [adr/0003-case-executor-test-seam.md](./adr/0003-case-executor-test-seam.md) | Case executor as Run test seam |
 | [adr/0006-case-script-file-yaml.md](./adr/0006-case-script-file-yaml.md) | A Case Script file is YAML; no separate Flow model |
+| [adr/0007-web-direct-lane-over-cdp.md](./adr/0007-web-direct-lane-over-cdp.md) | Web is a Direct lane over CDP to a Chromium browser |
+| [devices/web-attach-by-port.md](./devices/web-attach-by-port.md) | Web tracer bullet: attach a user-started Chromium by port, screenshot/tap/input/open-url |
 | [runs/selection-and-runs-mvp.md](./runs/selection-and-runs-mvp.md) | Test case selection + local `POST /runs` MVP |
 | [runs/ai-sdk-vision.md](./runs/ai-sdk-vision.md) | Vision decide + grounding via Vercel AI SDK |
 | [runs/cursor-vision-cli.md](./runs/cursor-vision-cli.md) | Cursor Agent CLI vision decide + grounding |

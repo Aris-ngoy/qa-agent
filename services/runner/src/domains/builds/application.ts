@@ -134,6 +134,8 @@ export async function installBuildOnDevice(options: {
 			return installIosBuild(build, deviceId);
 		case "android":
 			return installAndroidBuild(build, deviceId);
+		case "web":
+			throw new Error("A web device has no Builds to install");
 		default:
 			throw new Error(`Cannot install a build on ${platform satisfies never}`);
 	}
