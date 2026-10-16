@@ -1,10 +1,10 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
 import { Modal, Tabs } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
-import { type Device, createRunnerClient } from "@yoqa/runner-client";
+import { type Device, type DevicePlatform, createRunnerClient } from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useMemo, useState } from "react";
 
-export type DevicePlatform = "ios" | "android";
+export type { DevicePlatform };
 
 export type SelectedDevice = {
 	id: string;

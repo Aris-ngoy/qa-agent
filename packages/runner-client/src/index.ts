@@ -478,6 +478,8 @@ export {
 	type RunCaseScriptResult,
 } from "./case-script-replay";
 
+export { appStartTarget, startTargetRequest } from "./app-start-target";
+
 export { decodeXmlEntities } from "./xml-entities";
 
 export type RunnerClientOptions = {

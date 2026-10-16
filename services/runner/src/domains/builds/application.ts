@@ -1,5 +1,5 @@
 import { basename, extname } from "node:path";
-import type { Build, CreateBuildRequest } from "@yoqa/runner-client";
+import type { Build, CreateBuildRequest, DevicePlatform } from "@yoqa/runner-client";
 import { desc, eq } from "drizzle-orm";
 import { getCatalogDb } from "../catalog/db";
 import { resolveAndroidIdentity } from "../devices/application";
@@ -126,39 +126,50 @@ export async function resolveBuildForRun(options: {
 export async function installBuildOnDevice(options: {
 	build: Build;
 	deviceId: string;
-	platform: "ios" | "android";
+	platform: DevicePlatform;
 }): Promise<void> {
 	const { build, deviceId, platform } = options;
-	if (platform === "ios") {
-		if (build.path.endsWith(".app") || build.path.includes(".app")) {
-			const proc = Bun.spawn(["xcrun", "simctl", "install", deviceId, build.path], {
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-			if (code !== 0) {
-				throw new Error(`simctl install failed: ${stderr.trim() || `exit ${code}`}`);
-			}
-			return;
-		}
-		// .ipa on physical — try ideviceinstaller or tip
-		const which = Bun.which("ideviceinstaller");
-		if (which && build.path.endsWith(".ipa")) {
-			const proc = Bun.spawn([which, "-u", deviceId, "-i", build.path], {
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
-			if (code !== 0) {
-				throw new Error(`ideviceinstaller failed: ${stderr.trim() || `exit ${code}`}`);
-			}
-			return;
-		}
-		throw new Error(
-			`Cannot install iOS build at ${build.path}. Use a .app on simulator or install .ipa via ideviceinstaller.`,
-		);
+	switch (platform) {
+		case "ios":
+			return installIosBuild(build, deviceId);
+		case "android":
+			return installAndroidBuild(build, deviceId);
+		default:
+			throw new Error(`Cannot install a build on ${platform satisfies never}`);
 	}
+}
 
+async function installIosBuild(build: Build, deviceId: string): Promise<void> {
+	if (build.path.endsWith(".app") || build.path.includes(".app")) {
+		const proc = Bun.spawn(["xcrun", "simctl", "install", deviceId, build.path], {
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+		if (code !== 0) {
+			throw new Error(`simctl install failed: ${stderr.trim() || `exit ${code}`}`);
+		}
+		return;
+	}
+	// .ipa on physical — try ideviceinstaller or tip
+	const which = Bun.which("ideviceinstaller");
+	if (which && build.path.endsWith(".ipa")) {
+		const proc = Bun.spawn([which, "-u", deviceId, "-i", build.path], {
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+		if (code !== 0) {
+			throw new Error(`ideviceinstaller failed: ${stderr.trim() || `exit ${code}`}`);
+		}
+		return;
+	}
+	throw new Error(
+		`Cannot install iOS build at ${build.path}. Use a .app on simulator or install .ipa via ideviceinstaller.`,
+	);
+}
+
+async function installAndroidBuild(build: Build, deviceId: string): Promise<void> {
 	const identity = await resolveAndroidIdentity(deviceId);
 	const serial = identity.udid;
 	if (!serial) {

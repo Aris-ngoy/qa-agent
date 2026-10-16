@@ -17,11 +17,11 @@ const openByDeviceId = new Map<string, DeviceSession>();
  * `YoqaRunner`, each picking its implementation inside the Direct lane (`direct-lane.ts`).
  */
 export function defaultLanesFor(platform: DevicePlatform): Partial<Record<LaneName, LaneFactory>> {
-	return {
-		...(platform === "android" || platform === "ios"
-			? { direct: defaultDirectLane(platform) }
-			: {}),
-	};
+	switch (platform) {
+		case "android":
+		case "ios":
+			return { direct: defaultDirectLane(platform) };
+	}
 }
 
 function mergeLanes(

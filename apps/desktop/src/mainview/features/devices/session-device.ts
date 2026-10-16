@@ -1,4 +1,4 @@
-import type { Device } from "@yoqa/runner-client";
+import { type Device, devicePlatformSchema } from "@yoqa/runner-client";
 import type { DevicePlatform, SelectedDevice } from "./select-device-modal";
 
 /** The device the session bar connected last, kept across launches. */
@@ -67,9 +67,10 @@ export function readRememberedDevice(
 		const raw = storage?.getItem(REMEMBERED_DEVICE_KEY);
 		if (!raw) return null;
 		const parsed = JSON.parse(raw) as Partial<RememberedDevice>;
-		if (parsed.platform !== "ios" && parsed.platform !== "android") return null;
+		const platform = devicePlatformSchema.safeParse(parsed.platform);
+		if (!platform.success) return null;
 		if (typeof parsed.deviceId !== "string" || parsed.deviceId.length === 0) return null;
-		return { platform: parsed.platform, deviceId: parsed.deviceId };
+		return { platform: platform.data, deviceId: parsed.deviceId };
 	} catch {
 		return null;
 	}

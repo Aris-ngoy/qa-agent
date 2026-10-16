@@ -99,6 +99,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/idb-companion-spike.md](./devices/idb-companion-spike.md) | idb_companion vs WDA on one simulator; adopt for iOS Direct |
 | [devices/ios-direct-lane.md](./devices/ios-direct-lane.md) | iOS-simulator Direct lane over idb_companion |
 | [devices/ios-direct-tree-settle.md](./devices/ios-direct-tree-settle.md) | iOS Direct axbridge Screen, system modal, Settle |
+| [devices/explicit-platform-branches.md](./devices/explicit-platform-branches.md) | Every platform branch is exhaustive over `DevicePlatform`; `appStartTarget` resolves an App's start target for Runs and the desktop |
 | [runs/saved-scripts.md](./runs/saved-scripts.md) | Save script after pass; script vs AI run prompt |
 | [runs/report-export.md](./runs/report-export.md) | HTML/Markdown E2E report export (runs + inspector) |
 | [runs/agent-step-latency-and-knowledge.md](./runs/agent-step-latency-and-knowledge.md) | Decide latency, per-phase step timing, App Knowledge, retention |

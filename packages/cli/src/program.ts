@@ -45,6 +45,7 @@ import {
 	shouldSkipAutostart,
 	stopOwnedRunner,
 } from "./ensure-runner";
+import { PLATFORM_DEVICES_DESCRIPTION, parsePlatform } from "./platform";
 import {
 	DEFAULT_RUN_WAIT_TIMEOUT_SECONDS,
 	type ReportCommandOptions,
@@ -279,12 +280,10 @@ function printDevicesTable(
 	}
 }
 
-for (const platform of ["ios", "android"] as const) {
+for (const platform of Object.keys(PLATFORM_DEVICES_DESCRIPTION) as DevicePlatform[]) {
 	devices
 		.command(platform)
-		.description(
-			`List ${platform === "ios" ? "iOS devices and simulators" : "Android devices and emulators"}`,
-		)
+		.description(PLATFORM_DEVICES_DESCRIPTION[platform])
 		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 		.option("--json", "Print raw JSON")
 		.option("--all", "Include unavailable / shutdown devices", true)
@@ -336,10 +335,7 @@ devices
 			},
 		) => {
 			try {
-				const platform = options.platform as DevicePlatform;
-				if (platform !== "ios" && platform !== "android") {
-					throw new Error("--platform must be ios or android");
-				}
+				const platform = parsePlatform(options.platform);
 				const lane = options.lane;
 				if (lane != null && lane !== "direct" && lane !== "auto") {
 					throw new Error("--lane must be direct or auto");
@@ -1668,8 +1664,8 @@ runsCmd
 				}
 
 				let deviceId = options.device;
-				let platform = options.platform as DevicePlatform | undefined;
-				if (!deviceId || !platform) {
+				let platformOption = options.platform;
+				if (!deviceId || !platformOption) {
 					const active = await c.getActiveDevice();
 					if (!active) {
 						throw new Error(
@@ -1677,11 +1673,9 @@ runsCmd
 						);
 					}
 					deviceId = deviceId ?? active.deviceId;
-					platform = platform ?? active.platform;
+					platformOption = platformOption ?? active.platform;
 				}
-				if (platform !== "ios" && platform !== "android") {
-					throw new Error("--platform must be ios or android");
-				}
+				const platform = parsePlatform(platformOption);
 
 				const executionMode =
 					options.mode === "script" || options.mode === "agent" || options.mode === "auto"
@@ -1920,10 +1914,7 @@ program
 			json?: boolean;
 		}) => {
 			try {
-				const platform = options.platform as DevicePlatform;
-				if (platform !== "ios" && platform !== "android") {
-					throw new Error("--platform must be ios or android");
-				}
+				const platform = parsePlatform(options.platform);
 				const lane =
 					options.lane === "direct" || options.lane === "auto" ? options.lane : undefined;
 				if (options.lane && !lane) throw new Error("--lane must be direct or auto");

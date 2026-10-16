@@ -3,9 +3,12 @@ import type { Device, Run } from "@yoqa/runner-client";
 export type CaseLabelMeta = { number: number; name: string };
 
 export function platformLabel(platform: Run["platform"] | Device["platform"]): string {
-	if (platform === "ios") return "iOS";
-	if (platform === "android") return "Android";
-	return platform;
+	switch (platform) {
+		case "ios":
+			return "iOS";
+		case "android":
+			return "Android";
+	}
 }
 
 export function formatCaseLabel(meta: CaseLabelMeta | undefined, caseId: string): string {
