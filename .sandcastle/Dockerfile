@@ -37,6 +37,10 @@ RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.2.23" \
 # Add Claude and Bun to PATH
 ENV PATH="/home/agent/.bun/bin:/home/agent/.local/bin:$PATH"
 
+# A worktree's .git points at the host's absolute repo path, so Turbo would put
+# its cache under a macOS path the container cannot create.
+ENV TURBO_CACHE_DIR=/home/agent/.cache/turbo
+
 WORKDIR /home/agent
 
 # In worktree sandbox mode, Sandcastle bind-mounts the git worktree at /home/agent/workspace

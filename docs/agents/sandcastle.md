@@ -24,6 +24,7 @@ Let coding agents work through a ticket breakdown (first: web support, #302–#3
   - The lander cherry-picks finished branches onto it in its own worktree, runs `lint:ci`, `test` and `check`, and closes the tickets that landed green. A branch that conflicts or fails is skipped, with a comment on its issue.
   - The host then pushes the integration branch.
   - The script refuses `main`, `master` and `release/*`, and never touches your checkout.
+- **Turbo cache.** A worktree's `.git` points at the host's absolute repo path, so the image sets `TURBO_CACHE_DIR` to a container path. Without it, `bun run check` fails trying to create a macOS cache directory.
 - **Linux installs only.** Each worktree runs its own `bun install` inside the container. Host `node_modules` (macOS binaries) are never copied in.
 - **Repo wiring.** `bun run sandcastle` runs the loop. `@ai-hero/sandcastle` and `zod` (3.x, the version the workspaces use) are root dev dependencies. Biome ignores `.sandcastle/worktrees/` and `.sandcastle/logs/`.
 
