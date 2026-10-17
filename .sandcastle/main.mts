@@ -54,6 +54,38 @@ function commitsAhead(branch: string): number {
 	return Number(git("rev-list", "--count", `${INTEGRATION_BRANCH}..${branch}`));
 }
 
+/**
+ * How long to wait when an agent stopped on Claude's usage limit ("You've hit
+ * your session limit · resets 1:50pm (UTC)"); undefined for any other error.
+ */
+function usageLimitWaitMs(message: string, now = new Date()): number | undefined {
+	if (!/hit your \w+ limit/i.test(message)) return undefined;
+	const match = message.match(/resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(UTC\)/i);
+	if (!match) return 30 * 60_000;
+	const hour = (Number(match[1]) % 12) + (match[3]?.toLowerCase() === "pm" ? 12 : 0);
+	const reset = new Date(now);
+	reset.setUTCHours(hour, Number(match[2] ?? 0), 0, 0);
+	// Just past the stated reset: the limit is lifting, so check again soon.
+	if (reset <= now && now.getTime() - reset.getTime() < 60 * 60_000) return 5 * 60_000;
+	if (reset <= now) reset.setUTCDate(reset.getUTCDate() + 1);
+	return reset.getTime() - now.getTime() + 2 * 60_000;
+}
+
+/** Run an agent, waiting out Claude's usage limit instead of failing the loop. */
+async function waitingOutUsageLimit<T>(label: string, run: () => Promise<T>): Promise<T> {
+	for (;;) {
+		try {
+			return await run();
+		} catch (error) {
+			const waitMs = usageLimitWaitMs(String(error));
+			if (waitMs === undefined) throw error;
+			const until = new Date(Date.now() + waitMs).toISOString().slice(11, 16);
+			console.log(`  ⏸ ${label} hit the Claude usage limit; retrying at ${until} UTC.`);
+			await new Promise((resolve) => setTimeout(resolve, waitMs));
+		}
+	}
+}
+
 if (/^(main|master|release\/)/.test(INTEGRATION_BRANCH)) {
 	throw new Error(`Refusing to use ${INTEGRATION_BRANCH} as the integration branch.`);
 }
@@ -72,14 +104,16 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	console.log(`\n=== Iteration ${iteration}/${MAX_ITERATIONS} on ${INTEGRATION_BRANCH} ===\n`);
 
 	// Plan: read-only, so it runs against the host checkout with no install.
-	const plan = await sandcastle.run({
-		sandbox: docker(),
-		name: "planner",
-		maxIterations: 1,
-		agent: sandcastle.claudeCode(MODEL),
-		promptFile: "./.sandcastle/plan-prompt.md",
-		output: sandcastle.Output.object({ tag: "plan", schema: planSchema }),
-	});
+	const plan = await waitingOutUsageLimit("planner", () =>
+		sandcastle.run({
+			sandbox: docker(),
+			name: "planner",
+			maxIterations: 1,
+			agent: sandcastle.claudeCode(MODEL),
+			promptFile: "./.sandcastle/plan-prompt.md",
+			output: sandcastle.Output.object({ tag: "plan", schema: planSchema }),
+		}),
+	);
 
 	const issues = plan.output.issues;
 	if (issues.length === 0) {
@@ -104,28 +138,32 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 			});
 
 			try {
-				const implement = await sandbox.run({
-					name: `implementer #${issue.id}`,
-					maxIterations: 100,
-					agent: sandcastle.claudeCode(MODEL),
-					promptFile: "./.sandcastle/implement-prompt.md",
-					promptArgs: {
-						TASK_ID: issue.id,
-						ISSUE_TITLE: issue.title,
-						BRANCH: issue.branch,
-						BASE_BRANCH: INTEGRATION_BRANCH,
-					},
-				});
+				const implement = await waitingOutUsageLimit(`implementer #${issue.id}`, () =>
+					sandbox.run({
+						name: `implementer #${issue.id}`,
+						maxIterations: 100,
+						agent: sandcastle.claudeCode(MODEL),
+						promptFile: "./.sandcastle/implement-prompt.md",
+						promptArgs: {
+							TASK_ID: issue.id,
+							ISSUE_TITLE: issue.title,
+							BRANCH: issue.branch,
+							BASE_BRANCH: INTEGRATION_BRANCH,
+						},
+					}),
+				);
 
 				if (implement.commits.length === 0) return implement;
 
-				const review = await sandbox.run({
-					name: `reviewer #${issue.id}`,
-					maxIterations: 1,
-					agent: sandcastle.claudeCode(MODEL),
-					promptFile: "./.sandcastle/review-prompt.md",
-					promptArgs: { BRANCH: issue.branch, BASE_BRANCH: INTEGRATION_BRANCH },
-				});
+				const review = await waitingOutUsageLimit(`reviewer #${issue.id}`, () =>
+					sandbox.run({
+						name: `reviewer #${issue.id}`,
+						maxIterations: 1,
+						agent: sandcastle.claudeCode(MODEL),
+						promptFile: "./.sandcastle/review-prompt.md",
+						promptArgs: { BRANCH: issue.branch, BASE_BRANCH: INTEGRATION_BRANCH },
+					}),
+				);
 
 				// Each run returns only its own commits; the land step needs both.
 				return { ...review, commits: [...implement.commits, ...review.commits] };
@@ -158,20 +196,22 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 	// A failed landing (e.g. no network for the install) leaves the branches as
 	// they are; the next round offers them again.
 	try {
-		await sandcastle.run({
-			sandbox: docker(),
-			branchStrategy: { type: "branch", branch: INTEGRATION_BRANCH },
-			hooks: installHooks,
-			name: "lander",
-			maxIterations: 1,
-			agent: sandcastle.claudeCode(MODEL),
-			promptFile: "./.sandcastle/merge-prompt.md",
-			promptArgs: {
-				BASE_BRANCH: INTEGRATION_BRANCH,
-				BRANCHES: completedIssues.map((issue) => `- ${issue.branch}`).join("\n"),
-				ISSUES: completedIssues.map((issue) => `- #${issue.id}: ${issue.title}`).join("\n"),
-			},
-		});
+		await waitingOutUsageLimit("lander", () =>
+			sandcastle.run({
+				sandbox: docker(),
+				branchStrategy: { type: "branch", branch: INTEGRATION_BRANCH },
+				hooks: installHooks,
+				name: "lander",
+				maxIterations: 1,
+				agent: sandcastle.claudeCode(MODEL),
+				promptFile: "./.sandcastle/merge-prompt.md",
+				promptArgs: {
+					BASE_BRANCH: INTEGRATION_BRANCH,
+					BRANCHES: completedIssues.map((issue) => `- ${issue.branch}`).join("\n"),
+					ISSUES: completedIssues.map((issue) => `- #${issue.id}: ${issue.title}`).join("\n"),
+				},
+			}),
+		);
 	} catch (error) {
 		console.error(`  ✗ Landing failed: ${error}`);
 		continue;

@@ -27,6 +27,7 @@ Let coding agents work through a ticket breakdown (first: web support, #302–#3
 - **Turbo cache.** A worktree's `.git` points at the host's absolute repo path, so the image sets `TURBO_CACHE_DIR` to a container path. Without it, `bun run check` fails trying to create a macOS cache directory.
 - **Staying awake.** `bun run sandcastle` runs under `caffeinate -is`, so the Mac doesn't idle-sleep mid-run (`-s` only applies on power). The first overnight run went to sleep at 01:50, and the dropped network then failed an install, idled an agent out, and timed out the issue script. Closing the lid still sleeps an Apple silicon Mac unless an external display is attached.
 - **Landing is retried.** A ticket lands when its pipeline finished cleanly and its branch is ahead of the integration branch, not only when this round committed. A landing that throws is logged and retried next round, instead of ending the loop.
+- **Usage limits are waited out.** When Claude reports "You've hit your session limit · resets 1:50pm (UTC)", that agent (planner, implementer, reviewer or lander) waits until two minutes after the reset and tries again. The loop no longer crashes, and the wait doesn't use up an iteration.
 - **Linux installs only.** Each worktree runs its own `bun install` inside the container. Host `node_modules` (macOS binaries) are never copied in.
 - **Repo wiring.** `bun run sandcastle` runs the loop. `@ai-hero/sandcastle` and `zod` (3.x, the version the workspaces use) are root dev dependencies. Biome ignores `.sandcastle/worktrees/` and `.sandcastle/logs/`.
 
