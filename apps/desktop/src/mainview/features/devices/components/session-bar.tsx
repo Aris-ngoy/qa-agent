@@ -1,21 +1,23 @@
-import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/hooks/use-apps";
-import {
-	type DevicePlatform,
-	type SelectedDevice,
-	fetchPlatformDevices,
-	platformDevicesQueryKey,
-} from "@/features/devices/components/select-device-modal";
 import { SessionBarTitle } from "@/features/devices/components/session-bar-title";
 import { SessionRunChip } from "@/features/devices/components/session-run-chip";
 import { SessionToolbar } from "@/features/devices/components/session-toolbar";
 import { TrustDeveloperDialog } from "@/features/devices/components/trust-developer-dialog";
+import {
+	connectDevice as connectRunnerDevice,
+	disconnectDevice,
+} from "@/features/devices/data/api/devices";
+import {
+	type ConnectTarget,
+	initialSessionBarState,
+} from "@/features/devices/data/state/session-bar";
 import { useRetargetOnAppSwitch } from "@/features/devices/hooks/use-retarget-on-app-switch";
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
 } from "@/features/devices/hooks/usequery/use-active-device-session";
+import { usePlatformDevices } from "@/features/devices/hooks/usequery/use-devices";
 import { connectRequestFor } from "@/features/devices/utils/session-app";
 import {
 	deviceForSession,
@@ -27,18 +29,12 @@ import { connectedToastMessage } from "@/features/devices/utils/session-status";
 import { RunControls } from "@/features/test-cases/components/run-controls";
 import { useTestCaseSelection } from "@/features/test-cases/hooks/use-test-case-selection";
 import { toast } from "@heroui/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { batch } from "@legendapp/state";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
-import {
-	type ActiveDeviceResponse,
-	type DeveloperNotTrusted,
-	type LaneName,
-	developerNotTrusted,
-} from "@yoqa/runner-client";
-import { useCallback, useEffect, useRef, useState } from "react";
-
-/** What a connect names: the device, and a browser's Viewport preset. */
-type ConnectTarget = Pick<SelectedDevice, "id" | "platform" | "viewport">;
+import { type ActiveDeviceResponse, type LaneName, developerNotTrusted } from "@yoqa/runner-client";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 /**
  * The one top bar for the whole app and the one place to manage the Active Session (the
@@ -53,25 +49,18 @@ export function SessionBar() {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const { selectedCaseIds } = useTestCaseSelection();
 	const showRun = pathname.startsWith("/test-cases") && selectedCaseIds.length > 0;
-	const [remembered] = useState(readRememberedDevice);
-	const [platform, setPlatform] = useState<DevicePlatform>(remembered?.platform ?? "ios");
-	const [device, setDevice] = useState<SelectedDevice | null>(null);
-	const [connecting, setConnecting] = useState(false);
-	/** A Personal Team's runner is installed but not trusted on the iPhone: the trust steps. */
-	const [untrusted, setUntrusted] = useState<{
-		info: DeveloperNotTrusted;
-		target: ConnectTarget;
-	} | null>(null);
+	const remembered = useMemo(readRememberedDevice, []);
+	const bar$ = useObservable(initialSessionBarState(remembered?.platform ?? "ios"));
+	const platform = useValue(bar$.platform);
+	const device = useValue(bar$.device);
+	const connecting = useValue(bar$.connecting);
+	const untrusted = useValue(bar$.untrusted);
 	/** The remembered device is offered once, at launch; a session or a pick replaces it. */
 	const rememberedPendingRef = useRef(remembered != null);
 
 	useRetargetOnAppSwitch();
 
-	const devicesQuery = useQuery({
-		queryKey: platformDevicesQueryKey(platform),
-		queryFn: () => fetchPlatformDevices(platform),
-		staleTime: 30_000,
-	});
+	const devicesQuery = usePlatformDevices(platform);
 	const devices = devicesQuery.data;
 
 	// At launch, preselect the last connected device when the list still has it. Never
@@ -80,8 +69,8 @@ export function SessionBar() {
 		if (!rememberedPendingRef.current || !devices) return;
 		rememberedPendingRef.current = false;
 		const picked = pickRememberedDevice(remembered, devices);
-		if (picked) setDevice((current) => current ?? picked);
-	}, [devices, remembered]);
+		if (picked && !bar$.device.peek()) bar$.device.set(picked);
+	}, [devices, remembered, bar$]);
 
 	// A session started anywhere (desktop, CLI, a Run) drives the bar: its platform, and
 	// its device by the name the device list gives it (kept picked after a disconnect).
@@ -92,13 +81,13 @@ export function SessionBar() {
 	useEffect(() => {
 		if (!sessionDeviceId || !sessionPlatform) return;
 		rememberedPendingRef.current = false;
-		setPlatform(sessionPlatform);
+		bar$.platform.set(sessionPlatform);
 		const listed = deviceForSession(
 			{ deviceId: sessionDeviceId, platform: sessionPlatform, viewport: sessionViewport },
 			sessionPlatform === platform ? devices : undefined,
 		);
-		if (listed) setDevice(listed);
-	}, [sessionDeviceId, sessionPlatform, sessionViewport, platform, devices]);
+		if (listed) bar$.device.set(listed);
+	}, [sessionDeviceId, sessionPlatform, sessionViewport, platform, devices, bar$]);
 
 	const sessionDevices = activeSession?.platform === platform ? devices : undefined;
 	/** The session's device from the list; null while unlisted (the bar then shows its id). */
@@ -110,10 +99,9 @@ export function SessionBar() {
 	 */
 	const connectDevice = useCallback(
 		async (target: ConnectTarget, lane?: LaneName): Promise<ActiveDeviceResponse> => {
-			setConnecting(true);
+			bar$.connecting.set(true);
 			try {
-				const client = await getRunnerClient();
-				const info = await client.connectDevice(connectRequestFor(target, selectedApp, lane));
+				const info = await connectRunnerDevice(connectRequestFor(target, selectedApp, lane));
 				writeRememberedDevice({
 					platform: target.platform,
 					deviceId: target.id,
@@ -123,17 +111,17 @@ export function SessionBar() {
 				invalidateActiveDeviceSession();
 				return info;
 			} finally {
-				setConnecting(false);
+				bar$.connecting.set(false);
 			}
 		},
-		[invalidateActiveDeviceSession, queryClient, selectedApp],
+		[invalidateActiveDeviceSession, queryClient, selectedApp, bar$],
 	);
 
 	/** A connect error: the trust steps when the iPhone must trust the developer, else a toast. */
 	const reportConnectError = (error: unknown, target: ConnectTarget, fallback: string) => {
 		const info = developerNotTrusted(error);
 		if (info) {
-			setUntrusted({ info, target });
+			bar$.untrusted.set({ info, target });
 			return;
 		}
 		showErrorToast(error, fallback);
@@ -154,7 +142,7 @@ export function SessionBar() {
 		if (!untrusted) return;
 		try {
 			const info = await connectDevice(untrusted.target);
-			setUntrusted(null);
+			bar$.untrusted.set(null);
 			toast.success(connectedToastMessage(info));
 		} catch (error) {
 			if (developerNotTrusted(error)) {
@@ -166,7 +154,7 @@ export function SessionBar() {
 				);
 				return;
 			}
-			setUntrusted(null);
+			bar$.untrusted.set(null);
 			showErrorToast(error, "Failed to connect device");
 		}
 	};
@@ -184,11 +172,10 @@ export function SessionBar() {
 			showErrorToast(new Error("Select a device first"), "Nothing to restart");
 			return;
 		}
-		setConnecting(true);
+		bar$.connecting.set(true);
 		try {
-			const client = await getRunnerClient();
 			try {
-				await client.disconnectDevice();
+				await disconnectDevice();
 			} catch {
 				/* already dead / no session */
 			}
@@ -199,22 +186,21 @@ export function SessionBar() {
 			invalidateActiveDeviceSession();
 			reportConnectError(error, target, "Failed to restart session");
 		} finally {
-			setConnecting(false);
+			bar$.connecting.set(false);
 		}
 	};
 
 	const handleDisconnect = async () => {
-		setConnecting(true);
+		bar$.connecting.set(true);
 		try {
-			const client = await getRunnerClient();
-			await client.disconnectDevice();
+			await disconnectDevice();
 			queryClient.setQueryData(activeDeviceSessionQueryKey, null);
 			invalidateActiveDeviceSession();
 			toast.success("Disconnected");
 		} catch (error) {
 			showErrorToast(error, "Failed to disconnect");
 		} finally {
-			setConnecting(false);
+			bar$.connecting.set(false);
 		}
 	};
 
@@ -225,13 +211,15 @@ export function SessionBar() {
 				platform={platform}
 				onPlatformChange={(next) => {
 					rememberedPendingRef.current = false;
-					setPlatform(next);
-					setDevice(null);
+					batch(() => {
+						bar$.platform.set(next);
+						bar$.device.set(null);
+					});
 				}}
 				device={activeSession ? sessionDevice : device}
 				onDeviceSelect={(selected) => {
 					rememberedPendingRef.current = false;
-					setDevice(selected);
+					bar$.device.set(selected);
 				}}
 				active={activeSession}
 				connecting={connecting}
@@ -251,7 +239,7 @@ export function SessionBar() {
 				<RunControls connectDevice={connectDevice} connecting={connecting} device={device} />
 			) : null}
 			<TrustDeveloperDialog
-				onClose={() => setUntrusted(null)}
+				onClose={() => bar$.untrusted.set(null)}
 				onReconnect={() => {
 					void handleTrustedReconnect();
 				}}

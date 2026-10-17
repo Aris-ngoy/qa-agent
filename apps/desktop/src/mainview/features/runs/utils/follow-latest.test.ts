@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isNearBottom } from "@/features/runs/hooks/use-follow-latest";
+import { isNearBottom } from "@/features/runs/utils/follow-latest";
 
 describe("isNearBottom", () => {
 	test("is true when the list is scrolled to the end", () => {

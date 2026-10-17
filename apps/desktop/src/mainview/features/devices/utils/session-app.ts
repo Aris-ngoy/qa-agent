@@ -1,5 +1,5 @@
-import type { Application } from "@/features/apps/hooks/use-apps";
-import type { SelectedDevice } from "@/features/devices/components/select-device-modal";
+import type { Application } from "@/features/apps/data/api/apps";
+import type { SelectedDevice } from "@/features/devices/data/state/session-bar";
 import { viewportFor } from "@/features/devices/utils/web-device";
 import {
 	type ActiveDeviceResponse,

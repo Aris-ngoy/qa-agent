@@ -1,6 +1,7 @@
 import { widthFromDrag, widthFromKey } from "@/app/resize/panel-width";
 import type { PanelWidth } from "@/app/resize/use-panel-width";
-import { type KeyboardEvent, type PointerEvent, useRef, useState } from "react";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { type KeyboardEvent, type PointerEvent, useRef } from "react";
 
 type Drag = { pointerId: number; startX: number; startWidth: number };
 
@@ -21,13 +22,14 @@ export function ResizeHandle({
 	className?: string;
 }) {
 	const dragRef = useRef<Drag | null>(null);
-	const [dragging, setDragging] = useState(false);
+	const dragging$ = useObservable(false);
+	const dragging = useValue(dragging$);
 
 	const endDrag = (event: PointerEvent<HTMLDivElement>) => {
 		const drag = dragRef.current;
 		if (!drag || drag.pointerId !== event.pointerId) return;
 		dragRef.current = null;
-		setDragging(false);
+		dragging$.set(false);
 		document.body.style.removeProperty("cursor");
 		document.body.style.removeProperty("user-select");
 		try {
@@ -68,7 +70,7 @@ export function ResizeHandle({
 					startX: event.clientX,
 					startWidth: panel.width,
 				};
-				setDragging(true);
+				dragging$.set(true);
 				// Keep the resize cursor and stop text selection while the pointer is off the handle.
 				document.body.style.cursor = "col-resize";
 				document.body.style.userSelect = "none";

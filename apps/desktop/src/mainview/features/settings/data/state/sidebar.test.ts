@@ -13,37 +13,37 @@ function memoryStorage(initial: Record<string, string> = {}) {
 
 describe("sidebar store", () => {
 	test("starts expanded when nothing is stored", () => {
-		expect(createSidebarStore(memoryStorage()).get()).toBe(false);
+		expect(createSidebarStore(memoryStorage()).collapsed$.get()).toBe(false);
 	});
 
 	test("starts collapsed when the stored state is collapsed", () => {
 		const storage = memoryStorage({ "yoqa.sidebarCollapsed": "true" });
-		expect(createSidebarStore(storage).get()).toBe(true);
+		expect(createSidebarStore(storage).collapsed$.get()).toBe(true);
 	});
 
 	test("toggle flips the state and notifies subscribers", () => {
 		const store = createSidebarStore(memoryStorage());
 		let calls = 0;
-		store.subscribe(() => {
+		store.collapsed$.onChange(() => {
 			calls += 1;
 		});
 		store.toggle();
-		expect(store.get()).toBe(true);
+		expect(store.collapsed$.get()).toBe(true);
 		store.toggle();
-		expect(store.get()).toBe(false);
+		expect(store.collapsed$.get()).toBe(false);
 		expect(calls).toBe(2);
 	});
 
 	test("the state survives a relaunch", () => {
 		const storage = memoryStorage();
 		createSidebarStore(storage).toggle();
-		expect(createSidebarStore(storage).get()).toBe(true);
+		expect(createSidebarStore(storage).collapsed$.get()).toBe(true);
 	});
 
 	test("an unsubscribed listener is not notified", () => {
 		const store = createSidebarStore(memoryStorage());
 		let calls = 0;
-		const unsubscribe = store.subscribe(() => {
+		const unsubscribe = store.collapsed$.onChange(() => {
 			calls += 1;
 		});
 		unsubscribe();

@@ -1,30 +1,16 @@
-import { getDesktopRpc } from "@/app/desktop-rpc";
 import { AttachByPortForm, ViewportChoice } from "@/features/devices/components/web-device-panels";
+import type { DevicePlatform, SelectedDevice } from "@/features/devices/data/state/session-bar";
+import { usePickerDevices } from "@/features/devices/hooks/usequery/use-devices";
 import { attachedBrowser, browserDevices } from "@/features/devices/utils/web-device";
 import { Modal, Tabs } from "@heroui/react";
-import { useQuery } from "@tanstack/react-query";
+import { useObservable, useValue } from "@legendapp/state/react";
 import {
 	DEFAULT_VIEWPORT_PRESET,
 	type Device,
 	type DeviceKind,
-	type DevicePlatform,
 	type ViewportPresetName,
-	createRunnerClient,
 } from "@yoqa/runner-client";
-import { type SVGProps, useEffect, useMemo, useState } from "react";
-
-export type { DevicePlatform };
-
-export type SelectedDevice = {
-	id: string;
-	label: string;
-	name: string;
-	osVersion: string;
-	platform: DevicePlatform;
-	kind: DeviceKind;
-	/** Web only: the Viewport preset to connect at. */
-	viewport?: ViewportPresetName;
-};
+import { type SVGProps, useEffect, useMemo } from "react";
 
 /** Phones: cabled devices and simulators/emulators. Web: installed browsers and attach by port. */
 type DeviceTab = "local" | "simulators" | "browsers" | "attach";
@@ -242,18 +228,6 @@ function DeviceList({
 	);
 }
 
-/** Query key for a platform's device list, shared by the picker and the session bar. */
-export function platformDevicesQueryKey(platform: DevicePlatform) {
-	return ["devices", platform] as const;
-}
-
-export async function fetchPlatformDevices(platform: DevicePlatform): Promise<Device[]> {
-	const baseUrl = await getDesktopRpc().request.getRunnerBaseUrl();
-	const client = createRunnerClient({ baseUrl });
-	const response = await client.listDevices(platform, { includeUnavailable: true });
-	return response.devices;
-}
-
 export function SelectDeviceModal({
 	open,
 	platform,
@@ -263,25 +237,20 @@ export function SelectDeviceModal({
 }: SelectDeviceModalProps) {
 	const isWeb = platform === "web";
 	const firstTab: DeviceTab = isWeb ? "browsers" : "local";
-	const [tab, setTab] = useState<DeviceTab>(firstTab);
-	const [preset, setPreset] = useState<ViewportPresetName>(viewport ?? DEFAULT_VIEWPORT_PRESET);
+	const tab$ = useObservable<DeviceTab>(firstTab);
+	const preset$ = useObservable<ViewportPresetName>(viewport ?? DEFAULT_VIEWPORT_PRESET);
+	const tab = useValue(tab$);
+	const preset = useValue(preset$);
 	const copy = PLATFORM_COPY[platform];
 
-	const devicesQuery = useQuery({
-		queryKey: platformDevicesQueryKey(platform),
-		queryFn: () => fetchPlatformDevices(platform),
-		enabled: open,
-		refetchOnWindowFocus: true,
-		refetchOnMount: "always",
-		staleTime: 5_000,
-	});
+	const devicesQuery = usePickerDevices(platform, open);
 
 	useEffect(() => {
 		if (open) {
-			setTab(firstTab);
-			setPreset(viewport ?? DEFAULT_VIEWPORT_PRESET);
+			tab$.set(firstTab);
+			preset$.set(viewport ?? DEFAULT_VIEWPORT_PRESET);
 		}
-	}, [open, firstTab, viewport]);
+	}, [open, firstTab, viewport, tab$, preset$]);
 
 	const { local, virtual, browsers } = useMemo(() => {
 		const devices = devicesQuery.data ?? [];
@@ -349,10 +318,12 @@ export function SelectDeviceModal({
 							</Modal.Heading>
 						</Modal.Header>
 						<Modal.Body className="gap-5 px-6 pb-6 pt-1">
-							{isWeb ? <ViewportChoice onChange={setPreset} value={preset} /> : null}
+							{isWeb ? (
+								<ViewportChoice onChange={(next) => preset$.set(next)} value={preset} />
+							) : null}
 							<Tabs
 								className="w-full"
-								onSelectionChange={(key) => setTab(String(key) as DeviceTab)}
+								onSelectionChange={(key) => tab$.set(String(key) as DeviceTab)}
 								selectedKey={tab}
 							>
 								<Tabs.ListContainer>

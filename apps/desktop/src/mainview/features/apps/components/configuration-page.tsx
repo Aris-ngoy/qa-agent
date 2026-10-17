@@ -1,7 +1,8 @@
 import { RhfTextField, requiredTrimmed } from "@/app/forms";
 import { useApps } from "@/features/apps/hooks/use-apps";
 import { AlertDialog, Button, Form } from "@heroui/react";
-import { type SVGProps, useEffect, useState } from "react";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { type SVGProps, useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
 type FormValues = {
@@ -67,8 +68,10 @@ function formFromApp(app: {
 
 export function ConfigurationPage() {
 	const { selectedApp, updateApp, deleteApp } = useApps();
-	const [deleteOpen, setDeleteOpen] = useState(false);
-	const [ready, setReady] = useState(false);
+	const deleteOpen$ = useObservable(false);
+	const ready$ = useObservable(false);
+	const deleteOpen = useValue(deleteOpen$);
+	const ready = useValue(ready$);
 
 	const {
 		control,
@@ -93,11 +96,11 @@ export function ConfigurationPage() {
 	useEffect(() => {
 		if (selectedApp) {
 			reset(formFromApp(selectedApp));
-			setReady(true);
+			ready$.set(true);
 		} else {
-			setReady(false);
+			ready$.set(false);
 		}
-	}, [selectedApp, reset]);
+	}, [selectedApp, reset, ready$]);
 
 	if (!selectedApp || !ready) {
 		return null;
@@ -119,7 +122,7 @@ export function ConfigurationPage() {
 
 	const handleDelete = () => {
 		void deleteApp(selectedApp.id);
-		setDeleteOpen(false);
+		deleteOpen$.set(false);
 	};
 
 	return (
@@ -131,12 +134,15 @@ export function ConfigurationPage() {
 						<Button
 							aria-label="Delete application"
 							className="size-10 min-w-10 rounded-lg bg-transparent text-error data-[hovered=true]:bg-error-container/40"
-							onPress={() => setDeleteOpen(true)}
+							onPress={() => deleteOpen$.set(true)}
 							variant="ghost"
 						>
 							<TrashIcon />
 						</Button>
-						<AlertDialog.Backdrop isOpen={deleteOpen} onOpenChange={setDeleteOpen}>
+						<AlertDialog.Backdrop
+							isOpen={deleteOpen}
+							onOpenChange={(open) => deleteOpen$.set(open)}
+						>
 							<AlertDialog.Container>
 								<AlertDialog.Dialog className="sm:max-w-[400px]">
 									<AlertDialog.CloseTrigger />

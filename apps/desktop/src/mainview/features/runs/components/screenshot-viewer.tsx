@@ -15,7 +15,8 @@ import {
 	zoomTo,
 } from "@/features/runs/utils/viewer-zoom";
 import { Modal } from "@heroui/react";
-import { type PointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { type PointerEvent, type ReactNode, useEffect, useRef } from "react";
 
 type Pan = { pointerId: number; lastX: number; lastY: number; moved: boolean };
 
@@ -86,20 +87,24 @@ function ViewerBody({
 }) {
 	const stageRef = useRef<HTMLDivElement>(null);
 	const panRef = useRef<Pan | null>(null);
-	const [stage, setStage] = useState<Size>({ width: 0, height: 0 });
-	const [natural, setNatural] = useState<Size>({ width: 0, height: 0 });
-	const [view, setView] = useState<ViewTransform>(FIT_VIEW);
-	const [panning, setPanning] = useState(false);
+	const stage$ = useObservable<Size>({ width: 0, height: 0 });
+	const natural$ = useObservable<Size>({ width: 0, height: 0 });
+	const view$ = useObservable<ViewTransform>({ ...FIT_VIEW });
+	const panning$ = useObservable(false);
+	const stage = useValue(stage$);
+	const natural = useValue(natural$);
+	const view = useValue(view$);
+	const panning = useValue(panning$);
 
 	useEffect(() => {
 		const el = stageRef.current;
 		if (!el || typeof ResizeObserver === "undefined") return;
 		const observer = new ResizeObserver(() =>
-			setStage({ width: el.clientWidth, height: el.clientHeight }),
+			stage$.set({ width: el.clientWidth, height: el.clientHeight }),
 		);
 		observer.observe(el);
 		return () => observer.disconnect();
-	}, []);
+	}, [stage$]);
 
 	/** A stage point relative to its centre, where the image's transform origin sits. */
 	const stagePoint = (event: { clientX: number; clientY: number }): Point => {
@@ -122,11 +127,11 @@ function ViewerBody({
 				x: event.clientX - rect.left - rect.width / 2,
 				y: event.clientY - rect.top - rect.height / 2,
 			};
-			setView((current) => zoomAt(current, wheelZoomFactor(event.deltaY, event.ctrlKey), point));
+			view$.set((current) => zoomAt(current, wheelZoomFactor(event.deltaY, event.ctrlKey), point));
 		};
 		el.addEventListener("wheel", onWheel, { passive: false });
 		return () => el.removeEventListener("wheel", onWheel);
-	}, []);
+	}, [view$]);
 
 	const pad = 48;
 	const fitted = fitSize(
@@ -135,20 +140,21 @@ function ViewerBody({
 		view.rotation,
 	);
 	const zoomed = Math.abs(view.scale - 1) > 0.001 || view.x !== 0 || view.y !== 0;
-	const fit = () => setView((current) => ({ ...FIT_VIEW, rotation: current.rotation }));
-	const actualSize = () => setView((current) => zoomTo(current, actualPixelScale(fitted, natural)));
+	const fit = () => view$.set((current) => ({ ...FIT_VIEW, rotation: current.rotation }));
+	const actualSize = () =>
+		view$.set((current) => zoomTo(current, actualPixelScale(fitted, natural)));
 
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.metaKey || event.ctrlKey || event.altKey) return;
 		const key = event.key;
 		if (key === "+" || key === "=")
-			setView((current) => zoomAt(current, ZOOM_STEP, { x: 0, y: 0 }));
+			view$.set((current) => zoomAt(current, ZOOM_STEP, { x: 0, y: 0 }));
 		else if (key === "-" || key === "_")
-			setView((current) => zoomAt(current, 1 / ZOOM_STEP, { x: 0, y: 0 }));
+			view$.set((current) => zoomAt(current, 1 / ZOOM_STEP, { x: 0, y: 0 }));
 		else if (key === "0") fit();
 		else if (key === "1") actualSize();
 		else if (key === "r" || key === "R")
-			setView((current) => rotateView(current, event.shiftKey ? -1 : 1));
+			view$.set((current) => rotateView(current, event.shiftKey ? -1 : 1));
 		else if (key === "ArrowLeft" && onPrevious) onPrevious();
 		else if (key === "ArrowRight" && onNext) onNext();
 		else return;
@@ -172,7 +178,7 @@ function ViewerBody({
 			lastY: event.clientY,
 			moved: false,
 		};
-		setPanning(true);
+		panning$.set(true);
 	};
 
 	const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -183,13 +189,13 @@ function ViewerBody({
 		pan.lastX = event.clientX;
 		pan.lastY = event.clientY;
 		pan.moved ||= Math.abs(dx) + Math.abs(dy) > 0;
-		setView((current) => panBy(current, dx, dy));
+		view$.set((current) => panBy(current, dx, dy));
 	};
 
 	const endPan = (event: PointerEvent<HTMLDivElement>) => {
 		if (panRef.current?.pointerId !== event.pointerId) return;
 		panRef.current = null;
-		setPanning(false);
+		panning$.set(false);
 	};
 
 	return (
@@ -212,7 +218,7 @@ function ViewerBody({
 					) : null}
 					<ToolButton
 						label="Zoom out (−)"
-						onPress={() => setView((current) => zoomAt(current, 1 / ZOOM_STEP, { x: 0, y: 0 }))}
+						onPress={() => view$.set((current) => zoomAt(current, 1 / ZOOM_STEP, { x: 0, y: 0 }))}
 					>
 						<path d="M5 12h14" />
 					</ToolButton>
@@ -224,7 +230,7 @@ function ViewerBody({
 					</span>
 					<ToolButton
 						label="Zoom in (+)"
-						onPress={() => setView((current) => zoomAt(current, ZOOM_STEP, { x: 0, y: 0 }))}
+						onPress={() => view$.set((current) => zoomAt(current, ZOOM_STEP, { x: 0, y: 0 }))}
 					>
 						<path d="M12 5v14M5 12h14" />
 					</ToolButton>
@@ -250,14 +256,14 @@ function ViewerBody({
 					<Divider />
 					<ToolButton
 						label="Rotate left (Shift+R)"
-						onPress={() => setView((current) => rotateView(current, -1))}
+						onPress={() => view$.set((current) => rotateView(current, -1))}
 					>
 						<path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
 						<path d="M3 3v5h5" />
 					</ToolButton>
 					<ToolButton
 						label="Rotate right (R)"
-						onPress={() => setView((current) => rotateView(current, 1))}
+						onPress={() => view$.set((current) => rotateView(current, 1))}
 					>
 						<path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
 						<path d="M21 3v5h-5" />
@@ -276,7 +282,7 @@ function ViewerBody({
 				].join(" ")}
 				onDoubleClick={(event) => {
 					const point = stagePoint(event);
-					setView((current) =>
+					view$.set((current) =>
 						Math.abs(current.scale - 1) > 0.001
 							? { ...FIT_VIEW, rotation: current.rotation }
 							: zoomTo(current, DOUBLE_CLICK_SCALE, point),
@@ -300,7 +306,7 @@ function ViewerBody({
 					].join(" ")}
 					draggable={false}
 					onLoad={(event) =>
-						setNatural({
+						natural$.set({
 							width: event.currentTarget.naturalWidth,
 							height: event.currentTarget.naturalHeight,
 						})

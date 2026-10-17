@@ -1,5 +1,7 @@
+import { DriverGlyph } from "@/features/providers/components/driver-glyph";
 import { ProviderExpanded } from "@/features/providers/components/provider-expanded";
-import { DriverGlyph, statusDotClass, useDriverMeta } from "@/features/providers/utils/driver-meta";
+import { useDriverMeta } from "@/features/providers/hooks/use-driver-meta";
+import { statusDotClass } from "@/features/providers/utils/driver-meta";
 import { Switch } from "@heroui/react";
 import type { AiProvider, ProviderModel } from "@yoqa/runner-client";
 

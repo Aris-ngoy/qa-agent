@@ -1,27 +1,9 @@
-import { getRunnerClient } from "@/app/runner-client";
-import {
-	AcpLogo,
-	AnthropicLogo,
-	ClaudeLogo,
-	CodexLogo,
-	CursorLogo,
-	FallbackLogo,
-	GeminiLogo,
-	GitHubCopilotLogo,
-	GrokLogo,
-	GroqLogo,
-	OpenAiLogo,
-	OpenCodeLogo,
-	PiLogo,
-} from "@/features/providers/components/provider-logos";
-import { useQuery } from "@tanstack/react-query";
 import type {
 	ProviderAccentColor,
 	ProviderAuthMode,
 	ProviderDriverCatalogEntry,
 	ProviderKind,
 } from "@yoqa/runner-client";
-import type { ReactNode } from "react";
 
 export type DriverMeta = {
 	kind: ProviderKind | "acp" | "pi";
@@ -230,9 +212,6 @@ export const COMING_SOON_DRIVERS: DriverMeta[] = [
 	},
 ];
 
-export const PROVIDERS_QUERY_KEY = ["ai-providers"] as const;
-export const PROVIDER_CATALOG_QUERY_KEY = [...PROVIDERS_QUERY_KEY, "catalog"] as const;
-
 export function mergeCatalogWithLocal(
 	catalog: ProviderDriverCatalogEntry[] | null | undefined,
 ): DriverMeta[] {
@@ -251,29 +230,6 @@ export function mergeCatalogWithLocal(
 			capabilities: entry.capabilities,
 		};
 	});
-}
-
-export function useProviderDriverCatalog(enabled = true) {
-	return useQuery({
-		queryKey: PROVIDER_CATALOG_QUERY_KEY,
-		enabled,
-		queryFn: async () => {
-			const client = await getRunnerClient();
-			return client.listProviderCatalog();
-		},
-		staleTime: 60_000,
-	});
-}
-
-/** Active drivers with runner catalog preferred when available. */
-export function useActiveDrivers(enabled = true): DriverMeta[] {
-	const catalogQuery = useProviderDriverCatalog(enabled);
-	return mergeCatalogWithLocal(catalogQuery.data);
-}
-
-export function useDriverCards(enabled = true): DriverMeta[] {
-	const active = useActiveDrivers(enabled);
-	return [...active, ...COMING_SOON_DRIVERS];
 }
 
 export const ALL_DRIVER_CARDS: DriverMeta[] = [...ACTIVE_DRIVERS, ...COMING_SOON_DRIVERS];
@@ -308,11 +264,6 @@ export function getDriverMeta(
 	return found;
 }
 
-export function useDriverMeta(kind: ProviderKind, enabled = true): DriverMeta {
-	const catalogQuery = useProviderDriverCatalog(enabled);
-	return getDriverMeta(kind, catalogQuery.data);
-}
-
 export function statusDotClass(status: string): string {
 	switch (status) {
 		case "connected":
@@ -325,49 +276,6 @@ export function statusDotClass(status: string): string {
 		default:
 			return "bg-zinc-500";
 	}
-}
-
-export function DriverGlyph({ kind }: { kind: string }): ReactNode {
-	const logo = (() => {
-		switch (kind) {
-			case "anthropic":
-				return <AnthropicLogo />;
-			case "openai":
-				return <OpenAiLogo />;
-			case "claude":
-				return <ClaudeLogo />;
-			case "codex":
-				return <CodexLogo />;
-			case "opencode":
-				return <OpenCodeLogo />;
-			case "github-copilot":
-				return <GitHubCopilotLogo />;
-			case "groq":
-				return <GroqLogo />;
-			case "google":
-			case "google-vertex":
-			case "antigravity":
-				return <GeminiLogo />;
-			case "cursor":
-				return <CursorLogo />;
-			case "grok":
-				return <GrokLogo />;
-			case "custom":
-				return <FallbackLogo label="Custom" />;
-			case "acp":
-				return <AcpLogo />;
-			case "pi":
-				return <PiLogo />;
-			default:
-				return <FallbackLogo label={kind} />;
-		}
-	})();
-
-	return (
-		<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface-container text-on-surface">
-			{logo}
-		</span>
-	);
 }
 
 export const fieldInputClass =

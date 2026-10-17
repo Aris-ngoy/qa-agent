@@ -1,17 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-
-/** How far from the end still counts as "at the bottom", so a small scroll jitter keeps following. */
-const FOLLOW_THRESHOLD_PX = 48;
+import { isNearBottom } from "@/features/runs/utils/follow-latest";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 /** Safety net for engines without `scrollend`: a smooth scroll never takes longer than this. */
 const SCROLL_ANIMATION_MAX_MS = 700;
-
-export function isNearBottom(
-	metrics: { scrollHeight: number; scrollTop: number; clientHeight: number },
-	threshold: number = FOLLOW_THRESHOLD_PX,
-): boolean {
-	return metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight <= threshold;
-}
 
 /**
  * Chat-style scrolling: while `active`, glide a scroll container to its newest content whenever
@@ -20,16 +12,12 @@ export function isNearBottom(
  */
 export function useFollowLatest(active: boolean, signal: unknown, smooth = true) {
 	const ref = useRef<HTMLDivElement | null>(null);
-	const followingRef = useRef(true);
+	const following$ = useObservable(true);
+	const following = useValue(following$);
 	// True while our own smooth scroll is in flight: its in-between scroll events are not the user.
 	const glidingRef = useRef(false);
 	const glideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const [following, setFollowing] = useState(true);
-
-	const setFollow = useCallback((next: boolean) => {
-		followingRef.current = next;
-		setFollowing(next);
-	}, []);
+	const setFollow = useCallback((next: boolean) => following$.set(next), [following$]);
 
 	const endGlide = useCallback(() => {
 		glidingRef.current = false;
@@ -80,8 +68,8 @@ export function useFollowLatest(active: boolean, signal: unknown, smooth = true)
 	// `signal` is a dependency on purpose: new content is what moves the view.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: see above
 	useLayoutEffect(() => {
-		if (active && followingRef.current) scrollToEnd();
-	}, [active, signal, scrollToEnd]);
+		if (active && following$.peek()) scrollToEnd();
+	}, [active, signal, scrollToEnd, following$]);
 
 	const jumpToLatest = useCallback(() => {
 		setFollow(true);

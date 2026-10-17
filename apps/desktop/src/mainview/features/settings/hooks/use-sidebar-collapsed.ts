@@ -1,5 +1,6 @@
 import { sidebarStore } from "@/features/settings/data/state/sidebar";
-import { useEffect, useSyncExternalStore } from "react";
+import { useValue } from "@legendapp/state/react";
+import { useEffect } from "react";
 
 /** True when the key event is ⌘B (Ctrl+B off macOS) with no other modifiers. */
 function isToggleShortcut(event: KeyboardEvent): boolean {
@@ -8,8 +9,7 @@ function isToggleShortcut(event: KeyboardEvent): boolean {
 }
 
 export function useSidebarCollapsed(): [boolean, () => void] {
-	const collapsed = useSyncExternalStore(sidebarStore.subscribe, sidebarStore.get);
-	return [collapsed, sidebarStore.toggle];
+	return [useValue(sidebarStore.collapsed$), sidebarStore.toggle];
 }
 
 /** Mount once at the app root to bind ⌘B to the side menu toggle. */

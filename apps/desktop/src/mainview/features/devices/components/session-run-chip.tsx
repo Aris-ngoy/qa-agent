@@ -1,9 +1,6 @@
-import { getRunnerClient } from "@/app/runner-client";
-import { showErrorToast } from "@/app/show-error-toast";
 import { useActiveDeviceSession } from "@/features/devices/hooks/usequery/use-active-device-session";
 import { runChip } from "@/features/devices/utils/session-status";
-import { runQueryKey } from "@/features/runs/hooks/use-active-run";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCancelRun, useRunQuery } from "@/features/runs/hooks/usequery/use-run";
 import { Link } from "@tanstack/react-router";
 
 /**
@@ -12,34 +9,10 @@ import { Link } from "@tanstack/react-router";
  * names it; otherwise it only says a Run is in progress.
  */
 export function SessionRunChip() {
-	const queryClient = useQueryClient();
-	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
+	const { activeSession } = useActiveDeviceSession();
 	const holderId = activeSession?.heldByRun ? (activeSession.heldByRunId ?? null) : null;
-
-	const runQuery = useQuery({
-		queryKey: holderId ? runQueryKey(holderId) : ["runs", "none"],
-		enabled: Boolean(holderId),
-		queryFn: async () => {
-			if (!holderId) throw new Error("No Run holds the device session");
-			const client = await getRunnerClient();
-			return client.getRun(holderId);
-		},
-		refetchInterval: 1000,
-	});
-
-	const cancelMutation = useMutation({
-		mutationFn: async (runId: string) => {
-			const client = await getRunnerClient();
-			return client.cancelRun(runId);
-		},
-		onSuccess: (run) => {
-			queryClient.setQueryData(runQueryKey(run.id), run);
-			invalidateActiveDeviceSession();
-		},
-		onError: (error) => {
-			showErrorToast(error, "Failed to cancel run");
-		},
-	});
+	const runQuery = useRunQuery(holderId, { refetchInterval: () => 1000 });
+	const cancelMutation = useCancelRun();
 
 	const chip = runChip(activeSession, runQuery.data ?? null);
 	if (!chip) return null;

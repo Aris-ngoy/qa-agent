@@ -1,9 +1,6 @@
 import { createInspectorCase } from "@/features/inspector/data/api/cases";
-import {
-	type TestCase,
-	caseQueryKey,
-	casesQueryKey,
-} from "@/features/test-cases/utils/catalog-case";
+import { caseQueryKey, casesQueryKey } from "@/features/test-cases/hooks/usequery/use-cases";
+import type { TestCase } from "@/features/test-cases/utils/catalog-case";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CaseScript } from "@yoqa/runner-client";
 

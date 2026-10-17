@@ -1,12 +1,13 @@
-import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
-import { type Application, useApps } from "@/features/apps/hooks/use-apps";
+import type { Application } from "@/features/apps/data/api/apps";
+import { useApps } from "@/features/apps/hooks/use-apps";
+import { retargetDevice } from "@/features/devices/data/api/devices";
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
 } from "@/features/devices/hooks/usequery/use-active-device-session";
 import { appTargetFor, retargetsAfterRun } from "@/features/devices/utils/session-app";
-import { runQueryKey } from "@/features/runs/hooks/use-active-run";
+import { runQueryKey } from "@/features/runs/hooks/usequery/use-run";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ActiveDeviceResponse, Run } from "@yoqa/runner-client";
 import { useCallback, useEffect, useRef } from "react";
@@ -32,8 +33,7 @@ export function useRetargetOnAppSwitch() {
 	const retarget = useCallback(
 		async (session: ActiveDeviceResponse, app: Application) => {
 			try {
-				const client = await getRunnerClient();
-				const info = await client.retargetDevice(appTargetFor(session.platform, app));
+				const info = await retargetDevice(appTargetFor(session.platform, app));
 				queryClient.setQueryData(activeDeviceSessionQueryKey, info);
 			} catch (error) {
 				showErrorToast(error, `Failed to switch the device session to ${app.name}`);

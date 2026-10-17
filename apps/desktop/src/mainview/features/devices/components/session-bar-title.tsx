@@ -1,8 +1,9 @@
 import { useApps } from "@/features/apps/hooks/use-apps";
 import { useActiveDeviceSession } from "@/features/devices/hooks/usequery/use-active-device-session";
-import { runQueryKey } from "@/features/runs/hooks/use-active-run";
-import { devicesQueryKey, formatDeviceShortLabel } from "@/features/runs/utils/labels";
-import { caseQueryKey } from "@/features/test-cases/utils/catalog-case";
+import { devicesQueryKey } from "@/features/devices/hooks/usequery/use-devices";
+import { runQueryKey } from "@/features/runs/hooks/usequery/use-run";
+import { formatDeviceShortLabel } from "@/features/runs/utils/labels";
+import { caseQueryKey } from "@/features/test-cases/hooks/usequery/use-cases";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useRouterState } from "@tanstack/react-router";
 import type { Device, Run } from "@yoqa/runner-client";

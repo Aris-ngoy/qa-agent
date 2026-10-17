@@ -1,5 +1,6 @@
 import { type WidthBounds, readPanelWidth, writePanelWidth } from "@/app/resize/panel-width";
-import { useCallback, useState } from "react";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { useCallback } from "react";
 
 export type PanelWidth = {
 	/** The width to render, in px. */
@@ -24,20 +25,22 @@ export function usePanelWidth({
 	defaultWidth: number;
 	bounds: () => WidthBounds;
 }): PanelWidth {
-	const [stored, setStored] = useState(() => readPanelWidth(storageKey));
+	// A function initializes once, on first read, so storage is not read on every render.
+	const stored$ = useObservable<number | null>(() => readPanelWidth(storageKey));
+	const stored = useValue(stored$);
 
 	const setWidth = useCallback(
 		(width: number, options: { persist?: boolean } = {}) => {
-			setStored(width);
+			stored$.set(width);
 			if (options.persist) writePanelWidth(storageKey, width);
 		},
-		[storageKey],
+		[storageKey, stored$],
 	);
 
 	const reset = useCallback(() => {
-		setStored(null);
+		stored$.set(null);
 		writePanelWidth(storageKey, null);
-	}, [storageKey]);
+	}, [storageKey, stored$]);
 
 	return { width: stored ?? defaultWidth, resized: stored != null, bounds, setWidth, reset };
 }

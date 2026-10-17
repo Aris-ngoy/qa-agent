@@ -1,12 +1,13 @@
 import { AddApplicationModal } from "@/features/apps/components/add-application-modal";
 import { useApps } from "@/features/apps/hooks/use-apps";
 import { Button } from "@heroui/react";
+import { useObservable, useValue } from "@legendapp/state/react";
 import { Navigate } from "@tanstack/react-router";
-import { useState } from "react";
 
 export function WelcomePage() {
 	const { hasApps, addApp, selectedApp } = useApps();
-	const [modalOpen, setModalOpen] = useState(false);
+	const modalOpen$ = useObservable(false);
+	const modalOpen = useValue(modalOpen$);
 
 	if (selectedApp) {
 		return <Navigate to="/test-cases" />;
@@ -29,7 +30,7 @@ export function WelcomePage() {
 					</p>
 					<Button
 						className="h-12 w-full max-w-sm rounded-full bg-primary text-on-primary data-[hovered=true]:bg-primary/90"
-						onPress={() => setModalOpen(true)}
+						onPress={() => modalOpen$.set(true)}
 					>
 						<svg aria-hidden="true" className="size-5" fill="currentColor" viewBox="0 0 20 20">
 							<path
@@ -47,7 +48,7 @@ export function WelcomePage() {
 				onAdd={(name) => {
 					void addApp(name);
 				}}
-				onClose={() => setModalOpen(false)}
+				onClose={() => modalOpen$.set(false)}
 				open={modalOpen}
 			/>
 		</>

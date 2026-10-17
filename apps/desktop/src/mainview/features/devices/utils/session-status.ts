@@ -1,4 +1,4 @@
-import type { SelectedDevice } from "@/features/devices/components/select-device-modal";
+import type { SelectedDevice } from "@/features/devices/data/state/session-bar";
 import type { ActiveDeviceResponse, LaneName, RunTestStatus } from "@yoqa/runner-client";
 
 const LANE_LABELS: Record<LaneName, string> = { direct: "Direct" };

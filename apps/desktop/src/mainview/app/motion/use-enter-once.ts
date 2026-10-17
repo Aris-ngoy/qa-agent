@@ -1,18 +1,20 @@
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { type CSSProperties, useEffect, useRef } from "react";
 
 /**
  * Returns true once after `ready` becomes true, so enter animations
  * run only on the first successful load (not on filter/refetch).
  */
 export function useEnterOnce(ready: boolean): boolean {
-	const [shouldAnimate, setShouldAnimate] = useState(false);
+	const shouldAnimate$ = useObservable(false);
+	const shouldAnimate = useValue(shouldAnimate$);
 	const didAnimate = useRef(false);
 
 	useEffect(() => {
 		if (!ready || didAnimate.current) return;
 		didAnimate.current = true;
-		setShouldAnimate(true);
-	}, [ready]);
+		shouldAnimate$.set(true);
+	}, [ready, shouldAnimate$]);
 
 	return shouldAnimate;
 }
