@@ -3,7 +3,7 @@ import type { CaseScript } from "@yoqa/runner-client";
 import { executeScriptCase } from "../runs/case-executor";
 import { type FakeAxNode, type FakeCdpOptions, startFakeCdp } from "./fake-cdp";
 import { getScreen, performAction } from "./interaction";
-import { isDeadSessionError } from "./lane";
+import { ActionUnsupportedError, isDeadSessionError } from "./lane";
 import { createDeviceSession } from "./session";
 
 const VIEWPORT = { width: 1280, height: 800 };
@@ -123,13 +123,64 @@ describe("web Direct lane: Actions reach the page", () => {
 		expect((error as Error).message).toContain("net::ERR_NAME_NOT_RESOLVED");
 		await session.quit();
 	});
+});
 
-	test("an Action this slice does not drive yet fails clearly", async () => {
+const APP_URL = "https://app.example.com/home";
+
+describe("web Direct lane: app lifecycle", () => {
+	test("terminate-app closes the App's page and leaves the session on a blank one", async () => {
+		const { browser, session, deadCalls } = await attach();
+		await performAction(session, { kind: "open-url", url: APP_URL });
+		await performAction(session, { kind: "terminate-app", appId: APP_URL });
+		expect(browser.pages()).toEqual(["about:blank"]);
+		expect(deadCalls()).toBe(0);
+		// The session drives the page that is left.
+		await performAction(session, { kind: "tap", x: 500, y: 500 });
+		expect(browser.clicks).toEqual([{ x: 640, y: 400 }]);
+		await session.quit();
+	});
+
+	test("activate-app reopens the App's page after terminate-app", async () => {
+		const { browser, session } = await attach();
+		await performAction(session, { kind: "open-url", url: APP_URL });
+		await performAction(session, { kind: "terminate-app", appId: APP_URL });
+		await performAction(session, { kind: "activate-app", appId: APP_URL });
+		expect(browser.pages()).toEqual([APP_URL]);
+		await session.quit();
+	});
+
+	test("activate-app leaves a page already on the App where it is", async () => {
+		const { browser, session } = await attach();
+		await performAction(session, { kind: "open-url", url: "https://app.example.com/cart" });
+		await performAction(session, { kind: "activate-app", appId: APP_URL });
+		expect(browser.navigations).toEqual(["https://app.example.com/cart"]);
+		await session.quit();
+	});
+
+	test("restart-app clears the App origin's storage, then loads the App again", async () => {
+		const { browser, session } = await attach();
+		await performAction(session, { kind: "open-url", url: "https://app.example.com/cart" });
+		await performAction(session, { kind: "restart-app", appId: APP_URL });
+		expect(browser.clearedOrigins).toEqual(["https://app.example.com"]);
+		expect(browser.navigations).toEqual(["https://app.example.com/cart", APP_URL]);
+		expect(browser.pages()).toEqual([APP_URL]);
+		await session.quit();
+	});
+
+	test("an app id that is not a web URL fails clearly", async () => {
 		const { session } = await attach();
 		const error = await rejection(
-			performAction(session, { kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 }),
+			performAction(session, { kind: "activate-app", appId: "com.example.app" }),
 		);
-		expect((error as Error).message).toContain("not available on the web Direct lane yet");
+		expect((error as Error).message).toContain("Web URL");
+		await session.quit();
+	});
+
+	test("background-app fails as not supported on web", async () => {
+		const { session } = await attach();
+		const error = await rejection(performAction(session, { kind: "background-app", seconds: 3 }));
+		expect(error).toBeInstanceOf(ActionUnsupportedError);
+		expect((error as Error).message).toContain("not supported on web");
 		await session.quit();
 	});
 });

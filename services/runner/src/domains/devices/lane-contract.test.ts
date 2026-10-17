@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readdir, unlink } from "node:fs/promises";
-import { getScreen } from "./interaction";
+import { getScreen, performAction } from "./interaction";
 import { isDeadSessionError } from "./lane";
 import {
 	BUTTON,
@@ -136,3 +136,82 @@ for (const makeHarness of LANES) {
 		});
 	});
 }
+
+/**
+ * What the web Direct lane must do for shared cases to keep their meaning in a browser:
+ * the gestures a phone has become their mouse and wheel equivalents, and a JavaScript
+ * dialog is the alert. In CSS pixels of the harness's DEVICE-sized viewport.
+ */
+describe("Lane contract: web Direct (web-only Actions)", () => {
+	test("swipe up scrolls the content under its start point down, by the swipe's length", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		await performAction(session, { kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 });
+		expect(harness.browser.wheels).toEqual([
+			{ x: DEVICE.width / 2, y: DEVICE.height * 0.8, deltaX: 0, deltaY: DEVICE.height * 0.6 },
+		]);
+		await session.quit();
+	});
+
+	test("swipe right scrolls the content left", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		await performAction(session, { kind: "swipe", x: 200, y: 500, x2: 700, y2: 500 });
+		expect(harness.browser.wheels).toEqual([
+			{ x: DEVICE.width * 0.2, y: DEVICE.height / 2, deltaX: -DEVICE.width / 2, deltaY: 0 },
+		]);
+		await session.quit();
+	});
+
+	test("drag presses at the start, moves with the button held, and releases at the end", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		await performAction(session, {
+			kind: "drag",
+			x: 100,
+			y: 500,
+			x2: 900,
+			y2: 500,
+			durationMs: 20,
+		});
+		const start = { x: DEVICE.width * 0.1, y: DEVICE.height / 2 };
+		const end = { x: DEVICE.width * 0.9, y: DEVICE.height / 2 };
+		const events = harness.browser.mouse;
+		const pressed = events.findIndex((event) => event.type === "mousePressed");
+		expect(events[pressed]).toMatchObject({ ...start, buttons: 1 });
+		const held = events.slice(pressed + 1, -1);
+		expect(held.length).toBeGreaterThan(1);
+		expect(held.every((event) => event.type === "mouseMoved" && event.buttons === 1)).toBe(true);
+		expect(held.at(-1)).toMatchObject(end);
+		expect(events.at(-1)).toMatchObject({ type: "mouseReleased", ...end, buttons: 0 });
+		await session.quit();
+	});
+
+	test("alert accept answers a pending JavaScript dialog with OK", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		harness.browser.openDialog("confirm", "Delete this item?");
+		await performAction(session, { kind: "alert", alertAction: "accept" });
+		expect(harness.browser.dialogAnswers).toEqual([{ accept: true }]);
+		await session.quit();
+	});
+
+	test("alert dismiss answers a pending JavaScript dialog with Cancel", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		harness.browser.openDialog("beforeunload");
+		await performAction(session, { kind: "alert", alertAction: "dismiss" });
+		expect(harness.browser.dialogAnswers).toEqual([{ accept: false }]);
+		await session.quit();
+	});
+
+	test("alert fails clearly when no dialog is open", async () => {
+		const { session } = await open(webCdpLane());
+		const error = await performAction(session, { kind: "alert", alertAction: "accept" }).then(
+			() => null,
+			(caught: unknown) => caught,
+		);
+		expect((error as Error).message).toContain("No JavaScript dialog is open");
+		await session.quit();
+	});
+});

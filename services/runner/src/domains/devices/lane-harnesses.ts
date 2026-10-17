@@ -6,7 +6,7 @@ import { createConnection } from "node:net";
 import { encodeRgbaPng } from "../runs/coord-grid";
 import type { AdbExec, AdbResult, AndroidDirectDeps } from "./android-direct-lane";
 import { createAndroidDirectSession } from "./android-direct-lane";
-import { startFakeCdp } from "./fake-cdp";
+import { type FakeCdp, startFakeCdp } from "./fake-cdp";
 import { createIosDeviceSession } from "./ios-device-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { createIosDirectSession } from "./ios-direct-lane";
@@ -351,7 +351,8 @@ export function iosDeviceLane(): LaneHarness {
  * endpoint. Clicks are recorded in the page's CSS pixels, and its screenshot is the
  * viewport at 2× those pixels, as on a Retina display.
  */
-export function webCdpLane(): LaneHarness {
+/** The web harness also hands over its fake browser, for the web-only contract cases. */
+export function webCdpLane(): LaneHarness & { browser: FakeCdp } {
 	const browser = startFakeCdp({
 		viewport: DEVICE,
 		deviceScaleFactor: 2,
@@ -374,5 +375,6 @@ export function webCdpLane(): LaneHarness {
 		taps: () => browser.clicks,
 		frame: (count) => browser.frame(count),
 		killTool: () => browser.kill(),
+		browser,
 	};
 }

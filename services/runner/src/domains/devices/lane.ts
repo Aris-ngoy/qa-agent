@@ -99,6 +99,11 @@ export type DeviceSession = {
 	 */
 	setTargetApp: (appId: string | undefined) => void;
 	terminateApp: (appId: string) => Promise<void>;
+	/**
+	 * Start the app again from scratch, for a Lane whose restart is more than terminate then
+	 * activate (web clears the App origin's storage). Without it, restart-app is those two.
+	 */
+	restartApp?: (appId: string) => Promise<void>;
 	backgroundApp: (seconds?: number) => Promise<void>;
 	openUrl: (url: string) => Promise<void>;
 	acceptAlert: () => Promise<void>;
@@ -142,6 +147,17 @@ export class DeadSessionError extends Error {
 	constructor(message = "Device session ended", options?: ErrorOptions) {
 		super(message, options);
 		this.name = "DeadSessionError";
+	}
+}
+
+/**
+ * This Lane has no way to do the Action on its platform (background-app on web). The
+ * Action fails rather than being skipped, so a step it never ran cannot pass.
+ */
+export class ActionUnsupportedError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "ActionUnsupportedError";
 	}
 }
 

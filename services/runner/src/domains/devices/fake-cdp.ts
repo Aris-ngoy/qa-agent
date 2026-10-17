@@ -1,9 +1,10 @@
 /**
  * A faked Chromium for tests: a local server that answers `/json/version` and speaks
  * enough CDP over its WebSocket for the web Direct lane. It records what reached the page
- * (clicks, text, navigations, keys) in CSS pixels, and serves a viewport-sized PNG that
- * darkens with each click, plus an accessibility tree with whatever nodes it is given and
- * a DOM snapshot that lays them out.
+ * (clicks, mouse and wheel events, text, navigations, keys, dialog answers, cleared
+ * storage) in CSS pixels, and serves a viewport-sized PNG that darkens with each click,
+ * plus an accessibility tree with whatever nodes it is given and a DOM snapshot that lays
+ * them out. Pages open and close as targets, the way tabs do.
  */
 import type { ServerWebSocket } from "bun";
 import { encodeRgbaPng } from "../runs/coord-grid";
@@ -37,13 +38,36 @@ export type FakeCdpOptions = {
 	nodes?: FakeAxNode[];
 };
 
+export type FakeMouseEvent = {
+	type: "mousePressed" | "mouseReleased" | "mouseMoved";
+	x: number;
+	y: number;
+	buttons: number;
+};
+
+export type FakeWheel = { x: number; y: number; deltaX: number; deltaY: number };
+
+export type FakeDialogType = "alert" | "confirm" | "prompt" | "beforeunload";
+
 export type FakeCdp = {
 	port: number;
 	/** Where clicks landed, in CSS pixels. */
 	clicks: Array<{ x: number; y: number }>;
+	/** Every mouse press, move and release, in order. */
+	mouse: FakeMouseEvent[];
+	/** Every wheel scroll: where, and by how much. A positive deltaY scrolls the page down. */
+	wheels: FakeWheel[];
 	insertedText: string[];
 	keys: string[];
 	navigations: string[];
+	/** How each JavaScript dialog was answered. */
+	dialogAnswers: Array<{ accept: boolean; promptText?: string }>;
+	/** Origins whose storage was cleared. */
+	clearedOrigins: string[];
+	/** The URLs of the open pages, oldest first. */
+	pages: () => string[];
+	/** The page the session drives opens a JavaScript dialog, which waits for an answer. */
+	openDialog: (type: FakeDialogType, message?: string, defaultPrompt?: string) => void;
 	/** The viewport PNG after `clicks` clicks, base64-encoded. */
 	frame: (clicks: number) => string;
 	/** The user closes the page the session drives; the browser stays open. */
@@ -54,17 +78,46 @@ export type FakeCdp = {
 
 type Message = { id: number; method: string; params?: Record<string, unknown>; sessionId?: string };
 
-const PAGE_ID = "page-1";
-const PAGE_SESSION = "session-1";
+type Page = { targetId: string; url: string; sessionId?: string };
 
 export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const scale = options.deviceScaleFactor ?? 1;
 	const nodes = options.nodes ?? [];
 	const clicks: FakeCdp["clicks"] = [];
+	const mouse: FakeMouseEvent[] = [];
+	const wheels: FakeWheel[] = [];
 	const insertedText: string[] = [];
 	const keys: string[] = [];
 	const navigations: string[] = [];
+	const dialogAnswers: FakeCdp["dialogAnswers"] = [];
+	const clearedOrigins: string[] = [];
 	const sockets = new Set<ServerWebSocket<unknown>>();
+	const pages: Page[] = [{ targetId: "page-1", url: "about:blank" }];
+	let nextPage = 2;
+	let dialogOpen: { sessionId: string } | null = null;
+
+	const broadcast = (method: string, params: unknown, sessionId?: string) => {
+		for (const ws of sockets) {
+			ws.send(JSON.stringify({ method, params, ...(sessionId ? { sessionId } : {}) }));
+		}
+	};
+	/** The page a command on `sessionId` reaches. */
+	const pageOf = (sessionId: string | undefined) => {
+		const page = pages.find((candidate) => sessionId && candidate.sessionId === sessionId);
+		if (sessionId && !page) throw new Error(`Session with given id not found: ${sessionId}`);
+		return page;
+	};
+	const closeTarget = (page: Page) => {
+		pages.splice(pages.indexOf(page), 1);
+		if (page.sessionId) {
+			broadcast("Target.detachedFromTarget", {
+				sessionId: page.sessionId,
+				targetId: page.targetId,
+			});
+		}
+	};
+	/** The page a session drives now: the last one attached. */
+	const drivenPage = () => pages.filter((page) => page.sessionId).at(-1);
 
 	/** A capture beyond the viewport (or clipped to the page) is the whole page. */
 	const frame = (count: number, wholePage = false) => {
@@ -139,11 +192,34 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 
 	const answer = (message: Message): unknown => {
 		const params = message.params ?? {};
+		const page = pageOf(message.sessionId);
 		switch (message.method) {
 			case "Target.getTargets":
-				return { targetInfos: [{ targetId: PAGE_ID, type: "page", url: "about:blank" }] };
-			case "Target.attachToTarget":
-				return { sessionId: PAGE_SESSION };
+				return {
+					targetInfos: pages.map(({ targetId, url }) => ({ targetId, type: "page", url })),
+				};
+			case "Target.getTargetInfo": {
+				const target = pages.find((candidate) => candidate.targetId === params.targetId);
+				if (!target) throw new Error("No target with given id found");
+				return { targetInfo: { targetId: target.targetId, type: "page", url: target.url } };
+			}
+			case "Target.createTarget": {
+				const created = { targetId: `page-${nextPage++}`, url: String(params.url) };
+				pages.push(created);
+				return { targetId: created.targetId };
+			}
+			case "Target.attachToTarget": {
+				const target = pages.find((candidate) => candidate.targetId === params.targetId);
+				if (!target) throw new Error("No target with given id found");
+				target.sessionId = `session-${target.targetId}`;
+				return { sessionId: target.sessionId };
+			}
+			case "Target.closeTarget": {
+				const target = pages.find((candidate) => candidate.targetId === params.targetId);
+				if (!target) throw new Error("No target with given id found");
+				closeTarget(target);
+				return { success: true };
+			}
 			case "Page.getLayoutMetrics":
 				return {
 					cssLayoutViewport: {
@@ -157,14 +233,38 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				};
 			case "Page.navigate":
 				navigations.push(String(params.url));
+				if (page && !options.navigateError) page.url = String(params.url);
 				return {
-					frameId: PAGE_ID,
+					frameId: page?.targetId ?? "",
 					...(options.navigateError ? { errorText: options.navigateError } : {}),
 				};
-			case "Input.dispatchMouseEvent":
-				if (params.type === "mousePressed")
-					clicks.push({ x: Number(params.x), y: Number(params.y) });
+			case "Page.handleJavaScriptDialog":
+				if (!dialogOpen || dialogOpen.sessionId !== message.sessionId) {
+					throw new Error("No dialog is showing");
+				}
+				dialogOpen = null;
+				dialogAnswers.push({
+					accept: Boolean(params.accept),
+					...(params.promptText !== undefined ? { promptText: String(params.promptText) } : {}),
+				});
 				return {};
+			case "Storage.clearDataForOrigin":
+				clearedOrigins.push(String(params.origin));
+				return {};
+			case "Input.dispatchMouseEvent": {
+				const point = { x: Number(params.x), y: Number(params.y) };
+				if (params.type === "mouseWheel") {
+					wheels.push({ ...point, deltaX: Number(params.deltaX), deltaY: Number(params.deltaY) });
+					return {};
+				}
+				if (params.type === "mousePressed") clicks.push(point);
+				mouse.push({
+					type: params.type as FakeMouseEvent["type"],
+					...point,
+					buttons: Number(params.buttons ?? 0),
+				});
+				return {};
+			}
 			case "Input.insertText":
 				insertedText.push(String(params.text));
 				return {};
@@ -220,19 +320,28 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	return {
 		port: server.port ?? 0,
 		clicks,
+		mouse,
+		wheels,
 		insertedText,
 		keys,
 		navigations,
+		dialogAnswers,
+		clearedOrigins,
+		pages: () => pages.map((page) => page.url),
+		openDialog: (type, message = "", defaultPrompt = "") => {
+			const driven = drivenPage();
+			if (!driven?.sessionId) throw new Error("No page is attached");
+			dialogOpen = { sessionId: driven.sessionId };
+			broadcast(
+				"Page.javascriptDialogOpening",
+				{ url: driven.url, message, type, hasBrowserHandler: false, defaultPrompt },
+				driven.sessionId,
+			);
+		},
 		frame,
 		closePage: () => {
-			for (const ws of sockets) {
-				ws.send(
-					JSON.stringify({
-						method: "Target.detachedFromTarget",
-						params: { sessionId: PAGE_SESSION, targetId: PAGE_ID },
-					}),
-				);
-			}
+			const driven = drivenPage();
+			if (driven) closeTarget(driven);
 		},
 		kill: () => {
 			for (const ws of sockets) ws.close();

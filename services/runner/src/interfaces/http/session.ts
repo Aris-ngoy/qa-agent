@@ -32,7 +32,11 @@ import {
 	getScreen,
 	performAction,
 } from "../../domains/devices/interaction";
-import { DeviceUnreachableError, isDeadSessionError } from "../../domains/devices/lane";
+import {
+	ActionUnsupportedError,
+	DeviceUnreachableError,
+	isDeadSessionError,
+} from "../../domains/devices/lane";
 import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 import { DeveloperNotTrustedError } from "../../domains/devices/yoqa-runner";
 
@@ -361,6 +365,9 @@ export function createSessionRoutes() {
 			}
 			if (error instanceof ActionNotFoundError) {
 				return c.json({ error: error.message }, 404);
+			}
+			if (error instanceof ActionUnsupportedError) {
+				return c.json({ error: "Action not supported", detail: error.message }, 422);
 			}
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Action failed", detail: message }, 500);

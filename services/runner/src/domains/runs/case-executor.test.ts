@@ -6,8 +6,9 @@ import type {
 	ScreenElement,
 	StepPhases,
 } from "@yoqa/runner-client";
+import { startFakeCdp } from "../devices/fake-cdp";
 import { DeadSessionError } from "../devices/lane";
-import type { DeviceSession } from "../devices/session";
+import { type DeviceSession, createDeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import type { AgentDecision } from "./agent";
 import { executeAgentCase, executeScriptCase } from "./case-executor";
@@ -330,6 +331,39 @@ describe("executeScriptCase", () => {
 });
 
 describe("executeAgentCase", () => {
+	it("errors the case when the agent backgrounds the app on web, which a page cannot do", async () => {
+		const browser = startFakeCdp({ viewport: { width: 1280, height: 800 } });
+		const session = await createDeviceSession({
+			platform: "web",
+			deviceId: `chromium-cdp-${browser.port}`,
+		});
+		let calls = 0;
+		try {
+			const result = await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "demo",
+				auth: fakeAuth(),
+				session,
+				isAborted: () => false,
+				appendStep: async () => {},
+				decide: async () => {
+					calls += 1;
+					if (calls === 1) {
+						return { type: "background-app", seconds: 3, reason: "background", thoughts: "" };
+					}
+					return { type: "done", reason: "done", thoughts: "looks fine" };
+				},
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+			});
+
+			expect(result.status).toBe("errored");
+			expect(result.error).toContain("background-app is not supported on web");
+		} finally {
+			await session.quit();
+		}
+	});
+
 	it("stops when injected decide returns done", async () => {
 		const performed: ActionRequest[] = [];
 		const decisions: AgentDecision[] = [];
