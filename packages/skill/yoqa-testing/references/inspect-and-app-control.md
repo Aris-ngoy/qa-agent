@@ -66,9 +66,14 @@ Layout-only containers, zero-size nodes, offscreen nodes, and elements marked in
 from the cleaned list. If an element you expect is missing, it is one of those — check
 `yoqa screen --full` before concluding it isn't rendered.
 
+**On web** the screenshot is the page's viewport (no browser tabs or address bar), and `yoqa screen`
+is the page's accessibility tree with the same output shape: labels are accessible names, and `--id` is
+the element's `data-testid`, else its `id`. Bounds are relative to the viewport, so anything scrolled
+out of view is offscreen and dropped.
+
 ## App lifecycle
 
-The flag is `--app-id` (iOS bundle id or Android application id):
+The flag is `--app-id` (iOS bundle id, Android application id, or on web the App's Web URL):
 
 ```bash
 yoqa action activate-app --app-id com.example.app
@@ -79,6 +84,26 @@ yoqa action background-app --seconds 10
 yoqa action open-url --url "https://example.com"
 ```
 
+On web an app is its **Web URL** (`http` or `https`), and each lifecycle Action acts on the page:
+
+| Action | On web |
+|---|---|
+| `open-url` | navigates the page to the URL |
+| `activate-app` | brings a page already on the URL's origin to the front, or navigates to the URL |
+| `terminate-app` | closes the app's page; the session moves to a blank page |
+| `restart-app` | closes the page, clears all storage and cookies for the origin, then loads the URL fresh |
+| `background-app` | **not supported** — fails with "background-app is not supported on web" |
+
+```bash
+yoqa action open-url --url "http://localhost:8081/settings"
+yoqa action restart-app --app-id http://localhost:8081
+```
+
+A link or script that opens a new tab or popup (`target=_blank`, `window.open`, an OAuth sign-in
+window) is followed: the next screenshot and Action are on the popup. When the popup closes, the
+session returns to the page that opened it. There is no tab switching; tabs the page did not open are
+ignored.
+
 ## Alert
 
 Prefer the `alert` command over tapping a button when interacting with a system alert. Accept is the
@@ -88,3 +113,33 @@ default; pass `--dismiss` to dismiss.
 yoqa action alert              # accept
 yoqa action alert --dismiss    # dismiss
 ```
+
+On web, `alert` answers the page's JavaScript dialog (`alert`, `confirm`, `prompt`, or a "Leave
+site?" prompt). It fails with "No JavaScript dialog is open on the page" when there is none.
+
+## Keys
+
+`yoqa action key` presses one named key on the focused element, optionally with modifiers held. Use it
+to submit a form (Enter), move focus (Tab, Shift+Tab), close a modal or menu (Escape), and move through
+a list or combobox (arrows). Keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp, ArrowDown,
+ArrowLeft, ArrowRight, Home, End, PageUp, PageDown, Space. Modifiers: Shift, Control, Alt, Meta. Names
+are case-insensitive.
+
+```bash
+yoqa action key Enter
+yoqa action key Tab --modifiers shift          # Shift+Tab
+yoqa action key ArrowDown --screenshot
+```
+
+What each platform can press:
+
+| Platform | Keys | Modifiers |
+|---|---|---|
+| Web | all | yes |
+| Android | all (modifiers need Android 13 or later) | yes |
+| iOS simulator | all | no |
+| Physical iPhone | Enter, Backspace, Space | no |
+
+A key the device cannot press fails the Action with an error naming the key and what the device
+supports. Nothing is sent, so choose another way (tap the on-screen Return or Next button) rather than
+retrying.

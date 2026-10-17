@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: Drive Yoqa from your terminal — devices, screen, actions, catalog, and runs.
+description: Drive Yoqa from your terminal — devices, browsers, screen, actions, catalog, and runs.
 ---
 
 The `yoqa` CLI talks to the **local runner**. If nothing is listening on `http://127.0.0.1:7420`, the CLI starts `@yoqa/runner` for you (requires [Bun](https://bun.sh)). The desktop app is optional.
@@ -102,11 +102,32 @@ In the desktop app: **Servers** button next to Play, and **Settings → Diagnost
 ```bash
 yoqa devices ios                             # list devices & simulators (--all for every simulator)
 yoqa devices android                         # list devices & emulators (--all for every emulator)
+yoqa devices web                             # installed Chrome, Edge, Brave, Chromium (macOS)
+yoqa devices web --booted-only --json        # only browsers Yoqa has open
 yoqa devices connect <device-id>             # open a session (full id from the list)
 yoqa devices connect <device-id> --lane auto # direct | auto
 yoqa devices active                          # show the connected device (includes Lane)
 yoqa devices disconnect
 ```
+
+### Connect options
+
+| Option | Applies to | Meaning |
+| ------ | ---------- | ------- |
+| `--platform <ios\|android\|web>` | all | The device's platform. Implied for `web-*` and `chromium-cdp-<port>` ids. |
+| `--lane <direct\|auto>` | all | The Lane. Direct is the only one. |
+| `--bundle-id <id>` | iOS | Launch this app once connected. |
+| `--app-package <id>` | Android | Launch this app once connected. |
+| `--viewport <desktop\|mobile>` | web | Viewport preset: `desktop` (1280×800, the default) or `mobile` (390×844, touch and a mobile user agent). Fails on a phone. |
+| `--json` | all | Print the session as JSON. |
+
+```bash
+yoqa devices connect web-chrome                      # launch a Yoqa-owned Chrome, desktop preset
+yoqa devices connect web-chrome --viewport mobile    # phone-sized page with touch
+yoqa devices connect chromium-cdp-9222               # attach to a Chromium you started on port 9222
+```
+
+Attach needs the browser started with `--remote-debugging-port` and a non-default `--user-data-dir`. See [Web](/docs/web).
 
 ## Inspect the screen
 
@@ -142,6 +163,10 @@ yoqa action swipe --x 500 --y 800 --x2 500 --y2 200
 yoqa action drag --x 300 --y 500 --x2 700 --y2 500
 yoqa action input --x 500 --y 640 --text "hi@yoqa.arisn.dev"
 
+# Keys: Enter, Tab, Escape, Backspace, Delete, arrows, Home, End, PageUp, PageDown, Space
+yoqa action key Enter
+yoqa action key Tab --modifiers shift                  # shift, control, alt, meta (comma-separated)
+
 # See the result: wait for the screen to settle, then print the Agent image path
 # (downscaled for models). `raw` is the full Result screenshot; `marked` has the tap ring.
 yoqa action tap --x 500 --y 320 --screenshot
@@ -162,8 +187,10 @@ yoqa action alert --dismiss
 yoqa action activate-app --app-id com.example.app
 yoqa action terminate-app --app-id com.example.app
 yoqa action restart-app --app-id com.example.app
-yoqa action background-app
+yoqa action background-app                           # not supported on web
 ```
+
+`key` fails with an error when the device cannot press that key (a physical iPhone sends only Enter, Backspace and Space, and an iOS Simulator holds no modifiers). On web, `--app-id` is the App's Web URL. See [Web](/docs/web) for what each Action does in a browser.
 
 ## Case Script files
 
@@ -184,6 +211,8 @@ Catalog commands take the app **prefix** as `APP` (`yoqa apps list`).
 yoqa apps list
 yoqa apps get APP --json
 yoqa apps create --name "My App"
+yoqa apps create --name "My Site" --web-url https://app.example.com   # web-only App
+yoqa apps update APP --web-url http://localhost:8081                  # the page a Run on web opens
 yoqa apps update APP --context "..."          # overwrites; send the full replacement
 
 yoqa cases list APP
@@ -210,6 +239,7 @@ yoqa runs list APP
 yoqa runs get <run-id>
 yoqa runs create APP --cases 1,2 --wait   # start cases; --wait blocks until finished
 yoqa runs create APP --cases 1 --lane auto
+yoqa runs create APP --cases 1 --device web-chrome --wait   # on web: opens the App's Web URL
 yoqa runs wait <run-id>
 yoqa benchmark --device <id> --platform ios
 yoqa benchmark --device <id> --platform ios --suite docs/devices/benchmark-suite.json

@@ -1,6 +1,6 @@
 ---
 title: Apps
-description: Manage iOS and Android applications for local agentic testing.
+description: Manage iOS, Android and web applications for local agentic testing.
 ---
 
 An **app** is the top-level container for identifiers, shared context, cases, flows, tags, and builds.
@@ -11,13 +11,21 @@ When you add an app (desktop UI or `yoqa apps`), provide:
 
 | Field | Platform | Purpose |
 | ----- | -------- | ------- |
-| **name** | both | Display name (e.g. `MyApp`) |
-| **prefix** | both | Short unique ID used by CLI catalog commands (`yoqa cases list APP`) |
+| **name** | all | Display name (e.g. `MyApp`) |
+| **prefix** | all | Short unique ID used by CLI catalog commands (`yoqa cases list APP`) |
 | **bundle_id** | iOS | Bundle identifier (e.g. `com.example.myapp`) |
 | **package_name** | Android | Package name (e.g. `com.example.myapp`) |
+| **web_url** | Web | The page a Run on web opens first, `http` or `https` (e.g. `http://localhost:8081`) |
 | **app_store_id** / **play_store_id** | optional | Store IDs for future store/TestFlight flows |
 
-At least one platform identifier (bundle or package) is needed to launch and target the app on device.
+At least one platform identifier (bundle, package or Web URL) is needed to launch and target the app. A web-only App needs only a name and a Web URL:
+
+```bash
+yoqa apps create --name "My Site" --web-url https://app.example.com
+yoqa apps update APP --web-url http://localhost:8081
+```
+
+See [Web](/docs/web).
 
 ## App context
 

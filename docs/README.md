@@ -33,6 +33,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/web-popups.md](./devices/web-popups.md) | Web: the session follows a popup the page opens and returns to the opener when it closes |
 | [devices/web-viewport-presets.md](./devices/web-viewport-presets.md) | Web Viewport presets: desktop or mobile (touch, mobile user agent) at connect, stored on the Run |
 | [runs/web-runs.md](./runs/web-runs.md) | Web URL on the App; a Run on web opens it, and its report names the browser |
+| [devices/web-skill-and-docs.md](./devices/web-skill-and-docs.md) | Web and the `key` Action in the `yoqa-testing` skill and the public docs, guarded by `skill-docs.test.ts` |
 | [runs/selection-and-runs-mvp.md](./runs/selection-and-runs-mvp.md) | Test case selection + local `POST /runs` MVP |
 | [runs/ai-sdk-vision.md](./runs/ai-sdk-vision.md) | Vision decide + grounding via Vercel AI SDK |
 | [runs/cursor-vision-cli.md](./runs/cursor-vision-cli.md) | Cursor Agent CLI vision decide + grounding |

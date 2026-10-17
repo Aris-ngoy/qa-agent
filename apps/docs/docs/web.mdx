@@ -1,0 +1,161 @@
+---
+title: Web
+description: Test a web app or a React Native Web build in Chrome, Edge, Brave or Chromium.
+---
+
+Web is a third platform next to iOS and Android. The same Test Cases, Flows, App context, CLI loop and reports work against a page in a Chromium browser. The agent decides each Action from screenshots, exactly as it does on a phone.
+
+Yoqa drives the browser over the Chrome DevTools Protocol, with no WebDriver or Playwright in between. Firefox and Safari are not supported.
+
+## Web devices
+
+A web device is a Chromium browser installed on your Mac: Chrome, Edge, Brave or Chromium. Each one is listed even when it is not running, and its id stays the same across launches, so saved commands and CI scripts keep working.
+
+```bash
+yoqa devices web                # every installed browser
+yoqa devices web --booted-only  # only browsers Yoqa has open
+yoqa devices web --json
+```
+
+| Browser | Device id |
+| ------- | --------- |
+| Google Chrome | `web-chrome` |
+| Microsoft Edge | `web-edge` |
+| Brave Browser | `web-brave` |
+| Chromium | `web-chromium` |
+
+Connecting launches a **new window that Yoqa owns**, on a fresh temporary profile. It never touches your own tabs, cookies or logins. Disconnecting, or connecting another device, closes the window and deletes its profile.
+
+```bash
+yoqa devices connect web-chrome   # --platform web is implied
+yoqa devices active
+yoqa devices disconnect
+```
+
+Only one Device Session exists at a time, on web as on mobile.
+
+## Viewport presets
+
+A web connect picks a **viewport preset**: a fixed page size, kept for the whole session and stored on the Run, so coordinates and layout match from one run to the next.
+
+| Preset | Page size | Input |
+| ------ | --------- | ----- |
+| `desktop` (default) | 1280×800 | Mouse. A swipe is a wheel scroll. |
+| `mobile` | 390×844 at 3× | Touch, with an iPhone user agent. A swipe is a finger stroke. |
+
+```bash
+yoqa devices connect web-chrome --viewport mobile
+```
+
+Use `mobile` for a React Native Web or Expo web build, so it lays out and responds as it does on a phone. Free-form sizes are not accepted.
+
+## Attach to a browser you started
+
+To test against a browser profile you prepared, start Chrome, Edge or Brave yourself with a debug port **and a non-default profile directory**, then attach by port:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 --user-data-dir=/tmp/yoqa-chrome
+
+yoqa devices connect chromium-cdp-9222
+yoqa devices connect chromium-cdp-9222 --viewport mobile
+```
+
+<Warning>
+  Chrome 136 and later turn remote debugging off on the default profile, so `--user-data-dir` must name another directory. If nothing answers on the port, the connect fails and says how to start the browser.
+</Warning>
+
+Yoqa never scans for ports: the id names the port. Disconnecting an attached browser leaves it open.
+
+## The App's Web URL
+
+An [App](/docs/apps) has a **Web URL** next to its iOS bundle id and Android application id. A Run on web opens it before the first case, the way a Run on a phone launches the app. One App can run the same Test Cases on iOS, Android and web.
+
+```bash
+yoqa apps create --name "My Site" --web-url https://app.example.com   # a web-only App
+yoqa apps update APP --web-url http://localhost:8081                  # add web to an existing App
+yoqa runs create APP --cases 1,2 --device web-chrome --wait
+```
+
+The Web URL must be `http` or `https`. A Run on web for an App with no Web URL fails before it connects, naming the fix. In the desktop app, the App editor has a **Web URL** field.
+
+A Run that connects the browser itself uses the `desktop` preset. To run at `mobile`, connect first with `--viewport mobile` and start the Run on that session. Run recording is not available on web: a case that asks for a video runs and is marked "no video". Reports name the browser and viewport next to the platform and Lane.
+
+## What each Action does on web
+
+Coordinates are 0–1000 relative to the page viewport, never the browser window. The screenshot is the viewport only, with no tabs or address bar.
+
+| Action | On web |
+| ------ | ------ |
+| `tap` | Click at the point (a touch under `mobile`). `--duration` holds it, and `--double` taps twice. |
+| `swipe` | Scrolls whatever is under the start point. Swipe up scrolls down, as on a phone. |
+| `drag` | Press, move and release, for sliders, drag-and-drop and canvas drawing. |
+| `input` | Types into the focused element. A newline presses Enter. |
+| `key` | Presses a named key, with modifiers. See below. |
+| `open-url` | Navigates the page. |
+| `alert` | Accepts or dismisses the page's JavaScript dialog (`alert`, `confirm`, `prompt`, "Leave site?"). |
+| `activate-app` | Brings a page already on the Web URL's origin to the front, or navigates to the Web URL. |
+| `terminate-app` | Closes the App's page. The session moves to a blank page. |
+| `restart-app` | Closes the page, clears storage and cookies for its origin, and loads the Web URL fresh. |
+| `background-app` | **Not supported.** It fails, so a cross-platform case never passes a step it did not run. |
+
+On web, `--app-id` is the Web URL:
+
+```bash
+yoqa action restart-app --app-id http://localhost:8081
+```
+
+**Popups are followed.** When the page opens a new tab or window (`target=_blank`, `window.open`, an OAuth sign-in popup), the session drives it. When it closes, the session returns to the page that opened it. Tabs the page did not open are ignored, and there is no tab switching to manage.
+
+**The Screen** is the page's accessibility tree, cleaned to the same shape as on mobile: label, type, id, and 0–1000 bounds. An element's id is its `data-testid`, else its `id`. `yoqa screen --full` returns the raw tree. `--id`, `--label`, `-d` grounding, Tree assist and Case Script taps all work as on mobile.
+
+## The key Action
+
+`key` presses one named key, with optional modifiers held. It works on every platform, as far as each device can send keys.
+
+```bash
+yoqa action key Enter
+yoqa action key Tab --modifiers shift
+yoqa action key ArrowDown --screenshot
+```
+
+Keys: Enter, Tab, Escape, Backspace, Delete, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, End, PageUp, PageDown, Space. Modifiers: Shift, Control, Alt, Meta.
+
+| Platform | Keys | Modifiers |
+| -------- | ---- | --------- |
+| Web | all | yes |
+| Android | all | yes (Android 13 and later) |
+| iOS Simulator | all | no |
+| Physical iPhone | Enter, Backspace, Space | no |
+
+A key the device cannot press fails the Action with an error naming the key, and nothing is sent. Case Script files write it as `- key: Enter` or `- key: { key: Tab, modifiers: [Shift] }`.
+
+## A worked example
+
+```bash
+yoqa devices connect web-chrome --viewport mobile
+yoqa action open-url --url http://localhost:8081
+yoqa screenshot /tmp/screen.png
+yoqa action input --x 500 --y 380 --text "ada@example.com"
+yoqa action key Tab
+yoqa action input --x 500 --y 470 --text "s3cret"
+yoqa action key Enter --screenshot
+yoqa assert visible -t "Welcome back"
+yoqa devices disconnect
+```
+
+## Limits
+
+- Browser discovery is macOS only.
+- The desktop app's device picker does not list browsers yet. Connect from the CLI.
+- No Run recording, tab management, cookie or storage editing, or network inspection.
+
+<CardGroup cols={2}>
+  <Card title="CLI" icon="terminal" href="/docs/cli">
+    Every device and action command
+  </Card>
+
+  <Card title="Apps" icon="layer-group" href="/docs/apps">
+    Bundle id, application id and Web URL
+  </Card>
+</CardGroup>

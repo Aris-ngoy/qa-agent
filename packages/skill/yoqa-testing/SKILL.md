@@ -1,12 +1,13 @@
 ---
 name: yoqa-testing
-description: Use this skill when the user wants to boot and interact with iOS or Android devices/simulators — inspect the screen, execute actions, run UI tests, or manage test cases via the Yoqa platform.
+description: Use this skill when the user wants to boot and interact with iOS or Android devices/simulators, or test a web app in a Chromium browser — inspect the screen, execute actions, run UI tests, or manage test cases via the Yoqa platform.
 ---
 
 # Yoqa Device Testing
 
-Yoqa controls iOS/Android devices and simulators through the `yoqa` CLI. There are two modes of
-interaction: you drive the device yourself (debug), or the Yoqa agent runs saved test cases for you.
+Yoqa controls iOS/Android devices and simulators, and web pages in a Chromium browser, through the
+`yoqa` CLI. There are two modes of interaction: you drive the device yourself (debug), or the Yoqa agent
+runs saved test cases for you.
 
 Pick one workflow below by what the user wants. Follow that workflow's file — it links to the exact
 commands in `references/`.
@@ -46,6 +47,12 @@ Cloud sign-in and credits are not required for local workflows.
 - When every next Action is known and you do not need to look between them, use `yoqa action batch`
   with a JSON list of coordinate / id / label steps. Do not put `-d` / `description` steps in a batch.
 - `--duration` on an action is in **milliseconds**; `--timeout` on `assert` / `runs wait` is in **seconds**.
+- Use `yoqa action key` for Enter, Tab, Escape, arrows and the other named keys. Each device declares the
+  keys it can press, and one it can't fails with an error rather than doing nothing.
+- **Web** is a third platform. A web device is an installed Chromium browser (`yoqa devices web`);
+  connecting opens a fresh Yoqa-owned window at a fixed viewport preset (`desktop`, or `mobile` with
+  touch). Coordinates are relative to the page viewport. An App's Web URL is what `open-url` and a Run
+  open. Swipe scrolls, popups are followed, and `background-app` is unsupported.
 
 See [Environment, Diagnostics & Conventions](references/environment.md).
 
@@ -86,8 +93,8 @@ Not implemented yet — in development.
 | File | Covers |
 |---|---|
 | [Environment](references/environment.md) | `health`, `status`, `serve`, `doctor`, `runtime`, `setup`, `servers`, global flags |
-| [Devices](references/devices.md) | list, connect, active, disconnect |
-| [Inspect & App Control](references/inspect-and-app-control.md) | `screenshot` (first), `screen` (fallback), app lifecycle, alerts |
+| [Devices](references/devices.md) | list, connect (incl. web browsers and viewport presets), active, disconnect |
+| [Inspect & App Control](references/inspect-and-app-control.md) | `screenshot` (first), `screen` (fallback), app lifecycle (and on web), alerts, keys |
 | [Actions by coordinates](references/actions-coordinates.md) | tap/input by point read off a screenshot; swipe and drag |
 | [Targeting elements](references/actions-grounding.md) | `--id`, `--label`, `--description` for tap/input (fallback) |
 | [Assertions](references/assertions.md) | `yoqa assert visible` / `not-visible` |
