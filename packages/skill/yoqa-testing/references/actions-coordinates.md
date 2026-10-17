@@ -87,6 +87,6 @@ yoqa action input --text <text> --x <x> --y <y>
 yoqa action input --text "hello world" --x 500 --y 420
 ```
 
-The point is tapped first to focus the field, then the text is typed. A newline in the text presses Enter. For
-other keys (Tab, Escape, arrows) use `yoqa action key` — see
+The point is tapped first to focus the field, then the text is typed. A newline in the text presses
+Enter. For other keys (Tab, Escape, arrows) use `yoqa action key` — see
 [Inspect & App Control](inspect-and-app-control.md#keys).
