@@ -22,9 +22,8 @@
  * background-app fails.
  *
  * The browser closing its socket, or the page going away with no opener to go back to, is
- * a Dead Session; a Yoqa-owned
- * instance is then quit too. The Frame Feed is Screenshot Poll (no stream) and the lane
- * does not record.
+ * a Dead Session; a Yoqa-owned instance is then quit too. The Frame Feed is Screenshot Poll
+ * (no stream) and the lane does not record.
  */
 
 import { mkdir } from "node:fs/promises";
