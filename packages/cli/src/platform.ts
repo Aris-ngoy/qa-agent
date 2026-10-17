@@ -4,7 +4,7 @@ import { type DevicePlatform, devicePlatformSchema } from "@yoqa/runner-client";
 export const PLATFORM_DEVICES_DESCRIPTION: Record<DevicePlatform, string> = {
 	ios: "List iOS devices and simulators",
 	android: "List Android devices and emulators",
-	web: "List web browsers (attach a Chromium you started by naming its port: chromium-cdp-<port>)",
+	web: "List installed web browsers (attach a Chromium you started by naming its port: chromium-cdp-<port>)",
 };
 
 /** A `--platform` value, or an error naming the platforms the CLI takes. */
@@ -17,11 +17,15 @@ export function parsePlatform(value: string | undefined): DevicePlatform {
 	return parsed.data;
 }
 
+/** A web device id: an installed browser (`web-chrome`) or a user-started Chromium's port. */
+const WEB_DEVICE_ID = /^(web-(chrome|edge|brave|chromium)|chromium-cdp-\d+)$/;
+
 /**
- * The platform `yoqa devices connect` opens: `--platform` when given, else web for a
- * user-started Chromium named by its debug port (`chromium-cdp-9222`).
+ * The platform `yoqa devices connect` opens: `--platform` when given, else web for an
+ * installed browser (`web-chrome`) or a user-started Chromium named by its debug port
+ * (`chromium-cdp-9222`).
  */
 export function connectPlatform(deviceId: string, value: string | undefined): DevicePlatform {
-	if (value === undefined && /^chromium-cdp-\d+$/.test(deviceId)) return "web";
+	if (value === undefined && WEB_DEVICE_ID.test(deviceId)) return "web";
 	return parsePlatform(value);
 }

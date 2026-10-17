@@ -8,12 +8,12 @@ import { encodeRgbaPng } from "../runs/coord-grid";
 import { ANDROID_KEYCODES, ANDROID_MODIFIER_KEYCODES } from "./adb-input";
 import type { AdbExec, AdbResult, AndroidDirectDeps } from "./android-direct-lane";
 import { createAndroidDirectSession } from "./android-direct-lane";
-import { type FakeCdp, startFakeCdp } from "./fake-cdp";
+import { type FakeCdp, type FakeCdpOptions, fakeChromium, startFakeCdp } from "./fake-cdp";
 import { createIosDeviceSession } from "./ios-device-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
 import { IOS_HID_KEYCODES, createIosDirectSession } from "./ios-direct-lane";
 import type { DeviceSession } from "./lane";
-import { CDP_KEYS, CDP_MODIFIERS, createWebDirectSession } from "./web-direct-lane";
+import { CDP_KEYS, CDP_MODIFIERS, createWebDirectSession, webDirectDeps } from "./web-direct-lane";
 import type { StartYoqaAx } from "./yoqa-ax";
 import { type SpawnYoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
@@ -397,23 +397,42 @@ export function iosDeviceLane(): LaneHarness {
 }
 
 /**
+ * The faked browser page every web harness drives: clicks in the page's CSS pixels, and a
+ * screenshot of the viewport at 2× those pixels, as on a Retina display.
+ */
+const WEB_PAGE: FakeCdpOptions = {
+	viewport: DEVICE,
+	deviceScaleFactor: 2,
+	nodes: [
+		{
+			role: "button",
+			name: BUTTON.label,
+			box: { x: 0, y: 0, width: 100, height: 40 },
+		},
+	],
+};
+
+/** A key pressed down that is not itself a modifier, with the modifiers its bits hold. */
+function cdpKeys(browser: FakeCdp): Array<{ key: KeyName; modifiers: KeyModifier[] }> {
+	return browser.keyEvents.flatMap((event) => {
+		if (event.type === "keyUp") return [];
+		const key = (Object.keys(CDP_KEYS) as KeyName[]).find(
+			(name) => CDP_KEYS[name].code === event.code,
+		);
+		if (!key) return [];
+		const modifiers = KEY_MODIFIERS.filter(
+			(modifier) => ((event.modifiers ?? 0) & CDP_MODIFIERS[modifier].bit) !== 0,
+		);
+		return [{ key, modifiers }];
+	});
+}
+
+/**
  * Web Direct: a user-started Chromium attached by its debug port, faked as a local CDP
- * endpoint. Clicks are recorded in the page's CSS pixels, and its screenshot is the
- * viewport at 2× those pixels, as on a Retina display. The harness also hands over its
- * fake browser, for the web-only contract cases.
+ * endpoint. The harness also hands over its fake browser, for the web-only contract cases.
  */
 export function webCdpLane(): LaneHarness & { browser: FakeCdp } {
-	const browser = startFakeCdp({
-		viewport: DEVICE,
-		deviceScaleFactor: 2,
-		nodes: [
-			{
-				role: "button",
-				name: BUTTON.label,
-				box: { x: 0, y: 0, width: 100, height: 40 },
-			},
-		],
-	});
+	const browser = startFakeCdp(WEB_PAGE);
 	return {
 		name: "Web Direct: an attached Chromium (faked CDP endpoint)",
 		open: ({ onSessionDead }) =>
@@ -423,21 +442,44 @@ export function webCdpLane(): LaneHarness & { browser: FakeCdp } {
 				onSessionDead,
 			}),
 		taps: () => browser.clicks,
-		// A key pressed down that is not itself a modifier, with the modifiers its bits hold.
-		keys: () =>
-			browser.keyEvents.flatMap((event) => {
-				if (event.type === "keyUp") return [];
-				const key = (Object.keys(CDP_KEYS) as KeyName[]).find(
-					(name) => CDP_KEYS[name].code === event.code,
-				);
-				if (!key) return [];
-				const modifiers = KEY_MODIFIERS.filter(
-					(modifier) => ((event.modifiers ?? 0) & CDP_MODIFIERS[modifier].bit) !== 0,
-				);
-				return [{ key, modifiers }];
-			}),
+		keys: () => cdpKeys(browser),
 		frame: (count) => browser.frame(count),
 		killTool: () => browser.kill(),
 		browser,
+	};
+}
+
+/**
+ * Web Direct: an installed Chrome that the lane launches as a Yoqa-owned instance, with the
+ * browser process faked so each launch starts a local CDP endpoint.
+ */
+export function webLaunchedLane(): LaneHarness {
+	const chromium = fakeChromium(WEB_PAGE);
+	const browser = () => {
+		const launched = chromium.browsers[0];
+		if (!launched) throw new Error("The lane has not launched the browser yet");
+		return launched;
+	};
+	return {
+		name: "Web Direct: a Yoqa-owned Chrome (faked browser process)",
+		open: ({ onSessionDead }) =>
+			createWebDirectSession(
+				{ platform: "web", deviceId: "web-chrome", onSessionDead },
+				webDirectDeps({
+					installedBrowsers: async () => [
+						{
+							id: "web-chrome",
+							name: "Google Chrome",
+							version: "141.0",
+							executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+						},
+					],
+					spawn: chromium.spawn,
+				}),
+			),
+		taps: () => browser().clicks,
+		keys: () => cdpKeys(browser()),
+		frame: (count) => browser().frame(count),
+		killTool: () => browser().kill(),
 	};
 }

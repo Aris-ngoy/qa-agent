@@ -138,7 +138,8 @@ export const DIRECT_IMPLEMENTATIONS: Record<DeviceClass, DirectImplementation[]>
 	],
 	web: [
 		{
-			// CDP straight to a Chromium browser the user started with a debug port (ADR-0007).
+			// CDP straight to a Chromium browser: an installed one Yoqa launches, or one the user
+			// started with a debug port (ADR-0007).
 			name: "cdp",
 			promoted: true,
 			open: (options) => createWebDirectSession(options),

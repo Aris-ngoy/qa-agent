@@ -1,9 +1,10 @@
 /**
  * The web Direct lane: CDP straight to a Chromium-family browser, with no driver in
- * between (ADR-0007). This slice attaches to a browser the user started with
- * `--remote-debugging-port`, named by its port (`chromium-cdp-9222`), and drives the first
- * page it has, or a blank one it opens. Disconnecting closes only the DevTools socket;
- * the browser stays open.
+ * between (ADR-0007). An installed browser (`web-chrome`) is launched as a Yoqa-owned
+ * instance on a throwaway profile, and disconnecting kills it and deletes the profile. A
+ * browser the user started with `--remote-debugging-port` is attached by its port
+ * (`chromium-cdp-9222`), and disconnecting closes only the DevTools socket. Either way the
+ * session drives the browser's first page, or a blank one it opens.
  *
  * Coordinates cross the Device Session as 0–1000 of the page viewport, never the browser
  * window, and reach the page in its CSS pixels. The screenshot is that viewport too (in
@@ -16,8 +17,9 @@
  * both with the origin's storage cleared in between. A page has no background, so
  * background-app fails.
  *
- * The browser closing its socket, or the page going away, is a Dead Session. The Frame
- * Feed is Screenshot Poll (no stream) and the lane does not record.
+ * The browser closing its socket, or the page going away, is a Dead Session; a Yoqa-owned
+ * instance is then quit too. The Frame Feed is Screenshot Poll (no stream) and the lane
+ * does not record.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -34,6 +36,14 @@ import {
 	connectCdp,
 } from "./cdp-client";
 import { attachPortOf, browserSocketUrl } from "./chromium-attach";
+import {
+	type BrowserProcess,
+	type ChromiumInstance,
+	type InstalledBrowser,
+	findInstalledBrowsers,
+	installedBrowserIdOf,
+	launchChromium,
+} from "./chromium-browsers";
 import {
 	ActionUnsupportedError,
 	type CapturedFrame,
@@ -52,6 +62,10 @@ export type WebDirectDeps = {
 	browserSocketUrl: (port: number) => Promise<string>;
 	/** Open a CDP client on that URL. */
 	connect: (url: string) => Promise<CdpClient>;
+	/** The browsers installed on this machine. */
+	installedBrowsers: () => Promise<InstalledBrowser[]>;
+	/** Launch a Yoqa-owned instance of one. */
+	launch: (browser: InstalledBrowser) => Promise<ChromiumInstance>;
 };
 
 /** Typed text is cut at a newline, which presses Enter. */
@@ -94,8 +108,44 @@ const WEB_KEY_SUPPORT: KeySupport = { keys: KEY_NAMES, modifiers: true };
 
 type JavaScriptDialog = { type: string; defaultPrompt?: string };
 
-export function webDirectDeps(): WebDirectDeps {
-	return { browserSocketUrl: (port) => browserSocketUrl(port), connect: (url) => connectCdp(url) };
+export function webDirectDeps(
+	overrides: {
+		installedBrowsers?: () => Promise<InstalledBrowser[]>;
+		spawn?: (command: string[]) => BrowserProcess;
+	} = {},
+): WebDirectDeps {
+	return {
+		browserSocketUrl: (port) => browserSocketUrl(port),
+		connect: (url) => connectCdp(url),
+		installedBrowsers: overrides.installedBrowsers ?? (() => findInstalledBrowsers()),
+		launch: (browser) => launchChromium(browser, { spawn: overrides.spawn }),
+	};
+}
+
+/**
+ * The browser a web device id names: a Yoqa-owned instance of an installed browser, which
+ * this launches, or a user-started one attached by its port.
+ */
+async function openBrowser(
+	deviceId: string,
+	deps: WebDirectDeps,
+): Promise<{ socketUrl: string; owned: ChromiumInstance | null }> {
+	const port = attachPortOf(deviceId);
+	if (port !== null) return { socketUrl: await deps.browserSocketUrl(port), owned: null };
+	const browserId = installedBrowserIdOf(deviceId);
+	if (browserId === null) {
+		throw new Error(
+			"A web device is an installed browser (web-chrome, web-edge, web-brave, web-chromium) or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>",
+		);
+	}
+	const browser = (await deps.installedBrowsers()).find((installed) => installed.id === browserId);
+	if (!browser) {
+		throw new Error(
+			`${browserId} is not installed. Run yoqa devices web to list the browsers here`,
+		);
+	}
+	const owned = await deps.launch(browser);
+	return { socketUrl: owned.socketUrl, owned };
 }
 
 /** The page the session drives: the browser's first page, or a blank one it opens. */
@@ -173,20 +223,22 @@ export async function createWebDirectSession(
 	options: SessionOptions,
 	deps: WebDirectDeps = webDirectDeps(),
 ): Promise<DeviceSession> {
-	const port = attachPortOf(options.deviceId);
-	if (options.platform !== "web" || port === null) {
-		throw new Error(
-			"The web Direct lane attaches to a Chromium started with --remote-debugging-port; name it chromium-cdp-<port>",
-		);
+	if (options.platform !== "web") {
+		throw new Error("The web Direct lane drives web devices only");
 	}
 
-	const client = await deps.connect(await deps.browserSocketUrl(port));
+	const { socketUrl, owned } = await openBrowser(options.deviceId, deps);
+	const client = await deps.connect(socketUrl).catch(async (error: unknown) => {
+		await owned?.stop();
+		throw error;
+	});
 	/** The page the session drives. terminate-app swaps it for a blank one. */
 	let page: { targetId: string; sessionId: string };
 	try {
 		page = await attachPage(client, await pickPage(client));
 	} catch (error) {
 		await client.close().catch(() => undefined);
+		await owned?.stop();
 		throw error;
 	}
 
@@ -195,12 +247,19 @@ export async function createWebDirectSession(
 	const dead = (reason: string) => {
 		if (!sessionEnded) {
 			sessionEnded = new DeadSessionError(`Device session ended: ${reason}`);
-			if (!quitting) options.onSessionDead?.();
+			if (!quitting) {
+				// Nobody quits a dead session, so a browser Yoqa launched is quit here.
+				void owned?.stop();
+				options.onSessionDead?.();
+			}
 		}
 		return sessionEnded;
 	};
 	void client.closed.then(() => {
 		if (!quitting) dead("the browser closed its DevTools connection");
+	});
+	void owned?.exited.then(() => {
+		if (!quitting) dead("the browser quit");
 	});
 	client.on("Target.detachedFromTarget", (params) => {
 		if ((params as { sessionId?: string })?.sessionId === page.sessionId && !quitting) {
@@ -436,6 +495,7 @@ export async function createWebDirectSession(
 		quit: async () => {
 			quitting = true;
 			await client.close();
+			await owned?.stop();
 		},
 		captureFrame,
 		screenshot,

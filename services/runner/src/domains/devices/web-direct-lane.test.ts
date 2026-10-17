@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import type { CaseScript } from "@yoqa/runner-client";
 import { executeScriptCase } from "../runs/case-executor";
-import { type FakeAxNode, type FakeCdpOptions, startFakeCdp } from "./fake-cdp";
+import type { InstalledBrowser } from "./chromium-browsers";
+import { type FakeAxNode, type FakeCdpOptions, fakeChromium, startFakeCdp } from "./fake-cdp";
 import { getScreen, performAction } from "./interaction";
 import { ActionUnsupportedError, isDeadSessionError } from "./lane";
 import { createDeviceSession } from "./session";
+import { createWebDirectSession, webDirectDeps } from "./web-direct-lane";
 
 const VIEWPORT = { width: 1280, height: 800 };
 
@@ -75,8 +78,10 @@ describe("web Direct lane: attach by port", () => {
 		}
 	});
 
-	test("a web device id that names no port fails without probing anything", async () => {
-		const error = await rejection(createDeviceSession({ platform: "web", deviceId: "web-chrome" }));
+	test("a web device id that names no browser and no port fails without probing anything", async () => {
+		const error = await rejection(
+			createDeviceSession({ platform: "web", deviceId: "web-firefox" }),
+		);
 		expect((error as Error).message).toContain("chromium-cdp-<port>");
 	});
 });
@@ -323,5 +328,83 @@ describe("web Direct lane: Dead Session", () => {
 			deviceId: `chromium-cdp-${browser.port}`,
 		});
 		await again.quit();
+	});
+});
+
+const CHROME: InstalledBrowser = {
+	id: "web-chrome",
+	name: "Google Chrome",
+	version: "141.0",
+	executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+};
+
+/** A Mac with Chrome installed, and a Device Session on `deviceId` that launches it. */
+async function launch(deviceId = "web-chrome") {
+	const chromium = fakeChromium({ viewport: VIEWPORT });
+	let deadCalls = 0;
+	const session = await createWebDirectSession(
+		{
+			platform: "web",
+			deviceId,
+			onSessionDead: () => {
+				deadCalls += 1;
+			},
+		},
+		webDirectDeps({ installedBrowsers: async () => [CHROME], spawn: chromium.spawn }),
+	);
+	const profileDir = () =>
+		chromium.launched[0]?.find((arg) => arg.startsWith("--user-data-dir="))?.slice(16) ?? "";
+	return { chromium, session, profileDir, deadCalls: () => deadCalls };
+}
+
+describe("web Direct lane: a Yoqa-owned instance of an installed browser", () => {
+	test("connecting launches the browser on its own temporary profile and drives its page", async () => {
+		const { chromium, session, profileDir } = await launch();
+		expect(chromium.launched).toHaveLength(1);
+		expect(chromium.launched[0]?.[0]).toBe(CHROME.executable);
+		expect(existsSync(profileDir())).toBe(true);
+		await performAction(session, { kind: "tap", x: 500, y: 250 });
+		expect(chromium.browsers[0]?.clicks).toEqual([{ x: 640, y: 200 }]);
+		await session.quit();
+	});
+
+	test("disconnecting kills the browser and deletes its profile, and is not a Dead Session", async () => {
+		const { chromium, session, profileDir, deadCalls } = await launch();
+		await session.quit();
+		expect(chromium.kills).toBe(1);
+		expect(existsSync(profileDir())).toBe(false);
+		expect(deadCalls()).toBe(0);
+	});
+
+	test("a browser that is not installed fails the connect and launches nothing", async () => {
+		const chromium = fakeChromium({ viewport: VIEWPORT });
+		const error = await rejection(
+			createWebDirectSession(
+				{ platform: "web", deviceId: "web-edge" },
+				webDirectDeps({ installedBrowsers: async () => [CHROME], spawn: chromium.spawn }),
+			),
+		);
+		expect((error as Error).message).toContain("web-edge is not installed");
+		expect(chromium.launched).toEqual([]);
+	});
+
+	test("the browser quitting on its own is a Dead Session, and its profile is deleted", async () => {
+		const { chromium, session, profileDir, deadCalls } = await launch();
+		chromium.browsers[0]?.kill();
+		await Bun.sleep(50);
+		const error = await rejection(session.captureFrame());
+		expect(isDeadSessionError(error)).toBe(true);
+		expect(deadCalls()).toBe(1);
+		expect(existsSync(profileDir())).toBe(false);
+	});
+
+	test("closing its page ends the session and quits the browser it launched", async () => {
+		const { chromium, session, profileDir, deadCalls } = await launch();
+		chromium.browsers[0]?.closePage();
+		await Bun.sleep(50);
+		expect(isDeadSessionError(await rejection(session.captureFrame()))).toBe(true);
+		expect(deadCalls()).toBe(1);
+		expect(chromium.kills).toBe(1);
+		expect(existsSync(profileDir())).toBe(false);
 	});
 });

@@ -319,8 +319,11 @@ for (const platform of Object.keys(PLATFORM_DEVICES_DESCRIPTION) as DevicePlatfo
 devices
 	.command("connect")
 	.description("Open a Device Session on a device")
-	.argument("<deviceId>", "Device UDID / serial, or chromium-cdp-<port> for a Chromium you started")
-	.option("--platform <platform>", "ios | android | web (web for chromium-cdp-<port>)")
+	.argument(
+		"<deviceId>",
+		"Device UDID / serial, a browser id (web-chrome), or chromium-cdp-<port> for a Chromium you started",
+	)
+	.option("--platform <platform>", "ios | android | web (web for web-* and chromium-cdp-<port>)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")

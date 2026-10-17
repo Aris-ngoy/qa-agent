@@ -9,6 +9,7 @@ import {
 	matchAndroidIdentity,
 	parseAdbEmuAvdName,
 } from "./android-identity";
+import { listWebDevices } from "./chromium-browsers";
 import { idleWiredUdids, parseDevicectlDevices } from "./devicectl";
 import type { ListDevicesOptions } from "./models";
 
@@ -492,8 +493,8 @@ export async function listDevices(
 		case "android":
 			return listAndroidDevices(options);
 		case "web":
-			// Nothing lists a user-started browser's debug port: it is attached by naming the
-			// port (`chromium-cdp-<port>`), never found by a scan.
-			return [];
+			// Installed browsers only. Nothing lists a user-started browser's debug port: it is
+			// attached by naming the port (`chromium-cdp-<port>`), never found by a scan.
+			return listWebDevices(options);
 	}
 }
