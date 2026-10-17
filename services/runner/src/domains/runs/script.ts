@@ -1,7 +1,7 @@
 import { type CaseScript, type CaseScriptAction, caseScriptSchema } from "@yoqa/runner-client";
 import { type AgentDecision, prefersScreenshotTap, resolveSwipeNorm } from "./agent";
 
-/** Build a replayable script from successful agent decisions (tap/swipe/type/wait/alert). */
+/** Build a replayable script from successful agent decisions (tap/swipe/type/key/wait/alert). */
 export function buildScriptFromDecisions(
 	decisions: AgentDecision[],
 	sourceRunId: string,
@@ -95,6 +95,14 @@ export function buildScriptFromDecisions(
 			actions.push({
 				type: "open-url",
 				url: decision.url,
+				reason: decision.reason,
+			});
+		} else if (decision.type === "key") {
+			if (!decision.key) continue;
+			actions.push({
+				type: "key",
+				key: decision.key,
+				...(decision.modifiers?.length ? { modifiers: decision.modifiers } : {}),
 				reason: decision.reason,
 			});
 		} else if (decision.type === "assert") {

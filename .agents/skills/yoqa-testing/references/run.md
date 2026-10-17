@@ -12,6 +12,7 @@ yoqa runs create APP --cases 1,2,5 --build-id <build-id>        # install a regi
 yoqa runs create APP --cases 1,2,5 --build-path /abs/path/App.ipa
 yoqa runs create APP --cases 1 --wait                           # block until the run finishes
 yoqa runs create APP --cases 1 --wait --timeout 3600            # wait timeout in seconds (default 1800)
+yoqa runs create APP --cases 1 --device web-chrome --wait        # on web: opens the App's Web URL
 ```
 
 ```bash
@@ -32,8 +33,13 @@ yoqa runs delete <run-id>                   # delete a run and its results (irre
 - Saved cases are referenced by their **number** (from `yoqa cases list APP`), not `PREFIX-N`
 - All case numbers must belong to the app whose prefix you pass
 - The active device is used automatically — connect one first with
-  `yoqa devices connect <id> --platform <ios|android>`. Override with `--device <id>` and
-  `--platform <ios|android>` (pass both).
+  `yoqa devices connect <id> --platform <ios|android>` (or `yoqa devices connect web-chrome`). Override
+  with `--device <id>` and `--platform <ios|android|web>` (pass both; web ids imply `web`).
+- **On web** a Run opens the App's Web URL before the first case — set it with
+  `yoqa apps update APP --web-url <url>` ([Apps, Cases & Flows](apps-cases-and-flows.md)). A Run on web
+  for an App with no Web URL fails before it connects. There are no builds on web. Connect first to
+  choose the viewport preset (`--viewport mobile`); a Run that connects the browser itself uses
+  `desktop`. Run recording is not available on web: the case runs and is marked "no video".
 - **A build is optional.** Omit both build flags when the app is already installed (e.g. a React Native
   debug build launched via Metro). Note that without a build there is **no clean reinstall** — the app
   keeps whatever state is on the device (login, onboarding, leftover data), which bleeds across cases.
@@ -63,12 +69,26 @@ appends a compact summary to `$GITHUB_STEP_SUMMARY`.
 
 ## Exported scripts (no agent)
 
-After a successful agent run, the desktop app can export a CaseScript JSON file. Replay it without
-calling the model:
+After a successful agent run, Yoqa saves a Case Script on the test case. Export it as a Case Script
+file (`*.yoqa.yaml`) and replay it without calling the model:
 
 ```bash
+yoqa script export APP 3 --out ./login.yoqa.yaml
+yoqa script validate ./login.yoqa.yaml
 yoqa devices connect <device-id> --platform ios
-yoqa script run ./login.yoqa.json
+yoqa script run ./login.yoqa.yaml
 ```
 
-A CaseScript replays taps (by `--label`/`--id`/coordinates), text input, waits, and assertions.
+A Case Script replays taps (by label, id, or coordinates), text input, waits, assertions, alerts,
+and app lifecycle. One action per line, for example:
+
+```yaml
+version: 1
+actions:
+  - tap: Login
+  - type: ada@example.com
+  - assert: Welcome
+```
+
+`yoqa script run` stops at the first failing action and exits non-zero. Legacy `.yoqa.json` files
+still load.

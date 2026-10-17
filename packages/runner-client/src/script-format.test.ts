@@ -56,6 +56,7 @@ describe("formatCaseScriptShell", () => {
 				{ type: "restart-app", appId: "com.example.app" },
 				{ type: "background-app", seconds: 2 },
 				{ type: "open-url", url: "https://example.com" },
+				{ type: "key", key: "Escape", modifiers: ["Meta"] },
 			],
 		});
 		expect(out).toContain("yoqa action tap --x 10 --y 20 --double");
@@ -63,6 +64,7 @@ describe("formatCaseScriptShell", () => {
 		expect(out).toContain("yoqa action restart-app --app-id 'com.example.app'");
 		expect(out).toContain("yoqa action background-app --seconds 2");
 		expect(out).toContain("yoqa action open-url --url 'https://example.com'");
+		expect(out).toContain("yoqa action key Escape --modifiers Meta");
 	});
 
 	test("emits accept alert", () => {

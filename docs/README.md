@@ -24,6 +24,16 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [adr/0002-provider-vision-capability.md](./adr/0002-provider-vision-capability.md) | Provider adapters + runner catalog |
 | [adr/0003-case-executor-test-seam.md](./adr/0003-case-executor-test-seam.md) | Case executor as Run test seam |
 | [adr/0006-case-script-file-yaml.md](./adr/0006-case-script-file-yaml.md) | A Case Script file is YAML; no separate Flow model |
+| [adr/0007-web-direct-lane-over-cdp.md](./adr/0007-web-direct-lane-over-cdp.md) | Web is a Direct lane over CDP to a Chromium browser |
+| [devices/web-attach-by-port.md](./devices/web-attach-by-port.md) | Web tracer bullet: attach a user-started Chromium by port, screenshot/tap/input/open-url |
+| [devices/web-screen.md](./devices/web-screen.md) | Web Screen: cleaned accessibility tree with 0–1000 bounds, raw `--full` tree, Tree assist on web roles |
+| [devices/web-gestures-alerts-lifecycle.md](./devices/web-gestures-alerts-lifecycle.md) | Web swipe (wheel), drag, JavaScript dialogs as alerts, and app lifecycle on the Web URL |
+| [devices/key-action.md](./devices/key-action.md) | `key` Action on every platform: named keys and modifiers, declared per Lane |
+| [devices/web-installed-browsers.md](./devices/web-installed-browsers.md) | Installed Chrome/Edge/Brave/Chromium as web devices, launched as Yoqa-owned instances |
+| [devices/web-popups.md](./devices/web-popups.md) | Web: the session follows a popup the page opens and returns to the opener when it closes |
+| [devices/web-viewport-presets.md](./devices/web-viewport-presets.md) | Web Viewport presets: desktop or mobile (touch, mobile user agent) at connect, stored on the Run |
+| [runs/web-runs.md](./runs/web-runs.md) | Web URL on the App; a Run on web opens it, and its report names the browser |
+| [devices/web-skill-and-docs.md](./devices/web-skill-and-docs.md) | Web and the `key` Action in the `yoqa-testing` skill and the public docs, guarded by `skill-docs.test.ts` |
 | [runs/selection-and-runs-mvp.md](./runs/selection-and-runs-mvp.md) | Test case selection + local `POST /runs` MVP |
 | [runs/ai-sdk-vision.md](./runs/ai-sdk-vision.md) | Vision decide + grounding via Vercel AI SDK |
 | [runs/cursor-vision-cli.md](./runs/cursor-vision-cli.md) | Cursor Agent CLI vision decide + grounding |
@@ -48,6 +58,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [desktop/inspector-manual-connect.md](./desktop/inspector-manual-connect.md) | Inspector attaches only on Connect; flicker-free frames; React Compiler + Legend State feed store |
 | [inspector/legend-state.md](./inspector/legend-state.md) | Inspector folder layout: components, runner API, Legend-State atoms, query hooks, utils |
 | [desktop/session-bar.md](./desktop/session-bar.md) | Top bar manages the shared Active Session on every page: connect-first Run, Run chip, WDA rebuild on Restart, app switch retargets |
+| [desktop/web-devices.md](./desktop/web-devices.md) | Web in the desktop app: browsers and attach by port in the picker, a Viewport preset on connect, Inspector by Screenshot Poll, browser/viewport/Lane in run details |
 | [desktop/motion-system.md](./desktop/motion-system.md) | CSS View Transitions + shell/list motion polish |
 | [desktop/react-hook-form.md](./desktop/react-hook-form.md) | RHF + HeroUI form helpers for all data-entry forms |
 | [desktop/error-toast.md](./desktop/error-toast.md) | HeroUI danger toasts with summarized run errors |
@@ -99,6 +110,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/idb-companion-spike.md](./devices/idb-companion-spike.md) | idb_companion vs WDA on one simulator; adopt for iOS Direct |
 | [devices/ios-direct-lane.md](./devices/ios-direct-lane.md) | iOS-simulator Direct lane over idb_companion |
 | [devices/ios-direct-tree-settle.md](./devices/ios-direct-tree-settle.md) | iOS Direct axbridge Screen, system modal, Settle |
+| [devices/explicit-platform-branches.md](./devices/explicit-platform-branches.md) | Every platform branch is exhaustive over `DevicePlatform`; `appStartTarget` resolves an App's start target for Runs and the desktop |
 | [runs/saved-scripts.md](./runs/saved-scripts.md) | Save script after pass; script vs AI run prompt |
 | [runs/report-export.md](./runs/report-export.md) | HTML/Markdown E2E report export (runs + inspector) |
 | [runs/agent-step-latency-and-knowledge.md](./runs/agent-step-latency-and-knowledge.md) | Decide latency, per-phase step timing, App Knowledge, retention |

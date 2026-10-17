@@ -1,7 +1,8 @@
 /**
- * Guards the shipped agent skill (`packages/skill/yoqa-testing`) against CLI drift.
+ * Guards the shipped agent skill (`packages/skill/yoqa-testing`) and the public docs
+ * (`apps/docs`) against CLI drift.
  *
- * Every `yoqa …` line in the skill's bash blocks is parsed and checked against the real
+ * Every `yoqa …` line in their bash blocks is parsed and checked against the real
  * commander tree: the command must exist and every flag must be one it accepts. The skill
  * is the contract an agent follows verbatim, so a stale command there is a broken agent run.
  */
@@ -13,6 +14,9 @@ import type { Command } from "commander";
 import { buildProgram } from "./program";
 
 const SKILL_DIR = join(import.meta.dir, "../../skill/yoqa-testing");
+const PUBLIC_DOCS_DIR = join(import.meta.dir, "../../../apps/docs");
+/** The repo's own agents load this copy; it must say what the shipped skill says. */
+const LOCAL_SKILL_DIR = join(import.meta.dir, "../../../.agents/skills/yoqa-testing");
 
 /** Non-yoqa tooling the skill documents for builds/installs — not our contract to check. */
 const FOREIGN_COMMANDS = new Set([
@@ -36,8 +40,9 @@ async function markdownFiles(dir: string): Promise<string[]> {
 	for (const entry of entries) {
 		const full = join(dir, entry.name);
 		if (entry.isDirectory()) {
+			if (entry.name === "node_modules") continue;
 			files.push(...(await markdownFiles(full)));
-		} else if (entry.name.endsWith(".md")) {
+		} else if (entry.name.endsWith(".md") || entry.name.endsWith(".mdx")) {
 			files.push(full);
 		}
 	}
@@ -135,8 +140,8 @@ function acceptedFlags(cmd: Command): Set<string> {
 
 type DocCommand = { file: string; line: string; tokens: string[] };
 
-async function collectDocCommands(): Promise<DocCommand[]> {
-	const files = await markdownFiles(SKILL_DIR);
+async function collectDocCommands(dir: string): Promise<DocCommand[]> {
+	const files = await markdownFiles(dir);
 	const found: DocCommand[] = [];
 	for (const file of files) {
 		const markdown = await readFile(file, "utf8");
@@ -147,7 +152,7 @@ async function collectDocCommands(): Promise<DocCommand[]> {
 			const tokens = tokenize(line);
 			if (FOREIGN_COMMANDS.has(tokens[0] ?? "")) continue;
 			found.push({
-				file: file.slice(SKILL_DIR.length + 1),
+				file: file.slice(dir.length + 1),
 				line,
 				tokens: tokens
 					.slice(1)
@@ -159,9 +164,12 @@ async function collectDocCommands(): Promise<DocCommand[]> {
 	return found;
 }
 
-describe("skill docs match the CLI", () => {
+describe.each([
+	["skill", SKILL_DIR],
+	["public docs", PUBLIC_DOCS_DIR],
+])("%s match the CLI", (_name, dir) => {
 	test("every documented yoqa command exists", async () => {
-		const docCommands = await collectDocCommands();
+		const docCommands = await collectDocCommands(dir);
 		const failures: string[] = [];
 
 		for (const doc of docCommands) {
@@ -186,7 +194,7 @@ describe("skill docs match the CLI", () => {
 	});
 
 	test("every documented flag exists on its command", async () => {
-		const docCommands = await collectDocCommands();
+		const docCommands = await collectDocCommands(dir);
 		const failures: string[] = [];
 
 		for (const doc of docCommands) {
@@ -221,7 +229,7 @@ describe("skill docs match the CLI", () => {
 	});
 
 	test("every documented command passes the right number of arguments", async () => {
-		const docCommands = await collectDocCommands();
+		const docCommands = await collectDocCommands(dir);
 		const failures: string[] = [];
 
 		for (const doc of docCommands) {
@@ -274,9 +282,55 @@ describe("skill docs match the CLI", () => {
 	});
 
 	test("the parser actually found the documented commands", async () => {
-		const docCommands = await collectDocCommands();
+		const docCommands = await collectDocCommands(dir);
 		// Guards against a parser regression silently making the checks above vacuous.
 		expect(docCommands.length).toBeGreaterThan(60);
 		expect(docCommands.some((doc) => doc.tokens.includes("--flows-file"))).toBe(true);
+	});
+
+	test("web devices, viewport presets and the key Action are documented", async () => {
+		const lines = (await collectDocCommands(dir)).map((doc) => doc.tokens.join(" "));
+		const missing = [
+			/^devices web\b/,
+			/^devices connect web-chrome\b/,
+			/^devices connect \S+ .*--viewport mobile\b/,
+			/^devices connect chromium-cdp-\d+/,
+			/^apps (create|update) .*--web-url\b/,
+			/^action key \w+$/,
+			/^action key \w+ .*--modifiers\b/,
+		].filter((pattern) => !lines.some((line) => pattern.test(line)));
+
+		expect(missing.map(String)).toEqual([]);
+	});
+});
+
+test("the repo's local skill copy matches the shipped skill", async () => {
+	const relativeFiles = async (dir: string) =>
+		(await markdownFiles(dir)).map((file) => file.slice(dir.length + 1));
+	const shipped = await relativeFiles(SKILL_DIR);
+	expect(await relativeFiles(LOCAL_SKILL_DIR)).toEqual(shipped);
+	for (const file of shipped) {
+		const local = await readFile(join(LOCAL_SKILL_DIR, file), "utf8");
+		const original = await readFile(join(SKILL_DIR, file), "utf8");
+		// The path leads the compared text so a mismatch names the file that drifted.
+		expect(`${file}\n${local}`).toBe(`${file}\n${original}`);
+	}
+});
+
+describe("docs follow ADR-0005", () => {
+	test("the skill and the public Docs tab name no Appium lane, server or runtime", async () => {
+		const files = [
+			...(await markdownFiles(SKILL_DIR)),
+			...(await markdownFiles(join(PUBLIC_DOCS_DIR, "docs"))),
+		];
+		const failures: string[] = [];
+		for (const file of files) {
+			const markdown = await readFile(file, "utf8");
+			markdown.split("\n").forEach((line, index) => {
+				if (/appium/i.test(line)) failures.push(`${file}:${index + 1}: ${line.trim()}`);
+			});
+		}
+
+		expect(failures).toEqual([]);
 	});
 });

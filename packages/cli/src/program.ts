@@ -2,7 +2,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import {
 	type ActionRequest,
 	type ActionResponse,
+	type ActiveDeviceResponse,
 	type DevicePlatform,
+	KEY_MODIFIERS,
+	KEY_NAMES,
 	RunnerRequestError,
 	WaitForRunTimeoutError,
 	caseScriptActionCommand,
@@ -14,7 +17,10 @@ import {
 	formatCaseScriptFileAction,
 	formatCaseScriptFileErrors,
 	formatCaseScriptShell,
+	formatViewportPreset,
 	parseCaseScriptFile,
+	parseKeyModifiers,
+	parseKeyName,
 	runCaseScript,
 	runYoqaShellScript,
 	updateCaseFlowsSchema,
@@ -45,6 +51,13 @@ import {
 	shouldSkipAutostart,
 	stopOwnedRunner,
 } from "./ensure-runner";
+import {
+	PLATFORM_DEVICES_DESCRIPTION,
+	connectPlatform,
+	isWebDeviceId,
+	parsePlatform,
+	parseViewportPreset,
+} from "./platform";
 import {
 	DEFAULT_RUN_WAIT_TIMEOUT_SECONDS,
 	type ReportCommandOptions,
@@ -77,6 +90,12 @@ program
 
 function client(baseUrl: string) {
 	return createRunnerClient({ baseUrl });
+}
+
+/** `web web-chrome lane direct viewport mobile (390×844)`: a Device Session in one line. */
+function describeSession(body: ActiveDeviceResponse): string {
+	const viewport = body.viewport ? ` viewport ${formatViewportPreset(body.viewport)}` : "";
+	return `${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}${viewport}`;
 }
 
 function fail(command: string, error: unknown): void {
@@ -279,12 +298,10 @@ function printDevicesTable(
 	}
 }
 
-for (const platform of ["ios", "android"] as const) {
+for (const platform of Object.keys(PLATFORM_DEVICES_DESCRIPTION) as DevicePlatform[]) {
 	devices
 		.command(platform)
-		.description(
-			`List ${platform === "ios" ? "iOS devices and simulators" : "Android devices and emulators"}`,
-		)
+		.description(PLATFORM_DEVICES_DESCRIPTION[platform])
 		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 		.option("--json", "Print raw JSON")
 		.option("--all", "Include unavailable / shutdown devices", true)
@@ -316,46 +333,53 @@ for (const platform of ["ios", "android"] as const) {
 devices
 	.command("connect")
 	.description("Open a Device Session on a device")
-	.argument("<deviceId>", "Device UDID / serial")
-	.requiredOption("--platform <platform>", "ios | android")
+	.argument(
+		"<deviceId>",
+		"Device UDID / serial, a browser id (web-chrome), or chromium-cdp-<port> for a Chromium you started",
+	)
+	.option("--platform <platform>", "ios | android | web (web for web-* and chromium-cdp-<port>)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
 	.option("--lane <lane>", "direct | auto (the only Lane is Direct)")
+	.option(
+		"--viewport <preset>",
+		"Web only: desktop (1280×800, the default) | mobile (390×844, touch and a mobile user agent)",
+	)
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
 			deviceId: string,
 			options: {
 				baseUrl: string;
-				platform: string;
+				platform?: string;
 				bundleId?: string;
 				appPackage?: string;
 				lane?: string;
+				viewport?: string;
 				json?: boolean;
 			},
 		) => {
 			try {
-				const platform = options.platform as DevicePlatform;
-				if (platform !== "ios" && platform !== "android") {
-					throw new Error("--platform must be ios or android");
-				}
+				const platform = connectPlatform(deviceId, options.platform);
 				const lane = options.lane;
 				if (lane != null && lane !== "direct" && lane !== "auto") {
 					throw new Error("--lane must be direct or auto");
 				}
+				const viewport = parseViewportPreset(options.viewport, platform);
 				const body = await client(options.baseUrl).connectDevice({
 					deviceId,
 					platform,
 					bundleId: options.bundleId,
 					appPackage: options.appPackage,
 					lane,
+					...(viewport ? { viewport } : {}),
 				});
 				if (options.json) {
 					console.log(JSON.stringify(body, null, 2));
 					return;
 				}
-				console.log(`connected ${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}`);
+				console.log(`connected ${describeSession(body)}`);
 				if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 			} catch (error) {
 				const untrusted = developerNotTrusted(error);
@@ -391,7 +415,7 @@ devices
 				console.log(JSON.stringify(body, null, 2));
 				return;
 			}
-			console.log(`${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}`);
+			console.log(describeSession(body));
 			if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 		} catch (error) {
 			fail("devices active", error);
@@ -476,7 +500,7 @@ function addActionOptions(cmd: Command) {
 		.option("--duration <ms>", "Gesture duration ms (long-press for tap)", (v) => Number(v))
 		.option("--double", "Double-tap (tap only)")
 		.option("--text <text>", "Text to type")
-		.option("--app-id <id>", "Bundle id / application id")
+		.option("--app-id <id>", "Bundle id / application id, or the Web URL on web")
 		.option("--url <url>", "URL to open")
 		.option("--seconds <n>", "Background seconds", (v) => Number(v))
 		.option(
@@ -589,6 +613,41 @@ addActionOptions(
 		if (body.screenshot) printResultScreenshot(body.screenshot);
 	} catch (error) {
 		fail("action alert", error);
+	}
+});
+
+addActionOptions(
+	action
+		.command("key")
+		.description(`Press a key: ${KEY_NAMES.join(", ")}`)
+		.argument("<key>", "Key name, in any case")
+		.option(
+			"--modifiers <list>",
+			`Held while the key is pressed, comma-separated: ${KEY_MODIFIERS.join(", ")}`,
+		),
+).action(async (keyName: string, options: Record<string, unknown>) => {
+	try {
+		const key = parseKeyName(keyName);
+		const modifiers =
+			typeof options.modifiers === "string" ? parseKeyModifiers(options.modifiers) : [];
+		const body = await client(String(options.baseUrl)).performAction({
+			kind: "key",
+			key,
+			...(modifiers.length > 0 ? { modifiers } : {}),
+			screenshot: options.screenshot === true ? true : undefined,
+			settleMs: options.settle as number | undefined,
+			fullImage: options.full === true ? true : undefined,
+			imageScale: options.scale as number | undefined,
+		});
+		if (options.json) {
+			console.log(JSON.stringify(body, null, 2));
+			return;
+		}
+		console.log(`ok ${body.kind}`);
+		if (body.screenshot) printResultScreenshot(body.screenshot);
+		if (body.phases) printActionPhases(body.phases);
+	} catch (error) {
+		fail("action key", error);
 	}
 });
 
@@ -963,6 +1022,7 @@ appsCmd
 	.option("--prefix <prefix>", "CLI prefix (allocated from name when omitted)")
 	.option("--ios-bundle-id <id>", "iOS bundle id")
 	.option("--android-application-id <id>", "Android application id")
+	.option("--web-url <url>", "Web URL a Run on web opens (http or https)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(
@@ -972,11 +1032,16 @@ appsCmd
 			prefix?: string;
 			iosBundleId?: string;
 			androidApplicationId?: string;
+			webUrl?: string;
 			json?: boolean;
 		}) => {
 			try {
 				const c = client(options.baseUrl);
-				let app = await c.createApp({ name: options.name, prefix: options.prefix });
+				let app = await c.createApp({
+					name: options.name,
+					prefix: options.prefix,
+					webUrl: options.webUrl,
+				});
 				if (options.iosBundleId || options.androidApplicationId) {
 					app = await c.updateApp(app.id, {
 						iosBundleId: options.iosBundleId,
@@ -1014,6 +1079,7 @@ appsCmd
 			console.log(`app_knowledge: ${app.knowledge || "(empty)"}`);
 			console.log(`ios_bundle_id: ${app.iosBundleId || "(empty)"}`);
 			console.log(`android_application_id: ${app.androidApplicationId || "(empty)"}`);
+			console.log(`web_url: ${app.webUrl || "(empty)"}`);
 		} catch (error) {
 			fail("apps get", error);
 		}
@@ -1029,6 +1095,7 @@ appsCmd
 	.option("--knowledge <text>", "App knowledge notes injected into agent runs")
 	.option("--ios-bundle-id <id>", "iOS bundle id")
 	.option("--android-application-id <id>", "Android application id")
+	.option("--web-url <url>", "Web URL a Run on web opens (empty clears it)")
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
@@ -1041,6 +1108,7 @@ appsCmd
 				knowledge?: string;
 				iosBundleId?: string;
 				androidApplicationId?: string;
+				webUrl?: string;
 				json?: boolean;
 			},
 		) => {
@@ -1054,6 +1122,7 @@ appsCmd
 					knowledge: options.knowledge,
 					iosBundleId: options.iosBundleId,
 					androidApplicationId: options.androidApplicationId,
+					webUrl: options.webUrl,
 				});
 				if (options.json) {
 					console.log(JSON.stringify(app, null, 2));
@@ -1607,7 +1676,10 @@ runsCmd
 	.argument("<app>", "App prefix or id")
 	.requiredOption("--cases <numbers>", "Comma-separated case numbers, e.g. 1,2,5")
 	.option("--device <id>", "Device id (defaults to active session)")
-	.option("--platform <platform>", "ios | android (defaults to active session)")
+	.option(
+		"--platform <platform>",
+		"ios | android | web (web for web-* and chromium-cdp-<port>; defaults to active session)",
+	)
 	.option("--build-id <id>", "Registered build id to install before run")
 	.option("--build-path <path>", "Absolute build path to register + install")
 	.option("--mode <mode>", "auto | script | agent (default: auto)")
@@ -1668,8 +1740,9 @@ runsCmd
 				}
 
 				let deviceId = options.device;
-				let platform = options.platform as DevicePlatform | undefined;
-				if (!deviceId || !platform) {
+				let platformOption =
+					options.platform ?? (deviceId && isWebDeviceId(deviceId) ? "web" : undefined);
+				if (!deviceId || !platformOption) {
 					const active = await c.getActiveDevice();
 					if (!active) {
 						throw new Error(
@@ -1677,11 +1750,9 @@ runsCmd
 						);
 					}
 					deviceId = deviceId ?? active.deviceId;
-					platform = platform ?? active.platform;
+					platformOption = platformOption ?? active.platform;
 				}
-				if (platform !== "ios" && platform !== "android") {
-					throw new Error("--platform must be ios or android");
-				}
+				const platform = parsePlatform(platformOption);
 
 				const executionMode =
 					options.mode === "script" || options.mode === "agent" || options.mode === "auto"
@@ -1920,10 +1991,8 @@ program
 			json?: boolean;
 		}) => {
 			try {
-				const platform = options.platform as DevicePlatform;
-				if (platform !== "ios" && platform !== "android") {
-					throw new Error("--platform must be ios or android");
-				}
+				const platform = parsePlatform(options.platform);
+				if (platform === "web") throw new Error("benchmark runs on ios or android only");
 				const lane =
 					options.lane === "direct" || options.lane === "auto" ? options.lane : undefined;
 				if (options.lane && !lane) throw new Error("--lane must be direct or auto");

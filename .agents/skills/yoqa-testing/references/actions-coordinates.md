@@ -1,19 +1,42 @@
 # Actions by Coordinates
 
 Coordinates are relative, `0–1000` on both axes. X increases left→right, Y increases top→bottom, and
-`0,0` is the top-left of the screen. Read them from `yoqa screen` — see
-[Inspect & App Control](inspect-and-app-control.md). Remember the listed `x,y` is the element's
-**top-left corner**, so aim at its centre: `x + width / 2`, `y + height / 2`.
+`0,0` is the top-left of the screen, `1000,1000` the bottom-right. **This is the default way to act.**
 
-**Always `yoqa screen` first** to locate the element and compute its centre; never guess coordinates.
+**Take a `yoqa screenshot` first**, look at the image, and send the **centre of the control** you want
+to hit: halfway between its left and right edges, halfway between its top and bottom edges. See
+[Inspect & App Control](inspect-and-app-control.md). Read the point off the image — never reuse a point
+from an earlier screen.
 
-For **tap** and **input**, prefer [`--id` / `--label` / `--description`](actions-grounding.md) — you
-don't compute anything and the command re-reads the tree itself. Use coordinates for tap/input when
-the element has no label and no id, or when you already know the exact spot (a point on a map or
-canvas with no distinct element to target).
+Coordinates work on everything the screenshot shows, including custom-drawn controls, games, canvases,
+and system sheets that have no accessibility element. If a tap changes nothing, take a fresh screenshot
+and adjust the point — do not repeat the same one. After two misses in a row, switch to
+[`--id` / `--label`](actions-grounding.md) from `yoqa screen --json`.
+
+### See the result: `--screenshot`
+
+Add `--screenshot` to any `yoqa action` and the action waits for the screen to settle, then prints the
+**result screenshot** — no separate `yoqa screenshot` needed. **Always pass it on games and canvases.**
+
+```bash
+yoqa action tap --x 500 --y 926 --screenshot [--settle <ms>]
+# ok tap
+# screenshot /…/result_….png        raw image: open this to read the next point from
+# marked /…/result_marked_….png     same image with a ring where the tap landed (line for swipe/drag)
+# settled true (500ms)
+# changed true
+```
+
+- Open `marked` to check **where** the tap landed relative to the control. Read the next point off the raw `screenshot`.
+- `changed false` on a settled screen means the tap did nothing: move the point, do not repeat it.
+- `settled false` / `changed unknown` means the screen was still animating at the cap (default 1500ms, `--settle <ms>` to change). That is normal on games with looping backgrounds. Judge from the image and the marker, not from `changed`.
+- A game that animates constantly cannot be tapped on a moving target this way (a round trip takes seconds). Use a Case Script for timing-sensitive play.
 
 For **swipe** and **drag** coordinates are the only option — those two commands do not accept
 `--id`, `--label`, or `--description`.
+
+If you are reading `yoqa screen` instead of a screenshot, its listed `x,y` is the element's
+**top-left corner**, so aim at its centre: `x + width / 2`, `y + height / 2`.
 
 ### Tap
 
@@ -41,6 +64,11 @@ yoqa action swipe --x 500 --y 700 --x2 500 --y2 300      # scroll down (finger m
 yoqa action swipe --x 500 --y 300 --x2 500 --y2 700      # scroll back up
 ```
 
+On web, coordinates are relative to the page viewport, not the browser window. Under the `desktop`
+viewport preset a swipe is a mouse-wheel scroll of whatever is under the start point, in the same
+direction a finger swipe would scroll (swipe up scrolls down). Under the `mobile` preset it is a real
+touch stroke. Tap and drag are mouse presses on `desktop` and touches on `mobile`.
+
 ### Drag
 
 ```bash
@@ -59,4 +87,6 @@ yoqa action input --text <text> --x <x> --y <y>
 yoqa action input --text "hello world" --x 500 --y 420
 ```
 
-The point is tapped first to focus the field, then the text is typed.
+The point is tapped first to focus the field, then the text is typed. A newline in the text presses
+Enter. For other keys (Tab, Escape, arrows) use `yoqa action key` — see
+[Inspect & App Control](inspect-and-app-control.md#keys).

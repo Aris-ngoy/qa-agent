@@ -9,9 +9,10 @@ always coordinates.
 
 ### 1. Connect a device
 
-List available devices and connect one — `--platform` is required. See
-[Devices](../references/devices.md). If connecting fails, run `yoqa doctor --fix`
-([Environment](../references/environment.md)).
+List available devices and connect one — `--platform` is required for phones and simulators. To test
+a web app, connect an installed browser (`yoqa devices web`), with `--viewport mobile` for a React
+Native Web / Expo web build. See [Devices](../references/devices.md). If connecting fails, run
+`yoqa doctor --fix` ([Environment](../references/environment.md)).
 
 ### 2. Make sure the app is on the device
 
@@ -33,6 +34,11 @@ To get the app onto the device:
 **Install the build** — [iOS](../references/install-ios.md) · [Android](../references/install-android.md).
 **Launch the app** — `yoqa action activate-app --app-id <bundle-id>`. See
 [Inspect & App Control](../references/inspect-and-app-control.md).
+
+**On web** there is nothing to install: open the app's URL with
+`yoqa action open-url --url <web-url>` (the App's Web URL from `yoqa apps get APP`, or the dev server
+the user names). For a clean state, `yoqa action restart-app --app-id <web-url>` clears the origin's
+storage and cookies, then loads the URL.
 
 ### 3. Screenshot → act → verify
 
@@ -57,6 +63,24 @@ yoqa screenshot /tmp/screen.png                 # open it: the Welcome screen is
 yoqa assert visible -t "Welcome back"
 ```
 
+The same loop on web, from connect to a submitted form:
+
+```bash
+yoqa devices connect web-chrome --viewport mobile
+yoqa action open-url --url http://localhost:8081
+yoqa screenshot /tmp/screen.png                 # open it: the Email field is near y 380
+yoqa action input --text "ada@example.com" --x 500 --y 380
+yoqa action key Tab                             # focus moves to Password
+yoqa action input --text "s3cret" --x 500 --y 470
+yoqa action key Enter --screenshot              # submit, then open the result screenshot
+yoqa assert visible -t "Welcome back"
+yoqa screen --json                              # fallback: the page's accessibility tree, for --id / --label
+```
+
+On web a swipe scrolls the page, `alert` answers a JavaScript dialog, a popup the page opens (OAuth
+sign-in, `target=_blank`) is followed automatically, and `background-app` fails as unsupported. See
+[Inspect & App Control](../references/inspect-and-app-control.md).
+
 If a tap changes nothing, don't repeat the same point — take a fresh screenshot and adjust. The target
 may be offscreen (scroll to it first), covered by a system sheet or dialog (act on the sheet), or on a
 screen you haven't reached. After two misses, read `yoqa screen --json` and use `--id` or `--label`.
@@ -66,4 +90,5 @@ App lifecycle, `open-url`, and alert handling are covered in
 
 ### 4. Release the device
 
-When you're done, `yoqa devices disconnect` so the device is free for the next run.
+When you're done, `yoqa devices disconnect` so the device is free for the next run. On web this also closes
+the browser window Yoqa opened.

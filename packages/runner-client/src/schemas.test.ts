@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { caseScriptActionSchema, caseScriptSchema, runStepSchema, runTestSchema } from "./schemas";
+import {
+	caseScriptActionSchema,
+	caseScriptSchema,
+	connectDeviceRequestSchema,
+	deviceKindSchema,
+	devicePlatformSchema,
+	deviceSchema,
+	runStepSchema,
+	runTestSchema,
+} from "./schemas";
 
 describe("caseScriptActionSchema", () => {
 	test("accepts tap/type/wait in range", () => {
@@ -160,5 +169,59 @@ describe("runTestSchema", () => {
 				currentCommand: "yoqa action tap --x 50 --y 60",
 			}).currentCommand,
 		).toBe("yoqa action tap --x 50 --y 60");
+	});
+});
+
+describe("web platform (additive)", () => {
+	test("a browser device on web parses", () => {
+		expect(
+			deviceSchema.parse({
+				id: "chromium-cdp-9222",
+				name: "Chromium on port 9222",
+				osVersion: "Chrome 140",
+				platform: "web",
+				kind: "browser",
+			}),
+		).toMatchObject({ platform: "web", kind: "browser" });
+	});
+
+	test("mobile devices, Runs and connect requests still parse unchanged", () => {
+		expect(
+			deviceSchema.parse({
+				id: "emulator-5554",
+				name: "Pixel 9",
+				osVersion: "API 36",
+				platform: "android",
+				kind: "emulator",
+			}).platform,
+		).toBe("android");
+		expect(
+			connectDeviceRequestSchema.parse({ deviceId: "B75001FB", platform: "ios", bundleId: "a.b" }),
+		).toEqual({ deviceId: "B75001FB", platform: "ios", bundleId: "a.b" });
+		expect(
+			connectDeviceRequestSchema.parse({ deviceId: "chromium-cdp-9222", platform: "web" }),
+		).toEqual({ deviceId: "chromium-cdp-9222", platform: "web" });
+	});
+
+	test("a connect may name a Viewport preset, and only a known one", () => {
+		expect(
+			connectDeviceRequestSchema.parse({
+				deviceId: "web-chrome",
+				platform: "web",
+				viewport: "mobile",
+			}).viewport,
+		).toBe("mobile");
+		expect(
+			connectDeviceRequestSchema.safeParse({
+				deviceId: "web-chrome",
+				platform: "web",
+				viewport: "tv",
+			}).success,
+		).toBe(false);
+	});
+
+	test("a platform that is not ios, android or web is still rejected", () => {
+		expect(devicePlatformSchema.safeParse("windows").success).toBe(false);
+		expect(deviceKindSchema.safeParse("tablet").success).toBe(false);
 	});
 });

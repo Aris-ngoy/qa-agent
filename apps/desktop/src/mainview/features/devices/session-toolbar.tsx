@@ -5,16 +5,24 @@ import {
 } from "@/features/devices/select-device-modal";
 import { ServersDoctorPanel } from "@/features/devices/servers-doctor-panel";
 import { sessionPillLabel } from "@/features/devices/session-status";
+import { withViewport } from "@/features/devices/web-device";
 import { resolveTheme } from "@/features/settings/ui-preferences";
 import { useThemeMode } from "@/features/settings/use-theme-mode";
 import { Button, ListBox, Select } from "@heroui/react";
-import type { ActiveDeviceResponse } from "@yoqa/runner-client";
+import { type ActiveDeviceResponse, devicePlatformSchema } from "@yoqa/runner-client";
 import { type ReactNode, type SVGProps, useState, useSyncExternalStore } from "react";
 
-const PLATFORMS = [
-	{ id: "ios" as const, label: "iOS" },
-	{ id: "android" as const, label: "Android" },
-];
+const PLATFORM_LABELS: Record<DevicePlatform, string> = {
+	ios: "iOS",
+	android: "Android",
+	web: "Web",
+};
+/** The platforms the bar offers. */
+const PICKER_PLATFORMS: DevicePlatform[] = ["ios", "android", "web"];
+const PLATFORMS = PICKER_PLATFORMS.map((id) => ({
+	id,
+	label: PLATFORM_LABELS[id],
+}));
 
 function PhoneIcon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -180,10 +188,13 @@ export function SessionToolbar({
 	const [serversOpen, setServersOpen] = useState(false);
 	const connected = active != null;
 	const canRestart = connected || device != null;
-	/** A session's device the list does not have yet shows by its id. */
-	const deviceLabel = device?.label ?? active?.deviceId;
+	/** A session's device the list does not have yet shows by its id; a browser adds its preset. */
+	const listedLabel = device?.label ?? active?.deviceId;
+	const deviceLabel = listedLabel
+		? withViewport(listedLabel, platform, active?.viewport ?? device?.viewport)
+		: undefined;
 
-	const platformLabel = PLATFORMS.find((item) => item.id === platform)?.label ?? platform;
+	const platformLabel = PLATFORM_LABELS[platform];
 
 	return (
 		<div className="flex shrink-0 items-center gap-2">
@@ -215,7 +226,8 @@ export function SessionToolbar({
 						className="w-[4.5rem]"
 						isDisabled={connecting}
 						onSelectionChange={(key) => {
-							if (key === "ios" || key === "android") onPlatformChange(key);
+							const picked = devicePlatformSchema.safeParse(key);
+							if (picked.success) onPlatformChange(picked.data);
 						}}
 						selectedKey={platform}
 					>
@@ -324,6 +336,7 @@ export function SessionToolbar({
 			<SelectDeviceModal
 				open={pickerOpen}
 				platform={platform}
+				viewport={device?.viewport}
 				onClose={() => setPickerOpen(false)}
 				onSelect={(selected) => {
 					onDeviceSelect(selected);

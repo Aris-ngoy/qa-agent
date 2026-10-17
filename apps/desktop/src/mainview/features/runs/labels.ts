@@ -1,11 +1,17 @@
-import type { Device, Run } from "@yoqa/runner-client";
+import { laneLabel } from "@/features/devices/session-status";
+import { type Device, type Run, formatViewportPreset } from "@yoqa/runner-client";
 
 export type CaseLabelMeta = { number: number; name: string };
 
 export function platformLabel(platform: Run["platform"] | Device["platform"]): string {
-	if (platform === "ios") return "iOS";
-	if (platform === "android") return "Android";
-	return platform;
+	switch (platform) {
+		case "ios":
+			return "iOS";
+		case "android":
+			return "Android";
+		case "web":
+			return "Web";
+	}
 }
 
 export function formatCaseLabel(meta: CaseLabelMeta | undefined, caseId: string): string {
@@ -186,6 +192,22 @@ export function formatRunDetailMeta(input: {
 	];
 	if (input.durationMs != null) parts.push(formatRunDuration(input.durationMs));
 	return parts.join(" · ");
+}
+
+/**
+ * The line under a web Run's title: the browser it drove, its Viewport preset and its
+ * Lane, as the report names them. Null for a phone's Run, which shows none of these.
+ */
+export function formatRunEnvironment(
+	run: Pick<Run, "platform" | "browser" | "viewport" | "lane">,
+): string | null {
+	if (run.platform !== "web") return null;
+	const parts = [
+		run.browser ? `Browser ${run.browser}` : null,
+		run.viewport ? `Viewport ${formatViewportPreset(run.viewport)}` : null,
+		run.lane ? `Lane ${laneLabel(run.lane)}` : null,
+	].filter((part): part is string => part != null);
+	return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /** Right-hand caption on the list: today plus the connected device. Absent without one. */

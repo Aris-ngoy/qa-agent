@@ -134,6 +134,13 @@ describe("buildScriptFromDecisions", () => {
 					reason: "Check title",
 					thoughts: "Home loaded",
 				},
+				{
+					type: "key",
+					key: "Tab",
+					modifiers: ["Shift"],
+					reason: "Back a field",
+					thoughts: "Email needs fixing",
+				},
 				{ type: "done", reason: "Finished", thoughts: "Done" },
 			],
 			"run_cli",
@@ -150,6 +157,7 @@ describe("buildScriptFromDecisions", () => {
 				timeoutMs: 8_000,
 				reason: "Check title",
 			},
+			{ type: "key", key: "Tab", modifiers: ["Shift"], reason: "Back a field" },
 		]);
 	});
 

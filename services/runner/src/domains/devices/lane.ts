@@ -1,8 +1,9 @@
-import type { DevicePlatform } from "@yoqa/runner-client";
+import type { DevicePlatform, KeyModifier, KeyName, ViewportPresetName } from "@yoqa/runner-client";
 
 /**
  * The control path a Device Session uses (see `Lane` in CONTEXT.md and ADR-0005).
- * A Lane is Direct only: Android over adb, an iOS simulator, or a cabled iPhone.
+ * A Lane is Direct only: Android over adb, an iOS simulator, a cabled iPhone, or a
+ * Chromium browser over CDP.
  */
 export type LaneName = "direct";
 
@@ -13,6 +14,8 @@ export type SessionOptions = {
 	appPackage?: string;
 	/** User-requested Lane. `auto` (default) is Direct. */
 	requestedLane?: LaneName | "auto";
+	/** Web only: the Viewport preset the session emulates for its whole life. Desktop by default. */
+	viewport?: ViewportPresetName;
 	/** Called once when the lane reports the session is gone. */
 	onSessionDead?: () => void;
 	/**
@@ -39,6 +42,12 @@ export type CapturedFrame = {
 
 export type PointerPhase = "begin" | "move" | "end";
 
+/** The keys a Lane's `key` presses, and whether it can hold modifiers while it does. */
+export type KeySupport = {
+	keys: readonly KeyName[];
+	modifiers: boolean;
+};
+
 /**
  * A live MJPEG feed of the device screen that the runner proxies to the Inspector.
  * A lane that cannot offer one reports `stream: null`; the Inspector then polls screenshots.
@@ -63,6 +72,10 @@ export type DeviceSession = {
 	/** Why this session is not on the requested Lane, when it fell back or was pinned. */
 	laneWarning?: string;
 	stream: LiveStream | null;
+	/** The browser a web session drives, with its version (`Google Chrome 141.0`), for the Run report. */
+	browser?: string;
+	/** The Viewport preset a web session emulates, for the Run report. */
+	viewport?: ViewportPresetName;
 	quit: () => Promise<void>;
 	/** In-memory frame for live feed / grounding — never writes disk. */
 	captureFrame: () => Promise<CapturedFrame>;
@@ -73,6 +86,8 @@ export type DeviceSession = {
 	 * callers treat that as "no video", never as a failed Run.
 	 */
 	startRecording?: (path: string) => Promise<ScreenRecording>;
+	/** Why there is no video, for a Lane without `startRecording` that can say more than that. */
+	noRecordingReason?: string;
 	pageSource: () => Promise<string>;
 	getWindowSize: () => Promise<{ width: number; height: number }>;
 	tap: (
@@ -90,6 +105,10 @@ export type DeviceSession = {
 	) => Promise<void>;
 	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	type: (text: string) => Promise<void>;
+	/** What `key` can press here. Anything else fails with `UnsupportedKeyError`. */
+	keySupport: KeySupport;
+	/** Press one named key, holding `modifiers` down while it is pressed. */
+	key: (key: KeyName, modifiers?: readonly KeyModifier[]) => Promise<void>;
 	activateApp: (appId: string) => Promise<void>;
 	/**
 	 * Point the session at another app (bundle id / package) without reconnecting or
@@ -98,6 +117,11 @@ export type DeviceSession = {
 	 */
 	setTargetApp: (appId: string | undefined) => void;
 	terminateApp: (appId: string) => Promise<void>;
+	/**
+	 * Start the app again from scratch, for a Lane whose restart is more than terminate then
+	 * activate (web clears the App origin's storage). Without it, restart-app is those two.
+	 */
+	restartApp?: (appId: string) => Promise<void>;
 	backgroundApp: (seconds?: number) => Promise<void>;
 	openUrl: (url: string) => Promise<void>;
 	acceptAlert: () => Promise<void>;
@@ -133,6 +157,36 @@ export function reportLaneFallback(
 	options.onLaneWarning?.(warning);
 }
 
+/** A `key` Action this Lane cannot send: a key it does not declare, or modifiers it cannot hold. */
+export class UnsupportedKeyError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "UnsupportedKeyError";
+	}
+}
+
+/**
+ * Reject a key `support` does not cover, before anything reaches the device. `device`
+ * names where it was sent, as in "on an iOS simulator".
+ */
+export function assertKeySupported(
+	support: KeySupport,
+	device: string,
+	key: KeyName,
+	modifiers: readonly KeyModifier[] = [],
+): void {
+	if (!support.keys.includes(key)) {
+		throw new UnsupportedKeyError(
+			`The ${key} key is not available ${device}; it can press ${support.keys.join(", ")}`,
+		);
+	}
+	if (modifiers.length > 0 && !support.modifiers) {
+		throw new UnsupportedKeyError(
+			`Modifier keys (${modifiers.join(", ")}) are not available ${device}; press ${key} without them`,
+		);
+	}
+}
+
 const DEAD_SESSION_RE =
 	/session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i;
 
@@ -141,6 +195,17 @@ export class DeadSessionError extends Error {
 	constructor(message = "Device session ended", options?: ErrorOptions) {
 		super(message, options);
 		this.name = "DeadSessionError";
+	}
+}
+
+/**
+ * This Lane has no way to do the Action on its platform (background-app on web). The
+ * Action fails rather than being skipped, so a step it never ran cannot pass.
+ */
+export class ActionUnsupportedError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "ActionUnsupportedError";
 	}
 }
 

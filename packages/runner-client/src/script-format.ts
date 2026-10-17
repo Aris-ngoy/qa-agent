@@ -97,6 +97,11 @@ function actionToShellLine(action: CaseScriptAction): string {
 	if (action.type === "open-url") {
 		return `yoqa action open-url --url ${shellSingleQuote(action.url)}`;
 	}
+	if (action.type === "key") {
+		return action.modifiers?.length
+			? `yoqa action key ${action.key} --modifiers ${action.modifiers.join(",")}`
+			: `yoqa action key ${action.key}`;
+	}
 	const seconds = Math.max(0.1, action.ms / 1000);
 	return `sleep ${seconds}`;
 }

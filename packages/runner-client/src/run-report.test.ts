@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	type RunReportDocument,
 	actionSummary,
+	buildRunReportFromCatalogRun,
 	formatRunReportGithubSummary,
 	formatRunReportHtml,
 	formatRunReportMarkdown,
@@ -61,6 +62,9 @@ describe("actionSummary", () => {
 			"Open URL: https://example.com",
 		);
 		expect(actionSummary({ type: "restart-app" })).toBe("Restart app");
+		expect(actionSummary({ type: "key", key: "Tab", modifiers: ["Shift"] })).toBe(
+			"Press Shift+Tab",
+		);
 	});
 
 	test("falls back for unknown or invalid payloads", () => {
@@ -110,6 +114,7 @@ describe("formatStepCommand", () => {
 		expect(formatStepCommand({ type: "open-url", url: "https://example.com" })).toBe(
 			"yoqa action open-url --url 'https://example.com'",
 		);
+		expect(formatStepCommand({ type: "key", key: "Enter" })).toBe("yoqa action key Enter");
 		expect(formatStepCommand({ type: "tap", x: 10, y: 20, double: true })).toBe(
 			"yoqa action tap --x 10 --y 20 --double",
 		);
@@ -373,6 +378,54 @@ describe("Screen mode in the report", () => {
 		expect(formatRunReportMarkdown(doc)).toContain("using idb_companion");
 		expect(formatRunReportGithubSummary(doc)).toContain("| Lane | direct |");
 		expect(formatRunReportHtml(doc)).toContain("direct");
+	});
+
+	test("names the browser a web run drove, in every format", () => {
+		const doc = { ...sampleDoc(), platform: "web", browser: "Google Chrome 141.0", lane: "direct" };
+		expect(formatRunReportMarkdown(doc)).toContain("| Platform | web |");
+		expect(formatRunReportMarkdown(doc)).toContain("| Browser | Google Chrome 141.0 |");
+		expect(formatRunReportGithubSummary(doc)).toContain("| Browser | Google Chrome 141.0 |");
+		expect(formatRunReportHtml(doc)).toContain("Google Chrome 141.0");
+		expect(formatRunReportMarkdown(sampleDoc())).not.toContain("| Browser |");
+	});
+
+	test("names a web run's Viewport preset with its size, in every format", () => {
+		const doc = {
+			...sampleDoc(),
+			platform: "web",
+			browser: "Chrome 140",
+			viewport: "mobile" as const,
+		};
+		expect(formatRunReportMarkdown(doc)).toContain("| Viewport | mobile (390×844) |");
+		expect(formatRunReportGithubSummary(doc)).toContain("| Viewport | mobile (390×844) |");
+		expect(formatRunReportHtml(doc)).toContain("mobile (390×844)");
+		expect(formatRunReportMarkdown(sampleDoc())).not.toContain("| Viewport |");
+	});
+
+	test("a catalog run's report carries its browser", () => {
+		const doc = buildRunReportFromCatalogRun({
+			id: "run_web",
+			appId: "app_1",
+			deviceId: "web-chrome",
+			platform: "web",
+			buildId: null,
+			status: "passed",
+			executionMode: "script",
+			lane: "direct",
+			browser: "Google Chrome 141.0",
+			viewport: "desktop",
+			error: null,
+			createdAt: 1,
+			startedAt: 1,
+			finishedAt: 2,
+			tests: [],
+		});
+		expect(doc).toMatchObject({
+			platform: "web",
+			browser: "Google Chrome 141.0",
+			viewport: "desktop",
+			lane: "direct",
+		});
 	});
 
 	test("omits the Screen row when the run has no Screen mode", () => {

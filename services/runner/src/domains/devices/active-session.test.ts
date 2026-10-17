@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createConnection } from "node:net";
+import { startFakeCdp } from "./fake-cdp";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
 import { type IdbExec, createIosDirectSession } from "./ios-direct-lane";
 import type { LaneFactory, LaneName } from "./lane";
 import * as actualSession from "./session";
+import { createWebDirectSession } from "./web-direct-lane";
 
 type FakeSession = {
 	quitCalls: number;
@@ -491,5 +493,76 @@ describe("retargeting the Active Session to another app", () => {
 		expect((await routes.request("/screen?pauseMjpeg=0")).status).toBe(200);
 		expect(phone.snapshots).toEqual(["com.app-b"]);
 		expect(phone.launched).toEqual([]);
+	});
+});
+
+describe("an Action the Lane cannot do", () => {
+	test("POST /action answers 422 with why: background-app on web", async () => {
+		const browser = startFakeCdp({ viewport: { width: 1280, height: 800 } });
+		directLane = (options) => createWebDirectSession(options);
+		await connectDevice({ deviceId: `chromium-cdp-${browser.port}`, platform: "web" });
+
+		const response = await createSessionRoutes().request("/action", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ kind: "background-app", seconds: 3 }),
+		});
+		expect(response.status).toBe(422);
+		expect(await response.json()).toEqual({
+			error: "Action not supported",
+			detail:
+				"background-app is not supported on web: a browser page has no background to send it to",
+		});
+	});
+});
+
+describe("connecting a web device at a Viewport preset", () => {
+	const connect = (body: unknown) =>
+		createSessionRoutes().request("/devices/connect", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+
+	test("POST /devices/connect opens the session at the preset it names, and says so", async () => {
+		const browser = startFakeCdp({ viewport: { width: 900, height: 700 } });
+		directLane = (options) => createWebDirectSession(options);
+		const response = await connect({
+			deviceId: `chromium-cdp-${browser.port}`,
+			platform: "web",
+			viewport: "mobile",
+		});
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ platform: "web", viewport: "mobile" });
+		expect(browser.emulation()).toMatchObject({
+			viewport: { width: 390, height: 844 },
+			touch: true,
+		});
+		expect(await (await createSessionRoutes().request("/devices/active")).json()).toMatchObject({
+			viewport: "mobile",
+		});
+	});
+
+	test("with no preset the session is desktop", async () => {
+		const browser = startFakeCdp({ viewport: { width: 900, height: 700 } });
+		directLane = (options) => createWebDirectSession(options);
+		const response = await connect({ deviceId: `chromium-cdp-${browser.port}`, platform: "web" });
+		expect(await response.json()).toMatchObject({ viewport: "desktop" });
+		expect(browser.emulation().viewport).toEqual({ width: 1280, height: 800 });
+	});
+
+	test("a preset that is not one is a 400", async () => {
+		const response = await connect({
+			deviceId: "chromium-cdp-9222",
+			platform: "web",
+			viewport: "tv",
+		});
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({ error: "viewport must be desktop or mobile" });
+	});
+
+	test("a phone has no Viewport preset", async () => {
+		const response = await connect({ deviceId: "dev-1", platform: "android" });
+		expect(await response.json()).not.toHaveProperty("viewport");
 	});
 });

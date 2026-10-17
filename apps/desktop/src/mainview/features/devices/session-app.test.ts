@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { appTargetFor, retargetsAfterRun } from "./session-app";
+import { appTargetFor, connectRequestFor, retargetsAfterRun } from "./session-app";
 
 describe("appTargetFor", () => {
-	const app = { iosBundleId: " com.example.app ", androidApplicationId: "com.example.android" };
+	const app = {
+		iosBundleId: " com.example.app ",
+		androidApplicationId: "com.example.android",
+		webUrl: "https://app.example.com",
+	};
 
 	test("names the app by the id its platform uses: the bundle id on iOS, the package on Android", () => {
 		expect(appTargetFor("ios", app)).toEqual({ bundleId: "com.example.app" });
@@ -13,6 +17,41 @@ describe("appTargetFor", () => {
 		expect(appTargetFor("ios", { ...app, iosBundleId: "  " })).toEqual({});
 		expect(appTargetFor("android", { ...app, androidApplicationId: "" })).toEqual({});
 		expect(appTargetFor("ios", null)).toEqual({});
+	});
+
+	test("names no app on web: a Run opens the Web URL itself", () => {
+		expect(appTargetFor("web", app)).toEqual({});
+	});
+});
+
+describe("connectRequestFor", () => {
+	const app = { iosBundleId: "com.example.app", androidApplicationId: "", webUrl: "" };
+
+	test("connects a phone for the selected app, with no Viewport preset", () => {
+		expect(connectRequestFor({ id: "sim-1", platform: "ios", viewport: "mobile" }, app)).toEqual({
+			deviceId: "sim-1",
+			platform: "ios",
+			bundleId: "com.example.app",
+		});
+	});
+
+	test("connects a browser at the chosen Viewport preset, desktop when none was chosen", () => {
+		expect(
+			connectRequestFor({ id: "web-chrome", platform: "web", viewport: "mobile" }, app),
+		).toEqual({ deviceId: "web-chrome", platform: "web", viewport: "mobile" });
+		expect(connectRequestFor({ id: "chromium-cdp-9222", platform: "web" }, app)).toEqual({
+			deviceId: "chromium-cdp-9222",
+			platform: "web",
+			viewport: "desktop",
+		});
+	});
+
+	test("names the Lane when one is asked for", () => {
+		expect(connectRequestFor({ id: "sim-1", platform: "ios" }, null, "direct")).toEqual({
+			deviceId: "sim-1",
+			platform: "ios",
+			lane: "direct",
+		});
 	});
 });
 

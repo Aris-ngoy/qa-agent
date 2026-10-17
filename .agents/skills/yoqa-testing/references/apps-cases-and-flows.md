@@ -13,6 +13,8 @@ yoqa apps create --name "My App" --prefix myapp --ios-bundle-id com.example.app
 yoqa apps update APP --context "<full replacement text>"
 yoqa apps update APP --name "New name"
 yoqa apps update APP --ios-bundle-id com.example.app --android-application-id com.example.app
+yoqa apps create --name "My Site" --web-url https://app.example.com   # web-only: a name and a Web URL
+yoqa apps update APP --web-url http://localhost:8081  # the page a Run on web opens first
 ```
 
 The app **context** is a shared description injected into every test run — use it for credentials,

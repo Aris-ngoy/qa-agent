@@ -11,7 +11,12 @@ import type {
 	RunTestStatus,
 	StepPhases,
 } from "@yoqa/runner-client";
-import { stepPhasesSchema } from "@yoqa/runner-client";
+import {
+	appStartTarget,
+	startTargetRequest,
+	stepPhasesSchema,
+	viewportPresetSchema,
+} from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
 import { getApp, getCase, getCaseScriptJson, saveCaseScript } from "../catalog/application";
@@ -117,6 +122,12 @@ function parseRunScreenMode(value: string | null | undefined): RunScreenMode {
 	return value === "vision" ? "vision" : "tree";
 }
 
+/** The Viewport preset a web Run stored; nothing for other platforms or an unknown name. */
+function viewportOf(value: string | null): Pick<Run, "viewport"> {
+	const parsed = viewportPresetSchema.safeParse(value);
+	return parsed.success ? { viewport: parsed.data } : {};
+}
+
 function resolveCaseExecutionMode(
 	runMode: RunExecutionMode,
 	hasScript: boolean,
@@ -185,6 +196,8 @@ async function loadRun(runId: string): Promise<Run | null> {
 		screenMode: parseRunScreenMode(runRow.screenMode),
 		lane: reportedLane(runRow.lane),
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
+		...(runRow.browser ? { browser: runRow.browser } : {}),
+		...viewportOf(runRow.viewport),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -440,6 +453,25 @@ async function saveCaseRecording(runTestId: string, state: RunRecording): Promis
 		.where(eq(runTests.id, runTestId));
 }
 
+/**
+ * Open the App before the first case. On web that is loading its Web URL in the page. A
+ * phone's session only targets the app's id (acquireSessionForRun), and opens nothing here.
+ */
+async function openStartTarget(
+	session: DeviceSession,
+	platform: Run["platform"],
+	startTarget: string | undefined,
+): Promise<void> {
+	switch (platform) {
+		case "ios":
+		case "android":
+			return;
+		case "web":
+			if (startTarget) await session.openUrl(startTarget);
+			return;
+	}
+}
+
 export async function executeRun(runId: string): Promise<void> {
 	const db = getCatalogDb();
 	const run = await loadRun(runId);
@@ -472,6 +504,12 @@ export async function executeRun(runId: string): Promise<void> {
 		const app = await getApp(run.appId);
 		if (!app) {
 			throw new RunValidationError("App not found");
+		}
+		const startTarget = appStartTarget(app, run.platform);
+		if (run.platform === "web" && !startTarget) {
+			throw new RunValidationError(
+				`${app.name} has no Web URL, so a Run on web has nothing to open. Set one with: yoqa apps update ${app.prefix} --web-url <url>`,
+			);
 		}
 
 		const caseModes: Array<{ caseId: string; mode: "script" | "agent" }> = [];
@@ -509,8 +547,7 @@ export async function executeRun(runId: string): Promise<void> {
 			runId,
 			deviceId: run.deviceId,
 			platform: run.platform,
-			bundleId: app.iosBundleId || undefined,
-			appPackage: app.androidApplicationId || undefined,
+			...startTargetRequest(run.platform, startTarget),
 			requestedLane:
 				requestedLane === "direct" || requestedLane === "auto" ? requestedLane : undefined,
 		});
@@ -522,8 +559,11 @@ export async function executeRun(runId: string): Promise<void> {
 			.set({
 				lane: session.lane,
 				laneWarning: session.laneWarning ?? null,
+				browser: session.browser ?? null,
+				viewport: session.viewport ?? null,
 			})
 			.where(eq(runs.id, runId));
+		await openStartTarget(session, run.platform, startTarget);
 
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
@@ -574,10 +614,7 @@ export async function executeRun(runId: string): Promise<void> {
 						auth,
 						caseMode,
 						screenMode: run.screenMode ?? "tree",
-						defaultAppId:
-							run.platform === "ios"
-								? app.iosBundleId || undefined
-								: app.androidApplicationId || undefined,
+						defaultAppId: startTarget,
 					}),
 			);
 			// The Run was deleted while this case was recording; do not leave its video behind.
@@ -808,6 +845,8 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		screenMode: parseRunScreenMode(runRow.screenMode),
 		lane: reportedLane(runRow.lane),
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
+		...(runRow.browser ? { browser: runRow.browser } : {}),
+		...viewportOf(runRow.viewport),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,

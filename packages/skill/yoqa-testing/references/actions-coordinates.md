@@ -64,6 +64,11 @@ yoqa action swipe --x 500 --y 700 --x2 500 --y2 300      # scroll down (finger m
 yoqa action swipe --x 500 --y 300 --x2 500 --y2 700      # scroll back up
 ```
 
+On web, coordinates are relative to the page viewport, not the browser window. Under the `desktop`
+viewport preset a swipe is a mouse-wheel scroll of whatever is under the start point, in the same
+direction a finger swipe would scroll (swipe up scrolls down). Under the `mobile` preset it is a real
+touch stroke. Tap and drag are mouse presses on `desktop` and touches on `mobile`.
+
 ### Drag
 
 ```bash
@@ -82,4 +87,6 @@ yoqa action input --text <text> --x <x> --y <y>
 yoqa action input --text "hello world" --x 500 --y 420
 ```
 
-The point is tapped first to focus the field, then the text is typed.
+The point is tapped first to focus the field, then the text is typed. A newline in the text presses
+Enter. For other keys (Tab, Escape, arrows) use `yoqa action key` — see
+[Inspect & App Control](inspect-and-app-control.md#keys).

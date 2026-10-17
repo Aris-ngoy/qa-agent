@@ -113,3 +113,13 @@ describe("physical-iOS Direct lane", () => {
 		});
 	});
 });
+
+describe("web Direct lane", () => {
+	test("a browser is its own device class, driven over CDP", () => {
+		expect(deviceClassFor("web", "chromium-cdp-9222")).toBe("web");
+		expect(DIRECT_IMPLEMENTATIONS.web.map((i) => i.name)).toEqual(["cdp"]);
+		expect(directImplementationOrder(DIRECT_IMPLEMENTATIONS.web).map((i) => i.name)).toEqual([
+			"cdp",
+		]);
+	});
+});

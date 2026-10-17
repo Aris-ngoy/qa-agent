@@ -1,4 +1,4 @@
-import { RunnerRequestError } from "@yoqa/runner-client";
+import { type ActiveDeviceResponse, RunnerRequestError } from "@yoqa/runner-client";
 
 /**
  * A 410 the webview kept from an earlier reply: no `chain`, and no runner pid. The phone
@@ -28,4 +28,14 @@ export function isDeviceUnreachable(error: unknown): boolean {
 	if (!(error instanceof RunnerRequestError) || error.status !== 503) return false;
 	const body = error.body as { error?: unknown } | null;
 	return body?.error === "Device unreachable";
+}
+
+/**
+ * The Frame Feed the Inspector opens on `session`: the live Stream when it is up, else
+ * Screenshot Poll. A Lane with no Stream (web) always polls, and that is not a failure.
+ */
+export function feedModeFor(session: ActiveDeviceResponse): "mjpeg" | "poll" {
+	if (session.streamState === "none" || session.streamState === "failed") return "poll";
+	if (session.streamReady === false) return "poll";
+	return session.streamUrl || session.mjpegPort ? "mjpeg" : "poll";
 }

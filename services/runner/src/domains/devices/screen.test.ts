@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanPageSource } from "./screen";
 
 const WINDOW = { width: 1000, height: 2000 };
@@ -175,5 +177,112 @@ describe("cleanPageSource", () => {
 		);
 		expect(ios.elements).toHaveLength(1);
 		expect(ios.elements[0]?.label).toBe("Help & Info");
+	});
+});
+
+describe("cleanPageSource on a web page's accessibility tree", () => {
+	/** A sign-in page as the web Direct lane reads it: CDP's full AX tree, each node with its box. */
+	const SIGN_IN = readFileSync(join(import.meta.dir, "fixtures", "web-ax-sign-in.json"), "utf8");
+	const VIEWPORT = { width: 1280, height: 800 };
+
+	test("keeps the page's controls and text, in the mobile node shape on 0–1000", () => {
+		const cleaned = cleanPageSource(SIGN_IN, VIEWPORT);
+		expect(cleaned.window).toEqual(VIEWPORT);
+		expect(cleaned.elements).toEqual([
+			{
+				type: "heading",
+				label: "Welcome back",
+				x: 50,
+				y: 50,
+				width: 500,
+				height: 60,
+				enabled: true,
+			},
+			{
+				type: "textbox",
+				label: "Email",
+				id: "email",
+				x: 50,
+				y: 150,
+				width: 500,
+				height: 50,
+				enabled: true,
+			},
+			{ type: "textbox", label: "Password", x: 50, y: 220, width: 500, height: 50, enabled: true },
+			{
+				type: "button",
+				label: "Sign in",
+				id: "sign-in-button",
+				x: 50,
+				y: 300,
+				width: 100,
+				height: 50,
+				enabled: true,
+			},
+			{
+				type: "link",
+				label: "Forgot password?",
+				x: 50,
+				y: 370,
+				width: 100,
+				height: 20,
+				enabled: true,
+			},
+			{
+				type: "button",
+				label: "Use a passkey",
+				x: 175,
+				y: 300,
+				width: 125,
+				height: 50,
+				enabled: false,
+			},
+			{
+				type: "button",
+				label: "",
+				id: "close",
+				x: 950,
+				y: 20,
+				width: 38,
+				height: 60,
+				enabled: true,
+			},
+			{
+				type: "StaticText",
+				label: "By signing in you agree to the terms.",
+				x: 50,
+				y: 500,
+				width: 313,
+				height: 25,
+				enabled: true,
+			},
+		]);
+	});
+
+	test("drops hidden, zero-size, offscreen and purely structural nodes", () => {
+		const labels = cleanPageSource(SIGN_IN, VIEWPORT).elements.map((el) => el.label);
+		expect(labels).not.toContain("Sign in – Acme");
+		expect(labels).not.toContain("Collapsed");
+		expect(labels).not.toContain("Below the fold");
+		const types = cleanPageSource(SIGN_IN, VIEWPORT).elements.map((el) => el.type);
+		for (const noise of ["RootWebArea", "generic", "InlineTextBox", "paragraph", "image", "none"]) {
+			expect(types).not.toContain(noise);
+		}
+	});
+
+	test("names a control once: the text inside a button or link is not a second node", () => {
+		const labels = cleanPageSource(SIGN_IN, VIEWPORT).elements.map((el) => el.label);
+		expect(labels.filter((label) => label === "Sign in")).toHaveLength(1);
+		expect(labels.filter((label) => label === "Forgot password?")).toHaveLength(1);
+		expect(labels.filter((label) => label === "Welcome back")).toHaveLength(1);
+	});
+
+	test("is a fraction of the raw tree it was cleaned from", () => {
+		const cleaned = JSON.stringify(cleanPageSource(SIGN_IN, VIEWPORT).elements);
+		expect(cleaned.length).toBeLessThan(JSON.stringify(JSON.parse(SIGN_IN)).length / 4);
+	});
+
+	test("an empty page is an empty Screen", () => {
+		expect(cleanPageSource(JSON.stringify({ axTree: [] }), VIEWPORT).elements).toEqual([]);
 	});
 });

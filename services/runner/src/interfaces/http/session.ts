@@ -1,6 +1,7 @@
 import { mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
+	VIEWPORT_PRESET_NAMES,
 	actionBatchRequestSchema,
 	actionBatchResponseSchema,
 	actionRequestSchema,
@@ -32,7 +33,11 @@ import {
 	getScreen,
 	performAction,
 } from "../../domains/devices/interaction";
-import { DeviceUnreachableError, isDeadSessionError } from "../../domains/devices/lane";
+import {
+	ActionUnsupportedError,
+	DeviceUnreachableError,
+	isDeadSessionError,
+} from "../../domains/devices/lane";
 import { trackMjpegProxy } from "../../domains/devices/mjpeg-proxy";
 import { DeveloperNotTrustedError } from "../../domains/devices/yoqa-runner";
 
@@ -106,6 +111,9 @@ export function createSessionRoutes() {
 		}
 		const parsed = connectDeviceRequestSchema.safeParse(json);
 		if (!parsed.success) {
+			if (parsed.error.issues.some((issue) => issue.path[0] === "viewport")) {
+				return c.json({ error: `viewport must be ${VIEWPORT_PRESET_NAMES.join(" or ")}` }, 400);
+			}
 			return c.json({ error: "Body must include deviceId and platform" }, 400);
 		}
 		try {
@@ -361,6 +369,9 @@ export function createSessionRoutes() {
 			}
 			if (error instanceof ActionNotFoundError) {
 				return c.json({ error: error.message }, 404);
+			}
+			if (error instanceof ActionUnsupportedError) {
+				return c.json({ error: "Action not supported", detail: error.message }, 422);
 			}
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Action failed", detail: message }, 500);

@@ -6,6 +6,7 @@ import {
 	readScreenshotBytes,
 } from "@/features/inspector/data/api/screen";
 import {
+	feedModeFor,
 	isDeviceSessionGone,
 	isDeviceUnreachable,
 	isStaleSessionReply,
@@ -282,7 +283,7 @@ export class InspectorFeedController {
 	private async startLiveFeed(deviceInfo: ActiveDeviceResponse): Promise<void> {
 		this.feed$.bootLoading.set(true);
 		try {
-			if (deviceInfo.streamReady !== false && (deviceInfo.streamUrl || deviceInfo.mjpegPort)) {
+			if (feedModeFor(deviceInfo) === "mjpeg") {
 				this.feed$.feedMode.set("mjpeg");
 				// Cache-bust so a stuck <img> MJPEG connection is remounted.
 				this.setFrame(`${await mjpegStreamUrl()}?t=${Date.now()}`, false);

@@ -1,25 +1,33 @@
 # Yoqa
 
-Local-first agentic mobile QA: devices driven directly, runs driven by scripts or the Yoqa agent, BYO providers for vision and decide.
+Local-first agentic app QA for mobile and web: devices and browsers driven directly, runs driven by scripts or the Yoqa agent, BYO providers for vision and decide.
 
 ## Language
 
 ### Device layer
 
 **Device Session**:
-A live connection to one device (or simulator/emulator) through one Lane, including gestures, screenshots, and app lifecycle control. At most one Device Session may exist per device id at a time.
+A live connection to one device (a phone, a simulator/emulator, or a Browser device) through one Lane, including gestures, screenshots, and app lifecycle control. On a Browser device it drives one page, and its coordinates are the page viewport, not the browser window. At most one Device Session may exist per device id at a time.
 _Avoid_: Active session handle alone, WebDriver session (implementation detail), runner session
 
 **Lane**:
-The control path a Device Session uses to drive its device. A Lane is Direct only: straight to the platform tooling, with no WebDriver server in between. There is no other Lane and no capability that selects one. A connect opens the Direct lane, or it fails. `auto` and an explicit `direct` request open Direct when it can start; a client cannot name any other Lane. If Direct cannot start, the connect fails with that error. Yoqa does not install, start, or check an Appium Server. Android Direct is adb; iOS simulators are driven by our resident `yoqa-sim` and `yoqa-ax` (`device-sim`) with idb_companion as its fallback. A cabled iPhone is driven through our XCUITest `YoqaRunner` over usbmuxd (`device-ios`). Within a device class the Direct lane picks its implementation (a new one only when opted in, until it clears the benchmark gate) and falls back once, loudly, to the existing implementation; the Lane name stays `direct`. A Device Session has exactly one Lane for its whole life. An App and a Test Case do not carry capabilities. Saved keys are ignored and are not shown. They do not change the Lane or how an app is launched. The Run report names the Lane that ran.
+The control path a Device Session uses to drive its device. A Lane is Direct only: straight to the platform tooling, with no WebDriver server in between. There is no other Lane and no capability that selects one. A connect opens the Direct lane, or it fails. `auto` and an explicit `direct` request open Direct when it can start; a client cannot name any other Lane. If Direct cannot start, the connect fails with that error. Yoqa does not install, start, or check an Appium Server. Android Direct is adb; iOS simulators are driven by our resident `yoqa-sim` and `yoqa-ax` (`device-sim`) with idb_companion as its fallback. A cabled iPhone is driven through our XCUITest `YoqaRunner` over usbmuxd (`device-ios`). The web Direct lane is the Chrome DevTools Protocol (CDP) to a Chromium browser, with no Playwright or WebDriver in between. Within a device class the Direct lane picks its implementation (a new one only when opted in, until it clears the benchmark gate) and falls back once, loudly, to the existing implementation; the Lane name stays `direct`. A Device Session has exactly one Lane for its whole life. An App and a Test Case do not carry capabilities. Saved keys are ignored and are not shown. They do not change the Lane or how an app is launched. The Run report names the Lane that ran.
 _Avoid_: driver (Provider drivers), backend (runner / cloud), adapter, transport, engine
+
+**Browser device**:
+A Chromium-family browser (Chrome, Edge, Brave, Chromium) as a `web` device. A browser the user started with remote debugging on a non-default profile is attached by naming its debug port (`chromium-cdp-<port>`); ports are never scanned. Disconnecting an attached browser leaves it open.
+_Avoid_: tab, page (one page of it is what a Device Session drives), web driver
+
+**Viewport preset**:
+The page size a Device Session on a Browser device emulates, chosen at connect and fixed for the session's whole life: `desktop` (1280×800, the default) or `mobile` (390×844, with a mobile user agent and touch, so a tap or swipe is a finger). It applies to every page the session drives, whatever the window's size, and is what 0–1000 maps onto. The Run stores it and its report shows it.
+_Avoid_: window size, resolution, device emulation (implementation detail)
 
 **Active Session**:
 The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes. It stays live until the user disconnects or connects another device. Its target app (what a Lane that remembers an app reads or relaunches) follows the Run that adopts it, or the app the user selects while no Run holds it, without reconnecting. On a cabled iPhone, frame and tree reads go through the Inspector Session and do not end this one.
 _Avoid_: Run session (a Run adopts the Active Session), a second Device Session per mode
 
 **Dead Session**:
-A Device Session the runner still thinks is open but its Lane has already lost: the Direct lane's device tool says the device is gone.
+A Device Session the runner still thinks is open but its Lane has already lost: the Direct lane's device tool says the device is gone, or the browser closed its connection or the page.
 _Avoid_: disconnected (user-initiated), abandoned (implementation verb only)
 
 **Unreachable Session**:
@@ -60,7 +68,7 @@ Mapping a natural-language element description to coordinates on the current Scr
 _Avoid_: locator, find element (when meaning description→coords)
 
 **Action**:
-A single device gesture or app-lifecycle command (tap, swipe, type, open URL, etc.), optionally grounded from a description.
+A single device gesture or app-lifecycle command (tap, swipe, type, key, open URL, etc.), optionally grounded from a description. `key` presses one named key (Enter, Tab, Escape, arrows, …) with optional modifiers; each Lane declares the keys it can press, and any other key fails the Action.
 _Avoid_: step (Run timeline), command (CLI)
 
 **Settle**:

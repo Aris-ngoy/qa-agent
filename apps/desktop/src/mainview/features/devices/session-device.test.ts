@@ -64,7 +64,63 @@ describe("deviceForSession", () => {
 	});
 });
 
+describe("deviceForSession on web", () => {
+	const CHROME: Device = {
+		id: "web-chrome",
+		name: "Google Chrome",
+		osVersion: "141.0",
+		platform: "web",
+		kind: "browser",
+	};
+
+	test("keeps the session's Viewport preset on a listed browser", () => {
+		expect(
+			deviceForSession({ deviceId: "web-chrome", platform: "web", viewport: "mobile" }, [CHROME]),
+		).toMatchObject({ id: "web-chrome", label: "Google Chrome", viewport: "mobile" });
+	});
+
+	test("names an attached browser by its port, since attach is never listed", () => {
+		expect(
+			deviceForSession({ deviceId: "chromium-cdp-9222", platform: "web" }, [CHROME]),
+		).toMatchObject({
+			id: "chromium-cdp-9222",
+			label: "Chromium on port 9222",
+			viewport: "desktop",
+		});
+	});
+});
+
 describe("remembered device", () => {
+	test("keeps a browser's Viewport preset", () => {
+		const storage = memoryStorage();
+		writeRememberedDevice({ platform: "web", deviceId: "web-chrome", viewport: "mobile" }, storage);
+		expect(readRememberedDevice(storage)).toEqual({
+			platform: "web",
+			deviceId: "web-chrome",
+			viewport: "mobile",
+		});
+		const chrome: Device = { ...SIMULATOR, id: "web-chrome", platform: "web", kind: "browser" };
+		expect(
+			pickRememberedDevice({ platform: "web", deviceId: "web-chrome", viewport: "mobile" }, [
+				chrome,
+			])?.viewport,
+		).toBe("mobile");
+	});
+
+	test("drops a stored preset that is not one", () => {
+		expect(
+			readRememberedDevice(
+				memoryStorage({
+					"yoqa.lastDevice": JSON.stringify({
+						platform: "web",
+						deviceId: "web-chrome",
+						viewport: "tv",
+					}),
+				}),
+			),
+		).toEqual({ platform: "web", deviceId: "web-chrome" });
+	});
+
 	test("is read back after it was written", () => {
 		const storage = memoryStorage();
 		writeRememberedDevice({ platform: "ios", deviceId: PHONE.id }, storage);

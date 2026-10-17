@@ -6,6 +6,7 @@ import {
 	formatRunDetailMeta,
 	formatRunDeviceLines,
 	formatRunDuration,
+	formatRunEnvironment,
 	formatRunListDate,
 	runListResult,
 } from "./labels";
@@ -214,5 +215,33 @@ describe("formatRunContextCaption", () => {
 
 	test("is absent when no device is connected", () => {
 		expect(formatRunContextCaption(undefined)).toBeNull();
+	});
+});
+
+describe("formatRunEnvironment", () => {
+	test("names a web Run's browser, Viewport preset and Lane", () => {
+		expect(
+			formatRunEnvironment(
+				run({
+					status: "passed",
+					tests: [],
+					platform: "web",
+					deviceId: "web-chrome",
+					lane: "direct",
+					browser: "Google Chrome 141.0",
+					viewport: "mobile",
+				}),
+			),
+		).toBe("Browser Google Chrome 141.0 · Viewport mobile (390×844) · Lane Direct");
+	});
+
+	test("leaves out what the Run did not store", () => {
+		expect(
+			formatRunEnvironment(run({ status: "errored", tests: [], platform: "web", lane: "direct" })),
+		).toBe("Lane Direct");
+	});
+
+	test("is nothing for a phone's Run, whose details stay as they were", () => {
+		expect(formatRunEnvironment(run({ status: "passed", tests: [], lane: "direct" }))).toBeNull();
 	});
 });

@@ -1,10 +1,19 @@
 import { getDesktopRpc } from "@/app/desktop-rpc";
 import { Modal, Tabs } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
-import { type Device, createRunnerClient } from "@yoqa/runner-client";
+import {
+	DEFAULT_VIEWPORT_PRESET,
+	type Device,
+	type DeviceKind,
+	type DevicePlatform,
+	type ViewportPresetName,
+	createRunnerClient,
+} from "@yoqa/runner-client";
 import { type SVGProps, useEffect, useMemo, useState } from "react";
+import { attachedBrowser, browserDevices } from "./web-device";
+import { AttachByPortForm, ViewportChoice } from "./web-device-panels";
 
-export type DevicePlatform = "ios" | "android";
+export type { DevicePlatform };
 
 export type SelectedDevice = {
 	id: string;
@@ -12,10 +21,13 @@ export type SelectedDevice = {
 	name: string;
 	osVersion: string;
 	platform: DevicePlatform;
-	kind: "physical" | "simulator" | "emulator";
+	kind: DeviceKind;
+	/** Web only: the Viewport preset to connect at. */
+	viewport?: ViewportPresetName;
 };
 
-type DeviceTab = "local" | "simulators";
+/** Phones: cabled devices and simulators/emulators. Web: installed browsers and attach by port. */
+type DeviceTab = "local" | "simulators" | "browsers" | "attach";
 
 type DeviceRow = {
 	id: string;
@@ -23,7 +35,7 @@ type DeviceRow = {
 	owner?: string;
 	osVersion: string;
 	state?: string;
-	kind: "physical" | "simulator" | "emulator";
+	kind: DeviceKind;
 	/** Listed but not a target (e.g. an iPhone paired over Wi-Fi only); shown instead of picking it. */
 	unavailableReason?: string;
 };
@@ -31,6 +43,8 @@ type DeviceRow = {
 type SelectDeviceModalProps = {
 	open: boolean;
 	platform: DevicePlatform;
+	/** Web: the preset the choice starts on (the picked browser's), desktop when none. */
+	viewport?: ViewportPresetName;
 	onClose: () => void;
 	onSelect: (device: SelectedDevice) => void;
 };
@@ -40,6 +54,7 @@ const PLATFORM_COPY: Record<
 	{
 		title: string;
 		simulatorLabel: string;
+		/** Phones: what a cabled device needs. Web: how to start a browser to attach to. */
 		localChecklist: string[];
 	}
 > = {
@@ -63,6 +78,14 @@ const PLATFORM_COPY: Record<
 			"Device is unlocked",
 			"This computer is authorized for debugging",
 			"Device is connected to the internet",
+		],
+	},
+	web: {
+		title: "Select Device — Web",
+		simulatorLabel: "Browsers",
+		localChecklist: [
+			"Chrome, Edge or Brave started with --remote-debugging-port=<port>",
+			"A non-default profile (--user-data-dir): Chrome 136 and later refuse the default one",
 		],
 	},
 };
@@ -101,6 +124,41 @@ function MonitorIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
+function GlobeIcon(props: SVGProps<SVGSVGElement>) {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-4 shrink-0"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.75"
+			viewBox="0 0 24 24"
+			{...props}
+		>
+			<circle cx="12" cy="12" r="9" />
+			<path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18" />
+		</svg>
+	);
+}
+
+function PlugIcon(props: SVGProps<SVGSVGElement>) {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-4 shrink-0"
+			fill="none"
+			stroke="currentColor"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			strokeWidth="1.75"
+			viewBox="0 0 24 24"
+			{...props}
+		>
+			<path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0V8ZM12 16v5" />
+		</svg>
+	);
+}
+
 function deviceLabel(device: DeviceRow): string {
 	return device.owner ? `${device.name} (${device.owner})` : device.name;
 }
@@ -122,11 +180,13 @@ function DeviceList({
 	loading,
 	error,
 	onSelect,
+	emptyMessage = "No devices found.",
 }: {
 	devices: DeviceRow[];
 	loading: boolean;
 	error: string | null;
 	onSelect: (device: DeviceRow) => void;
+	emptyMessage?: string;
 }) {
 	if (loading) {
 		return (
@@ -142,9 +202,7 @@ function DeviceList({
 
 	if (devices.length === 0) {
 		return (
-			<p className="px-1 py-6 text-center text-body-md text-on-surface-variant">
-				No devices found.
-			</p>
+			<p className="px-1 py-6 text-center text-body-md text-on-surface-variant">{emptyMessage}</p>
 		);
 	}
 
@@ -196,8 +254,17 @@ export async function fetchPlatformDevices(platform: DevicePlatform): Promise<De
 	return response.devices;
 }
 
-export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectDeviceModalProps) {
-	const [tab, setTab] = useState<DeviceTab>("local");
+export function SelectDeviceModal({
+	open,
+	platform,
+	viewport,
+	onClose,
+	onSelect,
+}: SelectDeviceModalProps) {
+	const isWeb = platform === "web";
+	const firstTab: DeviceTab = isWeb ? "browsers" : "local";
+	const [tab, setTab] = useState<DeviceTab>(firstTab);
+	const [preset, setPreset] = useState<ViewportPresetName>(viewport ?? DEFAULT_VIEWPORT_PRESET);
 	const copy = PLATFORM_COPY[platform];
 
 	const devicesQuery = useQuery({
@@ -211,17 +278,19 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 
 	useEffect(() => {
 		if (open) {
-			setTab("local");
+			setTab(firstTab);
+			setPreset(viewport ?? DEFAULT_VIEWPORT_PRESET);
 		}
-	}, [open]);
+	}, [open, firstTab, viewport]);
 
-	const { local, virtual } = useMemo(() => {
+	const { local, virtual, browsers } = useMemo(() => {
 		const devices = devicesQuery.data ?? [];
 		return {
 			local: devices.filter((device) => device.kind === "physical").map(toDeviceRow),
 			virtual: devices
 				.filter((device) => device.kind === "simulator" || device.kind === "emulator")
 				.map(toDeviceRow),
+			browsers: browserDevices(devices).map(toDeviceRow),
 		};
 	}, [devicesQuery.data]);
 
@@ -233,7 +302,15 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 			osVersion: device.osVersion,
 			platform,
 			kind: device.kind,
+			...(isWeb ? { viewport: preset } : {}),
 		});
+		onClose();
+	};
+
+	const handleAttach = (deviceId: string) => {
+		const attached = attachedBrowser(deviceId, preset);
+		if (!attached) return;
+		onSelect(attached);
 		onClose();
 	};
 
@@ -245,15 +322,20 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 				? "Failed to load devices. Is the runner running?"
 				: null;
 
-	const tabs: { id: DeviceTab; label: string; count: number; icon: typeof PhoneIcon }[] = [
-		{ id: "local", label: "Local Devices", count: local.length, icon: PhoneIcon },
-		{
-			id: "simulators",
-			label: copy.simulatorLabel,
-			count: virtual.length,
-			icon: MonitorIcon,
-		},
-	];
+	const tabs: { id: DeviceTab; label: string; count?: number; icon: typeof PhoneIcon }[] = isWeb
+		? [
+				{ id: "browsers", label: copy.simulatorLabel, count: browsers.length, icon: GlobeIcon },
+				{ id: "attach", label: "Attach by port", icon: PlugIcon },
+			]
+		: [
+				{ id: "local", label: "Local Devices", count: local.length, icon: PhoneIcon },
+				{
+					id: "simulators",
+					label: copy.simulatorLabel,
+					count: virtual.length,
+					icon: MonitorIcon,
+				},
+			];
 
 	return (
 		<Modal>
@@ -267,6 +349,7 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 							</Modal.Heading>
 						</Modal.Header>
 						<Modal.Body className="gap-5 px-6 pb-6 pt-1">
+							{isWeb ? <ViewportChoice onChange={setPreset} value={preset} /> : null}
 							<Tabs
 								className="w-full"
 								onSelectionChange={(key) => setTab(String(key) as DeviceTab)}
@@ -287,9 +370,11 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 												>
 													<Icon />
 													<span className="truncate">{item.label}</span>
-													<span className="rounded-full bg-surface-container-high px-2 py-0.5 text-helper font-semibold text-on-surface-variant">
-														{item.count}
-													</span>
+													{item.count != null ? (
+														<span className="rounded-full bg-surface-container-high px-2 py-0.5 text-helper font-semibold text-on-surface-variant">
+															{item.count}
+														</span>
+													) : null}
 													<Tabs.Indicator className="hidden" />
 												</Tabs.Tab>
 											);
@@ -297,36 +382,60 @@ export function SelectDeviceModal({ open, platform, onClose, onSelect }: SelectD
 									</Tabs.List>
 								</Tabs.ListContainer>
 
-								<Tabs.Panel className="pt-5" id="local">
-									<div className="mb-4 rounded-xl border border-outline-variant bg-surface-container-low/60 px-4 py-3.5">
-										<p className="mb-2 text-body-md font-semibold text-on-surface">
-											Before selecting a device, make sure:
-										</p>
-										<ul className="list-disc space-y-1 pl-5 text-body-sm text-on-surface">
-											{copy.localChecklist.map((item) => (
-												<li key={item}>{item}</li>
-											))}
-										</ul>
-										<p className="mt-3 text-body-sm text-on-surface-variant">
-											First-time setup takes 1–2 minutes
-										</p>
-									</div>
-									<DeviceList
-										devices={local}
-										error={error}
-										loading={loading}
-										onSelect={handleSelect}
-									/>
-								</Tabs.Panel>
+								{isWeb ? (
+									<>
+										<Tabs.Panel className="pt-5" id="browsers">
+											<p className="mb-2 text-body-sm text-on-surface-variant">
+												Connecting opens a Yoqa-owned window on a throwaway profile. Your own
+												browser and its profile are never touched.
+											</p>
+											<DeviceList
+												devices={browsers}
+												emptyMessage="No Chrome, Edge, Brave or Chromium found in Applications. Attach by port instead."
+												error={error}
+												loading={loading}
+												onSelect={handleSelect}
+											/>
+										</Tabs.Panel>
 
-								<Tabs.Panel className="pt-5" id="simulators">
-									<DeviceList
-										devices={virtual}
-										error={error}
-										loading={loading}
-										onSelect={handleSelect}
-									/>
-								</Tabs.Panel>
+										<Tabs.Panel className="pt-5" id="attach">
+											<AttachByPortForm checklist={copy.localChecklist} onAttach={handleAttach} />
+										</Tabs.Panel>
+									</>
+								) : (
+									<>
+										<Tabs.Panel className="pt-5" id="local">
+											<div className="mb-4 rounded-xl border border-outline-variant bg-surface-container-low/60 px-4 py-3.5">
+												<p className="mb-2 text-body-md font-semibold text-on-surface">
+													Before selecting a device, make sure:
+												</p>
+												<ul className="list-disc space-y-1 pl-5 text-body-sm text-on-surface">
+													{copy.localChecklist.map((item) => (
+														<li key={item}>{item}</li>
+													))}
+												</ul>
+												<p className="mt-3 text-body-sm text-on-surface-variant">
+													First-time setup takes 1–2 minutes
+												</p>
+											</div>
+											<DeviceList
+												devices={local}
+												error={error}
+												loading={loading}
+												onSelect={handleSelect}
+											/>
+										</Tabs.Panel>
+
+										<Tabs.Panel className="pt-5" id="simulators">
+											<DeviceList
+												devices={virtual}
+												error={error}
+												loading={loading}
+												onSelect={handleSelect}
+											/>
+										</Tabs.Panel>
+									</>
+								)}
 							</Tabs>
 						</Modal.Body>
 					</Modal.Dialog>

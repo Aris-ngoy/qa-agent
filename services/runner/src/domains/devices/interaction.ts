@@ -8,6 +8,7 @@ import {
 	findElementByLabel,
 } from "@yoqa/runner-client";
 import { groundDescription } from "./grounding";
+import { UnsupportedKeyError } from "./lane";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
 import { cleanPageSource } from "./screen";
 import type { DeviceSession } from "./session";
@@ -159,8 +160,12 @@ export async function performAction(
 		}
 		case "restart-app": {
 			if (!body.appId) throw new ActionValidationError("restart-app requires appId");
-			await session.terminateApp(body.appId);
-			await session.activateApp(body.appId);
+			if (session.restartApp) {
+				await session.restartApp(body.appId);
+			} else {
+				await session.terminateApp(body.appId);
+				await session.activateApp(body.appId);
+			}
 			break;
 		}
 		case "background-app": {
@@ -170,6 +175,17 @@ export async function performAction(
 		case "open-url": {
 			if (!body.url) throw new ActionValidationError("open-url requires url");
 			await session.openUrl(body.url);
+			break;
+		}
+		case "key": {
+			if (!body.key) throw new ActionValidationError("key requires a key");
+			try {
+				await session.key(body.key, body.modifiers);
+			} catch (error) {
+				// The Lane cannot send it: the caller asked for something invalid here.
+				if (error instanceof UnsupportedKeyError) throw new ActionValidationError(error.message);
+				throw error;
+			}
 			break;
 		}
 		case "alert": {

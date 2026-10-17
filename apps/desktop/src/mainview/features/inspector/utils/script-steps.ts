@@ -1,4 +1,4 @@
-import { type CaseScriptAction, parseCaseScriptFile } from "@yoqa/runner-client";
+import { type CaseScriptAction, formatKeyChord, parseCaseScriptFile } from "@yoqa/runner-client";
 
 export type StepStatus = "passed" | "running" | "queued" | "idle";
 
@@ -32,6 +32,7 @@ const VERBS: Record<CaseScriptAction["type"], string> = {
 	"restart-app": "Restart app",
 	"background-app": "Background app",
 	"open-url": "Open URL",
+	key: "Press",
 };
 
 function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | "text" | "meta"> {
@@ -69,6 +70,8 @@ function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | 
 			return { verb, text: action.seconds != null ? `${action.seconds} s` : "", meta: "" };
 		case "open-url":
 			return { verb, text: action.url, meta: "" };
+		case "key":
+			return { verb, text: formatKeyChord(action.key, action.modifiers), meta: "" };
 	}
 }
 

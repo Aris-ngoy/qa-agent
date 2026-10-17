@@ -9,7 +9,11 @@ export const healthResponseSchema = z.object({
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
-export const devicePlatformSchema = z.union([z.literal("ios"), z.literal("android")]);
+export const devicePlatformSchema = z.union([
+	z.literal("ios"),
+	z.literal("android"),
+	z.literal("web"),
+]);
 export type DevicePlatform = z.infer<typeof devicePlatformSchema>;
 
 export const laneNameSchema = z.literal("direct");
@@ -19,8 +23,17 @@ export const deviceKindSchema = z.union([
 	z.literal("physical"),
 	z.literal("simulator"),
 	z.literal("emulator"),
+	z.literal("browser"),
 ]);
 export type DeviceKind = z.infer<typeof deviceKindSchema>;
+
+/**
+ * The page size a web Device Session emulates, chosen at connect and fixed for the
+ * session's life (see `Viewport preset` in CONTEXT.md). `desktop` is the default.
+ */
+export const VIEWPORT_PRESET_NAMES = ["desktop", "mobile"] as const;
+export const viewportPresetSchema = z.enum(VIEWPORT_PRESET_NAMES);
+export type ViewportPresetName = z.infer<typeof viewportPresetSchema>;
 
 export const deviceSchema = z.object({
 	id: z.string().min(1),
@@ -243,6 +256,8 @@ export const catalogAppSchema = z.object({
 	iosBundleId: z.string(),
 	iosAppStoreId: z.string(),
 	androidApplicationId: z.string(),
+	/** Web URL: the page a Run on web opens, as iOS launches the bundle id. Empty when unset. */
+	webUrl: z.string().default(""),
 	capabilities: z.array(capabilitySchema),
 	createdAt: z.number().int().nonnegative(),
 	updatedAt: z.number().int().nonnegative(),
@@ -253,6 +268,8 @@ export type CatalogApp = z.infer<typeof catalogAppSchema>;
 export const createAppRequestSchema = z.object({
 	name: z.string().min(1),
 	prefix: z.string().min(1).optional(),
+	/** A web-only App needs only a name and a Web URL. */
+	webUrl: z.string().optional(),
 });
 
 export type CreateAppRequest = z.infer<typeof createAppRequestSchema>;
@@ -265,6 +282,7 @@ export const updateAppRequestSchema = z.object({
 	iosBundleId: z.string().optional(),
 	iosAppStoreId: z.string().optional(),
 	androidApplicationId: z.string().optional(),
+	webUrl: z.string().optional(),
 	capabilities: z.array(capabilitySchema).optional(),
 });
 
@@ -331,6 +349,31 @@ const caseScriptDragSchema = z.object({
 	reason: z.string().optional(),
 });
 
+/** The named keys a `key` Action can press (see `Action` in CONTEXT.md). */
+export const KEY_NAMES = [
+	"Enter",
+	"Tab",
+	"Escape",
+	"Backspace",
+	"Delete",
+	"ArrowUp",
+	"ArrowDown",
+	"ArrowLeft",
+	"ArrowRight",
+	"Home",
+	"End",
+	"PageUp",
+	"PageDown",
+	"Space",
+] as const;
+export const keyNameSchema = z.enum(KEY_NAMES);
+export type KeyName = z.infer<typeof keyNameSchema>;
+
+/** Modifiers held down while a `key` Action presses its key. */
+export const KEY_MODIFIERS = ["Shift", "Control", "Alt", "Meta"] as const;
+export const keyModifierSchema = z.enum(KEY_MODIFIERS);
+export type KeyModifier = z.infer<typeof keyModifierSchema>;
+
 function caseScriptAppIdSchema<T extends "activate-app" | "terminate-app" | "restart-app">(
 	type: T,
 ) {
@@ -381,6 +424,12 @@ export const caseScriptActionSchemaByType = {
 		url: z.string().min(1),
 		reason: z.string().optional(),
 	}),
+	key: z.object({
+		type: z.literal("key"),
+		key: keyNameSchema,
+		modifiers: z.array(keyModifierSchema).min(1).optional(),
+		reason: z.string().optional(),
+	}),
 } as const;
 
 export type CaseScriptActionType = keyof typeof caseScriptActionSchemaByType;
@@ -398,6 +447,7 @@ export const caseScriptActionSchema = z.union([
 	caseScriptActionSchemaByType["restart-app"],
 	caseScriptActionSchemaByType["background-app"],
 	caseScriptActionSchemaByType["open-url"],
+	caseScriptActionSchemaByType.key,
 ]);
 
 export type CaseScriptAction = z.infer<typeof caseScriptActionSchema>;
@@ -883,6 +933,10 @@ export const runSchema = z.object({
 	screenMode: runScreenModeSchema.optional(),
 	lane: laneNameSchema.optional(),
 	laneWarning: z.string().min(1).optional(),
+	/** The browser a web Run drove, with its version (`Google Chrome 141.0`). */
+	browser: z.string().min(1).optional(),
+	/** The Viewport preset a web Run's session emulated. */
+	viewport: viewportPresetSchema.optional(),
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	startedAt: z.number().int().nonnegative().nullable(),
@@ -910,6 +964,8 @@ export const connectDeviceRequestSchema = z.object({
 	bundleId: z.string().min(1).optional(),
 	appPackage: z.string().min(1).optional(),
 	lane: z.union([laneNameSchema, z.literal("auto")]).optional(),
+	/** Web only: the Viewport preset the session emulates. Desktop when omitted. */
+	viewport: viewportPresetSchema.optional(),
 });
 export type ConnectDeviceRequest = z.infer<typeof connectDeviceRequestSchema>;
 
@@ -940,6 +996,8 @@ export const activeDeviceResponseSchema = z.object({
 	heldByRunId: z.string().min(1).optional(),
 	lane: laneNameSchema.optional(),
 	laneWarning: z.string().min(1).optional(),
+	/** The Viewport preset a web session emulates. Absent on other platforms. */
+	viewport: viewportPresetSchema.optional(),
 });
 export type ActiveDeviceResponse = z.infer<typeof activeDeviceResponseSchema>;
 
@@ -1007,6 +1065,7 @@ export const actionKindSchema = z.union([
 	z.literal("background-app"),
 	z.literal("open-url"),
 	z.literal("alert"),
+	z.literal("key"),
 ]);
 export type ActionKind = z.infer<typeof actionKindSchema>;
 
@@ -1029,6 +1088,10 @@ export const actionRequestSchema = z.object({
 	url: z.string().optional(),
 	alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).optional(),
 	seconds: z.number().optional(),
+	/** The key a `key` Action presses. */
+	key: keyNameSchema.optional(),
+	/** Held down while `key` is pressed. */
+	modifiers: z.array(keyModifierSchema).optional(),
 	/** Settle after the Action and return the Result screenshot. */
 	screenshot: z.boolean().optional(),
 	/** Cap, in ms, on how long to wait for the screen to settle (default 1500, max 10000). */

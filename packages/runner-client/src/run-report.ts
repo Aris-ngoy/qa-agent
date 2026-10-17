@@ -1,13 +1,19 @@
-import type {
-	ActionRequest,
-	CallUsage,
-	Run,
-	RunStatus,
-	RunStep,
-	RunTestStatus,
-	StepPhases,
+import { z } from "zod";
+import { formatKeyChord } from "./keys";
+import {
+	type ActionRequest,
+	type CallUsage,
+	type Run,
+	type RunStatus,
+	type RunStep,
+	type RunTestStatus,
+	type StepPhases,
+	type ViewportPresetName,
+	keyModifierSchema,
+	keyNameSchema,
 } from "./schemas";
 import { formatActionShellLine, formatAssertShellLine, formatSleepShellLine } from "./shell-script";
+import { formatViewportPreset } from "./viewport";
 
 export type RunReportStatus = "passed" | "errored" | "cancelled";
 
@@ -53,6 +59,10 @@ export type RunReportDocument = {
 	screenMode?: string | null;
 	lane?: string | null;
 	laneWarning?: string | null;
+	/** The browser a web run drove, with its version. */
+	browser?: string | null;
+	/** The Viewport preset a web run's session emulated. */
+	viewport?: ViewportPresetName | null;
 	error: string | null;
 	createdAt: number;
 	startedAt: number | null;
@@ -166,6 +176,14 @@ function summarizeActionRecord(record: Record<string, unknown>): string {
 	if (type === "terminate-app") return "Terminate app";
 	if (type === "restart-app") return "Restart app";
 	if (type === "background-app") return "Background app";
+	if (type === "key") {
+		const modifiers = Array.isArray(record.modifiers)
+			? record.modifiers.filter((value): value is string => typeof value === "string")
+			: [];
+		return typeof record.key === "string"
+			? `Press ${formatKeyChord(record.key, modifiers)}`
+			: "Press key";
+	}
 	if (type === "open-url") {
 		return typeof record.url === "string" && record.url.trim()
 			? `Open URL: ${record.url}`
@@ -259,6 +277,15 @@ export function formatStepCommand(action: unknown): string | null {
 		request = { kind: "background-app" };
 		const seconds = optionalFiniteNumber(record.seconds);
 		if (seconds != null) request.seconds = seconds;
+	} else if (type === "key") {
+		const key = keyNameSchema.safeParse(record.key);
+		const modifiers = z.array(keyModifierSchema).safeParse(record.modifiers);
+		if (!key.success) return null;
+		request = {
+			kind: "key",
+			key: key.data,
+			...(modifiers.success && modifiers.data.length > 0 ? { modifiers: modifiers.data } : {}),
+		};
 	} else if (type === "open-url") {
 		request = { kind: "open-url" };
 		const url = optionalTrimmedString(record.url);
@@ -379,6 +406,8 @@ export function buildRunReportFromCatalogRun(
 		screenMode: run.screenMode ?? null,
 		lane: run.lane ?? null,
 		laneWarning: run.laneWarning ?? null,
+		browser: run.browser ?? null,
+		viewport: run.viewport ?? null,
 		error: run.error,
 		createdAt: run.createdAt,
 		startedAt: run.startedAt,
@@ -496,6 +525,10 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 		["App", doc.appLabel ?? "—"],
 		["Device", doc.deviceLabel ?? "—"],
 		["Platform", doc.platform ?? "—"],
+		...(doc.browser ? ([["Browser", doc.browser]] as Array<[string, string]>) : []),
+		...(doc.viewport
+			? ([["Viewport", formatViewportPreset(doc.viewport)]] as Array<[string, string]>)
+			: []),
 		["Mode", doc.executionMode ?? "—"],
 		...screenRows,
 		["Started", formatWhen(doc.startedAt ?? doc.createdAt)],
@@ -647,6 +680,8 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 		`| App | ${escapeMd(doc.appLabel ?? "—")} |`,
 		`| Device | ${escapeMd(doc.deviceLabel ?? "—")} |`,
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
+		...(doc.browser ? [`| Browser | ${escapeMd(doc.browser)} |`] : []),
+		...(doc.viewport ? [`| Viewport | ${escapeMd(formatViewportPreset(doc.viewport))} |`] : []),
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),
@@ -732,6 +767,8 @@ export function formatRunReportGithubSummary(doc: RunReportDocument): string {
 		`| App | ${escapeMd(doc.appLabel ?? "—")} |`,
 		`| Device | ${escapeMd(doc.deviceLabel ?? "—")} |`,
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
+		...(doc.browser ? [`| Browser | ${escapeMd(doc.browser)} |`] : []),
+		...(doc.viewport ? [`| Viewport | ${escapeMd(formatViewportPreset(doc.viewport))} |`] : []),
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),

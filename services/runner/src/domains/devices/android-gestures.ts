@@ -3,6 +3,8 @@
  * (PermissionController); UiAutomator `mobile: clickGesture` / `dragGesture` hit them.
  */
 
+import type { DevicePlatform } from "@yoqa/runner-client";
+
 export type PointerSize = { width: number; height: number };
 
 export type GestureBrowser = {
@@ -64,11 +66,16 @@ export function preferPointerSize(
 export function screenshotPointerSize(
 	window: PointerSize,
 	screenshot: PointerSize | null,
-	platform: "android" | "ios",
+	platform: DevicePlatform,
 ): PointerSize {
-	if (platform !== "android") return window;
-	if (!screenshot || screenshot.width < 1 || screenshot.height < 1) return window;
-	return screenshot;
+	switch (platform) {
+		case "ios":
+		case "web":
+			return window;
+		case "android":
+			if (!screenshot || screenshot.width < 1 || screenshot.height < 1) return window;
+			return screenshot;
+	}
 }
 
 function w3cTapActions(x: number, y: number, holdMs: number): object[] {

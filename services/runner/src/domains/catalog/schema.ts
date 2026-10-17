@@ -12,6 +12,8 @@ export const apps = sqliteTable(
 		iosBundleId: text("ios_bundle_id").notNull().default(""),
 		iosAppStoreId: text("ios_app_store_id").notNull().default(""),
 		androidApplicationId: text("android_application_id").notNull().default(""),
+		/** The page a Run on web opens. Empty when the App has none. */
+		webUrl: text("web_url").notNull().default(""),
 		/** Legacy JSON. Catalog reads ignore it; an App does not carry capabilities. */
 		appiumCaps: text("appium_caps").notNull().default("[]"),
 		createdAt: integer("created_at").notNull(),

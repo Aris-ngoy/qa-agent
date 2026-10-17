@@ -27,6 +27,15 @@ describe("buildScriptStepsView", () => {
 		expect(view.groups).toEqual([{ beforeLineNumber: 6, text: "Check" }]);
 	});
 
+	test("shows a key with its modifiers", () => {
+		const view = buildScriptStepsView(
+			"version: 1\nactions:\n  - key: { key: Tab, modifiers: [Shift] }\n",
+			null,
+			false,
+		);
+		expect(view.steps[0]).toMatchObject({ verb: "Press", text: "Shift+Tab" });
+	});
+
 	test("comments before the first step are not groups", () => {
 		const view = buildScriptStepsView(script, null, false);
 		expect(view.groups.some((group) => group.text === "Open Discover")).toBe(false);

@@ -7,7 +7,7 @@ import {
 	fetchPlatformDevices,
 	platformDevicesQueryKey,
 } from "@/features/devices/select-device-modal";
-import { appTargetFor } from "@/features/devices/session-app";
+import { connectRequestFor } from "@/features/devices/session-app";
 import { SessionBarTitle } from "@/features/devices/session-bar-title";
 import {
 	deviceForSession,
@@ -37,6 +37,9 @@ import {
 } from "@yoqa/runner-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/** What a connect names: the device, and a browser's Viewport preset. */
+type ConnectTarget = Pick<SelectedDevice, "id" | "platform" | "viewport">;
+
 /**
  * The one top bar for the whole app and the one place to manage the Active Session (the
  * Device Session the Inspector and Runs share): pick a device, connect, restart or
@@ -57,7 +60,7 @@ export function SessionBar() {
 	/** A Personal Team's runner is installed but not trusted on the iPhone: the trust steps. */
 	const [untrusted, setUntrusted] = useState<{
 		info: DeveloperNotTrusted;
-		target: Pick<SelectedDevice, "id" | "platform">;
+		target: ConnectTarget;
 	} | null>(null);
 	/** The remembered device is offered once, at launch; a session or a pick replaces it. */
 	const rememberedPendingRef = useRef(remembered != null);
@@ -85,16 +88,17 @@ export function SessionBar() {
 	// Only a connect from this desktop is remembered (`connectDevice`), not an adopted one.
 	const sessionDeviceId = activeSession?.deviceId;
 	const sessionPlatform = activeSession?.platform;
+	const sessionViewport = activeSession?.viewport;
 	useEffect(() => {
 		if (!sessionDeviceId || !sessionPlatform) return;
 		rememberedPendingRef.current = false;
 		setPlatform(sessionPlatform);
 		const listed = deviceForSession(
-			{ deviceId: sessionDeviceId, platform: sessionPlatform },
+			{ deviceId: sessionDeviceId, platform: sessionPlatform, viewport: sessionViewport },
 			sessionPlatform === platform ? devices : undefined,
 		);
 		if (listed) setDevice(listed);
-	}, [sessionDeviceId, sessionPlatform, platform, devices]);
+	}, [sessionDeviceId, sessionPlatform, sessionViewport, platform, devices]);
 
 	const sessionDevices = activeSession?.platform === platform ? devices : undefined;
 	/** The session's device from the list; null while unlisted (the bar then shows its id). */
@@ -105,20 +109,16 @@ export function SessionBar() {
 	 * Run. The bar shows "Connecting…" meanwhile. Errors are the caller's to show.
 	 */
 	const connectDevice = useCallback(
-		async (
-			target: Pick<SelectedDevice, "id" | "platform">,
-			lane?: LaneName,
-		): Promise<ActiveDeviceResponse> => {
+		async (target: ConnectTarget, lane?: LaneName): Promise<ActiveDeviceResponse> => {
 			setConnecting(true);
 			try {
 				const client = await getRunnerClient();
-				const info = await client.connectDevice({
-					deviceId: target.id,
+				const info = await client.connectDevice(connectRequestFor(target, selectedApp, lane));
+				writeRememberedDevice({
 					platform: target.platform,
-					...appTargetFor(target.platform, selectedApp),
-					...(lane ? { lane } : {}),
+					deviceId: target.id,
+					...(info.viewport ? { viewport: info.viewport } : {}),
 				});
-				writeRememberedDevice({ platform: target.platform, deviceId: target.id });
 				queryClient.setQueryData(activeDeviceSessionQueryKey, info);
 				invalidateActiveDeviceSession();
 				return info;
@@ -130,11 +130,7 @@ export function SessionBar() {
 	);
 
 	/** A connect error: the trust steps when the iPhone must trust the developer, else a toast. */
-	const reportConnectError = (
-		error: unknown,
-		target: Pick<SelectedDevice, "id" | "platform">,
-		fallback: string,
-	) => {
+	const reportConnectError = (error: unknown, target: ConnectTarget, fallback: string) => {
 		const info = developerNotTrusted(error);
 		if (info) {
 			setUntrusted({ info, target });
@@ -176,8 +172,13 @@ export function SessionBar() {
 	};
 
 	const handleRestart = async () => {
-		const target = activeSession
-			? { id: activeSession.deviceId, platform: activeSession.platform }
+		// A browser restarts at the preset its session was connected with.
+		const target: ConnectTarget | null = activeSession
+			? {
+					id: activeSession.deviceId,
+					platform: activeSession.platform,
+					viewport: activeSession.viewport,
+				}
 			: device;
 		if (!target) {
 			showErrorToast(new Error("Select a device first"), "Nothing to restart");

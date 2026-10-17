@@ -57,18 +57,34 @@ function buildLabel(buildId: string | null): string {
 }
 
 function PlatformGlyph({ platform }: { platform: Run["platform"] }) {
-	if (platform === "android") {
-		return (
-			<svg aria-hidden="true" className="size-[11px]" fill="currentColor" viewBox="0 0 24 24">
-				<path d="M17.6 9.48 19.44 6.3a.55.55 0 0 0-.95-.55l-1.9 3.29A8.1 8.1 0 0 0 12 7.75c-1.6 0-3.08.46-4.34 1.26L5.76 5.75a.55.55 0 1 0-.95.55l1.84 3.18A7.9 7.9 0 0 0 4 15.25v.5c0 .97.78 1.75 1.75 1.75h.5v2.75c0 .55.45 1 1 1s1-.45 1-1v-2.75h7.5v2.75c0 .55.45 1 1 1s1-.45 1-1v-2.75h.5c.97 0 1.75-.78 1.75-1.75v-.5c0-2.2-.9-4.18-2.4-5.52ZM8.25 14a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm7.5 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" />
-			</svg>
-		);
+	switch (platform) {
+		case "android":
+			return (
+				<svg aria-hidden="true" className="size-[11px]" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M17.6 9.48 19.44 6.3a.55.55 0 0 0-.95-.55l-1.9 3.29A8.1 8.1 0 0 0 12 7.75c-1.6 0-3.08.46-4.34 1.26L5.76 5.75a.55.55 0 1 0-.95.55l1.84 3.18A7.9 7.9 0 0 0 4 15.25v.5c0 .97.78 1.75 1.75 1.75h.5v2.75c0 .55.45 1 1 1s1-.45 1-1v-2.75h7.5v2.75c0 .55.45 1 1 1s1-.45 1-1v-2.75h.5c.97 0 1.75-.78 1.75-1.75v-.5c0-2.2-.9-4.18-2.4-5.52ZM8.25 14a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm7.5 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" />
+				</svg>
+			);
+		case "ios":
+			return (
+				<svg aria-hidden="true" className="size-[11px]" fill="currentColor" viewBox="0 0 24 24">
+					<path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9s-2-.9-3.4-.9c-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.6 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.5 1-1.4 1.3-2.8 1.4-2.8-.1 0-2.7-1-2.7-4.2zM14 5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4z" />
+				</svg>
+			);
+		case "web":
+			return (
+				<svg
+					aria-hidden="true"
+					className="size-[11px]"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="2"
+					viewBox="0 0 24 24"
+				>
+					<circle cx="12" cy="12" r="9" />
+					<path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18" />
+				</svg>
+			);
 	}
-	return (
-		<svg aria-hidden="true" className="size-[11px]" fill="currentColor" viewBox="0 0 24 24">
-			<path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9s-2-.9-3.4-.9c-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.6 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.5 1-1.4 1.3-2.8 1.4-2.8-.1 0-2.7-1-2.7-4.2zM14 5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1 .1 2.1-.6 2.8-1.4z" />
-		</svg>
-	);
 }
 
 function FilterButton({
@@ -230,11 +246,12 @@ export function RunsListPage() {
 		queryKey: devicesQueryKey("all"),
 		queryFn: async () => {
 			const client = await getRunnerClient();
-			const [ios, android] = await Promise.all([
+			const [ios, android, web] = await Promise.all([
 				client.listDevices("ios", { includeUnavailable: true }),
 				client.listDevices("android", { includeUnavailable: true }),
+				client.listDevices("web", { includeUnavailable: true }),
 			]);
-			return [...ios.devices, ...android.devices] as Device[];
+			return [...ios.devices, ...android.devices, ...web.devices] as Device[];
 		},
 		staleTime: 30_000,
 	});

@@ -4,6 +4,7 @@
  */
 
 import { decodeXmlEntities } from "@yoqa/runner-client";
+import type { AxNode } from "./cdp-client";
 
 export type ScreenElement = {
 	type: string;
@@ -263,12 +264,117 @@ export function cleanIdbCompleteSource(
 	return { elements, window };
 }
 
+type Rect = { x: number; y: number; width: number; height: number };
+
+/**
+ * One node of a web page source: a CDP accessibility node with its element's border box
+ * in the viewport's CSS pixels, and the element's `data-testid` and `id` attributes.
+ */
+export type WebAxSourceNode = AxNode & { bounds?: Rect; testId?: string; domId?: string };
+
+/** The web Direct lane's page source: the page's full accessibility tree. */
+export type WebAxSource = { axTree: WebAxSourceNode[] };
+
+/** Roles that only hold the page together, even when the browser names them. */
+const WEB_STRUCTURAL_ROLES = new Set(["RootWebArea", "InlineTextBox", "LineBreak"]);
+
+/** Roles a user acts on: kept even unnamed, so a bare icon button is still on the Screen. */
+const WEB_CONTROL_ROLES = new Set([
+	"button",
+	"link",
+	"checkbox",
+	"radio",
+	"switch",
+	"tab",
+	"menuitem",
+	"menuitemcheckbox",
+	"menuitemradio",
+	"option",
+	"textbox",
+	"searchbox",
+	"combobox",
+	"slider",
+	"spinbutton",
+]);
+
+/** Text runs that repeat their parent's name, the way a button's label is also its text. */
+const WEB_TEXT_ROLES = new Set(["StaticText"]);
+
+/** React's `useId` values (`:r1:`, `«r1»`) change between renders; they are not ids. */
+const GENERATED_DOM_ID = /^(:r[0-9a-z]+:|«r[0-9a-z]+»)$/i;
+
+function axText(value: AxNode["name"]): string {
+	return typeof value?.value === "string" ? value.value.replace(/\s+/g, " ").trim() : "";
+}
+
+function webIdOf(node: WebAxSourceNode): string {
+	const testId = node.testId?.trim();
+	if (testId) return testId;
+	const domId = node.domId?.trim() ?? "";
+	return GENERATED_DOM_ID.test(domId) ? "" : domId;
+}
+
+/**
+ * A web page's accessibility tree into the same Screen as mobile: each named node, and
+ * each control, with its role as the type. Hidden (ignored), unnamed structural, zero-size
+ * and offscreen nodes are dropped, and so is a text run its named parent already says.
+ */
+export function cleanWebAxSource(
+	source: WebAxSource,
+	window: { width: number; height: number },
+): CleanedScreen {
+	const byId = new Map(source.axTree.map((node) => [node.nodeId, node]));
+	/** The nearest ancestor that has a name of its own. */
+	const namedParentLabel = (node: WebAxSourceNode): string => {
+		let parent = node.parentId ? byId.get(node.parentId) : undefined;
+		while (parent) {
+			const label = axText(parent.name);
+			if (label && !parent.ignored) return label;
+			parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+		}
+		return "";
+	};
+
+	const elements: ScreenElement[] = [];
+	for (const node of source.axTree) {
+		if (node.ignored || !node.bounds) continue;
+		if (node.bounds.width <= 0 || node.bounds.height <= 0) continue;
+		const type = axText(node.role);
+		if (WEB_STRUCTURAL_ROLES.has(type)) continue;
+		const label = axText(node.name) || axText(node.value);
+		if (!label && !WEB_CONTROL_ROLES.has(type)) continue;
+		if (WEB_TEXT_ROLES.has(type) && namedParentLabel(node).includes(label)) continue;
+		const id = webIdOf(node);
+		const disabled = node.properties?.some(
+			(property) => property.name === "disabled" && property.value?.value === true,
+		);
+		pushNormalized(elements, window, {
+			type,
+			label,
+			id: id || undefined,
+			rect: node.bounds,
+			enabled: !disabled,
+		});
+	}
+	return { elements, window };
+}
+
+function isWebAxSource(parsed: unknown): parsed is WebAxSource {
+	return (
+		typeof parsed === "object" &&
+		parsed !== null &&
+		Array.isArray((parsed as Partial<WebAxSource>).axTree)
+	);
+}
+
 export function cleanPageSource(
 	xml: string,
 	window: { width: number; height: number },
 ): CleanedScreen {
 	const trimmed = xml.trim();
 	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+		const parsed: unknown = JSON.parse(trimmed);
+		if (isWebAxSource(parsed)) return cleanWebAxSource(parsed, window);
 		return cleanIdbCompleteSource(trimmed, window);
 	}
 	const elements: ScreenElement[] = [];
