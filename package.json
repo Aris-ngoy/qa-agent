@@ -17,7 +17,7 @@
 		"desktop": "bun run --filter @yoqa/desktop dev",
 		"desktop:release": "bun run --filter @yoqa/desktop build:release",
 		"docs": "bun run --cwd apps/docs dev",
-		"sandcastle": "bun .sandcastle/main.mts",
+		"sandcastle": "caffeinate -is bun .sandcastle/main.mts",
 		"prepare": "husky"
 	},
 	"devDependencies": {

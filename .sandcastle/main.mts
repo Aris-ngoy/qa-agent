@@ -50,6 +50,10 @@ function branchExists(branch: string): boolean {
 	}
 }
 
+function commitsAhead(branch: string): number {
+	return Number(git("rev-list", "--count", `${INTEGRATION_BRANCH}..${branch}`));
+}
+
 if (/^(main|master|release\/)/.test(INTEGRATION_BRANCH)) {
 	throw new Error(`Refusing to use ${INTEGRATION_BRANCH} as the integration branch.`);
 }
@@ -137,32 +141,41 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		}
 	}
 
-	const completedIssues = issues.filter((_, i) => {
-		const outcome = settled[i];
-		return outcome?.status === "fulfilled" && outcome.value.commits.length > 0;
-	});
+	// Land every branch that finished cleanly and is ahead of the integration
+	// branch, not only those that committed this round: a branch whose landing
+	// failed earlier comes back with nothing new to commit.
+	const completedIssues = issues.filter(
+		(issue, i) => settled[i]?.status === "fulfilled" && commitsAhead(issue.branch) > 0,
+	);
 
-	console.log(`\nExecution complete. ${completedIssues.length} branch(es) with commits.`);
+	console.log(`\nExecution complete. ${completedIssues.length} branch(es) ready to land.`);
 	if (completedIssues.length === 0) {
-		console.log("No commits produced. Nothing to land.");
+		console.log("Nothing to land.");
 		continue;
 	}
 
 	// Land: in a worktree on the integration branch, never the host checkout.
-	await sandcastle.run({
-		sandbox: docker(),
-		branchStrategy: { type: "branch", branch: INTEGRATION_BRANCH },
-		hooks: installHooks,
-		name: "lander",
-		maxIterations: 1,
-		agent: sandcastle.claudeCode(MODEL),
-		promptFile: "./.sandcastle/merge-prompt.md",
-		promptArgs: {
-			BASE_BRANCH: INTEGRATION_BRANCH,
-			BRANCHES: completedIssues.map((issue) => `- ${issue.branch}`).join("\n"),
-			ISSUES: completedIssues.map((issue) => `- #${issue.id}: ${issue.title}`).join("\n"),
-		},
-	});
+	// A failed landing (e.g. no network for the install) leaves the branches as
+	// they are; the next round offers them again.
+	try {
+		await sandcastle.run({
+			sandbox: docker(),
+			branchStrategy: { type: "branch", branch: INTEGRATION_BRANCH },
+			hooks: installHooks,
+			name: "lander",
+			maxIterations: 1,
+			agent: sandcastle.claudeCode(MODEL),
+			promptFile: "./.sandcastle/merge-prompt.md",
+			promptArgs: {
+				BASE_BRANCH: INTEGRATION_BRANCH,
+				BRANCHES: completedIssues.map((issue) => `- ${issue.branch}`).join("\n"),
+				ISSUES: completedIssues.map((issue) => `- #${issue.id}: ${issue.title}`).join("\n"),
+			},
+		});
+	} catch (error) {
+		console.error(`  ✗ Landing failed: ${error}`);
+		continue;
+	}
 
 	git("push", "--set-upstream", "origin", `refs/heads/${INTEGRATION_BRANCH}`);
 	console.log(`\nLanded and pushed ${INTEGRATION_BRANCH}.`);
