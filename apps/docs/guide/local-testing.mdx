@@ -3,7 +3,7 @@ title: Local testing
 description: Run Yoqa entirely on your Mac with local devices and BYO models.
 ---
 
-Phase 1 is **local-only**. Everything — Appium, vision calls, catalog, reports — runs on your machine.
+Phase 1 is **local-only**. Everything — device control, vision calls, catalog, reports — runs on your machine.
 
 ## What works locally
 
@@ -11,6 +11,7 @@ Phase 1 is **local-only**. Everything — Appium, vision calls, catalog, reports
 | ---------- | ----- |
 | iOS Simulator / Android Emulator | Yes |
 | Physical iOS / Android devices | Yes (with toolchain setup) |
+| Web apps in Chrome, Edge, Brave or Chromium | [Yes](/docs/web) |
 | Local `.ipa` / `.app` / `.apk` builds | Yes |
 | CLI device connector | Yes |
 | Autonomous agent runs | Yes (BYO provider) |
@@ -25,7 +26,7 @@ Phase 1 is **local-only**. Everything — Appium, vision calls, catalog, reports
 - Fast feedback while developing a feature.
 - Hardware or OS versions you already own.
 - Privacy — builds and screenshots stay on disk.
-- Debugging WDA / Appium issues with full control.
+- Debugging device and toolchain issues with full control.
 
 ## Requirements
 
@@ -41,6 +42,6 @@ You can also wire `yoqa` into GitHub Actions on `macos-*` with a simulator or em
   </Card>
 
   <Card title="Device preparation" icon="mobile" href="/docs/device-preparation">
-    Xcode / adb / WDA
+    Xcode / adb / browsers
   </Card>
 </CardGroup>

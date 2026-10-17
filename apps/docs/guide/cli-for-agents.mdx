@@ -27,8 +27,8 @@ No cloud sign-in for these Phase 1 workflows.
 
 ## Debug loop: inspect → act → verify
 
-1. **Connect** — `yoqa devices connect <device-id>`.
-2. **Ensure the app is on device** — install a [build](/docs/local-builds) or launch an already-installed app.
+1. **Connect** — `yoqa devices connect <device-id>`, or `yoqa devices connect web-chrome --viewport mobile` for a [web](/docs/web) app.
+2. **Ensure the app is on device** — install a [build](/docs/local-builds) or launch an already-installed app. On web, `yoqa action open-url --url <web-url>`.
 3. **Loop one step at a time:**
    - **Look** — `yoqa screenshot /tmp/screen.png`, then open the image.
    - **Act** — one `yoqa action tap --x … --y …` at the centre of the control you see (0–1000). Use `--id` / `--label` only when you already know the identifier, or after two missed taps.

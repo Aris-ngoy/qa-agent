@@ -1,6 +1,6 @@
 ---
 title: Device Preparation
-description: Prepare iOS and Android devices for local testing with Yoqa.
+description: Prepare iOS and Android devices, and web browsers, for local testing with Yoqa.
 ---
 
 Yoqa drives devices directly: adb on Android, the simulator tools on iOS simulators, and its own on-device runner on a cabled iPhone. Get the toolchain healthy once, then connect from the desktop UI or CLI.
@@ -12,6 +12,7 @@ yoqa doctor          # Java, Xcode tools, adb, device session
 yoqa status          # runner, provider, active device
 yoqa devices ios
 yoqa devices android
+yoqa devices web
 ```
 
 ## iOS
@@ -27,6 +28,13 @@ yoqa devices android
 2. Start an emulator or plug in a device with USB debugging enabled (`adb devices` should list it).
 3. Confirm the device appears in `yoqa devices android`.
 
+## Web
+
+1. Install Chrome, Edge, Brave or Chromium in `/Applications` or `~/Applications`.
+2. Confirm it appears in `yoqa devices web`. It is listed even when it is not running.
+
+Connecting opens a Yoqa-owned window on a throwaway profile. See [Web](/docs/web) for viewport presets and attaching to a browser you started.
+
 ## Connect a session
 
 ```bash
@@ -37,7 +45,7 @@ yoqa devices active
 The desktop app performs the same connect when you select a device for a run or Manual Inspector.
 
 <Tip>
-  If runs fail before the first step, re-check `yoqa status` and WDA/adb — most local issues are toolchain, not test wording.
+  If runs fail before the first step, re-check `yoqa status` and the simulator tools or adb — most local issues are toolchain, not test wording.
 </Tip>
 
 <CardGroup cols={2}>
