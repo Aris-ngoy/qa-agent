@@ -87,7 +87,7 @@ export type WebDirectDeps = {
 /** Typed text is cut at a newline, which presses Enter. */
 const NEWLINE = /(\r?\n)/;
 
-/** A drag moves the held button in this many steps, so the page sees it travel. */
+/** A drag or touch swipe moves the pointer in this many steps, so the page sees it travel. */
 const DRAG_STEPS = 10;
 const DEFAULT_DRAG_MS = 800;
 /** A touch swipe's length when the Action names none, as on Android. */
@@ -131,6 +131,16 @@ const WEB_KEY_SUPPORT: KeySupport = { keys: KEY_NAMES, modifiers: true };
 type JavaScriptDialog = { type: string; defaultPrompt?: string };
 
 type DrivenPage = { targetId: string; sessionId: string };
+
+/** A point on the page, in its CSS pixels. */
+type PagePoint = { x: number; y: number };
+
+/** One pointer that presses, moves while pressed, and releases. */
+type Pointer = {
+	press: (point: PagePoint) => Promise<unknown>;
+	move: (point: PagePoint) => Promise<unknown>;
+	release: (point: PagePoint) => Promise<unknown>;
+};
 
 export function webDirectDeps(
 	overrides: {
@@ -404,7 +414,7 @@ export async function createWebDirectSession(
 	 */
 	const mouse = (
 		type: "mousePressed" | "mouseReleased" | "mouseMoved",
-		point: { x: number; y: number },
+		point: PagePoint,
 		held = false,
 	) => {
 		if (type === "mouseMoved") {
@@ -425,23 +435,23 @@ export async function createWebDirectSession(
 	};
 
 	/** One finger: down, moved while down, or lifted (no fingers are left on the page). */
-	const touch = (type: "touchStart" | "touchMove" | "touchEnd", point: { x: number; y: number }) =>
+	const touch = (type: "touchStart" | "touchMove" | "touchEnd", point: PagePoint) =>
 		call("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [point] });
 
 	/** The left mouse button on desktop, a finger under a mobile preset. */
-	const pointer = preset.mobile
+	const pointer: Pointer = preset.mobile
 		? {
-				press: (point: { x: number; y: number }) => touch("touchStart", point),
-				move: (point: { x: number; y: number }) => touch("touchMove", point),
-				release: (point: { x: number; y: number }) => touch("touchEnd", point),
+				press: (point) => touch("touchStart", point),
+				move: (point) => touch("touchMove", point),
+				release: (point) => touch("touchEnd", point),
 			}
 		: {
-				press: async (point: { x: number; y: number }) => {
+				press: async (point) => {
 					await mouse("mouseMoved", point);
 					await mouse("mousePressed", point);
 				},
-				move: (point: { x: number; y: number }) => mouse("mouseMoved", point, true),
-				release: (point: { x: number; y: number }) => mouse("mouseReleased", point),
+				move: (point) => mouse("mouseMoved", point, true),
+				release: (point) => mouse("mouseReleased", point),
 			};
 
 	const click = async (xNorm: number, yNorm: number, holdMs = 0) => {
@@ -451,17 +461,12 @@ export async function createWebDirectSession(
 		await pointer.release(point);
 	};
 
-	/** Press at `from`, move to `to` in `steps` over `durationMs`, release there. */
-	const stroke = async (
-		from: { x: number; y: number },
-		to: { x: number; y: number },
-		durationMs: number,
-		steps = DRAG_STEPS,
-	) => {
+	/** Press at `from`, move to `to` in DRAG_STEPS over `durationMs`, release there. */
+	const stroke = async (from: PagePoint, to: PagePoint, durationMs: number) => {
 		await pointer.press(from);
-		for (let step = 1; step <= steps; step++) {
-			await Bun.sleep(durationMs / steps);
-			const t = step / steps;
+		for (let step = 1; step <= DRAG_STEPS; step++) {
+			await Bun.sleep(durationMs / DRAG_STEPS);
+			const t = step / DRAG_STEPS;
 			await pointer.move({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
 		}
 		await pointer.release(to);
