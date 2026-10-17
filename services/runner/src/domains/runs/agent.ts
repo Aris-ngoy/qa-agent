@@ -212,8 +212,9 @@ export function releaseCanvasPoint(
 /** Furthest a missed tap is moved to reach a control, on the 0–1000 grid (10% of the screen). */
 export const SNAP_RADIUS = 100;
 
+/** Mobile control types, and the web's accessibility roles for fields and list options. */
 const TAPPABLE_ROLE_RE =
-	/button|link|cell|switch|checkbox|radio|tab|toggle|textfield|searchfield|segment|menuitem|stepper|slider|picker/i;
+	/button|link|cell|switch|checkbox|radio|tab|toggle|textfield|searchfield|segment|menuitem|stepper|slider|picker|textbox|searchbox|combobox|option/i;
 
 /** A control a tap can mean: named, enabled, visible, not a full-screen surface. */
 function isTappableElement(element: ScreenElement): boolean {

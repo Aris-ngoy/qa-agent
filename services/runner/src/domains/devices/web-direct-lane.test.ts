@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { type FakeCdpOptions, startFakeCdp } from "./fake-cdp";
-import { performAction } from "./interaction";
+import type { CaseScript } from "@yoqa/runner-client";
+import { executeScriptCase } from "../runs/case-executor";
+import { type FakeAxNode, type FakeCdpOptions, startFakeCdp } from "./fake-cdp";
+import { getScreen, performAction } from "./interaction";
 import { isDeadSessionError } from "./lane";
 import { createDeviceSession } from "./session";
 
@@ -128,6 +130,122 @@ describe("web Direct lane: Actions reach the page", () => {
 			performAction(session, { kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 }),
 		);
 		expect((error as Error).message).toContain("not available on the web Direct lane yet");
+		await session.quit();
+	});
+});
+
+/** A sign-in form, in the viewport's CSS pixels. */
+const SIGN_IN: FakeAxNode[] = [
+	{ role: "heading", name: "Welcome back", box: { x: 64, y: 40, width: 640, height: 48 } },
+	{
+		role: "textbox",
+		name: "Email",
+		domId: "email",
+		box: { x: 64, y: 120, width: 640, height: 40 },
+	},
+	{
+		role: "button",
+		name: "Sign in",
+		testId: "sign-in-button",
+		box: { x: 64, y: 240, width: 128, height: 40 },
+	},
+	{
+		role: "button",
+		name: "Cookie settings",
+		hidden: true,
+		box: { x: 0, y: 0, width: 0, height: 0 },
+	},
+];
+
+describe("web Direct lane: Screen", () => {
+	test("the Screen is the page's cleaned accessibility tree on 0–1000 of the viewport", async () => {
+		const { session } = await attach({ nodes: SIGN_IN });
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		expect(screen.full).toBe(false);
+		expect(screen.window).toEqual(VIEWPORT);
+		expect(screen.elements).toEqual([
+			{
+				type: "heading",
+				label: "Welcome back",
+				x: 50,
+				y: 50,
+				width: 500,
+				height: 60,
+				enabled: true,
+			},
+			{
+				type: "textbox",
+				label: "Email",
+				id: "email",
+				x: 50,
+				y: 150,
+				width: 500,
+				height: 50,
+				enabled: true,
+			},
+			{
+				type: "button",
+				label: "Sign in",
+				id: "sign-in-button",
+				x: 50,
+				y: 300,
+				width: 100,
+				height: 50,
+				enabled: true,
+			},
+		]);
+		await session.quit();
+	});
+
+	test("on a scrolled page, boxes are where the elements are in the viewport", async () => {
+		const { session } = await attach({ nodes: SIGN_IN, scroll: { x: 0, y: 1200 } });
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		expect(screen.elements?.find((el) => el.label === "Sign in")).toMatchObject({ x: 50, y: 300 });
+		await session.quit();
+	});
+
+	test("--full is the raw accessibility tree, hidden nodes and all, with boxes", async () => {
+		const { session } = await attach({ nodes: SIGN_IN });
+		const screen = await getScreen(session, { full: true, pauseMjpeg: false });
+		expect(screen.full).toBe(true);
+		const raw = JSON.parse(screen.raw ?? "") as { axTree: Array<Record<string, unknown>> };
+		const roles = raw.axTree.map((node) => (node.role as { value: string }).value);
+		expect(roles).toEqual(["RootWebArea", "heading", "textbox", "button", "button"]);
+		expect(raw.axTree.find((node) => node.testId === "sign-in-button")).toMatchObject({
+			name: { value: "Sign in" },
+			bounds: { x: 64, y: 240, width: 128, height: 40 },
+		});
+		expect(raw.axTree.at(-1)).toMatchObject({ ignored: true });
+		await session.quit();
+	});
+
+	test("a tap by label or id clicks the middle of that control", async () => {
+		const { browser, session } = await attach({ nodes: SIGN_IN });
+		await performAction(session, { kind: "tap", label: "Sign in" });
+		await performAction(session, { kind: "tap", id: "email" });
+		expect(browser.clicks).toEqual([
+			{ x: 128, y: 260 },
+			{ x: 384, y: 140 },
+		]);
+		await session.quit();
+	});
+
+	test("a Case Script tap by label replays on the page", async () => {
+		const { browser, session } = await attach({ nodes: SIGN_IN });
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "tap", label: "Sign in" }],
+		};
+		const status = await executeScriptCase({
+			script,
+			session,
+			isAborted: () => false,
+			appendStep: async () => undefined,
+			settleMs: 0,
+		});
+		expect(status).toBe("passed");
+		expect(browser.clicks).toEqual([{ x: 128, y: 260 }]);
 		await session.quit();
 	});
 });

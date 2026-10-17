@@ -13,7 +13,7 @@ Ship the first working slice of web support ([#301](https://github.com/Aris-ngoy
 - **One page.** The session drives the browser's first page (or opens a blank one) and brings it to the front, because a background tab never paints a screenshot.
 - **Viewport coordinates.** 0–1000 maps to the page viewport's CSS pixels (`Page.getLayoutMetrics`), read on each gesture because the user can resize the window. The screenshot is `Page.captureScreenshot` of that viewport in device pixels, so window and screenshot space convert the same way.
 - **Dead Session.** The socket closing (the browser quit) or the page detaching (the tab closed) ends the session once, through the existing `onSessionDead` path. Disconnecting only closes the socket and leaves the browser open.
-- **Screen.** This slice reads named accessibility nodes and their border boxes into the JSON the existing Screen cleaner reads, so the Lane contract's tree case passes. The proper web Screen cleaner and `--full` raw tree are [#304](https://github.com/Aris-ngoy/qa-agent/issues/304).
+- **Screen.** This slice reads named accessibility nodes and their border boxes into the JSON the existing Screen cleaner reads, so the Lane contract's tree case passes. [#304](https://github.com/Aris-ngoy/qa-agent/issues/304) replaced it with the web Screen cleaner and the raw `--full` tree ([web-screen.md](./web-screen.md)).
 - Rejected for this slice: listing installed browsers (attach has nothing to list), swipe/drag/alert/lifecycle (#305), and a Web URL on the App (#309).
 
 ## What shipped
@@ -59,7 +59,7 @@ Quit Chrome while connected: the next `yoqa screenshot` fails because the sessio
 
 ## Follow-ups
 
-- [#304](https://github.com/Aris-ngoy/qa-agent/issues/304): the web Screen cleaner and the raw `--full` tree, replacing this slice's interim tree read.
+- Done in [#304](https://github.com/Aris-ngoy/qa-agent/issues/304): the web Screen cleaner and the raw `--full` tree ([web-screen.md](./web-screen.md)).
 - [#305](https://github.com/Aris-ngoy/qa-agent/issues/305): swipe, drag, alert and app lifecycle. [#306](https://github.com/Aris-ngoy/qa-agent/issues/306): follow popups instead of ending on a closed page.
 - [#308](https://github.com/Aris-ngoy/qa-agent/issues/308): installed browsers in `yoqa devices web`, launched by Yoqa. [#310](https://github.com/Aris-ngoy/qa-agent/issues/310): viewport presets and a `--port` connect option.
 - [#309](https://github.com/Aris-ngoy/qa-agent/issues/309): Web URL on the App and Runs on web. [#311](https://github.com/Aris-ngoy/qa-agent/issues/311): web in the desktop picker. [#312](https://github.com/Aris-ngoy/qa-agent/issues/312): skill and public docs.
