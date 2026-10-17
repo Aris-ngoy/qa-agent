@@ -1,4 +1,6 @@
 import { useEnterOnce } from "@/app/motion/use-enter-once";
+import { ResizeHandle } from "@/app/resize/resize-handle";
+import { usePanelWidth } from "@/app/resize/use-panel-width";
 import { useApps } from "@/features/apps/context";
 import { ElementActionDialog } from "@/features/inspector/components/element-action-dialog";
 import { SaveAsTestCaseDialog } from "@/features/inspector/components/save-as-test-case-dialog";
@@ -13,10 +15,29 @@ import {
 	formatCaseScriptFileErrors,
 	parseCaseScriptFile,
 } from "@yoqa/runner-client";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+
+/** The Device panel opens at this width; the script side always keeps at least `SCRIPT_MIN_WIDTH`. */
+const DEVICE_PANEL_DEFAULT_WIDTH = 360;
+const DEVICE_PANEL_MIN_WIDTH = 300;
+const SCRIPT_MIN_WIDTH = 360;
+/** The splitter takes the place of the old `gap-5`. */
+const HANDLE_WIDTH = 20;
 
 export function InspectorPage() {
 	const entered = useEnterOnce(true);
+	const columnsRef = useRef<HTMLDivElement>(null);
+	const devicePanel = usePanelWidth({
+		storageKey: "yoqa.inspector.devicePanelWidth",
+		defaultWidth: DEVICE_PANEL_DEFAULT_WIDTH,
+		bounds: () => ({
+			min: DEVICE_PANEL_MIN_WIDTH,
+			max:
+				(columnsRef.current?.clientWidth ?? Number.POSITIVE_INFINITY) -
+				SCRIPT_MIN_WIDTH -
+				HANDLE_WIDTH,
+		}),
+	});
 	const { selectedApp } = useApps();
 	const feed = useInspectorFeed(selectedApp?.id);
 	const script = useScriptSession({
@@ -51,8 +72,14 @@ export function InspectorPage() {
 				entered ? "motion-enter-done" : "motion-enter",
 			].join(" ")}
 		>
-			<div className="flex min-h-0 flex-1 gap-5">
-				<div className="min-w-75 flex-[0_1_360px] self-start">
+			<div ref={columnsRef} className="flex min-h-0 flex-1">
+				<div
+					className="h-full min-h-0 min-w-75 shrink overflow-y-auto"
+					style={{
+						flexBasis: devicePanel.width,
+						maxWidth: `calc(100% - ${SCRIPT_MIN_WIDTH + HANDLE_WIDTH}px)`,
+					}}
+				>
 					<ScreenshotPanel
 						feed$={feed.feed$}
 						visible$={feed.page$.visible}
@@ -70,7 +97,9 @@ export function InspectorPage() {
 					/>
 				</div>
 
-				<div className="h-full min-h-0 min-w-0 flex-[2_1_440px] overflow-y-auto">
+				<ResizeHandle panel={devicePanel} edge="end" label="Resize device panel" className="w-5" />
+
+				<div className="h-full min-h-0 min-w-0 flex-1 overflow-y-auto">
 					<ScriptPanel
 						script$={script.script$}
 						canRun={connected && !running && !feed.viewOnly && scriptHasBody(scriptText)}

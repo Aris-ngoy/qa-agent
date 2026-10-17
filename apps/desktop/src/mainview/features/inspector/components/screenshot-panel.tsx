@@ -523,7 +523,7 @@ export function ScreenshotPanel({
 								<LiveFrame
 									src$={feed$.imageUrl}
 									imgRef={imgRef}
-									className={`pointer-events-none block max-h-[max(260px,calc(100vh-27rem))] w-auto max-w-full ${frameRadius} shadow-float select-none`}
+									className={`pointer-events-none block max-h-[max(260px,calc(100vh-9rem))] w-auto max-w-full ${frameRadius} shadow-float select-none`}
 								/>
 								<PointerChrome
 									pointer$={pointer$}

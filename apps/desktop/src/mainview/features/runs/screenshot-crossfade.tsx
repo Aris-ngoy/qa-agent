@@ -11,7 +11,16 @@ type Incoming = { src: string; loaded: boolean };
  * Shows one device screenshot. When `src` changes, the previous image stays until the new one has
  * loaded, then the new one fades in over it, so there is no empty gap between steps.
  */
-export function ScreenshotCrossfade({ src, alt }: { src: string; alt: string }) {
+export function ScreenshotCrossfade({
+	src,
+	alt,
+	onNaturalSize,
+}: {
+	src: string;
+	alt: string;
+	/** Reports each screenshot's pixel size once it loads, so the frame can take its shape. */
+	onNaturalSize?: (size: { width: number; height: number }) => void;
+}) {
 	const [base, setBase] = useState(src);
 	const [incoming, setIncoming] = useState<Incoming | null>(null);
 
@@ -27,7 +36,17 @@ export function ScreenshotCrossfade({ src, alt }: { src: string; alt: string }) 
 
 	return (
 		<div className="motion-fade-in relative h-full min-h-0 w-full">
-			<img alt={alt} className={IMAGE_CLASS} src={base} />
+			<img
+				alt={alt}
+				className={IMAGE_CLASS}
+				onLoad={(event) =>
+					onNaturalSize?.({
+						width: event.currentTarget.naturalWidth,
+						height: event.currentTarget.naturalHeight,
+					})
+				}
+				src={base}
+			/>
 			{incoming && incoming.src !== base ? (
 				<img
 					alt={alt}
@@ -37,11 +56,15 @@ export function ScreenshotCrossfade({ src, alt }: { src: string; alt: string }) 
 						incoming.loaded ? "opacity-100" : "opacity-0",
 					].join(" ")}
 					key={incoming.src}
-					onLoad={() =>
+					onLoad={(event) => {
+						onNaturalSize?.({
+							width: event.currentTarget.naturalWidth,
+							height: event.currentTarget.naturalHeight,
+						});
 						setIncoming((current) =>
 							current && current.src === incoming.src ? { ...current, loaded: true } : current,
-						)
-					}
+						);
+					}}
 					src={incoming.src}
 				/>
 			) : null}
