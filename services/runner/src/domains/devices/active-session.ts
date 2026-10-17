@@ -1,4 +1,4 @@
-import type { DevicePlatform, StreamState } from "@yoqa/runner-client";
+import type { DevicePlatform, StreamState, ViewportPresetName } from "@yoqa/runner-client";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
 import { type DeviceSession, createDeviceSession } from "./session";
 
@@ -20,6 +20,8 @@ export type ActiveSessionInfo = {
 	heldByRunId?: string;
 	lane: import("./lane").LaneName;
 	laneWarning?: string;
+	/** The Viewport preset a web session emulates. */
+	viewport?: ViewportPresetName;
 };
 
 type ActiveSession = {
@@ -62,6 +64,7 @@ function toInfo(current: ActiveSession): ActiveSessionInfo {
 		...(current.heldByRunId != null ? { heldByRunId: current.heldByRunId } : {}),
 		lane: current.session.lane,
 		...(current.session.laneWarning ? { laneWarning: current.session.laneWarning } : {}),
+		...(current.session.viewport ? { viewport: current.session.viewport } : {}),
 	};
 }
 
@@ -107,6 +110,7 @@ async function createAndRegister(options: {
 	bundleId?: string;
 	appPackage?: string;
 	requestedLane?: import("./lane").LaneName | "auto";
+	viewport?: ViewportPresetName;
 	heldByRunId: string | null;
 }): Promise<DeviceSession> {
 	const session = await createDeviceSession({
@@ -115,6 +119,7 @@ async function createAndRegister(options: {
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
 		requestedLane: options.requestedLane,
+		viewport: options.viewport,
 		onSessionDead: () => {
 			abandonActiveSession();
 		},
@@ -134,7 +139,7 @@ async function createAndRegister(options: {
 
 /**
  * Interactive connect (inspector / CLI). Replaces any existing session unless
- * a Run holds it — cancel the run first.
+ * a Run holds it — cancel the run first. A web session opens at `viewport`.
  */
 export async function connectDevice(options: {
 	deviceId: string;
@@ -142,6 +147,7 @@ export async function connectDevice(options: {
 	bundleId?: string;
 	appPackage?: string;
 	requestedLane?: import("./lane").LaneName | "auto";
+	viewport?: ViewportPresetName;
 }): Promise<ActiveSessionInfo> {
 	if (isActiveSessionHeldByRun()) {
 		throw new SessionBusyError(

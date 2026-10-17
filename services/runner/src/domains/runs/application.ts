@@ -11,7 +11,12 @@ import type {
 	RunTestStatus,
 	StepPhases,
 } from "@yoqa/runner-client";
-import { appStartTarget, startTargetRequest, stepPhasesSchema } from "@yoqa/runner-client";
+import {
+	appStartTarget,
+	startTargetRequest,
+	stepPhasesSchema,
+	viewportPresetSchema,
+} from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
 import { getApp, getCase, getCaseScriptJson, saveCaseScript } from "../catalog/application";
@@ -117,6 +122,12 @@ function parseRunScreenMode(value: string | null | undefined): RunScreenMode {
 	return value === "vision" ? "vision" : "tree";
 }
 
+/** The Viewport preset a web Run stored; nothing for other platforms or an unknown name. */
+function viewportOf(value: string | null): Pick<Run, "viewport"> {
+	const parsed = viewportPresetSchema.safeParse(value);
+	return parsed.success ? { viewport: parsed.data } : {};
+}
+
 function resolveCaseExecutionMode(
 	runMode: RunExecutionMode,
 	hasScript: boolean,
@@ -186,6 +197,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 		lane: reportedLane(runRow.lane),
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
 		...(runRow.browser ? { browser: runRow.browser } : {}),
+		...viewportOf(runRow.viewport),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -548,6 +560,7 @@ export async function executeRun(runId: string): Promise<void> {
 				lane: session.lane,
 				laneWarning: session.laneWarning ?? null,
 				browser: session.browser ?? null,
+				viewport: session.viewport ?? null,
 			})
 			.where(eq(runs.id, runId));
 		await openStartTarget(session, run.platform, startTarget);
@@ -833,6 +846,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		lane: reportedLane(runRow.lane),
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
 		...(runRow.browser ? { browser: runRow.browser } : {}),
+		...viewportOf(runRow.viewport),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,

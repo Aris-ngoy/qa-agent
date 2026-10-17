@@ -515,3 +515,54 @@ describe("an Action the Lane cannot do", () => {
 		});
 	});
 });
+
+describe("connecting a web device at a Viewport preset", () => {
+	const connect = (body: unknown) =>
+		createSessionRoutes().request("/devices/connect", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+
+	test("POST /devices/connect opens the session at the preset it names, and says so", async () => {
+		const browser = startFakeCdp({ viewport: { width: 900, height: 700 } });
+		directLane = (options) => createWebDirectSession(options);
+		const response = await connect({
+			deviceId: `chromium-cdp-${browser.port}`,
+			platform: "web",
+			viewport: "mobile",
+		});
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ platform: "web", viewport: "mobile" });
+		expect(browser.emulation()).toMatchObject({
+			viewport: { width: 390, height: 844 },
+			touch: true,
+		});
+		expect(await (await createSessionRoutes().request("/devices/active")).json()).toMatchObject({
+			viewport: "mobile",
+		});
+	});
+
+	test("with no preset the session is desktop", async () => {
+		const browser = startFakeCdp({ viewport: { width: 900, height: 700 } });
+		directLane = (options) => createWebDirectSession(options);
+		const response = await connect({ deviceId: `chromium-cdp-${browser.port}`, platform: "web" });
+		expect(await response.json()).toMatchObject({ viewport: "desktop" });
+		expect(browser.emulation().viewport).toEqual({ width: 1280, height: 800 });
+	});
+
+	test("a preset that is not one is a 400", async () => {
+		const response = await connect({
+			deviceId: "chromium-cdp-9222",
+			platform: "web",
+			viewport: "tv",
+		});
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({ error: "viewport must be desktop or mobile" });
+	});
+
+	test("a phone has no Viewport preset", async () => {
+		const response = await connect({ deviceId: "dev-1", platform: "android" });
+		expect(await response.json()).not.toHaveProperty("viewport");
+	});
+});

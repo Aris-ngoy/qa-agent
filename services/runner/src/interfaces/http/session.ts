@@ -1,6 +1,7 @@
 import { mkdir, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
+	VIEWPORT_PRESET_NAMES,
 	actionBatchRequestSchema,
 	actionBatchResponseSchema,
 	actionRequestSchema,
@@ -110,6 +111,9 @@ export function createSessionRoutes() {
 		}
 		const parsed = connectDeviceRequestSchema.safeParse(json);
 		if (!parsed.success) {
+			if (parsed.error.issues.some((issue) => issue.path[0] === "viewport")) {
+				return c.json({ error: `viewport must be ${VIEWPORT_PRESET_NAMES.join(" or ")}` }, 400);
+			}
 			return c.json({ error: "Body must include deviceId and platform" }, 400);
 		}
 		try {

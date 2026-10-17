@@ -27,6 +27,14 @@ export const deviceKindSchema = z.union([
 ]);
 export type DeviceKind = z.infer<typeof deviceKindSchema>;
 
+/**
+ * The page size a web Device Session emulates, chosen at connect and fixed for the
+ * session's life (see `Viewport preset` in CONTEXT.md). `desktop` is the default.
+ */
+export const VIEWPORT_PRESET_NAMES = ["desktop", "mobile"] as const;
+export const viewportPresetSchema = z.enum(VIEWPORT_PRESET_NAMES);
+export type ViewportPresetName = z.infer<typeof viewportPresetSchema>;
+
 export const deviceSchema = z.object({
 	id: z.string().min(1),
 	name: z.string().min(1),
@@ -927,6 +935,8 @@ export const runSchema = z.object({
 	laneWarning: z.string().min(1).optional(),
 	/** The browser a web Run drove, with its version (`Google Chrome 141.0`). */
 	browser: z.string().min(1).optional(),
+	/** The Viewport preset a web Run's session emulated. */
+	viewport: viewportPresetSchema.optional(),
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	startedAt: z.number().int().nonnegative().nullable(),
@@ -954,6 +964,8 @@ export const connectDeviceRequestSchema = z.object({
 	bundleId: z.string().min(1).optional(),
 	appPackage: z.string().min(1).optional(),
 	lane: z.union([laneNameSchema, z.literal("auto")]).optional(),
+	/** Web only: the Viewport preset the session emulates. Desktop when omitted. */
+	viewport: viewportPresetSchema.optional(),
 });
 export type ConnectDeviceRequest = z.infer<typeof connectDeviceRequestSchema>;
 
@@ -984,6 +996,8 @@ export const activeDeviceResponseSchema = z.object({
 	heldByRunId: z.string().min(1).optional(),
 	lane: laneNameSchema.optional(),
 	laneWarning: z.string().min(1).optional(),
+	/** The Viewport preset a web session emulates. Absent on other platforms. */
+	viewport: viewportPresetSchema.optional(),
 });
 export type ActiveDeviceResponse = z.infer<typeof activeDeviceResponseSchema>;
 

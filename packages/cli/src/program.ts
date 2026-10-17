@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import {
 	type ActionRequest,
 	type ActionResponse,
+	type ActiveDeviceResponse,
 	type DevicePlatform,
 	KEY_MODIFIERS,
 	KEY_NAMES,
@@ -16,6 +17,7 @@ import {
 	formatCaseScriptFileAction,
 	formatCaseScriptFileErrors,
 	formatCaseScriptShell,
+	formatViewportPreset,
 	parseCaseScriptFile,
 	parseKeyModifiers,
 	parseKeyName,
@@ -54,6 +56,7 @@ import {
 	connectPlatform,
 	isWebDeviceId,
 	parsePlatform,
+	parseViewportPreset,
 } from "./platform";
 import {
 	DEFAULT_RUN_WAIT_TIMEOUT_SECONDS,
@@ -87,6 +90,12 @@ program
 
 function client(baseUrl: string) {
 	return createRunnerClient({ baseUrl });
+}
+
+/** `web web-chrome lane direct viewport mobile (390×844)`: a Device Session in one line. */
+function describeSession(body: ActiveDeviceResponse): string {
+	const viewport = body.viewport ? ` viewport ${formatViewportPreset(body.viewport)}` : "";
+	return `${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}${viewport}`;
 }
 
 function fail(command: string, error: unknown): void {
@@ -333,6 +342,10 @@ devices
 	.option("--bundle-id <id>", "iOS bundle id to launch")
 	.option("--app-package <id>", "Android application id to launch")
 	.option("--lane <lane>", "direct | auto (the only Lane is Direct)")
+	.option(
+		"--viewport <preset>",
+		"Web only: desktop (1280×800, the default) | mobile (390×844, touch and a mobile user agent)",
+	)
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
@@ -343,6 +356,7 @@ devices
 				bundleId?: string;
 				appPackage?: string;
 				lane?: string;
+				viewport?: string;
 				json?: boolean;
 			},
 		) => {
@@ -352,18 +366,20 @@ devices
 				if (lane != null && lane !== "direct" && lane !== "auto") {
 					throw new Error("--lane must be direct or auto");
 				}
+				const viewport = parseViewportPreset(options.viewport, platform);
 				const body = await client(options.baseUrl).connectDevice({
 					deviceId,
 					platform,
 					bundleId: options.bundleId,
 					appPackage: options.appPackage,
 					lane,
+					...(viewport ? { viewport } : {}),
 				});
 				if (options.json) {
 					console.log(JSON.stringify(body, null, 2));
 					return;
 				}
-				console.log(`connected ${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}`);
+				console.log(`connected ${describeSession(body)}`);
 				if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 			} catch (error) {
 				const untrusted = developerNotTrusted(error);
@@ -399,7 +415,7 @@ devices
 				console.log(JSON.stringify(body, null, 2));
 				return;
 			}
-			console.log(`${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}`);
+			console.log(describeSession(body));
 			if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 		} catch (error) {
 			fail("devices active", error);

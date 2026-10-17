@@ -1,4 +1,4 @@
-import type { DevicePlatform, KeyModifier, KeyName } from "@yoqa/runner-client";
+import type { DevicePlatform, KeyModifier, KeyName, ViewportPresetName } from "@yoqa/runner-client";
 
 /**
  * The control path a Device Session uses (see `Lane` in CONTEXT.md and ADR-0005).
@@ -14,6 +14,8 @@ export type SessionOptions = {
 	appPackage?: string;
 	/** User-requested Lane. `auto` (default) is Direct. */
 	requestedLane?: LaneName | "auto";
+	/** Web only: the Viewport preset the session emulates for its whole life. Desktop by default. */
+	viewport?: ViewportPresetName;
 	/** Called once when the lane reports the session is gone. */
 	onSessionDead?: () => void;
 	/**
@@ -72,6 +74,8 @@ export type DeviceSession = {
 	stream: LiveStream | null;
 	/** The browser a web session drives, with its version (`Google Chrome 141.0`), for the Run report. */
 	browser?: string;
+	/** The Viewport preset a web session emulates, for the Run report. */
+	viewport?: ViewportPresetName;
 	quit: () => Promise<void>;
 	/** In-memory frame for live feed / grounding — never writes disk. */
 	captureFrame: () => Promise<CapturedFrame>;

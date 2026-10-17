@@ -12,10 +12,14 @@
  *
  * Coordinates cross the Device Session as 0–1000 of the page viewport, never the browser
  * window, and reach the page in its CSS pixels. The screenshot is that viewport too (in
- * device pixels), so both coordinate spaces convert the same way.
+ * device pixels), so both coordinate spaces convert the same way. The viewport is the
+ * session's Viewport preset, emulated on every page it drives, whatever the window's size:
+ * `desktop` (1280×800) unless the connect named another. Under the `mobile` preset the page
+ * is a phone's, with a mobile user agent and touch: a tap, swipe or drag is a finger.
  *
- * Shared cases keep their meaning in the browser. A swipe scrolls the content under its
- * start point with the wheel, as a finger would. A drag is a mouse press, move and release.
+ * Shared cases keep their meaning in the browser. On desktop a swipe scrolls the content
+ * under its start point with the wheel, as a finger would, and a drag is a mouse press,
+ * move and release.
  * An alert is the page's JavaScript dialog. On web, an app id is the App's Web URL:
  * terminate-app closes the App's page, activate-app opens it again, and restart-app does
  * both with the origin's storage cleared in between. A page has no background, so
@@ -28,7 +32,14 @@
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { KEY_NAMES, type KeyModifier, type KeyName } from "@yoqa/runner-client";
+import {
+	DEFAULT_VIEWPORT_PRESET,
+	KEY_NAMES,
+	type KeyModifier,
+	type KeyName,
+	VIEWPORT_PRESETS,
+	type ViewportPreset,
+} from "@yoqa/runner-client";
 import {
 	type CdpClient,
 	CdpClosedError,
@@ -79,6 +90,12 @@ const NEWLINE = /(\r?\n)/;
 /** A drag moves the held button in this many steps, so the page sees it travel. */
 const DRAG_STEPS = 10;
 const DEFAULT_DRAG_MS = 800;
+/** A touch swipe's length when the Action names none, as on Android. */
+const DEFAULT_SWIPE_MS = 400;
+
+/** The mobile preset's user agent: Safari on the iPhone whose screen it is. */
+const MOBILE_USER_AGENT =
+	"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 
 type CdpKey = Pick<KeyEvent, "key" | "code" | "windowsVirtualKeyCode" | "text">;
 
@@ -215,13 +232,35 @@ function originOf(url: string): string | null {
 }
 
 /**
- * Attach to a page so the session can drive it. Enabling the Page domain is what makes a
- * JavaScript dialog wait for the session's answer, and a tab in the background never
- * paints, so its screenshot would never come back.
+ * Attach to a page so the session can drive it, at the session's Viewport preset. Enabling
+ * the Page domain is what makes a JavaScript dialog wait for the session's answer, and a
+ * tab in the background never paints, so its screenshot would never come back.
  */
-async function attachPage(client: CdpClient, targetId: string): Promise<DrivenPage> {
+async function attachPage(
+	client: CdpClient,
+	targetId: string,
+	preset: ViewportPreset,
+): Promise<DrivenPage> {
 	const { sessionId } = await client.send("Target.attachToTarget", { targetId, flatten: true });
 	await client.send("Page.enable", {}, sessionId);
+	const { width, height, deviceScaleFactor, mobile } = preset;
+	await client.send(
+		"Emulation.setDeviceMetricsOverride",
+		{ width, height, deviceScaleFactor, mobile },
+		sessionId,
+	);
+	if (mobile) {
+		await client.send(
+			"Emulation.setTouchEmulationEnabled",
+			{ enabled: true, maxTouchPoints: 5 },
+			sessionId,
+		);
+		await client.send(
+			"Emulation.setUserAgentOverride",
+			{ userAgent: MOBILE_USER_AGENT },
+			sessionId,
+		);
+	}
 	await client.send("Page.bringToFront", {}, sessionId);
 	return { targetId, sessionId };
 }
@@ -234,6 +273,7 @@ export async function createWebDirectSession(
 		throw new Error("The web Direct lane drives web devices only");
 	}
 
+	const preset = VIEWPORT_PRESETS[options.viewport ?? DEFAULT_VIEWPORT_PRESET];
 	const { socketUrl, owned, name } = await openBrowser(options.deviceId, deps);
 	const client = await deps.connect(socketUrl).catch(async (error: unknown) => {
 		await owned?.stop();
@@ -244,7 +284,7 @@ export async function createWebDirectSession(
 	/** An attached browser names itself (`Chrome/140.0.0.0`); a launched one is known. */
 	let browser: string;
 	try {
-		page = await attachPage(client, await pickPage(client));
+		page = await attachPage(client, await pickPage(client), preset);
 		await client.send("Target.setDiscoverTargets", { discover: true });
 		browser = name ?? (await client.send("Browser.getVersion", {})).product.replace("/", " ");
 	} catch (error) {
@@ -287,7 +327,7 @@ export async function createWebDirectSession(
 		if (targetInfo.type !== "page" || !targetInfo.openerId) return;
 		switchPage(async () => {
 			if (targetInfo.openerId !== page.targetId || sessionEnded) return;
-			const popup = await attachPage(client, targetInfo.targetId);
+			const popup = await attachPage(client, targetInfo.targetId, preset);
 			openers.push(page);
 			page = popup;
 			openDialog = null;
@@ -345,11 +385,12 @@ export async function createWebDirectSession(
 		return run;
 	};
 
-	/** The page viewport in CSS pixels, read each time: the user may resize the window. */
-	const getWindowSize = async () => {
-		const { cssLayoutViewport } = await call("Page.getLayoutMetrics", {});
-		return { width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight };
-	};
+	/** The page viewport in CSS pixels: the preset's, on every page, however the window is sized. */
+	const getWindowSize = () =>
+		guarded(async () => {
+			await switching;
+			return { width: preset.width, height: preset.height };
+		});
 
 	/** 0–1000 of the viewport to the page's CSS pixels. */
 	const toPage = async (xNorm: number, yNorm: number) => {
@@ -383,18 +424,66 @@ export async function createWebDirectSession(
 		});
 	};
 
+	/** One finger: down, moved while down, or lifted (no fingers are left on the page). */
+	const touch = (type: "touchStart" | "touchMove" | "touchEnd", point: { x: number; y: number }) =>
+		call("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [point] });
+
+	/** The left mouse button on desktop, a finger under a mobile preset. */
+	const pointer = preset.mobile
+		? {
+				press: (point: { x: number; y: number }) => touch("touchStart", point),
+				move: (point: { x: number; y: number }) => touch("touchMove", point),
+				release: (point: { x: number; y: number }) => touch("touchEnd", point),
+			}
+		: {
+				press: async (point: { x: number; y: number }) => {
+					await mouse("mouseMoved", point);
+					await mouse("mousePressed", point);
+				},
+				move: (point: { x: number; y: number }) => mouse("mouseMoved", point, true),
+				release: (point: { x: number; y: number }) => mouse("mouseReleased", point),
+			};
+
 	const click = async (xNorm: number, yNorm: number, holdMs = 0) => {
 		const point = await toPage(xNorm, yNorm);
-		await mouse("mouseMoved", point);
-		await mouse("mousePressed", point);
+		await pointer.press(point);
 		if (holdMs > 0) await Bun.sleep(holdMs);
-		await mouse("mouseReleased", point);
+		await pointer.release(point);
 	};
 
-	/** A swipe carries the content with the finger, so the page scrolls the other way. */
-	const scroll = async (x1: number, y1: number, x2: number, y2: number) => {
+	/** Press at `from`, move to `to` in `steps` over `durationMs`, release there. */
+	const stroke = async (
+		from: { x: number; y: number },
+		to: { x: number; y: number },
+		durationMs: number,
+		steps = DRAG_STEPS,
+	) => {
+		await pointer.press(from);
+		for (let step = 1; step <= steps; step++) {
+			await Bun.sleep(durationMs / steps);
+			const t = step / steps;
+			await pointer.move({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+		}
+		await pointer.release(to);
+	};
+
+	/**
+	 * A swipe carries the content with the finger. Under a mobile preset it is that finger;
+	 * on desktop it is the wheel, scrolling the other way.
+	 */
+	const scroll = async (
+		x1: number,
+		y1: number,
+		x2: number,
+		y2: number,
+		durationMs = DEFAULT_SWIPE_MS,
+	) => {
 		const from = await toPage(x1, y1);
 		const to = await toPage(x2, y2);
+		if (preset.mobile) {
+			await stroke(from, to, durationMs);
+			return;
+		}
 		await call("Input.dispatchMouseEvent", {
 			type: "mouseWheel",
 			...from,
@@ -410,17 +499,7 @@ export async function createWebDirectSession(
 		y2: number,
 		durationMs = DEFAULT_DRAG_MS,
 	) => {
-		const from = await toPage(x1, y1);
-		const to = await toPage(x2, y2);
-		await mouse("mouseMoved", from);
-		await mouse("mousePressed", from);
-		for (let step = 1; step <= DRAG_STEPS; step++) {
-			await Bun.sleep(durationMs / DRAG_STEPS);
-			const t = step / DRAG_STEPS;
-			const point = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
-			await mouse("mouseMoved", point, true);
-		}
-		await mouse("mouseReleased", to);
+		await stroke(await toPage(x1, y1), await toPage(x2, y2), durationMs);
 	};
 
 	/** Accepting a prompt keeps its default answer, as pressing OK would. */
@@ -450,7 +529,7 @@ export async function createWebDirectSession(
 	const closeAppPage = async () => {
 		const appPage = page;
 		const { targetId } = await callBrowser("Target.createTarget", { url: "about:blank" });
-		page = await guarded(() => attachPage(client, targetId));
+		page = await guarded(() => attachPage(client, targetId, preset));
 		openDialog = null;
 		await callBrowser("Target.closeTarget", { targetId: appPage.targetId });
 	};
@@ -537,6 +616,7 @@ export async function createWebDirectSession(
 		lane: "direct",
 		stream: null,
 		browser,
+		viewport: preset.name,
 		noRecordingReason: "Run recording is not available on web",
 		quit: async () => {
 			quitting = true;
@@ -548,7 +628,7 @@ export async function createWebDirectSession(
 		pageSource,
 		getWindowSize,
 		tap: (x, y, tapOptions) => withActionLock(() => click(x, y, tapOptions?.durationMs)),
-		swipe: (x1, y1, x2, y2) => withActionLock(() => scroll(x1, y1, x2, y2)),
+		swipe: (x1, y1, x2, y2, durationMs) => withActionLock(() => scroll(x1, y1, x2, y2, durationMs)),
 		drag: (x1, y1, x2, y2, durationMs) => withActionLock(() => drag(x1, y1, x2, y2, durationMs)),
 		type: (text) => withActionLock(() => typeText(text)),
 		keySupport: WEB_KEY_SUPPORT,
@@ -588,13 +668,12 @@ export async function createWebDirectSession(
 			const point = await toPage(xNorm, yNorm);
 			if (phase === "begin") {
 				pointerDown = true;
-				await mouse("mouseMoved", point);
-				await mouse("mousePressed", point);
+				await pointer.press(point);
 			} else if (phase === "move") {
-				await mouse("mouseMoved", point, true);
+				await pointer.move(point);
 			} else {
 				pointerDown = false;
-				await mouse("mouseReleased", point);
+				await pointer.release(point);
 			}
 		},
 		isPointerActive: () => pointerDown,

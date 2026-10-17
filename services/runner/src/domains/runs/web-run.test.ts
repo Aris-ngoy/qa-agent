@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import type { CaseScript, Run } from "@yoqa/runner-client";
 import { createApp, createCase, saveCaseScript } from "../catalog/application";
 import { closeCatalogDb, openCatalogDb } from "../catalog/db";
-import { disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
+import { connectDevice, disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
 import { type FakeCdp, startFakeCdp } from "../devices/fake-cdp";
 import { createRun, getRun } from "./application";
 
@@ -79,7 +79,7 @@ describe("a Run on web", () => {
 		]);
 	});
 
-	test("names its platform, browser and Lane", async () => {
+	test("names its platform, browser, Viewport preset and Lane", async () => {
 		startBrowser();
 		const app = await createApp({ name: "Named", webUrl: WEB_URL });
 		const created = await createRun({
@@ -91,7 +91,31 @@ describe("a Run on web", () => {
 		});
 		const run = await finished(created.id);
 
-		expect(run).toMatchObject({ platform: "web", browser: "Chrome 140.0.0.0", lane: "direct" });
+		expect(run).toMatchObject({
+			platform: "web",
+			browser: "Chrome 140.0.0.0",
+			viewport: "desktop",
+			lane: "direct",
+		});
+	});
+
+	test("on a session connected at the mobile preset, runs at that preset and stores it", async () => {
+		startBrowser();
+		await connectDevice({ deviceId, platform: "web", viewport: "mobile" });
+		const app = await createApp({ name: "Phone web", webUrl: WEB_URL });
+		const created = await createRun({
+			appId: app.id,
+			caseIds: [await scriptedCase(app.id, "Tap")],
+			deviceId,
+			platform: "web",
+			executionMode: "script",
+		});
+		const run = await finished(created.id);
+
+		expect(run.status).toBe("passed");
+		expect(run.viewport).toBe("mobile");
+		expect(browser.touches.map((touch) => touch.type)).toEqual(["touchStart", "touchEnd"]);
+		expect(browser.clicks).toEqual([{ x: 195, y: 422 }]);
 	});
 
 	test("marks a requested recording as no video, with the reason, and still passes", async () => {

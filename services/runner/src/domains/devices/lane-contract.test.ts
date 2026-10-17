@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readdir, unlink } from "node:fs/promises";
-import { KEY_MODIFIERS, KEY_NAMES } from "@yoqa/runner-client";
+import { KEY_MODIFIERS, KEY_NAMES, VIEWPORT_PRESETS } from "@yoqa/runner-client";
 import { pngSizeFromBase64 } from "./android-gestures";
 import { getScreen, performAction } from "./interaction";
 import { UnsupportedKeyError, isDeadSessionError } from "./lane";
@@ -17,6 +17,7 @@ import {
 	iosYoqaSimLane,
 	webCdpLane,
 	webLaunchedLane,
+	webMobileLane,
 } from "./lane-harnesses";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
@@ -34,6 +35,7 @@ const LANES: Array<() => LaneHarness> = [
 	iosDeviceLane,
 	webCdpLane,
 	webLaunchedLane,
+	webMobileLane,
 ];
 
 async function screenshotFiles(): Promise<string[]> {
@@ -170,6 +172,9 @@ for (const makeHarness of LANES) {
 	});
 }
 
+const DESKTOP = VIEWPORT_PRESETS.desktop;
+const MOBILE = VIEWPORT_PRESETS.mobile;
+
 /** A sign-in popup's viewport, smaller than the page that opens it. */
 const POPUP = { width: 500, height: 600 };
 
@@ -177,7 +182,7 @@ const POPUP = { width: 500, height: 600 };
  * What the web Direct lane must do for shared cases to keep their meaning in a browser:
  * the gestures a phone has become their mouse and wheel equivalents, and a JavaScript
  * dialog is the alert. A popup the page opens is followed, and left again when it closes.
- * In CSS pixels of the harness's DEVICE-sized viewport.
+ * In CSS pixels of the desktop preset's viewport.
  */
 describe("Lane contract: web Direct (web-only Actions)", () => {
 	test("swipe up scrolls the content under its start point down, by the swipe's length", async () => {
@@ -185,7 +190,7 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 		const { session } = await open(harness);
 		await performAction(session, { kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 });
 		expect(harness.browser.wheels).toEqual([
-			{ x: DEVICE.width / 2, y: DEVICE.height * 0.8, deltaX: 0, deltaY: DEVICE.height * 0.6 },
+			{ x: DESKTOP.width / 2, y: DESKTOP.height * 0.8, deltaX: 0, deltaY: DESKTOP.height * 0.6 },
 		]);
 		await session.quit();
 	});
@@ -195,7 +200,7 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 		const { session } = await open(harness);
 		await performAction(session, { kind: "swipe", x: 200, y: 500, x2: 700, y2: 500 });
 		expect(harness.browser.wheels).toEqual([
-			{ x: DEVICE.width * 0.2, y: DEVICE.height / 2, deltaX: -DEVICE.width / 2, deltaY: 0 },
+			{ x: DESKTOP.width * 0.2, y: DESKTOP.height / 2, deltaX: -DESKTOP.width / 2, deltaY: 0 },
 		]);
 		await session.quit();
 	});
@@ -211,8 +216,8 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 			y2: 500,
 			durationMs: 20,
 		});
-		const start = { x: DEVICE.width * 0.1, y: DEVICE.height / 2 };
-		const end = { x: DEVICE.width * 0.9, y: DEVICE.height / 2 };
+		const start = { x: DESKTOP.width * 0.1, y: DESKTOP.height / 2 };
+		const end = { x: DESKTOP.width * 0.9, y: DESKTOP.height / 2 };
 		const events = harness.browser.mouse;
 		const pressed = events.findIndex((event) => event.type === "mousePressed");
 		expect(events[pressed]).toMatchObject({ ...start, buttons: 1 });
@@ -252,7 +257,7 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 		await session.quit();
 	});
 
-	test("a popup the page opens becomes the page the session drives, at its own viewport", async () => {
+	test("a popup the page opens becomes the page the session drives, at the session's preset", async () => {
 		const harness = webCdpLane();
 		const { session } = await open(harness);
 		const popup = harness.browser.openPage("https://accounts.example.com/signin", {
@@ -263,15 +268,15 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 		await session.tap(1000, 1000);
 		await session.tap(500, 500, { coordSpace: "screenshot" });
 		expect(harness.browser.clicksOn(popup)).toEqual([
-			{ x: POPUP.width, y: POPUP.height },
-			{ x: POPUP.width / 2, y: POPUP.height / 2 },
+			{ x: DESKTOP.width, y: DESKTOP.height },
+			{ x: DESKTOP.width / 2, y: DESKTOP.height / 2 },
 		]);
 		expect(harness.browser.clicksOn("page-1")).toEqual([]);
 		expect(pngSizeFromBase64((await session.captureFrame()).base64)).toEqual({
-			width: POPUP.width * 2,
-			height: POPUP.height * 2,
+			width: DESKTOP.width,
+			height: DESKTOP.height,
 		});
-		expect(await session.getWindowSize()).toEqual(POPUP);
+		expect(await session.getWindowSize()).toEqual({ width: DESKTOP.width, height: DESKTOP.height });
 		expect(harness.browser.frontPage()).toBe(popup);
 		await session.quit();
 	});
@@ -288,10 +293,10 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 		harness.browser.closePage(popup);
 		await Bun.sleep(50);
 		await session.tap(1000, 1000);
-		expect(harness.browser.clicksOn("page-1")).toEqual([{ x: DEVICE.width, y: DEVICE.height }]);
+		expect(harness.browser.clicksOn("page-1")).toEqual([{ x: DESKTOP.width, y: DESKTOP.height }]);
 		expect(pngSizeFromBase64((await session.captureFrame()).base64)).toEqual({
-			width: DEVICE.width * 2,
-			height: DEVICE.height * 2,
+			width: DESKTOP.width,
+			height: DESKTOP.height,
 		});
 		expect(harness.browser.frontPage()).toBe("page-1");
 		expect(deadCalls()).toBe(0);
@@ -313,11 +318,11 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 		harness.browser.closePage(nested);
 		await Bun.sleep(50);
 		await session.tap(1000, 1000);
-		expect(harness.browser.clicksOn(popup)).toEqual([{ x: POPUP.width, y: POPUP.height }]);
+		expect(harness.browser.clicksOn(popup)).toEqual([{ x: DESKTOP.width, y: DESKTOP.height }]);
 		harness.browser.closePage(popup);
 		await Bun.sleep(50);
 		await session.tap(1000, 1000);
-		expect(harness.browser.clicksOn("page-1")).toEqual([{ x: DEVICE.width, y: DEVICE.height }]);
+		expect(harness.browser.clicksOn("page-1")).toEqual([{ x: DESKTOP.width, y: DESKTOP.height }]);
 		expect(deadCalls()).toBe(0);
 		await session.quit();
 	});
@@ -328,13 +333,112 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 		const tab = harness.browser.openPage("https://example.com/", { viewport: POPUP });
 		await Bun.sleep(50);
 		await session.tap(1000, 1000);
-		expect(harness.browser.clicksOn("page-1")).toEqual([{ x: DEVICE.width, y: DEVICE.height }]);
+		expect(harness.browser.clicksOn("page-1")).toEqual([{ x: DESKTOP.width, y: DESKTOP.height }]);
 		expect(harness.browser.clicksOn(tab)).toEqual([]);
 		harness.browser.closePage(tab);
 		await Bun.sleep(50);
 		await session.tap(0, 0);
 		expect(harness.browser.clicksOn("page-1")).toHaveLength(2);
 		expect(deadCalls()).toBe(0);
+		await session.quit();
+	});
+});
+
+/**
+ * The Viewport preset a web session is opened with fixes its page size, whatever the
+ * browser window's size, so 0–1000 means the same point on every run. Under a mobile
+ * preset the page is a phone's: a tap is a touch tap and a swipe a real touch swipe.
+ */
+describe("Lane contract: web Direct (Viewport presets)", () => {
+	for (const preset of [DESKTOP, MOBILE]) {
+		test(`the ${preset.name} preset fixes the 0–1000 mapping and the screenshot size`, async () => {
+			const harness = webCdpLane({ viewport: preset.name });
+			const { session } = await open(harness);
+			await session.tap(1000, 1000);
+			await session.tap(500, 500, { coordSpace: "screenshot" });
+			expect(harness.browser.clicks).toEqual([
+				{ x: preset.width, y: preset.height },
+				{ x: preset.width / 2, y: preset.height / 2 },
+			]);
+			expect(await session.getWindowSize()).toEqual({
+				width: preset.width,
+				height: preset.height,
+			});
+			expect(pngSizeFromBase64((await session.captureFrame()).base64)).toEqual({
+				width: preset.width * preset.deviceScaleFactor,
+				height: preset.height * preset.deviceScaleFactor,
+			});
+			expect(session.viewport).toBe(preset.name);
+			await session.quit();
+		});
+	}
+
+	test("a connect with no preset is desktop", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		expect(session.viewport).toBe("desktop");
+		expect(harness.browser.emulation()).toMatchObject({ touch: false, userAgent: undefined });
+		await session.quit();
+	});
+
+	test("the mobile preset is a phone: a mobile user agent and touch", async () => {
+		const harness = webCdpLane({ viewport: "mobile" });
+		const { session } = await open(harness);
+		expect(harness.browser.emulation()).toMatchObject({ mobile: true, touch: true });
+		expect(harness.browser.emulation().userAgent).toContain("Mobile");
+		await session.quit();
+	});
+
+	test("under the mobile preset a tap is a touch tap, not a mouse click", async () => {
+		const harness = webCdpLane({ viewport: "mobile" });
+		const { session } = await open(harness);
+		await performAction(session, { kind: "tap", x: 500, y: 250 });
+		const point = { x: MOBILE.width / 2, y: MOBILE.height / 4 };
+		expect(harness.browser.touches).toEqual([
+			{ type: "touchStart", points: [point] },
+			{ type: "touchEnd", points: [] },
+		]);
+		expect(harness.browser.mouse).toEqual([]);
+		await session.quit();
+	});
+
+	test("under the mobile preset a swipe is a touch swipe from start to end, not a wheel", async () => {
+		const harness = webCdpLane({ viewport: "mobile" });
+		const { session } = await open(harness);
+		await performAction(session, {
+			kind: "swipe",
+			x: 500,
+			y: 800,
+			x2: 500,
+			y2: 200,
+			durationMs: 50,
+		});
+		const start = { x: MOBILE.width / 2, y: MOBILE.height * 0.8 };
+		const end = { x: MOBILE.width / 2, y: MOBILE.height * 0.2 };
+		const touches = harness.browser.touches;
+		expect(touches[0]).toEqual({ type: "touchStart", points: [start] });
+		const moves = touches.slice(1, -1);
+		expect(moves.length).toBeGreaterThan(1);
+		expect(moves.every((touch) => touch.type === "touchMove")).toBe(true);
+		expect(moves.at(-1)?.points).toEqual([end]);
+		expect(touches.at(-1)).toEqual({ type: "touchEnd", points: [] });
+		expect(harness.browser.wheels).toEqual([]);
+		// A finger that moved does not click.
+		expect(harness.browser.clicks).toEqual([]);
+		await session.quit();
+	});
+
+	test("a popup the page opens takes the session's preset, not its own window size", async () => {
+		const harness = webCdpLane({ viewport: "mobile" });
+		const { session } = await open(harness);
+		const popup = harness.browser.openPage("https://accounts.example.com/signin", {
+			fromFrontPage: true,
+			viewport: POPUP,
+		});
+		await Bun.sleep(50);
+		await session.tap(1000, 1000);
+		expect(harness.browser.clicksOn(popup)).toEqual([{ x: MOBILE.width, y: MOBILE.height }]);
+		expect(harness.browser.emulation(popup)).toMatchObject({ mobile: true, touch: true });
 		await session.quit();
 	});
 });

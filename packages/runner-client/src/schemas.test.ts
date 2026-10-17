@@ -203,6 +203,23 @@ describe("web platform (additive)", () => {
 		).toEqual({ deviceId: "chromium-cdp-9222", platform: "web" });
 	});
 
+	test("a connect may name a Viewport preset, and only a known one", () => {
+		expect(
+			connectDeviceRequestSchema.parse({
+				deviceId: "web-chrome",
+				platform: "web",
+				viewport: "mobile",
+			}).viewport,
+		).toBe("mobile");
+		expect(
+			connectDeviceRequestSchema.safeParse({
+				deviceId: "web-chrome",
+				platform: "web",
+				viewport: "tv",
+			}).success,
+		).toBe(false);
+	});
+
 	test("a platform that is not ios, android or web is still rejected", () => {
 		expect(devicePlatformSchema.safeParse("windows").success).toBe(false);
 		expect(deviceKindSchema.safeParse("tablet").success).toBe(false);

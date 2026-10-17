@@ -15,6 +15,7 @@ import { ActionUnsupportedError, isDeadSessionError } from "./lane";
 import { createDeviceSession } from "./session";
 import { createWebDirectSession, webDirectDeps } from "./web-direct-lane";
 
+/** The desktop Viewport preset's page, which every session here is on. */
 const VIEWPORT = { width: 1280, height: 800 };
 
 /** A Chromium the user started with a debug port, and a Device Session attached to it. */
@@ -102,10 +103,8 @@ describe("web Direct lane: Actions reach the page", () => {
 	test("the screenshot is the page viewport, not the whole page", async () => {
 		const { session } = await attach({ pageHeight: 4000 });
 		const frame = await session.captureFrame();
-		expect(pngSize(frame.base64)).toEqual({
-			width: VIEWPORT.width * 2,
-			height: VIEWPORT.height * 2,
-		});
+		// The desktop preset is at one screenshot pixel per CSS pixel, on a 2× display too.
+		expect(pngSize(frame.base64)).toEqual(VIEWPORT);
 		await session.quit();
 	});
 
