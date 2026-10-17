@@ -1,5 +1,5 @@
 import { getRunnerClient } from "@/app/runner-client";
-import { type TestCase, mapCatalogCase } from "@/features/test-cases/data";
+import { type TestCase, mapCatalogCase } from "@/features/test-cases/utils/catalog-case";
 import type { CaseScript } from "@yoqa/runner-client";
 
 /** Create a catalog case from an Inspector recording, then attach the replay script. */

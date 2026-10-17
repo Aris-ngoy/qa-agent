@@ -1,10 +1,10 @@
 import { openExternalUrl } from "@/app/desktop-rpc";
-import { AddApplicationModal } from "@/features/apps/add-application-modal";
-import { useApps } from "@/features/apps/context";
-import { useActiveRun } from "@/features/runs/active-run-context";
-import { SidebarToggle } from "@/features/settings/sidebar-toggle";
-import { useSidebarCollapsed } from "@/features/settings/use-sidebar-collapsed";
-import { YoqaMark } from "@/features/splash/yoqa-mark";
+import { AddApplicationModal } from "@/features/apps/components/add-application-modal";
+import { useApps } from "@/features/apps/hooks/use-apps";
+import { useActiveRun } from "@/features/runs/hooks/use-active-run";
+import { SidebarToggle } from "@/features/settings/components/sidebar-toggle";
+import { useSidebarCollapsed } from "@/features/settings/hooks/use-sidebar-collapsed";
+import { YoqaMark } from "@/features/splash/components/yoqa-mark";
 import { Button, Dropdown, Label, Separator, Tooltip } from "@heroui/react";
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, type SVGProps, useMemo, useState } from "react";

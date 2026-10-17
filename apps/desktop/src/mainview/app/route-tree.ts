@@ -1,12 +1,12 @@
 import { RootLayout } from "@/app/root-layout";
-import { ConfigurationPage } from "@/features/apps/configuration-page";
-import { WelcomePage } from "@/features/apps/welcome-page";
+import { ConfigurationPage } from "@/features/apps/components/configuration-page";
+import { WelcomePage } from "@/features/apps/components/welcome-page";
 import { InspectorPage } from "@/features/inspector/components/inspector-page";
-import { RunDetailPage } from "@/features/runs/detail-page";
-import { RunsListPage } from "@/features/runs/list-page";
-import { SettingsPage } from "@/features/settings/settings-page";
-import { TestCaseDetailPage } from "@/features/test-cases/detail-page";
-import { TestCasesPage } from "@/features/test-cases/list-page";
+import { RunDetailPage } from "@/features/runs/components/run-detail-page";
+import { RunsListPage } from "@/features/runs/components/runs-list-page";
+import { SettingsPage } from "@/features/settings/components/settings-page";
+import { TestCaseDetailPage } from "@/features/test-cases/components/test-case-detail-page";
+import { TestCasesPage } from "@/features/test-cases/components/test-cases-page";
 import { createRootRoute, createRoute } from "@tanstack/react-router";
 
 const rootRoute = createRootRoute({
