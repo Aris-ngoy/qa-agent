@@ -98,6 +98,36 @@ describe("executeScriptCase", () => {
 		expect(steps[1]?.action).toMatchObject({ type: "done" });
 	});
 
+	it("replays a key with its modifiers", async () => {
+		const actions: ActionRequest[] = [];
+		const steps: Array<{ action: unknown; command?: string | null }> = [];
+		const status = await executeScriptCase({
+			script: {
+				version: 1,
+				savedAt: 1,
+				actions: [{ type: "key", key: "Enter", modifiers: ["Meta"], reason: "Send" }],
+			},
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push({ action: step.action, command: step.command });
+			},
+			performAction: async (_session, body) => {
+				actions.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			clock: { sleep: async () => {}, now: () => 1000 },
+			settleMs: 0,
+		});
+
+		expect(status).toBe("passed");
+		expect(actions).toEqual([{ kind: "key", key: "Enter", modifiers: ["Meta"] }]);
+		expect(steps[0]).toMatchObject({
+			action: { type: "key", key: "Enter", modifiers: ["Meta"], reason: "Send" },
+			command: "yoqa action key Enter --modifiers Meta",
+		});
+	});
+
 	it("replays label taps and visible asserts", async () => {
 		const actions: ActionRequest[] = [];
 		const script: CaseScript = {

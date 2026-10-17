@@ -46,6 +46,10 @@ import {
 	type IosSigningSource,
 	type IosSigningStatus,
 	type IosSigningTeam,
+	KEY_MODIFIERS,
+	KEY_NAMES,
+	type KeyModifier,
+	type KeyName,
 	type LaneName,
 	type ListAppsResponse,
 	type ListBuildsResponse,
@@ -140,6 +144,8 @@ import {
 	iosSigningSourceSchema,
 	iosSigningStatusSchema,
 	iosSigningTeamSchema,
+	keyModifierSchema,
+	keyNameSchema,
 	laneNameSchema,
 	listAppsResponseSchema,
 	listBuildsResponseSchema,
@@ -208,6 +214,10 @@ export {
 	caseRunStatusSchema,
 	caseScriptActionSchema,
 	caseScriptActionSchemaByType,
+	KEY_MODIFIERS,
+	KEY_NAMES,
+	keyModifierSchema,
+	keyNameSchema,
 	caseScriptSchema,
 	connectDeviceRequestSchema,
 	controlMessageSchema,
@@ -312,6 +322,8 @@ export {
 	type Device,
 	type DeviceKind,
 	type DevicePlatform,
+	type KeyModifier,
+	type KeyName,
 	type DoctorCheck,
 	type DoctorCheckStatus,
 	type DoctorRepairId,
@@ -481,6 +493,8 @@ export {
 export { appStartTarget, startTargetRequest } from "./app-start-target";
 
 export { decodeXmlEntities } from "./xml-entities";
+
+export { formatKeyChord, parseKeyModifiers, parseKeyName } from "./keys";
 
 export type RunnerClientOptions = {
 	baseUrl?: string;

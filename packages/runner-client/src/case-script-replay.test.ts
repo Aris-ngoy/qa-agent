@@ -76,10 +76,11 @@ describe("runCaseScript", () => {
 				{ type: "restart-app", appId: "com.example" },
 				{ type: "background-app", seconds: 2 },
 				{ type: "open-url", url: "myapp://x" },
+				{ type: "key", key: "Tab", modifiers: ["Shift"] },
 			),
 			{ sleep: device.sleep, now: device.now },
 		);
-		expect(result).toEqual({ ok: true, completed: 9, total: 9 });
+		expect(result).toEqual({ ok: true, completed: 10, total: 10 });
 		expect(device.requests).toEqual([
 			{ kind: "tap", label: "Home" },
 			{ kind: "tap", id: "submit", x: 1, y: 2, double: true, durationMs: 900 },
@@ -90,6 +91,7 @@ describe("runCaseScript", () => {
 			{ kind: "restart-app", appId: "com.example" },
 			{ kind: "background-app", seconds: 2 },
 			{ kind: "open-url", url: "myapp://x" },
+			{ kind: "key", key: "Tab", modifiers: ["Shift"] },
 		]);
 	});
 

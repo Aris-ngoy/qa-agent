@@ -1,3 +1,4 @@
+import { parseKeyModifiers, parseKeyName } from "./keys";
 import type {
 	ActionKind,
 	ActionRequest,
@@ -220,6 +221,16 @@ function parseActionFromTokens(
 	if (seconds != null) action.seconds = seconds;
 	if (flags.has("--double")) action.double = true;
 
+	if (kind === "key") {
+		const keyToken = tokens[3];
+		if (!keyToken || keyToken.startsWith("-")) {
+			throw new Error("`yoqa action key` needs a key, e.g. `yoqa action key Enter`");
+		}
+		action.key = parseKeyName(keyToken);
+		const modifiers = flagString(flags, "--modifiers");
+		if (modifiers != null) action.modifiers = parseKeyModifiers(modifiers);
+	}
+
 	if (flags.has("--dismiss")) {
 		action.alertAction = "dismiss";
 	} else if (flags.has("--accept") || kind === "alert") {
@@ -345,6 +356,8 @@ export function parseYoqaShellScript(text: string): ParseYoqaShellScriptResult {
 export function formatActionShellLine(action: ActionRequest): string {
 	const parts = ["yoqa", "action", action.kind];
 
+	if (action.kind === "key" && action.key) parts.push(action.key);
+	if (action.modifiers?.length) parts.push("--modifiers", action.modifiers.join(","));
 	if (action.id) {
 		parts.push("--id", shellSingleQuote(action.id));
 	}
@@ -763,6 +776,15 @@ export function shellToCaseScript(
 				continue;
 			}
 			actions.push({ type: "open-url", url: action.url });
+			continue;
+		}
+
+		if (action.kind === "key" && action.key) {
+			actions.push({
+				type: "key",
+				key: action.key,
+				...(action.modifiers?.length ? { modifiers: action.modifiers } : {}),
+			});
 			continue;
 		}
 

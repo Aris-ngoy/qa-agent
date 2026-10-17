@@ -3,6 +3,8 @@ import {
 	type ActionRequest,
 	type ActionResponse,
 	type DevicePlatform,
+	KEY_MODIFIERS,
+	KEY_NAMES,
 	RunnerRequestError,
 	WaitForRunTimeoutError,
 	caseScriptActionCommand,
@@ -15,6 +17,8 @@ import {
 	formatCaseScriptFileErrors,
 	formatCaseScriptShell,
 	parseCaseScriptFile,
+	parseKeyModifiers,
+	parseKeyName,
 	runCaseScript,
 	runYoqaShellScript,
 	updateCaseFlowsSchema,
@@ -585,6 +589,41 @@ addActionOptions(
 		if (body.screenshot) printResultScreenshot(body.screenshot);
 	} catch (error) {
 		fail("action alert", error);
+	}
+});
+
+addActionOptions(
+	action
+		.command("key")
+		.description(`Press a key: ${KEY_NAMES.join(", ")}`)
+		.argument("<key>", "Key name, in any case")
+		.option(
+			"--modifiers <list>",
+			`Held while the key is pressed, comma-separated: ${KEY_MODIFIERS.join(", ")}`,
+		),
+).action(async (keyName: string, options: Record<string, unknown>) => {
+	try {
+		const key = parseKeyName(keyName);
+		const modifiers =
+			typeof options.modifiers === "string" ? parseKeyModifiers(options.modifiers) : [];
+		const body = await client(String(options.baseUrl)).performAction({
+			kind: "key",
+			key,
+			...(modifiers.length > 0 ? { modifiers } : {}),
+			screenshot: options.screenshot === true ? true : undefined,
+			settleMs: options.settle as number | undefined,
+			fullImage: options.full === true ? true : undefined,
+			imageScale: options.scale as number | undefined,
+		});
+		if (options.json) {
+			console.log(JSON.stringify(body, null, 2));
+			return;
+		}
+		console.log(`ok ${body.kind}`);
+		if (body.screenshot) printResultScreenshot(body.screenshot);
+		if (body.phases) printActionPhases(body.phases);
+	} catch (error) {
+		fail("action key", error);
 	}
 });
 

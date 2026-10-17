@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readdir, unlink } from "node:fs/promises";
+import { KEY_MODIFIERS, KEY_NAMES } from "@yoqa/runner-client";
 import { getScreen, performAction } from "./interaction";
-import { isDeadSessionError } from "./lane";
+import { UnsupportedKeyError, isDeadSessionError } from "./lane";
 import {
 	BUTTON,
 	DEVICE,
@@ -114,6 +115,35 @@ for (const makeHarness of LANES) {
 			const screen = await getScreen(session, { pauseMjpeg: false });
 			if (screen.full) throw new Error("expected the cleaned Screen");
 			expect(screen.elements).toEqual([expect.objectContaining(BUTTON)]);
+		});
+
+		test("every key the Lane declares reaches the device, with modifiers where it holds them", async () => {
+			const harness = makeHarness();
+			const { session } = await open(harness);
+			const { keys, modifiers } = session.keySupport;
+			expect(keys.length).toBeGreaterThan(0);
+			const held = modifiers ? [...KEY_MODIFIERS] : [];
+			for (const key of keys) await session.key(key, held);
+			expect(harness.keys()).toEqual(keys.map((key) => ({ key, modifiers: held })));
+		});
+
+		test("a key the Lane does not declare fails clearly and reaches nothing", async () => {
+			const harness = makeHarness();
+			const { session } = await open(harness);
+			const { keys, modifiers } = session.keySupport;
+			for (const key of KEY_NAMES.filter((name) => !keys.includes(name))) {
+				const error = await session.key(key).catch((caught: unknown) => caught);
+				expect(error).toBeInstanceOf(UnsupportedKeyError);
+				expect((error as Error).message).toContain(key);
+			}
+			if (!modifiers) {
+				const [first] = keys;
+				if (!first) throw new Error("the Lane declares no keys");
+				const error = await session.key(first, ["Shift"]).catch((caught: unknown) => caught);
+				expect(error).toBeInstanceOf(UnsupportedKeyError);
+				expect((error as Error).message).toContain("Shift");
+			}
+			expect(harness.keys()).toEqual([]);
 		});
 
 		test("quit is idempotent", async () => {

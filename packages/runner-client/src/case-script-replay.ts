@@ -116,6 +116,12 @@ export function caseScriptActionRequest(action: CaseScriptAction): ActionRequest
 			};
 		case "open-url":
 			return { kind: "open-url", url: action.url };
+		case "key":
+			return {
+				kind: "key",
+				key: action.key,
+				...(action.modifiers?.length ? { modifiers: action.modifiers } : {}),
+			};
 		case "wait":
 		case "assert":
 			return null;

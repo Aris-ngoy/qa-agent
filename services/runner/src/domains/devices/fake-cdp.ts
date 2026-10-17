@@ -8,7 +8,7 @@
  */
 import type { ServerWebSocket } from "bun";
 import { encodeRgbaPng } from "../runs/coord-grid";
-import type { AxNode } from "./cdp-client";
+import type { AxNode, KeyEvent } from "./cdp-client";
 
 export type FakeAxNode = {
 	role: string;
@@ -58,7 +58,10 @@ export type FakeCdp = {
 	/** Every wheel scroll: where, and by how much. A positive deltaY scrolls the page down. */
 	wheels: FakeWheel[];
 	insertedText: string[];
+	/** The `key` of each key pressed down. */
 	keys: string[];
+	/** Every key event, down and up, as it reached the page. */
+	keyEvents: KeyEvent[];
 	navigations: string[];
 	/** How each JavaScript dialog was answered. */
 	dialogAnswers: Array<{ accept: boolean; promptText?: string }>;
@@ -88,6 +91,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const wheels: FakeWheel[] = [];
 	const insertedText: string[] = [];
 	const keys: string[] = [];
+	const keyEvents: KeyEvent[] = [];
 	const navigations: string[] = [];
 	const dialogAnswers: FakeCdp["dialogAnswers"] = [];
 	const clearedOrigins: string[] = [];
@@ -271,7 +275,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				insertedText.push(String(params.text));
 				return {};
 			case "Input.dispatchKeyEvent":
-				if (params.type === "keyDown") keys.push(String(params.key));
+				keyEvents.push(params as KeyEvent);
+				if (params.type !== "keyUp") keys.push(String(params.key));
 				return {};
 			case "Accessibility.getFullAXTree":
 				return { nodes: axTree() };
@@ -326,6 +331,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		wheels,
 		insertedText,
 		keys,
+		keyEvents,
 		navigations,
 		dialogAnswers,
 		clearedOrigins,

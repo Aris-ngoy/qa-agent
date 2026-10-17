@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ActionRequest } from "@yoqa/runner-client";
-import { getScreen, performAction } from "./interaction";
+import { ActionValidationError, getScreen, performAction } from "./interaction";
+import { UnsupportedKeyError } from "./lane";
 import type { DeviceSession } from "./session";
 
 const ALLOW_XML = `
@@ -100,6 +101,44 @@ describe("performAction swipe", () => {
 		} as unknown as DeviceSession;
 		await performAction(session, { kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 });
 		expect(swipes).toEqual([{ x: 500, y: 800, x2: 500, y2: 200, coordSpace: "screenshot" }]);
+	});
+});
+
+describe("performAction key", () => {
+	test("presses the key with its modifiers", async () => {
+		const pressed: Array<{ key: string; modifiers?: readonly string[] }> = [];
+		const session = {
+			key: async (key: string, modifiers?: readonly string[]) => {
+				pressed.push({ key, modifiers });
+			},
+		} as unknown as DeviceSession;
+		const result = await performAction(session, {
+			kind: "key",
+			key: "Tab",
+			modifiers: ["Shift"],
+		});
+		expect(result).toEqual({ ok: true, kind: "key", resolved: undefined });
+		expect(pressed).toEqual([{ key: "Tab", modifiers: ["Shift"] }]);
+	});
+
+	test("a key the Lane cannot press fails the Action with the Lane's reason", async () => {
+		const session = {
+			key: async () => {
+				throw new UnsupportedKeyError("The Escape key is not available on a cabled iPhone");
+			},
+		} as unknown as DeviceSession;
+		const error = await performAction(session, { kind: "key", key: "Escape" }).catch(
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(ActionValidationError);
+		expect((error as Error).message).toBe("The Escape key is not available on a cabled iPhone");
+	});
+
+	test("requires a key", async () => {
+		const error = await performAction({} as DeviceSession, { kind: "key" }).catch(
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(ActionValidationError);
 	});
 });
 

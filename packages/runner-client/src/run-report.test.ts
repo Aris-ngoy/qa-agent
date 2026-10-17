@@ -61,6 +61,9 @@ describe("actionSummary", () => {
 			"Open URL: https://example.com",
 		);
 		expect(actionSummary({ type: "restart-app" })).toBe("Restart app");
+		expect(actionSummary({ type: "key", key: "Tab", modifiers: ["Shift"] })).toBe(
+			"Press Shift+Tab",
+		);
 	});
 
 	test("falls back for unknown or invalid payloads", () => {
@@ -110,6 +113,7 @@ describe("formatStepCommand", () => {
 		expect(formatStepCommand({ type: "open-url", url: "https://example.com" })).toBe(
 			"yoqa action open-url --url 'https://example.com'",
 		);
+		expect(formatStepCommand({ type: "key", key: "Enter" })).toBe("yoqa action key Enter");
 		expect(formatStepCommand({ type: "tap", x: 10, y: 20, double: true })).toBe(
 			"yoqa action tap --x 10 --y 20 --double",
 		);

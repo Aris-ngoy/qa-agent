@@ -1,7 +1,9 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { KEY_NAMES } from "@yoqa/runner-client";
 import { ensureAndroidSdkEnv } from "../android-toolchain/android-sdk";
 import {
+	adbKeyArgs,
 	encodeAdbInputText,
 	findDumpNodeBounds,
 	parseWmSize,
@@ -24,9 +26,11 @@ import { resolveAndroidIdentity } from "./application";
 import { createFrameLoop } from "./frame-loop";
 import {
 	type DeviceSession,
+	type KeySupport,
 	type PointerPhase,
 	type ScreenRecording,
 	type SessionOptions,
+	assertKeySupported,
 	guardToolLoss,
 	reportLaneFallback,
 } from "./lane";
@@ -52,6 +56,9 @@ async function readRemotePid(stdout: ReadableStream<Uint8Array>): Promise<string
 		throw new Error(`screenrecord: could not read its pid (${pid || "empty"})`);
 	return pid;
 }
+
+/** Every key maps to a keyevent; modifiers are held with `input keycombination`. */
+const ANDROID_KEY_SUPPORT: KeySupport = { keys: KEY_NAMES, modifiers: true };
 
 /** adb could not run, or says the device is no longer attached. */
 const ADB_LOST_RE =
@@ -349,6 +356,13 @@ export async function createAndroidDirectSession(
 		});
 	};
 
+	const key: DeviceSession["key"] = async (name, modifiers = []) => {
+		assertKeySupported(ANDROID_KEY_SUPPORT, "on Android", name, modifiers);
+		await lock.withLock(async () => {
+			await shell(adbKeyArgs(name, modifiers), "input key");
+		});
+	};
+
 	const activateApp = async (appId: string) => {
 		await lock.withLock(async () => {
 			lastAppId = appId;
@@ -461,6 +475,8 @@ export async function createAndroidDirectSession(
 		swipe,
 		drag: (x1, y1, x2, y2, durationMs = 800) => swipe(x1, y1, x2, y2, durationMs),
 		type,
+		keySupport: ANDROID_KEY_SUPPORT,
+		key,
 		activateApp,
 		setTargetApp: (appId) => {
 			lastAppId = appId;

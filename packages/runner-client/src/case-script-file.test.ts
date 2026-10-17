@@ -28,6 +28,8 @@ actions:
   - terminate-app: com.example.app
   - background-app: 3
   - open-url: myapp://settings
+  - key: Enter
+  - key: { key: Tab, modifiers: [Shift] }
 `;
 
 function parseOk(text: string) {
@@ -63,6 +65,8 @@ describe("parseCaseScriptFile", () => {
 			{ type: "terminate-app", appId: "com.example.app" },
 			{ type: "background-app", seconds: 3 },
 			{ type: "open-url", url: "myapp://settings" },
+			{ type: "key", key: "Enter" },
+			{ type: "key", key: "Tab", modifiers: ["Shift"] },
 		]);
 	});
 
@@ -140,7 +144,7 @@ foo: 1
 		expect(formatCaseScriptFileErrors(errors)).toBe(
 			[
 				"Line 3, action 1: tap: tap requires x/y or label or id",
-				'Line 4, action 2: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, background-app, open-url)',
+				'Line 4, action 2: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, background-app, open-url, key)',
 				"Line 5, action 3: an action has exactly one key (its name); found tap, wait",
 				"Line 7, action 4: wait: ms: Number must be less than or equal to 10000",
 				'Line 8, action 5: tap: unknown field "colour" (allowed: x, y, label, id, double, durationMs, reason)',
@@ -244,6 +248,27 @@ actions:
 		const again = parseOk(formatCaseScriptFile(first.script, { name: first.name }));
 		expect(again.script).toEqual(first.script);
 		expect(again.name).toBe(first.name);
+	});
+
+	test("writes a key with modifiers as a flow list", () => {
+		const text = formatCaseScriptFile({
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{ type: "key", key: "Escape" },
+				{ type: "key", key: "ArrowDown", modifiers: ["Control", "Shift"] },
+			],
+		});
+		expect(text).toContain("  - key: Escape\n");
+		expect(text).toContain("  - key: { key: ArrowDown, modifiers: [Control, Shift] }\n");
+		expect(parseOk(text).script.actions).toEqual([
+			{ type: "key", key: "Escape" },
+			{ type: "key", key: "ArrowDown", modifiers: ["Control", "Shift"] },
+		]);
+	});
+
+	test("rejects a key outside the fixed set", () => {
+		expect(errorsOf("version: 1\nactions:\n  - key: F5\n")[0]?.message).toContain("key: key:");
 	});
 
 	test("keeps sourceRunId and drops savedAt", () => {

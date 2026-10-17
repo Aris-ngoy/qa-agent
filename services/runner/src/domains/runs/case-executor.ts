@@ -487,6 +487,32 @@ export async function executeScriptCase(
 						command,
 					});
 				});
+			} else if (action.type === "key") {
+				const keyBody: ActionRequest = {
+					kind: "key",
+					key: action.key,
+					...(action.modifiers?.length ? { modifiers: action.modifiers } : {}),
+				};
+				const command = formatActionShellLine(keyBody);
+				await withCurrentCommand(setCurrentCommand, command, async () => {
+					await perform(deps.session, keyBody);
+					await clock.sleep(settleMs);
+					await deps.appendStep({
+						idx: stepIdx,
+						action: {
+							type: "key",
+							key: action.key,
+							modifiers: action.modifiers,
+							reason: action.reason ?? "Replayed saved script key",
+							thoughts: "Replaying the saved script without calling the AI agent.",
+						},
+						screenshotUri: shot.path,
+						ok: true,
+						latencyMs,
+						detail: action.reason ?? null,
+						command,
+					});
+				});
 			} else if (action.type === "type") {
 				const typeBody: ActionRequest = { kind: "input", text: action.text };
 				const command = formatActionShellLine(typeBody);

@@ -64,7 +64,7 @@ Mapping a natural-language element description to coordinates on the current Scr
 _Avoid_: locator, find element (when meaning description→coords)
 
 **Action**:
-A single device gesture or app-lifecycle command (tap, swipe, type, open URL, etc.), optionally grounded from a description.
+A single device gesture or app-lifecycle command (tap, swipe, type, key, open URL, etc.), optionally grounded from a description. `key` presses one named key (Enter, Tab, Escape, arrows, …) with optional modifiers; each Lane declares the keys it can press, and any other key fails the Action.
 _Avoid_: step (Run timeline), command (CLI)
 
 **Settle**:

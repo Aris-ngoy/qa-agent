@@ -71,10 +71,11 @@ const SHORT_FORM_FIELD: Partial<Record<CaseScriptActionType, string>> = {
 	"terminate-app": "appId",
 	"restart-app": "appId",
 	"background-app": "seconds",
+	key: "key",
 };
 
 /** Short-form fields that hold text, so a bare number or boolean is read as text. */
-const TEXT_SHORT_FORM_FIELDS = new Set(["label", "text", "alertAction", "url", "appId"]);
+const TEXT_SHORT_FORM_FIELDS = new Set(["label", "text", "alertAction", "url", "appId", "key"]);
 
 /** Exported key order inside a long-form action. */
 const FIELD_ORDER = [
@@ -83,6 +84,8 @@ const FIELD_ORDER = [
 	"text",
 	"appId",
 	"url",
+	"key",
+	"modifiers",
 	"assertion",
 	"alertAction",
 	"x",

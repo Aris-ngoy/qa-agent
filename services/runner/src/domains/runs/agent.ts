@@ -1,4 +1,12 @@
-import type { ActionRequest, CallUsage, ScreenElement } from "@yoqa/runner-client";
+import {
+	type ActionRequest,
+	type CallUsage,
+	KEY_MODIFIERS,
+	KEY_NAMES,
+	type ScreenElement,
+	keyModifierSchema,
+	keyNameSchema,
+} from "@yoqa/runner-client";
 import { z } from "zod";
 import { parseVisionObject } from "../providers/agent-json";
 import type { ActiveProviderAuth } from "../providers/application";
@@ -30,6 +38,7 @@ const agentDecisionSchema = z
 			z.literal("restart-app"),
 			z.literal("background-app"),
 			z.literal("open-url"),
+			z.literal("key"),
 			z.literal("assert"),
 			z.literal("verify"),
 			z.literal("done"),
@@ -72,6 +81,10 @@ const agentDecisionSchema = z
 		url: z.string().min(1).optional(),
 		/** Background duration in seconds. */
 		seconds: z.number().optional(),
+		/** The named key a key Action presses. */
+		key: keyNameSchema.optional(),
+		/** Held down while the key is pressed. */
+		modifiers: z.array(keyModifierSchema).optional(),
 		/** Omitted means visible at the executor, matching the saved-script/action default. */
 		assertion: z.union([z.literal("visible"), z.literal("not-visible")]).optional(),
 		timeoutMs: z.number().optional(),
@@ -103,6 +116,9 @@ const agentDecisionSchema = z
 		}
 		if (value.type === "open-url" && !value.url?.trim()) {
 			ctx.addIssue({ code: z.ZodIssueCode.custom, message: "open-url requires url" });
+		}
+		if (value.type === "key" && !value.key) {
+			ctx.addIssue({ code: z.ZodIssueCode.custom, message: "key requires key" });
 		}
 		if (value.type === "assert" && !value.text?.trim()) {
 			ctx.addIssue({ code: z.ZodIssueCode.custom, message: "assert requires text" });
@@ -493,6 +509,14 @@ export function decisionToActionRequest(
 			};
 		case "open-url":
 			return decision.url ? { kind: "open-url", url: decision.url } : null;
+		case "key":
+			return decision.key
+				? {
+						kind: "key",
+						key: decision.key,
+						...(decision.modifiers?.length ? { modifiers: decision.modifiers } : {}),
+					}
+				: null;
 		default:
 			return null;
 	}
@@ -620,6 +644,8 @@ const APP_LIFECYCLE_SHAPES = `{"type":"activate-app","appId":"com.example.app","
 {"type":"restart-app","appId":"com.example.app","reason":"...","thoughts":"..."}
 {"type":"background-app","seconds":3,"reason":"...","thoughts":"..."}
 {"type":"open-url","url":"https://example.com","reason":"...","thoughts":"..."}
+{"type":"key","key":"Enter","reason":"...","thoughts":"..."}
+{"type":"key","key":"Tab","modifiers":["Shift"],"reason":"...","thoughts":"..."}
 {"type":"assert","assertion":"visible|not-visible","text":"...","reason":"...","thoughts":"..."}
 {"type":"wait","ms":500-3000,"reason":"...","thoughts":"..."}
 {"type":"verify","reason":"...","thoughts":"..."}
@@ -641,6 +667,7 @@ When the case says "scroll up", emit direction "down". When it says "scroll down
 
 /** Rules that hold in every Screen mode. */
 const SHARED_RULES = `- activate-app / terminate-app / restart-app / open-url / background-app match yoqa action. Omit appId to use the catalog app id provided in the user message.
+- key presses one named key: ${KEY_NAMES.join("|")}, with optional modifiers ${KEY_MODIFIERS.join("|")}. Use it to submit a form (Enter), move focus (Tab), close a dialog or menu (Escape), or move through a list or combobox (arrows). If the device cannot press that key, the error says so; choose another action.
 - To scroll a list or page, emit swipe — never a tap in the middle of the screen as a stand-in for scrolling.
 - "Scroll until you cannot scroll anymore" / "to the bottom": keep emitting swipe (direction "up") until a later screenshot shows the same content. Then verify. Unchanged screens after taps do not count — taps do not scroll.
 - You are given ONE current instruction. Complete only that instruction, then return verify or done. Later instructions are hidden on purpose — do not invent, skip ahead, or combine them. Earlier finished instructions may be omitted — do not reconstruct them.
@@ -774,6 +801,9 @@ function formatRecentActions(actions: AgentDecision[]): string {
 			}
 			if (action.type === "open-url") {
 				return `${n}. open-url ${action.url ?? ""} — ${action.reason ?? ""}`;
+			}
+			if (action.type === "key") {
+				return `${n}. key ${[...(action.modifiers ?? []), action.key ?? "?"].join("+")} — ${action.reason ?? ""}`;
 			}
 			if (action.type === "wait") {
 				return `${n}. wait ${action.ms ?? "?"}ms — ${action.reason ?? ""}`;

@@ -22,6 +22,7 @@
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { KEY_NAMES, type KeyModifier, type KeyName } from "@yoqa/runner-client";
 import {
 	type CdpClient,
 	CdpClosedError,
@@ -29,6 +30,7 @@ import {
 	type CdpCommands,
 	type CdpMethod,
 	type DocumentSnapshot,
+	type KeyEvent,
 	connectCdp,
 } from "./cdp-client";
 import { attachPortOf, browserSocketUrl } from "./chromium-attach";
@@ -37,8 +39,10 @@ import {
 	type CapturedFrame,
 	DeadSessionError,
 	type DeviceSession,
+	type KeySupport,
 	type PointerPhase,
 	type SessionOptions,
+	assertKeySupported,
 } from "./lane";
 import type { WebAxSource, WebAxSourceNode } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
@@ -56,6 +60,37 @@ const NEWLINE = /(\r?\n)/;
 /** A drag moves the held button in this many steps, so the page sees it travel. */
 const DRAG_STEPS = 10;
 const DEFAULT_DRAG_MS = 800;
+
+type CdpKey = Pick<KeyEvent, "key" | "code" | "windowsVirtualKeyCode" | "text">;
+
+/** The `key` Action's keys as the page sees them. Only Enter and Space type a character. */
+export const CDP_KEYS: Record<KeyName, CdpKey> = {
+	Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
+	Tab: { key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 },
+	Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },
+	Backspace: { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 },
+	Delete: { key: "Delete", code: "Delete", windowsVirtualKeyCode: 46 },
+	ArrowUp: { key: "ArrowUp", code: "ArrowUp", windowsVirtualKeyCode: 38 },
+	ArrowDown: { key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40 },
+	ArrowLeft: { key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37 },
+	ArrowRight: { key: "ArrowRight", code: "ArrowRight", windowsVirtualKeyCode: 39 },
+	Home: { key: "Home", code: "Home", windowsVirtualKeyCode: 36 },
+	End: { key: "End", code: "End", windowsVirtualKeyCode: 35 },
+	PageUp: { key: "PageUp", code: "PageUp", windowsVirtualKeyCode: 33 },
+	PageDown: { key: "PageDown", code: "PageDown", windowsVirtualKeyCode: 34 },
+	Space: { key: " ", code: "Space", windowsVirtualKeyCode: 32, text: " " },
+};
+
+/** The left-hand modifier keys, and the bit each sets in a key event's `modifiers`. */
+export const CDP_MODIFIERS: Record<KeyModifier, CdpKey & { bit: number }> = {
+	Shift: { key: "Shift", code: "ShiftLeft", windowsVirtualKeyCode: 16, bit: 8 },
+	Control: { key: "Control", code: "ControlLeft", windowsVirtualKeyCode: 17, bit: 2 },
+	Alt: { key: "Alt", code: "AltLeft", windowsVirtualKeyCode: 18, bit: 1 },
+	Meta: { key: "Meta", code: "MetaLeft", windowsVirtualKeyCode: 91, bit: 4 },
+};
+
+/** A page takes every key, with any modifiers. */
+const WEB_KEY_SUPPORT: KeySupport = { keys: KEY_NAMES, modifiers: true };
 
 type JavaScriptDialog = { type: string; defaultPrompt?: string };
 
@@ -324,17 +359,38 @@ export async function createWebDirectSession(
 		else await navigate(url.href);
 	};
 
-	const pressEnter = async () => {
-		const key = { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 };
-		await call("Input.dispatchKeyEvent", { type: "keyDown", ...key, text: "\r" });
-		await call("Input.dispatchKeyEvent", { type: "keyUp", ...key });
+	/**
+	 * Press `name` with `modifiers` held: each modifier goes down first and comes up last,
+	 * as on a keyboard. Under Control, Alt or Meta the key types nothing (a shortcut).
+	 */
+	const pressKey = async (name: KeyName, modifiers: readonly KeyModifier[] = []) => {
+		let held = 0;
+		for (const modifier of modifiers) {
+			const { bit, ...key } = CDP_MODIFIERS[modifier];
+			held |= bit;
+			await call("Input.dispatchKeyEvent", { type: "rawKeyDown", ...key, modifiers: held });
+		}
+		const { text, ...key } = CDP_KEYS[name];
+		const shortcut = modifiers.some((modifier) => modifier !== "Shift");
+		await call(
+			"Input.dispatchKeyEvent",
+			text && !shortcut
+				? { type: "keyDown", ...key, text, modifiers: held }
+				: { type: "rawKeyDown", ...key, modifiers: held },
+		);
+		await call("Input.dispatchKeyEvent", { type: "keyUp", ...key, modifiers: held });
+		for (const modifier of [...modifiers].reverse()) {
+			const { bit, ...key } = CDP_MODIFIERS[modifier];
+			held &= ~bit;
+			await call("Input.dispatchKeyEvent", { type: "keyUp", ...key, modifiers: held });
+		}
 	};
 
 	/** Text goes into the focused element as typed; a newline presses Enter. */
 	const typeText = async (text: string) => {
 		for (const part of text.split(NEWLINE)) {
 			if (part === "") continue;
-			if (part === "\n" || part === "\r\n") await pressEnter();
+			if (part === "\n" || part === "\r\n") await pressKey("Enter");
 			else await call("Input.insertText", { text: part });
 		}
 	};
@@ -389,6 +445,11 @@ export async function createWebDirectSession(
 		swipe: (x1, y1, x2, y2) => withActionLock(() => scroll(x1, y1, x2, y2)),
 		drag: (x1, y1, x2, y2, durationMs) => withActionLock(() => drag(x1, y1, x2, y2, durationMs)),
 		type: (text) => withActionLock(() => typeText(text)),
+		keySupport: WEB_KEY_SUPPORT,
+		key: async (name, modifiers = []) => {
+			assertKeySupported(WEB_KEY_SUPPORT, "on the web", name, modifiers);
+			await withActionLock(() => pressKey(name, modifiers));
+		},
 		activateApp: (appId) => withActionLock(() => openApp(webUrlOf(appId))),
 		// A web session opens no app until the App has a Web URL.
 		setTargetApp: () => undefined,

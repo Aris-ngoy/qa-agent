@@ -28,6 +28,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
+import type { KeyName } from "@yoqa/runner-client";
 import { errorChain } from "./error-chain";
 import {
 	type FrameRecorderDeps,
@@ -43,8 +44,10 @@ import {
 	DeadSessionError,
 	type DeviceSession,
 	DeviceUnreachableError,
+	type KeySupport,
 	type PointerPhase,
 	type SessionOptions,
+	assertKeySupported,
 } from "./lane";
 import { remember } from "./once";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
@@ -67,6 +70,20 @@ const DRAG_PRESS_MS = 500;
 /** Typed text is cut at a newline (return) and at a backspace character (delete). */
 const BACKSPACE = String.fromCharCode(8);
 const KEY_SEPARATORS = new RegExp(`(\\r?\\n|${BACKSPACE})`);
+
+/**
+ * What `YoqaRunner` can press on the phone's own keyboard: return, delete, and a typed
+ * space. It sends no other key, and cannot hold a modifier.
+ */
+const PHONE_KEYS = {
+	Enter: ["keyboardReturn", {}],
+	Backspace: ["keyboardDelete", {}],
+	Space: ["type", { text: " " }],
+} as const satisfies Partial<Record<KeyName, readonly [string, Record<string, unknown>]>>;
+const PHONE_KEY_SUPPORT: KeySupport = {
+	keys: Object.keys(PHONE_KEYS) as KeyName[],
+	modifiers: false,
+};
 
 /** How often the Mac pulls the recording's frames off the phone. */
 const RECORDING_PULL_MS = 400;
@@ -461,6 +478,12 @@ export async function createIosDeviceSession(
 		drag: (x1, y1, x2, y2, durationMs = 800) =>
 			withActionLock(() => dragNorm({ x: x1, y: y1 }, { x: x2, y: y2 }, durationMs, DRAG_PRESS_MS)),
 		type: (text) => withActionLock(() => typeText(text)),
+		keySupport: PHONE_KEY_SUPPORT,
+		key: async (name, modifiers = []) => {
+			assertKeySupported(PHONE_KEY_SUPPORT, "on a cabled iPhone", name, modifiers);
+			const [command, fields] = PHONE_KEYS[name as keyof typeof PHONE_KEYS];
+			await withActionLock(() => call(command, fields, true));
+		},
 		activateApp: async (id) => {
 			await devicectl(["device", "process", "launch", "--device", udid, id], "devicectl launch");
 			appId = id;
