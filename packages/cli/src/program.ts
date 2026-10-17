@@ -472,7 +472,7 @@ function addActionOptions(cmd: Command) {
 		.option("--duration <ms>", "Gesture duration ms (long-press for tap)", (v) => Number(v))
 		.option("--double", "Double-tap (tap only)")
 		.option("--text <text>", "Text to type")
-		.option("--app-id <id>", "Bundle id / application id")
+		.option("--app-id <id>", "Bundle id / application id, or the Web URL on web")
 		.option("--url <url>", "URL to open")
 		.option("--seconds <n>", "Background seconds", (v) => Number(v))
 		.option(

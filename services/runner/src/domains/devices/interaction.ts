@@ -159,8 +159,12 @@ export async function performAction(
 		}
 		case "restart-app": {
 			if (!body.appId) throw new ActionValidationError("restart-app requires appId");
-			await session.terminateApp(body.appId);
-			await session.activateApp(body.appId);
+			if (session.restartApp) {
+				await session.restartApp(body.appId);
+			} else {
+				await session.terminateApp(body.appId);
+				await session.activateApp(body.appId);
+			}
 			break;
 		}
 		case "background-app": {

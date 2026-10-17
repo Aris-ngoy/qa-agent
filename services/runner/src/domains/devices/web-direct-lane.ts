@@ -9,9 +9,15 @@
  * window, and reach the page in its CSS pixels. The screenshot is that viewport too (in
  * device pixels), so both coordinate spaces convert the same way.
  *
+ * Shared cases keep their meaning in the browser. A swipe scrolls the content under its
+ * start point with the wheel, as a finger would. A drag is a mouse press, move and release.
+ * An alert is the page's JavaScript dialog. On web, an app id is the App's Web URL:
+ * terminate-app closes the App's page, activate-app opens it again, and restart-app does
+ * both with the origin's storage cleared in between. A page has no background, so
+ * background-app fails.
+ *
  * The browser closing its socket, or the page going away, is a Dead Session. The Frame
- * Feed is Screenshot Poll (no stream) and the lane does not record. Swipe, drag, alerts
- * and app lifecycle arrive in later slices; until then they reject with a clear message.
+ * Feed is Screenshot Poll (no stream) and the lane does not record.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -19,6 +25,7 @@ import { join } from "node:path";
 import {
 	type CdpClient,
 	CdpClosedError,
+	CdpCommandError,
 	type CdpCommands,
 	type CdpMethod,
 	type DocumentSnapshot,
@@ -26,6 +33,7 @@ import {
 } from "./cdp-client";
 import { attachPortOf, browserSocketUrl } from "./chromium-attach";
 import {
+	ActionUnsupportedError,
 	type CapturedFrame,
 	DeadSessionError,
 	type DeviceSession,
@@ -45,9 +53,11 @@ export type WebDirectDeps = {
 /** Typed text is cut at a newline, which presses Enter. */
 const NEWLINE = /(\r?\n)/;
 
-function notYet(what: string): () => Promise<never> {
-	return () => Promise.reject(new Error(`${what} is not available on the web Direct lane yet`));
-}
+/** A drag moves the held button in this many steps, so the page sees it travel. */
+const DRAG_STEPS = 10;
+const DEFAULT_DRAG_MS = 800;
+
+type JavaScriptDialog = { type: string; defaultPrompt?: string };
 
 export function webDirectDeps(): WebDirectDeps {
 	return { browserSocketUrl: (port) => browserSocketUrl(port), connect: (url) => connectCdp(url) };
@@ -96,6 +106,34 @@ function layoutByBackendId(
 	return layouts;
 }
 
+/** On web an app id is the App's Web URL, the page the App starts on. */
+function webUrlOf(appId: string): URL {
+	const url = URL.canParse(appId) ? new URL(appId) : null;
+	if (url?.protocol !== "http:" && url?.protocol !== "https:") {
+		throw new Error(`On web an app is its Web URL (http or https), and "${appId}" is not one`);
+	}
+	return url;
+}
+
+function originOf(url: string): string | null {
+	return URL.canParse(url) ? new URL(url).origin : null;
+}
+
+/**
+ * Attach to a page so the session can drive it. Enabling the Page domain is what makes a
+ * JavaScript dialog wait for the session's answer, and a tab in the background never
+ * paints, so its screenshot would never come back.
+ */
+async function attachPage(
+	client: CdpClient,
+	targetId: string,
+): Promise<{ targetId: string; sessionId: string }> {
+	const { sessionId } = await client.send("Target.attachToTarget", { targetId, flatten: true });
+	await client.send("Page.enable", {}, sessionId);
+	await client.send("Page.bringToFront", {}, sessionId);
+	return { targetId, sessionId };
+}
+
 export async function createWebDirectSession(
 	options: SessionOptions,
 	deps: WebDirectDeps = webDirectDeps(),
@@ -108,12 +146,10 @@ export async function createWebDirectSession(
 	}
 
 	const client = await deps.connect(await deps.browserSocketUrl(port));
-	let sessionId: string;
+	/** The page the session drives. terminate-app swaps it for a blank one. */
+	let page: { targetId: string; sessionId: string };
 	try {
-		const targetId = await pickPage(client);
-		sessionId = (await client.send("Target.attachToTarget", { targetId, flatten: true })).sessionId;
-		// A tab in the background never paints, so its screenshot would never come back.
-		await client.send("Page.bringToFront", {}, sessionId);
+		page = await attachPage(client, await pickPage(client));
 	} catch (error) {
 		await client.close().catch(() => undefined);
 		throw error;
@@ -132,24 +168,37 @@ export async function createWebDirectSession(
 		if (!quitting) dead("the browser closed its DevTools connection");
 	});
 	client.on("Target.detachedFromTarget", (params) => {
-		if ((params as { sessionId?: string })?.sessionId === sessionId && !quitting) {
+		if ((params as { sessionId?: string })?.sessionId === page.sessionId && !quitting) {
 			dead("the page was closed");
 		}
 	});
 
-	/** One command to the page. A closed socket is a Dead Session. */
-	const call = async <M extends CdpMethod>(
-		method: M,
-		params: CdpCommands[M]["params"],
-	): Promise<CdpCommands[M]["result"]> => {
+	let openDialog: JavaScriptDialog | null = null;
+	client.on("Page.javascriptDialogOpening", (params, eventSession) => {
+		if (eventSession === page.sessionId) openDialog = params as JavaScriptDialog;
+	});
+	client.on("Page.javascriptDialogClosed", (_params, eventSession) => {
+		if (eventSession === page.sessionId) openDialog = null;
+	});
+
+	/** Talk to the browser once the session is up. A closed socket is a Dead Session. */
+	const guarded = async <T>(fn: () => Promise<T>): Promise<T> => {
 		if (sessionEnded) throw sessionEnded;
 		try {
-			return await client.send(method, params, sessionId);
+			return await fn();
 		} catch (error) {
 			if (error instanceof CdpClosedError && !quitting) throw dead(error.message);
 			throw error;
 		}
 	};
+
+	/** One command to the page. */
+	const call = <M extends CdpMethod>(method: M, params: CdpCommands[M]["params"]) =>
+		guarded(() => client.send(method, params, page.sessionId));
+
+	/** One command to the browser itself (targets, storage). */
+	const callBrowser = <M extends CdpMethod>(method: M, params: CdpCommands[M]["params"]) =>
+		guarded(() => client.send(method, params));
 
 	let chain: Promise<unknown> = Promise.resolve();
 	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -170,13 +219,22 @@ export async function createWebDirectSession(
 		return { x: (xNorm / 1000) * viewport.width, y: (yNorm / 1000) * viewport.height };
 	};
 
-	/** A left-button mouse event; only a press holds the button down. */
+	/**
+	 * A left-button mouse event; a press holds the button down, and a move carries it while
+	 * `held`.
+	 */
 	const mouse = (
 		type: "mousePressed" | "mouseReleased" | "mouseMoved",
 		point: { x: number; y: number },
+		held = false,
 	) => {
 		if (type === "mouseMoved") {
-			return call("Input.dispatchMouseEvent", { type, ...point, button: "none", buttons: 0 });
+			return call("Input.dispatchMouseEvent", {
+				type,
+				...point,
+				button: held ? "left" : "none",
+				buttons: held ? 1 : 0,
+			});
 		}
 		return call("Input.dispatchMouseEvent", {
 			type,
@@ -193,6 +251,77 @@ export async function createWebDirectSession(
 		await mouse("mousePressed", point);
 		if (holdMs > 0) await Bun.sleep(holdMs);
 		await mouse("mouseReleased", point);
+	};
+
+	/** A swipe carries the content with the finger, so the page scrolls the other way. */
+	const scroll = async (x1: number, y1: number, x2: number, y2: number) => {
+		const from = await toPage(x1, y1);
+		const to = await toPage(x2, y2);
+		await call("Input.dispatchMouseEvent", {
+			type: "mouseWheel",
+			...from,
+			deltaX: from.x - to.x,
+			deltaY: from.y - to.y,
+		});
+	};
+
+	const drag = async (
+		x1: number,
+		y1: number,
+		x2: number,
+		y2: number,
+		durationMs = DEFAULT_DRAG_MS,
+	) => {
+		const from = await toPage(x1, y1);
+		const to = await toPage(x2, y2);
+		await mouse("mouseMoved", from);
+		await mouse("mousePressed", from);
+		for (let step = 1; step <= DRAG_STEPS; step++) {
+			await Bun.sleep(durationMs / DRAG_STEPS);
+			const t = step / DRAG_STEPS;
+			const point = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+			await mouse("mouseMoved", point, true);
+		}
+		await mouse("mouseReleased", to);
+	};
+
+	/** Accepting a prompt keeps its default answer, as pressing OK would. */
+	const answerDialog = async (accept: boolean) => {
+		const promptText =
+			accept && openDialog?.type === "prompt" ? (openDialog.defaultPrompt ?? "") : undefined;
+		try {
+			await call("Page.handleJavaScriptDialog", {
+				accept,
+				...(promptText !== undefined ? { promptText } : {}),
+			});
+		} catch (error) {
+			if (error instanceof CdpCommandError && /no dialog is showing/i.test(error.message)) {
+				throw new Error("No JavaScript dialog is open on the page");
+			}
+			throw error;
+		}
+		openDialog = null;
+	};
+
+	const navigate = async (url: string) => {
+		const { errorText } = await call("Page.navigate", { url });
+		if (errorText) throw new Error(`Could not open ${url}: ${errorText}`);
+	};
+
+	/** Closing the browser's last tab can quit it, so a blank page takes over first. */
+	const closeAppPage = async () => {
+		const appPage = page;
+		const { targetId } = await callBrowser("Target.createTarget", { url: "about:blank" });
+		page = await guarded(() => attachPage(client, targetId));
+		openDialog = null;
+		await callBrowser("Target.closeTarget", { targetId: appPage.targetId });
+	};
+
+	/** A page already on the App's origin is the App running; anything else opens it. */
+	const openApp = async (url: URL) => {
+		const { targetInfo } = await callBrowser("Target.getTargetInfo", { targetId: page.targetId });
+		if (originOf(targetInfo.url) === url.origin) await call("Page.bringToFront", {});
+		else await navigate(url.href);
 	};
 
 	const pressEnter = async () => {
@@ -257,21 +386,36 @@ export async function createWebDirectSession(
 		pageSource,
 		getWindowSize,
 		tap: (x, y, tapOptions) => withActionLock(() => click(x, y, tapOptions?.durationMs)),
-		swipe: notYet("Swiping"),
-		drag: notYet("Dragging"),
+		swipe: (x1, y1, x2, y2) => withActionLock(() => scroll(x1, y1, x2, y2)),
+		drag: (x1, y1, x2, y2, durationMs) => withActionLock(() => drag(x1, y1, x2, y2, durationMs)),
 		type: (text) => withActionLock(() => typeText(text)),
-		activateApp: notYet("Activating an app"),
+		activateApp: (appId) => withActionLock(() => openApp(webUrlOf(appId))),
 		// A web session opens no app until the App has a Web URL.
 		setTargetApp: () => undefined,
-		terminateApp: notYet("Terminating an app"),
-		backgroundApp: notYet("Backgrounding an app"),
-		openUrl: (url) =>
+		terminateApp: (appId) =>
 			withActionLock(async () => {
-				const { errorText } = await call("Page.navigate", { url });
-				if (errorText) throw new Error(`Could not open ${url}: ${errorText}`);
+				webUrlOf(appId);
+				await closeAppPage();
 			}),
-		acceptAlert: notYet("Accepting an alert"),
-		dismissAlert: notYet("Dismissing an alert"),
+		restartApp: (appId) =>
+			withActionLock(async () => {
+				const url = webUrlOf(appId);
+				await closeAppPage();
+				await callBrowser("Storage.clearDataForOrigin", {
+					origin: url.origin,
+					storageTypes: "all",
+				});
+				await navigate(url.href);
+			}),
+		backgroundApp: () =>
+			Promise.reject(
+				new ActionUnsupportedError(
+					"background-app is not supported on web: a browser page has no background to send it to",
+				),
+			),
+		openUrl: (url) => withActionLock(() => navigate(url)),
+		acceptAlert: () => withActionLock(() => answerDialog(true)),
+		dismissAlert: () => withActionLock(() => answerDialog(false)),
 		withActionLock,
 		pointerEvent: async (phase: PointerPhase, xNorm: number, yNorm: number) => {
 			const point = await toPage(xNorm, yNorm);
@@ -280,7 +424,7 @@ export async function createWebDirectSession(
 				await mouse("mouseMoved", point);
 				await mouse("mousePressed", point);
 			} else if (phase === "move") {
-				await call("Input.dispatchMouseEvent", { type: "mouseMoved", ...point, buttons: 1 });
+				await mouse("mouseMoved", point, true);
 			} else {
 				pointerDown = false;
 				await mouse("mouseReleased", point);

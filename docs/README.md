@@ -27,6 +27,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [adr/0007-web-direct-lane-over-cdp.md](./adr/0007-web-direct-lane-over-cdp.md) | Web is a Direct lane over CDP to a Chromium browser |
 | [devices/web-attach-by-port.md](./devices/web-attach-by-port.md) | Web tracer bullet: attach a user-started Chromium by port, screenshot/tap/input/open-url |
 | [devices/web-screen.md](./devices/web-screen.md) | Web Screen: cleaned accessibility tree with 0–1000 bounds, raw `--full` tree, Tree assist on web roles |
+| [devices/web-gestures-alerts-lifecycle.md](./devices/web-gestures-alerts-lifecycle.md) | Web swipe (wheel), drag, JavaScript dialogs as alerts, and app lifecycle on the Web URL |
 | [runs/selection-and-runs-mvp.md](./runs/selection-and-runs-mvp.md) | Test case selection + local `POST /runs` MVP |
 | [runs/ai-sdk-vision.md](./runs/ai-sdk-vision.md) | Vision decide + grounding via Vercel AI SDK |
 | [runs/cursor-vision-cli.md](./runs/cursor-vision-cli.md) | Cursor Agent CLI vision decide + grounding |

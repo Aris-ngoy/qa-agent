@@ -40,12 +40,15 @@ export type DocumentSnapshot = {
 export type TargetInfo = { targetId: string; type: string; url: string; attached?: boolean };
 
 type MouseEvent = {
-	type: "mousePressed" | "mouseReleased" | "mouseMoved";
+	type: "mousePressed" | "mouseReleased" | "mouseMoved" | "mouseWheel";
 	x: number;
 	y: number;
 	button?: "none" | "left";
 	buttons?: number;
 	clickCount?: number;
+	/** Wheel only: how far to scroll, in CSS pixels. A positive deltaY scrolls down. */
+	deltaX?: number;
+	deltaY?: number;
 };
 
 type KeyEvent = {
@@ -59,12 +62,22 @@ type KeyEvent = {
 /** The commands this client sends, with their params and results. */
 export type CdpCommands = {
 	"Target.getTargets": { params: Record<string, never>; result: { targetInfos: TargetInfo[] } };
+	"Target.getTargetInfo": {
+		params: { targetId: string };
+		result: { targetInfo: TargetInfo };
+	};
 	"Target.createTarget": { params: { url: string }; result: { targetId: string } };
+	"Target.closeTarget": { params: { targetId: string }; result: { success?: boolean } };
 	"Target.attachToTarget": {
 		params: { targetId: string; flatten: true };
 		result: { sessionId: string };
 	};
+	"Page.enable": { params: Record<string, never>; result: Record<string, never> };
 	"Page.bringToFront": { params: Record<string, never>; result: Record<string, never> };
+	"Page.handleJavaScriptDialog": {
+		params: { accept: boolean; promptText?: string };
+		result: Record<string, never>;
+	};
 	"Page.getLayoutMetrics": {
 		params: Record<string, never>;
 		result: { cssLayoutViewport: { clientWidth: number; clientHeight: number } };
@@ -74,6 +87,10 @@ export type CdpCommands = {
 	"Input.dispatchMouseEvent": { params: MouseEvent; result: Record<string, never> };
 	"Input.dispatchKeyEvent": { params: KeyEvent; result: Record<string, never> };
 	"Input.insertText": { params: { text: string }; result: Record<string, never> };
+	"Storage.clearDataForOrigin": {
+		params: { origin: string; storageTypes: string };
+		result: Record<string, never>;
+	};
 	"Accessibility.getFullAXTree": { params: Record<string, never>; result: { nodes: AxNode[] } };
 	"DOMSnapshot.captureSnapshot": {
 		params: { computedStyles: string[] };
