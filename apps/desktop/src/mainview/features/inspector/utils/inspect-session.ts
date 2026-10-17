@@ -36,7 +36,6 @@ export function isDeviceUnreachable(error: unknown): boolean {
  */
 export function feedModeFor(session: ActiveDeviceResponse): "mjpeg" | "poll" {
 	if (session.streamState === "none" || session.streamState === "failed") return "poll";
-	return session.streamReady !== false && (session.streamUrl || session.mjpegPort)
-		? "mjpeg"
-		: "poll";
+	if (session.streamReady === false) return "poll";
+	return session.streamUrl || session.mjpegPort ? "mjpeg" : "poll";
 }
