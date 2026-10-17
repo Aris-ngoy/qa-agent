@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	type RunReportDocument,
 	actionSummary,
+	buildRunReportFromCatalogRun,
 	formatRunReportGithubSummary,
 	formatRunReportHtml,
 	formatRunReportMarkdown,
@@ -377,6 +378,35 @@ describe("Screen mode in the report", () => {
 		expect(formatRunReportMarkdown(doc)).toContain("using idb_companion");
 		expect(formatRunReportGithubSummary(doc)).toContain("| Lane | direct |");
 		expect(formatRunReportHtml(doc)).toContain("direct");
+	});
+
+	test("names the browser a web run drove, in every format", () => {
+		const doc = { ...sampleDoc(), platform: "web", browser: "Google Chrome 141.0", lane: "direct" };
+		expect(formatRunReportMarkdown(doc)).toContain("| Platform | web |");
+		expect(formatRunReportMarkdown(doc)).toContain("| Browser | Google Chrome 141.0 |");
+		expect(formatRunReportGithubSummary(doc)).toContain("| Browser | Google Chrome 141.0 |");
+		expect(formatRunReportHtml(doc)).toContain("Google Chrome 141.0");
+		expect(formatRunReportMarkdown(sampleDoc())).not.toContain("| Browser |");
+	});
+
+	test("a catalog run's report carries its browser", () => {
+		const doc = buildRunReportFromCatalogRun({
+			id: "run_web",
+			appId: "app_1",
+			deviceId: "web-chrome",
+			platform: "web",
+			buildId: null,
+			status: "passed",
+			executionMode: "script",
+			lane: "direct",
+			browser: "Google Chrome 141.0",
+			error: null,
+			createdAt: 1,
+			startedAt: 1,
+			finishedAt: 2,
+			tests: [],
+		});
+		expect(doc).toMatchObject({ platform: "web", browser: "Google Chrome 141.0", lane: "direct" });
 	});
 
 	test("omits the Screen row when the run has no Screen mode", () => {

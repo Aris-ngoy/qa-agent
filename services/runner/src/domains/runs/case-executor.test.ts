@@ -394,6 +394,39 @@ describe("executeAgentCase", () => {
 		}
 	});
 
+	it("on web, an app Action with no app id acts on the App's Web URL", async () => {
+		const browser = startFakeCdp({ viewport: { width: 1280, height: 800 } });
+		const session = await createDeviceSession({
+			platform: "web",
+			deviceId: `chromium-cdp-${browser.port}`,
+		});
+		let calls = 0;
+		try {
+			const result = await executeAgentCase({
+				catalogCase: emptyCase(),
+				appContext: "demo",
+				auth: fakeAuth(),
+				session,
+				isAborted: () => false,
+				appendStep: async () => {},
+				decide: async () => {
+					calls += 1;
+					if (calls === 1) return { type: "restart-app", reason: "stuck", thoughts: "" };
+					return { type: "done", reason: "done", thoughts: "home again" };
+				},
+				clock: { sleep: async () => {}, now: () => 1 },
+				settleMs: 0,
+				defaultAppId: "https://shop.example.com/",
+			});
+
+			expect(result.status).toBe("passed");
+			expect(browser.clearedOrigins).toEqual(["https://shop.example.com"]);
+			expect(browser.navigations).toEqual(["https://shop.example.com/"]);
+		} finally {
+			await session.quit();
+		}
+	});
+
 	it("stops when injected decide returns done", async () => {
 		const performed: ActionRequest[] = [];
 		const decisions: AgentDecision[] = [];

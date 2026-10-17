@@ -60,6 +60,12 @@ describe("web Direct lane: attach by port", () => {
 		await session.quit();
 	});
 
+	test("names the browser it attached to, as the browser reports itself", async () => {
+		const { session } = await attach();
+		expect(session.browser).toBe("Chrome 140.0.0.0");
+		await session.quit();
+	});
+
 	test("a port with no CDP endpoint fails, saying how to start the browser", async () => {
 		const port = closedPort();
 		const error = await rejection(
@@ -370,6 +376,12 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 		expect(existsSync(profileDir())).toBe(true);
 		await performAction(session, { kind: "tap", x: 500, y: 250 });
 		expect(chromium.browsers[0]?.clicks).toEqual([{ x: 640, y: 200 }]);
+		await session.quit();
+	});
+
+	test("names the installed browser it launched, with its version", async () => {
+		const { session } = await launch();
+		expect(session.browser).toBe("Google Chrome 141.0");
 		await session.quit();
 	});
 

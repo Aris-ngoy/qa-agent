@@ -57,6 +57,8 @@ export type RunReportDocument = {
 	screenMode?: string | null;
 	lane?: string | null;
 	laneWarning?: string | null;
+	/** The browser a web run drove, with its version. */
+	browser?: string | null;
 	error: string | null;
 	createdAt: number;
 	startedAt: number | null;
@@ -400,6 +402,7 @@ export function buildRunReportFromCatalogRun(
 		screenMode: run.screenMode ?? null,
 		lane: run.lane ?? null,
 		laneWarning: run.laneWarning ?? null,
+		browser: run.browser ?? null,
 		error: run.error,
 		createdAt: run.createdAt,
 		startedAt: run.startedAt,
@@ -517,6 +520,7 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 		["App", doc.appLabel ?? "—"],
 		["Device", doc.deviceLabel ?? "—"],
 		["Platform", doc.platform ?? "—"],
+		...(doc.browser ? ([["Browser", doc.browser]] as Array<[string, string]>) : []),
 		["Mode", doc.executionMode ?? "—"],
 		...screenRows,
 		["Started", formatWhen(doc.startedAt ?? doc.createdAt)],
@@ -668,6 +672,7 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 		`| App | ${escapeMd(doc.appLabel ?? "—")} |`,
 		`| Device | ${escapeMd(doc.deviceLabel ?? "—")} |`,
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
+		...(doc.browser ? [`| Browser | ${escapeMd(doc.browser)} |`] : []),
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),
@@ -753,6 +758,7 @@ export function formatRunReportGithubSummary(doc: RunReportDocument): string {
 		`| App | ${escapeMd(doc.appLabel ?? "—")} |`,
 		`| Device | ${escapeMd(doc.deviceLabel ?? "—")} |`,
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
+		...(doc.browser ? [`| Browser | ${escapeMd(doc.browser)} |`] : []),
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),

@@ -30,6 +30,7 @@ function ensureSchema(sqlite: Database): void {
 			ios_bundle_id TEXT NOT NULL DEFAULT '',
 			ios_app_store_id TEXT NOT NULL DEFAULT '',
 			android_application_id TEXT NOT NULL DEFAULT '',
+			web_url TEXT NOT NULL DEFAULT '',
 			appium_caps TEXT NOT NULL DEFAULT '[]',
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL
@@ -158,6 +159,7 @@ function ensureSchema(sqlite: Database): void {
 	migrateProvidersTable(sqlite);
 	migrateAppsPrefix(sqlite);
 	migrateAppsKnowledge(sqlite);
+	migrateAppsWebUrl(sqlite);
 	migrateCaseScripts(sqlite);
 	migrateRunExecutionMode(sqlite);
 	migrateRunScreenMode(sqlite);
@@ -214,6 +216,7 @@ function migrateRunLane(sqlite: Database): void {
 	addColumnIfMissing(sqlite, "runs", "requested_lane", "requested_lane TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "lane", "lane TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "lane_warning", "lane_warning TEXT", runCols);
+	addColumnIfMissing(sqlite, "runs", "browser", "browser TEXT", runCols);
 }
 
 function migrateRecording(sqlite: Database): void {
@@ -427,4 +430,10 @@ export function closeCatalogDb(): void {
 	sqliteClient?.close();
 	sqliteClient = null;
 	catalogDb = null;
+}
+
+function migrateAppsWebUrl(sqlite: Database): void {
+	const existing = tableColumns(sqlite, "apps");
+	if (existing.size === 0) return;
+	addColumnIfMissing(sqlite, "apps", "web_url", "web_url TEXT NOT NULL DEFAULT ''", existing);
 }
