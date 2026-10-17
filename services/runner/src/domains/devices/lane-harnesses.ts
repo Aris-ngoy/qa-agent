@@ -426,10 +426,11 @@ export function webCdpLane(): LaneHarness & { browser: FakeCdp } {
 		// A key pressed down that is not itself a modifier, with the modifiers its bits hold.
 		keys: () =>
 			browser.keyEvents.flatMap((event) => {
+				if (event.type === "keyUp") return [];
 				const key = (Object.keys(CDP_KEYS) as KeyName[]).find(
 					(name) => CDP_KEYS[name].code === event.code,
 				);
-				if (!key || event.type === "keyUp") return [];
+				if (!key) return [];
 				const modifiers = KEY_MODIFIERS.filter(
 					(modifier) => ((event.modifiers ?? 0) & CDP_MODIFIERS[modifier].bit) !== 0,
 				);
