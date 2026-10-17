@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createConnection } from "node:net";
 import { startFakeCdp } from "./fake-cdp";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
@@ -54,15 +54,28 @@ function fakeLane(lane: LaneName): LaneFactory {
 /** The Direct lane sessions open on; a test may swap in a real Lane with a faked device. */
 let directLane: LaneFactory = fakeLane("direct");
 
+/**
+ * Bun keeps a module mock for the rest of the process, so later test files (a web Run
+ * on a fake Chromium) would get these fake sessions too. Only fake Lanes while this
+ * file runs; afterwards the mock opens sessions exactly like the real module.
+ */
+let fakeLanes = true;
+afterAll(() => {
+	fakeLanes = false;
+});
+
 // Keep every real export (session.test.ts relies on them) and open sessions through
 // the real Lane selection with fake Lane factories, so no device is needed.
 const realCreateDeviceSession = actualSession.createDeviceSession;
 mock.module("./session", () => ({
 	...actualSession,
-	createDeviceSession: (options: actualSession.SessionOptions) =>
-		realCreateDeviceSession(options, {
-			direct: (laneOptions) => directLane(laneOptions),
-		}),
+	createDeviceSession: (
+		options: actualSession.SessionOptions,
+		lanes?: Partial<Record<LaneName, LaneFactory>>,
+	) =>
+		fakeLanes
+			? realCreateDeviceSession(options, { direct: (laneOptions) => directLane(laneOptions) })
+			: realCreateDeviceSession(options, lanes),
 }));
 
 mock.module("./mjpeg-proxy", () => ({
