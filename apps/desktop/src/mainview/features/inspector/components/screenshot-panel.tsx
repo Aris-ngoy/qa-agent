@@ -1,3 +1,4 @@
+import { screenAspect } from "@/features/devices/web-device";
 import { LiveFrame } from "@/features/inspector/components/live-frame";
 import type { InspectorFeed$ } from "@/features/inspector/data/state/feed";
 import {
@@ -337,6 +338,9 @@ export function ScreenshotPanel({
 		return () => observer.disconnect();
 	}, [pointer$]);
 	const showRefreshing = treeRefreshing && elements.length === 0;
+	/** A web page is shaped by its Viewport preset, not like a phone. */
+	const pageAspect = session ? screenAspect(session.platform, session.viewport) : null;
+	const frameRadius = pageAspect ? "rounded-lg" : "rounded-[28px]";
 	const inspectHint = pickingPoint
 		? "Picking x,y · click to set point"
 		: "Hover to preview, click to select an element.";
@@ -472,7 +476,7 @@ export function ScreenshotPanel({
 							</p>
 							<p className="max-w-xs text-helper text-on-surface-variant">
 								{session
-									? "Connect to stream the screen and read its elements. The feed runs only while connected."
+									? "Connect to show the screen and read its elements. The feed runs only while connected."
 									: "Connect a device from the top bar, then connect the Inspector to it."}
 							</p>
 							{session ? (
@@ -519,7 +523,7 @@ export function ScreenshotPanel({
 								<LiveFrame
 									src$={feed$.imageUrl}
 									imgRef={imgRef}
-									className="pointer-events-none block max-h-[max(260px,calc(100vh-27rem))] w-auto max-w-full rounded-[28px] shadow-float select-none"
+									className={`pointer-events-none block max-h-[max(260px,calc(100vh-27rem))] w-auto max-w-full ${frameRadius} shadow-float select-none`}
 								/>
 								<PointerChrome
 									pointer$={pointer$}
@@ -578,7 +582,14 @@ export function ScreenshotPanel({
 								aria-live="polite"
 								className="motion-fade-in absolute inset-0 flex flex-col items-center justify-center gap-3"
 							>
-								<div className="motion-skeleton h-[min(24rem,calc(100vh-30rem))] min-h-48 aspect-[9/19] rounded-[28px] bg-surface-container-high" />
+								<div
+									className={[
+										"motion-skeleton h-[min(24rem,calc(100vh-30rem))] min-h-48 max-w-full bg-surface-container-high",
+										pageAspect ? "" : "aspect-[9/19]",
+										frameRadius,
+									].join(" ")}
+									style={pageAspect ? { aspectRatio: pageAspect } : undefined}
+								/>
 								<span className="text-body-sm text-on-surface-variant">Starting live feed…</span>
 							</output>
 						)

@@ -1,11 +1,15 @@
 import type { Application } from "@/features/apps/context";
 import {
 	type ActiveDeviceResponse,
+	type ConnectDeviceRequest,
 	type DevicePlatform,
+	type LaneName,
 	type RetargetDeviceRequest,
 	appStartTarget,
 	startTargetRequest,
 } from "@yoqa/runner-client";
+import type { SelectedDevice } from "./select-device-modal";
+import { viewportFor } from "./web-device";
 
 type SessionHold = Pick<ActiveDeviceResponse, "deviceId" | "connectedAt" | "heldByRun">;
 
@@ -19,6 +23,25 @@ export function appTargetFor(
 	app: Pick<Application, "iosBundleId" | "androidApplicationId" | "webUrl"> | null | undefined,
 ): RetargetDeviceRequest {
 	return startTargetRequest(platform, appStartTarget(app, platform));
+}
+
+/**
+ * The connect for `target`: the selected app's start target, and on web the Viewport preset
+ * the session emulates (desktop unless another was chosen).
+ */
+export function connectRequestFor(
+	target: Pick<SelectedDevice, "id" | "platform" | "viewport">,
+	app: Pick<Application, "iosBundleId" | "androidApplicationId" | "webUrl"> | null | undefined,
+	lane?: LaneName,
+): ConnectDeviceRequest {
+	const viewport = viewportFor(target.platform, target.viewport);
+	return {
+		deviceId: target.id,
+		platform: target.platform,
+		...appTargetFor(target.platform, app),
+		...(lane ? { lane } : {}),
+		...(viewport ? { viewport } : {}),
+	};
 }
 
 /**

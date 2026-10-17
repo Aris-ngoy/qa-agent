@@ -246,11 +246,12 @@ export function RunsListPage() {
 		queryKey: devicesQueryKey("all"),
 		queryFn: async () => {
 			const client = await getRunnerClient();
-			const [ios, android] = await Promise.all([
+			const [ios, android, web] = await Promise.all([
 				client.listDevices("ios", { includeUnavailable: true }),
 				client.listDevices("android", { includeUnavailable: true }),
+				client.listDevices("web", { includeUnavailable: true }),
 			]);
-			return [...ios.devices, ...android.devices] as Device[];
+			return [...ios.devices, ...android.devices, ...web.devices] as Device[];
 		},
 		staleTime: 30_000,
 	});

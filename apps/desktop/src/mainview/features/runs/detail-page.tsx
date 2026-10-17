@@ -2,6 +2,7 @@ import { useReducedMotion } from "@/app/motion/use-reduced-motion";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
+import { screenAspect } from "@/features/devices/web-device";
 import { runQueryKey, useActiveRun } from "@/features/runs/active-run-context";
 import {
 	type CaseLabelMeta,
@@ -10,6 +11,7 @@ import {
 	formatCaseLabel,
 	formatDeviceLabel,
 	formatRunDetailMeta,
+	formatRunEnvironment,
 	runListResult,
 } from "@/features/runs/labels";
 import { ScreenshotCrossfade } from "@/features/runs/screenshot-crossfade";
@@ -767,6 +769,9 @@ export function RunDetailPage() {
 		stepCount: steps.length,
 		durationMs,
 	});
+	const environment = formatRunEnvironment(run);
+	/** A web Run's screenshots are its Viewport preset's shape, not a phone's. */
+	const pageAspect = screenAspect(run.platform, run.viewport);
 	const shotIndex = shotStep ? steps.findIndex((step) => step.id === shotStep.id) : -1;
 	const stepNumber = new Map(steps.map((step, index) => [step.id, index + 1]));
 
@@ -781,6 +786,7 @@ export function RunDetailPage() {
 					<p className="font-mono text-xs text-outline" title={run.deviceId}>
 						{meta}
 					</p>
+					{environment ? <p className="font-mono text-xs text-outline">{environment}</p> : null}
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					{reviewMode ? (
@@ -911,7 +917,13 @@ export function RunDetailPage() {
 							{shotIndex >= 0 ? `step ${shotIndex + 1} / ${steps.length}` : "—"}
 						</span>
 					</div>
-					<div className="relative aspect-[9/19.5] overflow-hidden rounded-[28px] border-[6px] border-outline-variant bg-surface-container">
+					<div
+						className={[
+							"relative overflow-hidden border-outline-variant bg-surface-container",
+							pageAspect ? "rounded-lg border-2" : "aspect-[9/19.5] rounded-[28px] border-[6px]",
+						].join(" ")}
+						style={pageAspect ? { aspectRatio: pageAspect } : undefined}
+					>
 						{screenshotUrl ? (
 							<ScreenshotCrossfade
 								alt={

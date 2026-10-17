@@ -1,16 +1,29 @@
-import { type Device, devicePlatformSchema } from "@yoqa/runner-client";
+import {
+	DEFAULT_VIEWPORT_PRESET,
+	type Device,
+	type ViewportPresetName,
+	devicePlatformSchema,
+	viewportPresetSchema,
+} from "@yoqa/runner-client";
 import type { DevicePlatform, SelectedDevice } from "./select-device-modal";
+import { attachedBrowser, viewportFor } from "./web-device";
 
-/** The device the session bar connected last, kept across launches. */
-export type RememberedDevice = { platform: DevicePlatform; deviceId: string };
+/** The device the session bar connected last, kept across launches, with a browser's preset. */
+export type RememberedDevice = {
+	platform: DevicePlatform;
+	deviceId: string;
+	viewport?: ViewportPresetName;
+};
 
 type DeviceStorage = Pick<Storage, "getItem" | "setItem">;
 
 const REMEMBERED_DEVICE_KEY = "yoqa.lastDevice";
 
 /** A listed device as the bar shows and connects it, named the way the picker names it. */
-function toSelectedDevice(device: Device): SelectedDevice {
+function toSelectedDevice(device: Device, viewport?: ViewportPresetName): SelectedDevice {
+	const preset = viewportFor(device.platform, viewport);
 	return {
+		...(preset ? { viewport: preset } : {}),
 		id: device.id,
 		label: device.owner ? `${device.name} (${device.owner})` : device.name,
 		name: device.name,
@@ -21,17 +34,23 @@ function toSelectedDevice(device: Device): SelectedDevice {
 }
 
 /**
- * The Active Session's device by its real name and kind, from the platform's device list.
- * Null when the list does not have it (or has not loaded): its kind is then unknown.
+ * The Active Session's device by its real name and kind, from the platform's device list,
+ * at the session's Viewport preset. Null when the list does not have it (or has not
+ * loaded): its kind is then unknown. An attached browser is never listed, so it is named
+ * from its port.
  */
 export function deviceForSession(
-	session: { deviceId: string; platform: DevicePlatform },
+	session: { deviceId: string; platform: DevicePlatform; viewport?: ViewportPresetName },
 	devices: readonly Device[] | undefined,
 ): SelectedDevice | null {
+	if (session.platform === "web") {
+		const attached = attachedBrowser(session.deviceId, session.viewport ?? DEFAULT_VIEWPORT_PRESET);
+		if (attached) return attached;
+	}
 	const listed = devices?.find(
 		(device) => device.id === session.deviceId && device.platform === session.platform,
 	);
-	return listed ? toSelectedDevice(listed) : null;
+	return listed ? toSelectedDevice(listed, session.viewport) : null;
 }
 
 /**
@@ -49,7 +68,7 @@ export function pickRememberedDevice(
 			device.platform === remembered.platform &&
 			!device.unavailableReason,
 	);
-	return listed ? toSelectedDevice(listed) : null;
+	return listed ? toSelectedDevice(listed, remembered.viewport) : null;
 }
 
 function defaultStorage(): DeviceStorage | null {
@@ -70,7 +89,12 @@ export function readRememberedDevice(
 		const platform = devicePlatformSchema.safeParse(parsed.platform);
 		if (!platform.success) return null;
 		if (typeof parsed.deviceId !== "string" || parsed.deviceId.length === 0) return null;
-		return { platform: platform.data, deviceId: parsed.deviceId };
+		const viewport = viewportPresetSchema.safeParse(parsed.viewport);
+		return {
+			platform: platform.data,
+			deviceId: parsed.deviceId,
+			...(viewport.success ? { viewport: viewport.data } : {}),
+		};
 	} catch {
 		return null;
 	}
@@ -83,7 +107,11 @@ export function writeRememberedDevice(
 	try {
 		storage?.setItem(
 			REMEMBERED_DEVICE_KEY,
-			JSON.stringify({ platform: device.platform, deviceId: device.deviceId }),
+			JSON.stringify({
+				platform: device.platform,
+				deviceId: device.deviceId,
+				...(device.viewport ? { viewport: device.viewport } : {}),
+			}),
 		);
 	} catch {
 		// ignore storage failures in restricted webviews
