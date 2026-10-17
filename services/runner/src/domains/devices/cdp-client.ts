@@ -51,12 +51,15 @@ type MouseEvent = {
 	deltaY?: number;
 };
 
-type KeyEvent = {
-	type: "keyDown" | "keyUp";
+export type KeyEvent = {
+	/** `rawKeyDown` presses a key that types nothing; `keyDown` with `text` also types it. */
+	type: "keyDown" | "rawKeyDown" | "keyUp";
 	key: string;
 	code: string;
 	windowsVirtualKeyCode: number;
 	text?: string;
+	/** Held modifiers as a bit field: Alt 1, Control 2, Meta 4, Shift 8. */
+	modifiers?: number;
 };
 
 /** The commands this client sends, with their params and results. */

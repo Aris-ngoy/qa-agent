@@ -255,6 +255,24 @@ describe("Groq Action-family parity (#140)", () => {
 		).toThrow(/not a valid action.*open-url requires url/);
 	});
 
+	test("key takes a named key and optional modifiers", () => {
+		expect(
+			groqDecision(
+				'{"type":"key","key":"Tab","modifiers":["Shift"],"reason":"Back one field","thoughts":"Focus is on the password field and the email needs fixing."}',
+			),
+		).toMatchObject({ type: "key", key: "Tab", modifiers: ["Shift"] });
+		expect(() =>
+			groqDecision(
+				'{"type":"key","reason":"Submit","thoughts":"The form is filled in, so pressing a key submits it."}',
+			),
+		).toThrow(/not a valid action.*key requires key/);
+		expect(() =>
+			groqDecision(
+				'{"type":"key","key":"F5","reason":"Reload","thoughts":"The page looks stale."}',
+			),
+		).toThrow(/not a valid action/);
+	});
+
 	test("assert requires text", () => {
 		expect(
 			groqDecision(
@@ -781,6 +799,13 @@ describe("VISION_SYSTEM_PROMPT", () => {
 		expect(VISION_SYSTEM_PROMPT).toContain("magenta grid");
 	});
 
+	test("both prompts offer the key Action", () => {
+		for (const prompt of [SYSTEM_PROMPT, VISION_SYSTEM_PROMPT]) {
+			expect(prompt).toContain('{"type":"key","key":"Enter"');
+			expect(prompt).toContain("PageDown");
+		}
+	});
+
 	test("the tree prompt keeps its structural guidance", () => {
 		expect(SYSTEM_PROMPT).toContain("Structural context (screen snapshot)");
 		expect(SYSTEM_PROMPT).not.toContain("magenta grid");
@@ -892,6 +917,24 @@ describe("decisionToActionRequest", () => {
 				thoughts: "Skip onboarding",
 			}),
 		).toEqual({ kind: "open-url", url: "myapp://home" });
+
+		expect(
+			decisionToActionRequest({
+				type: "key",
+				key: "Escape",
+				modifiers: ["Control"],
+				reason: "Close the dialog",
+				thoughts: "A modal covers the page",
+			}),
+		).toEqual({ kind: "key", key: "Escape", modifiers: ["Control"] });
+		expect(
+			decisionToActionRequest({
+				type: "key",
+				key: "Enter",
+				reason: "Submit",
+				thoughts: "Form filled",
+			}),
+		).toEqual({ kind: "key", key: "Enter" });
 
 		expect(
 			decisionToActionRequest({

@@ -336,6 +336,31 @@ const caseScriptDragSchema = z.object({
 	reason: z.string().optional(),
 });
 
+/** The named keys a `key` Action can press (see `Action` in CONTEXT.md). */
+export const KEY_NAMES = [
+	"Enter",
+	"Tab",
+	"Escape",
+	"Backspace",
+	"Delete",
+	"ArrowUp",
+	"ArrowDown",
+	"ArrowLeft",
+	"ArrowRight",
+	"Home",
+	"End",
+	"PageUp",
+	"PageDown",
+	"Space",
+] as const;
+export const keyNameSchema = z.enum(KEY_NAMES);
+export type KeyName = z.infer<typeof keyNameSchema>;
+
+/** Modifiers held down while a `key` Action presses its key. */
+export const KEY_MODIFIERS = ["Shift", "Control", "Alt", "Meta"] as const;
+export const keyModifierSchema = z.enum(KEY_MODIFIERS);
+export type KeyModifier = z.infer<typeof keyModifierSchema>;
+
 function caseScriptAppIdSchema<T extends "activate-app" | "terminate-app" | "restart-app">(
 	type: T,
 ) {
@@ -386,6 +411,12 @@ export const caseScriptActionSchemaByType = {
 		url: z.string().min(1),
 		reason: z.string().optional(),
 	}),
+	key: z.object({
+		type: z.literal("key"),
+		key: keyNameSchema,
+		modifiers: z.array(keyModifierSchema).min(1).optional(),
+		reason: z.string().optional(),
+	}),
 } as const;
 
 export type CaseScriptActionType = keyof typeof caseScriptActionSchemaByType;
@@ -403,6 +434,7 @@ export const caseScriptActionSchema = z.union([
 	caseScriptActionSchemaByType["restart-app"],
 	caseScriptActionSchemaByType["background-app"],
 	caseScriptActionSchemaByType["open-url"],
+	caseScriptActionSchemaByType.key,
 ]);
 
 export type CaseScriptAction = z.infer<typeof caseScriptActionSchema>;
@@ -1012,6 +1044,7 @@ export const actionKindSchema = z.union([
 	z.literal("background-app"),
 	z.literal("open-url"),
 	z.literal("alert"),
+	z.literal("key"),
 ]);
 export type ActionKind = z.infer<typeof actionKindSchema>;
 
@@ -1034,6 +1067,10 @@ export const actionRequestSchema = z.object({
 	url: z.string().optional(),
 	alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).optional(),
 	seconds: z.number().optional(),
+	/** The key a `key` Action presses. */
+	key: keyNameSchema.optional(),
+	/** Held down while `key` is pressed. */
+	modifiers: z.array(keyModifierSchema).optional(),
 	/** Settle after the Action and return the Result screenshot. */
 	screenshot: z.boolean().optional(),
 	/** Cap, in ms, on how long to wait for the screen to settle (default 1500, max 10000). */

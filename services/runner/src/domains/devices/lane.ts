@@ -1,4 +1,4 @@
-import type { DevicePlatform } from "@yoqa/runner-client";
+import type { DevicePlatform, KeyModifier, KeyName } from "@yoqa/runner-client";
 
 /**
  * The control path a Device Session uses (see `Lane` in CONTEXT.md and ADR-0005).
@@ -39,6 +39,12 @@ export type CapturedFrame = {
 };
 
 export type PointerPhase = "begin" | "move" | "end";
+
+/** The keys a Lane's `key` presses, and whether it can hold modifiers while it does. */
+export type KeySupport = {
+	keys: readonly KeyName[];
+	modifiers: boolean;
+};
 
 /**
  * A live MJPEG feed of the device screen that the runner proxies to the Inspector.
@@ -91,6 +97,10 @@ export type DeviceSession = {
 	) => Promise<void>;
 	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	type: (text: string) => Promise<void>;
+	/** What `key` can press here. Anything else fails with `UnsupportedKeyError`. */
+	keySupport: KeySupport;
+	/** Press one named key, holding `modifiers` down while it is pressed. */
+	key: (key: KeyName, modifiers?: readonly KeyModifier[]) => Promise<void>;
 	activateApp: (appId: string) => Promise<void>;
 	/**
 	 * Point the session at another app (bundle id / package) without reconnecting or
@@ -137,6 +147,36 @@ export function reportLaneFallback(
 	console.warn(`[yoqa-runner] ${warning}`);
 	session.laneWarning = joinLaneWarnings(session.laneWarning, warning);
 	options.onLaneWarning?.(warning);
+}
+
+/** A `key` Action this Lane cannot send: a key it does not declare, or modifiers it cannot hold. */
+export class UnsupportedKeyError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "UnsupportedKeyError";
+	}
+}
+
+/**
+ * Reject a key `support` does not cover, before anything reaches the device. `device`
+ * names where it was sent, as in "on an iOS simulator".
+ */
+export function assertKeySupported(
+	support: KeySupport,
+	device: string,
+	key: KeyName,
+	modifiers: readonly KeyModifier[] = [],
+): void {
+	if (!support.keys.includes(key)) {
+		throw new UnsupportedKeyError(
+			`The ${key} key is not available ${device}; it can press ${support.keys.join(", ")}`,
+		);
+	}
+	if (modifiers.length > 0 && !support.modifiers) {
+		throw new UnsupportedKeyError(
+			`Modifier keys (${modifiers.join(", ")}) are not available ${device}; press ${key} without them`,
+		);
+	}
 }
 
 const DEAD_SESSION_RE =

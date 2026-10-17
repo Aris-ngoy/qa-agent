@@ -21,6 +21,7 @@ import {
 	formatCaseScriptFile,
 	formatCaseScriptFileErrors,
 	formatCaseScriptShell,
+	formatKeyChord,
 	parseCaseScriptFile,
 	suggestedScriptBasename,
 	toCaseScriptFileText,
@@ -647,6 +648,9 @@ function scriptActionSummary(action: CaseScriptAction): string {
 	}
 	if (action.type === "open-url") {
 		return `Open ${action.url}`;
+	}
+	if (action.type === "key") {
+		return `Press ${formatKeyChord(action.key, action.modifiers)}`;
 	}
 	return `Wait ${action.ms}ms`;
 }

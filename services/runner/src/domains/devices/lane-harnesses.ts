@@ -3,15 +3,17 @@
  * a real Lane with its device tool faked, and reads back what reached the device.
  */
 import { createConnection } from "node:net";
+import { KEY_MODIFIERS, type KeyModifier, type KeyName } from "@yoqa/runner-client";
 import { encodeRgbaPng } from "../runs/coord-grid";
+import { ANDROID_KEYCODES, ANDROID_MODIFIER_KEYCODES } from "./adb-input";
 import type { AdbExec, AdbResult, AndroidDirectDeps } from "./android-direct-lane";
 import { createAndroidDirectSession } from "./android-direct-lane";
 import { type FakeCdp, startFakeCdp } from "./fake-cdp";
 import { createIosDeviceSession } from "./ios-device-lane";
 import type { IdbExec, IdbResult } from "./ios-direct-lane";
-import { createIosDirectSession } from "./ios-direct-lane";
+import { IOS_HID_KEYCODES, createIosDirectSession } from "./ios-direct-lane";
 import type { DeviceSession } from "./lane";
-import { createWebDirectSession } from "./web-direct-lane";
+import { CDP_KEYS, CDP_MODIFIERS, createWebDirectSession } from "./web-direct-lane";
 import type { StartYoqaAx } from "./yoqa-ax";
 import { type SpawnYoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
@@ -29,6 +31,8 @@ export type LaneHarness = {
 	open: (hooks: { onSessionDead: () => void }) => Promise<DeviceSession>;
 	/** Where taps landed, in device units. */
 	taps: () => Array<{ x: number; y: number }>;
+	/** Keys that reached the device, named the way the `key` Action names them. */
+	keys: () => Array<{ key: KeyName; modifiers: KeyModifier[] }>;
 	/** The frame this harness serves after `taps` taps, base64-encoded. */
 	frame: (taps: number) => string;
 	/** The device tool dies: every later call fails the way that tool reports it. */
@@ -56,10 +60,25 @@ function frameAfterTaps(taps: number, scale = 1): string {
 	return Buffer.from(devicePng(taps, scale)).toString("base64");
 }
 
+type PressedKey = { key: KeyName; modifiers: KeyModifier[] };
+
+/** The name a device code stands for in `table`, which a harness reads back from its tool. */
+function nameOf<T extends string>(table: Record<T, number>, code: number): T {
+	const name = (Object.keys(table) as T[]).find((entry) => table[entry] === code);
+	if (!name) throw new Error(`no name for device key code ${code}`);
+	return name;
+}
+
+/** Modifiers in the `key` Action's order, so harnesses compare the same list. */
+function inModifierOrder(modifiers: KeyModifier[]): KeyModifier[] {
+	return KEY_MODIFIERS.filter((modifier) => modifiers.includes(modifier));
+}
+
 const ANDROID_DUMP = `<?xml version="1.0"?><hierarchy><node class="android.widget.Button" text="${BUTTON.label}" clickable="true" enabled="true" bounds="[0,0][100,40]" /></hierarchy>`;
 
 function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneHarness {
 	const taps: Array<{ x: number; y: number }> = [];
+	const keys: PressedKey[] = [];
 	let dead = false;
 	const ok = (stdout = "", stdoutBytes?: Uint8Array): AdbResult => ({
 		stdout,
@@ -83,6 +102,15 @@ function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneH
 		if (args.includes("input") && tap >= 0) {
 			taps.push({ x: Number(args[tap + 1]), y: Number(args[tap + 2]) });
 		}
+		const press = args.findIndex((arg) => arg === "keyevent" || arg === "keycombination");
+		if (args.includes("input") && press >= 0) {
+			const codes = args.slice(press + 1).map(Number);
+			const code = codes.pop() ?? -1;
+			keys.push({
+				key: nameOf(ANDROID_KEYCODES, code),
+				modifiers: inModifierOrder(codes.map((held) => nameOf(ANDROID_MODIFIER_KEYCODES, held))),
+			});
+		}
 		return ok();
 	};
 	return {
@@ -97,6 +125,7 @@ function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneH
 				{ adb, resolveSerial: async () => "emulator-5554", ...deps },
 			),
 		taps: () => taps,
+		keys: () => keys,
 		frame: (count) => frameAfterTaps(count),
 		killTool: () => {
 			dead = true;
@@ -159,6 +188,7 @@ export function iosYoqaAxLane(): LaneHarness {
 function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = {}): LaneHarness {
 	const udid = "B75001FB-B91D-4F94-80A7-3E371A641D27";
 	const taps: Array<{ x: number; y: number }> = [];
+	const keys: PressedKey[] = [];
 	let dead = false;
 	const ok = (stdout = "", stdoutBytes?: Uint8Array): IdbResult => ({
 		stdout,
@@ -200,6 +230,9 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 		}
 		if (args[0] === "ui" && args[1] === "tap") {
 			taps.push({ x: Number(args[2]), y: Number(args[3]) });
+		}
+		if (args[0] === "ui" && args[1] === "key") {
+			keys.push({ key: nameOf(IOS_HID_KEYCODES, Number(args[2])), modifiers: [] });
 		}
 		return ok();
 	};
@@ -262,6 +295,7 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 				},
 			),
 		taps: () => taps,
+		keys: () => keys,
 		frame: (count) => frameAfterTaps(count, IOS_SCREENSHOT_SCALE),
 		killTool: () => {
 			dead = true;
@@ -276,13 +310,19 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
  */
 export function iosDeviceLane(): LaneHarness {
 	const taps: Array<{ x: number; y: number }> = [];
+	const keys: PressedKey[] = [];
 	const ok = (data: unknown) =>
 		Response.json({ ok: true, data }, { headers: { Connection: "close" } });
 	const runner = Bun.serve({
 		hostname: "127.0.0.1",
 		port: 0,
 		fetch: async (request) => {
-			const body = (await request.json()) as { command: string; x?: number; y?: number };
+			const body = (await request.json()) as {
+				command: string;
+				x?: number;
+				y?: number;
+				text?: string;
+			};
 			switch (body.command) {
 				case "viewport":
 					return ok({ ...DEVICE });
@@ -306,6 +346,15 @@ export function iosDeviceLane(): LaneHarness {
 					});
 				case "tap":
 					taps.push({ x: (body.x ?? -1) * DEVICE.width, y: (body.y ?? -1) * DEVICE.height });
+					return ok({});
+				case "keyboardReturn":
+					keys.push({ key: "Enter", modifiers: [] });
+					return ok({});
+				case "keyboardDelete":
+					keys.push({ key: "Backspace", modifiers: [] });
+					return ok({});
+				case "type":
+					if (body.text === " ") keys.push({ key: "Space", modifiers: [] });
 					return ok({});
 				default:
 					return ok({ state: "ready" });
@@ -338,6 +387,7 @@ export function iosDeviceLane(): LaneHarness {
 				},
 			),
 		taps: () => taps,
+		keys: () => keys,
 		frame: (count) => frameAfterTaps(count, IOS_SCREENSHOT_SCALE),
 		killTool: () => {
 			runner.stop(true);
@@ -373,6 +423,18 @@ export function webCdpLane(): LaneHarness & { browser: FakeCdp } {
 				onSessionDead,
 			}),
 		taps: () => browser.clicks,
+		// A key pressed down that is not itself a modifier, with the modifiers its bits hold.
+		keys: () =>
+			browser.keyEvents.flatMap((event) => {
+				const key = (Object.keys(CDP_KEYS) as KeyName[]).find(
+					(name) => CDP_KEYS[name].code === event.code,
+				);
+				if (!key || event.type === "keyUp") return [];
+				const modifiers = KEY_MODIFIERS.filter(
+					(modifier) => ((event.modifiers ?? 0) & CDP_MODIFIERS[modifier].bit) !== 0,
+				);
+				return [{ key, modifiers }];
+			}),
 		frame: (count) => browser.frame(count),
 		killTool: () => browser.kill(),
 		browser,

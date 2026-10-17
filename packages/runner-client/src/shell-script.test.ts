@@ -290,6 +290,24 @@ yoqa action open-url --url 'https://example.com'
 		]);
 	});
 
+	test("converts a key with its modifiers, and formats it back", () => {
+		const line = "yoqa action key Tab --modifiers Shift,Control";
+		const result = shellToCaseScript(`${line}\nyoqa action key enter`, { savedAt: 1 });
+		expect(result.errors).toEqual([]);
+		expect(result.script?.actions).toEqual([
+			{ type: "key", key: "Tab", modifiers: ["Shift", "Control"] },
+			{ type: "key", key: "Enter" },
+		]);
+		expect(
+			formatActionShellLine({ kind: "key", key: "Tab", modifiers: ["Shift", "Control"] }),
+		).toBe(line);
+	});
+
+	test("reports a key outside the fixed set as a parse error", () => {
+		const result = parseYoqaShellScript("yoqa action key F5");
+		expect(result.errors[0]?.message).toContain('Unknown key "F5"');
+	});
+
 	test("converts swipe coordinates", () => {
 		const result = shellToCaseScript(
 			"yoqa action swipe --x 500 --y 800 --x2 500 --y2 200 --duration 400",

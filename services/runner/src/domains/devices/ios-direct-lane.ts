@@ -1,6 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { KEY_NAMES, type KeyName } from "@yoqa/runner-client";
 import { type PointerSize, toPx } from "./android-gestures";
 import { requireIdbBins } from "./idb-companion";
 import { looksLikePhysicalIosUdid } from "./ios-udid";
@@ -8,10 +9,12 @@ import {
 	type CapturedFrame,
 	DeadSessionError,
 	type DeviceSession,
+	type KeySupport,
 	type LiveStream,
 	type PointerPhase,
 	type ScreenRecording,
 	type SessionOptions,
+	assertKeySupported,
 	guardToolLoss,
 	reportLaneFallback,
 } from "./lane";
@@ -26,6 +29,27 @@ const IOS_ACCEPT_LABELS = ["Allow While Using App", "Allow Once", "Allow", "OK"]
 const IOS_DISMISS_LABELS = ["Don't Allow", "Don’t Allow", "Don't allow"] as const;
 /** What `type` sends per idb call: a whole emoji or accented letter, never half of one. */
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** USB HID keyboard usage codes for the `key` Action's keys, sent with `idb ui key`. */
+export const IOS_HID_KEYCODES: Record<KeyName, number> = {
+	Enter: 40,
+	Escape: 41,
+	Backspace: 42,
+	Tab: 43,
+	Space: 44,
+	Home: 74,
+	PageUp: 75,
+	Delete: 76,
+	End: 77,
+	PageDown: 78,
+	ArrowRight: 79,
+	ArrowLeft: 80,
+	ArrowDown: 81,
+	ArrowUp: 82,
+};
+
+/** `idb ui key` presses one key and lets go, so it cannot hold a modifier down. */
+const IOS_SIMULATOR_KEY_SUPPORT: KeySupport = { keys: KEY_NAMES, modifiers: false };
 
 export type IdbResult = {
 	stdout: string;
@@ -470,6 +494,13 @@ export async function createIosDirectSession(
 		});
 	};
 
+	const key: DeviceSession["key"] = async (name, modifiers = []) => {
+		assertKeySupported(IOS_SIMULATOR_KEY_SUPPORT, "on an iOS simulator", name, modifiers);
+		await withActionLock(async () => {
+			await run(["ui", "key", String(IOS_HID_KEYCODES[name]), "--udid", udid], "idb ui key");
+		});
+	};
+
 	const activateApp = async (appId: string) => {
 		await withActionLock(async () => {
 			lastAppId = appId;
@@ -545,6 +576,8 @@ export async function createIosDirectSession(
 		swipe,
 		drag: (x1, y1, x2, y2, durationMs = 800) => swipe(x1, y1, x2, y2, durationMs),
 		type,
+		keySupport: IOS_SIMULATOR_KEY_SUPPORT,
+		key,
 		activateApp,
 		setTargetApp: (appId) => {
 			lastAppId = appId;

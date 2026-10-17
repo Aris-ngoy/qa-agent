@@ -1,11 +1,15 @@
-import type {
-	ActionRequest,
-	CallUsage,
-	Run,
-	RunStatus,
-	RunStep,
-	RunTestStatus,
-	StepPhases,
+import { z } from "zod";
+import { formatKeyChord } from "./keys";
+import {
+	type ActionRequest,
+	type CallUsage,
+	type Run,
+	type RunStatus,
+	type RunStep,
+	type RunTestStatus,
+	type StepPhases,
+	keyModifierSchema,
+	keyNameSchema,
 } from "./schemas";
 import { formatActionShellLine, formatAssertShellLine, formatSleepShellLine } from "./shell-script";
 
@@ -166,6 +170,14 @@ function summarizeActionRecord(record: Record<string, unknown>): string {
 	if (type === "terminate-app") return "Terminate app";
 	if (type === "restart-app") return "Restart app";
 	if (type === "background-app") return "Background app";
+	if (type === "key") {
+		const modifiers = Array.isArray(record.modifiers)
+			? record.modifiers.filter((value): value is string => typeof value === "string")
+			: [];
+		return typeof record.key === "string"
+			? `Press ${formatKeyChord(record.key, modifiers)}`
+			: "Press key";
+	}
 	if (type === "open-url") {
 		return typeof record.url === "string" && record.url.trim()
 			? `Open URL: ${record.url}`
@@ -259,6 +271,15 @@ export function formatStepCommand(action: unknown): string | null {
 		request = { kind: "background-app" };
 		const seconds = optionalFiniteNumber(record.seconds);
 		if (seconds != null) request.seconds = seconds;
+	} else if (type === "key") {
+		const key = keyNameSchema.safeParse(record.key);
+		const modifiers = z.array(keyModifierSchema).safeParse(record.modifiers);
+		if (!key.success) return null;
+		request = {
+			kind: "key",
+			key: key.data,
+			...(modifiers.success && modifiers.data.length > 0 ? { modifiers: modifiers.data } : {}),
+		};
 	} else if (type === "open-url") {
 		request = { kind: "open-url" };
 		const url = optionalTrimmedString(record.url);
