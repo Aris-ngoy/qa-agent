@@ -17,11 +17,11 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
-	type AxNode,
 	type CdpClient,
 	CdpClosedError,
 	type CdpCommands,
 	type CdpMethod,
+	type DocumentSnapshot,
 	connectCdp,
 } from "./cdp-client";
 import { attachPortOf, browserSocketUrl } from "./chromium-attach";
@@ -32,6 +32,7 @@ import {
 	type PointerPhase,
 	type SessionOptions,
 } from "./lane";
+import type { WebAxSource, WebAxSourceNode } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
 export type WebDirectDeps = {
@@ -43,9 +44,6 @@ export type WebDirectDeps = {
 
 /** Typed text is cut at a newline, which presses Enter. */
 const NEWLINE = /(\r?\n)/;
-
-/** Roles that only hold the page together; the Screen never names them. */
-const STRUCTURAL_ROLES = new Set(["RootWebArea", "InlineTextBox", "LineBreak", "none"]);
 
 function notYet(what: string): () => Promise<never> {
 	return () => Promise.reject(new Error(`${what} is not available on the web Direct lane yet`));
@@ -65,17 +63,37 @@ async function pickPage(client: CdpClient): Promise<string> {
 	return (await client.send("Target.createTarget", { url: "about:blank" })).targetId;
 }
 
-/** A node's border box as x, y, width, height. */
-function boxOf(border: number[]): { x: number; y: number; width: number; height: number } {
-	const xs = [border[0], border[2], border[4], border[6]].map(Number);
-	const ys = [border[1], border[3], border[5], border[7]].map(Number);
-	const x = Math.min(...xs);
-	const y = Math.min(...ys);
-	return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
-}
+type ElementLayout = Pick<WebAxSourceNode, "bounds" | "testId" | "domId">;
 
-function textOf(value: AxNode["name"]): string {
-	return typeof value?.value === "string" ? value.value : "";
+/**
+ * Each laid-out element of the main frame by its backend node id: its box in the
+ * viewport's CSS pixels (the snapshot's are in the document's, so scrolling is taken
+ * off) and its `data-testid` and `id` attributes.
+ */
+function layoutByBackendId(
+	documents: DocumentSnapshot[],
+	strings: string[],
+): Map<number, ElementLayout> {
+	const layouts = new Map<number, ElementLayout>();
+	const doc = documents[0];
+	if (!doc) return layouts;
+	const scrollX = doc.scrollOffsetX ?? 0;
+	const scrollY = doc.scrollOffsetY ?? 0;
+	doc.layout.nodeIndex.forEach((nodeIndex, layoutIndex) => {
+		const backendId = doc.nodes.backendNodeId?.[nodeIndex];
+		const [x = 0, y = 0, width = 0, height = 0] = doc.layout.bounds[layoutIndex] ?? [];
+		if (backendId === undefined || layouts.has(backendId)) return;
+		const layout: ElementLayout = { bounds: { x: x - scrollX, y: y - scrollY, width, height } };
+		const attributes = doc.nodes.attributes?.[nodeIndex] ?? [];
+		for (let at = 0; at + 1 < attributes.length; at += 2) {
+			const name = strings[attributes[at] ?? -1];
+			const value = strings[attributes[at + 1] ?? -1];
+			if (name === "data-testid" && value) layout.testId = value;
+			if (name === "id" && value) layout.domId = value;
+		}
+		layouts.set(backendId, layout);
+	});
+	return layouts;
 }
 
 export async function createWebDirectSession(
@@ -207,30 +225,22 @@ export async function createWebDirectSession(
 	};
 
 	/**
-	 * The page's named accessibility nodes with their boxes, as the JSON the Screen reads,
-	 * in the viewport's CSS pixels. A node with no layout box is left out.
+	 * The page's full accessibility tree, as the JSON the Screen reads. Each node of an
+	 * element that is laid out carries its box and ids, from one DOM snapshot, so a large
+	 * page costs two commands, not one per node.
 	 */
 	const pageSource = async () => {
-		const { nodes } = await call("Accessibility.getFullAXTree", {});
-		const elements = [];
-		for (const node of nodes) {
-			const role = textOf(node.role);
-			const label = textOf(node.name);
-			if (node.ignored || !label || STRUCTURAL_ROLES.has(role)) continue;
-			if (node.backendDOMNodeId === undefined) continue;
-			const box = await call("DOM.getBoxModel", { backendNodeId: node.backendDOMNodeId }).catch(
-				(error: unknown) => {
-					if (error instanceof DeadSessionError) throw error;
-					return null;
-				},
-			);
-			if (!box) continue;
-			const disabled = node.properties?.some(
-				(property) => property.name === "disabled" && property.value?.value === true,
-			);
-			elements.push({ type: role, label, frame: boxOf(box.model.border), enabled: !disabled });
-		}
-		return JSON.stringify({ elements });
+		const [{ nodes }, snapshot] = await Promise.all([
+			call("Accessibility.getFullAXTree", {}),
+			call("DOMSnapshot.captureSnapshot", { computedStyles: [] }),
+		]);
+		const layouts = layoutByBackendId(snapshot.documents, snapshot.strings);
+		const axTree = nodes.map((node): WebAxSourceNode => {
+			const layout =
+				node.backendDOMNodeId === undefined ? undefined : layouts.get(node.backendDOMNodeId);
+			return layout ? { ...node, ...layout } : node;
+		});
+		return JSON.stringify({ axTree } satisfies WebAxSource);
 	};
 
 	let pointerDown = false;

@@ -1,0 +1,205 @@
+{
+	"axTree": [
+		{
+			"nodeId": "1",
+			"ignored": false,
+			"role": { "type": "internalRole", "value": "RootWebArea" },
+			"name": { "type": "computedString", "value": "Sign in – Acme" },
+			"childIds": ["2"],
+			"backendDOMNodeId": 1,
+			"bounds": { "x": 0, "y": 0, "width": 1280, "height": 2400 }
+		},
+		{
+			"nodeId": "2",
+			"ignored": false,
+			"role": { "type": "role", "value": "generic" },
+			"name": { "type": "computedString", "value": "" },
+			"parentId": "1",
+			"childIds": ["3", "6", "7", "8", "10", "12", "13", "14", "15", "16", "17", "18"],
+			"backendDOMNodeId": 2,
+			"bounds": { "x": 0, "y": 0, "width": 1280, "height": 2400 }
+		},
+		{
+			"nodeId": "3",
+			"ignored": false,
+			"role": { "type": "role", "value": "heading" },
+			"name": { "type": "computedString", "value": "Welcome   back" },
+			"properties": [{ "name": "level", "value": { "type": "integer", "value": 1 } }],
+			"parentId": "2",
+			"childIds": ["4"],
+			"backendDOMNodeId": 3,
+			"bounds": { "x": 64, "y": 40, "width": 640, "height": 48 }
+		},
+		{
+			"nodeId": "4",
+			"ignored": false,
+			"role": { "type": "internalRole", "value": "StaticText" },
+			"name": { "type": "computedString", "value": "Welcome back" },
+			"parentId": "3",
+			"childIds": ["5"],
+			"backendDOMNodeId": 4,
+			"bounds": { "x": 64, "y": 40, "width": 300, "height": 48 }
+		},
+		{
+			"nodeId": "5",
+			"ignored": false,
+			"role": { "type": "internalRole", "value": "InlineTextBox" },
+			"name": { "type": "computedString", "value": "Welcome back" },
+			"parentId": "4",
+			"childIds": [],
+			"backendDOMNodeId": 4
+		},
+		{
+			"nodeId": "6",
+			"ignored": false,
+			"role": { "type": "role", "value": "textbox" },
+			"name": { "type": "computedString", "value": "Email" },
+			"value": { "type": "string", "value": "" },
+			"properties": [
+				{ "name": "focusable", "value": { "type": "booleanOrUndefined", "value": true } }
+			],
+			"parentId": "2",
+			"childIds": [],
+			"backendDOMNodeId": 6,
+			"domId": "email",
+			"bounds": { "x": 64, "y": 120, "width": 640, "height": 40 }
+		},
+		{
+			"nodeId": "7",
+			"ignored": false,
+			"role": { "type": "role", "value": "textbox" },
+			"name": { "type": "computedString", "value": "Password" },
+			"parentId": "2",
+			"childIds": [],
+			"backendDOMNodeId": 7,
+			"domId": ":r1:",
+			"bounds": { "x": 64, "y": 176, "width": 640, "height": 40 }
+		},
+		{
+			"nodeId": "8",
+			"ignored": false,
+			"role": { "type": "role", "value": "button" },
+			"name": { "type": "computedString", "value": "Sign in" },
+			"properties": [
+				{ "name": "focusable", "value": { "type": "booleanOrUndefined", "value": true } }
+			],
+			"parentId": "2",
+			"childIds": ["9"],
+			"backendDOMNodeId": 8,
+			"domId": "submit",
+			"testId": "sign-in-button",
+			"bounds": { "x": 64, "y": 240, "width": 128, "height": 40 }
+		},
+		{
+			"nodeId": "9",
+			"ignored": false,
+			"role": { "type": "internalRole", "value": "StaticText" },
+			"name": { "type": "computedString", "value": "Sign in" },
+			"parentId": "8",
+			"childIds": [],
+			"backendDOMNodeId": 9,
+			"bounds": { "x": 80, "y": 250, "width": 60, "height": 20 }
+		},
+		{
+			"nodeId": "10",
+			"ignored": false,
+			"role": { "type": "role", "value": "link" },
+			"name": { "type": "computedString", "value": "Forgot password?" },
+			"parentId": "2",
+			"childIds": ["11"],
+			"backendDOMNodeId": 10,
+			"bounds": { "x": 64, "y": 296, "width": 128, "height": 16 }
+		},
+		{
+			"nodeId": "11",
+			"ignored": false,
+			"role": { "type": "internalRole", "value": "StaticText" },
+			"name": { "type": "computedString", "value": "Forgot password?" },
+			"parentId": "10",
+			"childIds": [],
+			"backendDOMNodeId": 11,
+			"bounds": { "x": 64, "y": 296, "width": 128, "height": 16 }
+		},
+		{
+			"nodeId": "12",
+			"ignored": false,
+			"role": { "type": "role", "value": "button" },
+			"name": { "type": "computedString", "value": "Use a passkey" },
+			"properties": [{ "name": "disabled", "value": { "type": "boolean", "value": true } }],
+			"parentId": "2",
+			"childIds": [],
+			"backendDOMNodeId": 12,
+			"bounds": { "x": 224, "y": 240, "width": 160, "height": 40 }
+		},
+		{
+			"nodeId": "13",
+			"ignored": true,
+			"ignoredReasons": [{ "name": "notRendered", "value": { "type": "boolean", "value": true } }],
+			"role": { "type": "role", "value": "none" },
+			"parentId": "2",
+			"childIds": [],
+			"backendDOMNodeId": 13
+		},
+		{
+			"nodeId": "14",
+			"ignored": false,
+			"role": { "type": "role", "value": "button" },
+			"name": { "type": "computedString", "value": "Collapsed" },
+			"parentId": "2",
+			"childIds": [],
+			"backendDOMNodeId": 14,
+			"bounds": { "x": 64, "y": 330, "width": 0, "height": 0 }
+		},
+		{
+			"nodeId": "15",
+			"ignored": false,
+			"role": { "type": "role", "value": "button" },
+			"name": { "type": "computedString", "value": "Below the fold" },
+			"parentId": "2",
+			"childIds": [],
+			"backendDOMNodeId": 15,
+			"bounds": { "x": 64, "y": 2000, "width": 128, "height": 40 }
+		},
+		{
+			"nodeId": "16",
+			"ignored": false,
+			"role": { "type": "role", "value": "button" },
+			"name": { "type": "computedString", "value": "" },
+			"parentId": "2",
+			"childIds": [],
+			"backendDOMNodeId": 16,
+			"domId": "close",
+			"bounds": { "x": 1216, "y": 16, "width": 48, "height": 48 }
+		},
+		{
+			"nodeId": "17",
+			"ignored": false,
+			"role": { "type": "role", "value": "paragraph" },
+			"name": { "type": "computedString", "value": "" },
+			"parentId": "2",
+			"childIds": ["19"],
+			"backendDOMNodeId": 17,
+			"bounds": { "x": 64, "y": 400, "width": 640, "height": 20 }
+		},
+		{
+			"nodeId": "18",
+			"ignored": false,
+			"role": { "type": "role", "value": "image" },
+			"name": { "type": "computedString", "value": "" },
+			"parentId": "2",
+			"childIds": [],
+			"backendDOMNodeId": 18,
+			"bounds": { "x": 900, "y": 120, "width": 200, "height": 200 }
+		},
+		{
+			"nodeId": "19",
+			"ignored": false,
+			"role": { "type": "internalRole", "value": "StaticText" },
+			"name": { "type": "computedString", "value": "By signing in you agree to the terms." },
+			"parentId": "17",
+			"childIds": [],
+			"backendDOMNodeId": 19,
+			"bounds": { "x": 64, "y": 400, "width": 400, "height": 20 }
+		}
+	]
+}

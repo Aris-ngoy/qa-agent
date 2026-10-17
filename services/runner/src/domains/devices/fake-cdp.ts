@@ -2,7 +2,8 @@
  * A faked Chromium for tests: a local server that answers `/json/version` and speaks
  * enough CDP over its WebSocket for the web Direct lane. It records what reached the page
  * (clicks, text, navigations, keys) in CSS pixels, and serves a viewport-sized PNG that
- * darkens with each click, plus an accessibility tree with whatever nodes it is given.
+ * darkens with each click, plus an accessibility tree with whatever nodes it is given and
+ * a DOM snapshot that lays them out.
  */
 import type { ServerWebSocket } from "bun";
 import { encodeRgbaPng } from "../runs/coord-grid";
@@ -14,6 +15,12 @@ export type FakeAxNode = {
 	/** In CSS pixels of the viewport. */
 	box: { x: number; y: number; width: number; height: number };
 	disabled?: boolean;
+	/** The element's `id` attribute. */
+	domId?: string;
+	/** The element's `data-testid` attribute. */
+	testId?: string;
+	/** Hidden from assistive technology: an ignored node with no layout box. */
+	hidden?: boolean;
 };
 
 export type FakeCdpOptions = {
@@ -23,6 +30,8 @@ export type FakeCdpOptions = {
 	deviceScaleFactor?: number;
 	/** The whole page's height in CSS pixels, taller than the viewport when it scrolls. */
 	pageHeight?: number;
+	/** How far the page is scrolled, in CSS pixels. */
+	scroll?: { x: number; y: number };
 	/** `Page.navigate`'s `errorText` for a URL the page cannot load. */
 	navigateError?: string;
 	nodes?: FakeAxNode[];
@@ -69,15 +78,64 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	};
 
 	const axTree = (): AxNode[] => [
-		{ nodeId: "1", role: { value: "RootWebArea" }, name: { value: "" }, backendDOMNodeId: 1 },
+		{
+			nodeId: "1",
+			role: { value: "RootWebArea" },
+			name: { value: "" },
+			childIds: nodes.map((_, index) => String(index + 2)),
+			backendDOMNodeId: 1,
+		},
 		...nodes.map((node, index) => ({
 			nodeId: String(index + 2),
+			...(node.hidden ? { ignored: true } : {}),
 			role: { value: node.role },
 			name: { value: node.name },
 			properties: node.disabled ? [{ name: "disabled", value: { value: true } }] : [],
+			parentId: "1",
+			childIds: [],
 			backendDOMNodeId: index + 2,
 		})),
 	];
+
+	/**
+	 * `DOMSnapshot.captureSnapshot`: the document node, then one element per node with its
+	 * attributes, and a layout box in document coordinates for each node that is shown.
+	 */
+	const domSnapshot = () => {
+		const strings: string[] = [];
+		const ref = (text: string) => {
+			const at = strings.indexOf(text);
+			return at >= 0 ? at : strings.push(text) - 1;
+		};
+		const scroll = options.scroll ?? { x: 0, y: 0 };
+		const pageHeight = options.pageHeight ?? options.viewport.height;
+		const layout = { nodeIndex: [0], bounds: [[0, 0, options.viewport.width, pageHeight]] };
+		nodes.forEach((node, index) => {
+			if (node.hidden) return;
+			const { x, y, width, height } = node.box;
+			layout.nodeIndex.push(index + 1);
+			layout.bounds.push([x + scroll.x, y + scroll.y, width, height]);
+		});
+		const attributes = nodes.map((node) => [
+			...(node.domId ? [ref("id"), ref(node.domId)] : []),
+			...(node.testId ? [ref("data-testid"), ref(node.testId)] : []),
+		]);
+		return {
+			documents: [
+				{
+					nodes: {
+						parentIndex: [-1, ...nodes.map(() => 0)],
+						backendNodeId: [1, ...nodes.map((_, index) => index + 2)],
+						attributes: [[], ...attributes],
+					},
+					layout,
+					scrollOffsetX: scroll.x,
+					scrollOffsetY: scroll.y,
+				},
+			],
+			strings,
+		};
+	};
 
 	const answer = (message: Message): unknown => {
 		const params = message.params ?? {};
@@ -115,18 +173,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				return {};
 			case "Accessibility.getFullAXTree":
 				return { nodes: axTree() };
-			case "DOM.getBoxModel": {
-				const node = nodes[Number(params.backendNodeId) - 2];
-				if (!node) throw new Error("Could not compute box model.");
-				const { x, y, width, height } = node.box;
-				return {
-					model: {
-						border: [x, y, x + width, y, x + width, y + height, x, y + height],
-						width,
-						height,
-					},
-				};
-			}
+			case "DOMSnapshot.captureSnapshot":
+				return domSnapshot();
 			default:
 				return {};
 		}

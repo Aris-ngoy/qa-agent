@@ -1212,4 +1212,22 @@ describe("snapTapToElement", () => {
 		};
 		expect(snapTapToElement(tap(50, 150), [close, near]).element?.id).toBe("near");
 	});
+
+	test("snaps onto web controls by their accessibility roles", () => {
+		const web = (type: string) => ({ type, label: type, x: 100, y: 100, width: 200, height: 40 });
+		for (const type of [
+			"button",
+			"link",
+			"textbox",
+			"searchbox",
+			"combobox",
+			"option",
+			"checkbox",
+		]) {
+			expect(snapTapToElement(tap(150, 180), [web(type)]).element?.type).toBe(type);
+		}
+		for (const type of ["heading", "StaticText", "image"]) {
+			expect(snapTapToElement(tap(150, 180), [web(type)]).element).toBeNull();
+		}
+	});
 });

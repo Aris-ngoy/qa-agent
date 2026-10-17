@@ -5,8 +5,6 @@
  * flat session (`sessionId`), on the one browser socket.
  */
 
-type Quad = [number, number, number, number, number, number, number, number];
-
 export type AxValue = { type?: string; value?: unknown };
 
 /** One node of `Accessibility.getFullAXTree`. Only the fields the lane reads. */
@@ -15,8 +13,28 @@ export type AxNode = {
 	ignored?: boolean;
 	role?: AxValue;
 	name?: AxValue;
+	/** A field's current text. */
+	value?: AxValue;
 	properties?: Array<{ name: string; value?: AxValue }>;
+	parentId?: string;
+	childIds?: string[];
 	backendDOMNodeId?: number;
+};
+
+/**
+ * One frame's document in `DOMSnapshot.captureSnapshot`: its nodes as parallel arrays,
+ * and a layout box (x, y, width, height in document CSS pixels) for each node shown.
+ * String fields index the snapshot's shared `strings` table.
+ */
+export type DocumentSnapshot = {
+	nodes: {
+		backendNodeId?: number[];
+		/** Each node's attributes as name, value string indexes in turn. */
+		attributes?: number[][];
+	};
+	layout: { nodeIndex: number[]; bounds: number[][] };
+	scrollOffsetX?: number;
+	scrollOffsetY?: number;
 };
 
 export type TargetInfo = { targetId: string; type: string; url: string; attached?: boolean };
@@ -57,9 +75,9 @@ export type CdpCommands = {
 	"Input.dispatchKeyEvent": { params: KeyEvent; result: Record<string, never> };
 	"Input.insertText": { params: { text: string }; result: Record<string, never> };
 	"Accessibility.getFullAXTree": { params: Record<string, never>; result: { nodes: AxNode[] } };
-	"DOM.getBoxModel": {
-		params: { backendNodeId: number };
-		result: { model: { border: Quad; width: number; height: number } };
+	"DOMSnapshot.captureSnapshot": {
+		params: { computedStyles: string[] };
+		result: { documents: DocumentSnapshot[]; strings: string[] };
 	};
 };
 
