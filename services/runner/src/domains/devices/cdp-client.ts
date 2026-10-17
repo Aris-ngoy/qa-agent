@@ -37,7 +37,14 @@ export type DocumentSnapshot = {
 	scrollOffsetY?: number;
 };
 
-export type TargetInfo = { targetId: string; type: string; url: string; attached?: boolean };
+export type TargetInfo = {
+	targetId: string;
+	type: string;
+	url: string;
+	attached?: boolean;
+	/** The page that opened this one (`window.open`, a `target=_blank` link). */
+	openerId?: string;
+};
 
 type MouseEvent = {
 	type: "mousePressed" | "mouseReleased" | "mouseMoved" | "mouseWheel";
@@ -68,6 +75,10 @@ export type CdpCommands = {
 	"Target.getTargetInfo": {
 		params: { targetId: string };
 		result: { targetInfo: TargetInfo };
+	};
+	"Target.setDiscoverTargets": {
+		params: { discover: boolean };
+		result: Record<string, never>;
 	};
 	"Target.createTarget": { params: { url: string }; result: { targetId: string } };
 	"Target.closeTarget": { params: { targetId: string }; result: { success?: boolean } };
