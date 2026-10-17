@@ -107,6 +107,11 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		if (sessionId && !page) throw new Error(`Session with given id not found: ${sessionId}`);
 		return page;
 	};
+	const targetOf = (targetId: unknown) => {
+		const page = pages.find((candidate) => candidate.targetId === targetId);
+		if (!page) throw new Error("No target with given id found");
+		return page;
+	};
 	const closeTarget = (page: Page) => {
 		pages.splice(pages.indexOf(page), 1);
 		if (page.sessionId) {
@@ -199,8 +204,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 					targetInfos: pages.map(({ targetId, url }) => ({ targetId, type: "page", url })),
 				};
 			case "Target.getTargetInfo": {
-				const target = pages.find((candidate) => candidate.targetId === params.targetId);
-				if (!target) throw new Error("No target with given id found");
+				const target = targetOf(params.targetId);
 				return { targetInfo: { targetId: target.targetId, type: "page", url: target.url } };
 			}
 			case "Target.createTarget": {
@@ -209,14 +213,12 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				return { targetId: created.targetId };
 			}
 			case "Target.attachToTarget": {
-				const target = pages.find((candidate) => candidate.targetId === params.targetId);
-				if (!target) throw new Error("No target with given id found");
+				const target = targetOf(params.targetId);
 				target.sessionId = `session-${target.targetId}`;
 				return { sessionId: target.sessionId };
 			}
 			case "Target.closeTarget": {
-				const target = pages.find((candidate) => candidate.targetId === params.targetId);
-				if (!target) throw new Error("No target with given id found");
+				const target = targetOf(params.targetId);
 				closeTarget(target);
 				return { success: true };
 			}
