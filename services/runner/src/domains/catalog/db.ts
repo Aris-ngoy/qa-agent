@@ -402,6 +402,12 @@ function migrateAppsKnowledge(sqlite: Database): void {
 	addColumnIfMissing(sqlite, "apps", "knowledge", "knowledge TEXT NOT NULL DEFAULT ''", existing);
 }
 
+function migrateAppsWebUrl(sqlite: Database): void {
+	const existing = tableColumns(sqlite, "apps");
+	if (existing.size === 0) return;
+	addColumnIfMissing(sqlite, "apps", "web_url", "web_url TEXT NOT NULL DEFAULT ''", existing);
+}
+
 export function getCatalogDbPath(): string {
 	return process.env.YOQA_DB_PATH ?? DEFAULT_DB_PATH;
 }
@@ -430,10 +436,4 @@ export function closeCatalogDb(): void {
 	sqliteClient?.close();
 	sqliteClient = null;
 	catalogDb = null;
-}
-
-function migrateAppsWebUrl(sqlite: Database): void {
-	const existing = tableColumns(sqlite, "apps");
-	if (existing.size === 0) return;
-	addColumnIfMissing(sqlite, "apps", "web_url", "web_url TEXT NOT NULL DEFAULT ''", existing);
 }
