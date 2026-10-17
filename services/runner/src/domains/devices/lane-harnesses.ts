@@ -349,9 +349,9 @@ export function iosDeviceLane(): LaneHarness {
 /**
  * Web Direct: a user-started Chromium attached by its debug port, faked as a local CDP
  * endpoint. Clicks are recorded in the page's CSS pixels, and its screenshot is the
- * viewport at 2× those pixels, as on a Retina display.
+ * viewport at 2× those pixels, as on a Retina display. The harness also hands over its
+ * fake browser, for the web-only contract cases.
  */
-/** The web harness also hands over its fake browser, for the web-only contract cases. */
 export function webCdpLane(): LaneHarness & { browser: FakeCdp } {
 	const browser = startFakeCdp({
 		viewport: DEVICE,
