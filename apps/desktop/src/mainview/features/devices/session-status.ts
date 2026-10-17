@@ -3,10 +3,15 @@ import type { SelectedDevice } from "./select-device-modal";
 
 const LANE_LABELS: Record<LaneName, string> = { direct: "Direct" };
 
+/** A Lane as the desktop names it (`Direct`). */
+export function laneLabel(lane: LaneName): string {
+	return LANE_LABELS[lane];
+}
+
 /** The session pill: "Live · Direct", or "Connected · Direct" when there is no live stream. */
 export function sessionPillLabel(session: Pick<ActiveDeviceResponse, "streamReady" | "lane">) {
 	const state = session.streamReady === false ? "Connected" : "Live";
-	return session.lane ? `${state} · ${LANE_LABELS[session.lane]}` : state;
+	return session.lane ? `${state} · ${laneLabel(session.lane)}` : state;
 }
 
 /** The Frame Feed the runner reported; an older runner only says `streamReady`. */

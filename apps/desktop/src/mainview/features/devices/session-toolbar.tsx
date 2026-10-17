@@ -5,6 +5,7 @@ import {
 } from "@/features/devices/select-device-modal";
 import { ServersDoctorPanel } from "@/features/devices/servers-doctor-panel";
 import { sessionPillLabel } from "@/features/devices/session-status";
+import { withViewport } from "@/features/devices/web-device";
 import { resolveTheme } from "@/features/settings/ui-preferences";
 import { useThemeMode } from "@/features/settings/use-theme-mode";
 import { Button, ListBox, Select } from "@heroui/react";
@@ -16,8 +17,8 @@ const PLATFORM_LABELS: Record<DevicePlatform, string> = {
 	android: "Android",
 	web: "Web",
 };
-/** The platforms the bar offers. Web joins once the desktop can pick a browser. */
-const PICKER_PLATFORMS: DevicePlatform[] = ["ios", "android"];
+/** The platforms the bar offers. */
+const PICKER_PLATFORMS: DevicePlatform[] = ["ios", "android", "web"];
 const PLATFORMS = PICKER_PLATFORMS.map((id) => ({
 	id,
 	label: PLATFORM_LABELS[id],
@@ -187,8 +188,11 @@ export function SessionToolbar({
 	const [serversOpen, setServersOpen] = useState(false);
 	const connected = active != null;
 	const canRestart = connected || device != null;
-	/** A session's device the list does not have yet shows by its id. */
-	const deviceLabel = device?.label ?? active?.deviceId;
+	/** A session's device the list does not have yet shows by its id; a browser adds its preset. */
+	const listedLabel = device?.label ?? active?.deviceId;
+	const deviceLabel = listedLabel
+		? withViewport(listedLabel, platform, active?.viewport ?? device?.viewport)
+		: undefined;
 
 	const platformLabel = PLATFORM_LABELS[platform];
 
@@ -332,6 +336,7 @@ export function SessionToolbar({
 			<SelectDeviceModal
 				open={pickerOpen}
 				platform={platform}
+				viewport={device?.viewport}
 				onClose={() => setPickerOpen(false)}
 				onSelect={(selected) => {
 					onDeviceSelect(selected);

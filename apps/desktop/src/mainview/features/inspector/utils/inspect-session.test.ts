@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { RunnerRequestError } from "@yoqa/runner-client";
-import { isDeviceSessionGone, isDeviceUnreachable, isStaleSessionReply } from "./inspect-session";
+import {
+	feedModeFor,
+	isDeviceSessionGone,
+	isDeviceUnreachable,
+	isStaleSessionReply,
+} from "./inspect-session";
 
 describe("isDeviceSessionGone", () => {
 	test("matches runner 410 payloads", () => {
@@ -63,5 +68,46 @@ describe("isDeviceUnreachable", () => {
 		const error = new RunnerRequestError("Busy", 503, { error: "Busy" }, answeredBy);
 		expect(isDeviceUnreachable(error)).toBe(false);
 		expect(isDeviceUnreachable(new Error("Failed to refresh screen"))).toBe(false);
+	});
+});
+
+describe("feedModeFor", () => {
+	const SESSION = { deviceId: "dev-1", platform: "ios" as const, connectedAt: 1 };
+
+	test("streams a session whose Stream is ready", () => {
+		expect(
+			feedModeFor({
+				...SESSION,
+				streamState: "ready",
+				streamReady: true,
+				streamUrl: "/stream.mjpeg",
+			}),
+		).toBe("mjpeg");
+		expect(feedModeFor({ ...SESSION, mjpegPort: 9100 })).toBe("mjpeg");
+	});
+
+	test("polls a web session, whose Lane never streams", () => {
+		expect(
+			feedModeFor({
+				deviceId: "web-chrome",
+				platform: "web",
+				connectedAt: 1,
+				streamState: "none",
+				streamReady: false,
+				viewport: "desktop",
+			}),
+		).toBe("poll");
+	});
+
+	test("polls when the Stream failed, or there is nothing to stream from", () => {
+		expect(
+			feedModeFor({
+				...SESSION,
+				streamState: "failed",
+				streamReady: false,
+				streamUrl: "/stream.mjpeg",
+			}),
+		).toBe("poll");
+		expect(feedModeFor(SESSION)).toBe("poll");
 	});
 });

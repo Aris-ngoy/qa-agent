@@ -46,5 +46,5 @@ This has not been run against a real browser here (no macOS browser in this sand
 ## Follow-ups
 
 - `yoqa runs create` has no `--viewport`: a Run that opens its own session is desktop. Connect first to run at another preset.
-- The desktop app's connect has no preset choice yet; that belongs with web devices in the picker ([#311](https://github.com/Aris-ngoy/qa-agent/issues/311)). The skill docs are [#312](https://github.com/Aris-ngoy/qa-agent/issues/312).
+- Done in [#311](https://github.com/Aris-ngoy/qa-agent/issues/311): the desktop picker's preset choice ([web-devices.md](../desktop/web-devices.md)). The skill docs are [#312](https://github.com/Aris-ngoy/qa-agent/issues/312).
 - More presets (a tablet, an Android phone) are one entry each in `VIEWPORT_PRESETS`.
