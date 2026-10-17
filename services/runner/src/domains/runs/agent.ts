@@ -4,6 +4,7 @@ import {
 	KEY_MODIFIERS,
 	KEY_NAMES,
 	type ScreenElement,
+	formatKeyChord,
 	keyModifierSchema,
 	keyNameSchema,
 } from "@yoqa/runner-client";
@@ -803,7 +804,7 @@ function formatRecentActions(actions: AgentDecision[]): string {
 				return `${n}. open-url ${action.url ?? ""} — ${action.reason ?? ""}`;
 			}
 			if (action.type === "key") {
-				return `${n}. key ${[...(action.modifiers ?? []), action.key ?? "?"].join("+")} — ${action.reason ?? ""}`;
+				return `${n}. key ${formatKeyChord(action.key ?? "?", action.modifiers)} — ${action.reason ?? ""}`;
 			}
 			if (action.type === "wait") {
 				return `${n}. wait ${action.ms ?? "?"}ms — ${action.reason ?? ""}`;

@@ -23,7 +23,8 @@ async function yoqa(...args: string[]): Promise<void> {
 describe("yoqa action key", () => {
 	const runner = fakeRunner();
 	const autostart = process.env.YOQA_NO_AUTOSTART;
-	const exitCode = process.exitCode;
+	// Restored as 0 when unset: Bun keeps a failure code if `exitCode` is set back to undefined.
+	const exitCode = process.exitCode ?? 0;
 
 	beforeAll(() => {
 		process.env.YOQA_NO_AUTOSTART = "1";
