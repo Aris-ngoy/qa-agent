@@ -338,13 +338,13 @@ export function cleanWebAxSource(
 	const elements: ScreenElement[] = [];
 	for (const node of source.axTree) {
 		if (node.ignored || !node.bounds) continue;
+		if (node.bounds.width <= 0 || node.bounds.height <= 0) continue;
 		const type = axText(node.role);
 		if (WEB_STRUCTURAL_ROLES.has(type)) continue;
 		const label = axText(node.name) || axText(node.value);
-		const id = webIdOf(node);
 		if (!label && !WEB_CONTROL_ROLES.has(type)) continue;
 		if (WEB_TEXT_ROLES.has(type) && namedParentLabel(node).includes(label)) continue;
-		if (node.bounds.width <= 0 || node.bounds.height <= 0) continue;
+		const id = webIdOf(node);
 		const disabled = node.properties?.some(
 			(property) => property.name === "disabled" && property.value?.value === true,
 		);
