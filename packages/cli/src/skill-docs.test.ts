@@ -305,16 +305,15 @@ describe.each([
 });
 
 test("the repo's local skill copy matches the shipped skill", async () => {
-	const shipped = await markdownFiles(SKILL_DIR);
-	const local = await markdownFiles(LOCAL_SKILL_DIR);
-	expect(local.map((file) => file.slice(LOCAL_SKILL_DIR.length))).toEqual(
-		shipped.map((file) => file.slice(SKILL_DIR.length)),
-	);
+	const relativeFiles = async (dir: string) =>
+		(await markdownFiles(dir)).map((file) => file.slice(dir.length + 1));
+	const shipped = await relativeFiles(SKILL_DIR);
+	expect(await relativeFiles(LOCAL_SKILL_DIR)).toEqual(shipped);
 	for (const file of shipped) {
-		const twin = join(LOCAL_SKILL_DIR, file.slice(SKILL_DIR.length));
-		expect(`${twin}\n${await readFile(twin, "utf8")}`).toBe(
-			`${twin}\n${await readFile(file, "utf8")}`,
-		);
+		const local = await readFile(join(LOCAL_SKILL_DIR, file), "utf8");
+		const original = await readFile(join(SKILL_DIR, file), "utf8");
+		// The path leads the compared text so a mismatch names the file that drifted.
+		expect(`${file}\n${local}`).toBe(`${file}\n${original}`);
 	}
 });
 
