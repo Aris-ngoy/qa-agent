@@ -1,7 +1,7 @@
 import { useEnterOnce } from "@/app/motion/use-enter-once";
 import { ResizeHandle } from "@/app/resize/resize-handle";
 import { usePanelWidth } from "@/app/resize/use-panel-width";
-import { useApps } from "@/features/apps/context";
+import { useApps } from "@/features/apps/hooks/use-apps";
 import { ElementActionDialog } from "@/features/inspector/components/element-action-dialog";
 import { SaveAsTestCaseDialog } from "@/features/inspector/components/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/components/screenshot-panel";

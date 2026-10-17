@@ -1,5 +1,5 @@
 import { SideMenu } from "@/app/side-menu";
-import { SessionBar } from "@/features/devices/session-bar";
+import { SessionBar } from "@/features/devices/components/session-bar";
 import type { ReactNode } from "react";
 
 type AppShellProps = {

@@ -1,12 +1,12 @@
 import { initDesktopRpc } from "@/app/desktop-rpc";
 import { viewTransitionTypes } from "@/app/motion/route-rank";
 import { routeTree } from "@/app/route-tree";
-import { AppsProvider } from "@/features/apps/context";
-import { ActiveRunProvider } from "@/features/runs/active-run-context";
-import { SidebarShortcut } from "@/features/settings/sidebar-toggle";
-import { ThemeSync } from "@/features/settings/use-theme-mode";
-import { BootGate } from "@/features/splash/boot-gate";
-import { TestCaseSelectionProvider } from "@/features/test-cases/selection-context";
+import { AppsProvider } from "@/features/apps/hooks/use-apps";
+import { ActiveRunProvider } from "@/features/runs/hooks/use-active-run";
+import { SidebarShortcut } from "@/features/settings/components/sidebar-toggle";
+import { ThemeSync } from "@/features/settings/hooks/use-theme-mode";
+import { BootGate } from "@/features/splash/components/boot-gate";
+import { TestCaseSelectionProvider } from "@/features/test-cases/hooks/use-test-case-selection";
 import { Toast } from "@heroui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";

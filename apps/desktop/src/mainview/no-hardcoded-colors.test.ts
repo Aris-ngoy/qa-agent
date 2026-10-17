@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 /** Real brand colors (the Yoqa mark and third-party logos) that are the same in every theme. */
 const BRAND_MARK_FILES = new Set([
-	"features/splash/yoqa-mark.tsx",
-	"features/settings/providers/provider-logos.tsx",
-	"features/settings/brand-marks.tsx",
+	"features/splash/components/yoqa-mark.tsx",
+	"features/providers/components/provider-logos.tsx",
+	"features/settings/components/brand-marks.tsx",
 ]);
 
 const PALETTE =

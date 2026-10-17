@@ -1,4 +1,4 @@
-import { screenAspect } from "@/features/devices/web-device";
+import { screenAspect } from "@/features/devices/utils/web-device";
 import { LiveFrame } from "@/features/inspector/components/live-frame";
 import type { InspectorFeed$ } from "@/features/inspector/data/state/feed";
 import {

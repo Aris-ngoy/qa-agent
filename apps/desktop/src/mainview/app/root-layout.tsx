@@ -1,7 +1,7 @@
 import { startViewTransition } from "@/app/motion/start-view-transition";
 import { AppShell } from "@/app/shell";
-import { useApps } from "@/features/apps/context";
-import { WelcomePage } from "@/features/apps/welcome-page";
+import { WelcomePage } from "@/features/apps/components/welcome-page";
+import { useApps } from "@/features/apps/hooks/use-apps";
 import { Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";

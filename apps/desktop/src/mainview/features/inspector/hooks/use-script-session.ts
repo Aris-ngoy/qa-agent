@@ -1,5 +1,5 @@
 import { showErrorToast } from "@/app/show-error-toast";
-import type { Application } from "@/features/apps/context";
+import type { Application } from "@/features/apps/hooks/use-apps";
 import { readScreenshotBytes } from "@/features/inspector/data/api/screen";
 import { runInspectorCaseScript } from "@/features/inspector/data/api/script";
 import type { InspectorFeedController } from "@/features/inspector/data/state/feed";

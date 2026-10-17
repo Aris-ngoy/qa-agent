@@ -1,7 +1,7 @@
 import {
 	activeDeviceSessionQueryKey,
 	useActiveDeviceSession,
-} from "@/features/devices/use-active-device-session";
+} from "@/features/devices/hooks/usequery/use-active-device-session";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
