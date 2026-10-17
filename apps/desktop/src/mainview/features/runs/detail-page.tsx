@@ -1,4 +1,6 @@
 import { useReducedMotion } from "@/app/motion/use-reduced-motion";
+import { ResizeHandle } from "@/app/resize/resize-handle";
+import { usePanelWidth } from "@/app/resize/use-panel-width";
 import { getRunnerClient } from "@/app/runner-client";
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/context";
@@ -15,7 +17,9 @@ import {
 	runListResult,
 } from "@/features/runs/labels";
 import { ScreenshotCrossfade } from "@/features/runs/screenshot-crossfade";
+import { ScreenshotViewer } from "@/features/runs/screenshot-viewer";
 import { useArrivingIds, useFollowLatest } from "@/features/runs/use-follow-latest";
+import { type Size, frameAspect } from "@/features/runs/viewer-zoom";
 import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/data";
 import { Button, Modal, toast } from "@heroui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,7 +35,14 @@ import {
 	stepReasoning as reportStepReasoning,
 	suggestedRunReportBasename,
 } from "@yoqa/runner-client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+/** The Screenshot panel opens at this width; the step list always keeps at least `STEPS_MIN_WIDTH`. */
+const SCREENSHOT_PANEL_DEFAULT_WIDTH = 360;
+const SCREENSHOT_PANEL_MIN_WIDTH = 260;
+const STEPS_MIN_WIDTH = 400;
+/** The splitter takes the place of the old `gap-5`. */
+const HANDLE_WIDTH = 20;
 
 const STEP_ROW =
 	"grid grid-cols-[24px_minmax(0,1fr)] gap-3.5 border-t border-outline-variant py-3.5 first:border-t-transparent";
@@ -548,6 +559,20 @@ export function RunDetailPage() {
 	} | null>(null);
 	const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 	const [exportingFormat, setExportingFormat] = useState<"html" | "md" | null>(null);
+	const [shotSize, setShotSize] = useState<Size | null>(null);
+	const [viewerOpen, setViewerOpen] = useState(false);
+	const columnsRef = useRef<HTMLDivElement>(null);
+	const shotPanel = usePanelWidth({
+		storageKey: "yoqa.runs.screenshotPanelWidth",
+		defaultWidth: SCREENSHOT_PANEL_DEFAULT_WIDTH,
+		bounds: () => ({
+			min: SCREENSHOT_PANEL_MIN_WIDTH,
+			max:
+				(columnsRef.current?.clientWidth ?? Number.POSITIVE_INFINITY) -
+				STEPS_MIN_WIDTH -
+				HANDLE_WIDTH,
+		}),
+	});
 
 	useEffect(() => {
 		setActiveRun(runId);
@@ -774,6 +799,12 @@ export function RunDetailPage() {
 	const pageAspect = screenAspect(run.platform, run.viewport);
 	const shotIndex = shotStep ? steps.findIndex((step) => step.id === shotStep.id) : -1;
 	const stepNumber = new Map(steps.map((step, index) => [step.id, index + 1]));
+	const shotRatio = frameAspect(shotSize, pageAspect);
+	const shotLabel = shotIndex >= 0 ? `Step ${shotIndex + 1} of ${steps.length}` : "Screenshot";
+	const showStep = (index: number) => {
+		const step = steps[index];
+		return reviewMode && step ? () => setSelectedStepId(step.id) : undefined;
+	};
 
 	return (
 		<div className="flex h-full min-h-0 w-full max-w-[1320px] flex-1 flex-col gap-5">
@@ -836,9 +867,9 @@ export function RunDetailPage() {
 				</p>
 			) : null}
 
-			<div className="flex min-h-0 flex-1 flex-wrap items-start gap-5">
+			<div ref={columnsRef} className="flex min-h-0 flex-1">
 				<section
-					className="min-h-0 min-w-0 flex-[999] basis-[480px] overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest px-5 pt-1 pb-2"
+					className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest px-5 pt-1 pb-2"
 					onKeyDown={follow.onUserScroll}
 					onPointerDown={follow.onUserScroll}
 					onScroll={follow.onScroll}
@@ -910,38 +941,89 @@ export function RunDetailPage() {
 					) : null}
 				</section>
 
-				<aside className="flex w-full max-w-[360px] min-w-[280px] flex-1 flex-col gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+				<ResizeHandle
+					panel={shotPanel}
+					edge="start"
+					label="Resize screenshot panel"
+					className="w-5"
+				/>
+
+				{/* Stays put while the step list scrolls beside it. */}
+				<aside
+					className="flex max-h-full min-h-0 shrink-0 flex-col gap-3 self-start overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
+					style={{
+						width: shotPanel.width,
+						maxWidth: `calc(100% - ${STEPS_MIN_WIDTH + HANDLE_WIDTH}px)`,
+						minWidth: SCREENSHOT_PANEL_MIN_WIDTH,
+					}}
+				>
 					<div className="flex justify-between text-xs text-outline">
 						<span className="font-medium text-on-surface-variant">Screenshot</span>
 						<span className="font-mono">
 							{shotIndex >= 0 ? `step ${shotIndex + 1} / ${steps.length}` : "—"}
 						</span>
 					</div>
+					{/* The bezel wraps a screen shaped exactly like the screenshot, so it fills edge to edge. */}
 					<div
 						className={[
-							"relative overflow-hidden border-outline-variant bg-surface-container",
-							pageAspect ? "rounded-lg border-2" : "aspect-[9/19.5] rounded-[28px] border-[6px]",
+							"group relative mx-auto shrink-0 overflow-hidden border-outline-variant bg-surface-container",
+							pageAspect ? "rounded-lg border-2" : "rounded-[28px] border-[6px]",
 						].join(" ")}
-						style={pageAspect ? { aspectRatio: pageAspect } : undefined}
+						style={{
+							// As wide as the panel, but never taller than the window.
+							width: `min(100%, calc((100vh - 18rem) * ${shotRatio}))`,
+						}}
 					>
-						{screenshotUrl ? (
-							<ScreenshotCrossfade
-								alt={
-									reviewMode
-										? "Device screenshot for the selected step"
-										: "Latest device screenshot from the run"
-								}
-								src={screenshotUrl}
-							/>
-						) : (
-							<div className="flex h-full items-center justify-center px-5 text-center text-xs text-outline">
-								{isLive
-									? "Screenshot will appear as steps run"
-									: shotStep
-										? "No screenshot for this step"
-										: "No screenshot available"}
-							</div>
-						)}
+						<div className="relative w-full" style={{ aspectRatio: shotRatio }}>
+							{screenshotUrl ? (
+								<div className="absolute inset-0">
+									<ScreenshotCrossfade
+										alt={
+											reviewMode
+												? "Device screenshot for the selected step"
+												: "Latest device screenshot from the run"
+										}
+										onNaturalSize={(size) =>
+											setShotSize((current) =>
+												current?.width === size.width && current.height === size.height
+													? current
+													: size,
+											)
+										}
+										src={screenshotUrl}
+									/>
+									<button
+										aria-label="Open screenshot viewer"
+										className="absolute inset-0 flex cursor-zoom-in items-start justify-end p-2 outline-none"
+										onClick={() => setViewerOpen(true)}
+										type="button"
+									>
+										<span className="inline-flex size-8 items-center justify-center rounded-lg bg-scrim/60 text-on-scrim opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+											<svg
+												aria-hidden="true"
+												className="size-4"
+												fill="none"
+												stroke="currentColor"
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												strokeWidth="2"
+												viewBox="0 0 24 24"
+											>
+												<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+											</svg>
+										</span>
+									</button>
+								</div>
+							) : (
+								<div className="absolute inset-0 flex items-center justify-center px-5 text-center text-xs text-outline">
+									{isLive
+										? "Screenshot will appear as steps run"
+										: shotStep
+											? "No screenshot for this step"
+											: "No screenshot available"}
+								</div>
+							)}
+						</div>
 					</div>
 					{reviewMode && steps.length > 0 ? (
 						<div className="flex flex-wrap justify-center gap-1.5">
@@ -977,6 +1059,16 @@ export function RunDetailPage() {
 					) : null}
 				</aside>
 			</div>
+
+			<ScreenshotViewer
+				alt={reviewMode ? "Device screenshot for the selected step" : "Latest device screenshot"}
+				isOpen={viewerOpen && screenshotUrl != null}
+				onNext={showStep(shotIndex + 1)}
+				onOpenChange={setViewerOpen}
+				onPrevious={shotIndex > 0 ? showStep(shotIndex - 1) : undefined}
+				src={screenshotUrl}
+				title={isLive ? `Latest screenshot · ${shotLabel}` : shotLabel}
+			/>
 		</div>
 	);
 }
