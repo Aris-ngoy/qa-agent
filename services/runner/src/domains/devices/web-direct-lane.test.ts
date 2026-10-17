@@ -131,6 +131,13 @@ describe("web Direct lane: Actions reach the page", () => {
 		await session.quit();
 	});
 
+	test("open-url waits for the page to load, so the next screenshot captures it", async () => {
+		const { session } = await attach();
+		await session.openUrl("https://example.com/");
+		expect((await session.screenshot()).base64).not.toBe("");
+		await session.quit();
+	});
+
 	test("open-url fails when the page cannot load the URL", async () => {
 		const { session } = await attach({ navigateError: "net::ERR_NAME_NOT_RESOLVED" });
 		const error = await rejection(

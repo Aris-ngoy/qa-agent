@@ -103,7 +103,11 @@ export type CdpCommands = {
 		result: Record<string, never>;
 	};
 	"Page.captureScreenshot": { params: { format: "png" }; result: { data: string } };
-	"Page.navigate": { params: { url: string }; result: { frameId: string; errorText?: string } };
+	/** No `loaderId` for a same-document navigation (a hash change), which loads nothing. */
+	"Page.navigate": {
+		params: { url: string };
+		result: { frameId: string; loaderId?: string; errorText?: string };
+	};
 	"Input.dispatchMouseEvent": { params: MouseEvent; result: Record<string, never> };
 	"Input.dispatchTouchEvent": { params: TouchEvent; result: Record<string, never> };
 	"Input.dispatchKeyEvent": { params: KeyEvent; result: Record<string, never> };
