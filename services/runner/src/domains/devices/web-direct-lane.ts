@@ -92,6 +92,8 @@ const DRAG_STEPS = 10;
 const DEFAULT_DRAG_MS = 800;
 /** A touch swipe's length when the Action names none, as on Android. */
 const DEFAULT_SWIPE_MS = 400;
+/** The longest a navigation waits for its page to load before the session carries on. */
+const NAVIGATE_LOAD_MS = 10_000;
 
 /** The mobile preset's user agent: Safari on the iPhone whose screen it is. */
 const MOBILE_USER_AGENT =
@@ -525,9 +527,27 @@ export async function createWebDirectSession(
 		openDialog = null;
 	};
 
+	/**
+	 * `Page.navigate` answers as the navigation starts. Until the new document has loaded,
+	 * Chrome may still be swapping it in, and a screenshot fails ("Not attached to an
+	 * active page"), so wait for the load event. A page that never finishes loading is
+	 * left to carry on after `NAVIGATE_LOAD_MS`.
+	 */
 	const navigate = async (url: string) => {
-		const { errorText } = await call("Page.navigate", { url });
-		if (errorText) throw new Error(`Could not open ${url}: ${errorText}`);
+		let loaded = () => {};
+		const load = new Promise<void>((resolve) => {
+			loaded = resolve;
+		});
+		const stopListening = client.on("Page.loadEventFired", (_params, eventSession) => {
+			if (eventSession === page.sessionId) loaded();
+		});
+		try {
+			const { errorText, loaderId } = await call("Page.navigate", { url });
+			if (errorText) throw new Error(`Could not open ${url}: ${errorText}`);
+			if (loaderId) await Promise.race([load, client.closed, Bun.sleep(NAVIGATE_LOAD_MS)]);
+		} finally {
+			stopListening();
+		}
 	};
 
 	/** Closing the browser's last tab can quit it, so a blank page takes over first. */

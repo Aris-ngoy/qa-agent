@@ -128,7 +128,12 @@ type Page = FakeEmulation & {
 	touchStart?: { x: number; y: number; moved: boolean };
 	sessionId?: string;
 	openerId?: string;
+	/** Between `Page.navigate` and its load event, while the new document comes in. */
+	loading?: boolean;
 };
+
+/** How long a navigation takes to load, as Chrome swaps in the new document. */
+const FAKE_LOAD_MS = 20;
 
 export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const scale = options.deviceScaleFactor ?? 1;
@@ -303,6 +308,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				if (page) front = page;
 				return {};
 			case "Page.captureScreenshot":
+				// As in Chrome, a page swapping in a new document cannot be captured.
+				if (page?.loading) throw new Error("Not attached to an active page");
 				return {
 					data: frame(clicks.length, page, Boolean(params.captureBeyondViewport || params.clip)),
 				};
@@ -344,10 +351,21 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			}
 			case "Page.navigate":
 				navigations.push(String(params.url));
-				if (page && !options.navigateError) page.url = String(params.url);
+				if (page && !options.navigateError) {
+					const loading = page;
+					loading.url = String(params.url);
+					loading.loading = true;
+					// The answer comes as the navigation starts; the load event once it is in.
+					setTimeout(() => {
+						loading.loading = false;
+						broadcast("Page.loadEventFired", { timestamp: 0 }, loading.sessionId);
+					}, FAKE_LOAD_MS);
+				}
 				return {
 					frameId: page?.targetId ?? "",
-					...(options.navigateError ? { errorText: options.navigateError } : {}),
+					...(options.navigateError
+						? { errorText: options.navigateError }
+						: { loaderId: `loader-${navigations.length}` }),
 				};
 			case "Page.handleJavaScriptDialog":
 				if (!dialogOpen || dialogOpen.sessionId !== message.sessionId) {
