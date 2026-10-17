@@ -10,7 +10,7 @@ Sign-in and external-link flows work on web with no tab management ([#301](https
 - **Closing goes back to the opener.** When the driven page detaches and an opener is still open, that opener is driven again and brought to the front, since a background tab never paints. A popup of a popup unwinds one level at a time. An opener that closes while a popup is driven is dropped from the stack. Only when no opener is left is a closed page a Dead Session, as before.
 - **Pages the session's page did not open are ignored.** A tab the user opens, or the blank page terminate-app opens, has no opener on the driven page, so it never takes over.
 - **Commands wait for a move.** A switch is a short chain of CDP commands. Every command to the page, and every Action under the action lock, waits for a pending switch first, so nothing lands on the page the session is leaving.
-- **Coordinates follow the page.** The viewport is read from the driven page for each Action, so a popup with its own window size maps 0–1000 onto its own viewport, and its screenshot is its own viewport.
+- **Coordinates follow the page.** The viewport is read from the driven page for each Action, so a popup with its own window size maps 0–1000 onto its own viewport, and its screenshot is its own viewport. Since [#310](https://github.com/Aris-ngoy/qa-agent/issues/310) every page is at the session's Viewport preset instead ([web-viewport-presets.md](./web-viewport-presets.md)).
 - Rejected: a user-facing tab list or switch (out of scope in the spec), and following every new page (an unrelated tab would steal the session).
 
 ## What shipped

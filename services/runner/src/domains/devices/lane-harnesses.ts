@@ -3,7 +3,14 @@
  * a real Lane with its device tool faked, and reads back what reached the device.
  */
 import { createConnection } from "node:net";
-import { KEY_MODIFIERS, type KeyModifier, type KeyName } from "@yoqa/runner-client";
+import {
+	KEY_MODIFIERS,
+	type KeyModifier,
+	type KeyName,
+	VIEWPORT_PRESETS,
+	type ViewportPreset,
+	type ViewportPresetName,
+} from "@yoqa/runner-client";
 import { encodeRgbaPng } from "../runs/coord-grid";
 import { ANDROID_KEYCODES, ANDROID_MODIFIER_KEYCODES } from "./adb-input";
 import type { AdbExec, AdbResult, AndroidDirectDeps } from "./android-direct-lane";
@@ -397,20 +404,38 @@ export function iosDeviceLane(): LaneHarness {
 }
 
 /**
- * The faked browser page every web harness drives: clicks in the page's CSS pixels, and a
- * screenshot of the viewport at 2× those pixels, as on a Retina display.
+ * The faked browser every web harness drives: a window of its own size, which the lane's
+ * Viewport preset overrides. The button is laid out where BUTTON is on that preset's page.
  */
-const WEB_PAGE: FakeCdpOptions = {
-	viewport: DEVICE,
-	deviceScaleFactor: 2,
-	nodes: [
-		{
-			role: "button",
-			name: BUTTON.label,
-			box: { x: 0, y: 0, width: 100, height: 40 },
-		},
-	],
-};
+function webPage(preset: ViewportPreset): FakeCdpOptions {
+	return {
+		viewport: { width: 900, height: 700 },
+		deviceScaleFactor: 2,
+		nodes: [
+			{
+				role: "button",
+				name: BUTTON.label,
+				box: {
+					x: (BUTTON.x / 1000) * preset.width,
+					y: (BUTTON.y / 1000) * preset.height,
+					width: (BUTTON.width / 1000) * preset.width,
+					height: (BUTTON.height / 1000) * preset.height,
+				},
+			},
+		],
+	};
+}
+
+/**
+ * Where clicks landed on the preset's page, in DEVICE units, so every Lane is read back
+ * on the same device: the page is the preset's size, not DEVICE's.
+ */
+function webTaps(browser: FakeCdp, preset: ViewportPreset): Array<{ x: number; y: number }> {
+	return browser.clicks.map(({ x, y }) => ({
+		x: (x / preset.width) * DEVICE.width,
+		y: (y / preset.height) * DEVICE.height,
+	}));
+}
 
 /** A key pressed down that is not itself a modifier, with the modifiers its bits hold. */
 function cdpKeys(browser: FakeCdp): Array<{ key: KeyName; modifiers: KeyModifier[] }> {
@@ -429,19 +454,25 @@ function cdpKeys(browser: FakeCdp): Array<{ key: KeyName; modifiers: KeyModifier
 
 /**
  * Web Direct: a user-started Chromium attached by its debug port, faked as a local CDP
- * endpoint. The harness also hands over its fake browser, for the web-only contract cases.
+ * endpoint, on the desktop preset unless told otherwise. The harness also hands over its
+ * fake browser, for the web-only contract cases.
  */
-export function webCdpLane(): LaneHarness & { browser: FakeCdp } {
-	const browser = startFakeCdp(WEB_PAGE);
+export function webCdpLane(
+	options: { viewport?: ViewportPresetName } = {},
+): LaneHarness & { browser: FakeCdp } {
+	const preset = VIEWPORT_PRESETS[options.viewport ?? "desktop"];
+	const browser = startFakeCdp(webPage(preset));
+	const name = options.viewport ? ` on the ${options.viewport} preset` : "";
 	return {
-		name: "Web Direct: an attached Chromium (faked CDP endpoint)",
+		name: `Web Direct: an attached Chromium${name} (faked CDP endpoint)`,
 		open: ({ onSessionDead }) =>
 			createWebDirectSession({
 				platform: "web",
 				deviceId: `chromium-cdp-${browser.port}`,
 				onSessionDead,
+				...(options.viewport ? { viewport: options.viewport } : {}),
 			}),
-		taps: () => browser.clicks,
+		taps: () => webTaps(browser, preset),
 		keys: () => cdpKeys(browser),
 		frame: (count) => browser.frame(count),
 		killTool: () => browser.kill(),
@@ -449,12 +480,18 @@ export function webCdpLane(): LaneHarness & { browser: FakeCdp } {
 	};
 }
 
+/** Web Direct under the mobile preset, where taps reach the page as touches. */
+export function webMobileLane(): LaneHarness & { browser: FakeCdp } {
+	return webCdpLane({ viewport: "mobile" });
+}
+
 /**
  * Web Direct: an installed Chrome that the lane launches as a Yoqa-owned instance, with the
  * browser process faked so each launch starts a local CDP endpoint.
  */
 export function webLaunchedLane(): LaneHarness {
-	const chromium = fakeChromium(WEB_PAGE);
+	const preset = VIEWPORT_PRESETS.desktop;
+	const chromium = fakeChromium(webPage(preset));
 	const browser = () => {
 		const launched = chromium.browsers[0];
 		if (!launched) throw new Error("The lane has not launched the browser yet");
@@ -477,7 +514,7 @@ export function webLaunchedLane(): LaneHarness {
 					spawn: chromium.spawn,
 				}),
 			),
-		taps: () => browser().clicks,
+		taps: () => webTaps(browser(), preset),
 		keys: () => cdpKeys(browser()),
 		frame: (count) => browser().frame(count),
 		killTool: () => browser().kill(),

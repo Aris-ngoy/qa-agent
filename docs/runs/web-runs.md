@@ -41,7 +41,7 @@ Manual check, on a Mac with Chrome installed:
 
 ## Follow-ups
 
-- The viewport preset on the Run and in the report: [#310](https://github.com/Aris-ngoy/qa-agent/issues/310).
+- The viewport preset on the Run and in the report: [#310](https://github.com/Aris-ngoy/qa-agent/issues/310), shipped in [web-viewport-presets.md](../devices/web-viewport-presets.md).
 - Web devices in the desktop device picker and Runs panel: [#311](https://github.com/Aris-ngoy/qa-agent/issues/311). The App editor field is here already.
 - The rest of the skill and public docs for web: [#312](https://github.com/Aris-ngoy/qa-agent/issues/312).
 - Run recording on web (a CDP screencast) stays out of scope for #301.

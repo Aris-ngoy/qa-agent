@@ -99,7 +99,9 @@ import {
 	type UpdateCaseRequest,
 	type UpdateFlowRequest,
 	type UpdateProviderRequest,
+	VIEWPORT_PRESET_NAMES,
 	type ValidateProviderResponse,
+	type ViewportPresetName,
 	type YoqaStatusResponse,
 	actionBatchRequestSchema,
 	actionBatchResponseSchema,
@@ -191,6 +193,7 @@ import {
 	updateFlowRequestSchema,
 	updateProviderRequestSchema,
 	validateProviderResponseSchema,
+	viewportPresetSchema,
 	yoqaStatusResponseSchema,
 } from "./schemas";
 import { type WaitForRunOptions, waitForRun } from "./wait-for-run";
@@ -218,6 +221,8 @@ export {
 	KEY_NAMES,
 	keyModifierSchema,
 	keyNameSchema,
+	VIEWPORT_PRESET_NAMES,
+	viewportPresetSchema,
 	caseScriptSchema,
 	connectDeviceRequestSchema,
 	controlMessageSchema,
@@ -324,6 +329,7 @@ export {
 	type DevicePlatform,
 	type KeyModifier,
 	type KeyName,
+	type ViewportPresetName,
 	type DoctorCheck,
 	type DoctorCheckStatus,
 	type DoctorRepairId,
@@ -495,6 +501,13 @@ export { appStartTarget, startTargetRequest } from "./app-start-target";
 export { decodeXmlEntities } from "./xml-entities";
 
 export { formatKeyChord, parseKeyModifiers, parseKeyName } from "./keys";
+
+export {
+	DEFAULT_VIEWPORT_PRESET,
+	VIEWPORT_PRESETS,
+	formatViewportPreset,
+	type ViewportPreset,
+} from "./viewport";
 
 export type RunnerClientOptions = {
 	baseUrl?: string;

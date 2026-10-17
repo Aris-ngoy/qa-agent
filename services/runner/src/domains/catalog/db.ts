@@ -217,6 +217,7 @@ function migrateRunLane(sqlite: Database): void {
 	addColumnIfMissing(sqlite, "runs", "lane", "lane TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "lane_warning", "lane_warning TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "browser", "browser TEXT", runCols);
+	addColumnIfMissing(sqlite, "runs", "viewport", "viewport TEXT", runCols);
 }
 
 function migrateRecording(sqlite: Database): void {

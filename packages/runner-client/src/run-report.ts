@@ -8,10 +8,12 @@ import {
 	type RunStep,
 	type RunTestStatus,
 	type StepPhases,
+	type ViewportPresetName,
 	keyModifierSchema,
 	keyNameSchema,
 } from "./schemas";
 import { formatActionShellLine, formatAssertShellLine, formatSleepShellLine } from "./shell-script";
+import { formatViewportPreset } from "./viewport";
 
 export type RunReportStatus = "passed" | "errored" | "cancelled";
 
@@ -59,6 +61,8 @@ export type RunReportDocument = {
 	laneWarning?: string | null;
 	/** The browser a web run drove, with its version. */
 	browser?: string | null;
+	/** The Viewport preset a web run's session emulated. */
+	viewport?: ViewportPresetName | null;
 	error: string | null;
 	createdAt: number;
 	startedAt: number | null;
@@ -403,6 +407,7 @@ export function buildRunReportFromCatalogRun(
 		lane: run.lane ?? null,
 		laneWarning: run.laneWarning ?? null,
 		browser: run.browser ?? null,
+		viewport: run.viewport ?? null,
 		error: run.error,
 		createdAt: run.createdAt,
 		startedAt: run.startedAt,
@@ -521,6 +526,9 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 		["Device", doc.deviceLabel ?? "—"],
 		["Platform", doc.platform ?? "—"],
 		...(doc.browser ? ([["Browser", doc.browser]] as Array<[string, string]>) : []),
+		...(doc.viewport
+			? ([["Viewport", formatViewportPreset(doc.viewport)]] as Array<[string, string]>)
+			: []),
 		["Mode", doc.executionMode ?? "—"],
 		...screenRows,
 		["Started", formatWhen(doc.startedAt ?? doc.createdAt)],
@@ -673,6 +681,7 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 		`| Device | ${escapeMd(doc.deviceLabel ?? "—")} |`,
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
 		...(doc.browser ? [`| Browser | ${escapeMd(doc.browser)} |`] : []),
+		...(doc.viewport ? [`| Viewport | ${escapeMd(formatViewportPreset(doc.viewport))} |`] : []),
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),
@@ -759,6 +768,7 @@ export function formatRunReportGithubSummary(doc: RunReportDocument): string {
 		`| Device | ${escapeMd(doc.deviceLabel ?? "—")} |`,
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
 		...(doc.browser ? [`| Browser | ${escapeMd(doc.browser)} |`] : []),
+		...(doc.viewport ? [`| Viewport | ${escapeMd(formatViewportPreset(doc.viewport))} |`] : []),
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),

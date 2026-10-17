@@ -18,6 +18,10 @@ _Avoid_: driver (Provider drivers), backend (runner / cloud), adapter, transport
 A Chromium-family browser (Chrome, Edge, Brave, Chromium) as a `web` device. A browser the user started with remote debugging on a non-default profile is attached by naming its debug port (`chromium-cdp-<port>`); ports are never scanned. Disconnecting an attached browser leaves it open.
 _Avoid_: tab, page (one page of it is what a Device Session drives), web driver
 
+**Viewport preset**:
+The page size a Device Session on a Browser device emulates, chosen at connect and fixed for the session's whole life: `desktop` (1280×800, the default) or `mobile` (390×844, with a mobile user agent and touch, so a tap or swipe is a finger). It applies to every page the session drives, whatever the window's size, and is what 0–1000 maps onto. The Run stores it and its report shows it.
+_Avoid_: window size, resolution, device emulation (implementation detail)
+
 **Active Session**:
 The single Device Session shared across modes (connector / inspector / runs). A Run adopts it when it targets the same device and holds it view-only until the run finishes. It stays live until the user disconnects or connects another device. Its target app (what a Lane that remembers an app reads or relaunches) follows the Run that adopts it, or the app the user selects while no Run holds it, without reconnecting. On a cabled iPhone, frame and tree reads go through the Inspector Session and do not end this one.
 _Avoid_: Run session (a Run adopts the Active Session), a second Device Session per mode

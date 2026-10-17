@@ -21,6 +21,8 @@ export const runs = sqliteTable("runs", {
 	laneWarning: text("lane_warning"),
 	/** The browser a web Run drove, with its version. Null on other platforms. */
 	browser: text("browser"),
+	/** The Viewport preset a web Run's session emulated. Null on other platforms. */
+	viewport: text("viewport"),
 	/** 1 when the Run was started asking to record every case, whatever the cases say. */
 	recordVideo: integer("record_video").notNull().default(0),
 	error: text("error"),

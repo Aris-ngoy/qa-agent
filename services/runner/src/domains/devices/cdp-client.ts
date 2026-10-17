@@ -58,6 +58,15 @@ type MouseEvent = {
 	deltaY?: number;
 };
 
+/** One finger on the screen, in CSS pixels of the viewport. */
+type TouchPoint = { x: number; y: number };
+
+type TouchEvent = {
+	type: "touchStart" | "touchMove" | "touchEnd";
+	/** The fingers down after the event: none once the last one lifts. */
+	touchPoints: TouchPoint[];
+};
+
 export type KeyEvent = {
 	/** `rawKeyDown` presses a key that types nothing; `keyDown` with `text` also types it. */
 	type: "keyDown" | "rawKeyDown" | "keyUp";
@@ -93,15 +102,24 @@ export type CdpCommands = {
 		params: { accept: boolean; promptText?: string };
 		result: Record<string, never>;
 	};
-	"Page.getLayoutMetrics": {
-		params: Record<string, never>;
-		result: { cssLayoutViewport: { clientWidth: number; clientHeight: number } };
-	};
 	"Page.captureScreenshot": { params: { format: "png" }; result: { data: string } };
 	"Page.navigate": { params: { url: string }; result: { frameId: string; errorText?: string } };
 	"Input.dispatchMouseEvent": { params: MouseEvent; result: Record<string, never> };
+	"Input.dispatchTouchEvent": { params: TouchEvent; result: Record<string, never> };
 	"Input.dispatchKeyEvent": { params: KeyEvent; result: Record<string, never> };
 	"Input.insertText": { params: { text: string }; result: Record<string, never> };
+	"Emulation.setDeviceMetricsOverride": {
+		params: { width: number; height: number; deviceScaleFactor: number; mobile: boolean };
+		result: Record<string, never>;
+	};
+	"Emulation.setTouchEmulationEnabled": {
+		params: { enabled: boolean; maxTouchPoints?: number };
+		result: Record<string, never>;
+	};
+	"Emulation.setUserAgentOverride": {
+		params: { userAgent: string };
+		result: Record<string, never>;
+	};
 	"Storage.clearDataForOrigin": {
 		params: { origin: string; storageTypes: string };
 		result: Record<string, never>;

@@ -1,4 +1,9 @@
-import { type DevicePlatform, devicePlatformSchema } from "@yoqa/runner-client";
+import {
+	type DevicePlatform,
+	VIEWPORT_PRESET_NAMES,
+	type ViewportPresetName,
+	devicePlatformSchema,
+} from "@yoqa/runner-client";
 
 /** What `yoqa devices <platform>` lists, per platform. */
 export const PLATFORM_DEVICES_DESCRIPTION: Record<DevicePlatform, string> = {
@@ -33,4 +38,21 @@ export function isWebDeviceId(deviceId: string): boolean {
 export function connectPlatform(deviceId: string, value: string | undefined): DevicePlatform {
 	if (value === undefined && isWebDeviceId(deviceId)) return "web";
 	return parsePlatform(value);
+}
+
+/**
+ * A `--viewport` value in any case, for a web connect only. Undefined leaves the preset to
+ * the runner, which opens desktop.
+ */
+export function parseViewportPreset(
+	value: string | undefined,
+	platform: DevicePlatform,
+): ViewportPresetName | undefined {
+	if (value === undefined) return undefined;
+	if (platform !== "web") {
+		throw new Error("--viewport is for web devices: a phone's screen is its own size");
+	}
+	const preset = VIEWPORT_PRESET_NAMES.find((name) => name === value.trim().toLowerCase());
+	if (!preset) throw new Error(`--viewport must be ${VIEWPORT_PRESET_NAMES.join(" or ")}`);
+	return preset;
 }

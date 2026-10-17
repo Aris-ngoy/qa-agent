@@ -1,11 +1,13 @@
 /**
  * A faked Chromium for tests: a local server that answers `/json/version` and speaks
  * enough CDP over its WebSocket for the web Direct lane. It records what reached the page
- * (clicks, mouse and wheel events, text, navigations, keys, dialog answers, cleared
+ * (clicks, mouse, wheel and touch events, text, navigations, keys, dialog answers, cleared
  * storage) in CSS pixels, and serves a viewport-sized PNG that darkens with each click,
  * plus an accessibility tree with whatever nodes it is given and a DOM snapshot that lays
  * them out. Pages open and close as targets, the way tabs do, each with its own viewport,
- * and a page can open another as its popup.
+ * and a page can open another as its popup. A page takes device emulation as Chromium
+ * does: an emulated viewport replaces its window's, and a touch that ends where it
+ * started is a click.
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,9 +31,9 @@ export type FakeAxNode = {
 };
 
 export type FakeCdpOptions = {
-	/** The page viewport in CSS pixels. */
+	/** The page viewport in CSS pixels, the window's, until the session emulates another. */
 	viewport: { width: number; height: number };
-	/** Screenshot pixels per CSS pixel. */
+	/** Screenshot pixels per CSS pixel, the display's, until the session emulates another. */
 	deviceScaleFactor?: number;
 	/** The whole page's height in CSS pixels, taller than the viewport when it scrolls. */
 	pageHeight?: number;
@@ -55,6 +57,23 @@ export type FakeDialogType = "alert" | "confirm" | "prompt" | "beforeunload";
 
 export type FakeViewport = { width: number; height: number };
 
+export type FakeTouch = {
+	type: "touchStart" | "touchMove" | "touchEnd";
+	/** The fingers down after the event, in CSS pixels. Empty once the last one lifts. */
+	points: Array<{ x: number; y: number }>;
+};
+
+/** The device emulation a page is under, as the session set it. */
+export type FakeEmulation = {
+	viewport: FakeViewport;
+	/** Screenshot pixels per CSS pixel. */
+	scale: number;
+	mobile: boolean;
+	/** Touch emulation: the page reports touch support. */
+	touch: boolean;
+	userAgent?: string;
+};
+
 export type FakeCdp = {
 	port: number;
 	/** Where clicks landed, in CSS pixels. */
@@ -63,6 +82,8 @@ export type FakeCdp = {
 	mouse: FakeMouseEvent[];
 	/** Every wheel scroll: where, and by how much. A positive deltaY scrolls the page down. */
 	wheels: FakeWheel[];
+	/** Every touch event, in order. */
+	touches: FakeTouch[];
 	insertedText: string[];
 	/** The `key` of each key pressed down. */
 	keys: string[];
@@ -79,6 +100,8 @@ export type FakeCdp = {
 	clicksOn: (targetId: string) => Array<{ x: number; y: number }>;
 	/** The page in front, the one the user sees: the newest, or the last brought to front. */
 	frontPage: () => string | undefined;
+	/** The emulation one page is under, the one in front by default. */
+	emulation: (targetId?: string) => FakeEmulation;
 	/**
 	 * A new page opens and comes to the front. With `fromFrontPage`, the page in front opened
 	 * it (`window.open`, a `target=_blank` link, an OAuth popup); otherwise the user did.
@@ -87,7 +110,7 @@ export type FakeCdp = {
 	openPage: (url: string, options?: { fromFrontPage?: boolean; viewport?: FakeViewport }) => string;
 	/** The page the session drives opens a JavaScript dialog, which waits for an answer. */
 	openDialog: (type: FakeDialogType, message?: string, defaultPrompt?: string) => void;
-	/** The viewport PNG after `clicks` clicks, base64-encoded. */
+	/** The front page's viewport PNG after `clicks` clicks, base64-encoded. */
 	frame: (clicks: number) => string;
 	/** The user closes a page, the one in front by default; the browser stays open. */
 	closePage: (targetId?: string) => void;
@@ -97,11 +120,12 @@ export type FakeCdp = {
 
 type Message = { id: number; method: string; params?: Record<string, unknown>; sessionId?: string };
 
-type Page = {
+type Page = FakeEmulation & {
 	targetId: string;
 	url: string;
-	viewport: FakeViewport;
 	clicks: Array<{ x: number; y: number }>;
+	/** Where the finger now down went down, and whether it has moved since. */
+	touchStart?: { x: number; y: number; moved: boolean };
 	sessionId?: string;
 	openerId?: string;
 };
@@ -112,6 +136,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const clicks: FakeCdp["clicks"] = [];
 	const mouse: FakeMouseEvent[] = [];
 	const wheels: FakeWheel[] = [];
+	const touches: FakeTouch[] = [];
 	const insertedText: string[] = [];
 	const keys: string[] = [];
 	const keyEvents: KeyEvent[] = [];
@@ -148,7 +173,16 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		...(openerId ? { openerId } : {}),
 	});
 	const createPage = (url: string, viewport = options.viewport, openerId?: string) => {
-		const page: Page = { targetId: `page-${nextPage++}`, url, viewport, clicks: [], openerId };
+		const page: Page = {
+			targetId: `page-${nextPage++}`,
+			url,
+			viewport,
+			scale,
+			mobile: false,
+			touch: false,
+			clicks: [],
+			openerId,
+		};
 		pages.push(page);
 		front = page;
 		if (discovering) broadcast("Target.targetCreated", { targetInfo: infoOf(page) });
@@ -166,10 +200,12 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		}
 	};
 	/** A capture beyond the viewport (or clipped to the page) is the whole page. */
-	const frame = (count: number, wholePage = false, viewport = options.viewport) => {
-		const width = viewport.width * scale;
+	const frame = (count: number, page: FakeEmulation | undefined, wholePage = false) => {
+		const viewport = page?.viewport ?? options.viewport;
+		const pageScale = page?.scale ?? scale;
+		const width = viewport.width * pageScale;
 		const cssHeight = wholePage ? (options.pageHeight ?? viewport.height) : viewport.height;
-		const height = cssHeight * scale;
+		const height = cssHeight * pageScale;
 		const rgba = new Uint8Array(width * height * 4).fill(Math.max(0, 255 - count));
 		return Buffer.from(encodeRgbaPng({ width, height, rgba })).toString("base64");
 	};
@@ -266,20 +302,46 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			case "Page.bringToFront":
 				if (page) front = page;
 				return {};
-			case "Page.getLayoutMetrics": {
-				const viewport = page?.viewport ?? options.viewport;
-				return {
-					cssLayoutViewport: { clientWidth: viewport.width, clientHeight: viewport.height },
-				};
-			}
 			case "Page.captureScreenshot":
 				return {
-					data: frame(
-						clicks.length,
-						Boolean(params.captureBeyondViewport || params.clip),
-						page?.viewport,
-					),
+					data: frame(clicks.length, page, Boolean(params.captureBeyondViewport || params.clip)),
 				};
+			case "Emulation.setDeviceMetricsOverride":
+				if (page) {
+					page.viewport = { width: Number(params.width), height: Number(params.height) };
+					// 0 keeps the window's own scale, as in Chromium.
+					if (Number(params.deviceScaleFactor) > 0) page.scale = Number(params.deviceScaleFactor);
+					page.mobile = Boolean(params.mobile);
+				}
+				return {};
+			case "Emulation.setTouchEmulationEnabled":
+				if (page) page.touch = Boolean(params.enabled);
+				return {};
+			case "Emulation.setUserAgentOverride":
+				if (page) page.userAgent = String(params.userAgent);
+				return {};
+			case "Input.dispatchTouchEvent": {
+				const type = params.type as FakeTouch["type"];
+				const points = ((params.touchPoints ?? []) as Array<{ x: number; y: number }>).map(
+					({ x, y }) => ({ x, y }),
+				);
+				touches.push({ type, points });
+				const [point] = points;
+				if (!page) return {};
+				if (type === "touchStart" && point) page.touchStart = { ...point, moved: false };
+				if (type === "touchMove" && page.touchStart && point) {
+					page.touchStart.moved ||= point.x !== page.touchStart.x || point.y !== page.touchStart.y;
+				}
+				if (type === "touchEnd" && page.touchStart) {
+					const { x, y, moved } = page.touchStart;
+					if (!moved) {
+						clicks.push({ x, y });
+						page.clicks.push({ x, y });
+					}
+					page.touchStart = undefined;
+				}
+				return {};
+			}
 			case "Page.navigate":
 				navigations.push(String(params.url));
 				if (page && !options.navigateError) page.url = String(params.url);
@@ -375,6 +437,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		clicks,
 		mouse,
 		wheels,
+		touches,
 		insertedText,
 		keys,
 		keyEvents,
@@ -384,6 +447,12 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		pages: () => pages.map((page) => page.url),
 		clicksOn: (targetId) => targetOf(targetId).clicks,
 		frontPage: () => front?.targetId,
+		emulation: (targetId) => {
+			const page = targetId === undefined ? front : targetOf(targetId);
+			if (!page) throw new Error("No page is open");
+			const { viewport, scale: pageScale, mobile, touch, userAgent } = page;
+			return { viewport, scale: pageScale, mobile, touch, userAgent };
+		},
 		openPage: (url, { fromFrontPage = false, viewport } = {}) =>
 			createPage(url, viewport, fromFrontPage ? front?.targetId : undefined).targetId,
 		openDialog: (type, message = "", defaultPrompt = "") => {
@@ -396,7 +465,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				driven.sessionId,
 			);
 		},
-		frame,
+		frame: (count) => frame(count, front),
 		closePage: (targetId) => {
 			const page = targetId === undefined ? front : targetOf(targetId);
 			if (page) closeTarget(page);

@@ -389,6 +389,19 @@ describe("Screen mode in the report", () => {
 		expect(formatRunReportMarkdown(sampleDoc())).not.toContain("| Browser |");
 	});
 
+	test("names a web run's Viewport preset with its size, in every format", () => {
+		const doc = {
+			...sampleDoc(),
+			platform: "web",
+			browser: "Chrome 140",
+			viewport: "mobile" as const,
+		};
+		expect(formatRunReportMarkdown(doc)).toContain("| Viewport | mobile (390×844) |");
+		expect(formatRunReportGithubSummary(doc)).toContain("| Viewport | mobile (390×844) |");
+		expect(formatRunReportHtml(doc)).toContain("mobile (390×844)");
+		expect(formatRunReportMarkdown(sampleDoc())).not.toContain("| Viewport |");
+	});
+
 	test("a catalog run's report carries its browser", () => {
 		const doc = buildRunReportFromCatalogRun({
 			id: "run_web",
@@ -400,13 +413,19 @@ describe("Screen mode in the report", () => {
 			executionMode: "script",
 			lane: "direct",
 			browser: "Google Chrome 141.0",
+			viewport: "desktop",
 			error: null,
 			createdAt: 1,
 			startedAt: 1,
 			finishedAt: 2,
 			tests: [],
 		});
-		expect(doc).toMatchObject({ platform: "web", browser: "Google Chrome 141.0", lane: "direct" });
+		expect(doc).toMatchObject({
+			platform: "web",
+			browser: "Google Chrome 141.0",
+			viewport: "desktop",
+			lane: "direct",
+		});
 	});
 
 	test("omits the Screen row when the run has no Screen mode", () => {
