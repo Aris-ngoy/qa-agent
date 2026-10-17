@@ -361,6 +361,12 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	};
 }
 
+/** The `--user-data-dir` a browser command line names, or null when it names none. */
+export function profileDirOf(command: string[]): string | null {
+	const flag = "--user-data-dir=";
+	return command.find((arg) => arg.startsWith(flag))?.slice(flag.length) ?? null;
+}
+
 export type FakeChromium = {
 	/** Stands in for `Bun.spawn` of an installed browser. */
 	spawn: (command: string[]) => BrowserProcess;
@@ -384,7 +390,7 @@ export function fakeChromium(options: FakeCdpOptions): FakeChromium {
 		kills: 0,
 		spawn: (command) => {
 			fake.launched.push(command);
-			const profile = command.find((arg) => arg.startsWith("--user-data-dir="))?.slice(16);
+			const profile = profileDirOf(command);
 			if (!profile) throw new Error("fakeChromium: no --user-data-dir");
 			const browser = startFakeCdp(options);
 			fake.browsers.push(browser);

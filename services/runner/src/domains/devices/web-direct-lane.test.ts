@@ -3,7 +3,13 @@ import { existsSync } from "node:fs";
 import type { CaseScript } from "@yoqa/runner-client";
 import { executeScriptCase } from "../runs/case-executor";
 import type { InstalledBrowser } from "./chromium-browsers";
-import { type FakeAxNode, type FakeCdpOptions, fakeChromium, startFakeCdp } from "./fake-cdp";
+import {
+	type FakeAxNode,
+	type FakeCdpOptions,
+	fakeChromium,
+	profileDirOf,
+	startFakeCdp,
+} from "./fake-cdp";
 import { getScreen, performAction } from "./interaction";
 import { ActionUnsupportedError, isDeadSessionError } from "./lane";
 import { createDeviceSession } from "./session";
@@ -352,8 +358,7 @@ async function launch(deviceId = "web-chrome") {
 		},
 		webDirectDeps({ installedBrowsers: async () => [CHROME], spawn: chromium.spawn }),
 	);
-	const profileDir = () =>
-		chromium.launched[0]?.find((arg) => arg.startsWith("--user-data-dir="))?.slice(16) ?? "";
+	const profileDir = () => profileDirOf(chromium.launched[0] ?? []) ?? "";
 	return { chromium, session, profileDir, deadCalls: () => deadCalls };
 }
 

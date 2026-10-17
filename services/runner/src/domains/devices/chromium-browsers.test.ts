@@ -8,7 +8,7 @@ import {
 	launchChromium,
 	listWebDevices,
 } from "./chromium-browsers";
-import { fakeChromium } from "./fake-cdp";
+import { fakeChromium, profileDirOf } from "./fake-cdp";
 
 const HOME = "/Users/qa";
 
@@ -138,7 +138,7 @@ describe("launching a Yoqa-owned browser", () => {
 	test("a browser that exits before it opens a debug port fails the launch, with its stderr", async () => {
 		let profile = "";
 		const spawn = (command: string[]): BrowserProcess => {
-			profile = command.find((arg) => arg.startsWith("--user-data-dir="))?.split("=")[1] ?? "";
+			profile = profileDirOf(command) ?? "";
 			return {
 				exited: Promise.resolve(1),
 				stderr: new Response("Trace/BPT trap: 5\n").body as ReadableStream<Uint8Array>,
