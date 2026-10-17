@@ -1,6 +1,5 @@
-import { getRunnerClient } from "@/app/runner-client";
+import { getActiveDevice } from "@/features/devices/data/api/devices";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActiveDeviceResponse } from "@yoqa/runner-client";
 import { useCallback } from "react";
 
 export const activeDeviceSessionQueryKey = ["devices", "active"] as const;
@@ -15,10 +14,7 @@ export function useActiveDeviceSession() {
 
 	const query = useQuery({
 		queryKey: activeDeviceSessionQueryKey,
-		queryFn: async (): Promise<ActiveDeviceResponse | null> => {
-			const client = await getRunnerClient();
-			return client.getActiveDevice();
-		},
+		queryFn: getActiveDevice,
 		refetchInterval: (q) => (q.state.data ? 2000 : false),
 	});
 

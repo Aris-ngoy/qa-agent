@@ -1,128 +1,60 @@
-import { getRunnerClient } from "@/app/runner-client";
 import { AddProviderModal } from "@/features/providers/components/add-provider-modal";
 import { ProviderRow } from "@/features/providers/components/provider-row";
-import { PROVIDERS_QUERY_KEY } from "@/features/providers/utils/driver-meta";
+import { listProviderModels } from "@/features/providers/data/api/providers";
+import {
+	useInvalidateProviders,
+	useProviderActions,
+	useProvidersQuery,
+} from "@/features/providers/hooks/usequery/use-providers";
 import { Button } from "@heroui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ProviderModel, UpdateProviderRequest } from "@yoqa/runner-client";
-import { useState } from "react";
+import { useObservable, useValue } from "@legendapp/state/react";
+import type { ProviderModel } from "@yoqa/runner-client";
 
 type ProvidersSectionProps = {
 	enabled: boolean;
 };
 
 export function ProvidersSection({ enabled }: ProvidersSectionProps) {
-	const queryClient = useQueryClient();
-	const [addOpen, setAddOpen] = useState(false);
-	const [expandedId, setExpandedId] = useState<string | null>(null);
-	const [actionError, setActionError] = useState<string | null>(null);
-	const [checkedAt, setCheckedAt] = useState<string | null>(null);
-	const [modelsById, setModelsById] = useState<
-		Record<string, { models: ProviderModel[]; message: string }>
-	>({});
-	const [modelsLoadingId, setModelsLoadingId] = useState<string | null>(null);
-
-	const providersQuery = useQuery({
-		queryKey: PROVIDERS_QUERY_KEY,
-		enabled,
-		queryFn: async () => {
-			const client = await getRunnerClient();
-			return client.listProviders();
-		},
-		staleTime: 15_000,
+	const section$ = useObservable({
+		addOpen: false,
+		expandedId: null as string | null,
+		actionError: null as string | null,
+		checkedAt: null as string | null,
+		modelsById: {} as Record<string, { models: ProviderModel[]; message: string }>,
+		modelsLoadingId: null as string | null,
 	});
+	const addOpen = useValue(section$.addOpen);
+	const expandedId = useValue(section$.expandedId);
+	const actionError = useValue(section$.actionError);
+	const checkedAt = useValue(section$.checkedAt);
+	const modelsById = useValue(section$.modelsById);
+	const modelsLoadingId = useValue(section$.modelsLoadingId);
 
-	const invalidate = async () => {
-		await queryClient.invalidateQueries({ queryKey: PROVIDERS_QUERY_KEY });
-	};
+	const providersQuery = useProvidersQuery(enabled);
+	const invalidate = useInvalidateProviders();
+
+	const setModels = (id: string, entry: { models: ProviderModel[]; message: string }) =>
+		section$.modelsById.set((prev) => ({ ...prev, [id]: entry }));
 
 	const loadModels = async (id: string) => {
-		setModelsLoadingId(id);
+		section$.modelsLoadingId.set(id);
 		try {
-			const client = await getRunnerClient();
-			const result = await client.listProviderModels(id);
-			setModelsById((prev) => ({
-				...prev,
-				[id]: { models: result.models, message: result.message },
-			}));
+			const result = await listProviderModels(id);
+			setModels(id, { models: result.models, message: result.message });
 		} catch (err) {
-			setModelsById((prev) => ({
-				...prev,
-				[id]: {
-					models: [],
-					message: err instanceof Error ? err.message : "Failed to load models",
-				},
-			}));
+			setModels(id, {
+				models: [],
+				message: err instanceof Error ? err.message : "Failed to load models",
+			});
 		} finally {
-			setModelsLoadingId(null);
+			section$.modelsLoadingId.set(null);
 		}
 	};
 
-	const refreshMutation = useMutation({
-		mutationFn: async () => {
-			const client = await getRunnerClient();
-			const providers = await client.listProviders();
-			for (const provider of providers) {
-				if (!provider.enabled) continue;
-				try {
-					await client.validateProvider(provider.id);
-				} catch {
-					// Continue checking others.
-				}
-			}
-			return providers;
-		},
-		onSuccess: async () => {
-			setActionError(null);
-			setCheckedAt("just now");
-			await invalidate();
-		},
-		onError: (err) => {
-			setActionError(err instanceof Error ? err.message : "Failed to refresh providers");
-		},
-	});
-
-	const updateMutation = useMutation({
-		mutationFn: async (input: { id: string; request: UpdateProviderRequest }) => {
-			const client = await getRunnerClient();
-			return client.updateProvider(input.id, { ...input.request, validate: true });
-		},
-		onSuccess: async () => {
-			setActionError(null);
-			await invalidate();
-		},
-		onError: (err) => {
-			setActionError(err instanceof Error ? err.message : "Failed to update provider");
-		},
-	});
-
-	const deleteMutation = useMutation({
-		mutationFn: async (id: string) => {
-			const client = await getRunnerClient();
-			await client.deleteProvider(id);
-		},
-		onSuccess: async (_, id) => {
-			setActionError(null);
-			if (expandedId === id) setExpandedId(null);
-			await invalidate();
-		},
-		onError: (err) => {
-			setActionError(err instanceof Error ? err.message : "Failed to disconnect provider");
-		},
-	});
-
-	const defaultMutation = useMutation({
-		mutationFn: async (id: string) => {
-			const client = await getRunnerClient();
-			await client.setDefaultProvider(id);
-		},
-		onSuccess: async () => {
-			setActionError(null);
-			await invalidate();
-		},
-		onError: (err) => {
-			setActionError(err instanceof Error ? err.message : "Failed to set default provider");
-		},
+	const { refreshMutation, updateMutation, deleteMutation, defaultMutation } = useProviderActions({
+		onSuccess: () => section$.actionError.set(null),
+		onError: (message) => section$.actionError.set(message),
+		onRefreshed: () => section$.checkedAt.set("just now"),
 	});
 
 	const busy =
@@ -155,7 +87,7 @@ export function ProvidersSection({ enabled }: ProvidersSectionProps) {
 							isIconOnly
 							size="sm"
 							variant="ghost"
-							onPress={() => setAddOpen(true)}
+							onPress={() => section$.addOpen.set(true)}
 						>
 							+
 						</Button>
@@ -184,7 +116,12 @@ export function ProvidersSection({ enabled }: ProvidersSectionProps) {
 							No provider instances yet. Add Anthropic, OpenAI, Claude, Codex, OpenCode, Cursor,
 							Grok, Custom, or others.
 						</p>
-						<Button className="mt-4" size="sm" variant="primary" onPress={() => setAddOpen(true)}>
+						<Button
+							className="mt-4"
+							size="sm"
+							variant="primary"
+							onPress={() => section$.addOpen.set(true)}
+						>
 							Add provider
 						</Button>
 					</div>
@@ -203,6 +140,7 @@ export function ProvidersSection({ enabled }: ProvidersSectionProps) {
 									provider={provider}
 									onDisconnect={async () => {
 										await deleteMutation.mutateAsync(provider.id);
+										if (section$.expandedId.peek() === provider.id) section$.expandedId.set(null);
 									}}
 									onSave={async (input) => {
 										await updateMutation.mutateAsync({
@@ -231,7 +169,7 @@ export function ProvidersSection({ enabled }: ProvidersSectionProps) {
 									}}
 									onToggleExpand={() => {
 										const next = expandedId === provider.id ? null : provider.id;
-										setExpandedId(next);
+										section$.expandedId.set(next);
 										if (next) void loadModels(next);
 									}}
 								/>
@@ -245,9 +183,9 @@ export function ProvidersSection({ enabled }: ProvidersSectionProps) {
 
 			<AddProviderModal
 				open={addOpen}
-				onClose={() => setAddOpen(false)}
+				onClose={() => section$.addOpen.set(false)}
 				onCreated={async () => {
-					setCheckedAt("just now");
+					section$.checkedAt.set("just now");
 					await invalidate();
 				}}
 			/>

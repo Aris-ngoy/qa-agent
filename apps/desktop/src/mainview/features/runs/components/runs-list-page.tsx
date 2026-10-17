@@ -1,15 +1,14 @@
 import { staggerStyle, useEnterOnce } from "@/app/motion/use-enter-once";
 import { Pager } from "@/app/pagination/pager";
 import { usePagination } from "@/app/pagination/use-pagination";
-import { getRunnerClient } from "@/app/runner-client";
 import { useApps } from "@/features/apps/hooks/use-apps";
 import { useActiveDeviceSession } from "@/features/devices/hooks/usequery/use-active-device-session";
-import { useActiveRun } from "@/features/runs/hooks/use-active-run";
+import { useListedDevices } from "@/features/devices/hooks/usequery/use-devices";
+import { useDeleteRun, useRunsListQuery } from "@/features/runs/hooks/usequery/use-run";
 import {
 	type CaseLabelMeta,
 	type RunListFilter,
 	type RunListTone,
-	devicesQueryKey,
 	filterRuns,
 	formatRunCaseSummary,
 	formatRunContextCaption,
@@ -17,11 +16,11 @@ import {
 	formatRunListDate,
 	runListResult,
 } from "@/features/runs/utils/labels";
-import { casesQueryKey, mapCatalogCase } from "@/features/test-cases/utils/catalog-case";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCasesQuery } from "@/features/test-cases/hooks/usequery/use-cases";
+import { useObservable, useValue } from "@legendapp/state/react";
 import { Link } from "@tanstack/react-router";
 import type { Device, Run } from "@yoqa/runner-client";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
 
 const BUILD_LABELS: Record<string, string> = {
 	rebuild: "Rebuild",
@@ -46,10 +45,6 @@ const TONE_CHIP: Record<RunListTone, string> = {
 	cancelled: "bg-on-surface/5 text-on-surface-variant",
 	live: "bg-violet-container text-on-violet-container",
 };
-
-export function runsListQueryKey(appId: string) {
-	return ["runs", "list", appId] as const;
-}
 
 function buildLabel(buildId: string | null): string {
 	if (!buildId) return "App on device";
@@ -208,53 +203,14 @@ function RunRow({
 }
 
 export function RunsListPage() {
-	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
-	const { activeRunId, setActiveRun } = useActiveRun();
 	const { activeSession } = useActiveDeviceSession();
-	const [filter, setFilter] = useState<RunListFilter>("all");
+	const filter$ = useObservable<RunListFilter>("all");
+	const filter = useValue(filter$);
 
-	const runsQuery = useQuery({
-		queryKey: selectedApp ? runsListQueryKey(selectedApp.id) : ["runs", "list", "none"],
-		enabled: Boolean(selectedApp),
-		queryFn: async () => {
-			if (!selectedApp) return [] as Run[];
-			const client = await getRunnerClient();
-			return client.listRuns(selectedApp.id);
-		},
-		refetchInterval: (query) => {
-			const rows = query.state.data ?? [];
-			if (rows.some((run) => run.status === "queued" || run.status === "running")) {
-				return 2000;
-			}
-			return false;
-		},
-	});
-
-	const casesQuery = useQuery({
-		queryKey: selectedApp ? casesQueryKey(selectedApp.id) : ["catalog", "cases", "none"],
-		enabled: Boolean(selectedApp),
-		queryFn: async () => {
-			if (!selectedApp) return [];
-			const client = await getRunnerClient();
-			const cases = await client.listCases(selectedApp.id);
-			return cases.map((row) => mapCatalogCase(row));
-		},
-	});
-
-	const devicesQuery = useQuery({
-		queryKey: devicesQueryKey("all"),
-		queryFn: async () => {
-			const client = await getRunnerClient();
-			const [ios, android, web] = await Promise.all([
-				client.listDevices("ios", { includeUnavailable: true }),
-				client.listDevices("android", { includeUnavailable: true }),
-				client.listDevices("web", { includeUnavailable: true }),
-			]);
-			return [...ios.devices, ...android.devices, ...web.devices] as Device[];
-		},
-		staleTime: 30_000,
-	});
+	const runsQuery = useRunsListQuery(selectedApp?.id);
+	const casesQuery = useCasesQuery(selectedApp?.id);
+	const devicesQuery = useListedDevices("all");
 
 	const caseNameById = useMemo(() => {
 		const map = new Map<string, CaseLabelMeta>();
@@ -272,24 +228,7 @@ export function RunsListPage() {
 		return map;
 	}, [devicesQuery.data]);
 
-	const deleteMutation = useMutation({
-		mutationFn: async (runId: string) => {
-			const client = await getRunnerClient();
-			await client.deleteRun(runId);
-			return runId;
-		},
-		onSuccess: (runId) => {
-			if (selectedApp) {
-				queryClient.setQueryData<Run[]>(runsListQueryKey(selectedApp.id), (current) =>
-					(current ?? []).filter((run) => run.id !== runId),
-				);
-			}
-			queryClient.removeQueries({ queryKey: ["runs", runId] });
-			if (activeRunId === runId) {
-				setActiveRun(null);
-			}
-		},
-	});
+	const deleteMutation = useDeleteRun();
 
 	const runs = runsQuery.data ?? [];
 	const visible = filterRuns(runs, filter);
@@ -311,13 +250,13 @@ export function RunsListPage() {
 		<div className="flex min-h-0 w-full max-w-[1240px] flex-1 flex-col gap-4">
 			<div className="flex flex-wrap items-center gap-2">
 				<div className="flex rounded-[var(--radius)] border border-outline-variant bg-surface-container-lowest p-[3px] text-helper font-medium">
-					<FilterButton active={filter === "all"} onPress={() => setFilter("all")}>
+					<FilterButton active={filter === "all"} onPress={() => filter$.set("all")}>
 						All <span className="text-outline">{runs.length}</span>
 					</FilterButton>
-					<FilterButton active={filter === "passed"} onPress={() => setFilter("passed")}>
+					<FilterButton active={filter === "passed"} onPress={() => filter$.set("passed")}>
 						Passed
 					</FilterButton>
-					<FilterButton active={filter === "failed"} onPress={() => setFilter("failed")}>
+					<FilterButton active={filter === "failed"} onPress={() => filter$.set("failed")}>
 						Failed
 					</FilterButton>
 				</div>

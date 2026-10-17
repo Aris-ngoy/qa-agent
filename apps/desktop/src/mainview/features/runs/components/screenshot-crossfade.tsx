@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { useEffect } from "react";
 
 const IMAGE_CLASS = "h-full w-full object-contain";
 
@@ -21,18 +22,20 @@ export function ScreenshotCrossfade({
 	/** Reports each screenshot's pixel size once it loads, so the frame can take its shape. */
 	onNaturalSize?: (size: { width: number; height: number }) => void;
 }) {
-	const [base, setBase] = useState(src);
-	const [incoming, setIncoming] = useState<Incoming | null>(null);
+	const base$ = useObservable(src);
+	const incoming$ = useObservable<Incoming | null>(null);
+	const base = useValue(base$);
+	const incoming = useValue(incoming$);
 
 	useEffect(() => {
-		setIncoming(src === base ? null : { src, loaded: false });
-	}, [src, base]);
+		incoming$.set(src === base ? null : { src, loaded: false });
+	}, [src, base, incoming$]);
 
 	useEffect(() => {
 		if (!incoming?.loaded) return;
-		const timer = setTimeout(() => setBase(incoming.src), SWAP_MS);
+		const timer = setTimeout(() => base$.set(incoming.src), SWAP_MS);
 		return () => clearTimeout(timer);
-	}, [incoming]);
+	}, [incoming, base$]);
 
 	return (
 		<div className="motion-fade-in relative h-full min-h-0 w-full">
@@ -61,7 +64,7 @@ export function ScreenshotCrossfade({
 							width: event.currentTarget.naturalWidth,
 							height: event.currentTarget.naturalHeight,
 						});
-						setIncoming((current) =>
+						incoming$.set((current) =>
 							current && current.src === incoming.src ? { ...current, loaded: true } : current,
 						);
 					}}

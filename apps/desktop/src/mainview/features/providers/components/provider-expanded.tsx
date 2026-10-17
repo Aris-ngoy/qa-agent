@@ -1,12 +1,10 @@
 import { RhfTextField } from "@/app/forms";
-import {
-	ACCENT_COLORS,
-	fieldInputClass,
-	useDriverMeta,
-} from "@/features/providers/utils/driver-meta";
+import { useDriverMeta } from "@/features/providers/hooks/use-driver-meta";
+import { ACCENT_COLORS, fieldInputClass } from "@/features/providers/utils/driver-meta";
 import { Accordion, Button, Form, Modal, Spinner } from "@heroui/react";
+import { useObservable, useValue } from "@legendapp/state/react";
 import type { AiProvider, ProviderAccentColor, ProviderModel } from "@yoqa/runner-client";
-import { type SVGProps, useEffect, useMemo, useState } from "react";
+import { type SVGProps, useEffect, useMemo } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 
 function CheckIcon(props: SVGProps<SVGSVGElement>) {
@@ -272,10 +270,16 @@ export function ProviderExpanded({
 	onSetDefault,
 }: ProviderExpandedProps) {
 	const meta = useDriverMeta(provider.kind);
-	const [error, setError] = useState<string | null>(null);
-	const [saving, setSaving] = useState(false);
-	const [selectingModel, setSelectingModel] = useState(false);
-	const [modelDialogOpen, setModelDialogOpen] = useState(false);
+	const ui$ = useObservable({
+		error: null as string | null,
+		saving: false,
+		selectingModel: false,
+		modelDialogOpen: false,
+	});
+	const error = useValue(ui$.error);
+	const saving = useValue(ui$.saving);
+	const selectingModel = useValue(ui$.selectingModel);
+	const modelDialogOpen = useValue(ui$.modelDialogOpen);
 
 	const { control, handleSubmit, reset, getValues, setValue } = useForm<FormValues>({
 		defaultValues: formFromProvider(provider, meta.defaultBinary),
@@ -323,7 +327,7 @@ export function ProviderExpanded({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: envKeysKey is the stable trigger for env key list
 	useEffect(() => {
 		reset(formFromProvider(provider, meta.defaultBinary));
-		setError(null);
+		ui$.error.set(null);
 	}, [
 		provider.label,
 		provider.accentColor,
@@ -335,6 +339,7 @@ export function ProviderExpanded({
 		meta.defaultBinary,
 		provider,
 		reset,
+		ui$,
 	]);
 
 	const persist = async (overrides?: {
@@ -372,15 +377,15 @@ export function ProviderExpanded({
 	};
 
 	const onSubmit = async () => {
-		setSaving(true);
-		setError(null);
+		ui$.saving.set(true);
+		ui$.error.set(null);
 		try {
 			await persist();
 			setValue("apiKey", "");
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to save");
+			ui$.error.set(err instanceof Error ? err.message : "Failed to save");
 		} finally {
-			setSaving(false);
+			ui$.saving.set(false);
 		}
 	};
 
@@ -388,16 +393,16 @@ export function ProviderExpanded({
 		setValue("defaultModel", modelId, { shouldDirty: true });
 		if (!isOpenCode) return;
 
-		setSelectingModel(true);
-		setError(null);
+		ui$.selectingModel.set(true);
+		ui$.error.set(null);
 		try {
 			await persist({ defaultModel: modelId });
 			setValue("apiKey", "");
-			setModelDialogOpen(false);
+			ui$.modelDialogOpen.set(false);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to save model");
+			ui$.error.set(err instanceof Error ? err.message : "Failed to save model");
 		} finally {
-			setSelectingModel(false);
+			ui$.selectingModel.set(false);
 		}
 	};
 
@@ -441,7 +446,7 @@ export function ProviderExpanded({
 					size="sm"
 					type="button"
 					variant="secondary"
-					onPress={() => setModelDialogOpen(true)}
+					onPress={() => ui$.modelDialogOpen.set(true)}
 				>
 					Choose model
 				</Button>
@@ -464,7 +469,11 @@ export function ProviderExpanded({
 
 	const modelPickerDialog = (
 		<Modal>
-			<Modal.Backdrop isOpen={modelDialogOpen} onOpenChange={setModelDialogOpen} variant="opaque">
+			<Modal.Backdrop
+				isOpen={modelDialogOpen}
+				onOpenChange={(open) => ui$.modelDialogOpen.set(open)}
+				variant="opaque"
+			>
 				<Modal.Container placement="center" scroll="inside" size="lg">
 					<Modal.Dialog className="max-h-[min(36rem,90vh)] overflow-hidden sm:max-w-xl">
 						<Modal.CloseTrigger />
@@ -512,7 +521,7 @@ export function ProviderExpanded({
 								size="sm"
 								type="button"
 								variant="secondary"
-								onPress={() => setModelDialogOpen(false)}
+								onPress={() => ui$.modelDialogOpen.set(false)}
 							>
 								{isOpenCode ? "Close" : "Done"}
 							</Button>

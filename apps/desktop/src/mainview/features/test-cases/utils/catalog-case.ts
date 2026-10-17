@@ -77,11 +77,3 @@ export function mapCatalogCase(row: CatalogCase, now = Date.now()): TestCase {
 		lastRunAt: row.lastRunAt,
 	};
 }
-
-export function casesQueryKey(appId: string) {
-	return ["catalog", "cases", appId] as const;
-}
-
-export function caseQueryKey(caseId: string) {
-	return ["catalog", "case", caseId] as const;
-}

@@ -1,4 +1,4 @@
-import type { SelectedDevice } from "@/features/devices/components/select-device-modal";
+import type { SelectedDevice } from "@/features/devices/data/state/session-bar";
 import {
 	DEFAULT_VIEWPORT_PRESET,
 	type Device,

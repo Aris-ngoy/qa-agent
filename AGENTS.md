@@ -12,6 +12,13 @@ Five canonical roles, label string equals role name. See `docs/agents/triage-lab
 
 Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
+## Desktop webview
+
+Code in `apps/desktop/src/mainview` follows `features/inspector`'s layout and holds state in Legend-State. Before adding a feature, a store, or a query there, read `docs/architecture/desktop-feature-layout.md`.
+
+- **Folders per feature:** `components/` (UI), `data/api/` (every runner and desktop-RPC call), `data/state/` (shared observables and state shapes), `hooks/`, `hooks/usequery/` (TanStack Query keys, queries, mutations), `utils/` (pure helpers + tests).
+- **State:** `useObservable` + `useValue` in components; a module `observable()` in `data/state/` for app-wide state, in place of React context. Write with `.set()` and read with `.peek()` in handlers and effects; set whole new objects or arrays for values a component reads whole. `no-react-state.test.ts` guards this.
+
 ## Contribution gates
 
 `main` is protected. These rules apply to every change, whoever or whatever tool authors it (human-facing version: `CONTRIBUTING.md`).

@@ -6,8 +6,9 @@ import { SidebarToggle } from "@/features/settings/components/sidebar-toggle";
 import { useSidebarCollapsed } from "@/features/settings/hooks/use-sidebar-collapsed";
 import { YoqaMark } from "@/features/splash/components/yoqa-mark";
 import { Button, Dropdown, Label, Separator, Tooltip } from "@heroui/react";
+import { useObservable, useValue } from "@legendapp/state/react";
 import { Link } from "@tanstack/react-router";
-import { type ReactNode, type SVGProps, useMemo, useState } from "react";
+import { type ReactNode, type SVGProps, useMemo } from "react";
 
 const DOCS_URL = "https://yoqa.arisn.dev/docs/quickstart";
 
@@ -105,8 +106,10 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 	const { apps, selectedApp, selectApp, addApp } = useApps();
 	const { isRunLive } = useActiveRun();
 	const [collapsed] = useSidebarCollapsed();
-	const [modalOpen, setModalOpen] = useState(false);
-	const [workspaceOpen, setWorkspaceOpen] = useState(false);
+	const modalOpen$ = useObservable(false);
+	const workspaceOpen$ = useObservable(false);
+	const modalOpen = useValue(modalOpen$);
+	const workspaceOpen = useValue(workspaceOpen$);
 	const appLabel = selectedApp?.name ?? "Yoqa";
 
 	const navItems = useMemo((): NavItem[] => {
@@ -194,7 +197,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 					</div>
 				)}
 
-				<Dropdown isOpen={workspaceOpen} onOpenChange={setWorkspaceOpen}>
+				<Dropdown isOpen={workspaceOpen} onOpenChange={(open) => workspaceOpen$.set(open)}>
 					<Button
 						aria-expanded={workspaceOpen}
 						aria-label={`Workspace: ${appLabel}. Switch application`}
@@ -230,7 +233,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 						<Dropdown.Menu
 							onAction={(key) => {
 								if (String(key) === ADD_APP_KEY) {
-									setModalOpen(true);
+									modalOpen$.set(true);
 									return;
 								}
 								selectApp(String(key));
@@ -334,7 +337,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 					<button
 						aria-label="Add application"
 						className="mb-1 flex size-[46px] items-center justify-center self-center rounded-full border border-dashed border-sidebar-fg/30 p-0"
-						onClick={() => setModalOpen(true)}
+						onClick={() => modalOpen$.set(true)}
 						type="button"
 					>
 						<span className="flex size-[34px] items-center justify-center rounded-full bg-sidebar-fg text-sidebar">
@@ -389,7 +392,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				onAdd={(name) => {
 					void addApp(name);
 				}}
-				onClose={() => setModalOpen(false)}
+				onClose={() => modalOpen$.set(false)}
 				open={modalOpen}
 			/>
 		</>

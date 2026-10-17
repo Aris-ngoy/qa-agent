@@ -1,18 +1,25 @@
-import { getDesktopRpc } from "@/app/desktop-rpc";
-import { getRunnerClient } from "@/app/runner-client";
-import { showErrorToast } from "@/app/show-error-toast";
 import {
 	DoctorSeverityPill,
 	doctorStepSeverityClass,
 } from "@/features/doctor/components/status-ui";
+import { useDoctorReport, useRepairDoctor } from "@/features/doctor/hooks/usequery/use-doctor";
+import {
+	useRestartServer,
+	useServers,
+	useStopAllServers,
+	useStopServer,
+} from "@/features/doctor/hooks/usequery/use-servers";
+import {
+	canActViaHttp,
+	isRunnerRow,
+	kindBadge,
+	ownershipHint,
+} from "@/features/doctor/utils/servers";
 import { Button, Spinner, Tabs } from "@heroui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { batch } from "@legendapp/state";
+import { useObservable, useValue } from "@legendapp/state/react";
 import { useNavigate } from "@tanstack/react-router";
-import type { DoctorReport, ServerEntry } from "@yoqa/runner-client";
-import { type SVGProps, useEffect, useState } from "react";
-
-export const serversQueryKey = ["servers"] as const;
-export const doctorQueryKey = ["doctor"] as const;
+import { type SVGProps, useEffect } from "react";
 
 function ServerIcon({ className = "size-5", ...props }: SVGProps<SVGSVGElement>) {
 	return (
@@ -32,49 +39,24 @@ function ServerIcon({ className = "size-5", ...props }: SVGProps<SVGSVGElement>)
 	);
 }
 
-function kindBadge(kind: ServerEntry["kind"]): string {
-	if (kind === "runner") return "Runner";
-	return "Session";
-}
-
-function ownershipHint(entry: ServerEntry): string {
-	if (entry.ownership === "foreign") return "foreign";
-	if (entry.ownership === "self") return "self";
-	return "managed";
-}
-
-function canActViaHttp(entry: ServerEntry, action: "stop" | "restart"): boolean {
-	return entry.actions.includes(action);
-}
-
-function isRunnerRow(entry: ServerEntry): boolean {
-	return entry.kind === "runner";
-}
-
 type ServersDoctorPanelProps = {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 };
 
 export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelProps) {
-	const [tab, setTab] = useState<"servers" | "doctor">("servers");
-	const [selectedId, setSelectedId] = useState<string | null>(null);
-	const [runnerConfirm, setRunnerConfirm] = useState<"stop" | "restart" | null>(null);
-	const queryClient = useQueryClient();
+	const panel$ = useObservable({
+		tab: "servers" as "servers" | "doctor",
+		selectedId: null as string | null,
+		runnerConfirm: null as "stop" | "restart" | null,
+	});
+	const tab = useValue(panel$.tab);
+	const selectedId = useValue(panel$.selectedId);
+	const runnerConfirm = useValue(panel$.runnerConfirm);
 	const navigate = useNavigate();
 
-	const serversQuery = useQuery({
-		queryKey: serversQueryKey,
-		queryFn: async () => (await getRunnerClient()).listServers(),
-		enabled: open,
-		refetchInterval: open ? 2_000 : false,
-	});
-
-	const doctorQuery = useQuery({
-		queryKey: doctorQueryKey,
-		queryFn: async () => (await getRunnerClient()).getDoctorReport(),
-		enabled: false,
-	});
+	const serversQuery = useServers(open);
+	const doctorQuery = useDoctorReport();
 
 	const servers = serversQuery.data?.servers ?? [];
 	const selected = servers.find((item) => item.id === selectedId) ?? null;
@@ -84,76 +66,22 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 
 	useEffect(() => {
 		if (!open) {
-			setSelectedId(null);
-			setRunnerConfirm(null);
+			batch(() => {
+				panel$.selectedId.set(null);
+				panel$.runnerConfirm.set(null);
+			});
 			return;
 		}
 		if (selectedId && !servers.some((item) => item.id === selectedId)) {
-			setSelectedId(null);
+			panel$.selectedId.set(null);
 		}
-	}, [open, selectedId, servers]);
+	}, [open, selectedId, servers, panel$]);
 
-	const invalidateServers = async () => {
-		await queryClient.invalidateQueries({ queryKey: serversQueryKey });
-	};
-
-	const stopAllMutation = useMutation({
-		mutationFn: async () => (await getRunnerClient()).stopAllServers(),
-		onSuccess: async () => {
-			await invalidateServers();
-		},
-		onError: (error) => showErrorToast(error, "Stop all failed"),
-	});
-
-	const stopMutation = useMutation({
-		mutationFn: async (entry: ServerEntry) => {
-			if (isRunnerRow(entry)) {
-				await getDesktopRpc().request.stopLocalRunner();
-				return;
-			}
-			await (await getRunnerClient()).stopServer(entry.id);
-		},
-		onSuccess: async () => {
-			setRunnerConfirm(null);
-			await invalidateServers();
-		},
-		onError: (error) => showErrorToast(error, "Stop failed"),
-	});
-
-	const restartMutation = useMutation({
-		mutationFn: async (entry: ServerEntry) => {
-			if (isRunnerRow(entry)) {
-				await getDesktopRpc().request.restartLocalRunner();
-				return;
-			}
-			await (await getRunnerClient()).restartServer(entry.id);
-		},
-		onSuccess: async () => {
-			setRunnerConfirm(null);
-			await invalidateServers();
-		},
-		onError: (error) => showErrorToast(error, "Restart failed"),
-	});
-
-	const repairMutation = useMutation({
-		mutationFn: async (report: DoctorReport) => {
-			const repairs = [
-				...new Set(
-					report.steps
-						.map((step) => step.repair)
-						.filter((id): id is NonNullable<typeof id> => Boolean(id)),
-				),
-			];
-			if (repairs.length === 0) {
-				throw new Error("No safe repairs available");
-			}
-			return (await getRunnerClient()).repairDoctor({ repairs });
-		},
-		onSuccess: async (result) => {
-			queryClient.setQueryData(doctorQueryKey, result.report);
-		},
-		onError: (error) => showErrorToast(error, "Repair failed"),
-	});
+	const clearConfirm = () => panel$.runnerConfirm.set(null);
+	const stopAllMutation = useStopAllServers();
+	const stopMutation = useStopServer({ onSuccess: clearConfirm });
+	const restartMutation = useRestartServer({ onSuccess: clearConfirm });
+	const repairMutation = useRepairDoctor();
 
 	const failingCount =
 		doctorQuery.data?.checks.filter((check) => check.status === "fail").length ?? 0;
@@ -180,7 +108,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 				<div className="absolute top-[calc(100%+0.75rem)] right-0 z-[100] w-[22rem] rounded-2xl border border-outline-variant bg-surface-container-lowest p-3 shadow-float">
 					<Tabs
 						className="w-full"
-						onSelectionChange={(key) => setTab(String(key) as "servers" | "doctor")}
+						onSelectionChange={(key) => panel$.tab.set(String(key) as "servers" | "doctor")}
 						selectedKey={tab}
 					>
 						<Tabs.ListContainer>
@@ -238,7 +166,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 														? "bg-primary/10 text-on-surface"
 														: "hover:bg-surface-container text-on-surface",
 												].join(" ")}
-												onClick={() => setSelectedId(entry.id)}
+												onClick={() => panel$.selectedId.set(entry.id)}
 												type="button"
 											>
 												<span className="flex items-center justify-between gap-2">
@@ -268,7 +196,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 													: "Restart yoqa-runner? Brief downtime while the sidecar comes back."}
 											</p>
 											<div className="flex gap-2">
-												<Button onPress={() => setRunnerConfirm(null)} size="sm" variant="tertiary">
+												<Button onPress={clearConfirm} size="sm" variant="tertiary">
 													Cancel
 												</Button>
 												<Button
@@ -292,7 +220,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 													(!canActViaHttp(selected, "stop") && !isRunnerRow(selected))
 												}
 												onPress={() => {
-													if (isRunnerRow(selected)) setRunnerConfirm("stop");
+													if (isRunnerRow(selected)) panel$.runnerConfirm.set("stop");
 													else stopMutation.mutate(selected);
 												}}
 												size="sm"
@@ -306,7 +234,7 @@ export function ServersDoctorPanel({ open, onOpenChange }: ServersDoctorPanelPro
 													(!canActViaHttp(selected, "restart") && !isRunnerRow(selected))
 												}
 												onPress={() => {
-													if (isRunnerRow(selected)) setRunnerConfirm("restart");
+													if (isRunnerRow(selected)) panel$.runnerConfirm.set("restart");
 													else restartMutation.mutate(selected);
 												}}
 												size="sm"

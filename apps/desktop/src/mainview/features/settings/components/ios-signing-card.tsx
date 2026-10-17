@@ -1,17 +1,18 @@
-import { getRunnerClient } from "@/app/runner-client";
-import { showErrorToast } from "@/app/show-error-toast";
-import { devicesQueryKey } from "@/features/runs/utils/labels";
+import { useListedDevices } from "@/features/devices/hooks/usequery/use-devices";
 import { TierBadge } from "@/features/settings/components/brand-marks";
+import {
+	useCheckIosSigning,
+	useIosSigning,
+	useSetIosSigningTeam,
+} from "@/features/settings/hooks/usequery/use-ios-signing";
 import { Button, ListBox, Select, Spinner } from "@heroui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useObservable, useValue } from "@legendapp/state/react";
 import type {
 	IosSigningCheckResponse,
 	IosSigningStatus,
 	IosSigningTeam,
 } from "@yoqa/runner-client";
-import { useState } from "react";
 
-const IOS_SIGNING_QUERY_KEY = ["ios-signing"] as const;
 /** The Select key for "no saved team": the keychain's newest certificate signs. */
 const AUTO = "auto";
 
@@ -50,48 +51,22 @@ function autoLabel(status: IosSigningStatus): string {
  * (`yoqa signing`) sees the same choice; "Check" signs for a phone now and says what to fix.
  */
 export function IosSigningCard({ enabled }: { enabled: boolean }) {
-	const queryClient = useQueryClient();
-	const [checks, setChecks] = useState<Record<string, IosSigningCheckResponse>>({});
+	const checks$ = useObservable<Record<string, IosSigningCheckResponse>>({});
+	const checks = useValue(checks$);
 
-	const signingQuery = useQuery({
-		queryKey: IOS_SIGNING_QUERY_KEY,
-		enabled,
-		queryFn: async () => (await getRunnerClient()).getIosSigning(),
-		staleTime: 30_000,
-	});
-
-	const phonesQuery = useQuery({
-		queryKey: devicesQueryKey("ios"),
-		enabled,
-		queryFn: async () => (await getRunnerClient()).listDevices("ios", { includeUnavailable: true }),
-		select: (response) =>
-			response.devices.filter(
-				(device) => device.kind === "physical" && device.unavailableReason === undefined,
-			),
-	});
-
-	const teamMutation = useMutation({
-		mutationFn: async (team: string | null) => (await getRunnerClient()).setIosSigningTeam(team),
-		onSuccess: (status) => {
-			queryClient.setQueryData(IOS_SIGNING_QUERY_KEY, status);
-			setChecks({});
-		},
-		onError: (error) => showErrorToast(error, "Could not save the signing team"),
-	});
-
-	const checkMutation = useMutation({
-		mutationFn: async (deviceId: string) => (await getRunnerClient()).checkIosSigning({ deviceId }),
-		onSuccess: (check) => {
-			setChecks((current) => ({ ...current, [check.deviceId]: check }));
-			void queryClient.invalidateQueries({ queryKey: IOS_SIGNING_QUERY_KEY });
-		},
-		onError: (error) => showErrorToast(error, "Could not check signing"),
+	const signingQuery = useIosSigning(enabled);
+	const phonesQuery = useListedDevices("ios", { enabled });
+	const teamMutation = useSetIosSigningTeam({ onSuccess: () => checks$.set({}) });
+	const checkMutation = useCheckIosSigning({
+		onSuccess: (check) => checks$.set((current) => ({ ...current, [check.deviceId]: check })),
 	});
 
 	const status = signingQuery.data;
 	const selectedKey = status?.saved ?? AUTO;
 	const selectedTeam = status?.teams.find((team) => team.id === status.saved) ?? null;
-	const phones = phonesQuery.data ?? [];
+	const phones = (phonesQuery.data ?? []).filter(
+		(device) => device.kind === "physical" && device.unavailableReason === undefined,
+	);
 	const checkingId = checkMutation.isPending ? checkMutation.variables : null;
 
 	return (

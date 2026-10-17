@@ -1,5 +1,6 @@
+import { bytesToBase64, downloadTextFile } from "@/app/download";
 import { showErrorToast } from "@/app/show-error-toast";
-import type { Application } from "@/features/apps/hooks/use-apps";
+import type { Application } from "@/features/apps/data/api/apps";
 import { readScreenshotBytes } from "@/features/inspector/data/api/screen";
 import { runInspectorCaseScript } from "@/features/inspector/data/api/script";
 import type { InspectorFeedController } from "@/features/inspector/data/state/feed";
@@ -14,12 +15,7 @@ import {
 } from "@/features/inspector/data/state/script";
 import { useSaveTestCase } from "@/features/inspector/hooks/usequery/use-save-test-case";
 import { tapLinesForSelection } from "@/features/inspector/utils/command-snippets";
-import {
-	bytesToBase64,
-	downloadTextFile,
-	exportRunReport,
-	notify,
-} from "@/features/inspector/utils/report";
+import { notify } from "@/features/inspector/utils/report";
 import {
 	caseScriptLinesFromShell,
 	defaultCaseNameFromScript,
@@ -29,6 +25,7 @@ import {
 } from "@/features/inspector/utils/script-text";
 import type { InspectorSelection } from "@/features/inspector/utils/selection";
 import { errorMessage, settle } from "@/features/inspector/utils/settle";
+import { exportRunReport } from "@/features/runs/utils/run-report";
 import { useObservable } from "@legendapp/state/react";
 import { useNavigate } from "@tanstack/react-router";
 import {

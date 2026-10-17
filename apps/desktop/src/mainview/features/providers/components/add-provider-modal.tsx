@@ -1,23 +1,25 @@
 import { RhfTextField } from "@/app/forms";
-import { getRunnerClient } from "@/app/runner-client";
+import { DriverGlyph } from "@/features/providers/components/driver-glyph";
 import { Stepper } from "@/features/providers/components/stepper";
 import {
-	DriverGlyph,
-	type DriverMeta,
-	fieldInputClass,
 	useActiveDrivers,
 	useDriverCards,
 	useDriverMeta,
-} from "@/features/providers/utils/driver-meta";
+} from "@/features/providers/hooks/use-driver-meta";
+import {
+	useCreateProvider,
+	useProbeProvider,
+} from "@/features/providers/hooks/usequery/use-providers";
+import { type DriverMeta, fieldInputClass } from "@/features/providers/utils/driver-meta";
 import { Button, Modal } from "@heroui/react";
-import { useMutation } from "@tanstack/react-query";
+import { useObservable, useValue } from "@legendapp/state/react";
 import type {
 	CreateProviderRequest,
 	ProbeProviderResponse,
 	ProviderAuthMode,
 	ProviderKind,
 } from "@yoqa/runner-client";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 
 const WIZARD_STEPS = [
@@ -54,6 +56,18 @@ function stepIndex(step: WizardStep): number {
 	return WIZARD_STEPS.findIndex((item) => item.id === step);
 }
 
+type WizardState = {
+	step: WizardStep;
+	selectedKind: ProviderKind | null;
+	authMode: ProviderAuthMode;
+	probe: ProbeProviderResponse | null;
+	error: string | null;
+};
+
+function initialWizard(): WizardState {
+	return { step: "driver", selectedKind: null, authMode: "api_key", probe: null, error: null };
+}
+
 const emptyForm: ProviderFormValues = {
 	label: "",
 	apiKey: "",
@@ -65,11 +79,12 @@ const emptyForm: ProviderFormValues = {
 };
 
 export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalProps) {
-	const [step, setStep] = useState<WizardStep>("driver");
-	const [selectedKind, setSelectedKind] = useState<ProviderKind | null>(null);
-	const [authMode, setAuthMode] = useState<ProviderAuthMode>("api_key");
-	const [probe, setProbe] = useState<ProbeProviderResponse | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	const wizard$ = useObservable(initialWizard());
+	const step = useValue(wizard$.step);
+	const selectedKind = useValue(wizard$.selectedKind);
+	const authMode = useValue(wizard$.authMode);
+	const probe = useValue(wizard$.probe);
+	const error = useValue(wizard$.error);
 
 	const { control, handleSubmit, reset, getValues, trigger } = useForm<ProviderFormValues>({
 		defaultValues: emptyForm,
@@ -93,50 +108,31 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 
 	useEffect(() => {
 		if (!open) {
-			setStep("driver");
-			setSelectedKind(null);
-			setAuthMode("api_key");
+			wizard$.set(initialWizard());
 			reset(emptyForm);
-			setProbe(null);
-			setError(null);
 		}
-	}, [open, reset]);
+	}, [open, reset, wizard$]);
 
-	const probeMutation = useMutation({
-		mutationFn: async (input: { kind: ProviderKind; binaryPath?: string | null }) => {
-			const client = await getRunnerClient();
-			return client.probeProvider(input);
-		},
-		onSuccess: (result) => {
-			setProbe(result);
-		},
-	});
+	const probeMutation = useProbeProvider();
+	const runProbe = (input: { kind: ProviderKind; binaryPath?: string | null }) =>
+		probeMutation.mutateAsync(input).then((result) => {
+			wizard$.probe.set(result);
+			return result;
+		});
 
-	const createMutation = useMutation({
-		mutationFn: async (request: CreateProviderRequest) => {
-			const client = await getRunnerClient();
-			const created = await client.createProvider(request);
-			try {
-				await client.validateProvider(created.id);
-			} catch {
-				// Keep instance even if validation fails.
-			}
-			return created;
-		},
+	const createMutation = useCreateProvider({
 		onSuccess: async () => {
 			await onCreated();
 			onClose();
 		},
-		onError: (err) => {
-			setError(err instanceof Error ? err.message : "Failed to create provider");
-		},
+		onError: (message) => wizard$.error.set(message),
 	});
 
 	const selectDriver = (driver: DriverMeta) => {
 		if (driver.comingSoon || !activeDrivers.some((d) => d.kind === driver.kind)) return;
 		const kind = driver.kind as ProviderKind;
-		setSelectedKind(kind);
-		setAuthMode(driver.authModes[0] ?? "api_key");
+		wizard$.selectedKind.set(kind);
+		wizard$.authMode.set(driver.authModes[0] ?? "api_key");
 		reset({
 			label: driver.label,
 			apiKey: "",
@@ -147,16 +143,16 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 				kind === "opencode" ? "mimo-v2.5-free" : kind === "grok" ? "grok-2-vision-1212" : "",
 			envRows: driver.envHints.slice(0, 1).map((key) => newEnvRow(key)),
 		});
-		setProbe(null);
-		setError(null);
+		wizard$.probe.set(null);
+		wizard$.error.set(null);
 	};
 
 	const goIdentity = () => {
 		if (!selectedKind || !meta) return;
-		setStep("identity");
-		setError(null);
+		wizard$.step.set("identity");
+		wizard$.error.set(null);
 		if (meta.defaultBinary) {
-			void probeMutation.mutateAsync({
+			void runProbe({
 				kind: selectedKind,
 				binaryPath: binaryPath.trim() || null,
 			});
@@ -170,26 +166,26 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 		if (selectedKind === "opencode") {
 			const hasEnv = envRows.some((r) => r.key.trim() && r.value.trim());
 			if (!apiKey.trim() && !hasEnv) {
-				setError("Paste a Zen API key from opencode.ai to continue (required for vision)");
+				wizard$.error.set("Paste a Zen API key from opencode.ai to continue (required for vision)");
 				return;
 			}
 		} else if (selectedKind !== "custom" && authMode !== "cli" && !apiKey.trim()) {
 			const hasEnv = envRows.some((r) => r.key.trim() && r.value.trim());
 			if (!hasEnv) {
-				setError(
+				wizard$.error.set(
 					authMode === "token" ? "Paste a token to continue" : "Paste an API key to continue",
 				);
 				return;
 			}
 		}
-		setError(null);
-		setStep("config");
+		wizard$.error.set(null);
+		wizard$.step.set("config");
 	};
 
 	const onCreate = (values: ProviderFormValues) => {
 		if (!selectedKind || !meta) return;
 		if (selectedKind === "custom" && !values.baseUrl.trim()) {
-			setError("Base URL is required for a custom provider");
+			wizard$.error.set("Base URL is required for a custom provider");
 			return;
 		}
 		const env: Record<string, string> = {};
@@ -222,8 +218,8 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 		if (next >= currentStep) return;
 		const target = WIZARD_STEPS[next];
 		if (!target) return;
-		setError(null);
-		setStep(target.id);
+		wizard$.error.set(null);
+		wizard$.step.set(target.id);
 	};
 
 	return (
@@ -320,7 +316,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 															: "border-outline-variant text-on-surface-variant",
 													].join(" ")}
 													type="button"
-													onClick={() => setAuthMode(mode)}
+													onClick={() => wizard$.authMode.set(mode)}
 												>
 													{mode === "api_key"
 														? "API key"
@@ -350,7 +346,7 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 												size="sm"
 												variant="secondary"
 												onPress={() =>
-													void probeMutation.mutateAsync({
+													void runProbe({
 														kind: selectedKind,
 														binaryPath: getValues("binaryPath").trim() || null,
 													})
@@ -508,7 +504,11 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 							) : null}
 							{step === "identity" ? (
 								<>
-									<Button type="button" variant="secondary" onPress={() => setStep("driver")}>
+									<Button
+										type="button"
+										variant="secondary"
+										onPress={() => wizard$.step.set("driver")}
+									>
 										Back
 									</Button>
 									<Button
@@ -524,7 +524,11 @@ export function AddProviderModal({ open, onClose, onCreated }: AddProviderModalP
 							) : null}
 							{step === "config" ? (
 								<>
-									<Button type="button" variant="secondary" onPress={() => setStep("identity")}>
+									<Button
+										type="button"
+										variant="secondary"
+										onPress={() => wizard$.step.set("identity")}
+									>
 										Back
 									</Button>
 									<Button

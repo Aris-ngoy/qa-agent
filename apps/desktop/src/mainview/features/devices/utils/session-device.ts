@@ -1,7 +1,4 @@
-import type {
-	DevicePlatform,
-	SelectedDevice,
-} from "@/features/devices/components/select-device-modal";
+import type { DevicePlatform, SelectedDevice } from "@/features/devices/data/state/session-bar";
 import { attachedBrowser, viewportFor } from "@/features/devices/utils/web-device";
 import {
 	DEFAULT_VIEWPORT_PRESET,

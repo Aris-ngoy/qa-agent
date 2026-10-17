@@ -1,19 +1,14 @@
 import { staggerStyle, useEnterOnce } from "@/app/motion/use-enter-once";
 import { Pager } from "@/app/pagination/pager";
 import { usePagination } from "@/app/pagination/use-pagination";
-import { getRunnerClient } from "@/app/runner-client";
 import { useApps } from "@/features/apps/hooks/use-apps";
 import { useTestCaseSelection } from "@/features/test-cases/hooks/use-test-case-selection";
-import {
-	type CaseStatus,
-	type TestCase,
-	casesQueryKey,
-	mapCatalogCase,
-} from "@/features/test-cases/utils/catalog-case";
+import { useCasesQuery, useCreateCase } from "@/features/test-cases/hooks/usequery/use-cases";
+import type { CaseStatus } from "@/features/test-cases/utils/catalog-case";
 import { Button } from "@heroui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useObservable, useValue } from "@legendapp/state/react";
 import { useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 function CaseStatusPill({ status }: { status: CaseStatus | null }) {
 	if (status === "passed") {
@@ -44,44 +39,27 @@ function CaseStatusPill({ status }: { status: CaseStatus | null }) {
 
 export function TestCasesPage() {
 	const navigate = useNavigate();
-	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
 	const { selectedCaseIds, toggle, setSelected, isSelected } = useTestCaseSelection();
-	const [filter, setFilter] = useState("");
+	const filter$ = useObservable("");
+	const filter = useValue(filter$);
 
-	const casesQuery = useQuery({
-		queryKey: selectedApp ? casesQueryKey(selectedApp.id) : ["catalog", "cases", "none"],
-		enabled: Boolean(selectedApp),
-		queryFn: async () => {
-			if (!selectedApp) return [] as TestCase[];
-			const client = await getRunnerClient();
-			const cases = await client.listCases(selectedApp.id);
-			return cases.map((row) => mapCatalogCase(row));
-		},
-	});
-
-	const createMutation = useMutation({
-		mutationFn: async () => {
-			if (!selectedApp) {
-				throw new Error("Select an app first");
-			}
-			const client = await getRunnerClient();
-			return mapCatalogCase(
-				await client.createCase(selectedApp.id, {
-					name: "New test case",
-					flows: [{ instructions: "", expectedResult: "" }],
-				}),
-			);
-		},
-		onSuccess: (created) => {
-			if (selectedApp) {
-				queryClient.setQueryData<TestCase[]>(casesQueryKey(selectedApp.id), (current) =>
-					current ? [created, ...current] : [created],
-				);
-			}
-			void navigate({ to: "/test-cases/$caseId", params: { caseId: created.id } });
-		},
-	});
+	const casesQuery = useCasesQuery(selectedApp?.id);
+	const createMutation = useCreateCase();
+	const createCase = () => {
+		if (!selectedApp) return;
+		createMutation.mutate(
+			{
+				appId: selectedApp.id,
+				body: { name: "New test case", flows: [{ instructions: "", expectedResult: "" }] },
+			},
+			{
+				onSuccess: (created) => {
+					void navigate({ to: "/test-cases/$caseId", params: { caseId: created.id } });
+				},
+			},
+		);
+	};
 
 	const rows = useMemo(() => {
 		const all = casesQuery.data ?? [];
@@ -148,7 +126,7 @@ export function TestCasesPage() {
 					</span>
 					<input
 						className="h-10 w-full rounded-full border-none bg-surface-container-lowest pl-12 pr-5 text-body-md text-on-surface shadow-card placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/10"
-						onChange={(event) => setFilter(event.target.value)}
+						onChange={(event) => filter$.set(event.target.value)}
 						placeholder="Filter by name, tag, or status…"
 						type="search"
 						value={filter}
@@ -157,7 +135,7 @@ export function TestCasesPage() {
 				<Button
 					className="h-10 rounded-full bg-primary px-5 text-on-primary data-[hovered=true]:bg-primary/90"
 					isDisabled={createMutation.isPending}
-					onPress={() => createMutation.mutate()}
+					onPress={createCase}
 				>
 					New test case
 				</Button>

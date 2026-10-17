@@ -1,16 +1,14 @@
-import {
-	type DevicePlatform,
-	SelectDeviceModal,
-	type SelectedDevice,
-} from "@/features/devices/components/select-device-modal";
+import { SelectDeviceModal } from "@/features/devices/components/select-device-modal";
+import type { DevicePlatform, SelectedDevice } from "@/features/devices/data/state/session-bar";
 import { sessionPillLabel } from "@/features/devices/utils/session-status";
 import { withViewport } from "@/features/devices/utils/web-device";
 import { ServersDoctorPanel } from "@/features/doctor/components/servers-doctor-panel";
+import { effectiveTheme$ } from "@/features/settings/data/state/theme";
 import { useThemeMode } from "@/features/settings/hooks/use-theme-mode";
-import { resolveTheme } from "@/features/settings/utils/ui-preferences";
 import { Button, ListBox, Select } from "@heroui/react";
+import { useObservable, useValue } from "@legendapp/state/react";
 import { type ActiveDeviceResponse, devicePlatformSchema } from "@yoqa/runner-client";
-import { type ReactNode, type SVGProps, useState, useSyncExternalStore } from "react";
+import type { ReactNode, SVGProps } from "react";
 
 const PLATFORM_LABELS: Record<DevicePlatform, string> = {
 	ios: "iOS",
@@ -97,19 +95,9 @@ function PlugIcon() {
 	);
 }
 
-function subscribeOsDark(onChange: () => void) {
-	const media = window.matchMedia("(prefers-color-scheme: dark)");
-	media.addEventListener("change", onChange);
-	return () => media.removeEventListener("change", onChange);
-}
-
 function ThemeToggle() {
-	const [mode, setMode] = useThemeMode();
-	const osDark = useSyncExternalStore(
-		subscribeOsDark,
-		() => window.matchMedia("(prefers-color-scheme: dark)").matches,
-	);
-	const effective = resolveTheme(mode, osDark);
+	const [, setMode] = useThemeMode();
+	const effective = useValue(effectiveTheme$);
 	const button = (theme: "light" | "dark", label: string, icon: ReactNode) => {
 		const pressed = effective === theme;
 		return (
@@ -184,8 +172,10 @@ export function SessionToolbar({
 	onDisconnect,
 	viewOnly,
 }: SessionToolbarProps) {
-	const [pickerOpen, setPickerOpen] = useState(false);
-	const [serversOpen, setServersOpen] = useState(false);
+	const pickerOpen$ = useObservable(false);
+	const serversOpen$ = useObservable(false);
+	const pickerOpen = useValue(pickerOpen$);
+	const serversOpen = useValue(serversOpen$);
 	const connected = active != null;
 	const canRestart = connected || device != null;
 	/** A session's device the list does not have yet shows by its id; a browser adds its preset. */
@@ -253,7 +243,7 @@ export function SessionToolbar({
 							deviceLabel ? "font-mono" : "",
 						].join(" ")}
 						isDisabled={connecting}
-						onPress={() => setPickerOpen(true)}
+						onPress={() => pickerOpen$.set(true)}
 						size="sm"
 						variant="ghost"
 					>
@@ -263,7 +253,7 @@ export function SessionToolbar({
 				</div>
 			)}
 
-			<ServersDoctorPanel onOpenChange={setServersOpen} open={serversOpen} />
+			<ServersDoctorPanel onOpenChange={(open) => serversOpen$.set(open)} open={serversOpen} />
 			<ThemeToggle />
 
 			{connected ? (
@@ -337,10 +327,10 @@ export function SessionToolbar({
 				open={pickerOpen}
 				platform={platform}
 				viewport={device?.viewport}
-				onClose={() => setPickerOpen(false)}
+				onClose={() => pickerOpen$.set(false)}
 				onSelect={(selected) => {
 					onDeviceSelect(selected);
-					setPickerOpen(false);
+					pickerOpen$.set(false);
 				}}
 			/>
 		</div>

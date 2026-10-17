@@ -1,17 +1,13 @@
-import { getDesktopRpc } from "@/app/desktop-rpc";
 import { useReducedMotion } from "@/app/motion/use-reduced-motion";
 import { YoqaMark } from "@/features/splash/components/yoqa-mark";
+import { sleep, startLocalServices } from "@/features/splash/data/api/boot";
+import { type BootPhase, initialBootState } from "@/features/splash/data/state/boot";
 import { Button } from "@heroui/react";
-import { createRunnerClient } from "@yoqa/runner-client";
-import { type ReactNode, useEffect, useRef, useState } from "react";
-
-type BootPhase = "starting" | "checking" | "ready" | "error";
+import { batch } from "@legendapp/state";
+import { useObservable, useValue } from "@legendapp/state/react";
+import { type ReactNode, useEffect, useRef } from "react";
 
 const CROSSFADE_MS = 400;
-
-function sleep(ms: number) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function splashForPhase(
 	phase: BootPhase,
@@ -94,24 +90,19 @@ type BootGateProps = {
 
 export function BootGate({ children }: BootGateProps) {
 	const reducedMotion = useReducedMotion();
-	const [phase, setPhase] = useState<BootPhase>("starting");
-	const [message, setMessage] = useState<string | null>(null);
-	const [attempt, setAttempt] = useState(0);
-	const [ready, setReady] = useState(false);
-	const [splashMounted, setSplashMounted] = useState(true);
-	const [splashExiting, setSplashExiting] = useState(false);
-	const [appVisible, setAppVisible] = useState(false);
+	const boot$ = useObservable(initialBootState());
+	const phase = useValue(boot$.phase);
+	const message = useValue(boot$.message);
+	const attempt = useValue(boot$.attempt);
+	const ready = useValue(boot$.ready);
+	const splashMounted = useValue(boot$.splashMounted);
+	const splashExiting = useValue(boot$.splashExiting);
+	const appVisible = useValue(boot$.appVisible);
 	const abortRef = useRef<AbortController | null>(null);
 
 	const retry = () => {
 		abortRef.current?.abort();
-		setReady(false);
-		setSplashMounted(true);
-		setSplashExiting(false);
-		setAppVisible(false);
-		setPhase("starting");
-		setMessage(null);
-		setAttempt((n) => n + 1);
+		boot$.set(initialBootState(boot$.attempt.peek() + 1));
 	};
 
 	useEffect(() => {
@@ -121,43 +112,23 @@ export function BootGate({ children }: BootGateProps) {
 
 		void (async () => {
 			try {
-				setPhase("starting");
-
-				const { baseUrl } = await getDesktopRpc().request.ensureLocalServices();
+				boot$.phase.set("starting");
+				if (!(await startLocalServices(controller.signal))) return;
 				if (controller.signal.aborted) return;
 
-				const client = createRunnerClient({ baseUrl });
+				boot$.phase.set("checking");
 
-				// Confirm the sidecar is reachable from the webview (CORS / loopback).
-				let healthy = false;
-				for (let i = 0; i < 20; i++) {
-					if (controller.signal.aborted) return;
-					try {
-						await client.health();
-						healthy = true;
-						break;
-					} catch {
-						await sleep(250);
-					}
-				}
-
-				if (!healthy) {
-					throw new Error("Local runner started but is not reachable yet. Retry.");
-				}
-
-				if (controller.signal.aborted) return;
-
-				setPhase("checking");
-
-				setPhase("ready");
+				boot$.phase.set("ready");
 				await sleep(350);
 				if (controller.signal.aborted) return;
-				setReady(true);
+				boot$.ready.set(true);
 			} catch (error) {
 				if (controller.signal.aborted) return;
 				const text = error instanceof Error ? error.message : "Boot checks failed.";
-				setPhase("error");
-				setMessage(text);
+				batch(() => {
+					boot$.phase.set("error");
+					boot$.message.set(text);
+				});
 			} finally {
 				if (abortRef.current === controller) {
 					abortRef.current = null;
@@ -168,36 +139,42 @@ export function BootGate({ children }: BootGateProps) {
 		return () => {
 			controller.abort();
 		};
-	}, [attempt]);
+	}, [attempt, boot$]);
 
 	useEffect(() => {
 		if (!ready) return;
 
 		if (reducedMotion) {
-			setAppVisible(true);
-			setSplashMounted(false);
-			setSplashExiting(false);
+			batch(() => {
+				boot$.appVisible.set(true);
+				boot$.splashMounted.set(false);
+				boot$.splashExiting.set(false);
+			});
 			return;
 		}
 
-		setAppVisible(false);
-		setSplashExiting(false);
-		setSplashMounted(true);
+		batch(() => {
+			boot$.appVisible.set(false);
+			boot$.splashExiting.set(false);
+			boot$.splashMounted.set(true);
+		});
 
 		const showApp = window.requestAnimationFrame(() => {
-			setAppVisible(true);
-			setSplashExiting(true);
+			batch(() => {
+				boot$.appVisible.set(true);
+				boot$.splashExiting.set(true);
+			});
 		});
 
 		const done = window.setTimeout(() => {
-			setSplashMounted(false);
+			boot$.splashMounted.set(false);
 		}, CROSSFADE_MS);
 
 		return () => {
 			window.cancelAnimationFrame(showApp);
 			window.clearTimeout(done);
 		};
-	}, [ready, reducedMotion]);
+	}, [ready, reducedMotion, boot$]);
 
 	if (!ready) {
 		return <SplashScreen message={message} onRetry={retry} phase={phase} />;

@@ -1,22 +1,16 @@
-import { getRunnerClient } from "@/app/runner-client";
-import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/hooks/use-apps";
-import type { SelectedDevice } from "@/features/devices/components/select-device-modal";
+import type { SelectedDevice } from "@/features/devices/data/state/session-bar";
 import { useActiveDeviceSession } from "@/features/devices/hooks/usequery/use-active-device-session";
 import { hasRunTarget } from "@/features/devices/utils/session-status";
-import { runsListQueryKey } from "@/features/runs/components/runs-list-page";
-import { runQueryKey, useActiveRun } from "@/features/runs/hooks/use-active-run";
+import { useActiveRun } from "@/features/runs/hooks/use-active-run";
+import { useCancelRun, useStartRun } from "@/features/runs/hooks/usequery/use-run";
 import { useTestCaseSelection } from "@/features/test-cases/hooks/use-test-case-selection";
-import {
-	type TestCase,
-	casesQueryKey,
-	mapCatalogCase,
-} from "@/features/test-cases/utils/catalog-case";
+import { useCasesQuery } from "@/features/test-cases/hooks/usequery/use-cases";
 import { AlertDialog, Button } from "@heroui/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useObservable, useValue } from "@legendapp/state/react";
 import { useNavigate } from "@tanstack/react-router";
 import type { ActiveDeviceResponse, RunExecutionMode } from "@yoqa/runner-client";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 type RunControlsProps = {
 	/** The device picked in the top bar, connected first when there is no Active Session. */
@@ -32,24 +26,15 @@ type RunControlsProps = {
  */
 export function RunControls({ device, connectDevice, connecting }: RunControlsProps) {
 	const navigate = useNavigate();
-	const queryClient = useQueryClient();
 	const { selectedApp } = useApps();
 	const { selectedCaseIds } = useTestCaseSelection();
-	const { activeRunId, isRunLive, setActiveRun } = useActiveRun();
-	const { activeSession, invalidateActiveDeviceSession } = useActiveDeviceSession();
-	const [executionPromptOpen, setExecutionPromptOpen] = useState(false);
+	const { activeRunId, isRunLive } = useActiveRun();
+	const { activeSession } = useActiveDeviceSession();
+	const promptOpen$ = useObservable(false);
+	const executionPromptOpen = useValue(promptOpen$);
 	const hasTarget = hasRunTarget(activeSession, device);
 
-	const casesQuery = useQuery({
-		queryKey: selectedApp ? casesQueryKey(selectedApp.id) : ["catalog", "cases", "none"],
-		enabled: Boolean(selectedApp),
-		queryFn: async () => {
-			if (!selectedApp) return [] as TestCase[];
-			const client = await getRunnerClient();
-			const cases = await client.listCases(selectedApp.id);
-			return cases.map((row) => mapCatalogCase(row));
-		},
-	});
+	const casesQuery = useCasesQuery(selectedApp?.id);
 
 	const selectedCasesWithScript = useMemo(() => {
 		const cases = casesQuery.data ?? [];
@@ -57,63 +42,39 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 		return cases.filter((item) => selected.has(item.id) && item.hasScript);
 	}, [casesQuery.data, selectedCaseIds]);
 
-	const runMutation = useMutation({
-		mutationFn: async (executionMode: RunExecutionMode) => {
-			if (!selectedApp) throw new Error("Select an app first");
-			if (selectedCaseIds.length === 0) throw new Error("Select at least one test case");
+	const runMutation = useStartRun();
+	const cancelMutation = useCancelRun();
 
-			// No Active Session yet: connect the picked device through the bar's Connect path
-			// first. A connect error rejects here, so no Run is created for it.
-			let session = activeSession;
-			if (!session) {
-				if (!device) throw new Error("Pick a device in the top bar first");
-				session = await connectDevice(device);
-			}
+	const startRun = (executionMode: RunExecutionMode) => {
+		promptOpen$.set(false);
+		runMutation.mutate(
+			async () => {
+				if (!selectedApp) throw new Error("Select an app first");
+				if (selectedCaseIds.length === 0) throw new Error("Select at least one test case");
 
-			const client = await getRunnerClient();
-			return client.createRun({
-				appId: selectedApp.id,
-				caseIds: selectedCaseIds,
-				deviceId: session.deviceId,
-				platform: session.platform,
-				executionMode,
-			});
-		},
-		onMutate: () => {
-			setExecutionPromptOpen(false);
-		},
-		onSuccess: (run) => {
-			if (selectedApp) {
-				void queryClient.invalidateQueries({ queryKey: casesQueryKey(selectedApp.id) });
-				void queryClient.invalidateQueries({ queryKey: runsListQueryKey(selectedApp.id) });
-			}
-			invalidateActiveDeviceSession();
-			queryClient.setQueryData(runQueryKey(run.id), run);
-			setActiveRun(run.id);
-			void navigate({ to: "/runs/$runId", params: { runId: run.id } });
-		},
-		onError: (error) => {
-			showErrorToast(error, "Failed to start run");
-		},
-	});
+				// No Active Session yet: connect the picked device through the bar's Connect path
+				// first. A connect error rejects here, so no Run is created for it.
+				let session = activeSession;
+				if (!session) {
+					if (!device) throw new Error("Pick a device in the top bar first");
+					session = await connectDevice(device);
+				}
 
-	const cancelMutation = useMutation({
-		mutationFn: async () => {
-			if (!activeRunId) throw new Error("No active run");
-			const client = await getRunnerClient();
-			return client.cancelRun(activeRunId);
-		},
-		onSuccess: (run) => {
-			queryClient.setQueryData(runQueryKey(run.id), run);
-			invalidateActiveDeviceSession();
-			if (selectedApp) {
-				void queryClient.invalidateQueries({ queryKey: casesQueryKey(selectedApp.id) });
-			}
-		},
-		onError: (error) => {
-			showErrorToast(error, "Failed to cancel run");
-		},
-	});
+				return {
+					appId: selectedApp.id,
+					caseIds: selectedCaseIds,
+					deviceId: session.deviceId,
+					platform: session.platform,
+					executionMode,
+				};
+			},
+			{
+				onSuccess: (run) => {
+					void navigate({ to: "/runs/$runId", params: { runId: run.id } });
+				},
+			},
+		);
+	};
 
 	const canRun = Boolean(
 		selectedApp &&
@@ -140,15 +101,15 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 
 	const onPrimaryClick = () => {
 		if (isRunLive) {
-			cancelMutation.mutate();
+			if (activeRunId) cancelMutation.mutate(activeRunId);
 			return;
 		}
 		if (selectedCasesWithScript.length > 0) {
-			setExecutionPromptOpen(true);
+			promptOpen$.set(true);
 			return;
 		}
 		// No saved scripts → AI agent by default.
-		runMutation.mutate("agent");
+		startRun("agent");
 	};
 
 	return (
@@ -177,7 +138,10 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 			</button>
 
 			<AlertDialog>
-				<AlertDialog.Backdrop isOpen={executionPromptOpen} onOpenChange={setExecutionPromptOpen}>
+				<AlertDialog.Backdrop
+					isOpen={executionPromptOpen}
+					onOpenChange={(open) => promptOpen$.set(open)}
+				>
 					<AlertDialog.Container>
 						<AlertDialog.Dialog className="sm:max-w-[420px]">
 							<AlertDialog.CloseTrigger />
@@ -193,23 +157,19 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 								</p>
 							</AlertDialog.Body>
 							<AlertDialog.Footer className="flex flex-wrap gap-2">
-								<Button
-									onPress={() => setExecutionPromptOpen(false)}
-									slot="close"
-									variant="tertiary"
-								>
+								<Button onPress={() => promptOpen$.set(false)} slot="close" variant="tertiary">
 									Cancel
 								</Button>
 								<Button
 									isDisabled={runMutation.isPending}
-									onPress={() => runMutation.mutate("agent")}
+									onPress={() => startRun("agent")}
 									variant="secondary"
 								>
 									Use AI agent
 								</Button>
 								<Button
 									isDisabled={runMutation.isPending}
-									onPress={() => runMutation.mutate("script")}
+									onPress={() => startRun("script")}
 									variant="primary"
 								>
 									Use saved scripts
