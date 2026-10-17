@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdir, unlink } from "node:fs/promises";
 import { KEY_MODIFIERS, KEY_NAMES } from "@yoqa/runner-client";
+import { pngSizeFromBase64 } from "./android-gestures";
 import { getScreen, performAction } from "./interaction";
 import { UnsupportedKeyError, isDeadSessionError } from "./lane";
 import {
@@ -169,10 +170,14 @@ for (const makeHarness of LANES) {
 	});
 }
 
+/** A sign-in popup's viewport, smaller than the page that opens it. */
+const POPUP = { width: 500, height: 600 };
+
 /**
  * What the web Direct lane must do for shared cases to keep their meaning in a browser:
  * the gestures a phone has become their mouse and wheel equivalents, and a JavaScript
- * dialog is the alert. In CSS pixels of the harness's DEVICE-sized viewport.
+ * dialog is the alert. A popup the page opens is followed, and left again when it closes.
+ * In CSS pixels of the harness's DEVICE-sized viewport.
  */
 describe("Lane contract: web Direct (web-only Actions)", () => {
 	test("swipe up scrolls the content under its start point down, by the swipe's length", async () => {
@@ -244,6 +249,92 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 			(caught: unknown) => caught,
 		);
 		expect((error as Error).message).toContain("No JavaScript dialog is open");
+		await session.quit();
+	});
+
+	test("a popup the page opens becomes the page the session drives, at its own viewport", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		const popup = harness.browser.openPage("https://accounts.example.com/signin", {
+			fromFrontPage: true,
+			viewport: POPUP,
+		});
+		await Bun.sleep(50);
+		await session.tap(1000, 1000);
+		await session.tap(500, 500, { coordSpace: "screenshot" });
+		expect(harness.browser.clicksOn(popup)).toEqual([
+			{ x: POPUP.width, y: POPUP.height },
+			{ x: POPUP.width / 2, y: POPUP.height / 2 },
+		]);
+		expect(harness.browser.clicksOn("page-1")).toEqual([]);
+		expect(pngSizeFromBase64((await session.captureFrame()).base64)).toEqual({
+			width: POPUP.width * 2,
+			height: POPUP.height * 2,
+		});
+		expect(await session.getWindowSize()).toEqual(POPUP);
+		expect(harness.browser.frontPage()).toBe(popup);
+		await session.quit();
+	});
+
+	test("closing the popup returns the session to the page that opened it", async () => {
+		const harness = webCdpLane();
+		const { session, deadCalls } = await open(harness);
+		const popup = harness.browser.openPage("https://accounts.example.com/signin", {
+			fromFrontPage: true,
+			viewport: POPUP,
+		});
+		await Bun.sleep(50);
+		await session.tap(500, 500);
+		harness.browser.closePage(popup);
+		await Bun.sleep(50);
+		await session.tap(1000, 1000);
+		expect(harness.browser.clicksOn("page-1")).toEqual([{ x: DEVICE.width, y: DEVICE.height }]);
+		expect(pngSizeFromBase64((await session.captureFrame()).base64)).toEqual({
+			width: DEVICE.width * 2,
+			height: DEVICE.height * 2,
+		});
+		expect(harness.browser.frontPage()).toBe("page-1");
+		expect(deadCalls()).toBe(0);
+		await session.quit();
+	});
+
+	test("a popup of a popup returns, as each closes, to the page that opened it", async () => {
+		const harness = webCdpLane();
+		const { session, deadCalls } = await open(harness);
+		const popup = harness.browser.openPage("https://accounts.example.com/signin", {
+			fromFrontPage: true,
+			viewport: POPUP,
+		});
+		await Bun.sleep(50);
+		const nested = harness.browser.openPage("https://accounts.example.com/consent", {
+			fromFrontPage: true,
+		});
+		await Bun.sleep(50);
+		harness.browser.closePage(nested);
+		await Bun.sleep(50);
+		await session.tap(1000, 1000);
+		expect(harness.browser.clicksOn(popup)).toEqual([{ x: POPUP.width, y: POPUP.height }]);
+		harness.browser.closePage(popup);
+		await Bun.sleep(50);
+		await session.tap(1000, 1000);
+		expect(harness.browser.clicksOn("page-1")).toEqual([{ x: DEVICE.width, y: DEVICE.height }]);
+		expect(deadCalls()).toBe(0);
+		await session.quit();
+	});
+
+	test("a new tab the page did not open does not take the session over", async () => {
+		const harness = webCdpLane();
+		const { session, deadCalls } = await open(harness);
+		const tab = harness.browser.openPage("https://example.com/", { viewport: POPUP });
+		await Bun.sleep(50);
+		await session.tap(1000, 1000);
+		expect(harness.browser.clicksOn("page-1")).toEqual([{ x: DEVICE.width, y: DEVICE.height }]);
+		expect(harness.browser.clicksOn(tab)).toEqual([]);
+		harness.browser.closePage(tab);
+		await Bun.sleep(50);
+		await session.tap(0, 0);
+		expect(harness.browser.clicksOn("page-1")).toHaveLength(2);
+		expect(deadCalls()).toBe(0);
 		await session.quit();
 	});
 });

@@ -30,6 +30,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/web-gestures-alerts-lifecycle.md](./devices/web-gestures-alerts-lifecycle.md) | Web swipe (wheel), drag, JavaScript dialogs as alerts, and app lifecycle on the Web URL |
 | [devices/key-action.md](./devices/key-action.md) | `key` Action on every platform: named keys and modifiers, declared per Lane |
 | [devices/web-installed-browsers.md](./devices/web-installed-browsers.md) | Installed Chrome/Edge/Brave/Chromium as web devices, launched as Yoqa-owned instances |
+| [devices/web-popups.md](./devices/web-popups.md) | Web: the session follows a popup the page opens and returns to the opener when it closes |
 | [runs/selection-and-runs-mvp.md](./runs/selection-and-runs-mvp.md) | Test case selection + local `POST /runs` MVP |
 | [runs/ai-sdk-vision.md](./runs/ai-sdk-vision.md) | Vision decide + grounding via Vercel AI SDK |
 | [runs/cursor-vision-cli.md](./runs/cursor-vision-cli.md) | Cursor Agent CLI vision decide + grounding |

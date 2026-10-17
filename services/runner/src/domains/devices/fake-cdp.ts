@@ -4,7 +4,8 @@
  * (clicks, mouse and wheel events, text, navigations, keys, dialog answers, cleared
  * storage) in CSS pixels, and serves a viewport-sized PNG that darkens with each click,
  * plus an accessibility tree with whatever nodes it is given and a DOM snapshot that lays
- * them out. Pages open and close as targets, the way tabs do.
+ * them out. Pages open and close as targets, the way tabs do, each with its own viewport,
+ * and a page can open another as its popup.
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -52,6 +53,8 @@ export type FakeWheel = { x: number; y: number; deltaX: number; deltaY: number }
 
 export type FakeDialogType = "alert" | "confirm" | "prompt" | "beforeunload";
 
+export type FakeViewport = { width: number; height: number };
+
 export type FakeCdp = {
 	port: number;
 	/** Where clicks landed, in CSS pixels. */
@@ -72,19 +75,36 @@ export type FakeCdp = {
 	clearedOrigins: string[];
 	/** The URLs of the open pages, oldest first. */
 	pages: () => string[];
+	/** Where clicks on one page landed, in its CSS pixels. */
+	clicksOn: (targetId: string) => Array<{ x: number; y: number }>;
+	/** The page in front, the one the user sees: the newest, or the last brought to front. */
+	frontPage: () => string | undefined;
+	/**
+	 * A new page opens and comes to the front. With `fromFrontPage`, the page in front opened
+	 * it (`window.open`, a `target=_blank` link, an OAuth popup); otherwise the user did.
+	 * Returns its target id.
+	 */
+	openPage: (url: string, options?: { fromFrontPage?: boolean; viewport?: FakeViewport }) => string;
 	/** The page the session drives opens a JavaScript dialog, which waits for an answer. */
 	openDialog: (type: FakeDialogType, message?: string, defaultPrompt?: string) => void;
 	/** The viewport PNG after `clicks` clicks, base64-encoded. */
 	frame: (clicks: number) => string;
-	/** The user closes the page the session drives; the browser stays open. */
-	closePage: () => void;
+	/** The user closes a page, the one in front by default; the browser stays open. */
+	closePage: (targetId?: string) => void;
 	/** The browser quits: every socket closes and the port stops answering. */
 	kill: () => void;
 };
 
 type Message = { id: number; method: string; params?: Record<string, unknown>; sessionId?: string };
 
-type Page = { targetId: string; url: string; sessionId?: string };
+type Page = {
+	targetId: string;
+	url: string;
+	viewport: FakeViewport;
+	clicks: Array<{ x: number; y: number }>;
+	sessionId?: string;
+	openerId?: string;
+};
 
 export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const scale = options.deviceScaleFactor ?? 1;
@@ -99,8 +119,10 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const dialogAnswers: FakeCdp["dialogAnswers"] = [];
 	const clearedOrigins: string[] = [];
 	const sockets = new Set<ServerWebSocket<unknown>>();
-	const pages: Page[] = [{ targetId: "page-1", url: "about:blank" }];
-	let nextPage = 2;
+	const pages: Page[] = [];
+	let nextPage = 1;
+	let front: Page | undefined;
+	let discovering = false;
 	let dialogOpen: { sessionId: string } | null = null;
 
 	const broadcast = (method: string, params: unknown, sessionId?: string) => {
@@ -119,8 +141,23 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		if (!page) throw new Error("No target with given id found");
 		return page;
 	};
+	const infoOf = ({ targetId, url, openerId }: Page) => ({
+		targetId,
+		type: "page",
+		url,
+		...(openerId ? { openerId } : {}),
+	});
+	const createPage = (url: string, viewport = options.viewport, openerId?: string) => {
+		const page: Page = { targetId: `page-${nextPage++}`, url, viewport, clicks: [], openerId };
+		pages.push(page);
+		front = page;
+		if (discovering) broadcast("Target.targetCreated", { targetInfo: infoOf(page) });
+		return page;
+	};
+	createPage("about:blank");
 	const closeTarget = (page: Page) => {
 		pages.splice(pages.indexOf(page), 1);
+		if (front === page) front = pages.at(-1);
 		if (page.sessionId) {
 			broadcast("Target.detachedFromTarget", {
 				sessionId: page.sessionId,
@@ -128,15 +165,10 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			});
 		}
 	};
-	/** The page a session drives now: the last one attached. */
-	const drivenPage = () => pages.filter((page) => page.sessionId).at(-1);
-
 	/** A capture beyond the viewport (or clipped to the page) is the whole page. */
-	const frame = (count: number, wholePage = false) => {
-		const width = options.viewport.width * scale;
-		const cssHeight = wholePage
-			? (options.pageHeight ?? options.viewport.height)
-			: options.viewport.height;
+	const frame = (count: number, wholePage = false, viewport = options.viewport) => {
+		const width = viewport.width * scale;
+		const cssHeight = wholePage ? (options.pageHeight ?? viewport.height) : viewport.height;
 		const height = cssHeight * scale;
 		const rgba = new Uint8Array(width * height * 4).fill(Math.max(0, 255 - count));
 		return Buffer.from(encodeRgbaPng({ width, height, rgba })).toString("base64");
@@ -207,18 +239,18 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		const page = pageOf(message.sessionId);
 		switch (message.method) {
 			case "Target.getTargets":
-				return {
-					targetInfos: pages.map(({ targetId, url }) => ({ targetId, type: "page", url })),
-				};
-			case "Target.getTargetInfo": {
-				const target = targetOf(params.targetId);
-				return { targetInfo: { targetId: target.targetId, type: "page", url: target.url } };
-			}
-			case "Target.createTarget": {
-				const created = { targetId: `page-${nextPage++}`, url: String(params.url) };
-				pages.push(created);
-				return { targetId: created.targetId };
-			}
+				return { targetInfos: pages.map(infoOf) };
+			case "Target.getTargetInfo":
+				return { targetInfo: infoOf(targetOf(params.targetId)) };
+			case "Target.setDiscoverTargets":
+				// As Chrome does, the pages already open are announced before the answer.
+				discovering = Boolean(params.discover);
+				if (discovering) {
+					for (const open of pages) broadcast("Target.targetCreated", { targetInfo: infoOf(open) });
+				}
+				return {};
+			case "Target.createTarget":
+				return { targetId: createPage(String(params.url)).targetId };
 			case "Target.attachToTarget": {
 				const target = targetOf(params.targetId);
 				target.sessionId = `session-${target.targetId}`;
@@ -229,16 +261,22 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				closeTarget(target);
 				return { success: true };
 			}
-			case "Page.getLayoutMetrics":
+			case "Page.bringToFront":
+				if (page) front = page;
+				return {};
+			case "Page.getLayoutMetrics": {
+				const viewport = page?.viewport ?? options.viewport;
 				return {
-					cssLayoutViewport: {
-						clientWidth: options.viewport.width,
-						clientHeight: options.viewport.height,
-					},
+					cssLayoutViewport: { clientWidth: viewport.width, clientHeight: viewport.height },
 				};
+			}
 			case "Page.captureScreenshot":
 				return {
-					data: frame(clicks.length, Boolean(params.captureBeyondViewport || params.clip)),
+					data: frame(
+						clicks.length,
+						Boolean(params.captureBeyondViewport || params.clip),
+						page?.viewport,
+					),
 				};
 			case "Page.navigate":
 				navigations.push(String(params.url));
@@ -266,7 +304,10 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 					wheels.push({ ...point, deltaX: Number(params.deltaX), deltaY: Number(params.deltaY) });
 					return {};
 				}
-				if (params.type === "mousePressed") clicks.push(point);
+				if (params.type === "mousePressed") {
+					clicks.push(point);
+					page?.clicks.push(point);
+				}
 				mouse.push({
 					type: params.type as FakeMouseEvent["type"],
 					...point,
@@ -339,8 +380,12 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		dialogAnswers,
 		clearedOrigins,
 		pages: () => pages.map((page) => page.url),
+		clicksOn: (targetId) => targetOf(targetId).clicks,
+		frontPage: () => front?.targetId,
+		openPage: (url, { fromFrontPage = false, viewport } = {}) =>
+			createPage(url, viewport, fromFrontPage ? front?.targetId : undefined).targetId,
 		openDialog: (type, message = "", defaultPrompt = "") => {
-			const driven = drivenPage();
+			const driven = front;
 			if (!driven?.sessionId) throw new Error("No page is attached");
 			dialogOpen = { sessionId: driven.sessionId };
 			broadcast(
@@ -350,9 +395,9 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			);
 		},
 		frame,
-		closePage: () => {
-			const driven = drivenPage();
-			if (driven) closeTarget(driven);
+		closePage: (targetId) => {
+			const page = targetId === undefined ? front : targetOf(targetId);
+			if (page) closeTarget(page);
 		},
 		kill: () => {
 			for (const ws of sockets) ws.close();

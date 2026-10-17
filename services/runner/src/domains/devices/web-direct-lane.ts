@@ -6,6 +6,10 @@
  * (`chromium-cdp-9222`), and disconnecting closes only the DevTools socket. Either way the
  * session drives the browser's first page, or a blank one it opens.
  *
+ * The session drives one page at a time. A page that page opens (`window.open`, a
+ * `target=_blank` link, an OAuth popup) takes over, and when it closes the session goes back
+ * to the page that opened it. Pages it did not open are left alone.
+ *
  * Coordinates cross the Device Session as 0–1000 of the page viewport, never the browser
  * window, and reach the page in its CSS pixels. The screenshot is that viewport too (in
  * device pixels), so both coordinate spaces convert the same way.
@@ -17,7 +21,8 @@
  * both with the origin's storage cleared in between. A page has no background, so
  * background-app fails.
  *
- * The browser closing its socket, or the page going away, is a Dead Session; a Yoqa-owned
+ * The browser closing its socket, or the page going away with no opener to go back to, is
+ * a Dead Session; a Yoqa-owned
  * instance is then quit too. The Frame Feed is Screenshot Poll (no stream) and the lane
  * does not record.
  */
@@ -33,6 +38,7 @@ import {
 	type CdpMethod,
 	type DocumentSnapshot,
 	type KeyEvent,
+	type TargetInfo,
 	connectCdp,
 } from "./cdp-client";
 import { attachPortOf, browserSocketUrl } from "./chromium-attach";
@@ -107,6 +113,8 @@ export const CDP_MODIFIERS: Record<KeyModifier, CdpKey & { bit: number }> = {
 const WEB_KEY_SUPPORT: KeySupport = { keys: KEY_NAMES, modifiers: true };
 
 type JavaScriptDialog = { type: string; defaultPrompt?: string };
+
+type DrivenPage = { targetId: string; sessionId: string };
 
 export function webDirectDeps(
 	overrides: {
@@ -209,10 +217,7 @@ function originOf(url: string): string | null {
  * JavaScript dialog wait for the session's answer, and a tab in the background never
  * paints, so its screenshot would never come back.
  */
-async function attachPage(
-	client: CdpClient,
-	targetId: string,
-): Promise<{ targetId: string; sessionId: string }> {
+async function attachPage(client: CdpClient, targetId: string): Promise<DrivenPage> {
 	const { sessionId } = await client.send("Target.attachToTarget", { targetId, flatten: true });
 	await client.send("Page.enable", {}, sessionId);
 	await client.send("Page.bringToFront", {}, sessionId);
@@ -233,9 +238,10 @@ export async function createWebDirectSession(
 		throw error;
 	});
 	/** The page the session drives. terminate-app swaps it for a blank one. */
-	let page: { targetId: string; sessionId: string };
+	let page: DrivenPage;
 	try {
 		page = await attachPage(client, await pickPage(client));
+		await client.send("Target.setDiscoverTargets", { discover: true });
 	} catch (error) {
 		await client.close().catch(() => undefined);
 		await owned?.stop();
@@ -261,13 +267,42 @@ export async function createWebDirectSession(
 	void owned?.exited.then(() => {
 		if (!quitting) dead("the browser quit");
 	});
-	client.on("Target.detachedFromTarget", (params) => {
-		if ((params as { sessionId?: string })?.sessionId === page.sessionId && !quitting) {
-			dead("the page was closed");
-		}
-	});
 
 	let openDialog: JavaScriptDialog | null = null;
+
+	/** The pages the session followed a popup away from, the newest opener last. */
+	const openers: DrivenPage[] = [];
+	/** A move to another page, which every command to the page waits for. */
+	let switching: Promise<unknown> = Promise.resolve();
+	const switchPage = (fn: () => Promise<unknown>) => {
+		switching = switching.then(fn).catch(() => undefined);
+	};
+	client.on("Target.targetCreated", (params) => {
+		const { targetInfo } = params as { targetInfo: TargetInfo };
+		if (targetInfo.type !== "page" || !targetInfo.openerId) return;
+		switchPage(async () => {
+			if (targetInfo.openerId !== page.targetId || sessionEnded) return;
+			const popup = await attachPage(client, targetInfo.targetId);
+			openers.push(page);
+			page = popup;
+			openDialog = null;
+		});
+	});
+	client.on("Target.detachedFromTarget", (params) => {
+		const { sessionId } = (params ?? {}) as { sessionId?: string };
+		const closedOpener = openers.findIndex((opener) => opener.sessionId === sessionId);
+		if (closedOpener >= 0) openers.splice(closedOpener, 1);
+		if (sessionId !== page.sessionId || quitting) return;
+		const opener = openers.pop();
+		if (!opener) {
+			dead("the page was closed");
+			return;
+		}
+		// A tab in the background never paints, so the opener comes to the front again.
+		page = opener;
+		openDialog = null;
+		switchPage(() => client.send("Page.bringToFront", {}, opener.sessionId));
+	});
 	client.on("Page.javascriptDialogOpening", (params, eventSession) => {
 		if (eventSession === page.sessionId) openDialog = params as JavaScriptDialog;
 	});
@@ -286,9 +321,12 @@ export async function createWebDirectSession(
 		}
 	};
 
-	/** One command to the page. */
+	/** One command to the page, once any move to another page is done. */
 	const call = <M extends CdpMethod>(method: M, params: CdpCommands[M]["params"]) =>
-		guarded(() => client.send(method, params, page.sessionId));
+		guarded(async () => {
+			await switching;
+			return client.send(method, params, page.sessionId);
+		});
 
 	/** One command to the browser itself (targets, storage). */
 	const callBrowser = <M extends CdpMethod>(method: M, params: CdpCommands[M]["params"]) =>
@@ -296,7 +334,8 @@ export async function createWebDirectSession(
 
 	let chain: Promise<unknown> = Promise.resolve();
 	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
-		const run = chain.then(fn, fn);
+		const after = () => switching.then(fn);
+		const run = chain.then(after, after);
 		chain = run.catch(() => undefined);
 		return run;
 	};
