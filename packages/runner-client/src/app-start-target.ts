@@ -2,11 +2,11 @@ import type { CatalogApp, DevicePlatform, RetargetDeviceRequest } from "./schema
 
 /**
  * What a Run or the Active Session starts for an App on `platform`: the bundle id on iOS,
- * the application id on Android. Undefined when the App has no id for that platform, and
- * on web, where an App has no start target yet.
+ * the application id on Android, the Web URL on web. Undefined when the App has none for
+ * that platform.
  */
 export function appStartTarget(
-	app: Pick<CatalogApp, "iosBundleId" | "androidApplicationId"> | null | undefined,
+	app: Pick<CatalogApp, "iosBundleId" | "androidApplicationId" | "webUrl"> | null | undefined,
 	platform: DevicePlatform,
 ): string | undefined {
 	switch (platform) {
@@ -15,14 +15,14 @@ export function appStartTarget(
 		case "android":
 			return app?.androidApplicationId.trim() || undefined;
 		case "web":
-			return undefined;
+			return app?.webUrl.trim() || undefined;
 	}
 }
 
 /**
  * The connect or retarget request fields that name a start target on `platform`:
  * `bundleId` on iOS, `appPackage` on Android. Empty without a start target, and on web,
- * whose Device Session opens no app.
+ * whose Device Session opens no app at connect: a Run opens the Web URL itself.
  */
 export function startTargetRequest(
 	platform: DevicePlatform,

@@ -19,12 +19,19 @@ export type Application = {
 	iosBundleId: string;
 	iosAppStoreId: string;
 	androidApplicationId: string;
+	webUrl: string;
 };
 
 export type ApplicationUpdates = Partial<
 	Pick<
 		Application,
-		"name" | "context" | "knowledge" | "iosBundleId" | "iosAppStoreId" | "androidApplicationId"
+		| "name"
+		| "context"
+		| "knowledge"
+		| "iosBundleId"
+		| "iosAppStoreId"
+		| "androidApplicationId"
+		| "webUrl"
 	>
 >;
 
@@ -53,6 +60,7 @@ function mapCatalogApp(app: CatalogApp): Application {
 		iosBundleId: app.iosBundleId,
 		iosAppStoreId: app.iosAppStoreId,
 		androidApplicationId: app.androidApplicationId,
+		webUrl: app.webUrl,
 	};
 }
 

@@ -248,6 +248,8 @@ export const catalogAppSchema = z.object({
 	iosBundleId: z.string(),
 	iosAppStoreId: z.string(),
 	androidApplicationId: z.string(),
+	/** Web URL: the page a Run on web opens, as iOS launches the bundle id. Empty when unset. */
+	webUrl: z.string().default(""),
 	capabilities: z.array(capabilitySchema),
 	createdAt: z.number().int().nonnegative(),
 	updatedAt: z.number().int().nonnegative(),
@@ -258,6 +260,8 @@ export type CatalogApp = z.infer<typeof catalogAppSchema>;
 export const createAppRequestSchema = z.object({
 	name: z.string().min(1),
 	prefix: z.string().min(1).optional(),
+	/** A web-only App needs only a name and a Web URL. */
+	webUrl: z.string().optional(),
 });
 
 export type CreateAppRequest = z.infer<typeof createAppRequestSchema>;
@@ -270,6 +274,7 @@ export const updateAppRequestSchema = z.object({
 	iosBundleId: z.string().optional(),
 	iosAppStoreId: z.string().optional(),
 	androidApplicationId: z.string().optional(),
+	webUrl: z.string().optional(),
 	capabilities: z.array(capabilitySchema).optional(),
 });
 
@@ -920,6 +925,8 @@ export const runSchema = z.object({
 	screenMode: runScreenModeSchema.optional(),
 	lane: laneNameSchema.optional(),
 	laneWarning: z.string().min(1).optional(),
+	/** The browser a web Run drove, with its version (`Google Chrome 141.0`). */
+	browser: z.string().min(1).optional(),
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	startedAt: z.number().int().nonnegative().nullable(),

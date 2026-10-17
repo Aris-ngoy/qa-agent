@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { appTargetFor, retargetsAfterRun } from "./session-app";
 
 describe("appTargetFor", () => {
-	const app = { iosBundleId: " com.example.app ", androidApplicationId: "com.example.android" };
+	const app = {
+		iosBundleId: " com.example.app ",
+		androidApplicationId: "com.example.android",
+		webUrl: "https://app.example.com",
+	};
 
 	test("names the app by the id its platform uses: the bundle id on iOS, the package on Android", () => {
 		expect(appTargetFor("ios", app)).toEqual({ bundleId: "com.example.app" });
@@ -13,6 +17,10 @@ describe("appTargetFor", () => {
 		expect(appTargetFor("ios", { ...app, iosBundleId: "  " })).toEqual({});
 		expect(appTargetFor("android", { ...app, androidApplicationId: "" })).toEqual({});
 		expect(appTargetFor("ios", null)).toEqual({});
+	});
+
+	test("names no app on web: a Run opens the Web URL itself", () => {
+		expect(appTargetFor("web", app)).toEqual({});
 	});
 });
 

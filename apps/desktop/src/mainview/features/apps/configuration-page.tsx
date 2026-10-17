@@ -11,7 +11,16 @@ type FormValues = {
 	iosBundleId: string;
 	iosAppStoreId: string;
 	androidApplicationId: string;
+	webUrl: string;
 };
+
+/** A Web URL is empty or an http(s) URL; the runner refuses anything else. */
+function validWebUrl(value: unknown): true | string {
+	const url = typeof value === "string" ? value.trim() : "";
+	if (!url) return true;
+	const protocol = URL.canParse(url) ? new URL(url).protocol : null;
+	return protocol === "http:" || protocol === "https:" || "Enter an http or https URL";
+}
 
 function TrashIcon(props: SVGProps<SVGSVGElement>) {
 	return (
@@ -43,6 +52,7 @@ function formFromApp(app: {
 	iosBundleId: string;
 	iosAppStoreId: string;
 	androidApplicationId: string;
+	webUrl: string;
 }): FormValues {
 	return {
 		name: app.name,
@@ -51,6 +61,7 @@ function formFromApp(app: {
 		iosBundleId: app.iosBundleId,
 		iosAppStoreId: app.iosAppStoreId,
 		androidApplicationId: app.androidApplicationId,
+		webUrl: app.webUrl,
 	};
 }
 
@@ -72,6 +83,7 @@ export function ConfigurationPage() {
 			iosBundleId: "",
 			iosAppStoreId: "",
 			androidApplicationId: "",
+			webUrl: "",
 		},
 		mode: "onChange",
 	});
@@ -101,6 +113,7 @@ export function ConfigurationPage() {
 			iosBundleId: values.iosBundleId.trim(),
 			iosAppStoreId: values.iosAppStoreId.trim(),
 			androidApplicationId: values.androidApplicationId.trim(),
+			webUrl: values.webUrl.trim(),
 		});
 	};
 
@@ -249,6 +262,19 @@ export function ConfigurationPage() {
 								label="Application ID"
 								name="androidApplicationId"
 								placeholder="com.example.app"
+							/>
+						</div>
+
+						<div>
+							<h3 className="mb-3 text-subheading text-on-surface">Web</h3>
+							<RhfTextField
+								control={control}
+								description="The page a run on a web browser opens first"
+								inputClassName={fieldInputClass}
+								label="Web URL"
+								name="webUrl"
+								placeholder="https://app.example.com"
+								rules={{ validate: validWebUrl }}
 							/>
 						</div>
 					</div>

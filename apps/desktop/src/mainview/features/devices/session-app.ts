@@ -16,7 +16,7 @@ type SessionHold = Pick<ActiveDeviceResponse, "deviceId" | "connectedAt" | "held
  */
 export function appTargetFor(
 	platform: DevicePlatform,
-	app: Pick<Application, "iosBundleId" | "androidApplicationId"> | null | undefined,
+	app: Pick<Application, "iosBundleId" | "androidApplicationId" | "webUrl"> | null | undefined,
 ): RetargetDeviceRequest {
 	return startTargetRequest(platform, appStartTarget(app, platform));
 }

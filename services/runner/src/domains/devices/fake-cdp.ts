@@ -238,6 +238,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		const params = message.params ?? {};
 		const page = pageOf(message.sessionId);
 		switch (message.method) {
+			case "Browser.getVersion":
+				return { product: "Chrome/140.0.0.0" };
 			case "Target.getTargets":
 				return { targetInfos: pages.map(infoOf) };
 			case "Target.getTargetInfo":

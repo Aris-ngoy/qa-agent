@@ -49,7 +49,12 @@ import {
 	shouldSkipAutostart,
 	stopOwnedRunner,
 } from "./ensure-runner";
-import { PLATFORM_DEVICES_DESCRIPTION, connectPlatform, parsePlatform } from "./platform";
+import {
+	PLATFORM_DEVICES_DESCRIPTION,
+	connectPlatform,
+	isWebDeviceId,
+	parsePlatform,
+} from "./platform";
 import {
 	DEFAULT_RUN_WAIT_TIMEOUT_SECONDS,
 	type ReportCommandOptions,
@@ -1001,6 +1006,7 @@ appsCmd
 	.option("--prefix <prefix>", "CLI prefix (allocated from name when omitted)")
 	.option("--ios-bundle-id <id>", "iOS bundle id")
 	.option("--android-application-id <id>", "Android application id")
+	.option("--web-url <url>", "Web URL a Run on web opens (http or https)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.action(
@@ -1010,11 +1016,16 @@ appsCmd
 			prefix?: string;
 			iosBundleId?: string;
 			androidApplicationId?: string;
+			webUrl?: string;
 			json?: boolean;
 		}) => {
 			try {
 				const c = client(options.baseUrl);
-				let app = await c.createApp({ name: options.name, prefix: options.prefix });
+				let app = await c.createApp({
+					name: options.name,
+					prefix: options.prefix,
+					webUrl: options.webUrl,
+				});
 				if (options.iosBundleId || options.androidApplicationId) {
 					app = await c.updateApp(app.id, {
 						iosBundleId: options.iosBundleId,
@@ -1052,6 +1063,7 @@ appsCmd
 			console.log(`app_knowledge: ${app.knowledge || "(empty)"}`);
 			console.log(`ios_bundle_id: ${app.iosBundleId || "(empty)"}`);
 			console.log(`android_application_id: ${app.androidApplicationId || "(empty)"}`);
+			console.log(`web_url: ${app.webUrl || "(empty)"}`);
 		} catch (error) {
 			fail("apps get", error);
 		}
@@ -1067,6 +1079,7 @@ appsCmd
 	.option("--knowledge <text>", "App knowledge notes injected into agent runs")
 	.option("--ios-bundle-id <id>", "iOS bundle id")
 	.option("--android-application-id <id>", "Android application id")
+	.option("--web-url <url>", "Web URL a Run on web opens (empty clears it)")
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
@@ -1079,6 +1092,7 @@ appsCmd
 				knowledge?: string;
 				iosBundleId?: string;
 				androidApplicationId?: string;
+				webUrl?: string;
 				json?: boolean;
 			},
 		) => {
@@ -1092,6 +1106,7 @@ appsCmd
 					knowledge: options.knowledge,
 					iosBundleId: options.iosBundleId,
 					androidApplicationId: options.androidApplicationId,
+					webUrl: options.webUrl,
 				});
 				if (options.json) {
 					console.log(JSON.stringify(app, null, 2));
@@ -1645,7 +1660,10 @@ runsCmd
 	.argument("<app>", "App prefix or id")
 	.requiredOption("--cases <numbers>", "Comma-separated case numbers, e.g. 1,2,5")
 	.option("--device <id>", "Device id (defaults to active session)")
-	.option("--platform <platform>", "ios | android (defaults to active session)")
+	.option(
+		"--platform <platform>",
+		"ios | android | web (web for web-* and chromium-cdp-<port>; defaults to active session)",
+	)
 	.option("--build-id <id>", "Registered build id to install before run")
 	.option("--build-path <path>", "Absolute build path to register + install")
 	.option("--mode <mode>", "auto | script | agent (default: auto)")
@@ -1706,7 +1724,8 @@ runsCmd
 				}
 
 				let deviceId = options.device;
-				let platformOption = options.platform;
+				let platformOption =
+					options.platform ?? (deviceId && isWebDeviceId(deviceId) ? "web" : undefined);
 				if (!deviceId || !platformOption) {
 					const active = await c.getActiveDevice();
 					if (!active) {

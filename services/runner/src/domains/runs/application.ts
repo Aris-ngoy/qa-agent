@@ -185,6 +185,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 		screenMode: parseRunScreenMode(runRow.screenMode),
 		lane: reportedLane(runRow.lane),
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
+		...(runRow.browser ? { browser: runRow.browser } : {}),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -440,6 +441,25 @@ async function saveCaseRecording(runTestId: string, state: RunRecording): Promis
 		.where(eq(runTests.id, runTestId));
 }
 
+/**
+ * Open the App before the first case. On web that is loading its Web URL in the page. A
+ * phone's session only targets the app's id (acquireSessionForRun), and opens nothing here.
+ */
+async function openStartTarget(
+	session: DeviceSession,
+	platform: Run["platform"],
+	startTarget: string | undefined,
+): Promise<void> {
+	switch (platform) {
+		case "ios":
+		case "android":
+			return;
+		case "web":
+			if (startTarget) await session.openUrl(startTarget);
+			return;
+	}
+}
+
 export async function executeRun(runId: string): Promise<void> {
 	const db = getCatalogDb();
 	const run = await loadRun(runId);
@@ -473,6 +493,12 @@ export async function executeRun(runId: string): Promise<void> {
 		if (!app) {
 			throw new RunValidationError("App not found");
 		}
+		const startTarget = appStartTarget(app, run.platform);
+		if (run.platform === "web" && !startTarget) {
+			throw new RunValidationError(
+				`${app.name} has no Web URL, so a Run on web has nothing to open. Set one with: yoqa apps update ${app.prefix} --web-url <url>`,
+			);
+		}
 
 		const caseModes: Array<{ caseId: string; mode: "script" | "agent" }> = [];
 		for (const test of run.tests) {
@@ -503,7 +529,6 @@ export async function executeRun(runId: string): Promise<void> {
 
 		const runRow = (await db.select().from(runs).where(eq(runs.id, runId)))[0];
 		const requestedLane = runRow?.requestedLane;
-		const startTarget = appStartTarget(app, run.platform);
 		// Adopt the shared Active Session when it already targets this device;
 		// otherwise connect (replacing any unheld session) and keep it live after.
 		const acquired = await acquireSessionForRun({
@@ -522,8 +547,10 @@ export async function executeRun(runId: string): Promise<void> {
 			.set({
 				lane: session.lane,
 				laneWarning: session.laneWarning ?? null,
+				browser: session.browser ?? null,
 			})
 			.where(eq(runs.id, runId));
+		await openStartTarget(session, run.platform, startTarget);
 
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
@@ -805,6 +832,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		screenMode: parseRunScreenMode(runRow.screenMode),
 		lane: reportedLane(runRow.lane),
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
+		...(runRow.browser ? { browser: runRow.browser } : {}),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,

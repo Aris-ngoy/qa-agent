@@ -33,6 +33,7 @@ function mapApp(row: typeof apps.$inferSelect): CatalogApp {
 		iosBundleId: row.iosBundleId,
 		iosAppStoreId: row.iosAppStoreId,
 		androidApplicationId: row.androidApplicationId,
+		webUrl: row.webUrl,
 		capabilities: [],
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
@@ -257,6 +258,7 @@ export async function createApp(input: CreateAppRequest): Promise<CatalogApp> {
 	if (!name) {
 		throw new CatalogValidationError("Application name is required");
 	}
+	const webUrl = parseWebUrl(input.webUrl ?? "");
 	const db = getCatalogDb();
 	const now = Date.now();
 	const id = newId("app");
@@ -270,6 +272,7 @@ export async function createApp(input: CreateAppRequest): Promise<CatalogApp> {
 		iosBundleId: "",
 		iosAppStoreId: "",
 		androidApplicationId: "",
+		webUrl,
 		appiumCaps: "[]",
 		createdAt: now,
 		updatedAt: now,
@@ -279,6 +282,17 @@ export async function createApp(input: CreateAppRequest): Promise<CatalogApp> {
 		throw new Error("Failed to create app");
 	}
 	return created;
+}
+
+/** A Web URL is trimmed, and is an http or https URL or empty (none). */
+function parseWebUrl(raw: string): string {
+	const webUrl = raw.trim();
+	if (!webUrl) return "";
+	const protocol = URL.canParse(webUrl) ? new URL(webUrl).protocol : null;
+	if (protocol !== "http:" && protocol !== "https:") {
+		throw new CatalogValidationError(`Web URL must be an http or https URL, not "${webUrl}"`);
+	}
+	return webUrl;
 }
 
 /** App Knowledge prompt/storage cap (2 KB) — see MAX_APP_KNOWLEDGE_CHARS in the agent prompt. */
@@ -302,6 +316,8 @@ export async function updateApp(appId: string, input: UpdateAppRequest): Promise
 		);
 	}
 
+	const webUrl = input.webUrl !== undefined ? parseWebUrl(input.webUrl) : existing.webUrl;
+
 	const prefix =
 		input.prefix !== undefined
 			? await allocatePrefix(input.prefix.trim() || name, appId)
@@ -317,6 +333,7 @@ export async function updateApp(appId: string, input: UpdateAppRequest): Promise
 			iosBundleId: input.iosBundleId ?? existing.iosBundleId,
 			iosAppStoreId: input.iosAppStoreId ?? existing.iosAppStoreId,
 			androidApplicationId: input.androidApplicationId ?? existing.androidApplicationId,
+			webUrl,
 			updatedAt: Date.now(),
 		})
 		.where(eq(apps.id, appId));

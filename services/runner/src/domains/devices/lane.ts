@@ -70,6 +70,8 @@ export type DeviceSession = {
 	/** Why this session is not on the requested Lane, when it fell back or was pinned. */
 	laneWarning?: string;
 	stream: LiveStream | null;
+	/** The browser a web session drives, with its version (`Google Chrome 141.0`), for the Run report. */
+	browser?: string;
 	quit: () => Promise<void>;
 	/** In-memory frame for live feed / grounding — never writes disk. */
 	captureFrame: () => Promise<CapturedFrame>;
@@ -80,6 +82,8 @@ export type DeviceSession = {
 	 * callers treat that as "no video", never as a failed Run.
 	 */
 	startRecording?: (path: string) => Promise<ScreenRecording>;
+	/** Why there is no video, for a Lane without `startRecording` that can say more than that. */
+	noRecordingReason?: string;
 	pageSource: () => Promise<string>;
 	getWindowSize: () => Promise<{ width: number; height: number }>;
 	tap: (

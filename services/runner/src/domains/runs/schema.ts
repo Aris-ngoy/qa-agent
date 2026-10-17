@@ -19,6 +19,8 @@ export const runs = sqliteTable("runs", {
 	/** direct — Lane that ran. Null on rows from before Lanes, or that ran on a removed Lane. */
 	lane: text("lane"),
 	laneWarning: text("lane_warning"),
+	/** The browser a web Run drove, with its version. Null on other platforms. */
+	browser: text("browser"),
 	/** 1 when the Run was started asking to record every case, whatever the cases say. */
 	recordVideo: integer("record_video").notNull().default(0),
 	error: text("error"),

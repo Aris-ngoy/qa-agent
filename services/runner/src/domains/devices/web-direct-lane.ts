@@ -136,9 +136,11 @@ export function webDirectDeps(
 async function openBrowser(
 	deviceId: string,
 	deps: WebDirectDeps,
-): Promise<{ socketUrl: string; owned: ChromiumInstance | null }> {
+): Promise<{ socketUrl: string; owned: ChromiumInstance | null; name: string | null }> {
 	const port = attachPortOf(deviceId);
-	if (port !== null) return { socketUrl: await deps.browserSocketUrl(port), owned: null };
+	if (port !== null) {
+		return { socketUrl: await deps.browserSocketUrl(port), owned: null, name: null };
+	}
 	const browserId = installedBrowserIdOf(deviceId);
 	if (browserId === null) {
 		throw new Error(
@@ -152,7 +154,8 @@ async function openBrowser(
 		);
 	}
 	const owned = await deps.launch(browser);
-	return { socketUrl: owned.socketUrl, owned };
+	const name = browser.version ? `${browser.name} ${browser.version}` : browser.name;
+	return { socketUrl: owned.socketUrl, owned, name };
 }
 
 /** The page the session drives: the browser's first page, or a blank one it opens. */
@@ -231,16 +234,19 @@ export async function createWebDirectSession(
 		throw new Error("The web Direct lane drives web devices only");
 	}
 
-	const { socketUrl, owned } = await openBrowser(options.deviceId, deps);
+	const { socketUrl, owned, name } = await openBrowser(options.deviceId, deps);
 	const client = await deps.connect(socketUrl).catch(async (error: unknown) => {
 		await owned?.stop();
 		throw error;
 	});
 	/** The page the session drives. terminate-app swaps it for a blank one. */
 	let page: DrivenPage;
+	/** An attached browser names itself (`Chrome/140.0.0.0`); a launched one is known. */
+	let browser: string;
 	try {
 		page = await attachPage(client, await pickPage(client));
 		await client.send("Target.setDiscoverTargets", { discover: true });
+		browser = name ?? (await client.send("Browser.getVersion", {})).product.replace("/", " ");
 	} catch (error) {
 		await client.close().catch(() => undefined);
 		await owned?.stop();
@@ -530,6 +536,8 @@ export async function createWebDirectSession(
 	return {
 		lane: "direct",
 		stream: null,
+		browser,
+		noRecordingReason: "Run recording is not available on web",
 		quit: async () => {
 			quitting = true;
 			await client.close();
@@ -549,7 +557,7 @@ export async function createWebDirectSession(
 			await withActionLock(() => pressKey(name, modifiers));
 		},
 		activateApp: (appId) => withActionLock(() => openApp(webUrlOf(appId))),
-		// A web session opens no app until the App has a Web URL.
+		// Every lifecycle Action names its Web URL, and a Run opens it itself, so none is kept.
 		setTargetApp: () => undefined,
 		terminateApp: (appId) =>
 			withActionLock(async () => {

@@ -20,12 +20,17 @@ export function parsePlatform(value: string | undefined): DevicePlatform {
 /** A web device id: an installed browser (`web-chrome`) or a user-started Chromium's port. */
 const WEB_DEVICE_ID = /^(web-(chrome|edge|brave|chromium)|chromium-cdp-\d+)$/;
 
+/** Whether a device id names a web device, whose platform needs no `--platform`. */
+export function isWebDeviceId(deviceId: string): boolean {
+	return WEB_DEVICE_ID.test(deviceId);
+}
+
 /**
  * The platform `yoqa devices connect` opens: `--platform` when given, else web for an
  * installed browser (`web-chrome`) or a user-started Chromium named by its debug port
  * (`chromium-cdp-9222`).
  */
 export function connectPlatform(deviceId: string, value: string | undefined): DevicePlatform {
-	if (value === undefined && WEB_DEVICE_ID.test(deviceId)) return "web";
+	if (value === undefined && isWebDeviceId(deviceId)) return "web";
 	return parsePlatform(value);
 }
