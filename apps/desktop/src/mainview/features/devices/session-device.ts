@@ -23,13 +23,13 @@ const REMEMBERED_DEVICE_KEY = "yoqa.lastDevice";
 function toSelectedDevice(device: Device, viewport?: ViewportPresetName): SelectedDevice {
 	const preset = viewportFor(device.platform, viewport);
 	return {
-		...(preset ? { viewport: preset } : {}),
 		id: device.id,
 		label: device.owner ? `${device.name} (${device.owner})` : device.name,
 		name: device.name,
 		osVersion: device.osVersion,
 		platform: device.platform,
 		kind: device.kind,
+		...(preset ? { viewport: preset } : {}),
 	};
 }
 
