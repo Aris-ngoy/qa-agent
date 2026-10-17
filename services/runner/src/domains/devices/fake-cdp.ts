@@ -6,9 +6,12 @@
  * plus an accessibility tree with whatever nodes it is given and a DOM snapshot that lays
  * them out. Pages open and close as targets, the way tabs do.
  */
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { encodeRgbaPng } from "../runs/coord-grid";
 import type { AxNode, KeyEvent } from "./cdp-client";
+import type { BrowserProcess } from "./chromium-browsers";
 
 export type FakeAxNode = {
 	role: string;
@@ -356,4 +359,53 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			server.stop(true);
 		},
 	};
+}
+
+export type FakeChromium = {
+	/** Stands in for `Bun.spawn` of an installed browser. */
+	spawn: (command: string[]) => BrowserProcess;
+	/** Every command line it was launched with. */
+	launched: string[][];
+	/** One faked CDP endpoint per launch, in launch order. */
+	browsers: FakeCdp[];
+	/** How many times a launched browser was killed. */
+	kills: number;
+};
+
+/**
+ * An installed Chromium at its launch protocol: each spawn starts a faked CDP endpoint and
+ * writes its port to `DevToolsActivePort` in the `--user-data-dir` it was given, as Chrome
+ * does for `--remote-debugging-port=0`. Killing it quits that browser.
+ */
+export function fakeChromium(options: FakeCdpOptions): FakeChromium {
+	const fake: FakeChromium = {
+		launched: [],
+		browsers: [],
+		kills: 0,
+		spawn: (command) => {
+			fake.launched.push(command);
+			const profile = command.find((arg) => arg.startsWith("--user-data-dir="))?.slice(16);
+			if (!profile) throw new Error("fakeChromium: no --user-data-dir");
+			const browser = startFakeCdp(options);
+			fake.browsers.push(browser);
+			writeFileSync(
+				join(profile, "DevToolsActivePort"),
+				`${browser.port}\n/devtools/browser/fake\n`,
+			);
+			let exit: (code: number) => void = () => undefined;
+			const exited = new Promise<number>((resolve) => {
+				exit = resolve;
+			});
+			return {
+				exited,
+				stderr: null,
+				kill: () => {
+					fake.kills += 1;
+					browser.kill();
+					exit(143);
+				},
+			};
+		},
+	};
+	return fake;
 }

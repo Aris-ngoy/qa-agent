@@ -15,6 +15,7 @@ import {
 	iosYoqaAxLane,
 	iosYoqaSimLane,
 	webCdpLane,
+	webLaunchedLane,
 } from "./lane-harnesses";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
@@ -31,6 +32,7 @@ const LANES: Array<() => LaneHarness> = [
 	iosYoqaAxLane,
 	iosDeviceLane,
 	webCdpLane,
+	webLaunchedLane,
 ];
 
 async function screenshotFiles(): Promise<string[]> {

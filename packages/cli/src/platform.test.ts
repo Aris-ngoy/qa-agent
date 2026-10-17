@@ -19,6 +19,13 @@ describe("connectPlatform", () => {
 		expect(connectPlatform("chromium-cdp-9222", undefined)).toBe("web");
 	});
 
+	test("an installed browser is web, with no --platform", () => {
+		expect(connectPlatform("web-chrome", undefined)).toBe("web");
+		expect(connectPlatform("web-edge", undefined)).toBe("web");
+		expect(connectPlatform("web-brave", undefined)).toBe("web");
+		expect(connectPlatform("web-chromium", undefined)).toBe("web");
+	});
+
 	test("an explicit --platform wins", () => {
 		expect(connectPlatform("emulator-5554", "android")).toBe("android");
 		expect(connectPlatform("chromium-cdp-9222", "web")).toBe("web");
@@ -36,7 +43,7 @@ describe("PLATFORM_DEVICES_DESCRIPTION", () => {
 		expect(PLATFORM_DEVICES_DESCRIPTION).toEqual({
 			ios: "List iOS devices and simulators",
 			android: "List Android devices and emulators",
-			web: "List web browsers (attach a Chromium you started by naming its port: chromium-cdp-<port>)",
+			web: "List installed web browsers (attach a Chromium you started by naming its port: chromium-cdp-<port>)",
 		});
 	});
 });
