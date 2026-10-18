@@ -10,6 +10,7 @@ import {
 	toCaseScriptFileText,
 } from "./case-script-file";
 import { type CaseScript, type CaseScriptAction, caseScriptActionSchema } from "./schemas";
+import { formatCaseScriptShell } from "./script-format";
 
 const BOTTOM_NAV = `version: 1
 name: Bottom navigation
@@ -327,6 +328,37 @@ actions:
 			actionCount: 1,
 			warnings: [],
 		});
+	});
+
+	test("skips an exported Branch's bash `if` whole, with one warning, instead of flattening it", () => {
+		const exported = formatCaseScriptShell({
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{ type: "tap", label: "Start" },
+				{
+					type: "branch",
+					text: "Allow notifications",
+					assertion: "visible",
+					then: [
+						{ type: "tap", label: "Allow" },
+						{
+							type: "branch",
+							id: "promo",
+							assertion: "visible",
+							then: [{ type: "tap", label: "Close" }],
+						},
+					],
+					else: [{ type: "wait", ms: 500 }],
+				},
+				{ type: "tap", label: "Home" },
+			],
+		});
+		const converted = toCaseScriptFileText(exported);
+		expect(converted.text).toBe("version: 1\nactions:\n  - tap: Start\n  - tap: Home\n");
+		expect(converted.warnings).toEqual([
+			"L8–L15: bash `if` is not converted to a Branch — skipped; write it as an `- if:` item",
+		]);
 	});
 
 	test("rewrites a legacy JSON export as canonical YAML and keeps YAML as written", () => {

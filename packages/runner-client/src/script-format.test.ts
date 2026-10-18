@@ -1,5 +1,9 @@
-import { describe, expect, test } from "bun:test";
-import type { CaseScript } from "./schemas";
+import { afterAll, describe, expect, test } from "bun:test";
+import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runCaseScript } from "./case-script-replay";
+import type { ActionRequest, CaseScript, ScreenElement } from "./schemas";
 import { formatCaseScriptShell, suggestedScriptBasename } from "./script-format";
 
 const script: CaseScript = {
@@ -102,6 +106,25 @@ describe("formatCaseScriptShell", () => {
 		);
 	});
 
+	test("exports a Branch's timeout exactly, since rounding it could change the side taken", () => {
+		const branch = (timeoutMs: number) =>
+			formatCaseScriptShell({
+				version: 1,
+				savedAt: 1,
+				actions: [
+					{
+						type: "branch",
+						text: "Rate us",
+						assertion: "visible",
+						timeoutMs,
+						then: [{ type: "tap", label: "Later" }],
+					},
+				],
+			});
+		expect(branch(0)).toContain("if yoqa assert visible --text 'Rate us' --timeout 0; then");
+		expect(branch(1500)).toContain("if yoqa assert visible --text 'Rate us' --timeout 1.5; then");
+	});
+
 	test("emits swipe coordinates", () => {
 		const out = formatCaseScriptShell({
 			version: 1,
@@ -140,6 +163,144 @@ describe("formatCaseScriptShell", () => {
 		});
 		expect(out).toContain("yoqa action alert");
 		expect(out).not.toContain("--dismiss");
+	});
+});
+
+/**
+ * A `yoqa` on PATH for the exported bash: `assert` answers from the Screen file (one label
+ * or `#id` per line, matched exactly) and exits non-zero on a miss; an action is logged.
+ */
+const FAKE_YOQA = `#!/usr/bin/env bash
+if [ "$1" = assert ]; then
+  key="$4"
+  [ "$3" = --id ] && key="#$4"
+  if grep -qxF -- "$key" "$YOQA_SCREEN"; then found=yes; else found=no; fi
+  [ "$2" = visible ] && [ "$found" = yes ] && exit 0
+  [ "$2" = not-visible ] && [ "$found" = no ] && exit 0
+  exit 1
+fi
+echo "$*" >> "$YOQA_LOG"
+`;
+
+describe("formatCaseScriptShell run with bash", () => {
+	let workDir = "";
+
+	afterAll(async () => {
+		if (workDir) await rm(workDir, { recursive: true, force: true });
+	});
+
+	const branched: CaseScript = {
+		version: 1,
+		savedAt: 1,
+		actions: [
+			{
+				type: "branch",
+				text: "Don't allow",
+				assertion: "visible",
+				then: [
+					{ type: "tap", label: "Allow" },
+					{
+						type: "branch",
+						id: "onboarding's-skip",
+						assertion: "not-visible",
+						timeoutMs: 1000,
+						then: [{ type: "tap", label: "Next" }],
+						else: [{ type: "tap", id: "onboarding's-skip" }],
+					},
+				],
+			},
+			{
+				type: "branch",
+				text: "Signed in",
+				assertion: "visible",
+				then: [{ type: "tap", label: "Profile" }],
+				else: [{ type: "tap", label: "Sign in" }],
+			},
+			{ type: "tap", label: "Home" },
+		],
+	};
+
+	/** The taps the Case Script replay sends on a Screen that never changes. */
+	async function replayedTaps(screen: string[]): Promise<string[]> {
+		const requests: ActionRequest[] = [];
+		let clock = 0;
+		const elements = screen.map(
+			(entry) =>
+				({
+					type: "Button",
+					x: 0,
+					y: 0,
+					width: 10,
+					height: 10,
+					...(entry.startsWith("#") ? { label: "", id: entry.slice(1) } : { label: entry }),
+				}) as ScreenElement,
+		);
+		const result = await runCaseScript(
+			{
+				performAction: async (request) => {
+					requests.push(request);
+					return { ok: true } as never;
+				},
+				getScreen: async () => ({ elements }) as never,
+			},
+			branched,
+			{
+				sleep: async (ms) => {
+					clock += ms;
+				},
+				now: () => clock,
+			},
+		);
+		expect(result.ok).toBe(true);
+		return requests.map(
+			(r) => `action tap ${r.label != null ? `--label ${r.label}` : `--id ${r.id}`}`,
+		);
+	}
+
+	/** The `yoqa action` lines the exported bash runs on that Screen. */
+	async function shellTaps(screen: string[]): Promise<string[]> {
+		workDir ||= await mkdtemp(join(tmpdir(), "yoqa-shell-export-"));
+		const bin = join(workDir, "bin");
+		const yoqa = join(bin, "yoqa");
+		await Bun.write(yoqa, FAKE_YOQA);
+		await chmod(yoqa, 0o755);
+		const scriptPath = join(workDir, "script.sh");
+		const screenPath = join(workDir, "screen.txt");
+		const logPath = join(workDir, "log.txt");
+		await Bun.write(scriptPath, formatCaseScriptShell(branched));
+		await Bun.write(screenPath, screen.map((line) => `${line}\n`).join(""));
+		await Bun.write(logPath, "");
+		const run = Bun.spawnSync(["bash", scriptPath], {
+			env: {
+				...process.env,
+				PATH: `${bin}:${process.env.PATH}`,
+				YOQA_SCREEN: screenPath,
+				YOQA_LOG: logPath,
+			},
+		});
+		expect(run.stderr.toString()).toBe("");
+		expect(run.exitCode).toBe(0);
+		return (await Bun.file(logPath).text()).split("\n").filter(Boolean);
+	}
+
+	test.each([
+		["nothing on the Screen", []],
+		["the outer target only", ["Don't allow"]],
+		["the outer target and the nested id", ["Don't allow", "#onboarding's-skip"]],
+		["only the else-side target", ["Signed in"]],
+	])("takes the Case Script's path with %s", async (_name, screen) => {
+		const expected = await replayedTaps(screen);
+		expect(await shellTaps(screen)).toEqual(expected);
+	});
+
+	test("the paths differ between Screens, so the comparison can fail", async () => {
+		expect(await shellTaps([])).toEqual(["action tap --label Sign in", "action tap --label Home"]);
+		expect(await shellTaps(["Don't allow", "#onboarding's-skip", "Signed in"])).toEqual([
+			"action tap --label Allow",
+			"action tap --id onboarding's-skip",
+			"action tap --label Profile",
+			"action tap --label Home",
+		]);
 	});
 });
 
