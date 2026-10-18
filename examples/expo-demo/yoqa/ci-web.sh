@@ -31,11 +31,20 @@ mkdir -p artifacts
 PROFILE_DIR="$(mktemp -d)"
 pids=()
 
+# Chrome keeps writing its profile while it shuts down, so wait until no process has it open
+# (killing stragglers after 10 s) before deleting it. Keep the smoke's exit status either way.
 cleanup() {
+	local status=$?
 	for pid in ${pids[@]+"${pids[@]}"}; do
 		kill "$pid" >/dev/null 2>&1 || true
 	done
-	rm -rf "$PROFILE_DIR"
+	for _ in $(seq 1 50); do
+		pgrep -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null || break
+		sleep 0.2
+	done
+	pkill -KILL -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1 || true
+	rm -rf "$PROFILE_DIR" 2>/dev/null || true
+	exit "$status"
 }
 trap cleanup EXIT
 

@@ -16,7 +16,7 @@ Run the Expo demo's smoke on web in CI, next to the iOS Simulator and Android Em
 
 ## What shipped
 
-- `examples/expo-demo/yoqa/ci-web.sh`: serves the export, starts headless Chrome (`CHROME_BIN` overrides the browser, `YOQA_DEMO_WEB_PORT` / `YOQA_DEMO_CDP_PORT` the ports), waits for both, connects, seeds, runs the catalog Run with `--github-output`, then the connector smoke. It stops the server and browser and deletes the profile on exit.
+- `examples/expo-demo/yoqa/ci-web.sh`: serves the export, starts headless Chrome (`CHROME_BIN` overrides the browser, `YOQA_DEMO_WEB_PORT` / `YOQA_DEMO_CDP_PORT` the ports), waits for both, connects, seeds, runs the catalog Run with `--github-output`, then the connector smoke. On exit it stops the server and browser, waits until no process has the profile open (Chrome keeps writing it while it shuts down; the first CI run failed on `rm` after a passing smoke), deletes it, and keeps the smoke's exit status.
 - `seed-catalog.sh`: `--web-url` on create and update when `YOQA_DEMO_WEB_URL` is set.
 - `.github/workflows/demo-expo-e2e.yml`: a **Web (Chromium)** job on `ubuntu-latest` (30 min timeout) that builds the runner and CLI, exports the demo, starts `yoqa serve`, runs `ci-web.sh`, and uploads `yoqa-expo-demo-web-report` (through `./.github/actions/yoqa-report`), `yoqa-expo-demo-web-screenshots` and, on failure, `yoqa-expo-demo-web-failure` (runner, Chrome and server logs).
 - `examples/expo-demo`: `react-dom` and `react-native-web`, and a Web section in its README.
