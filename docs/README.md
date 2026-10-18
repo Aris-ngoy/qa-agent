@@ -70,6 +70,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [desktop/ui-preferences.md](./desktop/ui-preferences.md) | Storage-backed theme mode + sidebar-collapsed preferences module |
 | [desktop/dark-theme.md](./desktop/dark-theme.md) | Dark theme: data-theme tokens, pre-paint script, Settings → Appearance |
 | [desktop/collapsible-side-menu.md](./desktop/collapsible-side-menu.md) | Side menu collapses to an icon rail via top-bar toggle or ⌘B |
+| [desktop/app-avatars-and-platforms.md](./desktop/app-avatars-and-platforms.md) | Workspace picker: a distinct, stable color per app and web/Android/iOS platform icons |
 | [desktop/list-pagination.md](./desktop/list-pagination.md) | Runs and Test cases lists paged client-side, 20 rows by default (20/50/100) |
 | [desktop/dark-mode-coverage.md](./desktop/dark-mode-coverage.md) | Hardcoded colors migrated to tokens + a guard test |
 | [desktop/theme-and-collapsible-sidebar.md](./desktop/theme-and-collapsible-sidebar.md) | Dark sidebar card styling + overview of the theme/side-menu feature set |
