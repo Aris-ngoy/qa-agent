@@ -14,9 +14,10 @@ import {
 	developerNotTrusted,
 	formatAssertShellLine,
 	formatCaseScriptFile,
-	formatCaseScriptFileAction,
 	formatCaseScriptFileErrors,
+	formatCaseScriptReplayStep,
 	formatCaseScriptShell,
+	formatCaseScriptStepPath,
 	formatViewportPreset,
 	parseCaseScriptFile,
 	parseKeyModifiers,
@@ -1876,9 +1877,10 @@ scriptCmd
 
 			const result = await runCaseScript(c, script, {
 				pauseAfterActionMs: 800,
-				onStep: ({ index, total, action, status, error, response }) => {
+				onStep: (event) => {
+					const { position, total, action, status, error, response, outcome } = event;
 					if (status === "running") return;
-					const step = index + 1;
+					const step = position + 1;
 					if (options.json) {
 						console.log(
 							JSON.stringify(
@@ -1887,7 +1889,9 @@ scriptCmd
 									status,
 									type: action.type,
 									step,
+									path: event.path,
 									command: caseScriptActionCommand(action),
+									...(outcome ? { outcome } : {}),
 									...(error ? { error } : {}),
 									...(response ? { response } : {}),
 								},
@@ -1897,7 +1901,7 @@ scriptCmd
 						);
 						return;
 					}
-					const line = formatCaseScriptFileAction(action);
+					const line = formatCaseScriptReplayStep(event);
 					if (status === "ok") console.log(`ok ${line} (${step}/${total})`);
 					else if (status === "error") console.error(`error ${line} (${step}/${total}): ${error}`);
 					else console.log(`skipped ${line} (${step}/${total})`);
@@ -1905,12 +1909,13 @@ scriptCmd
 			});
 
 			if (!result.ok) {
-				throw new Error(
-					`action ${(result.failedIndex ?? 0) + 1}/${result.total} failed: ${result.error ?? "failed"}`,
-				);
+				const where = result.failedPath
+					? formatCaseScriptStepPath(result.failedPath)
+					: `action ${(result.failedIndex ?? 0) + 1}`;
+				throw new Error(`${where} failed: ${result.error ?? "failed"}`);
 			}
 			if (!options.json) {
-				console.log(`done ${result.total} action${result.total === 1 ? "" : "s"}`);
+				console.log(`done ${result.total} step${result.total === 1 ? "" : "s"}`);
 			}
 		} catch (error) {
 			fail("script run", error);

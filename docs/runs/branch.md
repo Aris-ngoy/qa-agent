@@ -1,6 +1,6 @@
 # Branch: conditional steps in a Case Script
 
-Spec: [Aris-ngoy/qa-agent#321](https://github.com/Aris-ngoy/qa-agent/issues/321). Tracer bullet: [#323](https://github.com/Aris-ngoy/qa-agent/issues/323). Decision: [ADR-0008](../adr/0008-case-script-branches.md). Terms: **Branch**, **Case Script**, **Case Script file** in [`CONTEXT.md`](../../CONTEXT.md). The file format is described in [case-script-yaml.md](./case-script-yaml.md).
+Spec: [Aris-ngoy/qa-agent#321](https://github.com/Aris-ngoy/qa-agent/issues/321). Tracer bullet: [#323](https://github.com/Aris-ngoy/qa-agent/issues/323). Client-side replay: [#324](https://github.com/Aris-ngoy/qa-agent/issues/324). Decision: [ADR-0008](../adr/0008-case-script-branches.md). Terms: **Branch**, **Case Script**, **Case Script file** in [`CONTEXT.md`](../../CONTEXT.md). The file format is described in [case-script-yaml.md](./case-script-yaml.md).
 
 ## Goal
 
@@ -40,9 +40,17 @@ actions:
 - The Branch step records `{ type: "branch", text, assertion, timeoutMs, outcome: "then" | "else", reason, thoughts }`, `ok: true`, a screenshot taken when it decided, `detail` like `visible: Allow notifications → then`, and the equivalent `yoqa assert visible --text '…' --timeout 2` as its command. The Run timeline and report show it as `If visible: Allow notifications → then`.
 - A failure inside a side fails the case like a top-level failure. A Screen that is still unreadable at the deadline fails the case with the read error (it does not take `else`). A Dead Session ends the case at once. Abort works while the check polls and between the actions of a side.
 
-**Elsewhere (fallbacks until the follow-ups land)**
+**Client-side replay (`yoqa script run`, the Inspector's Run)**
 
-- Client-side replay (`yoqa script run`, the Inspector's Run) stops at a Branch with "This replay can't follow a Branch yet; run the Test Case in a Run".
+- `runCaseScript` follows a Branch the way the Case executor does: the same `checkScreen`, then the chosen side in place. A failure inside a side, a Screen still unreadable at the deadline, and abort (during the check or between the steps of a side) end the replay as they do for an assert.
+- Each replay event carries a `path` (`{ index, nested: [{ side, index }] }`, 0-based) next to the top-level `index`, and a `position` out of `total`. The Branch emits its own `running` / `ok` events; its `ok` carries `outcome: "then" | "else"`.
+- `total` counts steps run plus those still to come; it grows by the side's length when a Branch decides. The side not taken is never reported; after a failure, the rest of the side and of the script are reported `skipped` (a Branch not reached is one skipped step). A failed result adds `failedPath`.
+- `defaultBranchTimeoutMs` (default 2000) sits next to `defaultAssertTimeoutMs`.
+- `yoqa script run` prints `ok if visible: Allow notifications → then (2/4)`, indents the side's steps, and names a failed step by its path (`action 2 → then → action 1 failed: …`); exit status is as for a flat script. `--json` lines gain `path` and `outcome`. The closing line now counts steps (`done 4 steps`).
+- The Inspector's run log and session report show the Branch with its outcome and each step of the side (indented). While a side runs, the editor keeps the Branch's `if:` line highlighted; a failure inside a side reads `Line 4, action 2 → then → action 1: …`.
+
+**Elsewhere**
+
 - Shell export writes `if yoqa assert … --timeout <s>; then … else … fi`, indented.
 - The Inspector step list and the Test Case script summary show a Branch as one row, e.g. `If “Allow notifications” visible → 1 step, else 2 steps`.
 - Building a Case Script from agent decisions is typed to flat Actions, so a recorded script never contains a Branch.
@@ -50,12 +58,12 @@ actions:
 
 ## How to verify
 
-1. `bun test packages/runner-client/src/case-script-file.test.ts services/runner/src/domains/runs/case-executor.test.ts packages/runner-client/src/script-format.test.ts`
+1. `bun test packages/runner-client/src/case-script-file.test.ts packages/runner-client/src/case-script-replay.test.ts services/runner/src/domains/runs/case-executor.test.ts packages/runner-client/src/script-format.test.ts`
 2. `yoqa script validate` a file with an `if:` item: it prints `ok`. Remove its `then:` and it prints `Line N, action M: if: needs \`then:\` with at least one action`.
-3. Import that file into a Test Case and run it in script mode on a device. The Run details show an `If visible: … → then` (or `→ else`) step, followed only by the steps from that side.
+3. With a device connected, `yoqa script run` that file: it prints the Branch with `→ then` or `→ else` and only that side's steps, and exits 0 (or 1 when a step fails). The Inspector's Run shows the same in its log.
+4. Import that file into a Test Case and run it in script mode on a device. The Run details show an `If visible: … → then` (or `→ else`) step, followed only by the steps from that side.
 
 ## Follow-ups
 
 - An `id` target (exact, case-insensitive, like a tap by id) and `yoqa assert --id`.
-- Client-side replay (CLI and Inspector) follows Branches, with step paths in its events and a default Branch timeout option.
-- Line-by-line highlighting of a Branch's inner steps in the Inspector.
+- Line-by-line highlighting of a Branch's inner steps in the Inspector (the parser keeps top-level `actionLines` only, so a side's steps highlight their `if:` line).

@@ -56,7 +56,7 @@ Make a Case Script readable, diffable, and easy to hand-edit. A Case Script is n
 
 1. Unit tests: `bun test packages/runner-client/src/case-script-file.test.ts packages/runner-client/src/case-script-replay.test.ts apps/desktop/src/mainview/features/inspector/utils/script-steps.test.ts`
 2. `yoqa script validate examples/expo-demo/yoqa/smoke.yoqa.yaml` prints `ok … 8 actions`. Break an action name and it prints `Line N, action M: …` and exits 1.
-3. Connect a device. `yoqa script run examples/expo-demo/yoqa/smoke.yoqa.yaml` prints `ok …` per action and then `done 8 actions`. A failing action prints `error …`, then `skipped …` for each remaining action, and exits 1.
+3. Connect a device. `yoqa script run examples/expo-demo/yoqa/smoke.yoqa.yaml` prints `ok …` per action and then `done 8 steps`. A failing action prints `error …`, then `skipped …` for each remaining action, and exits 1.
 4. Inspector: double-tap elements and check that `- tap: …` lines appear under `actions:`. Run the script and watch each step highlight. Export `.yoqa.yaml`, then open it again. Paste an old `yoqa` shell script and check that it converts. Save as test case and check that the case's Script tab shows the same actions.
 5. Test Case Script tab: Edit YAML, introduce a typo, and check that the error names the line. Use Import… with a legacy `.yoqa.json` file.
 
