@@ -40,6 +40,15 @@ yoqa runs create DEMO --cases 1 --mode script --wait
 
 CI runs the catalog CaseScript ([`yoqa/smoke.yoqa.yaml`](./yoqa/smoke.yoqa.json)): `assert` + `tap --label` (no vision / agent). Download `yoqa-expo-demo-*-report` from the GitHub Actions **run** Artifacts section for the HTML report. `ci-smoke.sh` is the same steps via `yoqa assert` / `yoqa action` for local debugging without a catalog.
 
+### Web
+
+```bash
+npx expo export --platform web          # static build in dist/
+./yoqa/ci-web.sh dist                    # serves it, starts headless Chrome on :9222, runs the smoke
+```
+
+Set `CHROME_BIN` when Chrome is not on `PATH` (on a Mac: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`), and `YOQA_DEMO_CDP_PORT` when 9222 is taken.
+
 ## CI
 
 See [`.github/workflows/demo-expo-e2e.yml`](../../.github/workflows/demo-expo-e2e.yml) and [`docs/cli/github-actions-expo.md`](../../docs/cli/github-actions-expo.md).
