@@ -384,73 +384,140 @@ function caseScriptAppIdSchema<T extends "activate-app" | "terminate-app" | "res
 	});
 }
 
+const caseScriptTypeSchema = z.object({
+	type: z.literal("type"),
+	text: z.string(),
+	reason: z.string().optional(),
+});
+
+const caseScriptWaitSchema = z.object({
+	type: z.literal("wait"),
+	ms: z.number().min(0).max(10_000),
+	reason: z.string().optional(),
+});
+
+const caseScriptAssertionSchema = z
+	.union([z.literal("visible"), z.literal("not-visible")])
+	.default("visible");
+
+const caseScriptAssertSchema = z.object({
+	type: z.literal("assert"),
+	assertion: caseScriptAssertionSchema,
+	text: z.string().min(1),
+	timeoutMs: z.number().min(0).max(120_000).optional(),
+	reason: z.string().optional(),
+});
+
+const caseScriptAlertSchema = z.object({
+	type: z.literal("alert"),
+	alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).default("accept"),
+	reason: z.string().optional(),
+});
+
+const caseScriptBackgroundAppSchema = z.object({
+	type: z.literal("background-app"),
+	seconds: z.number().min(0).max(120).optional(),
+	reason: z.string().optional(),
+});
+
+const caseScriptOpenUrlSchema = z.object({
+	type: z.literal("open-url"),
+	url: z.string().min(1),
+	reason: z.string().optional(),
+});
+
+const caseScriptKeySchema = z.object({
+	type: z.literal("key"),
+	key: keyNameSchema,
+	modifiers: z.array(keyModifierSchema).min(1).optional(),
+	reason: z.string().optional(),
+});
+
+/** Every Case Script step that is an Action (everything but a Branch). */
+const caseScriptGestureSchema = z.union([
+	caseScriptTapSchema,
+	caseScriptSwipeSchema,
+	caseScriptDragSchema,
+	caseScriptTypeSchema,
+	caseScriptWaitSchema,
+	caseScriptAssertSchema,
+	caseScriptAlertSchema,
+	caseScriptAppIdSchema("activate-app"),
+	caseScriptAppIdSchema("terminate-app"),
+	caseScriptAppIdSchema("restart-app"),
+	caseScriptBackgroundAppSchema,
+	caseScriptOpenUrlSchema,
+	caseScriptKeySchema,
+]);
+
+/** Default wait of a Branch with no `timeoutMs`. */
+export const BRANCH_DEFAULT_TIMEOUT_MS = 2_000;
+
+/**
+ * A Branch (see CONTEXT.md): checks the Screen, waiting up to `timeoutMs`, for one text,
+ * and runs `then` when the check is met or `else` when it is not.
+ */
+export type CaseScriptBranch = {
+	type: "branch";
+	text: string;
+	assertion: "visible" | "not-visible";
+	timeoutMs?: number;
+	then: CaseScriptAction[];
+	/** Never empty: an empty `else` reads as no `else`. */
+	else?: CaseScriptAction[];
+	reason?: string;
+};
+
+type CaseScriptBranchInput = Omit<CaseScriptBranch, "assertion" | "then" | "else"> & {
+	assertion?: "visible" | "not-visible";
+	then: CaseScriptActionInput[];
+	else?: CaseScriptActionInput[];
+};
+
+/** A Case Script step: an Action, or a Branch holding more steps. */
+export type CaseScriptAction = z.infer<typeof caseScriptGestureSchema> | CaseScriptBranch;
+type CaseScriptActionInput = z.input<typeof caseScriptGestureSchema> | CaseScriptBranchInput;
+
+type CaseScriptActionSchema = z.ZodType<CaseScriptAction, z.ZodTypeDef, CaseScriptActionInput>;
+
+const caseScriptStepsSchema = z.array(z.lazy((): CaseScriptActionSchema => caseScriptActionSchema));
+
+const caseScriptBranchSchema = z.object({
+	type: z.literal("branch"),
+	text: z.string().min(1),
+	assertion: caseScriptAssertionSchema,
+	timeoutMs: z.number().min(0).max(120_000).optional(),
+	then: caseScriptStepsSchema.min(1),
+	else: caseScriptStepsSchema
+		.optional()
+		.transform((actions) => (actions?.length ? actions : undefined)),
+	reason: z.string().optional(),
+});
+
+export const caseScriptActionSchema: CaseScriptActionSchema = z.union([
+	caseScriptGestureSchema,
+	caseScriptBranchSchema,
+]);
+
 /** One schema per Case Script action type, so a Case Script file can report errors per action. */
 export const caseScriptActionSchemaByType = {
 	tap: caseScriptTapSchema,
 	swipe: caseScriptSwipeSchema,
 	drag: caseScriptDragSchema,
-	type: z.object({
-		type: z.literal("type"),
-		text: z.string(),
-		reason: z.string().optional(),
-	}),
-	wait: z.object({
-		type: z.literal("wait"),
-		ms: z.number().min(0).max(10_000),
-		reason: z.string().optional(),
-	}),
-	assert: z.object({
-		type: z.literal("assert"),
-		assertion: z.union([z.literal("visible"), z.literal("not-visible")]).default("visible"),
-		text: z.string().min(1),
-		timeoutMs: z.number().min(0).max(120_000).optional(),
-		reason: z.string().optional(),
-	}),
-	alert: z.object({
-		type: z.literal("alert"),
-		alertAction: z.union([z.literal("accept"), z.literal("dismiss")]).default("accept"),
-		reason: z.string().optional(),
-	}),
+	type: caseScriptTypeSchema,
+	wait: caseScriptWaitSchema,
+	assert: caseScriptAssertSchema,
+	alert: caseScriptAlertSchema,
 	"activate-app": caseScriptAppIdSchema("activate-app"),
 	"terminate-app": caseScriptAppIdSchema("terminate-app"),
 	"restart-app": caseScriptAppIdSchema("restart-app"),
-	"background-app": z.object({
-		type: z.literal("background-app"),
-		seconds: z.number().min(0).max(120).optional(),
-		reason: z.string().optional(),
-	}),
-	"open-url": z.object({
-		type: z.literal("open-url"),
-		url: z.string().min(1),
-		reason: z.string().optional(),
-	}),
-	key: z.object({
-		type: z.literal("key"),
-		key: keyNameSchema,
-		modifiers: z.array(keyModifierSchema).min(1).optional(),
-		reason: z.string().optional(),
-	}),
+	"background-app": caseScriptBackgroundAppSchema,
+	"open-url": caseScriptOpenUrlSchema,
+	key: caseScriptKeySchema,
+	branch: caseScriptBranchSchema,
 } as const;
 
 export type CaseScriptActionType = keyof typeof caseScriptActionSchemaByType;
-
-export const caseScriptActionSchema = z.union([
-	caseScriptActionSchemaByType.tap,
-	caseScriptActionSchemaByType.swipe,
-	caseScriptActionSchemaByType.drag,
-	caseScriptActionSchemaByType.type,
-	caseScriptActionSchemaByType.wait,
-	caseScriptActionSchemaByType.assert,
-	caseScriptActionSchemaByType.alert,
-	caseScriptActionSchemaByType["activate-app"],
-	caseScriptActionSchemaByType["terminate-app"],
-	caseScriptActionSchemaByType["restart-app"],
-	caseScriptActionSchemaByType["background-app"],
-	caseScriptActionSchemaByType["open-url"],
-	caseScriptActionSchemaByType.key,
-]);
-
-export type CaseScriptAction = z.infer<typeof caseScriptActionSchema>;
 
 export const caseScriptSchema = z.object({
 	version: z.literal(1),

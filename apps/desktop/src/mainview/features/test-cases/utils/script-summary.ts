@@ -56,5 +56,12 @@ export function scriptActionSummary(action: CaseScriptAction): string {
 	if (action.type === "key") {
 		return `Press ${formatKeyChord(action.key, action.modifiers)}`;
 	}
+	if (action.type === "branch") {
+		const sides = [`${action.then.length} step${action.then.length === 1 ? "" : "s"}`];
+		if (action.else) {
+			sides.push(`else ${action.else.length} step${action.else.length === 1 ? "" : "s"}`);
+		}
+		return `If “${action.text}” ${action.assertion === "visible" ? "visible" : "not visible"} → ${sides.join(", ")}`;
+	}
 	return `Wait ${action.ms}ms`;
 }

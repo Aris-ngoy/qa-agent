@@ -1,8 +1,10 @@
 import {
 	type ActionRequest,
 	type ActionResponse,
+	BRANCH_DEFAULT_TIMEOUT_MS,
 	type CallUsage,
 	type CaseScript,
+	type CaseScriptAction,
 	type CatalogCase,
 	type RunScreenMode,
 	type ScreenElement,
@@ -285,10 +287,62 @@ export async function executeScriptCase(
 	let stepIdx = 0;
 	let lastScreenshotUri: string | null = null;
 
-	try {
-		for (const action of deps.script.actions) {
+	/** Replay a list of steps in place, recursing into a Branch's chosen side. */
+	const replay = async (actions: CaseScriptAction[]): Promise<"cancelled" | null> => {
+		for (const action of actions) {
 			if (deps.isAborted()) {
 				return "cancelled";
+			}
+
+			if (action.type === "branch") {
+				const timeoutMs = action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS;
+				const { assertion, text } = action;
+				const command = formatAssertShellLine({
+					assertion,
+					text,
+					timeoutSeconds: timeoutMs / 1000,
+				});
+				const checkStarted = clock.now();
+				const { met } = await withCurrentCommand(setCurrentCommand, command, () =>
+					checkScreen({
+						readScreen: () => readScreen(deps.session),
+						text,
+						assertion,
+						timeoutMs,
+						sleep: (ms) => clock.sleep(ms),
+						now: () => clock.now(),
+						isAborted: deps.isAborted,
+						isDeadSession: isDeadSessionError,
+					}),
+				);
+				// The Screen the Branch decided on.
+				const shot = await deps.session.screenshot();
+				lastScreenshotUri = shot.path;
+				if (deps.isAborted()) {
+					return "cancelled";
+				}
+				const outcome = met ? "then" : "else";
+				await deps.appendStep({
+					idx: stepIdx,
+					action: {
+						type: "branch",
+						text,
+						assertion,
+						timeoutMs,
+						outcome,
+						reason: action.reason ?? `If ${assertion}: ${text}`,
+						thoughts: "Replaying the saved script without calling the AI agent.",
+					},
+					screenshotUri: shot.path,
+					ok: true,
+					latencyMs: clock.now() - checkStarted,
+					detail: `${assertion}: ${text} → ${outcome}`,
+					command,
+				});
+				stepIdx += 1;
+				const stopped = await replay((met ? action.then : action.else) ?? []);
+				if (stopped) return stopped;
+				continue;
 			}
 
 			const shotStarted = clock.now();
@@ -604,6 +658,14 @@ export async function executeScriptCase(
 			}
 
 			stepIdx += 1;
+		}
+		return null;
+	};
+
+	try {
+		const stopped = await replay(deps.script.actions);
+		if (stopped) {
+			return stopped;
 		}
 
 		await deps.appendStep({

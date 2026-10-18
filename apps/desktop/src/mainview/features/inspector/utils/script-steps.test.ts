@@ -63,4 +63,37 @@ describe("buildScriptStepsView", () => {
 		expect(view.errors[0]?.lineNumber).toBe(3);
 		expect(view.errors[0]?.message).toStartWith("action 1: unknown action");
 	});
+
+	test("shows a Branch as one row", () => {
+		const view = buildScriptStepsView(
+			[
+				"version: 1",
+				"actions:",
+				"  - if:",
+				"      text: Allow notifications",
+				"      then:",
+				"        - tap: Allow",
+				"      else:",
+				"        - wait: 500",
+				"        - tap: Skip",
+				"  - tap: Home",
+			].join("\n"),
+			null,
+			false,
+		);
+		expect(view.steps.map((step) => [step.lineNumber, step.verb, step.text, step.meta])).toEqual([
+			[3, "If", "“Allow notifications” visible", "→ 1 step, else 2 steps"],
+			[10, "Tap", "“Home”", ""],
+		]);
+	});
+
+	test("names where an error sits inside a Branch", () => {
+		const view = buildScriptStepsView(
+			"version: 1\nactions:\n  - if:\n      text: A\n      then:\n        - tapp: Home\n",
+			null,
+			false,
+		);
+		expect(view.errors[0]?.lineNumber).toBe(6);
+		expect(view.errors[0]?.message).toStartWith("action 1 → then → action 1: unknown action");
+	});
 });

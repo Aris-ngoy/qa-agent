@@ -144,7 +144,7 @@ foo: 1
 		expect(formatCaseScriptFileErrors(errors)).toBe(
 			[
 				"Line 3, action 1: tap: tap requires x/y or label or id",
-				'Line 4, action 2: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, background-app, open-url, key)',
+				'Line 4, action 2: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, background-app, open-url, key, if)',
 				"Line 5, action 3: an action has exactly one key (its name); found tap, wait",
 				"Line 7, action 4: wait: ms: Number must be less than or equal to 10000",
 				'Line 8, action 5: tap: unknown field "colour" (allowed: x, y, label, id, double, durationMs, reason)',
@@ -339,5 +339,167 @@ actions:
 		const result = toCaseScriptFileText("version: 1\nactions:\n  - nope: 1\n");
 		expect(result.text).toBeNull();
 		expect(result.errors[0]?.line).toBe(3);
+	});
+});
+
+const BRANCHED = `version: 1
+name: Onboarding
+actions:
+  - restart-app: com.example.app
+  - if:
+      text: Allow notifications
+      timeoutMs: 3000
+      then:
+        - tap: Allow
+      else:
+        - wait: 500
+  - if:
+      text: Loading
+      assertion: not-visible
+      reason: Spinner gone
+      then:
+        - if:
+            text: Welcome back
+            then:
+              - tap: Continue
+              - type: hi
+        - assert: Home
+  - assert: Home
+`;
+
+describe("Branches", () => {
+	test("reads `if:` items, nested, with and without `else`", () => {
+		expect(parseOk(BRANCHED).script.actions).toEqual([
+			{ type: "restart-app", appId: "com.example.app" },
+			{
+				type: "branch",
+				text: "Allow notifications",
+				assertion: "visible",
+				timeoutMs: 3000,
+				then: [{ type: "tap", label: "Allow" }],
+				else: [{ type: "wait", ms: 500 }],
+			},
+			{
+				type: "branch",
+				text: "Loading",
+				assertion: "not-visible",
+				reason: "Spinner gone",
+				then: [
+					{
+						type: "branch",
+						text: "Welcome back",
+						assertion: "visible",
+						then: [
+							{ type: "tap", label: "Continue" },
+							{ type: "type", text: "hi" },
+						],
+					},
+					{ type: "assert", assertion: "visible", text: "Home" },
+				],
+			},
+			{ type: "assert", assertion: "visible", text: "Home" },
+		]);
+		expect(parseOk(BRANCHED).actionLines).toEqual([4, 5, 12, 23]);
+	});
+
+	test("exports block lists, one action per line, and re-imports unchanged", () => {
+		const parsed = parseOk(BRANCHED);
+		const text = formatCaseScriptFile(parsed.script, { name: parsed.name });
+		expect(text).toBe(BRANCHED);
+		expect(parseOk(text).script).toEqual(parsed.script);
+		expect(formatCaseScriptFile(parseOk(text).script, { name: parsed.name })).toBe(text);
+	});
+
+	test("reads `label` as `text`, and an empty `else` as no `else`", () => {
+		const parsed = parseOk(`version: 1
+actions:
+  - if: { label: Skip, then: [tap: Skip], else: [] }
+`);
+		expect(parsed.script.actions).toEqual([
+			{
+				type: "branch",
+				text: "Skip",
+				assertion: "visible",
+				then: [{ type: "tap", label: "Skip" }],
+			},
+		]);
+		expect(formatCaseScriptFile(parsed.script)).toBe(`version: 1
+actions:
+  - if:
+      text: Skip
+      then:
+        - tap: Skip
+`);
+	});
+
+	test("keeps comments inside branches when the file is kept as written", () => {
+		const commented = `version: 1
+actions:
+  - if:
+      text: Rate this app
+      then:
+        # Not now keeps the prompt away for this Run
+        - tap: Not now
+`;
+		expect(toCaseScriptFileText(commented).text).toBe(commented);
+		expect(parseOk(commented).script.actions).toHaveLength(1);
+	});
+
+	test("reads a legacy JSON Branch by its type", () => {
+		const legacy = {
+			version: 1,
+			savedAt: 3,
+			actions: [
+				{ type: "branch", text: "Allow", then: [{ type: "tap", label: "Allow" }], else: [] },
+			],
+		};
+		expect(parseOk(JSON.stringify(legacy)).script.actions).toEqual([
+			{
+				type: "branch",
+				text: "Allow",
+				assertion: "visible",
+				then: [{ type: "tap", label: "Allow" }],
+			},
+		]);
+	});
+
+	test("names the line and nested position of a bad Branch", () => {
+		const errors = errorsOf(`version: 1
+actions:
+  - wait: 100
+  - if:
+      text: A
+  - if:
+      text: B
+      then: []
+  - if:
+      then:
+        - tap: Go
+  - if:
+      text: C
+      colour: red
+      then:
+        - tap: Go
+  - if:
+      text: D
+      then:
+        - tap: Go
+        - if:
+            text: E
+            else:
+              - tapp: x
+  - if: Allow
+`);
+		expect(formatCaseScriptFileErrors(errors)).toBe(
+			[
+				"Line 4, action 2: if: needs `then:` with at least one action",
+				"Line 8, action 3: if: needs `then:` with at least one action",
+				"Line 9, action 4: if: needs `text:` (what to look for on the Screen)",
+				'Line 14, action 5: if: unknown field "colour" (allowed: text, label, assertion, timeoutMs, then, else, reason)',
+				"Line 21, action 6 → then → action 2: if: needs `then:` with at least one action",
+				'Line 24, action 6 → then → action 2 → else → action 1: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, background-app, open-url, key, if)',
+				"Line 25, action 7: if has no short form; write it as a map with `text:` and `then:`",
+			].join("\n"),
+		);
 	});
 });

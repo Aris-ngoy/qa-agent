@@ -360,6 +360,299 @@ describe("executeScriptCase", () => {
 	});
 });
 
+describe("executeScriptCase with a Branch", () => {
+	const text = (label: string): ScreenElement => ({
+		label,
+		type: "Text",
+		x: 0,
+		y: 0,
+		width: 10,
+		height: 10,
+	});
+
+	type Step = {
+		idx: number;
+		action: Record<string, unknown>;
+		ok: boolean;
+		detail: string | null;
+		command: string | null;
+		screenshotUri: string | null;
+	};
+
+	/** A fake session and clock: `screens(now)` is the Screen at that time, or throws. */
+	function runBranch(input: {
+		actions: CaseScript["actions"];
+		screens: (now: number) => ScreenElement[];
+		isAborted?: (now: number) => boolean;
+		perform?: (body: ActionRequest) => void;
+	}) {
+		let now = 0;
+		const performed: ActionRequest[] = [];
+		const steps: Step[] = [];
+		let reads = 0;
+		const status = executeScriptCase({
+			script: { version: 1, savedAt: 1, actions: input.actions },
+			session: fakeSession(),
+			isAborted: () => input.isAborted?.(now) ?? false,
+			appendStep: async (step) => {
+				steps.push({
+					idx: step.idx,
+					action: step.action as Record<string, unknown>,
+					ok: step.ok,
+					detail: step.detail,
+					command: step.command,
+					screenshotUri: step.screenshotUri,
+				});
+			},
+			performAction: async (_session, body) => {
+				input.perform?.(body);
+				performed.push(body);
+				return { ok: true, kind: body.kind };
+			},
+			readScreen: async () => {
+				reads += 1;
+				return { elements: input.screens(now) };
+			},
+			clock: {
+				sleep: async (ms) => {
+					now += ms;
+				},
+				now: () => now,
+			},
+			settleMs: 0,
+		});
+		return { status, performed, steps, now: () => now, reads: () => reads };
+	}
+
+	const allowBranch: CaseScript["actions"][number] = {
+		type: "branch",
+		text: "Allow notifications",
+		assertion: "visible",
+		then: [{ type: "tap", label: "Allow" }],
+		else: [{ type: "tap", label: "Skip" }],
+	};
+
+	it("takes `then` when the text is on the Screen, then carries on", async () => {
+		const run = runBranch({
+			actions: [allowBranch, { type: "tap", label: "Home" }],
+			screens: () => [text("Allow notifications")],
+		});
+		expect(await run.status).toBe("passed");
+		expect(run.performed).toEqual([
+			{ kind: "tap", label: "Allow" },
+			{ kind: "tap", label: "Home" },
+		]);
+		expect(run.steps.map((step) => [step.idx, step.action.type])).toEqual([
+			[0, "branch"],
+			[1, "tap"],
+			[2, "tap"],
+			[3, "done"],
+		]);
+		expect(run.steps[0]).toMatchObject({
+			action: {
+				type: "branch",
+				text: "Allow notifications",
+				assertion: "visible",
+				timeoutMs: 2000,
+				outcome: "then",
+			},
+			ok: true,
+			detail: "visible: Allow notifications → then",
+			command: "yoqa assert visible --text 'Allow notifications' --timeout 2",
+		});
+		expect(run.steps[0]?.screenshotUri).toBeString();
+	});
+
+	it("takes `then` when the text appears after a few polls", async () => {
+		const run = runBranch({
+			actions: [allowBranch],
+			screens: (now) => (now >= 800 ? [text("Allow notifications")] : []),
+		});
+		expect(await run.status).toBe("passed");
+		expect(run.performed).toEqual([{ kind: "tap", label: "Allow" }]);
+		expect(run.steps[0]?.action.outcome).toBe("then");
+		expect(run.reads()).toBe(3);
+	});
+
+	it("takes `else` at the 2s default deadline, and leaves `then` out of the timeline", async () => {
+		const run = runBranch({ actions: [allowBranch], screens: () => [] });
+		expect(await run.status).toBe("passed");
+		expect(run.now()).toBe(2000);
+		expect(run.performed).toEqual([{ kind: "tap", label: "Skip" }]);
+		expect(run.steps.map((step) => [step.idx, step.action.type, step.action.label])).toEqual([
+			[0, "branch", undefined],
+			[1, "tap", "Skip"],
+			[2, "done", undefined],
+		]);
+		expect(run.steps[0]).toMatchObject({
+			action: { outcome: "else" },
+			detail: "visible: Allow notifications → else",
+		});
+	});
+
+	it("waits the Branch's own timeoutMs", async () => {
+		const run = runBranch({
+			actions: [{ ...allowBranch, timeoutMs: 400 }],
+			screens: () => [],
+		});
+		expect(await run.status).toBe("passed");
+		expect(run.now()).toBe(400);
+	});
+
+	it("checks not-visible", async () => {
+		const run = runBranch({
+			actions: [
+				{
+					type: "branch",
+					text: "Loading",
+					assertion: "not-visible",
+					then: [{ type: "tap", label: "Start" }],
+				},
+			],
+			screens: (now) => (now < 400 ? [text("Loading…")] : [text("Start")]),
+		});
+		expect(await run.status).toBe("passed");
+		expect(run.performed).toEqual([{ kind: "tap", label: "Start" }]);
+		expect(run.steps[0]).toMatchObject({
+			action: { assertion: "not-visible", outcome: "then" },
+			command: "yoqa assert not-visible --text 'Loading' --timeout 2",
+		});
+	});
+
+	it("goes on to the next action when the check misses and there is no `else`", async () => {
+		const run = runBranch({
+			actions: [
+				{
+					type: "branch",
+					text: "Rate this app",
+					assertion: "visible",
+					then: [{ type: "tap", label: "Not now" }],
+				},
+				{ type: "tap", label: "Home" },
+			],
+			screens: () => [],
+		});
+		expect(await run.status).toBe("passed");
+		expect(run.performed).toEqual([{ kind: "tap", label: "Home" }]);
+		expect(run.steps.map((step) => step.action.type)).toEqual(["branch", "tap", "done"]);
+	});
+
+	it("runs nested Branches with one continuous step index", async () => {
+		const run = runBranch({
+			actions: [
+				{
+					type: "branch",
+					text: "Welcome",
+					assertion: "visible",
+					then: [
+						{ type: "tap", label: "Next" },
+						{
+							type: "branch",
+							text: "Sign in",
+							assertion: "visible",
+							then: [{ type: "tap", label: "Sign in" }],
+							else: [{ type: "tap", label: "Continue" }],
+						},
+					],
+				},
+				{ type: "tap", label: "Home" },
+			],
+			screens: () => [text("Welcome")],
+		});
+		expect(await run.status).toBe("passed");
+		expect(run.performed.map((body) => body.label)).toEqual(["Next", "Continue", "Home"]);
+		expect(run.steps.map((step) => [step.idx, step.action.type, step.action.outcome])).toEqual([
+			[0, "branch", "then"],
+			[1, "tap", undefined],
+			[2, "branch", "else"],
+			[3, "tap", undefined],
+			[4, "tap", undefined],
+			[5, "done", undefined],
+		]);
+	});
+
+	it("fails the case when an action inside a side fails", async () => {
+		const run = runBranch({
+			actions: [allowBranch, { type: "tap", label: "Home" }],
+			screens: () => [text("Allow notifications")],
+			perform: (body) => {
+				if (body.label === "Allow") throw new Error('No element matches label "Allow"');
+			},
+		});
+		expect(await run.status).toBe("errored");
+		expect(run.performed).toEqual([]);
+		expect(run.steps.map((step) => [step.idx, step.action.type, step.ok])).toEqual([
+			[0, "branch", true],
+			[1, "fail", false],
+		]);
+		expect(run.steps[1]?.detail).toBe('No element matches label "Allow"');
+	});
+
+	it("fails the case with the read error when the Screen is unreadable at the deadline", async () => {
+		const run = runBranch({
+			actions: [allowBranch],
+			screens: () => {
+				throw new Error("axbridge could not resolve the frontmost application");
+			},
+		});
+		expect(await run.status).toBe("errored");
+		expect(run.performed).toEqual([]);
+		expect(run.steps.map((step) => step.action.type)).toEqual(["fail"]);
+		expect(run.steps[0]?.detail).toBe(
+			"Could not read the screen within 2s: axbridge could not resolve the frontmost application",
+		);
+	});
+
+	it("ends at once on a Dead Session", async () => {
+		const run = runBranch({
+			actions: [allowBranch],
+			screens: () => {
+				throw new DeadSessionError("Device session ended: simulator gone");
+			},
+		});
+		expect(await run.status).toBe("errored");
+		expect(run.reads()).toBe(1);
+		expect(run.now()).toBe(0);
+		expect(run.performed).toEqual([]);
+	});
+
+	it("cancels while the check is polling", async () => {
+		const run = runBranch({
+			actions: [allowBranch],
+			screens: () => [],
+			isAborted: (now) => now >= 800,
+		});
+		expect(await run.status).toBe("cancelled");
+		expect(run.now()).toBe(800);
+		expect(run.performed).toEqual([]);
+		expect(run.steps).toEqual([]);
+	});
+
+	it("cancels between actions inside a side", async () => {
+		let taps = 0;
+		const run = runBranch({
+			actions: [
+				{
+					type: "branch",
+					text: "Welcome",
+					assertion: "visible",
+					then: [
+						{ type: "tap", label: "One" },
+						{ type: "tap", label: "Two" },
+					],
+				},
+			],
+			screens: () => [text("Welcome")],
+			perform: () => {
+				taps += 1;
+			},
+			isAborted: () => taps >= 1,
+		});
+		expect(await run.status).toBe("cancelled");
+		expect(run.performed.map((body) => body.label)).toEqual(["One"]);
+	});
+});
+
 describe("executeAgentCase", () => {
 	it("errors the case when the agent backgrounds the app on web, which a page cannot do", async () => {
 		const browser = startFakeCdp({ viewport: { width: 1280, height: 800 } });

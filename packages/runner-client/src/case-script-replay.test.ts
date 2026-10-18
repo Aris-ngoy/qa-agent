@@ -225,6 +225,46 @@ describe("runCaseScript", () => {
 	});
 });
 
+describe("a Branch in client-side replay", () => {
+	test("fails without touching the device, and skips what is left", async () => {
+		const device = fakeDevice({ screens: [["Allow"]] });
+		const steps = collect();
+		const result = await runCaseScript(
+			device.client,
+			script(
+				{ type: "tap", label: "A" },
+				{
+					type: "branch",
+					text: "Allow",
+					assertion: "visible",
+					then: [{ type: "tap", label: "Allow" }],
+				},
+				{ type: "tap", label: "B" },
+			),
+			{ sleep: device.sleep, now: device.now, onStep: steps.onStep },
+		);
+		expect(result).toMatchObject({ ok: false, completed: 1, failedIndex: 1 });
+		expect(result.error).toContain("Branch");
+		expect(steps.events.slice(2).map((event) => event.status)).toEqual([
+			"running",
+			"error",
+			"skipped",
+		]);
+		expect(device.requests.map((r) => r.label)).toEqual(["A"]);
+	});
+
+	test("names the check a Branch makes as its command", () => {
+		expect(
+			caseScriptActionCommand({
+				type: "branch",
+				text: "Allow",
+				assertion: "not-visible",
+				then: [{ type: "tap", label: "Allow" }],
+			}),
+		).toBe("yoqa assert not-visible --text 'Allow' --timeout 2");
+	});
+});
+
 describe("caseScriptActionCommand", () => {
 	test("names the shell command each action replays as", () => {
 		expect(caseScriptActionCommand({ type: "tap", label: "Home" })).toBe(
