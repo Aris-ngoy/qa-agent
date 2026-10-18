@@ -15,7 +15,7 @@
     },
     "apps/desktop": {
       "name": "@yoqa/desktop",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "dependencies": {
         "@fontsource/inter": "^5.3.0",
         "@heroui/react": "^3.2.3",
@@ -48,7 +48,7 @@
     },
     "packages/cli": {
       "name": "@yoqa/cli",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "bin": {
         "yoqa": "dist/main.js",
       },
@@ -104,7 +104,7 @@
     },
     "services/runner": {
       "name": "@yoqa/runner",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "bin": {
         "yoqa-runner": "bin/yoqa-runner.cjs",
       },
