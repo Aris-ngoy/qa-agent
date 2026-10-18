@@ -86,7 +86,7 @@ A view that only shows what another page already loaded reads it through a `useC
 
 1. `bun run lint:ci`, `bun run test`, `bun run check`. `no-react-state.test.ts` is part of the tests.
 2. `bun run desktop`: add an app, create a test case, edit and save it, switch its tabs, tick it in the list (the top bar shows **Run test**), filter, open Runs, the device picker, the Servers & doctor panel, Inspector, Configuration, and every Settings section. Toggle the theme and collapse the side menu (⌘B). Switch apps: the case selection clears.
-3. Open a test case and a Run: the top bar reads **Test case / <name>** and **Runs / <device>**, and the webview console shows no "No queryFn" errors.
+3. Open a test case and a Run: the top bar reads **Test case / <name>** and **Runs / <device>**, and the webview console shows no "No queryFn" errors. `bun run e2e` in `apps/desktop` checks this in Chromium ([desktop/webview-e2e.md](../desktop/webview-e2e.md)).
 4. Start a Run on a device: the run page polls, **Stop** cancels from the run page and from the top bar chip, and **Export HTML** downloads a report once it ends.
 
 ## Follow-ups

@@ -10,7 +10,8 @@
 		"build:release": "vite build && electrobun build --env=stable",
 		"build:runner": "bun scripts/build-runner-sidecar.ts",
 		"icons": "bun scripts/generate-app-icon.ts",
-		"check": "tsc --noEmit"
+		"check": "tsc --noEmit",
+		"e2e": "playwright test"
 	},
 	"dependencies": {
 		"@fontsource/inter": "^5.3.0",
@@ -27,6 +28,7 @@
 		"react-hook-form": "^7.82.0"
 	},
 	"devDependencies": {
+		"@playwright/test": "1.64.1",
 		"@resvg/resvg-js": "^2.6.2",
 		"@tailwindcss/vite": "^4.1.18",
 		"@types/bun": "^1.2.18",
