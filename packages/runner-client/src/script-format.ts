@@ -1,5 +1,5 @@
-import { BRANCH_DEFAULT_TIMEOUT_MS, type CaseScript, type CaseScriptAction } from "./schemas";
-import { assertTargetFlags } from "./shell-script";
+import { caseScriptActionCommand } from "./case-script-replay";
+import type { CaseScript, CaseScriptAction } from "./schemas";
 
 export type CaseScriptExportMeta = {
 	caseNumber?: number;
@@ -104,15 +104,7 @@ function actionToShellLine(action: CaseScriptAction): string {
 			: `yoqa action key ${action.key}`;
 	}
 	if (action.type === "branch") {
-		const timeoutMs = action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS;
-		const check = [
-			"yoqa",
-			"assert",
-			action.assertion,
-			...assertTargetFlags(action),
-			"--timeout",
-			String(Math.max(1, Math.round(timeoutMs / 1000))),
-		].join(" ");
+		const check = caseScriptActionCommand(action);
 		const side = (actions: CaseScriptAction[]) =>
 			actions.map((inner) => indentLines(actionToShellLine(inner)));
 		return [

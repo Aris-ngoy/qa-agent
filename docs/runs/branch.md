@@ -1,6 +1,6 @@
 # Branch: conditional steps in a Case Script
 
-Spec: [Aris-ngoy/qa-agent#321](https://github.com/Aris-ngoy/qa-agent/issues/321). Tracer bullet: [#323](https://github.com/Aris-ngoy/qa-agent/issues/323). Client-side replay: [#324](https://github.com/Aris-ngoy/qa-agent/issues/324). `id` target and `yoqa assert --id`: [#325](https://github.com/Aris-ngoy/qa-agent/issues/325). Desktop and Run reports: [#327](https://github.com/Aris-ngoy/qa-agent/issues/327). Decision: [ADR-0008](../adr/0008-case-script-branches.md). Terms: **Branch**, **Case Script**, **Case Script file** in [`CONTEXT.md`](../../CONTEXT.md). The file format is described in [case-script-yaml.md](./case-script-yaml.md).
+Spec: [Aris-ngoy/qa-agent#321](https://github.com/Aris-ngoy/qa-agent/issues/321). Tracer bullet: [#323](https://github.com/Aris-ngoy/qa-agent/issues/323). Client-side replay: [#324](https://github.com/Aris-ngoy/qa-agent/issues/324). `id` target and `yoqa assert --id`: [#325](https://github.com/Aris-ngoy/qa-agent/issues/325). Shell export: [#326](https://github.com/Aris-ngoy/qa-agent/issues/326). Desktop and Run reports: [#327](https://github.com/Aris-ngoy/qa-agent/issues/327). Decision: [ADR-0008](../adr/0008-case-script-branches.md). Terms: **Branch**, **Case Script**, **Case Script file** in [`CONTEXT.md`](../../CONTEXT.md). The file format is described in [case-script-yaml.md](./case-script-yaml.md).
 
 ## Goal
 
@@ -12,6 +12,7 @@ Let a script author tap through UI that only sometimes appears, in one Case Scri
 - **Fields.** exactly one target, `text` or `id`; `assertion` `visible` | `not-visible` (default `visible`), `timeoutMs` 0–120000 (default 2000 when absent), `then` (at least one step), optional `else` (an empty list reads as absent), `reason`. Branches nest; there is no `else-if`.
 - **Check.** The Branch uses the same Screen check as `assert` (`checkScreen`): it polls the cleaned Screen tree until the target is visible / not visible (→ `then`) or the deadline passes (→ `else`). A `text` matches like `assert` (substring of a label or type); an `id` matches like a tap by id (`findElementById`: exact and case-insensitive, and a short id such as `get_bonus` also matches `com.app:id/get_bonus`), so a Branch on an id finds exactly the element a `tap: { id: … }` would hit.
 - **`id` in the model, not only the file.** Both `text` and `id` are optional fields of the `branch` schema, with a refinement that exactly one is set. A discriminated `{ text } | { id }` type was rejected: the recursive lazy schema has to type-check against the hand-written `CaseScriptBranch`, and two optional fields keep every reader (`action.id != null ? … : …`) simple.
+- **Shell export is one-way.** A Branch exports as a bash `if` over `yoqa assert`, which exits 0 when the check is met and non-zero when not; importing shell never turns a bash `if` back into a Branch. Rejected: exporting a Branch's timeout rounded up to whole seconds like an `assert`'s, since a longer wait can see UI the Branch would miss and take the other side.
 - **Rejected:** flat `optional:` flags on single actions, `else-if` chains, and conditions other than Screen presence (see the ADR).
 
 ## What shipped
@@ -59,9 +60,26 @@ actions:
 - `yoqa assert visible|not-visible` takes `--id <id>` as an alternative to `--text` (exactly one; both or neither prints a usage error and exits 1 without reading the Screen). A failed assert still exits non-zero; the message names the id (`Expected visible id not found within 5s: onboarding-skip`).
 - The shell-script runner (`runYoqaShellScript`, used by the Inspector and the CLI) accepts `yoqa assert … --id '…'` lines and rejects a line with both flags. Converting a shell script to a Case Script skips an `assert --id` with a warning, since a Case Script `assert` only takes text.
 
+**Shell export**
+
+```bash
+if yoqa assert visible --text 'Allow notifications' --timeout 3; then
+  yoqa action tap --label 'Allow'
+  if yoqa assert not-visible --id 'onboarding'\''s-skip' --timeout 0.5; then
+    yoqa action tap --label 'Next'
+  fi
+else
+  sleep 0.5
+fi
+```
+
+- A Branch exports as `if yoqa assert <assertion> --text|--id '…' --timeout <s>; then` … (`else` …) `fi`: inner lines indented two spaces per level, `else` left out when the Branch has none, single quotes escaped as in every exported line. A bash `if` condition is exempt from `set -e`, so a miss takes `else` instead of ending the script.
+- `--timeout` is the Branch's exact wait in seconds (default `2`; `timeoutMs: 0` → `--timeout 0`, one check; `1500` → `1.5`), not rounded up like an `assert`'s. The Branch step's command in CLI and Inspector logs is the same line (`caseScriptActionCommand`, which the export now calls).
+- Importing shell (`toCaseScriptFileText`, the Inspector's shell import) skips a bash `if … fi` block whole, nested blocks included, with one warning (``L8–L15: bash `if` is not converted to a Branch — skipped; write it as an `- if:` item``). Before, its `if` / `else` / `fi` lines were skipped one by one and the actions of both sides came in as one flat list.
+- The exported script, run with bash against a stand-in `yoqa` on `PATH`, sends the same taps as `runCaseScript` on the same Screen (`script-format.test.ts`).
+
 **Elsewhere**
 
-- Shell export writes `if yoqa assert … --text|--id '…' --timeout <s>; then … else … fi`, indented.
 - The Inspector step list and the Test Case script summary show a Branch as one row, e.g. `If “Allow notifications” visible → 1 step, else 2 steps` (`not visible` for a `not-visible` Branch; a nested Branch counts as one step of its side). An id reads `id “onboarding-skip”` in the Inspector and `#onboarding-skip` in the summary (as a tap by id does). Both read the wording from one helper, `describeBranch` in `features/test-cases/utils/script-summary.ts`. Editing a Branch stays in the Inspector's YAML editor; there is no structured branch editor.
 - A Run report (HTML, Markdown, GitHub summary) lists each Branch step as `If visible: Allow notifications → then`, with its `yoqa assert … --timeout` command, reason, detail and the screenshot it decided on, followed by the steps of the side that ran.
 - Building a Case Script from agent decisions is typed to flat Actions, so a recorded script never contains a Branch.
@@ -73,10 +91,12 @@ actions:
 2. `yoqa script validate` a file with an `if:` item: it prints `ok`. Remove its `then:` and it prints `Line N, action M: if: needs \`then:\` with at least one action`.
 3. With a device connected, `yoqa script run` that file: it prints the Branch with `→ then` or `→ else` and only that side's steps, and exits 0 (or 1 when a step fails). The Inspector's Run shows the same in its log.
 4. With a device connected, `yoqa assert visible --id <an id on the Screen>` prints `ok assert visible`; a missing id exits 1, and `--text x --id y` is rejected.
-5. Import that file into a Test Case: its Script tab shows the Branch as one `If “…” visible → n steps, else m steps` row. Run it in script mode on a device. The Run details show an `If visible: … → then` (or `→ else`) step, followed only by the steps from that side, and **Export HTML** shows the same.
+5. With a device connected, export a branched Test Case script as shell and run it with `bash`: it taps the same side `yoqa script run` takes on the same Screen. Paste that shell into the Inspector's import: the `if … fi` block is skipped with one warning.
+6. Import that file into a Test Case: its Script tab shows the Branch as one `If “…” visible → n steps, else m steps` row. Run it in script mode on a device. The Run details show an `If visible: … → then` (or `→ else`) step, followed only by the steps from that side, and **Export HTML** shows the same.
 
 ## Follow-ups
 
+- `yoqa assert` exits 1 both for a miss and for a runner or Screen-read error, so in exported bash an unreachable runner takes `else` where a Run fails the case. A distinct exit code for errors, checked in the export, would close that.
 - `CONTEXT.md`'s **Branch** entry still says "for one text"; it should read "for one text or id".
 - A Case Script `assert` on an id (so shell import of `yoqa assert --id` need not skip it).
 - A Run step does not record which side it ran in, so a Run report lists a side's steps flat after their Branch step (no indent, unlike the CLI and Inspector logs).

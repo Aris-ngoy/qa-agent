@@ -559,6 +559,15 @@ describe("a Branch in client-side replay", () => {
 				then: [{ type: "tap", label: "Allow" }],
 			}),
 		).toBe("yoqa assert not-visible --text 'Allow' --timeout 2");
+		expect(
+			caseScriptActionCommand({
+				type: "branch",
+				text: "Allow",
+				assertion: "visible",
+				timeoutMs: 500,
+				then: [{ type: "tap", label: "Allow" }],
+			}),
+		).toBe("yoqa assert visible --text 'Allow' --timeout 0.5");
 	});
 });
 

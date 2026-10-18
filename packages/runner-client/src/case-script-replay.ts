@@ -157,6 +157,19 @@ export function caseScriptActionRequest(action: CaseScriptAction): ActionRequest
 	}
 }
 
+/**
+ * The `--timeout` of the `yoqa assert` line for an assert or a Branch. A Branch checks the
+ * Screen the way an assert does, with its own default wait, kept exact: rounded up, the
+ * check could see a target the Branch would miss and take the other side.
+ */
+function screenCheckTimeoutSeconds(
+	action: Extract<CaseScriptAction, { type: "assert" | "branch" }>,
+): number | undefined {
+	if (action.type === "branch") return (action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS) / 1000;
+	if (action.timeoutMs == null) return undefined;
+	return Math.max(1, Math.round(action.timeoutMs / 1000));
+}
+
 /** The `yoqa` shell command a Case Script action replays as (for logs and reports). */
 export function caseScriptActionCommand(action: CaseScriptAction): string {
 	if (action.type === "wait") {
@@ -164,11 +177,8 @@ export function caseScriptActionCommand(action: CaseScriptAction): string {
 		return `sleep ${Number.isInteger(seconds) ? seconds : Number(seconds.toFixed(3))}`;
 	}
 	if (action.type === "assert" || action.type === "branch") {
-		// A Branch checks the Screen the way an assert does, with its own default wait.
-		const timeoutMs =
-			action.type === "branch" ? (action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS) : action.timeoutMs;
-		const timeout =
-			timeoutMs != null ? ` --timeout ${Math.max(1, Math.round(timeoutMs / 1000))}` : "";
+		const timeoutSeconds = screenCheckTimeoutSeconds(action);
+		const timeout = timeoutSeconds != null ? ` --timeout ${timeoutSeconds}` : "";
 		return ["yoqa", "assert", action.assertion, ...assertTargetFlags(action)].join(" ") + timeout;
 	}
 	const request = caseScriptActionRequest(action);

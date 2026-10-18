@@ -669,8 +669,28 @@ export function shellToCaseScriptActions(
 	const comments: ShellToCaseScriptActionsResult["comments"] = [];
 	const warnings: string[] = [];
 	const lines = text.split(/\r?\n/);
+	// Shell export is one-way: a bash `if` (an exported Branch) is skipped whole, never
+	// flattened into both of its sides.
+	let ifDepth = 0;
+	let ifStart = 0;
+	const skipIf = (end: number) =>
+		warnings.push(
+			`L${ifStart}–L${end}: bash \`if\` is not converted to a Branch — skipped; write it as an \`- if:\` item`,
+		);
 	lines.forEach((raw, i) => {
 		const line = raw.trim();
+		if (/^if\s/.test(line)) {
+			if (ifDepth === 0) ifStart = i + 1;
+			ifDepth += 1;
+			return;
+		}
+		if (ifDepth > 0) {
+			if (line === "fi") {
+				ifDepth -= 1;
+				if (ifDepth === 0) skipIf(i + 1);
+			}
+			return;
+		}
 		if (line.length === 0 || line.startsWith("#!") || line === "set -euo pipefail") return;
 		if (line.startsWith("#")) {
 			const comment = line.replace(/^#+\s*/, "");
@@ -693,6 +713,7 @@ export function shellToCaseScriptActions(
 		}
 		if (converted.script) actions.push(...converted.script.actions);
 	});
+	if (ifDepth > 0) skipIf(lines.length);
 	return { actions, comments, warnings };
 }
 
