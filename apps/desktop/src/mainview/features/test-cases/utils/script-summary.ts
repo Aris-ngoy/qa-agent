@@ -10,6 +10,10 @@ export function formatScriptSavedAt(ms: number): string {
 	}).format(new Date(ms));
 }
 
+function stepCount(count: number): string {
+	return `${count} step${count === 1 ? "" : "s"}`;
+}
+
 export function scriptActionSummary(action: CaseScriptAction): string {
 	if (action.type === "tap") {
 		if (action.label) return `Tap “${action.label}”`;
@@ -57,11 +61,9 @@ export function scriptActionSummary(action: CaseScriptAction): string {
 		return `Press ${formatKeyChord(action.key, action.modifiers)}`;
 	}
 	if (action.type === "branch") {
-		const sides = [`${action.then.length} step${action.then.length === 1 ? "" : "s"}`];
-		if (action.else) {
-			sides.push(`else ${action.else.length} step${action.else.length === 1 ? "" : "s"}`);
-		}
-		return `If “${action.text}” ${action.assertion === "visible" ? "visible" : "not visible"} → ${sides.join(", ")}`;
+		const check = action.assertion === "visible" ? "visible" : "not visible";
+		const elseSide = action.else ? `, else ${stepCount(action.else.length)}` : "";
+		return `If “${action.text}” ${check} → ${stepCount(action.then.length)}${elseSide}`;
 	}
 	return `Wait ${action.ms}ms`;
 }
