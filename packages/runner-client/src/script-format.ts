@@ -108,7 +108,7 @@ function actionToShellLine(action: CaseScriptAction): string {
 		const side = (actions: CaseScriptAction[]) =>
 			actions.map((inner) => indentLines(actionToShellLine(inner)));
 		return [
-			`if ${check}; then`,
+			`if ${BRANCH_HELPER} ${check}; then`,
 			...side(action.then),
 			...(action.else?.length ? ["else", ...side(action.else)] : []),
 			"fi",
@@ -117,6 +117,25 @@ function actionToShellLine(action: CaseScriptAction): string {
 	const seconds = Math.max(0.1, action.ms / 1000);
 	return `sleep ${seconds}`;
 }
+
+/** The shell function an exported Branch runs its `yoqa assert` through. */
+const BRANCH_HELPER = "yoqa_branch";
+
+/**
+ * Defined once, above the actions, when the script has a Branch. `yoqa assert` exits 0 for
+ * `then` and 1 for `else`; any other status means it could not check the Screen, and the
+ * script stops there, as a Run would fail the case, instead of taking `else`.
+ */
+const BRANCH_HELPER_LINES = [
+	"# A Branch's check: 0 runs `then`, 1 runs `else`, anything else stops the script.",
+	`${BRANCH_HELPER}() {`,
+	"  local status=0",
+	'  "$@" || status=$?',
+	'  [ "$status" -le 1 ] || exit "$status"',
+	'  return "$status"',
+	"}",
+	"",
+];
 
 function indentLines(text: string): string {
 	return text
@@ -139,6 +158,8 @@ export function formatCaseScriptShell(script: CaseScript, meta: CaseScriptExport
 		"# Prefer the Case Script file: `yoqa script run <file.yoqa.yaml>`.",
 		"set -euo pipefail",
 		"",
+		// A nested Branch sits inside a top-level one, so the top level is enough to look at.
+		...(script.actions.some((action) => action.type === "branch") ? BRANCH_HELPER_LINES : []),
 		...script.actions.map(actionToShellLine),
 		"",
 	];

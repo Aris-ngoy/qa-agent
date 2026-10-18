@@ -3,7 +3,7 @@ import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCaseScript } from "./case-script-replay";
-import type { ActionRequest, CaseScript, ScreenElement } from "./schemas";
+import type { ActionRequest, CaseScript, CaseScriptAction, ScreenElement } from "./schemas";
 import { formatCaseScriptShell, suggestedScriptBasename } from "./script-format";
 
 const script: CaseScript = {
@@ -67,9 +67,9 @@ describe("formatCaseScriptShell", () => {
 		});
 		expect(out).toContain(
 			[
-				"if yoqa assert visible --text 'Don'\\''t allow' --timeout 2; then",
+				"if yoqa_branch yoqa assert visible --text 'Don'\\''t allow' --timeout 2; then",
 				"  yoqa action tap --label 'Allow'",
-				"  if yoqa assert not-visible --text 'Loading' --timeout 5; then",
+				"  if yoqa_branch yoqa assert not-visible --text 'Loading' --timeout 5; then",
 				"    sleep 0.5",
 				"  else",
 				"    yoqa action tap --label 'Retry'",
@@ -78,6 +78,23 @@ describe("formatCaseScriptShell", () => {
 				"yoqa action tap --label 'Home'",
 			].join("\n"),
 		);
+	});
+
+	test("defines the yoqa_branch helper once, and only for a script with a Branch", () => {
+		const branch: CaseScriptAction = {
+			type: "branch",
+			text: "Rate us",
+			assertion: "visible",
+			then: [{ type: "tap", label: "Later" }],
+		};
+		const branched = formatCaseScriptShell({ version: 1, savedAt: 1, actions: [branch, branch] });
+		expect(branched.split("\n").filter((line) => line === "yoqa_branch() {")).toHaveLength(1);
+		const flat = formatCaseScriptShell({
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "tap", label: "Home" }],
+		});
+		expect(flat).not.toContain("yoqa_branch");
 	});
 
 	test("exports a Branch on an id as a bash `if` on `yoqa assert --id`", () => {
@@ -97,7 +114,7 @@ describe("formatCaseScriptShell", () => {
 		});
 		expect(out).toContain(
 			[
-				"if yoqa assert not-visible --id 'onboarding'\\''s-skip' --timeout 1; then",
+				"if yoqa_branch yoqa assert not-visible --id 'onboarding'\\''s-skip' --timeout 1; then",
 				"  yoqa action tap --label 'Next'",
 				"else",
 				"  yoqa action tap --id 'onboarding'\\''s-skip'",
@@ -121,8 +138,12 @@ describe("formatCaseScriptShell", () => {
 					},
 				],
 			});
-		expect(branch(0)).toContain("if yoqa assert visible --text 'Rate us' --timeout 0; then");
-		expect(branch(1500)).toContain("if yoqa assert visible --text 'Rate us' --timeout 1.5; then");
+		expect(branch(0)).toContain(
+			"if yoqa_branch yoqa assert visible --text 'Rate us' --timeout 0; then",
+		);
+		expect(branch(1500)).toContain(
+			"if yoqa_branch yoqa assert visible --text 'Rate us' --timeout 1.5; then",
+		);
 	});
 
 	test("emits swipe coordinates", () => {
@@ -168,10 +189,12 @@ describe("formatCaseScriptShell", () => {
 
 /**
  * A `yoqa` on PATH for the exported bash: `assert` answers from the Screen file (one label
- * or `#id` per line, matched exactly) and exits non-zero on a miss; an action is logged.
+ * or `#id` per line, matched exactly) and exits 1 on a miss, or `YOQA_ASSERT_EXIT` when set
+ * (a runner it could not reach); an action is logged.
  */
 const FAKE_YOQA = `#!/usr/bin/env bash
 if [ "$1" = assert ]; then
+  [ -n "\${YOQA_ASSERT_EXIT:-}" ] && exit "$YOQA_ASSERT_EXIT"
   key="$4"
   [ "$3" = --id ] && key="#$4"
   if grep -qxF -- "$key" "$YOQA_SCREEN"; then found=yes; else found=no; fi
@@ -259,6 +282,17 @@ describe("formatCaseScriptShell run with bash", () => {
 
 	/** The `yoqa action` lines the exported bash runs on that Screen. */
 	async function shellTaps(screen: string[]): Promise<string[]> {
+		const run = await runExported(screen);
+		expect(run.stderr).toBe("");
+		expect(run.exitCode).toBe(0);
+		return run.actions;
+	}
+
+	/** Run the exported bash on that Screen, with extra environment for the stand-in `yoqa`. */
+	async function runExported(
+		screen: string[],
+		env: Record<string, string> = {},
+	): Promise<{ exitCode: number; stderr: string; actions: string[] }> {
 		workDir ||= await mkdtemp(join(tmpdir(), "yoqa-shell-export-"));
 		const bin = join(workDir, "bin");
 		const yoqa = join(bin, "yoqa");
@@ -276,11 +310,14 @@ describe("formatCaseScriptShell run with bash", () => {
 				PATH: `${bin}:${process.env.PATH}`,
 				YOQA_SCREEN: screenPath,
 				YOQA_LOG: logPath,
+				...env,
 			},
 		});
-		expect(run.stderr.toString()).toBe("");
-		expect(run.exitCode).toBe(0);
-		return (await Bun.file(logPath).text()).split("\n").filter(Boolean);
+		return {
+			exitCode: run.exitCode,
+			stderr: run.stderr.toString(),
+			actions: (await Bun.file(logPath).text()).split("\n").filter(Boolean),
+		};
 	}
 
 	test.each([
@@ -291,6 +328,12 @@ describe("formatCaseScriptShell run with bash", () => {
 	])("takes the Case Script's path with %s", async (_name, screen) => {
 		const expected = await replayedTaps(screen);
 		expect(await shellTaps(screen)).toEqual(expected);
+	});
+
+	test("stops at a Branch that could not check the Screen, taking neither side", async () => {
+		const run = await runExported(["Signed in"], { YOQA_ASSERT_EXIT: "2" });
+		expect(run.exitCode).toBe(2);
+		expect(run.actions).toEqual([]);
 	});
 
 	test("the paths differ between Screens, so the comparison can fail", async () => {
