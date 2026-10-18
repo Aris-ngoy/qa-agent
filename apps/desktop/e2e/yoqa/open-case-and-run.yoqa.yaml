@@ -2,6 +2,14 @@ version: 1
 name: Open the seeded test case and Run
 actions:
   - open-url: { url: "http://localhost:5191/", reason: Start on the webview's home }
+  # No app selected yet (the Welcome page): pick the seeded one. CI auto-selects it, so this
+  # usually takes `else`, which is the Branch Desktop E2E checks.
+  - if:
+      text: Select an app from the sidebar
+      reason: The Welcome page is showing
+      then:
+        - tap: { label: Switch application, reason: Open the app switcher }
+        - tap: { label: E2E App, reason: Select the seeded app }
   - assert: { text: Checkout happy path, timeoutMs: 30000, reason: The seeded test case is listed }
   # "Checkout happy path" alone also matches the row's smaller "Select …" checkbox.
   - tap: { label: "Checkout happy path Case #1", reason: Open the seeded test case }
