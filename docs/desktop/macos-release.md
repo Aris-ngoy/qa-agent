@@ -25,7 +25,7 @@ Rejected for v0.1.0: shipping Appium/Node inside the DMG; Apple codesign/notariz
 - [`apps/desktop/src/bun/features/runner-sidecar/index.ts`](../../apps/desktop/src/bun/features/runner-sidecar/index.ts) — packaged-first launch; replaces stale loopback runners whose `/health` version ≠ desktop (see [runner-sidecar-version-gate.md](./runner-sidecar-version-gate.md))
 - WDA icon embedded via Bun `with { type: "file" }` so compiled runner keeps branding (write bytes, never `copyFile` from `/$bunfs`)
 - Scripts: `bun run --filter @yoqa/desktop build:release`, root `desktop:release`
-- Workflow: [`.github/workflows/release-macos.yml`](../../.github/workflows/release-macos.yml)
+- Workflow: [`.github/workflows/release-macos.yml`](../../.github/workflows/release-macos.yml) — install/verify boilerplate plus `generate_release_notes: true` (PR changelog appended). See [release-notes.md](./release-notes.md).
 
 Expected artifacts (stable arm64):
 
@@ -69,4 +69,3 @@ open /Applications/yoqa.app
 - Apple codesign + notarize secrets
 - `macos-x64` matrix build
 - Set `release.baseUrl` to the GitHub Releases download URL for Electrobun auto-update
-- Optional: ship a Node/npm sidecar so Appium install works with zero host Node install
