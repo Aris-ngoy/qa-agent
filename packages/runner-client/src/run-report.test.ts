@@ -58,6 +58,12 @@ describe("actionSummary", () => {
 		expect(
 			formatStepCommand({ type: "branch", assertion: "visible", text: "Allow", timeoutMs: 2000 }),
 		).toBe("yoqa assert visible --text 'Allow' --timeout 2");
+		expect(
+			actionSummary({ type: "branch", assertion: "not-visible", id: "skip", outcome: "then" }),
+		).toBe("If not-visible id: skip → then");
+		expect(
+			formatStepCommand({ type: "branch", assertion: "visible", id: "skip", timeoutMs: 2000 }),
+		).toBe("yoqa assert visible --id 'skip' --timeout 2");
 		expect(actionSummary({ type: "fail" })).toBe("Failed");
 		expect(actionSummary({ type: "swipe", direction: "up" })).toBe("Swipe up");
 		expect(actionSummary({ type: "swipe", x: 500, y: 800, x2: 500, y2: 200 })).toBe("Swipe up");

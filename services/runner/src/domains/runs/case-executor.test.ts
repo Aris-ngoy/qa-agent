@@ -519,6 +519,51 @@ describe("executeScriptCase with a Branch", () => {
 		});
 	});
 
+	it("checks an id, matched like a tap by id, and names it in the step", async () => {
+		const skip = (assertion: "visible" | "not-visible"): CaseScript["actions"][number] => ({
+			type: "branch",
+			id: "onboarding-skip",
+			assertion,
+			then: [{ type: "tap", id: "onboarding-skip" }],
+			else: [{ type: "tap", label: "Next" }],
+		});
+		const withId = { ...text("Skip"), id: "com.example:id/Onboarding-Skip" };
+
+		const seen = runBranch({ actions: [skip("visible")], screens: () => [withId] });
+		expect(await seen.status).toBe("passed");
+		expect(seen.performed).toEqual([{ kind: "tap", id: "onboarding-skip" }]);
+		expect(seen.steps[0]).toMatchObject({
+			action: { type: "branch", id: "onboarding-skip", assertion: "visible", outcome: "then" },
+			detail: "visible id: onboarding-skip → then",
+			command: "yoqa assert visible --id 'onboarding-skip' --timeout 2",
+		});
+		expect(seen.steps[0]?.action.text).toBeUndefined();
+
+		// A label that reads like the id is not the id.
+		const labelOnly = runBranch({
+			actions: [skip("visible")],
+			screens: () => [text("onboarding-skip")],
+		});
+		expect(await labelOnly.status).toBe("passed");
+		expect(labelOnly.performed).toEqual([{ kind: "tap", label: "Next" }]);
+
+		const gone = runBranch({
+			actions: [skip("not-visible")],
+			screens: (now) => (now < 400 ? [withId] : []),
+		});
+		expect(await gone.status).toBe("passed");
+		expect(gone.performed).toEqual([{ kind: "tap", id: "onboarding-skip" }]);
+		expect(gone.steps[0]).toMatchObject({
+			action: { assertion: "not-visible", outcome: "then" },
+			detail: "not-visible id: onboarding-skip → then",
+		});
+
+		const stays = runBranch({ actions: [skip("not-visible")], screens: () => [withId] });
+		expect(await stays.status).toBe("passed");
+		expect(stays.performed).toEqual([{ kind: "tap", label: "Next" }]);
+		expect(stays.steps[0]?.action.outcome).toBe("else");
+	});
+
 	it("goes on to the next action when the check misses and there is no `else`", async () => {
 		const run = runBranch({
 			actions: [

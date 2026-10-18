@@ -85,7 +85,7 @@ function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | 
 		case "branch":
 			return {
 				verb,
-				text: `“${action.text}” ${action.assertion === "visible" ? "visible" : "not visible"}`,
+				text: `${action.id != null ? `id “${action.id}”` : `“${action.text}”`} ${action.assertion === "visible" ? "visible" : "not visible"}`,
 				meta: `→ ${stepCount(action.then.length)}${action.else ? `, else ${stepCount(action.else.length)}` : ""}`,
 			};
 	}

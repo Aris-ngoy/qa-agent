@@ -10,6 +10,7 @@ import {
 	type ScreenElement,
 	type StepPhases,
 	checkScreen,
+	describeScreenCheck,
 	formatActionShellLine,
 	formatAssertShellLine,
 	formatSleepShellLine,
@@ -296,17 +297,20 @@ export async function executeScriptCase(
 
 			if (action.type === "branch") {
 				const timeoutMs = action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS;
-				const { assertion, text } = action;
+				const { assertion } = action;
+				// Exactly one of the two is set; the step records only that one.
+				const target = action.id != null ? { id: action.id } : { text: action.text };
 				const command = formatAssertShellLine({
 					assertion,
-					text,
+					...target,
 					timeoutSeconds: timeoutMs / 1000,
 				});
+				const check = describeScreenCheck({ assertion, ...target });
 				const checkStarted = clock.now();
 				const { met } = await withCurrentCommand(setCurrentCommand, command, () =>
 					checkScreen({
 						readScreen: () => readScreen(deps.session),
-						text,
+						...target,
 						assertion,
 						timeoutMs,
 						sleep: (ms) => clock.sleep(ms),
@@ -326,17 +330,17 @@ export async function executeScriptCase(
 					idx: stepIdx,
 					action: {
 						type: "branch",
-						text,
+						...target,
 						assertion,
 						timeoutMs,
 						outcome,
-						reason: action.reason ?? `If ${assertion}: ${text}`,
+						reason: action.reason ?? `If ${check}`,
 						thoughts: "Replaying the saved script without calling the AI agent.",
 					},
 					screenshotUri: shot.path,
 					ok: true,
 					latencyMs: clock.now() - checkStarted,
-					detail: `${assertion}: ${text} → ${outcome}`,
+					detail: `${check} → ${outcome}`,
 					command,
 				});
 				stepIdx += 1;

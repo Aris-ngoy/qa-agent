@@ -87,6 +87,17 @@ describe("buildScriptStepsView", () => {
 		]);
 	});
 
+	test("names the id a Branch checks", () => {
+		const view = buildScriptStepsView(
+			"version: 1\nactions:\n  - if: { id: onboarding-skip, assertion: not-visible, then: [wait: 500] }\n",
+			null,
+			false,
+		);
+		expect(view.steps.map((step) => [step.verb, step.text, step.meta])).toEqual([
+			["If", "id “onboarding-skip” not visible", "→ 1 step"],
+		]);
+	});
+
 	test("names where an error sits inside a Branch", () => {
 		const view = buildScriptStepsView(
 			"version: 1\nactions:\n  - if:\n      text: A\n      then:\n        - tapp: Home\n",

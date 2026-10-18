@@ -179,6 +179,7 @@ printf '{"steps":[{"kind":"tap","x":100,"y":100},{"kind":"tap","x":200,"y":200}]
 # Assertions
 yoqa assert visible -t "Welcome back"
 yoqa assert not-visible -t "Loading" --timeout 10
+yoqa assert visible --id onboarding-skip             # an element id instead of text
 
 # App & system
 yoqa action open-url --url "myapp://profile"

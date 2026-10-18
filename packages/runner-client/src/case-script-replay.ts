@@ -7,8 +7,13 @@ import {
 	type CaseScriptAction,
 	type ScreenResponse,
 } from "./schemas";
-import { SCREEN_CHECK_POLL_MS, checkScreen, screenCheckMissMessage } from "./screen-check";
-import { formatActionShellLine } from "./shell-script";
+import {
+	SCREEN_CHECK_POLL_MS,
+	checkScreen,
+	describeScreenCheck,
+	screenCheckMissMessage,
+} from "./screen-check";
+import { assertTargetFlags, formatActionShellLine } from "./shell-script";
 
 /** The runner calls a Case Script replay needs (a `RunnerClient` satisfies it). */
 export type CaseScriptReplayClient = {
@@ -164,7 +169,7 @@ export function caseScriptActionCommand(action: CaseScriptAction): string {
 			action.type === "branch" ? (action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS) : action.timeoutMs;
 		const timeout =
 			timeoutMs != null ? ` --timeout ${Math.max(1, Math.round(timeoutMs / 1000))}` : "";
-		return `yoqa assert ${action.assertion} --text '${action.text.replace(/'/g, `'\\''`)}'${timeout}`;
+		return ["yoqa", "assert", action.assertion, ...assertTargetFlags(action)].join(" ") + timeout;
 	}
 	const request = caseScriptActionRequest(action);
 	return request ? formatActionShellLine(request) : action.type;
@@ -180,7 +185,8 @@ export function formatCaseScriptStepPath(path: CaseScriptStepPath): string {
 
 /**
  * One replay step for a log line: the Case Script file form of an Action, or `if visible: Allow`
- * (plus `→ then` once decided) for a Branch, indented two spaces per Branch it sits in.
+ * / `if visible id: skip` (plus `→ then` once decided) for a Branch, indented two spaces per
+ * Branch it sits in.
  */
 export function formatCaseScriptReplayStep(
 	event: Pick<CaseScriptReplayEvent, "action" | "path" | "outcome">,
@@ -188,7 +194,7 @@ export function formatCaseScriptReplayStep(
 	const { action } = event;
 	const line =
 		action.type === "branch"
-			? `if ${action.assertion}: ${action.text}${event.outcome ? ` → ${event.outcome}` : ""}`
+			? `if ${describeScreenCheck(action)}${event.outcome ? ` → ${event.outcome}` : ""}`
 			: formatCaseScriptFileAction(action);
 	return `${"  ".repeat(event.path.nested.length)}${line}`;
 }
@@ -217,12 +223,13 @@ export async function runCaseScript(
 	let position = 0;
 
 	const check = async (
-		action: { text: string; assertion: "visible" | "not-visible" },
+		action: { text?: string; id?: string; assertion: "visible" | "not-visible" },
 		timeoutMs: number,
 	) =>
 		checkScreen({
 			readScreen: () => client.getScreen(),
 			text: action.text,
+			id: action.id,
 			assertion: action.assertion,
 			timeoutMs,
 			pollMs,

@@ -949,31 +949,43 @@ signing
 
 const assertCmd = program
 	.command("assert")
-	.description("Assert text visibility on the active device");
+	.description("Assert text or id visibility on the active device");
 
 for (const kind of ["visible", "not-visible"] as const) {
 	assertCmd
 		.command(kind)
 		.description(
 			kind === "visible"
-				? "Fail unless matching text appears in the cleaned screen tree"
-				: "Fail if matching text is still present in the cleaned screen tree",
+				? "Fail unless matching text or id appears in the cleaned screen tree"
+				: "Fail if matching text or id is still present in the cleaned screen tree",
 		)
 		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 		.option("--json", "Print raw JSON")
-		.requiredOption("-t, --text <text>", "Text / label substring to match")
+		.option("-t, --text <text>", "Text / label substring to match")
+		.option("--id <id>", "Element id to match, as a tap by id does (instead of --text)")
 		.option("--timeout <seconds>", "Seconds to wait before failing", (v) => Number(v), 5)
 		.action(
 			async (options: {
 				baseUrl: string;
 				json?: boolean;
-				text: string;
+				text?: string;
+				id?: string;
 				timeout: number;
 			}) => {
+				// A usage error, not a runner one: no "Is the runner up?" hint.
+				if ((options.text == null) === (options.id == null)) {
+					const usage =
+						options.text != null
+							? "pass --text or --id, not both"
+							: "pass --text <text> or --id <id>";
+					console.error(`yoqa assert ${kind} failed: ${usage}`);
+					process.exitCode = 1;
+					return;
+				}
 				try {
 					const line = formatAssertShellLine({
 						assertion: kind,
-						text: options.text,
+						...(options.id != null ? { id: options.id } : { text: options.text }),
 						timeoutSeconds: options.timeout,
 					});
 					const result = await runYoqaShellScript(client(options.baseUrl), line);

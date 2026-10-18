@@ -1,4 +1,5 @@
 import { BRANCH_DEFAULT_TIMEOUT_MS, type CaseScript, type CaseScriptAction } from "./schemas";
+import { assertTargetFlags } from "./shell-script";
 
 export type CaseScriptExportMeta = {
 	caseNumber?: number;
@@ -108,8 +109,7 @@ function actionToShellLine(action: CaseScriptAction): string {
 			"yoqa",
 			"assert",
 			action.assertion,
-			"--text",
-			shellSingleQuote(action.text),
+			...assertTargetFlags(action),
 			"--timeout",
 			String(Math.max(1, Math.round(timeoutMs / 1000))),
 		].join(" ");

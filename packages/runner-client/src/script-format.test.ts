@@ -76,6 +76,32 @@ describe("formatCaseScriptShell", () => {
 		);
 	});
 
+	test("exports a Branch on an id as a bash `if` on `yoqa assert --id`", () => {
+		const out = formatCaseScriptShell({
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{
+					type: "branch",
+					id: "onboarding's-skip",
+					assertion: "not-visible",
+					timeoutMs: 1000,
+					then: [{ type: "tap", label: "Next" }],
+					else: [{ type: "tap", id: "onboarding's-skip" }],
+				},
+			],
+		});
+		expect(out).toContain(
+			[
+				"if yoqa assert not-visible --id 'onboarding'\\''s-skip' --timeout 1; then",
+				"  yoqa action tap --label 'Next'",
+				"else",
+				"  yoqa action tap --id 'onboarding'\\''s-skip'",
+				"fi",
+			].join("\n"),
+		);
+	});
+
 	test("emits swipe coordinates", () => {
 		const out = formatCaseScriptShell({
 			version: 1,

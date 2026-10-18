@@ -1,5 +1,5 @@
 import type { ScreenElement } from "./schemas";
-import { screenHasText } from "./shell-script";
+import { screenHasTarget } from "./shell-script";
 
 /** Delay between Screen reads while a check waits. */
 export const SCREEN_CHECK_POLL_MS = 400;
@@ -7,7 +7,9 @@ export const SCREEN_CHECK_POLL_MS = 400;
 export type CheckScreenOptions = {
 	/** One read of the cleaned Screen tree. */
 	readScreen: () => Promise<{ elements?: ScreenElement[] }>;
-	text: string;
+	/** What to look for: exactly one of a text (as `assert` matches it) or an id (as a tap by id does). */
+	text?: string;
+	id?: string;
 	assertion: "visible" | "not-visible";
 	timeoutMs: number;
 	/** Default `SCREEN_CHECK_POLL_MS`. */
@@ -25,18 +27,28 @@ function abortError(): Error {
 	return Object.assign(new Error("Aborted"), { name: "AbortError" });
 }
 
+/** A check in words, for logs and Run steps: `visible: Allow` or `not-visible id: spinner`. */
+export function describeScreenCheck(
+	check: Pick<CheckScreenOptions, "text" | "id" | "assertion">,
+): string {
+	return check.id != null
+		? `${check.assertion} id: ${check.id}`
+		: `${check.assertion}: ${check.text}`;
+}
+
 /** The failure message for a check that was not met by its deadline. */
 export function screenCheckMissMessage(
-	options: Pick<CheckScreenOptions, "text" | "assertion" | "timeoutMs">,
+	options: Pick<CheckScreenOptions, "text" | "id" | "assertion" | "timeoutMs">,
 ): string {
 	const seconds = Math.round(options.timeoutMs / 1000);
+	const [kind, target] = options.id != null ? ["id", options.id] : ["text", options.text];
 	return options.assertion === "visible"
-		? `Expected visible text not found within ${seconds}s: ${options.text}`
-		: `Unexpected text still visible after ${seconds}s: ${options.text}`;
+		? `Expected visible ${kind} not found within ${seconds}s: ${target}`
+		: `Unexpected ${kind} still visible after ${seconds}s: ${target}`;
 }
 
 /**
- * Poll the Screen until `text` is visible / not visible, or the deadline passes.
+ * Poll the Screen until the text or id is visible / not visible, or the deadline passes.
  * A plain miss at the deadline is `{ met: false }`, for the caller to fail on or branch on.
  * Throws only when aborted, on a Dead Session, or when the last read at the deadline failed.
  */
@@ -51,7 +63,7 @@ export async function checkScreen(options: CheckScreenOptions): Promise<CheckScr
 		let readError: unknown = null;
 		try {
 			const { elements } = await options.readScreen();
-			const found = screenHasText(elements ?? [], options.text);
+			const found = screenHasTarget(elements, options);
 			if (options.assertion === "visible" ? found : !found) return { met: true };
 		} catch (error) {
 			if (options.isDeadSession?.(error)) throw error;
