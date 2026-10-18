@@ -25,6 +25,8 @@ Each feature in `features/<feature>/` splits by role:
 
 A query key lives next to its hook in `hooks/usequery/`, and other features import it from there (`runQueryKey`, `casesQueryKey`, `activeDeviceSessionQueryKey`).
 
+A view that only shows what another page already loaded reads it through a `useCached…` hook next to the owning query (`useCachedCase`, `useCachedRun`, `useCachedListedDevices`). It is `useQuery` with the owner's `queryOptions` and `enabled: false`: it stays current with the cache and never fetches, and because it carries the real `queryFn`, TanStack does not log "No queryFn", and an invalidate run from that query's options still has a function to call.
+
 ### State
 
 - **Component state:** `const thing$ = useObservable(initial)` and read it with `useValue(thing$)`. Several related fields go in one observable (`panel$`, `wizard$`, `bar$`), each read by its leaf: `useValue(panel$.editing)`.
@@ -45,6 +47,7 @@ A query key lives next to its hook in `hooks/usequery/`, and other features impo
 - Large pages split by part: run detail (step rows, case videos, status pill, report-export hook), test case detail (instructions, configuration, script panels), and Settings (one component per section).
 - Duplicated queries became one hook each: the app's cases (`useCasesQuery`, four copies), a Run (`useRunQuery`), cancel Run (`useCancelRun`, three copies), listed devices (`useListedDevices`), the doctor report.
 - Rejected: Legend's persist plugin for stored preferences (it would rewrite the stored formats and drop existing values); `useObservable` for the cache-only queries in the top bar title (they are TanStack cache reads, kept as is).
+- Top bar title (follow-up): its cache-only reads became `useCached…` hooks that reuse the owning query's options with `enabled: false`. Rejected: `queryFn: skipToken` (an observer's options become the shared query's options, so a later invalidate would invoke the skip token instead of the fetch) and `getQueryData` plus a cache subscription (needs `useSyncExternalStore`, which `no-react-state.test.ts` forbids, or a hand-rolled observable mirror of the cache).
 
 ## What shipped
 
@@ -54,6 +57,7 @@ A query key lives next to its hook in `hooks/usequery/`, and other features impo
 - Theme, OS dark mode, and reduced motion are observables that follow `matchMedia` live (`settings/data/state/theme.ts`, `app/motion/reduced-motion.ts`).
 - `useStartRun` connects first (through the top bar's connect) and then creates the Run, so one error path shows the toast.
 - `devicesQueryKey("ios")` now always caches a `Device[]`. Settings › iOS used to cache the raw `{ devices }` response under the same key the run views cache an array under, so whichever loaded first broke the other.
+- The top bar title reads the case, Run, and device list through `useCachedCase`, `useCachedRun`, and `useCachedListedDevices`; their owners (`useCaseQuery`, `useRunQuery`, `useListedDevices`) build from the same private `…QueryOptions`, so the key, fetch, `retry`, and `staleTime` live in one place.
 - Shared helpers: `app/download.ts` (file download, base64), `runs/utils/run-report.ts` (HTML/Markdown export, also used by the Inspector).
 
 ### Where files moved
@@ -82,9 +86,9 @@ A query key lives next to its hook in `hooks/usequery/`, and other features impo
 
 1. `bun run lint:ci`, `bun run test`, `bun run check`. `no-react-state.test.ts` is part of the tests.
 2. `bun run desktop`: add an app, create a test case, edit and save it, switch its tabs, tick it in the list (the top bar shows **Run test**), filter, open Runs, the device picker, the Servers & doctor panel, Inspector, Configuration, and every Settings section. Toggle the theme and collapse the side menu (⌘B). Switch apps: the case selection clears.
-3. Start a Run on a device: the run page polls, **Stop** cancels from the run page and from the top bar chip, and **Export HTML** downloads a report once it ends.
+3. Open a test case and a Run: the top bar reads **Test case / <name>** and **Runs / <device>**, and the webview console shows no "No queryFn" errors.
+4. Start a Run on a device: the run page polls, **Stop** cancels from the run page and from the top bar chip, and **Export HTML** downloads a report once it ends.
 
 ## Follow-ups
 
 - Older build notes under `docs/` still link the paths in the left column of the table above.
-- The top bar title's cache-only `useQuery` calls log "No queryFn" in dev (this predates the refactor).

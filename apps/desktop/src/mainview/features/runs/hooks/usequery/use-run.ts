@@ -12,7 +12,7 @@ import {
 import { activeRunId$, setActiveRun } from "@/features/runs/data/state/active-run";
 import { isLiveRunStatus } from "@/features/runs/utils/run-status";
 import { casesQueryKey } from "@/features/test-cases/hooks/usequery/use-cases";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreateRunRequest, Run } from "@yoqa/runner-client";
 
 export function runQueryKey(runId: string) {
@@ -23,6 +23,16 @@ export function runsListQueryKey(appId: string) {
 	return ["runs", "list", appId] as const;
 }
 
+function runQueryOptions(runId: string | null | undefined) {
+	return queryOptions({
+		queryKey: runId ? runQueryKey(runId) : ["runs", "none"],
+		queryFn: () => {
+			if (!runId) throw new Error("No Run to load");
+			return getRun(runId);
+		},
+	});
+}
+
 /** One Run; `refetchInterval` decides from the latest data how fast it polls. */
 export function useRunQuery(
 	runId: string | null | undefined,
@@ -30,14 +40,15 @@ export function useRunQuery(
 ) {
 	const { refetchInterval } = options;
 	return useQuery({
-		queryKey: runId ? runQueryKey(runId) : ["runs", "none"],
+		...runQueryOptions(runId),
 		enabled: Boolean(runId),
-		queryFn: () => {
-			if (!runId) throw new Error("No Run to load");
-			return getRun(runId);
-		},
 		refetchInterval: refetchInterval ? (query) => refetchInterval(query.state.data) : undefined,
 	});
+}
+
+/** The cached Run, kept current but never fetched here: the page that shows it loads it. */
+export function useCachedRun(runId: string | null | undefined) {
+	return useQuery({ ...runQueryOptions(runId), enabled: false }).data;
 }
 
 /** The app's Runs, polled every 2 s while one of them is live. */

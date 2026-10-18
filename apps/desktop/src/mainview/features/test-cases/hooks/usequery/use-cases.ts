@@ -6,7 +6,7 @@ import {
 	updateCase,
 } from "@/features/test-cases/data/api/cases";
 import type { TestCase } from "@/features/test-cases/utils/catalog-case";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreateCaseRequest, UpdateCaseRequest } from "@yoqa/runner-client";
 
 export function casesQueryKey(appId: string) {
@@ -26,16 +26,24 @@ export function useCasesQuery(appId: string | null | undefined) {
 	});
 }
 
-export function useCaseQuery(caseId: string | null | undefined) {
-	return useQuery({
+function caseQueryOptions(caseId: string | null | undefined) {
+	return queryOptions({
 		queryKey: caseId ? caseQueryKey(caseId) : ["catalog", "case", "none"],
-		enabled: Boolean(caseId),
 		queryFn: () => {
 			if (!caseId) throw new Error("Missing case id");
 			return getCase(caseId);
 		},
 		retry: false,
 	});
+}
+
+export function useCaseQuery(caseId: string | null | undefined) {
+	return useQuery({ ...caseQueryOptions(caseId), enabled: Boolean(caseId) });
+}
+
+/** The cached case, kept current but never fetched here: the detail page loads it. */
+export function useCachedCase(caseId: string | null | undefined) {
+	return useQuery({ ...caseQueryOptions(caseId), enabled: false }).data;
 }
 
 /** Create a case in `appId` and put it first in the app's list. */

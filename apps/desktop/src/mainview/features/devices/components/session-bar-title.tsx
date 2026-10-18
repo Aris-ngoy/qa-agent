@@ -1,12 +1,10 @@
 import { useApps } from "@/features/apps/hooks/use-apps";
 import { useActiveDeviceSession } from "@/features/devices/hooks/usequery/use-active-device-session";
-import { devicesQueryKey } from "@/features/devices/hooks/usequery/use-devices";
-import { runQueryKey } from "@/features/runs/hooks/usequery/use-run";
+import { useCachedListedDevices } from "@/features/devices/hooks/usequery/use-devices";
+import { useCachedRun } from "@/features/runs/hooks/usequery/use-run";
 import { formatDeviceShortLabel } from "@/features/runs/utils/labels";
-import { caseQueryKey } from "@/features/test-cases/hooks/usequery/use-cases";
-import { useQuery } from "@tanstack/react-query";
+import { useCachedCase } from "@/features/test-cases/hooks/usequery/use-cases";
 import { Link, useParams, useRouterState } from "@tanstack/react-router";
-import type { Device, Run } from "@yoqa/runner-client";
 import type { ReactNode } from "react";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -29,19 +27,10 @@ export function SessionBarTitle() {
 	const { activeSession } = useActiveDeviceSession();
 	const isCaseDetail = pathname.startsWith("/test-cases/") && Boolean(caseId);
 	const isRunDetail = pathname.startsWith("/runs/") && Boolean(runId);
-	const caseQuery = useQuery<{ name?: string }>({
-		queryKey: caseId ? caseQueryKey(caseId) : ["catalog", "case", "none"],
-		enabled: false,
-	});
-	const runQuery = useQuery<Run>({
-		queryKey: runId ? runQueryKey(runId) : ["runs", "none"],
-		enabled: false,
-	});
-	const run = isRunDetail ? runQuery.data : undefined;
-	const devicesQuery = useQuery<Device[]>({
-		queryKey: run ? devicesQueryKey(run.platform) : ["devices", "pending"],
-		enabled: false,
-	});
+	const testCase = useCachedCase(caseId);
+	const cachedRun = useCachedRun(runId);
+	const run = isRunDetail ? cachedRun : undefined;
+	const devices = useCachedListedDevices(run?.platform);
 
 	let caption: ReactNode = selectedApp?.name ?? "QA Agent";
 	let title = PAGE_TITLES[pathname] ?? "QA Agent";
@@ -53,9 +42,9 @@ export function SessionBarTitle() {
 		title = activeSession ? "Live session" : "No device connected";
 	} else if (isCaseDetail) {
 		caption = "Test case";
-		title = caseQuery.data?.name || "Test case";
+		title = testCase?.name || "Test case";
 	} else if (isRunDetail) {
-		const device = (devicesQuery.data ?? []).find((row) => row.id === run?.deviceId);
+		const device = (devices ?? []).find((row) => row.id === run?.deviceId);
 		const deviceLabel = run
 			? formatDeviceShortLabel(device, { deviceId: run.deviceId, platform: run.platform })
 			: null;
