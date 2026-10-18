@@ -508,6 +508,7 @@ export {
 } from "./case-script-replay";
 
 export {
+	ASSERT_EXIT_CODE,
 	SCREEN_CHECK_POLL_MS,
 	checkScreen,
 	describeScreenCheck,

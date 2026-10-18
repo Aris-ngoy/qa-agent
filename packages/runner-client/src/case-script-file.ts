@@ -677,8 +677,18 @@ export function shellToCaseScriptActions(
 		warnings.push(
 			`L${ifStart}–L${end}: bash \`if\` is not converted to a Branch — skipped; write it as an \`- if:\` item`,
 		);
+	// The `yoqa_branch` function an exported Branch checks through is not an action.
+	let inBranchHelper = false;
 	lines.forEach((raw, i) => {
 		const line = raw.trim();
+		if (/^yoqa_branch\(\)\s*\{$/.test(line)) {
+			inBranchHelper = true;
+			return;
+		}
+		if (inBranchHelper) {
+			if (line === "}") inBranchHelper = false;
+			return;
+		}
 		if (/^if\s/.test(line)) {
 			if (ifDepth === 0) ifStart = i + 1;
 			ifDepth += 1;
@@ -696,7 +706,7 @@ export function shellToCaseScriptActions(
 			const comment = line.replace(/^#+\s*/, "");
 			if (
 				comment &&
-				!/^(Yoqa |Requires an active device session|Prefer JSON|Prefer the Case Script file)/.test(
+				!/^(Yoqa |Requires an active device session|Prefer JSON|Prefer the Case Script file|A Branch's check)/.test(
 					comment,
 				)
 			) {
