@@ -1,6 +1,6 @@
 # Branch: conditional steps in a Case Script
 
-Spec: [Aris-ngoy/qa-agent#321](https://github.com/Aris-ngoy/qa-agent/issues/321). Tracer bullet: [#323](https://github.com/Aris-ngoy/qa-agent/issues/323). Client-side replay: [#324](https://github.com/Aris-ngoy/qa-agent/issues/324). `id` target and `yoqa assert --id`: [#325](https://github.com/Aris-ngoy/qa-agent/issues/325). Decision: [ADR-0008](../adr/0008-case-script-branches.md). Terms: **Branch**, **Case Script**, **Case Script file** in [`CONTEXT.md`](../../CONTEXT.md). The file format is described in [case-script-yaml.md](./case-script-yaml.md).
+Spec: [Aris-ngoy/qa-agent#321](https://github.com/Aris-ngoy/qa-agent/issues/321). Tracer bullet: [#323](https://github.com/Aris-ngoy/qa-agent/issues/323). Client-side replay: [#324](https://github.com/Aris-ngoy/qa-agent/issues/324). `id` target and `yoqa assert --id`: [#325](https://github.com/Aris-ngoy/qa-agent/issues/325). Desktop and Run reports: [#327](https://github.com/Aris-ngoy/qa-agent/issues/327). Decision: [ADR-0008](../adr/0008-case-script-branches.md). Terms: **Branch**, **Case Script**, **Case Script file** in [`CONTEXT.md`](../../CONTEXT.md). The file format is described in [case-script-yaml.md](./case-script-yaml.md).
 
 ## Goal
 
@@ -62,20 +62,22 @@ actions:
 **Elsewhere**
 
 - Shell export writes `if yoqa assert … --text|--id '…' --timeout <s>; then … else … fi`, indented.
-- The Inspector step list and the Test Case script summary show a Branch as one row, e.g. `If “Allow notifications” visible → 1 step, else 2 steps`; an id reads `id “onboarding-skip”` in the Inspector and `#onboarding-skip` in the summary (as a tap by id does).
+- The Inspector step list and the Test Case script summary show a Branch as one row, e.g. `If “Allow notifications” visible → 1 step, else 2 steps` (`not visible` for a `not-visible` Branch; a nested Branch counts as one step of its side). An id reads `id “onboarding-skip”` in the Inspector and `#onboarding-skip` in the summary (as a tap by id does). Both read the wording from one helper, `describeBranch` in `features/test-cases/utils/script-summary.ts`. Editing a Branch stays in the Inspector's YAML editor; there is no structured branch editor.
+- A Run report (HTML, Markdown, GitHub summary) lists each Branch step as `If visible: Allow notifications → then`, with its `yoqa assert … --timeout` command, reason, detail and the screenshot it decided on, followed by the steps of the side that ran.
 - Building a Case Script from agent decisions is typed to flat Actions, so a recorded script never contains a Branch.
 - Biome's `noThenProperty` rule is off: a Branch's `then` is a list, never a function, so it can't make an object thenable.
 
 ## How to verify
 
-1. `bun test packages/runner-client/src/case-script-file.test.ts packages/runner-client/src/case-script-replay.test.ts services/runner/src/domains/runs/case-executor.test.ts packages/runner-client/src/script-format.test.ts packages/runner-client/src/shell-script.test.ts packages/runner-client/src/screen-check.test.ts packages/cli/src/assert-id.test.ts`
+1. `bun test apps/desktop/src/mainview/features/test-cases/utils/script-summary.test.ts apps/desktop/src/mainview/features/inspector/utils/script-steps.test.ts packages/runner-client/src/run-report.test.ts packages/runner-client/src/case-script-file.test.ts packages/runner-client/src/case-script-replay.test.ts services/runner/src/domains/runs/case-executor.test.ts packages/runner-client/src/script-format.test.ts packages/runner-client/src/shell-script.test.ts packages/runner-client/src/screen-check.test.ts packages/cli/src/assert-id.test.ts`
 2. `yoqa script validate` a file with an `if:` item: it prints `ok`. Remove its `then:` and it prints `Line N, action M: if: needs \`then:\` with at least one action`.
 3. With a device connected, `yoqa script run` that file: it prints the Branch with `→ then` or `→ else` and only that side's steps, and exits 0 (or 1 when a step fails). The Inspector's Run shows the same in its log.
 4. With a device connected, `yoqa assert visible --id <an id on the Screen>` prints `ok assert visible`; a missing id exits 1, and `--text x --id y` is rejected.
-5. Import that file into a Test Case and run it in script mode on a device. The Run details show an `If visible: … → then` (or `→ else`) step, followed only by the steps from that side.
+5. Import that file into a Test Case: its Script tab shows the Branch as one `If “…” visible → n steps, else m steps` row. Run it in script mode on a device. The Run details show an `If visible: … → then` (or `→ else`) step, followed only by the steps from that side, and **Export HTML** shows the same.
 
 ## Follow-ups
 
 - `CONTEXT.md`'s **Branch** entry still says "for one text"; it should read "for one text or id".
 - A Case Script `assert` on an id (so shell import of `yoqa assert --id` need not skip it).
+- A Run step does not record which side it ran in, so a Run report lists a side's steps flat after their Branch step (no indent, unlike the CLI and Inspector logs).
 - Line-by-line highlighting of a Branch's inner steps in the Inspector (the parser keeps top-level `actionLines` only, so a side's steps highlight their `if:` line).

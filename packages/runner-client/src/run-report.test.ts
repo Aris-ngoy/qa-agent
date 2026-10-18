@@ -535,3 +535,111 @@ describe("formatRunReportHtml and Markdown", () => {
 		expect(markdown).toContain("- Command: `yoqa action tap --label 'Login'`");
 	});
 });
+
+describe("a branched Run in the report", () => {
+	const step = (idx: number, action: unknown, detail: string | null, command: string) => ({
+		id: `s${idx}`,
+		runTestId: "t1",
+		idx,
+		action,
+		screenshotUri: `/shots/${idx}.png`,
+		ok: true,
+		latencyMs: 10,
+		detail,
+		command,
+		createdAt: idx,
+	});
+	const doc = buildRunReportFromCatalogRun(
+		{
+			id: "run_branch",
+			appId: "app_1",
+			deviceId: "ios-1",
+			platform: "ios",
+			buildId: null,
+			status: "passed",
+			executionMode: "script",
+			error: null,
+			createdAt: 1,
+			startedAt: 1,
+			finishedAt: 2,
+			tests: [
+				{
+					id: "t1",
+					runId: "run_branch",
+					caseId: "case_1",
+					status: "passed",
+					executionMode: "script",
+					error: null,
+					startedAt: 1,
+					finishedAt: 2,
+					steps: [
+						step(
+							0,
+							{
+								type: "branch",
+								text: "Allow notifications",
+								assertion: "visible",
+								timeoutMs: 3000,
+								outcome: "then",
+								reason: "Dismiss the permission sheet",
+							},
+							"visible: Allow notifications → then",
+							"yoqa assert visible --text 'Allow notifications' --timeout 3",
+						),
+						step(1, { type: "tap", label: "Allow" }, null, "yoqa action tap --label 'Allow'"),
+						step(
+							2,
+							{
+								type: "branch",
+								text: "Rate this app",
+								assertion: "not-visible",
+								timeoutMs: 2000,
+								outcome: "else",
+							},
+							"not-visible: Rate this app → else",
+							"yoqa assert not-visible --text 'Rate this app' --timeout 2",
+						),
+						step(3, { type: "tap", label: "Not now" }, null, "yoqa action tap --label 'Not now'"),
+					],
+				},
+			],
+		},
+		{ caseTitles: { case_1: "Onboarding" } },
+	);
+
+	test("shows each Branch step with what it checked and which side ran", () => {
+		expect(doc.tests[0]?.steps.map((row) => [row.index, row.summary])).toEqual([
+			[1, "If visible: Allow notifications → then"],
+			[2, "Tap: Allow"],
+			[3, "If not-visible: Rate this app → else"],
+			[4, "Tap: Not now"],
+		]);
+		expect(doc.tests[0]?.steps[0]).toMatchObject({
+			ok: true,
+			reason: "Dismiss the permission sheet",
+			detail: "visible: Allow notifications → then",
+			command: "yoqa assert visible --text 'Allow notifications' --timeout 3",
+		});
+	});
+
+	test("writes the Branch steps and their outcome to HTML and Markdown", () => {
+		const html = formatRunReportHtml(doc);
+		expect(html).toContain("<h3>If visible: Allow notifications → then</h3>");
+		expect(html).toContain("<h3>If not-visible: Rate this app → else</h3>");
+		expect(html).toContain('<p class="detail">visible: Allow notifications → then</p>');
+
+		const markdown = formatRunReportMarkdown(doc);
+		expect(markdown).toContain("### Step 1: If visible: Allow notifications → then");
+		expect(markdown).toContain("- Detail: visible: Allow notifications → then");
+		expect(markdown).toContain("### Step 3: If not-visible: Rate this app → else");
+		expect(markdown).toContain(
+			"- Command: `yoqa assert not-visible --text 'Rate this app' --timeout 2`",
+		);
+	});
+
+	test("reads a Branch step saved without an outcome", () => {
+		expect(actionSummary({ type: "branch", assertion: "visible", text: "Allow" })).toBe(
+			"If visible: Allow",
+		);
+	});
+});

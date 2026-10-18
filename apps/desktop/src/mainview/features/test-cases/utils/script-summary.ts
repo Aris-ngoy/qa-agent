@@ -1,4 +1,4 @@
-import { type CaseScriptAction, formatKeyChord } from "@yoqa/runner-client";
+import { type CaseScriptAction, type CaseScriptBranch, formatKeyChord } from "@yoqa/runner-client";
 
 export function formatScriptSavedAt(ms: number): string {
 	return new Intl.DateTimeFormat(undefined, {
@@ -12,6 +12,20 @@ export function formatScriptSavedAt(ms: number): string {
 
 function stepCount(count: number): string {
 	return `${count} step${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * A Branch in words: what it checks (`“X” visible`, `#id visible`) and its sides
+ * (`1 step, else 2 steps`). `formatId` words an id target; it reads `#id` by default, as a tap by id does.
+ */
+export function describeBranch(
+	branch: CaseScriptBranch,
+	formatId: (id: string) => string = (id) => `#${id}`,
+): { check: string; sides: string } {
+	const target = branch.id != null ? formatId(branch.id) : `“${branch.text}”`;
+	const check = `${target} ${branch.assertion === "visible" ? "visible" : "not visible"}`;
+	const elseSide = branch.else ? `, else ${stepCount(branch.else.length)}` : "";
+	return { check, sides: `${stepCount(branch.then.length)}${elseSide}` };
 }
 
 export function scriptActionSummary(action: CaseScriptAction): string {
@@ -61,10 +75,8 @@ export function scriptActionSummary(action: CaseScriptAction): string {
 		return `Press ${formatKeyChord(action.key, action.modifiers)}`;
 	}
 	if (action.type === "branch") {
-		const check = action.assertion === "visible" ? "visible" : "not visible";
-		const elseSide = action.else ? `, else ${stepCount(action.else.length)}` : "";
-		const target = action.id != null ? `#${action.id}` : `“${action.text}”`;
-		return `If ${target} ${check} → ${stepCount(action.then.length)}${elseSide}`;
+		const { check, sides } = describeBranch(action);
+		return `If ${check} → ${sides}`;
 	}
 	return `Wait ${action.ms}ms`;
 }

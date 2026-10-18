@@ -1,3 +1,4 @@
+import { describeBranch } from "@/features/test-cases/utils/script-summary";
 import {
 	type CaseScriptAction,
 	formatCaseScriptFileErrors,
@@ -41,10 +42,6 @@ const VERBS: Record<CaseScriptAction["type"], string> = {
 	branch: "If",
 };
 
-function stepCount(count: number): string {
-	return `${count} step${count === 1 ? "" : "s"}`;
-}
-
 function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | "text" | "meta"> {
 	const verb =
 		action.type === "tap" && action.durationMs != null ? "Long press" : VERBS[action.type];
@@ -83,12 +80,8 @@ function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | 
 		case "key":
 			return { verb, text: formatKeyChord(action.key, action.modifiers), meta: "" };
 		case "branch": {
-			const target = action.id != null ? `id “${action.id}”` : `“${action.text}”`;
-			return {
-				verb,
-				text: `${target} ${action.assertion === "visible" ? "visible" : "not visible"}`,
-				meta: `→ ${stepCount(action.then.length)}${action.else ? `, else ${stepCount(action.else.length)}` : ""}`,
-			};
+			const { check, sides } = describeBranch(action, (id) => `id “${id}”`);
+			return { verb, text: check, meta: `→ ${sides}` };
 		}
 	}
 }
