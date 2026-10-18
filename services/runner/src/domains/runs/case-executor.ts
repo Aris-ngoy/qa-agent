@@ -7,10 +7,10 @@ import {
 	type RunScreenMode,
 	type ScreenElement,
 	type StepPhases,
+	checkScreen,
 	formatActionShellLine,
 	formatAssertShellLine,
 	formatSleepShellLine,
-	screenHasText,
 } from "@yoqa/runner-client";
 import {
 	ActionNotFoundError,
@@ -215,41 +215,23 @@ async function runTextAssert(input: {
 	text: string;
 	timeoutMs: number;
 }): Promise<void> {
-	const deadline = input.clock.now() + input.timeoutMs;
+	const { met } = await checkScreen({
+		readScreen: () => input.readScreen(input.session),
+		text: input.text,
+		assertion: input.assertion,
+		timeoutMs: input.timeoutMs,
+		sleep: (ms) => input.clock.sleep(ms),
+		now: () => input.clock.now(),
+		isAborted: input.isAborted,
+		isDeadSession: isDeadSessionError,
+	});
+	if (met) return;
 	const seconds = Math.round(input.timeoutMs / 1000);
-	for (;;) {
-		if (input.isAborted()) {
-			throw new Error("Aborted");
-		}
-		// A read can fail while the app is still coming up (e.g. idb's axbridge finds no
-		// frontmost app right after launch). That is "not there yet", so keep polling until
-		// the deadline; only a Dead Session ends the assert at once.
-		let readError: unknown = null;
-		let elements: ScreenElement[] | null = null;
-		try {
-			elements = (await input.readScreen(input.session)).elements ?? [];
-		} catch (error) {
-			if (isDeadSessionError(error)) throw error;
-			readError = error;
-		}
-		if (elements) {
-			const found = screenHasText(elements, input.text);
-			if (input.assertion === "visible" && found) return;
-			if (input.assertion === "not-visible" && !found) return;
-		}
-		if (input.clock.now() >= deadline) {
-			if (readError) {
-				const message = readError instanceof Error ? readError.message : String(readError);
-				throw new Error(`Could not read the screen within ${seconds}s: ${message}`);
-			}
-			throw new Error(
-				input.assertion === "visible"
-					? `Expected visible text not found within ${seconds}s: ${input.text}`
-					: `Unexpected text still visible after ${seconds}s: ${input.text}`,
-			);
-		}
-		await input.clock.sleep(400);
-	}
+	throw new Error(
+		input.assertion === "visible"
+			? `Expected visible text not found within ${seconds}s: ${input.text}`
+			: `Unexpected text still visible after ${seconds}s: ${input.text}`,
+	);
 }
 
 /** An x,y tap on the screenshot. Label taps on system sheets are not counted. */

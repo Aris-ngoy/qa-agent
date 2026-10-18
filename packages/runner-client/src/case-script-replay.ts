@@ -5,7 +5,8 @@ import type {
 	CaseScriptAction,
 	ScreenResponse,
 } from "./schemas";
-import { formatActionShellLine, screenHasText } from "./shell-script";
+import { SCREEN_CHECK_POLL_MS, checkScreen } from "./screen-check";
+import { formatActionShellLine } from "./shell-script";
 
 /** The runner calls a Case Script replay needs (a `RunnerClient` satisfies it). */
 export type CaseScriptReplayClient = {
@@ -156,7 +157,7 @@ export async function runCaseScript(
 ): Promise<RunCaseScriptResult> {
 	const sleep = options.sleep ?? realSleep;
 	const now = options.now ?? Date.now;
-	const pollMs = options.assertPollMs ?? 400;
+	const pollMs = options.assertPollMs ?? SCREEN_CHECK_POLL_MS;
 	const { actions } = script;
 	const total = actions.length;
 
@@ -170,32 +171,23 @@ export async function runCaseScript(
 	const assertText = async (action: Extract<CaseScriptAction, { type: "assert" }>) => {
 		const timeoutMs =
 			action.timeoutMs ?? options.defaultAssertTimeoutMs ?? DEFAULT_ASSERT_TIMEOUT_MS;
-		const deadline = now() + timeoutMs;
+		const { met } = await checkScreen({
+			readScreen: () => client.getScreen(),
+			text: action.text,
+			assertion: action.assertion,
+			timeoutMs,
+			pollMs,
+			sleep: (ms) => sleep(ms, options.signal),
+			now,
+			isAborted: () => options.signal?.aborted ?? false,
+		});
+		if (met) return;
 		const seconds = Math.round(timeoutMs / 1000);
-		for (;;) {
-			if (options.signal?.aborted) throw abortError();
-			// A read can fail while the app is still coming up; that is "not there yet".
-			let readError: unknown = null;
-			try {
-				const screen = await client.getScreen();
-				const found = screenHasText(screen.elements, action.text);
-				if (action.assertion === "visible" ? found : !found) return;
-			} catch (error) {
-				readError = error;
-			}
-			if (now() >= deadline) {
-				if (readError) {
-					const message = readError instanceof Error ? readError.message : String(readError);
-					throw new Error(`Could not read the screen within ${seconds}s: ${message}`);
-				}
-				throw new Error(
-					action.assertion === "visible"
-						? `Expected visible text not found within ${seconds}s: ${action.text}`
-						: `Unexpected text still visible after ${seconds}s: ${action.text}`,
-				);
-			}
-			await sleep(pollMs, options.signal);
-		}
+		throw new Error(
+			action.assertion === "visible"
+				? `Expected visible text not found within ${seconds}s: ${action.text}`
+				: `Unexpected text still visible after ${seconds}s: ${action.text}`,
+		);
 	};
 
 	for (let index = 0; index < total; index++) {

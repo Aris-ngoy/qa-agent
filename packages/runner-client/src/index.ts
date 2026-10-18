@@ -496,6 +496,13 @@ export {
 	type RunCaseScriptResult,
 } from "./case-script-replay";
 
+export {
+	SCREEN_CHECK_POLL_MS,
+	checkScreen,
+	type CheckScreenOptions,
+	type CheckScreenResult,
+} from "./screen-check";
+
 export { appStartTarget, startTargetRequest } from "./app-start-target";
 
 export { decodeXmlEntities } from "./xml-entities";
