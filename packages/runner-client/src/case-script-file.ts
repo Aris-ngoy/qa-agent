@@ -339,9 +339,7 @@ function readBranch(
 	);
 	const parsed = caseScriptActionSchemaByType.branch.safeParse({
 		type: "branch",
-		...(id != null
-			? { id: typeof id === "string" ? id : String(id) }
-			: { text: typeof textTarget === "string" ? textTarget : String(textTarget) }),
+		...(id != null ? { id: String(id) } : { text: String(textTarget) }),
 		...fields,
 		then,
 		...(otherwise ? { else: otherwise } : {}),

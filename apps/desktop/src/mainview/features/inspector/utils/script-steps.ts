@@ -82,12 +82,14 @@ function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | 
 			return { verb, text: action.url, meta: "" };
 		case "key":
 			return { verb, text: formatKeyChord(action.key, action.modifiers), meta: "" };
-		case "branch":
+		case "branch": {
+			const target = action.id != null ? `id “${action.id}”` : `“${action.text}”`;
 			return {
 				verb,
-				text: `${action.id != null ? `id “${action.id}”` : `“${action.text}”`} ${action.assertion === "visible" ? "visible" : "not visible"}`,
+				text: `${target} ${action.assertion === "visible" ? "visible" : "not visible"}`,
 				meta: `→ ${stepCount(action.then.length)}${action.else ? `, else ${stepCount(action.else.length)}` : ""}`,
 			};
+		}
 	}
 }
 
