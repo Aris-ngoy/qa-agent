@@ -6,6 +6,14 @@ Local-first agentic mobile QA. Bun + Turborepo monorepo with an Electrobun deskt
 
 **Docs:** [Quickstart](https://yoqa.arisn.dev/docs/quickstart)
 
+## Support Yoqa
+
+If this project helps you, you can [buy me a coffee](https://www.buymeacoffee.com/arisn).
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/arisn)
+
+<a href="https://www.buymeacoffee.com/arisn"><img src="./apps/docs/images/buy-me-a-coffee-qr.png" alt="QR code for buymeacoffee.com/arisn" width="220" /></a>
+
 ## Stack
 
 | Layer | Choice |

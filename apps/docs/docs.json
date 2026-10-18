@@ -30,7 +30,18 @@
 	"footer": {
 		"socials": {
 			"github": "https://github.com/Aris-ngoy/qa-agent"
-		}
+		},
+		"links": [
+			{
+				"header": "Support",
+				"items": [
+					{
+						"label": "Buy me a coffee",
+						"href": "https://www.buymeacoffee.com/arisn"
+					}
+				]
+			}
+		]
 	},
 	"redirects": [
 		{
