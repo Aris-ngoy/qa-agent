@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ScreenElement } from "./schemas";
-import { type CheckScreenOptions, checkScreen } from "./screen-check";
+import { type CheckScreenOptions, checkScreen, screenCheckMissMessage } from "./screen-check";
 
 function element(label: string): ScreenElement {
 	return { label, type: "Button", x: 0, y: 0, width: 10, height: 10 };
@@ -16,7 +16,7 @@ function fakeScreen(reads: Array<string[] | Error>) {
 		sleeps,
 		options: (
 			overrides: Partial<CheckScreenOptions> = {},
-		): Omit<CheckScreenOptions, "text" | "assertion" | "timeoutMs"> => ({
+		): Omit<CheckScreenOptions, "text" | "id" | "assertion" | "timeoutMs"> => ({
 			readScreen: async () => {
 				const read = reads[Math.min(count, reads.length - 1)] ?? [];
 				count += 1;
@@ -82,6 +82,37 @@ describe("checkScreen", () => {
 		});
 		expect(result).toEqual({ met: true });
 		expect(screen.reads()).toBe(3);
+	});
+
+	test("matches an id exactly and case-insensitively, like a tap by id", async () => {
+		const elements: ScreenElement[] = [
+			{ ...element("Skip"), id: "com.example:id/Onboarding-Skip" },
+			{ ...element("Later"), id: "later-button" },
+		];
+		const check = (id: string, assertion: "visible" | "not-visible") =>
+			checkScreen({
+				readScreen: async () => ({ elements }),
+				sleep: async () => {},
+				now: () => 0,
+				id,
+				assertion,
+				timeoutMs: 0,
+			});
+		expect(await check("LATER-BUTTON", "visible")).toEqual({ met: true });
+		expect(await check("onboarding-skip", "visible")).toEqual({ met: true });
+		// An id is never a substring match, and a text that is a label is not an id.
+		expect(await check("later", "visible")).toEqual({ met: false });
+		expect(await check("Skip", "not-visible")).toEqual({ met: true });
+		expect(await check("later-button", "not-visible")).toEqual({ met: false });
+	});
+
+	test("names an id in the miss message", () => {
+		expect(screenCheckMissMessage({ id: "skip", assertion: "visible", timeoutMs: 2_000 })).toBe(
+			"Expected visible id not found within 2s: skip",
+		);
+		expect(
+			screenCheckMissMessage({ id: "spinner", assertion: "not-visible", timeoutMs: 1_000 }),
+		).toBe("Unexpected id still visible after 1s: spinner");
 	});
 
 	test("is not met when the deadline passes, after one last read", async () => {

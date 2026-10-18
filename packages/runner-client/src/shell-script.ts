@@ -32,7 +32,9 @@ export type AssertVisibility = "visible" | "not-visible";
 export type ShellScriptAssertStep = {
 	kind: "assert";
 	assertion: AssertVisibility;
-	text: string;
+	/** Exactly one of `text` (substring of a label) or `id` (matched like a tap by id). */
+	text?: string;
+	id?: string;
 	timeoutSeconds: number;
 	lineNumber: number;
 	raw: string;
@@ -267,7 +269,7 @@ function parseAssertFromTokens(
 	lineNumber: number,
 	raw: string,
 ): ShellScriptAssertStep {
-	// Expected: yoqa assert visible|not-visible --text '…' [--timeout N]
+	// Expected: yoqa assert visible|not-visible --text '…' | --id '…' [--timeout N]
 	if (tokens[0] !== "yoqa" || tokens[1] !== "assert") {
 		throw new Error("Expected `yoqa assert <visible|not-visible> …`");
 	}
@@ -276,9 +278,13 @@ function parseAssertFromTokens(
 		throw new Error("Assert kind must be `visible` or `not-visible`");
 	}
 	const flags = parseFlagMap(tokens.slice(3));
-	const text = flagString(flags, "--text", "-t");
-	if (!text || text.trim().length === 0) {
-		throw new Error("assert requires --text");
+	const text = flagString(flags, "--text", "-t")?.trim();
+	const id = flagString(flags, "--id")?.trim();
+	if (text && id) {
+		throw new Error("assert takes --text or --id, not both");
+	}
+	if (!text && !id) {
+		throw new Error("assert requires --text or --id");
 	}
 	const timeout = flagNumber(flags, "--timeout") ?? 5;
 	if (timeout < 0) {
@@ -287,7 +293,7 @@ function parseAssertFromTokens(
 	return {
 		kind: "assert",
 		assertion: assertionRaw,
-		text: text.trim(),
+		...(id ? { id } : { text }),
 		timeoutSeconds: timeout,
 		lineNumber,
 		raw,
@@ -396,12 +402,21 @@ export function formatScreenshotShellLine(path?: string | null): string {
 	return `yoqa screenshot ${shellSingleQuote(trimmed)}`;
 }
 
+/** `--text '…'` and / or `--id '…'`: the target flags of a `yoqa assert` line. */
+export function assertTargetFlags(target: { text?: string; id?: string }): string[] {
+	return [
+		...(target.text != null ? ["--text", shellSingleQuote(target.text.trim())] : []),
+		...(target.id != null ? ["--id", shellSingleQuote(target.id.trim())] : []),
+	];
+}
+
 export function formatAssertShellLine(input: {
 	assertion: AssertVisibility;
-	text: string;
+	text?: string;
+	id?: string;
 	timeoutSeconds?: number;
 }): string {
-	const parts = ["yoqa", "assert", input.assertion, "--text", shellSingleQuote(input.text.trim())];
+	const parts = ["yoqa", "assert", input.assertion, ...assertTargetFlags(input)];
 	const timeout = input.timeoutSeconds ?? 5;
 	if (timeout !== 5) {
 		parts.push("--timeout", String(timeout));
@@ -450,6 +465,18 @@ export function screenHasText(elements: ScreenElement[] | undefined, text: strin
 		const type = el.type?.toLowerCase() ?? "";
 		return label.includes(needle) || type.includes(needle);
 	});
+}
+
+/**
+ * Whether the Screen holds a check's target: a `text` matches like an assert (substring of a
+ * label or type), an `id` like a tap by id (exact, or the short form of a resource-id).
+ */
+export function screenHasTarget(
+	elements: ScreenElement[] | undefined,
+	target: { text?: string; id?: string },
+): boolean {
+	if (target.id != null) return findElementById(elements, target.id) != null;
+	return screenHasText(elements, target.text ?? "");
 }
 
 /** Prefer exact label match, then substring; pick the smallest matching box. */
@@ -509,14 +536,15 @@ async function runAssertStep(
 			throw Object.assign(new Error("Aborted"), { name: "AbortError" });
 		}
 		const screen = await client.getScreen();
-		const found = screenHasText(screen.elements, step.text);
+		const found = screenHasTarget(screen.elements, step);
 		if (step.assertion === "visible" && found) return;
 		if (step.assertion === "not-visible" && !found) return;
 		if (Date.now() >= deadline) {
+			const [kind, target] = step.id != null ? ["id", step.id] : ["text", step.text];
 			throw new Error(
 				step.assertion === "visible"
-					? `Expected visible text not found within ${step.timeoutSeconds}s: ${step.text}`
-					: `Unexpected text still visible after ${step.timeoutSeconds}s: ${step.text}`,
+					? `Expected visible ${kind} not found within ${step.timeoutSeconds}s: ${target}`
+					: `Unexpected ${kind} still visible after ${step.timeoutSeconds}s: ${target}`,
 			);
 		}
 		await sleepMs(400, signal);
@@ -652,6 +680,10 @@ export function shellToCaseScript(
 		}
 
 		if (step.kind === "assert") {
+			if (step.text == null) {
+				warnings.push(`L${step.lineNumber}: assert --id not supported in CaseScript — skipped`);
+				continue;
+			}
 			actions.push({
 				type: "assert",
 				assertion: step.assertion,

@@ -9,6 +9,7 @@ import {
 	formatScreenshotShellLine,
 	formatSleepShellLine,
 	parseYoqaShellScript,
+	runYoqaShellScript,
 	screenHasText,
 	shellToCaseScript,
 	tokenizeShellLine,
@@ -106,6 +107,90 @@ yoqa action tap --x 10 --y 20
 		expect(result.errors).toHaveLength(1);
 		expect(result.errors[0]?.message).toContain("Unsupported command");
 		expect(result.steps).toHaveLength(1);
+	});
+});
+
+describe("yoqa assert --id", () => {
+	test("parses an assert on an id, and rejects --text with --id or neither", () => {
+		const result = parseYoqaShellScript(`yoqa assert not-visible --id 'get_bonus' --timeout 2
+yoqa assert visible --text 'Bonus' --id 'get_bonus'
+yoqa assert visible --timeout 2
+`);
+		expect(result.steps).toEqual([
+			{
+				kind: "assert",
+				assertion: "not-visible",
+				id: "get_bonus",
+				timeoutSeconds: 2,
+				lineNumber: 1,
+				raw: "yoqa assert not-visible --id 'get_bonus' --timeout 2",
+			},
+		]);
+		expect(result.errors.map((error) => [error.lineNumber, error.message])).toEqual([
+			[2, "assert takes --text or --id, not both"],
+			[3, "assert requires --text or --id"],
+		]);
+	});
+
+	test("formats an assert on an id", () => {
+		expect(formatAssertShellLine({ assertion: "visible", id: "it's" })).toBe(
+			"yoqa assert visible --id 'it'\\''s'",
+		);
+	});
+
+	const client = (elements: ScreenElement[]) => ({
+		performAction: async () => {
+			throw new Error("no actions expected");
+		},
+		getScreen: async () => ({ elements }) as never,
+		takeScreenshot: async () => {
+			throw new Error("no screenshots expected");
+		},
+	});
+
+	test("passes and fails against the Screen like a tap by id matches", async () => {
+		const screen = client([button]);
+		expect(
+			await runYoqaShellScript(screen, "yoqa assert visible --id 'GET_BONUS' --timeout 0"),
+		).toEqual({ ok: true, completed: 1, total: 1 });
+		expect(
+			await runYoqaShellScript(screen, "yoqa assert not-visible --id 'other' --timeout 0"),
+		).toEqual({ ok: true, completed: 1, total: 1 });
+		expect(
+			await runYoqaShellScript(screen, "yoqa assert visible --id 'bonus' --timeout 0"),
+		).toEqual({
+			ok: false,
+			completed: 0,
+			total: 1,
+			error: "Line 1: Expected visible id not found within 0s: bonus",
+		});
+		expect(
+			await runYoqaShellScript(screen, "yoqa assert not-visible --id 'get_bonus' --timeout 0"),
+		).toMatchObject({
+			ok: false,
+			error: "Line 1: Unexpected id still visible after 0s: get_bonus",
+		});
+	});
+
+	test("does not run an assert with both --text and --id", async () => {
+		const result = await runYoqaShellScript(
+			client([button]),
+			formatAssertShellLine({ assertion: "visible", text: "Get Bonus", id: "get_bonus" }),
+		);
+		expect(result).toMatchObject({
+			ok: false,
+			completed: 0,
+			error: "Line 1: assert takes --text or --id, not both",
+		});
+	});
+
+	test("an assert on an id has no Case Script form, so converting skips it", () => {
+		const result = shellToCaseScript(`yoqa assert visible --id 'get_bonus'
+yoqa assert visible --text 'Bonus'`);
+		expect(result.script?.actions).toEqual([
+			{ type: "assert", assertion: "visible", text: "Bonus", timeoutMs: 5000 },
+		]);
+		expect(result.warnings).toEqual(["L1: assert --id not supported in CaseScript — skipped"]);
 	});
 });
 

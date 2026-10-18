@@ -63,7 +63,8 @@ export function scriptActionSummary(action: CaseScriptAction): string {
 	if (action.type === "branch") {
 		const check = action.assertion === "visible" ? "visible" : "not visible";
 		const elseSide = action.else ? `, else ${stepCount(action.else.length)}` : "";
-		return `If “${action.text}” ${check} → ${stepCount(action.then.length)}${elseSide}`;
+		const target = action.id != null ? `#${action.id}` : `“${action.text}”`;
+		return `If ${target} ${check} → ${stepCount(action.then.length)}${elseSide}`;
 	}
 	return `Wait ${action.ms}ms`;
 }

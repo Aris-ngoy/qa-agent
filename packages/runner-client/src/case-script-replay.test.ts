@@ -15,8 +15,11 @@ import type {
 	ScreenElement,
 } from "./schemas";
 
+/** A Screen element from a label, or from `#id` for an element with that id and no label. */
 function element(label: string): ScreenElement {
-	return { label, type: "Button", x: 0, y: 0, width: 10, height: 10 } as ScreenElement;
+	const base = { type: "Button", x: 0, y: 0, width: 10, height: 10 };
+	if (label.startsWith("#")) return { ...base, label: "", id: label.slice(1) } as ScreenElement;
+	return { ...base, label } as ScreenElement;
 }
 
 function fakeDevice(options: { screens?: string[][]; failOn?: ActionRequest["kind"] } = {}) {
@@ -263,7 +266,7 @@ describe("a Branch in client-side replay", () => {
 				].join(".");
 				const what =
 					event.action.type === "branch"
-						? `if ${event.action.text}${event.outcome ? ` → ${event.outcome}` : ""}`
+						? `if ${event.action.id != null ? `id ${event.action.id}` : event.action.text}${event.outcome ? ` → ${event.outcome}` : ""}`
 						: event.action.type === "tap"
 							? event.action.label
 							: event.action.type;
@@ -493,6 +496,58 @@ describe("a Branch in client-side replay", () => {
 		});
 		expect(steps.lines.slice(-2)).toEqual(["skipped 3/4 0.then.1 Next", "skipped 4/4 1 B"]);
 		expect(device.requests.map((r) => r.label)).toEqual(["Allow"]);
+	});
+
+	test("takes `then` or `else` on an id, matched like a tap by id", async () => {
+		const run = async (branch: CaseScriptBranch, screen: string[]) => {
+			const device = fakeDevice({ screens: [screen] });
+			const steps = trace();
+			const result = await runCaseScript(device.client, script(branch), {
+				sleep: device.sleep,
+				now: device.now,
+				onStep: steps.onStep,
+			});
+			return { result, taps: device.requests.map((r) => r.label), lines: steps.lines };
+		};
+		const skip = (extra: Partial<CaseScriptBranch> = {}) =>
+			allow({
+				text: undefined,
+				id: "Onboarding-Skip",
+				else: [{ type: "tap", label: "Later" }],
+				...extra,
+			});
+
+		const seen = await run(skip(), ["#onboarding-skip"]);
+		expect(seen.result).toEqual({ ok: true, completed: 2, total: 2 });
+		expect(seen.taps).toEqual(["Allow"]);
+		expect(seen.lines[1]).toBe("ok 1/2 0 if id Onboarding-Skip → then");
+
+		// A label holding the id's text is not the id.
+		expect((await run(skip(), ["Onboarding-Skip"])).taps).toEqual(["Later"]);
+		expect((await run(skip({ assertion: "not-visible" }), ["Home"])).taps).toEqual(["Allow"]);
+		expect((await run(skip({ assertion: "not-visible" }), ["#onboarding-skip"])).taps).toEqual([
+			"Later",
+		]);
+	});
+
+	test("names an id Branch by its id in its command and log line", () => {
+		const branch: CaseScriptBranch = {
+			type: "branch",
+			id: "it's-skip",
+			assertion: "visible",
+			timeoutMs: 3_000,
+			then: [{ type: "tap", id: "it's-skip" }],
+		};
+		expect(caseScriptActionCommand(branch)).toBe(
+			"yoqa assert visible --id 'it'\\''s-skip' --timeout 3",
+		);
+		expect(
+			formatCaseScriptReplayStep({
+				action: branch,
+				path: { index: 0, nested: [] },
+				outcome: "else",
+			}),
+		).toBe("if visible id: it's-skip → else");
 	});
 
 	test("names the check a Branch makes as its command", () => {

@@ -12,6 +12,7 @@ import {
 	keyModifierSchema,
 	keyNameSchema,
 } from "./schemas";
+import { describeScreenCheck } from "./screen-check";
 import { formatActionShellLine, formatAssertShellLine, formatSleepShellLine } from "./shell-script";
 import { formatViewportPreset } from "./viewport";
 
@@ -145,10 +146,11 @@ function summarizeActionRecord(record: Record<string, unknown>): string {
 		return text ? `Assert ${assertion}: ${text}` : `Assert ${assertion}`;
 	}
 	if (type === "branch") {
-		const assertion = typeof record.assertion === "string" ? record.assertion : "visible";
+		const assertion = record.assertion === "not-visible" ? "not-visible" : "visible";
+		const id = typeof record.id === "string" ? record.id : undefined;
 		const text = typeof record.text === "string" ? record.text : "";
 		const outcome = typeof record.outcome === "string" ? ` → ${record.outcome}` : "";
-		return `If ${assertion}: ${text}${outcome}`;
+		return `If ${describeScreenCheck({ assertion, text, id })}${outcome}`;
 	}
 	if (type === "verify") return "Verify";
 	if (type === "done") return "Done";
@@ -230,12 +232,13 @@ export function formatStepCommand(action: unknown): string | null {
 
 	if (type === "assert" || type === "branch") {
 		const text = optionalTrimmedString(record.text);
-		if (!text) return null;
+		const id = type === "branch" ? optionalTrimmedString(record.id) : undefined;
+		if (!text && !id) return null;
 		const assertion = record.assertion === "not-visible" ? "not-visible" : "visible";
 		const timeoutMs = optionalFiniteNumber(record.timeoutMs);
 		return formatAssertShellLine({
 			assertion,
-			text,
+			...(id ? { id } : { text }),
 			...(timeoutMs != null ? { timeoutSeconds: timeoutMs / 1000 } : {}),
 		});
 	}

@@ -451,6 +451,7 @@ export {
 	elementCenterNorm,
 	parseYoqaShellScript,
 	runYoqaShellScript,
+	screenHasTarget,
 	screenHasText,
 	shellToCaseScript,
 	tokenizeShellLine,
@@ -509,6 +510,7 @@ export {
 export {
 	SCREEN_CHECK_POLL_MS,
 	checkScreen,
+	describeScreenCheck,
 	screenCheckMissMessage,
 	type CheckScreenOptions,
 	type CheckScreenResult,

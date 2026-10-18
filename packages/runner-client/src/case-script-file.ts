@@ -77,7 +77,7 @@ const BRANCH_KEY = "if";
 const ITEM_NAMES = [...ACTION_TYPES, BRANCH_KEY];
 
 /** Fields of an `if:` map, in exported order (`label` is read as `text`, never written). */
-const BRANCH_FIELDS = ["text", "label", "assertion", "timeoutMs", "then", "else", "reason"];
+const BRANCH_FIELDS = ["text", "label", "id", "assertion", "timeoutMs", "then", "else", "reason"];
 
 /** The field a scalar short form (`tap: Home`) fills, per action. */
 const SHORT_FORM_FIELD: Partial<Record<CaseScriptActionType, string>> = {
@@ -299,9 +299,13 @@ function readBranch(
 
 	const text = field("text");
 	const label = field("label");
+	const id = field("id");
 	if (text != null && label != null) fail(keyLine("label"), "write `text` or `label`, not both");
-	const target = text ?? label;
-	if (target == null) fail(itemLine, "needs `text:` (what to look for on the Screen)");
+	const textTarget = text ?? label;
+	if (textTarget != null && id != null) fail(keyLine("id"), "write `text` or `id`, not both");
+	if (textTarget == null && id == null) {
+		fail(itemLine, "needs `text:` or `id:` (what to look for on the Screen)");
+	}
 
 	const readSide = (side: "then" | "else"): CaseScriptAction[] | undefined => {
 		const node = value.get(side, true);
@@ -335,7 +339,9 @@ function readBranch(
 	);
 	const parsed = caseScriptActionSchemaByType.branch.safeParse({
 		type: "branch",
-		text: typeof target === "string" ? target : String(target),
+		...(id != null
+			? { id: typeof id === "string" ? id : String(id) }
+			: { text: typeof textTarget === "string" ? textTarget : String(textTarget) }),
 		...fields,
 		then,
 		...(otherwise ? { else: otherwise } : {}),
@@ -544,7 +550,8 @@ function orderedFields(
 
 /** A Branch's own fields, in exported order, defaults left out. */
 function branchFields(branch: CaseScriptBranch): Array<[string, unknown]> {
-	const fields: Array<[string, unknown]> = [["text", branch.text]];
+	const fields: Array<[string, unknown]> =
+		branch.id != null ? [["id", branch.id]] : [["text", branch.text]];
 	if (branch.assertion === "not-visible") fields.push(["assertion", branch.assertion]);
 	if (branch.timeoutMs != null) fields.push(["timeoutMs", branch.timeoutMs]);
 	if (branch.reason != null) fields.push(["reason", branch.reason]);

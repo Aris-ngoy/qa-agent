@@ -454,12 +454,14 @@ const caseScriptGestureSchema = z.union([
 export const BRANCH_DEFAULT_TIMEOUT_MS = 2_000;
 
 /**
- * A Branch (see CONTEXT.md): checks the Screen, waiting up to `timeoutMs`, for one text,
+ * A Branch (see CONTEXT.md): checks the Screen, waiting up to `timeoutMs`, for one text or id,
  * and runs `then` when the check is met or `else` when it is not.
  */
 export type CaseScriptBranch = {
 	type: "branch";
-	text: string;
+	/** Exactly one of `text` (matched like `assert`) or `id` (matched like a tap by id). */
+	text?: string;
+	id?: string;
 	assertion: "visible" | "not-visible";
 	timeoutMs?: number;
 	then: CaseScriptAction[];
@@ -482,17 +484,27 @@ type CaseScriptActionSchema = z.ZodType<CaseScriptAction, z.ZodTypeDef, CaseScri
 
 const caseScriptStepsSchema = z.array(z.lazy((): CaseScriptActionSchema => caseScriptActionSchema));
 
-const caseScriptBranchSchema = z.object({
-	type: z.literal("branch"),
-	text: z.string().min(1),
-	assertion: caseScriptAssertionSchema,
-	timeoutMs: z.number().min(0).max(120_000).optional(),
-	then: caseScriptStepsSchema.min(1),
-	else: caseScriptStepsSchema
-		.optional()
-		.transform((actions) => (actions?.length ? actions : undefined)),
-	reason: z.string().optional(),
-});
+const caseScriptBranchSchema = z
+	.object({
+		type: z.literal("branch"),
+		text: z.string().min(1).optional(),
+		id: z.string().min(1).optional(),
+		assertion: caseScriptAssertionSchema,
+		timeoutMs: z.number().min(0).max(120_000).optional(),
+		then: caseScriptStepsSchema.min(1),
+		else: caseScriptStepsSchema
+			.optional()
+			.transform((actions) => (actions?.length ? actions : undefined)),
+		reason: z.string().optional(),
+	})
+	.superRefine((value, ctx) => {
+		if ((value.text == null) === (value.id == null)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "branch requires exactly one of text or id",
+			});
+		}
+	});
 
 export const caseScriptActionSchema: CaseScriptActionSchema = z.union([
 	caseScriptGestureSchema,

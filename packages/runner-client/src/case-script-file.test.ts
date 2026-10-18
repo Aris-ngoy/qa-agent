@@ -3,12 +3,13 @@ import {
 	caseScriptFileLinesFromShell,
 	emptyCaseScriptFile,
 	formatCaseScriptFile,
+	formatCaseScriptFileAction,
 	formatCaseScriptFileErrors,
 	looksLikeShellScript,
 	parseCaseScriptFile,
 	toCaseScriptFileText,
 } from "./case-script-file";
-import type { CaseScript } from "./schemas";
+import { type CaseScript, type CaseScriptAction, caseScriptActionSchema } from "./schemas";
 
 const BOTTOM_NAV = `version: 1
 name: Bottom navigation
@@ -432,6 +433,76 @@ actions:
 `);
 	});
 
+	test("reads an `id:` target, and exports it back unchanged", () => {
+		const text = `version: 1
+actions:
+  - if:
+      id: onboarding-skip
+      assertion: not-visible
+      then:
+        - if:
+            id: allow-button
+            timeoutMs: 500
+            then:
+              - tap: { id: allow-button }
+      else:
+        - tap: { id: onboarding-skip }
+`;
+		const parsed = parseOk(text);
+		expect(parsed.script.actions).toEqual([
+			{
+				type: "branch",
+				id: "onboarding-skip",
+				assertion: "not-visible",
+				then: [
+					{
+						type: "branch",
+						id: "allow-button",
+						assertion: "visible",
+						timeoutMs: 500,
+						then: [{ type: "tap", id: "allow-button" }],
+					},
+				],
+				else: [{ type: "tap", id: "onboarding-skip" }],
+			},
+		]);
+		expect(formatCaseScriptFile(parsed.script)).toBe(text);
+		expect(formatCaseScriptFileAction(parsed.script.actions[0] as CaseScriptAction)).toBe(
+			"if: { id: onboarding-skip, assertion: not-visible, then: [{ if: { id: allow-button, timeoutMs: 500, then: [{ tap: { id: allow-button } }] } }], else: [{ tap: { id: onboarding-skip } }] }",
+		);
+	});
+
+	test("rejects a Branch with both `text` and `id`, or with neither", () => {
+		const errors = errorsOf(`version: 1
+actions:
+  - if:
+      text: Skip
+      id: skip
+      then:
+        - tap: Skip
+  - if:
+      then:
+        - if: { label: Later, id: later, then: [tap: Later] }
+`);
+		expect(formatCaseScriptFileErrors(errors)).toBe(
+			[
+				"Line 5, action 1: if: write `text` or `id`, not both",
+				"Line 8, action 2: if: needs `text:` or `id:` (what to look for on the Screen)",
+				"Line 10, action 2 → then → action 1: if: write `text` or `id`, not both",
+			].join("\n"),
+		);
+	});
+
+	test("the catalog model takes exactly one of `text` or `id`", () => {
+		const then = [{ type: "tap", label: "Go" }];
+		const parse = (target: object) =>
+			caseScriptActionSchema.safeParse({ type: "branch", ...target, then }).success;
+		expect(parse({ text: "Go" })).toBe(true);
+		expect(parse({ id: "go" })).toBe(true);
+		expect(parse({ text: "Go", id: "go" })).toBe(false);
+		expect(parse({})).toBe(false);
+	});
+
 	test("keeps comments inside branches when the file is kept as written", () => {
 		const commented = `version: 1
 actions:
@@ -494,8 +565,8 @@ actions:
 			[
 				"Line 4, action 2: if: needs `then:` with at least one action",
 				"Line 8, action 3: if: needs `then:` with at least one action",
-				"Line 9, action 4: if: needs `text:` (what to look for on the Screen)",
-				'Line 14, action 5: if: unknown field "colour" (allowed: text, label, assertion, timeoutMs, then, else, reason)',
+				"Line 9, action 4: if: needs `text:` or `id:` (what to look for on the Screen)",
+				'Line 14, action 5: if: unknown field "colour" (allowed: text, label, id, assertion, timeoutMs, then, else, reason)',
 				"Line 21, action 6 → then → action 2: if: needs `then:` with at least one action",
 				'Line 24, action 6 → then → action 2 → else → action 1: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, background-app, open-url, key, if)',
 				"Line 25, action 7: if has no short form; write it as a map with `text:` and `then:`",
