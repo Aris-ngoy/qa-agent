@@ -1,5 +1,5 @@
 import { listAllDevices, listPlatformDevices } from "@/features/devices/data/api/devices";
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import type { Device, DevicePlatform } from "@yoqa/runner-client";
 
 /** Query key for a platform's device list, shared by the picker and the session bar. */
@@ -33,18 +33,29 @@ export function usePickerDevices(platform: DevicePlatform, open: boolean) {
 	});
 }
 
-/** Devices to name a Run's device by: one platform, every platform, or none yet. */
-export function useListedDevices(
-	platform: DevicePlatform | "all" | null | undefined,
-	options: { enabled?: boolean } = {},
-) {
-	return useQuery({
+function listedDevicesQueryOptions(platform: DevicePlatform | "all" | null | undefined) {
+	return queryOptions({
 		queryKey: platform ? devicesQueryKey(platform) : ["devices", "pending"],
-		enabled: Boolean(platform) && (options.enabled ?? true),
 		queryFn: (): Promise<Device[]> => {
 			if (!platform) return Promise.resolve([]);
 			return platform === "all" ? listAllDevices() : listPlatformDevices(platform);
 		},
 		staleTime: 30_000,
 	});
+}
+
+/** Devices to name a Run's device by: one platform, every platform, or none yet. */
+export function useListedDevices(
+	platform: DevicePlatform | "all" | null | undefined,
+	options: { enabled?: boolean } = {},
+) {
+	return useQuery({
+		...listedDevicesQueryOptions(platform),
+		enabled: Boolean(platform) && (options.enabled ?? true),
+	});
+}
+
+/** The cached device list, kept current but never fetched here: the run views load it. */
+export function useCachedListedDevices(platform: DevicePlatform | "all" | null | undefined) {
+	return useQuery({ ...listedDevicesQueryOptions(platform), enabled: false }).data;
 }
