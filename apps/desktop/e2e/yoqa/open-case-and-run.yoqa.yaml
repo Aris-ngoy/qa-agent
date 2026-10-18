@@ -1,0 +1,13 @@
+version: 1
+name: Open the seeded test case and Run
+actions:
+  - open-url: { url: "http://localhost:5191/", reason: Start on the webview's home }
+  - assert: { text: Checkout happy path, timeoutMs: 30000, reason: The seeded test case is listed }
+  # "Checkout happy path" alone also matches the row's smaller "Select …" checkbox.
+  - tap: { label: "Checkout happy path Case #1", reason: Open the seeded test case }
+  - assert: { text: Instructions, timeoutMs: 10000, reason: The test case editor is open }
+  - tap: { label: Runs, reason: Go to Runs }
+  - assert: { text: on device chromium, timeoutMs: 10000, reason: The seeded Run is listed }
+  - tap: { label: on device chromium, reason: Open the seeded Run }
+  - assert: { text: Run details, timeoutMs: 10000, reason: The top bar names the Run page }
+  - assert: { text: chromium (Web), timeoutMs: 10000, reason: The top bar names the Run's device }
