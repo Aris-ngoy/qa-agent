@@ -193,6 +193,12 @@ export function formatCaseScriptReplayStep(
 	return `${"  ".repeat(event.path.nested.length)}${line}`;
 }
 
+function replayErrorMessage(error: unknown, signal?: AbortSignal): string {
+	if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) return "Aborted";
+	if (error instanceof Error) return error.message;
+	return String(error);
+}
+
 /**
  * Replay a Case Script on the Active Session, step by step, without any decide.
  * A Branch checks the Screen and replays its chosen side in place; the other side is never
@@ -237,11 +243,20 @@ export async function runCaseScript(
 
 	const emit = (
 		path: CaseScriptStepPath,
-		at: number,
+		stepPosition: number,
 		action: CaseScriptAction,
 		status: CaseScriptReplayStatus,
 		extra: Pick<CaseScriptReplayEvent, "error" | "response" | "outcome"> = {},
-	) => options.onStep?.({ index: path.index, path, position: at, total, action, status, ...extra });
+	) =>
+		options.onStep?.({
+			index: path.index,
+			path,
+			position: stepPosition,
+			total,
+			action,
+			status,
+			...extra,
+		});
 
 	const skipFrom = async (actions: CaseScriptAction[], from: number, at: At) => {
 		for (let index = from; index < actions.length; index++) {
@@ -287,13 +302,7 @@ export async function runCaseScript(
 					...(side ? { outcome: side.outcome } : {}),
 				});
 			} catch (error) {
-				const aborted =
-					options.signal?.aborted || (error instanceof Error && error.name === "AbortError");
-				const message = aborted
-					? "Aborted"
-					: error instanceof Error
-						? error.message
-						: String(error);
+				const message = replayErrorMessage(error, options.signal);
 				await emit(path, step, action, "error", { error: message });
 				await skipFrom(actions, index + 1, at);
 				return { path, error: message };
