@@ -357,7 +357,7 @@ actions:
 		const converted = toCaseScriptFileText(exported);
 		expect(converted.text).toBe("version: 1\nactions:\n  - tap: Start\n  - tap: Home\n");
 		expect(converted.warnings).toEqual([
-			"L8–L15: bash `if` is not converted to a Branch — skipped; write it as an `- if:` item",
+			"L16–L23: bash `if` is not converted to a Branch — skipped; write it as an `- if:` item",
 		]);
 	});
 

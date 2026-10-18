@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import {
+	ASSERT_EXIT_CODE,
 	type ActionRequest,
 	type ActionResponse,
 	type ActiveDeviceResponse,
@@ -9,10 +10,10 @@ import {
 	RunnerRequestError,
 	WaitForRunTimeoutError,
 	caseScriptActionCommand,
+	checkScreen,
 	createCaseFlowsSchema,
 	createRunnerClient,
 	developerNotTrusted,
-	formatAssertShellLine,
 	formatCaseScriptFile,
 	formatCaseScriptFileErrors,
 	formatCaseScriptReplayStep,
@@ -23,7 +24,7 @@ import {
 	parseKeyModifiers,
 	parseKeyName,
 	runCaseScript,
-	runYoqaShellScript,
+	screenCheckMissMessage,
 	updateCaseFlowsSchema,
 	waitForRun,
 } from "@yoqa/runner-client";
@@ -979,28 +980,39 @@ for (const kind of ["visible", "not-visible"] as const) {
 							? "pass --text or --id, not both"
 							: "pass --text <text> or --id <id>";
 					console.error(`yoqa assert ${kind} failed: ${usage}`);
-					process.exitCode = 1;
+					process.exitCode = ASSERT_EXIT_CODE.couldNotCheck;
 					return;
 				}
+				const check = {
+					assertion: kind,
+					...(options.id != null ? { id: options.id } : { text: options.text }),
+					timeoutMs: options.timeout * 1000,
+				};
 				try {
-					const line = formatAssertShellLine({
-						assertion: kind,
-						...(options.id != null ? { id: options.id } : { text: options.text }),
-						timeoutSeconds: options.timeout,
+					const c = client(options.baseUrl);
+					const { met } = await checkScreen({
+						...check,
+						readScreen: () => c.getScreen(),
+						sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+						now: Date.now,
 					});
-					const result = await runYoqaShellScript(client(options.baseUrl), line);
+					const error = met ? undefined : screenCheckMissMessage(check);
+					if (!met) process.exitCode = ASSERT_EXIT_CODE.notMet;
 					if (options.json) {
-						console.log(JSON.stringify(result, null, 2));
-						if (!result.ok) process.exitCode = 1;
+						console.log(
+							JSON.stringify({ ok: met, completed: met ? 1 : 0, total: 1, error }, null, 2),
+						);
 						return;
 					}
-					if (!result.ok) {
-						fail(`assert ${kind}`, new Error(result.error ?? "assertion failed"));
+					if (error) {
+						console.error(`yoqa assert ${kind} failed: ${error}`);
 						return;
 					}
 					console.log(`ok assert ${kind}`);
 				} catch (error) {
+					// Not a miss: the Screen could not be checked, so a Branch must not take `else`.
 					fail(`assert ${kind}`, error);
+					process.exitCode = ASSERT_EXIT_CODE.couldNotCheck;
 				}
 			},
 		);

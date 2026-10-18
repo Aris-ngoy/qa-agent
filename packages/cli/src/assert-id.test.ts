@@ -88,14 +88,38 @@ describe("yoqa assert --id", () => {
 		expect(present.out).toContain("Unexpected id still visible after 0s: onboarding-skip");
 	});
 
+	test("exits 2, not 1, when the runner cannot be reached, so a Branch does not take else", async () => {
+		const gone = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+		const url = `http://127.0.0.1:${gone.port}`;
+		gone.stop(true);
+		printed = [];
+		process.exitCode = 0;
+		await buildProgram().parseAsync([
+			"bun",
+			"yoqa",
+			"assert",
+			"visible",
+			"--id",
+			"onboarding-skip",
+			"--timeout",
+			"0",
+			"--base-url",
+			url,
+		]);
+		const code = Number(process.exitCode ?? 0);
+		process.exitCode = exitCode;
+		expect(code).toBe(2);
+		expect(printed.join("\n")).toContain("Could not read the screen within 0s");
+	});
+
 	test("rejects --text with --id, and neither, without reading the Screen", async () => {
 		const before = runner.reads();
 		const both = await yoqa("assert", "visible", "--text", "Skip", "--id", "onboarding-skip");
-		expect(both.code).toBe(1);
+		expect(both.code).toBe(2);
 		expect(both.out).toBe("yoqa assert visible failed: pass --text or --id, not both");
 
 		const neither = await yoqa("assert", "visible");
-		expect(neither.code).toBe(1);
+		expect(neither.code).toBe(2);
 		expect(neither.out).toBe("yoqa assert visible failed: pass --text <text> or --id <id>");
 		expect(runner.reads()).toBe(before);
 	});

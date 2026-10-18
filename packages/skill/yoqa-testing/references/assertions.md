@@ -19,6 +19,9 @@ yoqa assert visible --id onboarding-skip        # an element id, when the text i
 ```
 
 - Pass exactly one of `-t` / `--text` or `--id`; both, or neither, is an error.
+- Exit status: `0` the condition held, `1` it did not by the timeout, `2` it could not be checked (runner
+  not answering, screen unreadable until the timeout, bad flags). In a shell `if`, treat `2` as a failure,
+  not as "not visible".
 - `--timeout` is in **seconds**, default `5`. The screen is re-polled until the condition holds or the
   timeout expires.
 - Matching is a **case-insensitive substring** against each element's label *or* its type. `-t "login"`

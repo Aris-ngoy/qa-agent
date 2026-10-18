@@ -23,6 +23,13 @@ export type CheckScreenOptions = {
 
 export type CheckScreenResult = { met: boolean };
 
+/**
+ * `yoqa assert`'s exit status. An exported Branch takes `then` on `met` and `else` on
+ * `notMet`, and stops the script on `couldNotCheck`: an unreachable runner or an unreadable
+ * Screen is never "not visible".
+ */
+export const ASSERT_EXIT_CODE = { met: 0, notMet: 1, couldNotCheck: 2 } as const;
+
 function abortError(): Error {
 	return Object.assign(new Error("Aborted"), { name: "AbortError" });
 }
