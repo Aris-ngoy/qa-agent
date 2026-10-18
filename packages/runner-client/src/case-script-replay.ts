@@ -5,7 +5,7 @@ import type {
 	CaseScriptAction,
 	ScreenResponse,
 } from "./schemas";
-import { SCREEN_CHECK_POLL_MS, checkScreen } from "./screen-check";
+import { SCREEN_CHECK_POLL_MS, checkScreen, screenCheckMissMessage } from "./screen-check";
 import { formatActionShellLine } from "./shell-script";
 
 /** The runner calls a Case Script replay needs (a `RunnerClient` satisfies it). */
@@ -181,13 +181,7 @@ export async function runCaseScript(
 			now,
 			isAborted: () => options.signal?.aborted ?? false,
 		});
-		if (met) return;
-		const seconds = Math.round(timeoutMs / 1000);
-		throw new Error(
-			action.assertion === "visible"
-				? `Expected visible text not found within ${seconds}s: ${action.text}`
-				: `Unexpected text still visible after ${seconds}s: ${action.text}`,
-		);
+		if (!met) throw new Error(screenCheckMissMessage({ ...action, timeoutMs }));
 	};
 
 	for (let index = 0; index < total; index++) {

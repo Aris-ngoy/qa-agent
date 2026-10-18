@@ -11,6 +11,7 @@ import {
 	formatActionShellLine,
 	formatAssertShellLine,
 	formatSleepShellLine,
+	screenCheckMissMessage,
 } from "@yoqa/runner-client";
 import {
 	ActionNotFoundError,
@@ -225,13 +226,7 @@ async function runTextAssert(input: {
 		isAborted: input.isAborted,
 		isDeadSession: isDeadSessionError,
 	});
-	if (met) return;
-	const seconds = Math.round(input.timeoutMs / 1000);
-	throw new Error(
-		input.assertion === "visible"
-			? `Expected visible text not found within ${seconds}s: ${input.text}`
-			: `Unexpected text still visible after ${seconds}s: ${input.text}`,
-	);
+	if (!met) throw new Error(screenCheckMissMessage(input));
 }
 
 /** An x,y tap on the screenshot. Label taps on system sheets are not counted. */

@@ -3,7 +3,7 @@ import type { ScreenElement } from "./schemas";
 import { type CheckScreenOptions, checkScreen } from "./screen-check";
 
 function element(label: string): ScreenElement {
-	return { label, type: "Button", x: 0, y: 0, width: 10, height: 10 } as ScreenElement;
+	return { label, type: "Button", x: 0, y: 0, width: 10, height: 10 };
 }
 
 /** A Screen that answers each read with the next entry (a string list, or an error to throw). */
@@ -131,7 +131,7 @@ describe("checkScreen", () => {
 		).rejects.toThrow("Could not read the screen within 1s: no frontmost app");
 	});
 
-	test("a failed read is not met for not-visible either", async () => {
+	test("a failed read does not count as the text being gone", async () => {
 		const screen = fakeScreen([new Error("no frontmost app"), []]);
 		const result = await checkScreen({
 			...screen.options(),

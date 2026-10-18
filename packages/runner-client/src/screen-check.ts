@@ -25,6 +25,16 @@ function abortError(): Error {
 	return Object.assign(new Error("Aborted"), { name: "AbortError" });
 }
 
+/** The failure message for a check that was not met by its deadline. */
+export function screenCheckMissMessage(
+	options: Pick<CheckScreenOptions, "text" | "assertion" | "timeoutMs">,
+): string {
+	const seconds = Math.round(options.timeoutMs / 1000);
+	return options.assertion === "visible"
+		? `Expected visible text not found within ${seconds}s: ${options.text}`
+		: `Unexpected text still visible after ${seconds}s: ${options.text}`;
+}
+
 /**
  * Poll the Screen until `text` is visible / not visible, or the deadline passes.
  * A plain miss at the deadline is `{ met: false }`, for the caller to fail on or branch on.
