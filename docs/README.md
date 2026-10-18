@@ -32,6 +32,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/web-installed-browsers.md](./devices/web-installed-browsers.md) | Installed Chrome/Edge/Brave/Chromium as web devices, launched as Yoqa-owned instances |
 | [devices/web-popups.md](./devices/web-popups.md) | Web: the session follows a popup the page opens and returns to the opener when it closes |
 | [devices/web-viewport-presets.md](./devices/web-viewport-presets.md) | Web Viewport presets: desktop or mobile (touch, mobile user agent) at connect, stored on the Run |
+| [devices/expo-demo-web-e2e.md](./devices/expo-demo-web-e2e.md) | Demo Expo E2E web job: the Expo demo's web export on headless Chrome, attached by port at the mobile preset |
 | [runs/web-runs.md](./runs/web-runs.md) | Web URL on the App; a Run on web opens it, and its report names the browser |
 | [devices/web-skill-and-docs.md](./devices/web-skill-and-docs.md) | Web and the `key` Action in the `yoqa-testing` skill and the public docs, guarded by `skill-docs.test.ts` |
 | [runs/selection-and-runs-mvp.md](./runs/selection-and-runs-mvp.md) | Test case selection + local `POST /runs` MVP |

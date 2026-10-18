@@ -19,7 +19,7 @@ Dogfood unpublished `@yoqa/cli` against a real Expo binary on GitHub-hosted runn
 ## What shipped
 
 - Expo SDK 57 TypeScript app, bundle / application id `ai.yoqa.demo`, Home + Greeting screens with `accessibilityLabel`.
-- [`.github/workflows/demo-expo-e2e.yml`](../../.github/workflows/demo-expo-e2e.yml) — parallel iOS Simulator + Android Emulator jobs.
+- [`.github/workflows/demo-expo-e2e.yml`](../../.github/workflows/demo-expo-e2e.yml) — parallel iOS Simulator + Android Emulator jobs, plus a Web (Chromium) job ([expo-demo-web-e2e.md](../devices/expo-demo-web-e2e.md)).
 - `Setup Android SDK` passes `packages: platform-tools` explicitly, overriding the action's broken `tools platform-tools` default (upstream [#537](https://github.com/android-actions/setup-android/issues/537)).
 - Public Mintlify CI section + local-testing table updated to point at this example (hosted **device farm** remains “not yet”).
 
@@ -43,7 +43,7 @@ Then install a build, `yoqa devices connect`, and run `examples/expo-demo/yoqa/s
 1. Local Android: `cd examples/expo-demo && npm ci && npx expo prebuild --platform android && npx expo run:android --variant release --no-bundler`, then `yoqa health`, `yoqa devices connect … --platform android --app-package ai.yoqa.demo`, `./yoqa/ci-smoke.sh`.
 2. Local iOS: same with `npx expo prebuild --platform ios` and `npx expo run:ios --configuration Release --no-bundler`, then `yoqa devices connect … --platform ios --bundle-id ai.yoqa.demo`.
 3. `bun run lint:ci` and `bun run test` still ignore the Expo tree.
-4. GitHub: Actions → **Demo Expo E2E** → Run workflow. Download `yoqa-expo-demo-*-report` from the run Artifacts section for the HTML report. The `platform` input (`both` / `ios` / `android`) selects jobs; see [#147](https://github.com/Aris-ngoy/qa-agent/issues/147) for what an Android run currently proves.
+4. GitHub: Actions → **Demo Expo E2E** → Run workflow. Download `yoqa-expo-demo-*-report` from the run Artifacts section for the HTML report. The `platform` input (`all` / `ios` / `android` / `web`) selects jobs (`all` was `both` before the web job); see [#147](https://github.com/Aris-ngoy/qa-agent/issues/147) for what an Android run currently proves.
 
 ## Follow-ups
 
