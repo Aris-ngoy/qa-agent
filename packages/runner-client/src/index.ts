@@ -499,6 +499,7 @@ export {
 export {
 	SCREEN_CHECK_POLL_MS,
 	checkScreen,
+	screenCheckMissMessage,
 	type CheckScreenOptions,
 	type CheckScreenResult,
 } from "./screen-check";
