@@ -673,7 +673,7 @@ export function shellToCaseScriptActions(
 	// flattened into both of its sides.
 	let ifDepth = 0;
 	let ifStart = 0;
-	const skipIf = (end: number) =>
+	const warnSkippedIf = (end: number) =>
 		warnings.push(
 			`L${ifStart}–L${end}: bash \`if\` is not converted to a Branch — skipped; write it as an \`- if:\` item`,
 		);
@@ -687,7 +687,7 @@ export function shellToCaseScriptActions(
 		if (ifDepth > 0) {
 			if (line === "fi") {
 				ifDepth -= 1;
-				if (ifDepth === 0) skipIf(i + 1);
+				if (ifDepth === 0) warnSkippedIf(i + 1);
 			}
 			return;
 		}
@@ -713,7 +713,7 @@ export function shellToCaseScriptActions(
 		}
 		if (converted.script) actions.push(...converted.script.actions);
 	});
-	if (ifDepth > 0) skipIf(lines.length);
+	if (ifDepth > 0) warnSkippedIf(lines.length);
 	return { actions, comments, warnings };
 }
 
