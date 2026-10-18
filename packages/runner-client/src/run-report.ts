@@ -144,6 +144,12 @@ function summarizeActionRecord(record: Record<string, unknown>): string {
 		const text = typeof record.text === "string" ? record.text : "";
 		return text ? `Assert ${assertion}: ${text}` : `Assert ${assertion}`;
 	}
+	if (type === "branch") {
+		const assertion = typeof record.assertion === "string" ? record.assertion : "visible";
+		const text = typeof record.text === "string" ? record.text : "";
+		const outcome = typeof record.outcome === "string" ? ` → ${record.outcome}` : "";
+		return `If ${assertion}: ${text}${outcome}`;
+	}
 	if (type === "verify") return "Verify";
 	if (type === "done") return "Done";
 	if (type === "fail") return "Failed";
@@ -222,7 +228,7 @@ export function formatStepCommand(action: unknown): string | null {
 		return formatSleepShellLine(ms / 1000);
 	}
 
-	if (type === "assert") {
+	if (type === "assert" || type === "branch") {
 		const text = optionalTrimmedString(record.text);
 		if (!text) return null;
 		const assertion = record.assertion === "not-visible" ? "not-visible" : "visible";

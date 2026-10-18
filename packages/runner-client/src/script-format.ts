@@ -1,4 +1,4 @@
-import type { CaseScript, CaseScriptAction } from "./schemas";
+import { BRANCH_DEFAULT_TIMEOUT_MS, type CaseScript, type CaseScriptAction } from "./schemas";
 
 export type CaseScriptExportMeta = {
 	caseNumber?: number;
@@ -102,8 +102,35 @@ function actionToShellLine(action: CaseScriptAction): string {
 			? `yoqa action key ${action.key} --modifiers ${action.modifiers.join(",")}`
 			: `yoqa action key ${action.key}`;
 	}
+	if (action.type === "branch") {
+		const timeoutMs = action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS;
+		const check = [
+			"yoqa",
+			"assert",
+			action.assertion,
+			"--text",
+			shellSingleQuote(action.text),
+			"--timeout",
+			String(Math.max(1, Math.round(timeoutMs / 1000))),
+		].join(" ");
+		const side = (actions: CaseScriptAction[]) =>
+			actions.map((inner) => indentLines(actionToShellLine(inner)));
+		return [
+			`if ${check}; then`,
+			...side(action.then),
+			...(action.else?.length ? ["else", ...side(action.else)] : []),
+			"fi",
+		].join("\n");
+	}
 	const seconds = Math.max(0.1, action.ms / 1000);
 	return `sleep ${seconds}`;
+}
+
+function indentLines(text: string): string {
+	return text
+		.split("\n")
+		.map((line) => `  ${line}`)
+		.join("\n");
 }
 
 /** Bash script that replays via `yoqa action` + `sleep` on an active device session. */

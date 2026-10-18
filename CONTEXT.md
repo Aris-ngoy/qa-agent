@@ -130,8 +130,12 @@ The module that runs one Test Case against a Device Session (script replay or ag
 _Avoid_: executeRun (orchestration + persistence around cases)
 
 **Case Script**:
-A saved replay of Actions for a Test Case, run without any live decide. A tap targets a label, an id, or x,y. There is one Case Script model: the catalog stores it, the Inspector edits it, and a Case Script file carries it.
+A saved replay of Actions and Branches for a Test Case, run without any live decide (a Branch reads the Screen; it never calls a Provider). A tap targets a label, an id, or x,y. There is one Case Script model: the catalog stores it, the Inspector edits it, and a Case Script file carries it.
 _Avoid_: Flow (catalog term), shell script (an export, not the Case Script), agent instructions
+
+**Branch**:
+A Case Script step that checks the Screen once, waiting up to a timeout, for one text, and runs one of two action lists: `then` when the check is met, otherwise `else` (which may be absent). It is not an Action. Branches nest; there is no else-if. In a Case Script file it is written `- if:`. In a Run it is its own step saying which side ran, followed by that side's steps.
+_Avoid_: conditional, if-step, if statement
 
 **Case Script file**:
 A Case Script written as YAML (`*.yoqa.yaml`), the default format for import and export. A legacy `.yoqa.json` file is still read as a Case Script file. A shell export is a one-way convenience: it can be run, but it is not a Case Script file.

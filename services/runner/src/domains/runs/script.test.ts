@@ -161,6 +161,24 @@ describe("buildScriptFromDecisions", () => {
 		]);
 	});
 
+	test("never records a Branch, even from a decision shaped like one", () => {
+		const script = buildScriptFromDecisions(
+			[
+				{
+					type: "branch",
+					text: "Allow",
+					then: [{ type: "tap", label: "Allow" }],
+					reason: "Not an agent decision",
+					thoughts: "",
+				} as unknown as AgentDecision,
+				{ type: "tap", label: "Allow", reason: "Grant", thoughts: "Sheet up" },
+				{ type: "done", reason: "Finished", thoughts: "Done" },
+			],
+			"run_flat",
+		);
+		expect(script?.actions.map((action) => action.type)).toEqual(["tap"]);
+	});
+
 	test("returns null when no replayable actions remain", () => {
 		expect(
 			buildScriptFromDecisions(
@@ -180,6 +198,19 @@ describe("parseCaseScript / serializeCaseScript", () => {
 		};
 		const raw = serializeCaseScript(script);
 		expect(parseCaseScript(raw)).toEqual(script);
+		const branched = {
+			version: 1 as const,
+			savedAt: 99,
+			actions: [
+				{
+					type: "branch" as const,
+					text: "Allow",
+					assertion: "visible" as const,
+					then: [{ type: "tap" as const, label: "Allow" }],
+				},
+			],
+		};
+		expect(parseCaseScript(serializeCaseScript(branched))).toEqual(branched);
 		expect(parseCaseScript(null)).toBeNull();
 		expect(parseCaseScript("{not-json")).toBeNull();
 		expect(parseCaseScript(JSON.stringify({ version: 1, savedAt: 1, actions: [] }))).toBeNull();

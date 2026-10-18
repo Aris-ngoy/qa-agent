@@ -25,6 +25,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [adr/0003-case-executor-test-seam.md](./adr/0003-case-executor-test-seam.md) | Case executor as Run test seam |
 | [adr/0006-case-script-file-yaml.md](./adr/0006-case-script-file-yaml.md) | A Case Script file is YAML; no separate Flow model |
 | [adr/0007-web-direct-lane-over-cdp.md](./adr/0007-web-direct-lane-over-cdp.md) | Web is a Direct lane over CDP to a Chromium browser |
+| [adr/0008-case-script-branches.md](./adr/0008-case-script-branches.md) | A Case Script's action list is recursive: a Branch holds more steps |
 | [devices/web-attach-by-port.md](./devices/web-attach-by-port.md) | Web tracer bullet: attach a user-started Chromium by port, screenshot/tap/input/open-url |
 | [devices/web-screen.md](./devices/web-screen.md) | Web Screen: cleaned accessibility tree with 0–1000 bounds, raw `--full` tree, Tree assist on web roles |
 | [devices/web-gestures-alerts-lifecycle.md](./devices/web-gestures-alerts-lifecycle.md) | Web swipe (wheel), drag, JavaScript dialogs as alerts, and app lifecycle on the Web URL |
@@ -56,6 +57,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [desktop/servers-and-doctor.md](./desktop/servers-and-doctor.md) | Servers panel + `yoqa doctor` diagnostics |
 | [desktop/manual-inspector.md](./desktop/manual-inspector.md) | Script-first Manual Inspector (select → Case Script file → run) |
 | [runs/case-script-yaml.md](./runs/case-script-yaml.md) | Case Script files: YAML default import/export, `yoqa script validate/run/export`, shared replay |
+| [runs/branch.md](./runs/branch.md) | Branch: `- if:` in a Case Script checks the Screen for a text and runs `then` or `else`; Run timeline shows which side ran |
 | [desktop/inspector-manual-connect.md](./desktop/inspector-manual-connect.md) | Inspector attaches only on Connect; flicker-free frames; React Compiler + Legend State feed store |
 | [inspector/legend-state.md](./inspector/legend-state.md) | Inspector folder layout: components, runner API, Legend-State atoms, query hooks, utils |
 | [architecture/desktop-feature-layout.md](./architecture/desktop-feature-layout.md) | Every desktop feature in the Inspector's layout; Legend-State in place of `useState` and contexts |

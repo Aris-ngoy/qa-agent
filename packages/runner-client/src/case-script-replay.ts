@@ -1,9 +1,10 @@
-import type {
-	ActionRequest,
-	ActionResponse,
-	CaseScript,
-	CaseScriptAction,
-	ScreenResponse,
+import {
+	type ActionRequest,
+	type ActionResponse,
+	BRANCH_DEFAULT_TIMEOUT_MS,
+	type CaseScript,
+	type CaseScriptAction,
+	type ScreenResponse,
 } from "./schemas";
 import { SCREEN_CHECK_POLL_MS, checkScreen, screenCheckMissMessage } from "./screen-check";
 import { formatActionShellLine } from "./shell-script";
@@ -77,7 +78,7 @@ function realSleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * The device request behind a Case Script action, or `null` for `wait` / `assert`
+ * The device request behind a Case Script action, or `null` for `wait` / `assert` / a Branch
  * (which are not device Actions).
  */
 export function caseScriptActionRequest(action: CaseScriptAction): ActionRequest | null {
@@ -125,6 +126,7 @@ export function caseScriptActionRequest(action: CaseScriptAction): ActionRequest
 			};
 		case "wait":
 		case "assert":
+		case "branch":
 			return null;
 	}
 }
@@ -135,11 +137,12 @@ export function caseScriptActionCommand(action: CaseScriptAction): string {
 		const seconds = action.ms / 1000;
 		return `sleep ${Number.isInteger(seconds) ? seconds : Number(seconds.toFixed(3))}`;
 	}
-	if (action.type === "assert") {
+	if (action.type === "assert" || action.type === "branch") {
+		// A Branch checks the Screen the way an assert does, with its own default wait.
+		const timeoutMs =
+			action.type === "branch" ? (action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS) : action.timeoutMs;
 		const timeout =
-			action.timeoutMs != null
-				? ` --timeout ${Math.max(1, Math.round(action.timeoutMs / 1000))}`
-				: "";
+			timeoutMs != null ? ` --timeout ${Math.max(1, Math.round(timeoutMs / 1000))}` : "";
 		return `yoqa assert ${action.assertion} --text '${action.text.replace(/'/g, `'\\''`)}'${timeout}`;
 	}
 	const request = caseScriptActionRequest(action);
@@ -198,6 +201,9 @@ export async function runCaseScript(
 				await sleep(action.ms, options.signal);
 			} else if (action.type === "assert") {
 				await assertText(action);
+			} else if (action.type === "branch") {
+				// Only the Case executor follows Branches for now.
+				throw new Error("This replay can't follow a Branch yet; run the Test Case in a Run");
 			} else {
 				const request = caseScriptActionRequest(action);
 				if (request) response = await client.performAction(request);

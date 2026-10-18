@@ -14,6 +14,7 @@ import {
 	type CaseScript,
 	type CaseScriptAction,
 	type CaseScriptActionType,
+	type CaseScriptBranch,
 	type ScreenElement,
 	caseScriptActionSchemaByType,
 } from "./schemas";
@@ -25,11 +26,16 @@ export const CASE_SCRIPT_FILE_EXTENSION = ".yoqa.yaml";
 /** File picker filter for anything that can be read as a Case Script file (plus legacy shell). */
 export const CASE_SCRIPT_FILE_ACCEPT = ".yaml,.yml,.json,.sh";
 
+/** One step into a Branch: its side and the 1-based position of an action there. */
+export type CaseScriptFileErrorNesting = { side: "then" | "else"; action: number };
+
 export type CaseScriptFileError = {
 	/** 1-based line in the file, when the problem has a position. */
 	line: number | null;
 	/** 1-based position in `actions`, when the problem belongs to one action. */
 	action: number | null;
+	/** Inside a Branch: the path from the top-level action down, outermost first. */
+	nested?: CaseScriptFileErrorNesting[];
 	message: string;
 };
 
@@ -57,7 +63,21 @@ export type FormatCaseScriptFileOptions = {
 	name?: string | null;
 };
 
-const ACTION_TYPES = Object.keys(caseScriptActionSchemaByType) as CaseScriptActionType[];
+/** Every Action type; a Branch is read from its own item key. */
+type ActionType = Exclude<CaseScriptActionType, "branch">;
+
+const ACTION_TYPES = (Object.keys(caseScriptActionSchemaByType) as CaseScriptActionType[]).filter(
+	(type): type is ActionType => type !== "branch",
+);
+
+/** The item key of a Branch (`- if:`); its model type is `branch`. */
+const BRANCH_KEY = "if";
+
+/** Everything a Case Script file item can be named. */
+const ITEM_NAMES = [...ACTION_TYPES, BRANCH_KEY];
+
+/** Fields of an `if:` map, in exported order (`label` is read as `text`, never written). */
+const BRANCH_FIELDS = ["text", "label", "assertion", "timeoutMs", "then", "else", "reason"];
 
 /** The field a scalar short form (`tap: Home`) fills, per action. */
 const SHORT_FORM_FIELD: Partial<Record<CaseScriptActionType, string>> = {
@@ -102,11 +122,11 @@ const FIELD_ORDER = [
 
 const TOP_LEVEL_KEYS = new Set(["version", "name", "sourceRunId", "savedAt", "actions"]);
 
-function isActionType(value: unknown): value is CaseScriptActionType {
+function isActionType(value: unknown): value is ActionType {
 	return typeof value === "string" && (ACTION_TYPES as string[]).includes(value);
 }
 
-function actionFieldNames(type: CaseScriptActionType): Set<string> {
+function actionFieldNames(type: ActionType): Set<string> {
 	const schema = caseScriptActionSchemaByType[type];
 	const object = schema instanceof z.ZodEffects ? schema.innerType() : schema;
 	return new Set(Object.keys(object.shape).filter((key) => key !== "type"));
@@ -133,7 +153,7 @@ function readAction(raw: unknown, legacy: boolean): ActionReadResult {
 	}
 	const entries = Object.entries(raw as Record<string, unknown>);
 
-	let type: CaseScriptActionType;
+	let type: ActionType;
 	let fields: Record<string, unknown>;
 	if (legacy) {
 		const declared = (raw as Record<string, unknown>).type;
@@ -153,7 +173,7 @@ function readAction(raw: unknown, legacy: boolean): ActionReadResult {
 		if (!isActionType(key)) {
 			return {
 				ok: false,
-				message: `unknown action "${key}" (expected one of: ${ACTION_TYPES.join(", ")})`,
+				message: `unknown action "${key}" (expected one of: ${ITEM_NAMES.join(", ")})`,
 			};
 		}
 		type = key;
@@ -189,6 +209,143 @@ function readAction(raw: unknown, legacy: boolean): ActionReadResult {
 		return { ok: false, message: `${type}: ${zodMessage(parsed.error)}` };
 	}
 	return { ok: true, action: parsed.data as CaseScriptAction };
+}
+
+type ItemReader = {
+	doc: Document;
+	lineCounter: LineCounter;
+	legacy: boolean;
+	errors: CaseScriptFileError[];
+};
+
+/** Where an item sits: its top-level action and, inside Branches, the path down to it. */
+type ItemPosition = { action: number; nested: CaseScriptFileErrorNesting[] };
+
+function pushItemError(
+	reader: ItemReader,
+	line: number | null,
+	at: ItemPosition,
+	message: string,
+): void {
+	reader.errors.push({
+		line,
+		action: at.action,
+		...(at.nested.length > 0 ? { nested: at.nested } : {}),
+		message,
+	});
+}
+
+/** The value of a Branch item (`- if: …`, or a legacy `type: branch`), or null for an Action. */
+function branchValue(item: unknown, legacy: boolean): { value: unknown } | null {
+	if (!isMap(item)) return null;
+	if (legacy) return item.get("type") === "branch" ? { value: item } : null;
+	const only = item.items.length === 1 ? item.items[0] : undefined;
+	const key = only && isScalar(only.key) ? only.key.value : null;
+	return key === BRANCH_KEY ? { value: only?.value ?? null } : null;
+}
+
+/** Read one list item (an Action or a Branch), recording its errors. Null when it has any. */
+function readItem(reader: ItemReader, item: unknown, at: ItemPosition): CaseScriptAction | null {
+	const line = lineOf(item as YamlNode, reader.lineCounter);
+	const branch = branchValue(item, reader.legacy);
+	if (branch) return readBranch(reader, branch.value, line, at);
+	const raw = isNode(item) ? item.toJS(reader.doc) : item;
+	const result = readAction(raw, reader.legacy);
+	if (result.ok) return result.action;
+	pushItemError(reader, line, at, result.message);
+	return null;
+}
+
+function readBranch(
+	reader: ItemReader,
+	value: unknown,
+	itemLine: number | null,
+	at: ItemPosition,
+): CaseScriptAction | null {
+	const name = reader.legacy ? "branch" : BRANCH_KEY;
+	if (!isMap(value)) {
+		pushItemError(
+			reader,
+			itemLine,
+			at,
+			`${name} has no short form; write it as a map with \`text:\` and \`then:\``,
+		);
+		return null;
+	}
+	let ok = true;
+	const fail = (line: number | null, message: string) => {
+		pushItemError(reader, line ?? itemLine, at, `${name}: ${message}`);
+		ok = false;
+	};
+	const keyLine = (key: string) => {
+		const pair = value.items.find((item) => isScalar(item.key) && item.key.value === key);
+		return lineOf(pair?.key as YamlNode | undefined, reader.lineCounter);
+	};
+	const field = (key: string): unknown => {
+		const node = value.get(key, true);
+		return isNode(node) ? node.toJS(reader.doc) : node;
+	};
+
+	const unknown = value.items
+		.map((item) => (isScalar(item.key) ? item.key.value : item.key))
+		.filter((key) => !(reader.legacy && key === "type"))
+		.filter((key) => typeof key !== "string" || !BRANCH_FIELDS.includes(key));
+	if (unknown.length > 0) {
+		fail(
+			keyLine(String(unknown[0])),
+			`unknown field ${unknown.map((key) => `"${String(key)}"`).join(", ")} (allowed: ${BRANCH_FIELDS.join(", ")})`,
+		);
+	}
+
+	const text = field("text");
+	const label = field("label");
+	if (text != null && label != null) fail(keyLine("label"), "write `text` or `label`, not both");
+	const target = text ?? label;
+	if (target == null) fail(itemLine, "needs `text:` (what to look for on the Screen)");
+
+	const readSide = (side: "then" | "else"): CaseScriptAction[] | undefined => {
+		const node = value.get(side, true);
+		if (node == null || (isScalar(node) && node.value == null)) return undefined;
+		if (!isSeq(node)) {
+			fail(keyLine(side), `${side} must be a list of actions (each item starts with \`- \`)`);
+			return undefined;
+		}
+		const actions: CaseScriptAction[] = [];
+		node.items.forEach((item, index) => {
+			const action = readItem(reader, item, {
+				action: at.action,
+				nested: [...at.nested, { side, action: index + 1 }],
+			});
+			if (action) actions.push(action);
+			else ok = false;
+		});
+		return actions;
+	};
+	const then = readSide("then");
+	if (ok && (then == null || then.length === 0)) {
+		fail(then == null ? itemLine : keyLine("then"), "needs `then:` with at least one action");
+	}
+	const otherwise = readSide("else");
+	if (!ok) return null;
+
+	const fields = Object.fromEntries(
+		["assertion", "timeoutMs", "reason"]
+			.map((key) => [key, field(key)] as const)
+			.filter(([, fieldValue]) => fieldValue !== undefined),
+	);
+	const parsed = caseScriptActionSchemaByType.branch.safeParse({
+		type: "branch",
+		text: typeof target === "string" ? target : String(target),
+		...fields,
+		then,
+		...(otherwise ? { else: otherwise } : {}),
+	});
+	if (!parsed.success) {
+		pushItemError(reader, itemLine, at, `${name}: ${zodMessage(parsed.error)}`);
+		return null;
+	}
+	const { else: elseActions, ...branch } = parsed.data;
+	return elseActions ? { ...branch, else: elseActions } : branch;
 }
 
 function documentErrors(doc: Document, lineCounter: LineCounter): CaseScriptFileError[] {
@@ -289,15 +446,12 @@ export function parseCaseScriptFile(
 				message: "actions must be a list (each item starts with `- `)",
 			});
 		} else {
+			const reader: ItemReader = { doc, lineCounter, legacy, errors };
 			actionsNode.items.forEach((item, index) => {
-				const line = lineOf(item as YamlNode, lineCounter);
-				const raw = isNode(item) ? item.toJS(doc) : item;
-				const result = readAction(raw, legacy);
-				if (result.ok) {
-					actions.push(result.action);
-					actionLines.push(line ?? 0);
-				} else {
-					errors.push({ line, action: index + 1, message: result.message });
+				const action = readItem(reader, item, { action: index + 1, nested: [] });
+				if (action) {
+					actions.push(action);
+					actionLines.push(lineOf(item as YamlNode, lineCounter) ?? 0);
 				}
 			});
 		}
@@ -335,13 +489,16 @@ export function parseCaseScriptFile(
 	};
 }
 
-/** `Line 4, action 2: tap: …` — one line per error. */
+/** `Line 4, action 2: tap: …` (or `action 2 → then → action 1` inside a Branch) — one line per error. */
 export function formatCaseScriptFileErrors(errors: CaseScriptFileError[]): string {
 	return errors
 		.map((error) => {
+			const nested = (error.nested ?? [])
+				.map((step) => ` → ${step.side} → action ${step.action}`)
+				.join("");
 			const where = [
 				error.line != null ? `Line ${error.line}` : null,
-				error.action != null ? `action ${error.action}` : null,
+				error.action != null ? `action ${error.action}${nested}` : null,
 			]
 				.filter(Boolean)
 				.join(", ");
@@ -366,7 +523,9 @@ function yamlScalar(value: unknown): string {
 	return stringify([value], FLOW_OPTIONS).trim().slice(1, -1);
 }
 
-function orderedFields(action: CaseScriptAction): Array<[string, unknown]> {
+function orderedFields(
+	action: Exclude<CaseScriptAction, CaseScriptBranch>,
+): Array<[string, unknown]> {
 	const fields = Object.entries(action).filter(
 		([key, value]) => key !== "type" && value !== undefined,
 	);
@@ -383,8 +542,32 @@ function orderedFields(action: CaseScriptAction): Array<[string, unknown]> {
 	return meaningful.sort(([a], [b]) => rank(a) - rank(b));
 }
 
-/** One canonical YAML line for an action, without the list indent: `tap: Home`. */
+/** A Branch's own fields, in exported order, defaults left out. */
+function branchFields(branch: CaseScriptBranch): Array<[string, unknown]> {
+	const fields: Array<[string, unknown]> = [["text", branch.text]];
+	if (branch.assertion === "not-visible") fields.push(["assertion", branch.assertion]);
+	if (branch.timeoutMs != null) fields.push(["timeoutMs", branch.timeoutMs]);
+	if (branch.reason != null) fields.push(["reason", branch.reason]);
+	return fields;
+}
+
+/**
+ * One canonical YAML line for an action, without the list indent: `tap: Home`.
+ * A Branch comes out as one flow map (`if: { text: A, then: [{ tap: A }] }`), for logs and summaries.
+ */
 export function formatCaseScriptFileAction(action: CaseScriptAction): string {
+	if (action.type === "branch") {
+		const sides = (["then", "else"] as const).flatMap((side) => {
+			const actions = action[side];
+			if (!actions?.length) return [];
+			return `${side}: [${actions.map((inner) => `{ ${formatCaseScriptFileAction(inner)} }`).join(", ")}]`;
+		});
+		const body = [
+			...branchFields(action).map(([key, value]) => `${key}: ${yamlScalar(value)}`),
+			...sides,
+		].join(", ");
+		return `${BRANCH_KEY}: { ${body} }`;
+	}
 	const fields = orderedFields(action);
 	const shortField = SHORT_FORM_FIELD[action.type];
 
@@ -402,9 +585,31 @@ export function formatCaseScriptFileAction(action: CaseScriptAction): string {
 	return `${action.type}: { ${body} }`;
 }
 
-/** The list item line for an action, as it appears under `actions:`. */
+/**
+ * The list item lines for an action at `indent`: one line for an Action, and for a Branch
+ * its fields and `then:` / `else:` block lists, one action per line.
+ */
+function formatCaseScriptFileItemLines(action: CaseScriptAction, indent: string): string[] {
+	if (action.type !== "branch") return [`${indent}- ${formatCaseScriptFileAction(action)}`];
+	const fieldIndent = `${indent}    `;
+	const lines = [`${indent}- ${BRANCH_KEY}:`];
+	for (const [key, value] of branchFields(action)) {
+		lines.push(`${fieldIndent}${key}: ${yamlScalar(value)}`);
+	}
+	for (const side of ["then", "else"] as const) {
+		const actions = action[side];
+		if (!actions?.length) continue;
+		lines.push(`${fieldIndent}${side}:`);
+		for (const inner of actions) {
+			lines.push(...formatCaseScriptFileItemLines(inner, `${fieldIndent}  `));
+		}
+	}
+	return lines;
+}
+
+/** The list item line for an action, as it appears under `actions:` (several lines for a Branch). */
 export function formatCaseScriptFileActionLine(action: CaseScriptAction): string {
-	return `  - ${formatCaseScriptFileAction(action)}`;
+	return formatCaseScriptFileItemLines(action, "  ").join("\n");
 }
 
 /** Canonical Case Script file: one action per line, stable key order, short forms where possible. */
@@ -418,7 +623,7 @@ export function formatCaseScriptFile(
 	if (script.sourceRunId) lines.push(`sourceRunId: ${yamlScalar(script.sourceRunId)}`);
 	lines.push("actions:");
 	for (const action of script.actions) {
-		lines.push(formatCaseScriptFileActionLine(action));
+		lines.push(...formatCaseScriptFileItemLines(action, "  "));
 	}
 	return `${lines.join("\n")}\n`;
 }

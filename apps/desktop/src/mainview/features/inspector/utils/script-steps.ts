@@ -1,4 +1,9 @@
-import { type CaseScriptAction, formatKeyChord, parseCaseScriptFile } from "@yoqa/runner-client";
+import {
+	type CaseScriptAction,
+	formatCaseScriptFileErrors,
+	formatKeyChord,
+	parseCaseScriptFile,
+} from "@yoqa/runner-client";
 
 export type StepStatus = "passed" | "running" | "queued" | "idle";
 
@@ -33,7 +38,12 @@ const VERBS: Record<CaseScriptAction["type"], string> = {
 	"background-app": "Background app",
 	"open-url": "Open URL",
 	key: "Press",
+	branch: "If",
 };
+
+function stepCount(count: number): string {
+	return `${count} step${count === 1 ? "" : "s"}`;
+}
 
 function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | "text" | "meta"> {
 	const verb =
@@ -72,6 +82,12 @@ function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | 
 			return { verb, text: action.url, meta: "" };
 		case "key":
 			return { verb, text: formatKeyChord(action.key, action.modifiers), meta: "" };
+		case "branch":
+			return {
+				verb,
+				text: `“${action.text}” ${action.assertion === "visible" ? "visible" : "not visible"}`,
+				meta: `→ ${stepCount(action.then.length)}${action.else ? `, else ${stepCount(action.else.length)}` : ""}`,
+			};
 	}
 }
 
@@ -90,9 +106,9 @@ export function buildScriptStepsView(
 		return {
 			groups: [],
 			steps: [],
-			errors: parsed.errors.map(({ line, action, message }) => ({
-				lineNumber: line,
-				message: action != null ? `action ${action}: ${message}` : message,
+			errors: parsed.errors.map((error) => ({
+				lineNumber: error.line,
+				message: formatCaseScriptFileErrors([{ ...error, line: null }]),
 			})),
 		};
 	}

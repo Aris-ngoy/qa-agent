@@ -37,6 +37,45 @@ describe("formatCaseScriptShell", () => {
 		expect(out).toContain("yoqa action tap --label 'Increment'");
 	});
 
+	test("emits a Branch as a bash `if` on `yoqa assert`, nested and indented", () => {
+		const out = formatCaseScriptShell({
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{
+					type: "branch",
+					text: "Don't allow",
+					assertion: "visible",
+					then: [
+						{ type: "tap", label: "Allow" },
+						{
+							type: "branch",
+							text: "Loading",
+							assertion: "not-visible",
+							timeoutMs: 5000,
+							then: [{ type: "wait", ms: 500 }],
+							else: [{ type: "tap", label: "Retry" }],
+						},
+					],
+				},
+				{ type: "tap", label: "Home" },
+			],
+		});
+		expect(out).toContain(
+			[
+				"if yoqa assert visible --text 'Don'\\''t allow' --timeout 2; then",
+				"  yoqa action tap --label 'Allow'",
+				"  if yoqa assert not-visible --text 'Loading' --timeout 5; then",
+				"    sleep 0.5",
+				"  else",
+				"    yoqa action tap --label 'Retry'",
+				"  fi",
+				"fi",
+				"yoqa action tap --label 'Home'",
+			].join("\n"),
+		);
+	});
+
 	test("emits swipe coordinates", () => {
 		const out = formatCaseScriptShell({
 			version: 1,
