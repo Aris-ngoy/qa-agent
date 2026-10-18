@@ -1,6 +1,8 @@
 import { openExternalUrl } from "@/app/desktop-rpc";
 import { AddApplicationModal } from "@/features/apps/components/add-application-modal";
+import { AppAvatar, AppPlatformIcons } from "@/features/apps/components/app-badge";
 import { useApps } from "@/features/apps/hooks/use-apps";
+import { appAvatarColors, appPlatforms } from "@/features/apps/utils/app-badge";
 import { useActiveRun } from "@/features/runs/hooks/use-active-run";
 import { SidebarToggle } from "@/features/settings/components/sidebar-toggle";
 import { useSidebarCollapsed } from "@/features/settings/hooks/use-sidebar-collapsed";
@@ -77,18 +79,6 @@ type NavItem = {
 
 const ADD_APP_KEY = "add-application";
 
-/** Two letters for the collapsed workspace tile: first and last word, or the first two characters. */
-function appInitials(name: string): string {
-	const words = name
-		.trim()
-		.split(/\s+/)
-		.filter((word) => word.length > 0 && word.toLowerCase() !== "and");
-	const first = words[0];
-	const last = words.length > 1 ? words[words.length - 1] : undefined;
-	if (first && last) return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
-	return (first?.slice(0, 2) ?? "Y").toUpperCase();
-}
-
 type SideMenuProps = {
 	activePath?: string;
 };
@@ -111,6 +101,7 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 	const modalOpen = useValue(modalOpen$);
 	const workspaceOpen = useValue(workspaceOpen$);
 	const appLabel = selectedApp?.name ?? "Yoqa";
+	const avatarColors = useMemo(() => appAvatarColors(apps), [apps]);
 
 	const navItems = useMemo((): NavItem[] => {
 		return [
@@ -210,13 +201,12 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 						variant="ghost"
 					>
 						{collapsed ? (
-							<span
-								aria-hidden="true"
-								className="flex size-7 items-center justify-center rounded-[var(--radius)] bg-warning text-[11px] font-semibold text-on-warning-container"
+							<AppAvatar
+								colorClass={selectedApp ? avatarColors.get(selectedApp.id) : undefined}
+								name={appLabel}
+								size="md"
 								title={appLabel}
-							>
-								{appInitials(appLabel)}
-							</span>
+							/>
 						) : (
 							<>
 								<span className="flex min-w-0 flex-1 flex-col">
@@ -244,13 +234,9 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 							{apps.length > 0 ? (
 								apps.map((app) => (
 									<Dropdown.Item id={app.id} key={app.id} textValue={app.name}>
-										<span
-											aria-hidden="true"
-											className="flex size-6 shrink-0 items-center justify-center rounded-[var(--radius)] bg-warning text-[10px] font-semibold text-on-warning-container"
-										>
-											{appInitials(app.name)}
-										</span>
-										<Label>{app.name}</Label>
+										<AppAvatar colorClass={avatarColors.get(app.id)} name={app.name} />
+										<Label className="min-w-0 truncate">{app.name}</Label>
+										<AppPlatformIcons platforms={appPlatforms(app)} />
 									</Dropdown.Item>
 								))
 							) : (
