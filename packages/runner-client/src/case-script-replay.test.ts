@@ -3,9 +3,17 @@ import {
 	type CaseScriptReplayClient,
 	type CaseScriptReplayEvent,
 	caseScriptActionCommand,
+	formatCaseScriptReplayStep,
+	formatCaseScriptStepPath,
 	runCaseScript,
 } from "./case-script-replay";
-import type { ActionRequest, CaseScript, CaseScriptAction, ScreenElement } from "./schemas";
+import type {
+	ActionRequest,
+	CaseScript,
+	CaseScriptAction,
+	CaseScriptBranch,
+	ScreenElement,
+} from "./schemas";
 
 function element(label: string): ScreenElement {
 	return { label, type: "Button", x: 0, y: 0, width: 10, height: 10 } as ScreenElement;
@@ -132,6 +140,7 @@ describe("runCaseScript", () => {
 			completed: 0,
 			total: 1,
 			failedIndex: 0,
+			failedPath: { index: 0, nested: [] },
 			error: "Unexpected text still visible after 1s: Error",
 		});
 	});
@@ -186,6 +195,7 @@ describe("runCaseScript", () => {
 			completed: 1,
 			total: 4,
 			failedIndex: 1,
+			failedPath: { index: 1, nested: [] },
 			error: "swipe failed",
 		});
 		expect(steps.events).toEqual([
@@ -216,7 +226,14 @@ describe("runCaseScript", () => {
 				},
 			},
 		);
-		expect(result).toEqual({ ok: false, completed: 1, total: 3, failedIndex: 1, error: "Aborted" });
+		expect(result).toEqual({
+			ok: false,
+			completed: 1,
+			total: 3,
+			failedIndex: 1,
+			failedPath: { index: 1, nested: [] },
+			error: "Aborted",
+		});
 		expect(steps.events.slice(2)).toEqual([
 			{ index: 1, status: "skipped" },
 			{ index: 2, status: "skipped" },
@@ -226,31 +243,256 @@ describe("runCaseScript", () => {
 });
 
 describe("a Branch in client-side replay", () => {
-	test("fails without touching the device, and skips what is left", async () => {
+	const allow = (extra: Partial<CaseScriptBranch> = {}): CaseScriptBranch => ({
+		type: "branch",
+		text: "Allow",
+		assertion: "visible",
+		then: [{ type: "tap", label: "Allow" }],
+		...extra,
+	});
+
+	/** Each event as `status position/total path label`, e.g. `ok 2/4 1.then.0 Allow`. */
+	function trace() {
+		const lines: string[] = [];
+		return {
+			lines,
+			onStep: (event: CaseScriptReplayEvent) => {
+				const path = [
+					event.path.index,
+					...event.path.nested.flatMap((step) => [step.side, step.index]),
+				].join(".");
+				const what =
+					event.action.type === "branch"
+						? `if ${event.action.text}${event.outcome ? ` → ${event.outcome}` : ""}`
+						: event.action.type === "tap"
+							? event.action.label
+							: event.action.type;
+				expect(event.index).toBe(event.path.index);
+				lines.push(`${event.status} ${event.position + 1}/${event.total} ${path} ${what}`);
+			},
+		};
+	}
+
+	test("runs `then` in place when the text is on the Screen", async () => {
 		const device = fakeDevice({ screens: [["Allow"]] });
-		const steps = collect();
+		const steps = trace();
+		const result = await runCaseScript(
+			device.client,
+			script({ type: "tap", label: "A" }, allow(), { type: "tap", label: "B" }),
+			{ sleep: device.sleep, now: device.now, onStep: steps.onStep },
+		);
+		expect(result).toEqual({ ok: true, completed: 4, total: 4 });
+		expect(device.requests.map((r) => r.label)).toEqual(["A", "Allow", "B"]);
+		expect(steps.lines).toEqual([
+			"running 1/3 0 A",
+			"ok 1/3 0 A",
+			"running 2/3 1 if Allow",
+			"ok 2/4 1 if Allow → then",
+			"running 3/4 1.then.0 Allow",
+			"ok 3/4 1.then.0 Allow",
+			"running 4/4 2 B",
+			"ok 4/4 2 B",
+		]);
+	});
+
+	test("runs `else` once the default 2s pass without the text, never reporting `then`", async () => {
+		const device = fakeDevice({ screens: [["Home"]] });
+		const steps = trace();
+		const result = await runCaseScript(
+			device.client,
+			script(allow({ else: [{ type: "tap", label: "Later" }] })),
+			{ sleep: device.sleep, now: device.now, assertPollMs: 500, onStep: steps.onStep },
+		);
+		expect(result).toEqual({ ok: true, completed: 2, total: 2 });
+		expect(device.now()).toBe(2_000);
+		expect(device.requests.map((r) => r.label)).toEqual(["Later"]);
+		expect(steps.lines).toEqual([
+			"running 1/1 0 if Allow",
+			"ok 1/2 0 if Allow → else",
+			"running 2/2 0.else.0 Later",
+			"ok 2/2 0.else.0 Later",
+		]);
+	});
+
+	test("waits for text that shows up a moment late, then takes `then`", async () => {
+		const device = fakeDevice({ screens: [[], [], ["Allow"]] });
+		const result = await runCaseScript(device.client, script(allow()), {
+			sleep: device.sleep,
+			now: device.now,
+			assertPollMs: 100,
+		});
+		expect(result.ok).toBe(true);
+		expect(device.screenReads()).toBe(3);
+		expect(device.requests.map((r) => r.label)).toEqual(["Allow"]);
+	});
+
+	test("goes on to the next step when the text is missing and there is no `else`", async () => {
+		const device = fakeDevice({ screens: [[]] });
+		const result = await runCaseScript(
+			device.client,
+			script(allow({ timeoutMs: 0 }), { type: "tap", label: "B" }),
+			{ sleep: device.sleep, now: device.now },
+		);
+		expect(result).toEqual({ ok: true, completed: 2, total: 2 });
+		expect(device.requests.map((r) => r.label)).toEqual(["B"]);
+	});
+
+	test("takes `then` for not-visible text that is gone", async () => {
+		const device = fakeDevice({ screens: [["Home"]] });
+		await runCaseScript(
+			device.client,
+			script(allow({ text: "Loading", assertion: "not-visible" })),
+			{
+				sleep: device.sleep,
+				now: device.now,
+			},
+		);
+		expect(device.requests.map((r) => r.label)).toEqual(["Allow"]);
+	});
+
+	test("waits the default Branch timeout option when the Branch has no timeoutMs", async () => {
+		const device = fakeDevice({ screens: [[]] });
+		await runCaseScript(device.client, script(allow()), {
+			sleep: device.sleep,
+			now: device.now,
+			assertPollMs: 100,
+			defaultBranchTimeoutMs: 300,
+			defaultAssertTimeoutMs: 10_000,
+		});
+		expect(device.now()).toBe(300);
+	});
+
+	test("follows a Branch nested in a side, with the path down to each step", async () => {
+		const device = fakeDevice({ screens: [["Allow"]] });
+		const steps = trace();
 		const result = await runCaseScript(
 			device.client,
 			script(
-				{ type: "tap", label: "A" },
-				{
-					type: "branch",
-					text: "Allow",
-					assertion: "visible",
-					then: [{ type: "tap", label: "Allow" }],
-				},
+				allow({
+					then: [
+						{ type: "tap", label: "Allow" },
+						allow({ text: "Rate us", timeoutMs: 0, else: [{ type: "tap", label: "Done" }] }),
+					],
+				}),
+			),
+			{ sleep: device.sleep, now: device.now, onStep: steps.onStep },
+		);
+		expect(result).toEqual({ ok: true, completed: 4, total: 4 });
+		expect(device.requests.map((r) => r.label)).toEqual(["Allow", "Done"]);
+		expect(steps.lines.filter((line) => line.startsWith("ok"))).toEqual([
+			"ok 1/3 0 if Allow → then",
+			"ok 2/3 0.then.0 Allow",
+			"ok 3/4 0.then.1 if Rate us → else",
+			"ok 4/4 0.then.1.else.0 Done",
+		]);
+	});
+
+	test("a failure inside a side fails the replay and skips the rest of the side and script", async () => {
+		const device = fakeDevice({ screens: [["Allow"]], failOn: "swipe" });
+		const steps = trace();
+		const result = await runCaseScript(
+			device.client,
+			script(
+				allow({
+					then: [
+						{ type: "swipe", x: 1, y: 2, x2: 3, y2: 4 },
+						{ type: "tap", label: "Allow" },
+					],
+					else: [{ type: "tap", label: "Never" }],
+				}),
+				allow({ text: "Later" }),
 				{ type: "tap", label: "B" },
 			),
 			{ sleep: device.sleep, now: device.now, onStep: steps.onStep },
 		);
-		expect(result).toMatchObject({ ok: false, completed: 1, failedIndex: 1 });
-		expect(result.error).toContain("Branch");
-		expect(steps.events.slice(2).map((event) => event.status)).toEqual([
-			"running",
-			"error",
-			"skipped",
+		expect(result).toEqual({
+			ok: false,
+			completed: 1,
+			total: 5,
+			failedIndex: 0,
+			failedPath: { index: 0, nested: [{ side: "then", index: 0 }] },
+			error: "swipe failed",
+		});
+		expect(steps.lines.slice(2)).toEqual([
+			"running 2/5 0.then.0 swipe",
+			"error 2/5 0.then.0 swipe",
+			"skipped 3/5 0.then.1 Allow",
+			"skipped 4/5 1 if Later",
+			"skipped 5/5 2 B",
 		]);
-		expect(device.requests.map((r) => r.label)).toEqual(["A"]);
+		expect(device.requests.map((r) => r.label ?? r.kind)).toEqual(["swipe"]);
+	});
+
+	test("fails with the read error when the Screen is still unreadable at the deadline", async () => {
+		const device = fakeDevice();
+		const steps = trace();
+		const result = await runCaseScript(
+			{ ...device.client, getScreen: async () => Promise.reject(new Error("no frontmost app")) },
+			script(allow({ timeoutMs: 1_000, else: [{ type: "tap", label: "Later" }] })),
+			{ sleep: device.sleep, now: device.now, onStep: steps.onStep },
+		);
+		expect(result).toMatchObject({
+			ok: false,
+			failedPath: { index: 0, nested: [] },
+			error: "Could not read the screen within 1s: no frontmost app",
+		});
+		expect(steps.lines).toEqual(["running 1/1 0 if Allow", "error 1/1 0 if Allow"]);
+		expect(device.requests).toEqual([]);
+	});
+
+	test("an abort while the Branch checks stops the replay", async () => {
+		const device = fakeDevice({ screens: [[]] });
+		const aborter = new AbortController();
+		const result = await runCaseScript(
+			{
+				...device.client,
+				getScreen: async () => {
+					aborter.abort();
+					return device.client.getScreen();
+				},
+			},
+			script(allow({ else: [{ type: "tap", label: "Later" }] }), { type: "tap", label: "B" }),
+			{ sleep: device.sleep, now: device.now, signal: aborter.signal },
+		);
+		expect(result).toMatchObject({ ok: false, completed: 0, failedIndex: 0, error: "Aborted" });
+		expect(device.requests).toEqual([]);
+	});
+
+	test("an abort between the steps of a side skips what is left", async () => {
+		const device = fakeDevice({ screens: [["Allow"]] });
+		const aborter = new AbortController();
+		const steps = trace();
+		const result = await runCaseScript(
+			device.client,
+			script(
+				allow({
+					then: [
+						{ type: "tap", label: "Allow" },
+						{ type: "tap", label: "Next" },
+					],
+				}),
+				{ type: "tap", label: "B" },
+			),
+			{
+				sleep: device.sleep,
+				now: device.now,
+				signal: aborter.signal,
+				onStep: (event) => {
+					steps.onStep(event);
+					if (event.action.type === "tap" && event.status === "ok") aborter.abort();
+				},
+			},
+		);
+		expect(result).toEqual({
+			ok: false,
+			completed: 2,
+			total: 4,
+			failedIndex: 0,
+			failedPath: { index: 0, nested: [{ side: "then", index: 1 }] },
+			error: "Aborted",
+		});
+		expect(steps.lines.slice(-2)).toEqual(["skipped 3/4 0.then.1 Next", "skipped 4/4 1 B"]);
+		expect(device.requests.map((r) => r.label)).toEqual(["Allow"]);
 	});
 
 	test("names the check a Branch makes as its command", () => {
@@ -282,5 +524,47 @@ describe("caseScriptActionCommand", () => {
 				timeoutMs: 3000,
 			}),
 		).toBe("yoqa assert visible --text 'it'\\''s' --timeout 3");
+	});
+});
+
+describe("formatCaseScriptStepPath", () => {
+	test("names a step 1-based, the way Case Script file errors do", () => {
+		expect(formatCaseScriptStepPath({ index: 2, nested: [] })).toBe("action 3");
+		expect(
+			formatCaseScriptStepPath({
+				index: 5,
+				nested: [
+					{ side: "then", index: 1 },
+					{ side: "else", index: 0 },
+				],
+			}),
+		).toBe("action 6 → then → action 2 → else → action 1");
+	});
+});
+
+describe("formatCaseScriptReplayStep", () => {
+	test("names a Branch by its check and outcome, and indents the steps of a side", () => {
+		const branch: CaseScriptAction = {
+			type: "branch",
+			text: "Allow",
+			assertion: "visible",
+			then: [{ type: "tap", label: "Allow" }],
+		};
+		expect(formatCaseScriptReplayStep({ action: branch, path: { index: 0, nested: [] } })).toBe(
+			"if visible: Allow",
+		);
+		expect(
+			formatCaseScriptReplayStep({
+				action: branch,
+				path: { index: 0, nested: [{ side: "else", index: 0 }] },
+				outcome: "then",
+			}),
+		).toBe("  if visible: Allow → then");
+		expect(
+			formatCaseScriptReplayStep({
+				action: { type: "tap", label: "Allow" },
+				path: { index: 0, nested: [{ side: "then", index: 0 }] },
+			}),
+		).toBe("  tap: Allow");
 	});
 });

@@ -33,9 +33,10 @@ import {
 	type CaseScript,
 	buildRunReportFromInspectorSession,
 	caseScriptActionCommand,
-	formatCaseScriptFileAction,
 	formatCaseScriptFileErrors,
+	formatCaseScriptReplayStep,
 	formatCaseScriptShell,
+	formatCaseScriptStepPath,
 	looksLikeShellScript,
 	parseCaseScriptFile,
 	suggestedScriptBasename,
@@ -134,8 +135,9 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 			runInspectorCaseScript(script, {
 				signal: aborter.signal,
 				pauseAfterActionMs: 200,
-				onStep: ({ action, status, error }) => {
-					const line = formatCaseScriptFileAction(action);
+				onStep: (event) => {
+					const { status, error } = event;
+					const line = formatCaseScriptReplayStep(event);
 					if (status === "running") log(`→ ${line}`);
 					else if (status === "ok") log(`✓ ${line}`, "ok");
 					else if (status === "error") log(`✗ ${line}: ${error ?? "failed"}`, "error");
@@ -194,9 +196,11 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 			runInspectorCaseScript(parsed.script, {
 				signal: aborter.signal,
 				pauseAfterActionMs: 200,
-				onStep: async ({ index, action, status, error }) => {
+				onStep: async (event) => {
+					const { index, position, action, status, error } = event;
+					// A step inside a Branch keeps its `if:` line highlighted.
 					const lineNumber = parsed.actionLines[index] ?? null;
-					const summary = formatCaseScriptFileAction(action);
+					const summary = formatCaseScriptReplayStep(event);
 					if (status === "skipped") return;
 					script$.activeLineNumber.set(lineNumber);
 					if (status === "running") {
@@ -207,7 +211,7 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 					const bytes = await readScreenshotBytes().catch(() => null);
 					const ok = status === "ok";
 					reportSteps.push({
-						index: index + 1,
+						index: position + 1,
 						summary,
 						ok,
 						latencyMs: Math.max(0, Date.now() - stepStartedAt),
@@ -230,10 +234,14 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 			outcome.ok && result.ok === false && "failedIndex" in result && result.failedIndex != null
 				? parsed.actionLines[result.failedIndex]
 				: undefined;
+		const failedPath = outcome.ok && "failedPath" in result ? result.failedPath : undefined;
+		const failedWhere = failedPath?.nested.length
+			? `Line ${failedLine}, ${formatCaseScriptStepPath(failedPath)}`
+			: `Line ${failedLine}`;
 		const resultError =
 			result.ok || result.error === "Aborted" || failedLine == null
 				? result.error
-				: `Line ${failedLine}: ${result.error}`;
+				: `${failedWhere}: ${result.error}`;
 		script$.report.set(
 			buildRunReportFromInspectorSession({
 				title: defaultCaseNameFromScript(text),

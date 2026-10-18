@@ -1,3 +1,4 @@
+import { formatCaseScriptFileAction } from "./case-script-file";
 import {
 	type ActionRequest,
 	type ActionResponse,
@@ -17,15 +18,30 @@ export type CaseScriptReplayClient = {
 
 export type CaseScriptReplayStatus = "running" | "ok" | "error" | "skipped";
 
+/** The side of a Branch that ran: `then` when its check was met, `else` when not. */
+export type CaseScriptBranchOutcome = "then" | "else";
+
+/** One step into a Branch: its side and the 0-based position of a step there. */
+export type CaseScriptStepNesting = { side: CaseScriptBranchOutcome; index: number };
+
+/** Where a step sits: its 0-based top-level position and, inside Branches, the path down to it. */
+export type CaseScriptStepPath = { index: number; nested: CaseScriptStepNesting[] };
+
 export type CaseScriptReplayEvent = {
-	/** 0-based position in `script.actions`. */
+	/** 0-based position in `script.actions` (of the enclosing top-level step, inside a Branch). */
 	index: number;
+	path: CaseScriptStepPath;
+	/** 0-based position of this step in the replay, out of `total`. */
+	position: number;
+	/** Steps run so far plus those still to come; grows when a Branch picks its side. */
 	total: number;
 	action: CaseScriptAction;
 	status: CaseScriptReplayStatus;
 	error?: string;
 	/** The runner's answer for a device Action that finished ok. */
 	response?: ActionResponse;
+	/** The side a Branch that finished ok runs next. */
+	outcome?: CaseScriptBranchOutcome;
 };
 
 export type RunCaseScriptOptions = {
@@ -35,7 +51,9 @@ export type RunCaseScriptOptions = {
 	pauseAfterActionMs?: number;
 	/** How long an `assert` waits when the action has no `timeoutMs`. Default 5000. */
 	defaultAssertTimeoutMs?: number;
-	/** Delay between `assert` screen reads. Default 400. */
+	/** How long a Branch waits when it has no `timeoutMs`. Default 2000. */
+	defaultBranchTimeoutMs?: number;
+	/** Delay between `assert` and Branch screen reads. Default 400. */
 	assertPollMs?: number;
 	/** Injected for tests; defaults to real time. */
 	sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
@@ -44,11 +62,14 @@ export type RunCaseScriptOptions = {
 
 export type RunCaseScriptResult = {
 	ok: boolean;
-	/** Actions that finished ok. */
+	/** Steps (Actions and Branches) that finished ok. */
 	completed: number;
+	/** Steps run plus those left; the side a Branch did not take is not counted. */
 	total: number;
-	/** 0-based index of the action that failed, or where an abort stopped the replay. */
+	/** 0-based top-level index of the step that failed, or where an abort stopped the replay. */
 	failedIndex?: number;
+	/** The full path of that step, inside Branches. */
+	failedPath?: CaseScriptStepPath;
 	error?: string;
 };
 
@@ -149,9 +170,33 @@ export function caseScriptActionCommand(action: CaseScriptAction): string {
 	return request ? formatActionShellLine(request) : action.type;
 }
 
+/** `action 2 → then → action 1`: a step's 1-based position, as Case Script file errors name it. */
+export function formatCaseScriptStepPath(path: CaseScriptStepPath): string {
+	return [
+		`action ${path.index + 1}`,
+		...path.nested.map((step) => `${step.side} → action ${step.index + 1}`),
+	].join(" → ");
+}
+
 /**
- * Replay a Case Script on the Active Session, action by action, without any decide.
- * Stops at the first failing action and reports every later action as skipped.
+ * One replay step for a log line: the Case Script file form of an Action, or `if visible: Allow`
+ * (plus `→ then` once decided) for a Branch, indented two spaces per Branch it sits in.
+ */
+export function formatCaseScriptReplayStep(
+	event: Pick<CaseScriptReplayEvent, "action" | "path" | "outcome">,
+): string {
+	const { action } = event;
+	const line =
+		action.type === "branch"
+			? `if ${action.assertion}: ${action.text}${event.outcome ? ` → ${event.outcome}` : ""}`
+			: formatCaseScriptFileAction(action);
+	return `${"  ".repeat(event.path.nested.length)}${line}`;
+}
+
+/**
+ * Replay a Case Script on the Active Session, step by step, without any decide.
+ * A Branch checks the Screen and replays its chosen side in place; the other side is never
+ * reported. Stops at the first failing step and reports every later step as skipped.
  */
 export async function runCaseScript(
 	client: CaseScriptReplayClient,
@@ -161,20 +206,15 @@ export async function runCaseScript(
 	const sleep = options.sleep ?? realSleep;
 	const now = options.now ?? Date.now;
 	const pollMs = options.assertPollMs ?? SCREEN_CHECK_POLL_MS;
-	const { actions } = script;
-	const total = actions.length;
+	let total = script.actions.length;
+	let completed = 0;
+	let position = 0;
 
-	const skipFrom = async (from: number) => {
-		for (let index = from; index < total; index++) {
-			const action = actions[index];
-			if (action) await options.onStep?.({ index, total, action, status: "skipped" });
-		}
-	};
-
-	const assertText = async (action: Extract<CaseScriptAction, { type: "assert" }>) => {
-		const timeoutMs =
-			action.timeoutMs ?? options.defaultAssertTimeoutMs ?? DEFAULT_ASSERT_TIMEOUT_MS;
-		const { met } = await checkScreen({
+	const check = async (
+		action: { text: string; assertion: "visible" | "not-visible" },
+		timeoutMs: number,
+	) =>
+		checkScreen({
 			readScreen: () => client.getScreen(),
 			text: action.text,
 			assertion: action.assertion,
@@ -184,47 +224,105 @@ export async function runCaseScript(
 			now,
 			isAborted: () => options.signal?.aborted ?? false,
 		});
+
+	const assertText = async (action: Extract<CaseScriptAction, { type: "assert" }>) => {
+		const timeoutMs =
+			action.timeoutMs ?? options.defaultAssertTimeoutMs ?? DEFAULT_ASSERT_TIMEOUT_MS;
+		const { met } = await check(action, timeoutMs);
 		if (!met) throw new Error(screenCheckMissMessage({ ...action, timeoutMs }));
 	};
 
-	for (let index = 0; index < total; index++) {
-		const action = actions[index];
-		if (!action) continue;
-		if (options.signal?.aborted) {
-			await skipFrom(index);
-			return { ok: false, completed: index, total, failedIndex: index, error: "Aborted" };
-		}
-		await options.onStep?.({ index, total, action, status: "running" });
-		try {
-			let response: ActionResponse | undefined;
-			if (action.type === "wait") {
-				await sleep(action.ms, options.signal);
-			} else if (action.type === "assert") {
-				await assertText(action);
-			} else if (action.type === "branch") {
-				// Only the Case executor follows Branches for now.
-				throw new Error("This replay can't follow a Branch yet; run the Test Case in a Run");
-			} else {
-				const request = caseScriptActionRequest(action);
-				if (request) response = await client.performAction(request);
-				if (options.pauseAfterActionMs) await sleep(options.pauseAfterActionMs, options.signal);
-			}
-			await options.onStep?.({
-				index,
-				total,
-				action,
-				status: "ok",
-				...(response ? { response } : {}),
-			});
-		} catch (error) {
-			const aborted =
-				options.signal?.aborted || (error instanceof Error && error.name === "AbortError");
-			const message = aborted ? "Aborted" : error instanceof Error ? error.message : String(error);
-			await options.onStep?.({ index, total, action, status: "error", error: message });
-			await skipFrom(index + 1);
-			return { ok: false, completed: index, total, failedIndex: index, error: message };
-		}
-	}
+	type At = (index: number) => CaseScriptStepPath;
+	type Failure = { path: CaseScriptStepPath; error: string };
 
-	return { ok: true, completed: total, total };
+	const emit = (
+		path: CaseScriptStepPath,
+		at: number,
+		action: CaseScriptAction,
+		status: CaseScriptReplayStatus,
+		extra: Pick<CaseScriptReplayEvent, "error" | "response" | "outcome"> = {},
+	) => options.onStep?.({ index: path.index, path, position: at, total, action, status, ...extra });
+
+	const skipFrom = async (actions: CaseScriptAction[], from: number, at: At) => {
+		for (let index = from; index < actions.length; index++) {
+			const action = actions[index];
+			if (action) await emit(at(index), position++, action, "skipped");
+		}
+	};
+
+	/** Replay one list of steps; on a failure, skips the rest of it and returns where it failed. */
+	const replay = async (actions: CaseScriptAction[], at: At): Promise<Failure | null> => {
+		for (let index = 0; index < actions.length; index++) {
+			const action = actions[index];
+			if (!action) continue;
+			const path = at(index);
+			if (options.signal?.aborted) {
+				await skipFrom(actions, index, at);
+				return { path, error: "Aborted" };
+			}
+			const step = position++;
+			await emit(path, step, action, "running");
+			let side: { outcome: CaseScriptBranchOutcome; actions: CaseScriptAction[] } | null = null;
+			try {
+				let response: ActionResponse | undefined;
+				if (action.type === "wait") {
+					await sleep(action.ms, options.signal);
+				} else if (action.type === "assert") {
+					await assertText(action);
+				} else if (action.type === "branch") {
+					const timeoutMs =
+						action.timeoutMs ?? options.defaultBranchTimeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS;
+					const { met } = await check(action, timeoutMs);
+					const outcome = met ? "then" : "else";
+					side = { outcome, actions: (met ? action.then : action.else) ?? [] };
+					total += side.actions.length;
+				} else {
+					const request = caseScriptActionRequest(action);
+					if (request) response = await client.performAction(request);
+					if (options.pauseAfterActionMs) await sleep(options.pauseAfterActionMs, options.signal);
+				}
+				completed += 1;
+				await emit(path, step, action, "ok", {
+					...(response ? { response } : {}),
+					...(side ? { outcome: side.outcome } : {}),
+				});
+			} catch (error) {
+				const aborted =
+					options.signal?.aborted || (error instanceof Error && error.name === "AbortError");
+				const message = aborted
+					? "Aborted"
+					: error instanceof Error
+						? error.message
+						: String(error);
+				await emit(path, step, action, "error", { error: message });
+				await skipFrom(actions, index + 1, at);
+				return { path, error: message };
+			}
+			if (side) {
+				const outcome = side.outcome;
+				const failure = await replay(side.actions, (inner) => ({
+					index: path.index,
+					nested: [...path.nested, { side: outcome, index: inner }],
+				}));
+				if (failure) {
+					await skipFrom(actions, index + 1, at);
+					return failure;
+				}
+			}
+		}
+		return null;
+	};
+
+	const failure = await replay(script.actions, (index) => ({ index, nested: [] }));
+	if (failure) {
+		return {
+			ok: false,
+			completed,
+			total,
+			failedIndex: failure.path.index,
+			failedPath: failure.path,
+			error: failure.error,
+		};
+	}
+	return { ok: true, completed, total };
 }
