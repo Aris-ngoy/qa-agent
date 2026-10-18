@@ -1,0 +1,13 @@
+version: 1
+name: Create and rename a test case
+actions:
+  - open-url: { url: "http://localhost:5191/", reason: Start on the webview's home }
+  - tap: { label: New test case, reason: Create a test case }
+  - tap: { label: Test case name *, reason: Focus the name field }
+  # The field starts as "New test case": select it all so typing replaces it.
+  - key: { key: End, reason: Move to the end of the name }
+  - key: { key: Home, modifiers: [Shift], reason: Select the whole name }
+  - type: { text: Login works, reason: Name the test case }
+  - tap: { label: Save, reason: Save the test case }
+  - tap: { label: Test Cases, reason: Back to the list }
+  - assert: { text: Login works, timeoutMs: 10000, reason: The new test case is listed }

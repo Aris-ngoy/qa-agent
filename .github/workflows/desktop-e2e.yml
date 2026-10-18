@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - packages/cli/**
       - apps/desktop/**
       - packages/runner-client/**
       - packages/ui/**
@@ -12,6 +13,7 @@ on:
       - .github/workflows/desktop-e2e.yml
   pull_request:
     paths:
+      - packages/cli/**
       - apps/desktop/**
       - packages/runner-client/**
       - packages/ui/**
@@ -68,3 +70,84 @@ jobs:
             apps/desktop/playwright-report
             apps/desktop/test-results
           retention-days: 7
+
+  yoqa:
+    # Yoqa tests its own desktop webview: the same stubbed host and seeded runner as the
+    # Playwright job, driven by the yoqa CLI on the web Direct lane (CaseScripts in
+    # apps/desktop/e2e/yoqa). Ubuntu runners ship Google Chrome; the lane attaches by port.
+    name: Desktop webview (Yoqa)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      YOQA_REPO_ROOT: ${{ github.workspace }}
+      YOQA_SMOKE_SHOTS: ${{ github.workspace }}/artifacts/screenshots
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.2.23
+
+      # The yoqa CLI and Vite run on Node.
+      - name: Setup Node
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build runner and CLI
+        run: |
+          bun run --filter @yoqa/runner build
+          bun run --filter @yoqa/cli build
+
+      - name: Put workspace yoqa on PATH
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          printf '%s\n' '#!/usr/bin/env bash' "exec node \"${GITHUB_WORKSPACE}/packages/cli/dist/main.js\" \"\$@\"" > "$HOME/.local/bin/yoqa"
+          chmod +x "$HOME/.local/bin/yoqa"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # The runner that drives the browser, apart from the seeded one the webview talks to.
+      # Started here so its log lands in the failure artifacts.
+      - name: Start Yoqa runner
+        run: |
+          mkdir -p artifacts
+          nohup yoqa serve >artifacts/runner.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:7420/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat artifacts/runner.log
+          exit 1
+
+      - name: Serve the webview and run the CaseScripts
+        id: smoke
+        run: bash apps/desktop/e2e/yoqa/ci-yoqa.sh
+
+      - name: Upload HTML report
+        if: always() && steps.smoke.outputs.run_id != ''
+        uses: ./.github/actions/yoqa-report
+        with:
+          run-id: ${{ steps.smoke.outputs.run_id }}
+          artifact-name: yoqa-desktop-webview-report
+          fail-on-error: "false"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: yoqa-desktop-webview-screenshots
+          path: artifacts/screenshots
+          if-no-files-found: ignore
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: yoqa-desktop-webview-failure
+          path: artifacts
+          if-no-files-found: ignore
