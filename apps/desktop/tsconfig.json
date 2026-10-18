@@ -5,6 +5,13 @@
 			"@/*": ["./src/mainview/*"]
 		}
 	},
-	"include": ["src/mainview", "src/shared", "vite.config.ts"],
+	"include": [
+		"src/mainview",
+		"src/shared",
+		"e2e",
+		"vite.config.ts",
+		"vite.e2e.config.ts",
+		"playwright.config.ts"
+	],
 	"exclude": ["src/bun", "dist", "node_modules"]
 }

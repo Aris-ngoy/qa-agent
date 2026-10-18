@@ -51,3 +51,6 @@ apps/video/.capture-scratch/
 .agents/
 .claude/
 .grok/
+# Playwright
+apps/desktop/test-results/
+apps/desktop/playwright-report/
