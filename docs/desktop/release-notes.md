@@ -6,7 +6,7 @@ Every macOS GitHub Release should ship **install/verify copy** plus a **changelo
 
 ## Plan summary
 
-- Keep a short fixed `body` in [`.github/workflows/release-macos.yml`](../../.github/workflows/release-macos.yml) (Gatekeeper `xattr`, arm64, CLI install).
+- Keep a short fixed `body` in [`.github/workflows/release-desktop.yml`](../../.github/workflows/release-desktop.yml) (Gatekeeper `xattr`, arm64, CLI install).
 - Set `generate_release_notes: true` on `softprops/action-gh-release` so GitHub prepends that body to the auto-generated PR list for the tag range.
 - Rejected: hand-writing a full “What's new” in the workflow (stale by the next tag); omitting install copy (users still need Gatekeeper steps).
 

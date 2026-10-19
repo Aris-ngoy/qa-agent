@@ -12,6 +12,7 @@ import type {
 } from "../../../shared/cli-environment";
 import { CLI_CODE_IDENTIFIER, ensureAdhocCodeSignature } from "../macos-adhoc-sign";
 import {
+	executableFileName,
 	findFirstExisting,
 	packagedRunnerFileCandidates,
 	packagedSkillFileCandidates,
@@ -150,7 +151,9 @@ async function resolveCliEntrypoint(): Promise<CliEntrypoint | null> {
 		}
 	}
 
-	const packaged = await findFirstExisting(packagedRunnerFileCandidates("yoqa"));
+	const packaged = await findFirstExisting(
+		packagedRunnerFileCandidates(executableFileName("yoqa")),
+	);
 	if (packaged) {
 		return { kind: "binary", path: packaged };
 	}

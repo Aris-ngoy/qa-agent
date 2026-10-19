@@ -48,5 +48,5 @@ Wire them only into the publish job that already has `environment: release` and 
 
 ## Follow-ups
 
-- Implement notarize steps in `.github/workflows/release-macos.yml` once certs exist
+- Implement notarize steps in `.github/workflows/release-desktop.yml` once certs exist
 - Consider `prevent_self_review: true` when a second maintainer can approve releases

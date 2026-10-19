@@ -1,5 +1,10 @@
 import { dirname, join } from "node:path";
 
+/** Bun `--compile` output name: Windows binaries carry `.exe`, Mach-O/ELF do not. */
+export function executableFileName(base: string, platform = process.platform): string {
+	return platform === "win32" ? `${base}.exe` : base;
+}
+
 export async function pathExists(path: string): Promise<boolean> {
 	try {
 		return await Bun.file(path).exists();

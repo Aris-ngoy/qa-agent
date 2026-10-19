@@ -1,10 +1,11 @@
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import packageJson from "../../../../package.json" with { type: "json" };
 import { androidToolchainProcessEnv } from "../android-toolchain";
 import { RUNNER_CODE_IDENTIFIER, ensureAdhocCodeSignature } from "../macos-adhoc-sign";
 import {
 	execRoots,
+	executableFileName,
 	findFirstExisting,
 	packagedRunnerFileCandidates,
 	pathExists,
@@ -54,9 +55,9 @@ function pathWithHostTools(): string {
 		join(home, ".grok", "bin"),
 		join(home, ".antigravity", "antigravity", "bin"),
 	];
-	const existing = (process.env.PATH ?? "").split(":").filter(Boolean);
+	const existing = (process.env.PATH ?? "").split(delimiter).filter(Boolean);
 	const prepend = extras.filter((dir) => !existing.includes(dir));
-	return [...prepend, ...existing].join(":");
+	return [...prepend, ...existing].join(delimiter);
 }
 
 function getBaseUrl(): string {
@@ -124,7 +125,7 @@ export function shouldReuseExistingRunner(options: {
 
 /** Candidate locations for the compiled runner inside a packaged Electrobun .app. */
 export function packagedRunnerCandidates(roots: string[] = execRoots()): string[] {
-	return packagedRunnerFileCandidates("yoqa-runner", roots);
+	return packagedRunnerFileCandidates(executableFileName("yoqa-runner"), roots);
 }
 
 async function findPackagedRunner(): Promise<string | null> {
