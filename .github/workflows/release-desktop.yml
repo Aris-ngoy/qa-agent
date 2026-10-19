@@ -1,0 +1,180 @@
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - "v*"
+  # Build-only runs: packaging changes in a PR, or a manual dry run before tagging.
+  # Publishing needs a v* tag.
+  pull_request:
+    paths:
+      - ".github/workflows/release-desktop.yml"
+      - "apps/desktop/electrobun.config.ts"
+      - "apps/desktop/scripts/build-runner-sidecar.ts"
+  workflow_dispatch:
+
+# Least privilege: read by default; write only on the publish job.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    name: Authorize release
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Restrict to repository owner
+        # PR runs only build (no secrets, no publish), so any author may run them.
+        if: github.event_name != 'pull_request'
+        run: |
+          if [ "${GITHUB_ACTOR}" != "${GITHUB_REPOSITORY_OWNER}" ]; then
+            echo "::error::Only @${GITHUB_REPOSITORY_OWNER} can run the release job (actor was @${GITHUB_ACTOR})."
+            exit 1
+          fi
+          echo "Release allowed for owner @${GITHUB_REPOSITORY_OWNER}."
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+
+  build-macos:
+    name: Build macOS DMG
+    needs: authorize
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.2.23
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build stable desktop release
+        run: bun run --filter @yoqa/desktop build:release
+
+      - name: List artifacts
+        run: |
+          ls -la apps/desktop/artifacts || true
+          ls -la apps/desktop/build/stable-macos-arm64 || true
+
+      - name: Upload build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-macos-arm64
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            apps/desktop/artifacts/stable-macos-arm64-yoqa.dmg
+            apps/desktop/artifacts/stable-macos-arm64-yoqa.app.tar.zst
+            apps/desktop/artifacts/stable-macos-arm64-update.json
+
+  build-windows:
+    name: Build Windows installer
+    needs: authorize
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.2.23
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build stable desktop release
+        run: bun run --filter @yoqa/desktop build:release
+
+      - name: List artifacts
+        shell: bash
+        run: |
+          ls -la apps/desktop/artifacts || true
+          ls -la apps/desktop/build/stable-win-x64 || true
+
+      - name: Upload build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-win-x64
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            apps/desktop/artifacts/stable-win-x64-yoqa-Setup.zip
+            apps/desktop/artifacts/stable-win-x64-yoqa.tar.zst
+            apps/desktop/artifacts/stable-win-x64-update.json
+
+  publish:
+    name: Publish GitHub Release
+    needs: [build-macos, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download builds
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: desktop-*
+          path: dist
+          merge-multiple: true
+
+      - name: List release files
+        run: ls -la dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Yoqa ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
+          # Prepended to GitHub's auto-generated PR/commit changelog for this tag.
+          generate_release_notes: true
+          files: |
+            dist/stable-macos-arm64-yoqa.dmg
+            dist/stable-macos-arm64-yoqa.app.tar.zst
+            dist/stable-macos-arm64-update.json
+            dist/stable-win-x64-yoqa-Setup.zip
+            dist/stable-win-x64-yoqa.tar.zst
+            dist/stable-win-x64-update.json
+          body: |
+            ## Yoqa Desktop ${{ github.ref_name }}
+
+            Local-first agentic mobile QA.
+
+            ### macOS (Apple Silicon)
+            1. Download `stable-macos-arm64-yoqa.dmg`
+            2. Open the DMG and drag **yoqa** to Applications
+            3. Clear Gatekeeper quarantine (unsigned build — macOS may say the app is “damaged”):
+               ```bash
+               xattr -cr /Applications/yoqa.app
+               open /Applications/yoqa.app
+               ```
+
+            ### Windows (x64, experimental)
+            1. Download `stable-win-x64-yoqa-Setup.zip` and extract it
+            2. Run `yoqa-Setup.exe` (unsigned build — SmartScreen may warn: **More info → Run anyway**)
+            3. Early preview: iOS needs Xcode and stays macOS-only, and the Settings → CLI & Agents installer is macOS-only for now.
+
+            ### Notes
+            - macOS is **Apple Silicon only** (`arm64`); Windows is **x64 only**
+            - Bundled local runner starts with the app (no monorepo checkout required)
+            - Xcode / adb stay on the host
+            - Settings → CLI & Agents installs the bundled `yoqa` CLI and skill on macOS (no monorepo checkout)
+
+            ### Verify
+            After launch, the runner should answer `http://127.0.0.1:7420/health`.
+            On macOS, Settings → CLI & Agents → Reinstall CLI / skill should succeed; then `yoqa health`.

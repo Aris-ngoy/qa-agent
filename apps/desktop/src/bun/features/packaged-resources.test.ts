@@ -1,5 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { packagedRunnerFileCandidates, packagedSkillFileCandidates } from "./packaged-resources";
+import {
+	executableFileName,
+	packagedRunnerFileCandidates,
+	packagedSkillFileCandidates,
+} from "./packaged-resources";
+
+describe("executableFileName", () => {
+	test("adds .exe only on Windows", () => {
+		expect(executableFileName("yoqa-runner", "win32")).toBe("yoqa-runner.exe");
+		expect(executableFileName("yoqa", "darwin")).toBe("yoqa");
+		expect(executableFileName("yoqa", "linux")).toBe("yoqa");
+	});
+});
 
 describe("packagedRunnerFileCandidates", () => {
 	test("includes MacOS and Resources layouts for CLI and runner binaries", () => {

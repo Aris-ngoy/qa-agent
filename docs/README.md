@@ -49,6 +49,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [providers/groq-action-family-parity.md](./providers/groq-action-family-parity.md) | Groq decide compatibility + Action-family parity at the vision seam |
 | [providers/prompt-cache.md](./providers/prompt-cache.md) | Prompt cache-friendly Decide/verify order, Anthropic breakpoints, per-step Call usage |
 | [cli/npm-publish.md](./cli/npm-publish.md) | Public `@yoqa/cli` npm package + release workflow |
+| [desktop/windows-release.md](./desktop/windows-release.md) | Experimental Windows x64 installer built next to the macOS DMG in one Release Desktop workflow |
 | [desktop/release-notes.md](./desktop/release-notes.md) | GitHub Release body: install boilerplate + auto-generated PR changelog |
 | [cli/github-actions.md](./cli/github-actions.md) | `yoqa report` + composite actions for GitHub Actions HTML reports |
 | [cli/github-actions-expo.md](./cli/github-actions-expo.md) | Expo demo app + GitHub Actions device smoke for `@yoqa/cli` |

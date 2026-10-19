@@ -10,6 +10,9 @@
  *
  * After compile, macOS binaries are adhoc-signed — Bun's bytecode append invalidates the
  * linker signature and Apple Silicon AMFI SIGKILLs the unsigned result (exit 137).
+ *
+ * On Windows the binaries are named `*.exe` (see `executableFileName`), and archives use
+ * the system bsdtar: Git's GNU tar can sit first on PATH and reads `C:\…` as a remote host.
  */
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -18,19 +21,24 @@ import {
 	RUNNER_CODE_IDENTIFIER,
 	ensureAdhocCodeSignature,
 } from "../src/bun/features/macos-adhoc-sign";
+import { executableFileName } from "../src/bun/features/packaged-resources";
 
 const desktopRoot = resolve(import.meta.dir, "..");
 const repoRoot = resolve(desktopRoot, "../..");
 const outDir = join(desktopRoot, "resources/runner");
 const skillsOutDir = join(desktopRoot, "resources/skills");
-const runnerOutfile = join(outDir, "yoqa-runner");
-const cliOutfile = join(outDir, "yoqa");
+const runnerOutfile = join(outDir, executableFileName("yoqa-runner"));
+const cliOutfile = join(outDir, executableFileName("yoqa"));
 const skillSourceDir = join(repoRoot, "packages/skill/yoqa-testing");
 const skillArchive = join(skillsOutDir, "yoqa-testing.tar.gz");
 const yoqaRunnerSourceDir = join(repoRoot, "native/yoqa-runner");
 const yoqaRunnerArchive = join(outDir, "yoqa-runner-src.tar.gz");
 /** What `xcodebuild build-for-testing` needs; SwiftPM tests and state stay behind. */
 const yoqaRunnerEntries = ["YoqaRunner", "YoqaRunnerUITests", "Sources", "YoqaRunner.xcodeproj"];
+const tarBin =
+	process.platform === "win32"
+		? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+		: "tar";
 
 async function compileBinary(
 	entry: string,
@@ -81,7 +89,7 @@ if (!(await Bun.file(join(skillSourceDir, "SKILL.md")).exists())) {
 await rm(skillArchive, { force: true });
 console.log(`[yoqa desktop] packing skill → ${skillArchive}`);
 const tar = Bun.spawn(
-	["tar", "-czf", skillArchive, "-C", dirname(skillSourceDir), "yoqa-testing"],
+	[tarBin, "-czf", skillArchive, "-C", dirname(skillSourceDir), "yoqa-testing"],
 	{
 		cwd: repoRoot,
 		stdout: "inherit",
@@ -101,7 +109,7 @@ await rm(yoqaRunnerArchive, { force: true });
 console.log(`[yoqa desktop] packing YoqaRunner source → ${yoqaRunnerArchive}`);
 const runnerTar = Bun.spawn(
 	[
-		"tar",
+		tarBin,
 		"-czf",
 		yoqaRunnerArchive,
 		"--exclude",

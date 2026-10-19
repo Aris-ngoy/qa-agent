@@ -1,4 +1,9 @@
 import type { ElectrobunConfig } from "electrobun/bun";
+import { executableFileName } from "./src/bun/features/packaged-resources";
+
+// zig-asar unpacks exact paths only, so the compiled names (`.exe` on Windows) must match.
+const runnerBin = executableFileName("yoqa-runner");
+const cliBin = executableFileName("yoqa");
 
 export default {
 	app: {
@@ -16,14 +21,14 @@ export default {
 		copy: {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets/": "views/mainview/assets/",
-			"resources/runner/yoqa-runner": "runner/yoqa-runner",
-			"resources/runner/yoqa": "runner/yoqa",
+			[`resources/runner/${runnerBin}`]: `runner/${runnerBin}`,
+			[`resources/runner/${cliBin}`]: `runner/${cliBin}`,
 			"resources/runner/yoqa-runner-src.tar.gz": "runner/yoqa-runner-src.tar.gz",
 			"resources/skills/yoqa-testing.tar.gz": "skills/yoqa-testing.tar.gz",
 		},
 		asarUnpack: [
-			"runner/yoqa-runner",
-			"runner/yoqa",
+			`runner/${runnerBin}`,
+			`runner/${cliBin}`,
 			"runner/yoqa-runner-src.tar.gz",
 			"skills/yoqa-testing.tar.gz",
 			"*.node",

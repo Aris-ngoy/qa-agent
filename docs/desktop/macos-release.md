@@ -25,7 +25,7 @@ Rejected for v0.1.0: shipping Appium/Node inside the DMG; Apple codesign/notariz
 - [`apps/desktop/src/bun/features/runner-sidecar/index.ts`](../../apps/desktop/src/bun/features/runner-sidecar/index.ts) — packaged-first launch; replaces stale loopback runners whose `/health` version ≠ desktop (see [runner-sidecar-version-gate.md](./runner-sidecar-version-gate.md))
 - WDA icon embedded via Bun `with { type: "file" }` so compiled runner keeps branding (write bytes, never `copyFile` from `/$bunfs`)
 - Scripts: `bun run --filter @yoqa/desktop build:release`, root `desktop:release`
-- Workflow: [`.github/workflows/release-macos.yml`](../../.github/workflows/release-macos.yml) — install/verify boilerplate plus `generate_release_notes: true` (PR changelog appended). See [release-notes.md](./release-notes.md).
+- Workflow: [`.github/workflows/release-desktop.yml`](../../.github/workflows/release-desktop.yml) (`build-macos` job; Windows lane in [windows-release.md](./windows-release.md)) — install/verify boilerplate plus `generate_release_notes: true` (PR changelog appended). See [release-notes.md](./release-notes.md).
 
 Expected artifacts (stable arm64):
 
@@ -52,7 +52,7 @@ Cut a release (**repository owner only** — `v*` tags are restricted by ruleset
 ```bash
 git tag v0.3.4
 git push origin v0.3.4
-# Actions → Release macOS → approve the "release" environment deployment
+# Actions → Release Desktop → approve the "release" environment deployment
 ```
 
 Codesign/notarize secrets (when added): [release-signing-secrets.md](./release-signing-secrets.md).
