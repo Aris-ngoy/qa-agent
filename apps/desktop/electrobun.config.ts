@@ -50,11 +50,13 @@ export default {
 		},
 		win: {
 			bundleCEF: false,
-			icon: "assets/icon.png",
+			// A real multi-size ICO: electrobun copies it as Resources/app.ico for the window.
+			icon: "assets/icon.ico",
 		},
 	},
 	scripts: {
 		preBuild: "scripts/build-runner-sidecar.ts",
+		postBuild: "scripts/embed-windows-icon.ts",
 	},
 	release: {
 		baseUrl: "",
