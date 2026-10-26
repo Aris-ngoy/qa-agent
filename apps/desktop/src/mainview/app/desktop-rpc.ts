@@ -7,7 +7,7 @@ import type {
 	OpenPathResult,
 } from "../../shared/cli-environment";
 import type { IosToolchainPreferences, IosToolchainSnapshot } from "../../shared/ios-toolchain";
-import type { DesktopRPC, EnsureLocalServicesResult } from "../../shared/rpc";
+import type { DesktopRPC, EnsureLocalServicesResult, WindowState } from "../../shared/rpc";
 
 export type DesktopRpcClient = {
 	request: {
@@ -30,6 +30,10 @@ export type DesktopRpcClient = {
 		installSkill: () => Promise<InstallSkillResult>;
 		openSkillFolder: () => Promise<OpenPathResult>;
 		openExternalUrl: (params: { url: string }) => Promise<{ ok: boolean }>;
+		minimizeWindow: () => Promise<{ ok: true }>;
+		toggleMaximizeWindow: () => Promise<WindowState>;
+		closeWindow: () => Promise<{ ok: true }>;
+		getWindowState: () => Promise<WindowState>;
 	};
 };
 
