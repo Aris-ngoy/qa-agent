@@ -51,6 +51,11 @@ export default defineConfig({
 	server: {
 		port: 5173,
 		strictPort: true,
+		watch: {
+			// electrobun writes temp `.bun-build` files and its build output next to this config;
+			// Windows locks them while they are written, and watching them crashes Vite with EBUSY.
+			ignored: ["**/*.bun-build", "**/build/**"],
+		},
 		fs: {
 			// Monorepo: deps are hoisted to the repo root node_modules
 			allow: [rootDir, workspacePackages, path.resolve(rootDir, "../..")],
