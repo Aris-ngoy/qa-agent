@@ -2,7 +2,8 @@ import { copyFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 /**
  * Renders assets/icon.svg into:
- * - assets/icon.png (1024x1024, Windows/Linux + size source)
+ * - assets/icon.png (1024x1024, Linux + size source)
+ * - assets/icon.ico (Windows exes and window icon, via generate-windows-icon.ts)
  * - assets/icon.iconset/* (macOS AppIcon via iconutil)
  * - the on-device runners: the iOS YoqaRunner asset catalog (AppIcon + Logo)
  *   and the Android devtools launcher mipmaps
@@ -11,6 +12,7 @@ import { join } from "node:path";
  */
 import { Resvg } from "@resvg/resvg-js";
 import { $ } from "bun";
+import { generateWindowsIcon } from "./generate-windows-icon";
 
 const root = join(import.meta.dir, "..");
 const svgPath = join(root, "assets/icon.svg");
@@ -85,7 +87,10 @@ mkdirSync(logoPath, { recursive: true });
 copyFileSync(pngPath, join(appIconPath, "AppIcon.png"));
 copyFileSync(pngPath, join(logoPath, "Logo.png"));
 
+const icoPath = await generateWindowsIcon(root);
+
 console.log(`Generated ${pngPath}`);
+console.log(`Generated ${icoPath}`);
 console.log(`Generated ${iconsetPath} (${sizes.length} sizes)`);
 console.log(`Generated ${iosAssetsPath} (AppIcon, Logo)`);
 console.log(`Generated ${androidResPath} (${androidSizes.length} mipmaps)`);
