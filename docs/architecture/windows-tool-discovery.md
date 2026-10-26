@@ -21,6 +21,7 @@ Make the CLI and runner find their host tools on Windows. Two bugs came from the
 - **Runner `PATH`** (`android-toolchain/host-path.ts`): adds `pathDelimiter()` and `prependPathEntries()`. `pathWithHostTools()` and `pathWithAndroidSdk()` now go through them.
 - **Android SDK** (`android-toolchain/android-sdk.ts`): adds `androidSdkToolPath()` for SDK binaries, with `.exe` on Windows. `defaultAndroidSdkRoot`, `defaultJavaHomeCandidates` and `androidSdkBinDirs` join paths for the target platform.
 - **Devices** (`devices/application.ts`): `resolveTool()` checks that absolute candidates exist and resolves bare names with `Bun.which`. Before this change, bare `adb` only matched a file named `./adb` in the working directory.
+- **Desktop dev script** (`apps/desktop/package.json`): `concurrently` runs its commands through `cmd.exe` on Windows, which rejects `YOQA_REPO_ROOT=… electrobun dev`. The app half now lives in a `dev:app` script that `concurrently` calls with `bun run dev:app`. `bun run` uses Bun's cross-platform shell, so the env assignment works everywhere.
 - **Doctor** (`doctor/application.ts`): `which()` is now `Bun.which`. The ADB probe falls back to `ANDROID_HOME`/`ANDROID_SDK_ROOT` or the platform-default SDK, where it used to fall back to a hardcoded macOS path.
 
 ## How to verify
