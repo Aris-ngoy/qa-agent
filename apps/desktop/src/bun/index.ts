@@ -101,6 +101,20 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 				}
 				return { ok: Utils.openExternal(parsed.toString()) };
 			},
+			minimizeWindow: () => {
+				mainWindow.minimize();
+				return { ok: true };
+			},
+			toggleMaximizeWindow: () => {
+				if (mainWindow.isMaximized()) mainWindow.unmaximize();
+				else mainWindow.maximize();
+				return { maximized: mainWindow.isMaximized() };
+			},
+			closeWindow: () => {
+				mainWindow.close();
+				return { ok: true };
+			},
+			getWindowState: () => ({ maximized: mainWindow.isMaximized() }),
 		},
 		messages: {
 			log: ({ msg }) => {

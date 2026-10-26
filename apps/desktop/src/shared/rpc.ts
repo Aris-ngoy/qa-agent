@@ -12,6 +12,10 @@ export type EnsureLocalServicesResult = {
 	started: boolean;
 };
 
+export type WindowState = {
+	maximized: boolean;
+};
+
 export type DesktopRPC = {
 	bun: {
 		requests: {
@@ -79,6 +83,23 @@ export type DesktopRPC = {
 				response: {
 					ok: boolean;
 				};
+			};
+			/** Custom window controls (Windows has no inset native ones under `hiddenInset`). */
+			minimizeWindow: {
+				params: undefined;
+				response: { ok: true };
+			};
+			toggleMaximizeWindow: {
+				params: undefined;
+				response: WindowState;
+			};
+			closeWindow: {
+				params: undefined;
+				response: { ok: true };
+			};
+			getWindowState: {
+				params: undefined;
+				response: WindowState;
 			};
 		};
 		messages: {

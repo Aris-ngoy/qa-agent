@@ -5,6 +5,7 @@ import { AppSelectionSync } from "@/features/apps/components/app-selection-sync"
 import { SidebarShortcut } from "@/features/settings/components/sidebar-toggle";
 import { ThemeSync } from "@/features/settings/components/theme-sync";
 import { BootGate } from "@/features/splash/components/boot-gate";
+import { WindowControls } from "@/features/window-controls/components/window-controls";
 import { Toast } from "@heroui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
@@ -48,6 +49,7 @@ createRoot(rootElement).render(
 			<BootGate>
 				<RouterProvider router={router} />
 			</BootGate>
+			<WindowControls />
 		</QueryClientProvider>
 	</StrictMode>,
 );
