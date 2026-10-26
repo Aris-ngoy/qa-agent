@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { join } from "node:path";
 import {
 	androidProcessEnv,
 	androidSdkEnvPatch,
+	androidSdkToolPath,
 	defaultAndroidSdkRoot,
 	defaultJavaHomeCandidates,
 	pathWithAndroidSdk,
@@ -11,12 +11,17 @@ import {
 
 describe("defaultAndroidSdkRoot", () => {
 	test("uses Android Studio paths per platform", () => {
-		expect(defaultAndroidSdkRoot("/Users/demo", "darwin")).toBe(
-			join("/Users/demo", "Library", "Android", "sdk"),
-		);
-		expect(defaultAndroidSdkRoot("/home/demo", "linux")).toBe(join("/home/demo", "Android", "Sdk"));
-		expect(defaultAndroidSdkRoot("/Users/demo", "win32", "/tmp/Local")).toBe(
-			join("/tmp/Local", "Android", "Sdk"),
+		expect(defaultAndroidSdkRoot("/Users/demo", "darwin")).toBe("/Users/demo/Library/Android/sdk");
+		expect(defaultAndroidSdkRoot("/home/demo", "linux")).toBe("/home/demo/Android/Sdk");
+		expect(
+			defaultAndroidSdkRoot(
+				String.raw`C:\Users\demo`,
+				"win32",
+				String.raw`C:\Users\demo\AppData\Local`,
+			),
+		).toBe(String.raw`C:\Users\demo\AppData\Local\Android\Sdk`);
+		expect(defaultAndroidSdkRoot(String.raw`C:\Users\demo`, "win32")).toBe(
+			String.raw`C:\Users\demo\AppData\Local\Android\Sdk`,
 		);
 	});
 });
@@ -47,7 +52,7 @@ describe("resolveAndroidSdkRoot", () => {
 describe("pathWithAndroidSdk", () => {
 	test("prepends SDK bins onto a GUI-like PATH without duplicates", () => {
 		const sdk = "/Users/demo/Library/Android/sdk";
-		const next = pathWithAndroidSdk("/usr/bin:/bin", sdk);
+		const next = pathWithAndroidSdk("/usr/bin:/bin", sdk, "darwin");
 		expect(next.split(":")).toEqual([
 			`${sdk}/platform-tools`,
 			`${sdk}/cmdline-tools/latest/bin`,
@@ -56,7 +61,7 @@ describe("pathWithAndroidSdk", () => {
 			"/bin",
 		]);
 
-		const again = pathWithAndroidSdk(next, sdk);
+		const again = pathWithAndroidSdk(next, sdk, "darwin");
 		expect(again.split(":").filter((p) => p === `${sdk}/platform-tools`)).toHaveLength(1);
 	});
 });
@@ -137,5 +142,26 @@ describe("androidProcessEnv", () => {
 		expect(env.JAVA_HOME).toBe(jbr);
 		expect(env.CUSTOM_HOME).toBe("/tmp/custom");
 		expect(env.PATH?.startsWith(`${sdk}/platform-tools:`)).toBe(true);
+	});
+});
+
+describe("Windows SDK paths", () => {
+	test("pathWithAndroidSdk joins with `;` and backslashes", () => {
+		const sdk = String.raw`C:\Android\android-sdk`;
+		expect(pathWithAndroidSdk(String.raw`C:\Windows\system32`, sdk, "win32").split(";")).toEqual([
+			String.raw`C:\Android\android-sdk\platform-tools`,
+			String.raw`C:\Android\android-sdk\cmdline-tools\latest\bin`,
+			String.raw`C:\Android\android-sdk\emulator`,
+			String.raw`C:\Windows\system32`,
+		]);
+	});
+
+	test("androidSdkToolPath appends .exe on Windows only", () => {
+		expect(
+			androidSdkToolPath(String.raw`C:\Android\android-sdk`, "platform-tools", "adb", "win32"),
+		).toBe(String.raw`C:\Android\android-sdk\platform-tools\adb.exe`);
+		expect(androidSdkToolPath("/opt/android-sdk", "platform-tools", "adb", "darwin")).toBe(
+			"/opt/android-sdk/platform-tools/adb",
+		);
 	});
 });

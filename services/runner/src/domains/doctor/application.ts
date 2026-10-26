@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
 	DoctorCheck,
@@ -9,6 +8,7 @@ import type {
 	StreamState,
 } from "@yoqa/runner-client";
 import { loadSettings } from "../../settings";
+import { androidSdkToolPath, resolveAndroidSdkRoot } from "../android-toolchain/android-sdk";
 import { ensureHostToolPath } from "../android-toolchain/host-path";
 import { disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
 import { listServers } from "../servers/application";
@@ -36,11 +36,10 @@ async function runCommand(
 	}
 }
 
+/** In-process PATH lookup — no POSIX `which` binary needed (absent on Windows). */
 async function which(bin: string): Promise<string | null> {
-	const { stdout, exitCode } = await runCommand(["which", bin]);
-	if (exitCode !== 0) return null;
-	const path = stdout.trim().split("\n")[0]?.trim();
-	return path || null;
+	ensureHostToolPath();
+	return Bun.which(bin);
 }
 
 async function probeJava(): Promise<DoctorCheck> {
@@ -83,8 +82,10 @@ async function probeXcodeSelect(): Promise<DoctorCheck> {
 }
 
 async function probeAdbDevices(): Promise<DoctorCheck> {
-	const adb = (await which("adb")) ?? join(homedir(), "Library/Android/sdk/platform-tools/adb");
-	if (!(await Bun.file(adb).exists()) && !(await which("adb"))) {
+	const sdk = resolveAndroidSdkRoot();
+	const adb =
+		(await which("adb")) ?? (sdk ? androidSdkToolPath(sdk, "platform-tools", "adb") : null);
+	if (!adb || !(await Bun.file(adb).exists())) {
 		return {
 			id: "adb-devices",
 			label: "ADB devices",

@@ -1,8 +1,9 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { Device, DevicePlatform } from "@yoqa/runner-client";
-import { resolveAndroidSdkRoot } from "../android-toolchain/android-sdk";
+import { androidSdkToolPath, resolveAndroidSdkRoot } from "../android-toolchain/android-sdk";
 import {
 	type AndroidIdentity,
 	type ConnectedAndroidDevice,
@@ -38,23 +39,31 @@ function androidSdkRoot(): string | null {
 	return resolveAndroidSdkRoot();
 }
 
+/** Absolute candidates must exist; bare names resolve via PATH (PATHEXT-aware on Windows). */
 async function resolveTool(candidates: string[]): Promise<string | null> {
 	for (const candidate of candidates) {
 		if (!candidate) continue;
-		const { exitCode } = await runCommand(["test", "-x", candidate]);
-		if (exitCode === 0) return candidate;
+		if (isAbsolute(candidate)) {
+			if (existsSync(candidate)) return candidate;
+			continue;
+		}
+		const onPath = Bun.which(candidate);
+		if (onPath) return onPath;
 	}
 	return null;
 }
 
 async function resolveAdb(): Promise<string | null> {
 	const sdk = androidSdkRoot();
-	return resolveTool([...(sdk ? [join(sdk, "platform-tools/adb")] : []), "adb"]);
+	return resolveTool([...(sdk ? [androidSdkToolPath(sdk, "platform-tools", "adb")] : []), "adb"]);
 }
 
 async function resolveEmulator(): Promise<string | null> {
 	const sdk = androidSdkRoot();
-	return resolveTool([...(sdk ? [join(sdk, "emulator/emulator")] : []), "emulator"]);
+	return resolveTool([
+		...(sdk ? [androidSdkToolPath(sdk, "emulator", "emulator")] : []),
+		"emulator",
+	]);
 }
 
 function formatIosVersion(version: string): string {
