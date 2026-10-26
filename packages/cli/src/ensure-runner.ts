@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir as osHomedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const DEFAULT_RUNNER_HOST = "127.0.0.1";
@@ -105,9 +105,13 @@ export function execRootsFrom(execPath: string, argv0: string): string[] {
 	return roots;
 }
 
-/** Candidate locations for a compiled yoqa-runner inside a packaged Electrobun .app. */
-export function packagedYoqaRunnerCandidates(roots: string[]): string[] {
-	const fileName = "yoqa-runner";
+/** Candidate locations for a compiled yoqa-runner inside a packaged Electrobun app. */
+export function packagedYoqaRunnerCandidates(
+	roots: string[],
+	platform: NodeJS.Platform = process.platform,
+): string[] {
+	const { join } = pathModule(platform);
+	const fileName = platform === "win32" ? "yoqa-runner.exe" : "yoqa-runner";
 	const paths: string[] = [];
 	for (const root of roots) {
 		paths.push(
@@ -244,17 +248,41 @@ export async function waitForRunnerHealth(
 	return fetchHealth();
 }
 
-function pathWithHostTools(env: NodeJS.ProcessEnv, homedir: string): string {
+function pathModule(platform: NodeJS.Platform) {
+	return platform === "win32" ? win32 : posix;
+}
+
+/** PATH for the spawned runner: per-user tool dirs first, `;`-joined on Windows. */
+export function pathWithHostTools(
+	env: NodeJS.ProcessEnv,
+	homedir: string,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	const { delimiter, join } = pathModule(platform);
 	const extras = [
-		"/opt/homebrew/bin",
-		"/opt/homebrew/sbin",
-		"/usr/local/bin",
+		...(platform === "win32" ? [] : ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"]),
 		join(homedir, ".local", "bin"),
 		join(homedir, ".bun", "bin"),
 	];
-	const existing = (env.PATH ?? "").split(":").filter(Boolean);
+	const existing = (env.PATH ?? "").split(delimiter).filter(Boolean);
 	const prepend = extras.filter((dir) => !existing.includes(dir));
-	return [...prepend, ...existing].join(":");
+	return [...prepend, ...existing].join(delimiter);
+}
+
+/** Well-known Bun install locations, checked before a PATH lookup. */
+export function bunCandidates(
+	homedir: string,
+	env: NodeJS.ProcessEnv,
+	platform: NodeJS.Platform = process.platform,
+): string[] {
+	const { join } = pathModule(platform);
+	const bin = platform === "win32" ? "bun.exe" : "bun";
+	const fromEnv = env.BUN_INSTALL ? join(env.BUN_INSTALL, "bin", bin) : null;
+	return [
+		fromEnv,
+		join(homedir, ".bun", "bin", bin),
+		...(platform === "win32" ? [] : ["/opt/homebrew/bin/bun", "/usr/local/bin/bun"]),
+	].filter((path): path is string => Boolean(path));
 }
 
 async function defaultPathExists(path: string): Promise<boolean> {
@@ -263,13 +291,14 @@ async function defaultPathExists(path: string): Promise<boolean> {
 
 async function defaultWhich(bin: string): Promise<string | null> {
 	const { execFile } = await import("node:child_process");
+	const locator = process.platform === "win32" ? "where" : "which";
 	return new Promise((resolve) => {
-		execFile("which", [bin], (error, stdout) => {
+		execFile(locator, [bin], (error, stdout) => {
 			if (error) {
 				resolve(null);
 				return;
 			}
-			const path = stdout.trim().split("\n")[0]?.trim();
+			const path = stdout.trim().split(/\r?\n/)[0]?.trim();
 			resolve(path || null);
 		});
 	});
@@ -281,14 +310,7 @@ async function defaultFindBun(
 	homedir: string,
 	env: NodeJS.ProcessEnv,
 ): Promise<string | null> {
-	const fromEnv = env.BUN_INSTALL ? join(env.BUN_INSTALL, "bin", "bun") : null;
-	const candidates = [
-		fromEnv,
-		join(homedir, ".bun", "bin", "bun"),
-		"/opt/homebrew/bin/bun",
-		"/usr/local/bin/bun",
-	].filter((path): path is string => Boolean(path));
-	for (const candidate of candidates) {
+	for (const candidate of bunCandidates(homedir, env)) {
 		if (await pathExists(candidate)) return candidate;
 	}
 	return which("bun");

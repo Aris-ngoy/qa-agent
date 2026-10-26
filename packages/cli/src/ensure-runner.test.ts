@@ -6,10 +6,12 @@ import {
 	RUNNER_NOT_FOUND_MESSAGE,
 	type ResolveLaunchDeps,
 	type RunnerLaunch,
+	bunCandidates,
 	commandChainIncludes,
 	ensureRunner,
 	isRunnerHealth,
 	packagedYoqaRunnerCandidates,
+	pathWithHostTools,
 	resolveRunnerLaunch,
 	runnerBaseUrlFromEnv,
 	shouldSkipAutostart,
@@ -36,12 +38,50 @@ function launchDeps(
 
 describe("packagedYoqaRunnerCandidates", () => {
 	test("includes MacOS and Resources layouts", () => {
-		const paths = packagedYoqaRunnerCandidates(["/Apps/Yoqa.app/Contents/MacOS"]);
+		const paths = packagedYoqaRunnerCandidates(["/Apps/Yoqa.app/Contents/MacOS"], "darwin");
 		expect(paths).toContain("/Apps/Yoqa.app/Contents/MacOS/yoqa-runner");
 		expect(paths).toContain(
 			"/Apps/Yoqa.app/Contents/Resources/app.asar.unpacked/runner/yoqa-runner",
 		);
 		expect(paths).toContain("/Apps/Yoqa.app/Contents/Resources/runner/yoqa-runner");
+	});
+
+	test("looks for yoqa-runner.exe on Windows", () => {
+		const paths = packagedYoqaRunnerCandidates([String.raw`C:\Program Files\Yoqa\bin`], "win32");
+		expect(paths).toContain(String.raw`C:\Program Files\Yoqa\bin\yoqa-runner.exe`);
+		expect(paths).toContain(String.raw`C:\Program Files\Yoqa\Resources\runner\yoqa-runner.exe`);
+	});
+});
+
+describe("bunCandidates", () => {
+	test("checks BUN_INSTALL, ~/.bun and Homebrew on macOS", () => {
+		expect(bunCandidates("/Users/demo", { BUN_INSTALL: "/opt/bun" }, "darwin")).toEqual([
+			"/opt/bun/bin/bun",
+			"/Users/demo/.bun/bin/bun",
+			"/opt/homebrew/bin/bun",
+			"/usr/local/bin/bun",
+		]);
+	});
+
+	test("checks bun.exe under BUN_INSTALL and %USERPROFILE%\\.bun on Windows", () => {
+		expect(
+			bunCandidates(String.raw`C:\Users\demo`, { BUN_INSTALL: String.raw`D:\bun` }, "win32"),
+		).toEqual([String.raw`D:\bun\bin\bun.exe`, String.raw`C:\Users\demo\.bun\bin\bun.exe`]);
+	});
+});
+
+describe("pathWithHostTools", () => {
+	test("prepends Homebrew and user bins with `:` on macOS", () => {
+		expect(pathWithHostTools({ PATH: "/usr/bin:/bin" }, "/Users/demo", "darwin")).toBe(
+			"/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/Users/demo/.local/bin:/Users/demo/.bun/bin:/usr/bin:/bin",
+		);
+	});
+
+	test("keeps the Windows PATH intact with `;` and skips Homebrew dirs", () => {
+		const PATH = String.raw`C:\Windows\system32;C:\Users\demo\.bun\bin`;
+		expect(pathWithHostTools({ PATH }, String.raw`C:\Users\demo`, "win32")).toBe(
+			String.raw`C:\Users\demo\.local\bin;C:\Windows\system32;C:\Users\demo\.bun\bin`,
+		);
 	});
 });
 
