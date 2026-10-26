@@ -4,8 +4,33 @@ import {
 	isCompatibleRunnerHealth,
 	isLocalRunnerUrl,
 	packagedRunnerCandidates,
+	parseListenerPids,
 	shouldReuseExistingRunner,
 } from "./index";
+
+describe("parseListenerPids", () => {
+	test("reads lsof -t output on macOS/Linux, deduped", () => {
+		expect(parseListenerPids("4821\n4821\n5010\n", 7420, "darwin")).toEqual([4821, 5010]);
+		expect(parseListenerPids("", 7420, "linux")).toEqual([]);
+	});
+
+	test("picks only listening TCP rows on the port from netstat -ano on Windows", () => {
+		const netstat = [
+			"",
+			"Active Connections",
+			"",
+			"  Proto  Local Address          Foreign Address        State           PID",
+			"  TCP    127.0.0.1:7420         0.0.0.0:0              LISTENING       25608",
+			"  TCP    127.0.0.1:7420         127.0.0.1:51234        ESTABLISHED     25608",
+			"  TCP    127.0.0.1:51234        127.0.0.1:7420         ESTABLISHED     9001",
+			"  TCP    127.0.0.1:74200        0.0.0.0:0              LISTENING       777",
+			"  TCP    [::1]:7420             [::]:0                 ABHÖREN         31337",
+			"  TCP    127.0.0.1:7420         127.0.0.1:50000        TIME_WAIT       0",
+			"  UDP    0.0.0.0:7420           *:*                                    555",
+		].join("\r\n");
+		expect(parseListenerPids(netstat, 7420, "win32")).toEqual([25608, 31337]);
+	});
+});
 
 describe("packagedRunnerCandidates", () => {
 	test("includes MacOS and Resources layouts relative to exec roots", () => {
