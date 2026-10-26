@@ -1,6 +1,6 @@
 {
 	"name": "@yoqa/runner",
-	"version": "1.0.4",
+	"version": "1.0.5",
 	"description": "Yoqa local runner — device control + catalog HTTP API (Bun). Start with yoqa serve or the yoqa-runner bin.",
 	"license": "UNLICENSED",
 	"type": "module",
