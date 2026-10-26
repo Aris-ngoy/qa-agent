@@ -3,7 +3,7 @@
 	"private": true,
 	"workspaces": ["apps/desktop", "packages/*", "services/*"],
 	"scripts": {
-		"dev": "turbo run dev",
+		"dev": "turbo run dev --continue",
 		"build": "turbo run build",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
