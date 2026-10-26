@@ -17,6 +17,7 @@ import {
 	stopLocalRunner,
 	stopRunnerSidecar,
 } from "./features/runner-sidecar";
+import { applyWindowsWindowIcon } from "./features/windows-window-icon";
 
 const DOCS_QUICKSTART_URL = "https://yoqa.arisn.dev/docs/quickstart";
 
@@ -137,6 +138,17 @@ const mainWindow = new BrowserWindow({
 	},
 	rpc: mainRPC,
 });
+
+// Windows: electrobun never sets a window icon, so the taskbar shows Bun's. The native
+// window can appear a moment after the constructor returns, so retry briefly.
+if (process.platform === "win32") {
+	void (async () => {
+		for (const delayMs of [0, 250, 1000, 3000]) {
+			await Bun.sleep(delayMs);
+			if ((await applyWindowsWindowIcon()) > 0) return;
+		}
+	})();
+}
 
 function shutdown(): void {
 	stopRunnerSidecar();

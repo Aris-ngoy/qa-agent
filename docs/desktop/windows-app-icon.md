@@ -17,6 +17,7 @@ Show the Yoqa icon, not Bun's, for the Windows desktop app in Explorer, the task
 - `scripts/generate-windows-icon.ts`: renders `assets/icon.svg` with resvg at 16–256 px into `assets/icon.ico`. It runs on any OS, and `generate-app-icon.ts` calls it too.
 - `scripts/embed-windows-icon.ts` (`scripts.postBuild`): on Windows builds it embeds `assets/icon.ico` into `<build>/<app>/bin/launcher.exe` and `bun.exe`. It runs before the bundle is packed, so installed apps get the icon as well.
 - `electrobun.config.ts`: `win.icon` is now `assets/icon.ico`.
+- `src/bun/features/windows-window-icon.ts`: re-iconing the exe was not enough for the taskbar. electrobun never sends `WM_SETICON`, so Windows kept showing the Bun icon it had cached for `bun.exe`, even after unpinning and relaunching. On startup the app now finds its own visible top-level windows (`FindWindowExW` and `GetWindowThreadProcessId`, through `bun:ffi`), loads `Resources/app.ico`, and sends it as both the big and the small icon. It retries briefly because the native window can appear after the `BrowserWindow` constructor returns.
 
 ## How to verify
 
