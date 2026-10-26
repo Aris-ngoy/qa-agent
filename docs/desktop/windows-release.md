@@ -37,6 +37,6 @@ Expected artifacts (stable x64):
 
 ## Follow-ups
 
-- Runner on Windows: `which` probes (`services/runner/src/domains/providers/drivers/probe.ts`, `doctor/application.ts`), `:`-joined PATH in `android-toolchain/host-path.ts` and `android-sdk.ts`, `lsof` in `killListenersOnPort`.
+- Runner on Windows: the `which` fallback in `services/runner/src/domains/providers/drivers/probe.ts`. The doctor probes, PATH joining and the `lsof` port cleanup are fixed; see [windows-tool-discovery.md](../architecture/windows-tool-discovery.md).
 - Settings → CLI & Agents installer: uses `~/Library/Application Support`, `~/.local/bin` symlinks and a `:` PATH check (`cli-environment/index.ts`).
 - Authenticode signing, and a `win-arm64` build.

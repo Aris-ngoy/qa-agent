@@ -251,28 +251,56 @@ function isChildAlive(): boolean {
 	return child !== null && child.proc.exitCode === null;
 }
 
-/** SIGTERM any process listening on the local runner port (macOS/Linux `lsof`). */
-export async function killListenersOnPort(port: number): Promise<number[]> {
-	const proc = Bun.spawn(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
-		stdout: "pipe",
-		stderr: "pipe",
-		stdin: "ignore",
-	});
-	const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-	if (exitCode !== 0 && !stdout.trim()) {
-		return [];
-	}
+function listenerLookupCommand(port: number, platform: NodeJS.Platform): string[] {
+	if (platform === "win32") return ["netstat", "-ano"];
+	return ["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"];
+}
 
-	const pids = [
+/**
+ * PIDs listening on `port`, from `lsof -t` output (macOS/Linux) or `netstat -ano` (Windows).
+ * Windows rows are matched by local port and a `:0` remote address, since the state
+ * column ("LISTENING") is localized.
+ */
+export function parseListenerPids(
+	output: string,
+	port: number,
+	platform: NodeJS.Platform = process.platform,
+): number[] {
+	const candidates =
+		platform === "win32"
+			? output.split(/\r?\n/).flatMap((line) => {
+					const [proto, local, remote, ...rest] = line.trim().split(/\s+/);
+					if (proto?.toUpperCase() !== "TCP") return [];
+					if (!local?.endsWith(`:${port}`) || !remote?.endsWith(":0")) return [];
+					return [rest.at(-1) ?? ""];
+				})
+			: output.split(/\s+/);
+	return [
 		...new Set(
-			stdout
-				.split(/\s+/)
-				.map((part) => part.trim())
-				.filter(Boolean)
-				.map((part) => Number(part))
+			candidates
+				.map((part) => Number(part.trim()))
 				.filter((pid) => Number.isInteger(pid) && pid > 0),
 		),
 	];
+}
+
+/** SIGTERM any process listening on the local runner port (`lsof`, or `netstat` on Windows). */
+export async function killListenersOnPort(port: number): Promise<number[]> {
+	let stdout: string;
+	try {
+		const proc = Bun.spawn(listenerLookupCommand(port, process.platform), {
+			stdout: "pipe",
+			stderr: "pipe",
+			stdin: "ignore",
+		});
+		stdout = (await Promise.all([new Response(proc.stdout).text(), proc.exited]))[0];
+	} catch (error) {
+		// Lookup tool missing: skip the cleanup rather than failing startup.
+		console.warn(`[yoqa desktop] could not list listeners on port ${port}:`, error);
+		return [];
+	}
+
+	const pids = parseListenerPids(stdout, port).filter((pid) => pid !== process.pid);
 
 	for (const pid of pids) {
 		try {
