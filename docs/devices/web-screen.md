@@ -16,6 +16,7 @@ Give a web device a real **Screen** ([#304](https://github.com/Aris-ngoy/qa-agen
   - The type is the ARIA role. The label is the accessible name (whitespace collapsed), or a field's value.
 - **id** is `data-testid` first, because React Native Web renders `testID` as `data-testid`, then the DOM `id`. React `useId` values (`:r1:`) change between renders, so they are not used as ids.
 - **Clickable is the role.** The mobile node shape has no `clickable` field, and this change does not add one. Tree assist decides "tappable" from the type, and its role pattern now also matches `textbox`, `searchbox`, `combobox` and `option`.
+- **Iframes are on the Screen too** ([#360](https://github.com/Aris-ngoy/qa-agent/issues/360)), same-origin and out-of-process; see [Iframes](#iframes) below.
 - Rejected: a separate `web-screen.ts` module. The spec puts the cleaner beside the existing cleaners.
 
 ## What shipped
@@ -30,10 +31,42 @@ Give a web device a real **Screen** ([#304](https://github.com/Aris-ngoy/qa-agen
   - `web-direct-lane.test.ts` covers the cleaned and `--full` Screen, a scrolled page, label and id taps, and a Case Script label tap replaying through `executeScriptCase`.
   - The web harness's Lane contract tree case now goes through the new cleaner.
 
+## Iframes
+
+### Goal
+
+A tester sees the controls inside an iframe (a card form, a "Sign in with" button, an embedded live example) and could neither pick them in the Inspector nor tap them by label or id. On the research pages, 10 of the remaining misses per preset were iframe content (`docs/research/web-inspector-picks.md` on the `research/web-inspector-picks` branch). Part of [#339](https://github.com/Aris-ngoy/qa-agent/issues/339), decided in [#348](https://github.com/Aris-ngoy/qa-agent/issues/348).
+
+### Plan summary
+
+- **A process at a time.** A same-origin iframe runs in the page's process. Its document is already in the page's `DOMSnapshot.captureSnapshot`, and its owner element points at it (`contentDocumentIndex`). `Accessibility.getFullAXTree` reads its tree by the document's `frameId`. A cross-site iframe runs in a process of its own under site isolation. The page's session sets `Target.setAutoAttach` (flatten), so each such iframe attaches as a session of its own. That session gives its tree and snapshot, and `DOM.getFrameOwner` on the parent session gives its iframe element. Each iframe session sets auto-attach too, so nested out-of-process frames are read the same way.
+- **Boxes in the page viewport.** Each document's boxes are in its own document's device pixels. Its own scroll offset is taken off, the result is divided by the page's device-pixel scale, and it is moved by where the frame's content box starts. That start is the owner's box plus its border (`clientRects`, from `includeDOMRects`) and its padding (computed `padding-left`/`padding-top`), all from the parent's snapshot.
+  - Rejected: `DOM.getBoxModel` for the owner. It costs a round trip per frame, and its quads are in another space (the local root's viewport) from the snapshot's, which would need a second conversion.
+- **One tree.** Each frame's nodes are spliced into the array right after their owner's node, which is the `Iframe` node. The frame's root gets the owner as its `parentId`, and the owner lists the root in `childIds`, so `--full` and the cleaner see one tree. `cleanWebAxSource` has no new rules: an unnamed `Iframe` node is dropped like any unnamed non-control.
+  - An out-of-process frame numbers its nodes from 1 again, so its node ids get its frame id as a prefix (`<frameId>:12`).
+  - Backend node ids are only unique within one process, so an owner is looked up among its own process's nodes.
+  - A node the tree already holds is not added twice.
+- **Taps are unchanged.** They are page coordinates, and the browser hit-tests them into the frame.
+- A frame that goes away while it is read, or whose iframe is not laid out, is left off the Screen. It does not fail the read.
+
+### What shipped
+
+- `web-direct-lane.ts`:
+  - `attachPage` turns on auto-attach, and the session tracks each out-of-process iframe's session under its parent's.
+  - `layoutFrames` replaces `layoutByBackendId`: every document of a snapshot, each at its origin, plus each owner's content box.
+  - `frameTree` reads one process's frames and recurses into out-of-process ones. `spliceFrame` hangs each under its owner.
+- `cdp-client.ts`: types `Target.setAutoAttach`, `DOM.getFrameOwner`, `getFullAXTree`'s `frameId`, and the snapshot's `frameId`, `contentDocumentIndex`, `clientRects` and `styles`.
+- `fake-cdp.ts`: a page can hold `frames`. A same-origin frame is a document in the page's snapshot and process. An out-of-process frame attaches through `Target.setAutoAttach`, with ids that start over. Each frame has its own border, padding and scroll.
+- `web-direct-lane.test.ts`, at a 2× display on a scrolled page:
+  - A button in each kind of frame is on the Screen with page-relative boxes.
+  - Taps by label and id land on them.
+  - `--full` is one tree with unique ids.
+
 ## How to verify
 
 ```bash
 bun test services/runner/src/domains/devices/screen.test.ts services/runner/src/domains/devices/web-direct-lane.test.ts
+bun test services/runner/src/domains/devices/web-direct-lane.test.ts -t iframes
 bun test services/runner/src/domains/devices/lane-contract.test.ts -t "Web Direct"
 bun test services/runner/src/domains/runs/agent.test.ts -t snapTapToElement
 bun run lint:ci && bun run test && bun run check
@@ -49,7 +82,9 @@ yoqa screen --full                # the raw AX tree with bounds
 yoqa action tap --label "More information..."
 ```
 
+For iframes, open a page that embeds both kinds, such as a local page with a same-origin `<iframe src="/form.html">` and a cross-site one, or [MDN `<iframe>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe). Then check that `yoqa screen` lists the frames' controls where they are drawn, that `yoqa action tap --label` reaches one, and that the Inspector picks them at a 2× display.
+
 ## Follow-ups
 
-- Same-origin iframes: `getFullAXTree` reads the main frame only, so content inside an iframe is not on the Screen yet.
+- Iframes: a frame under a CSS transform or zoom gets an untransformed origin. It has not been checked by hand on a real page with both kinds of frame.
 - Labels are not truncated. A long paragraph is one long label, as on mobile.
