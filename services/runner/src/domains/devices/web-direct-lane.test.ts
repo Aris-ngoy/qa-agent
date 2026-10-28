@@ -6,6 +6,7 @@ import type { InstalledBrowser } from "./chromium-browsers";
 import {
 	type FakeAxNode,
 	type FakeCdpOptions,
+	type FakeFrame,
 	fakeChromium,
 	jpegSize,
 	profileDirOf,
@@ -464,6 +465,116 @@ describe("web Direct lane: Screen", () => {
 		});
 		expect(status).toBe("passed");
 		expect(browser.clicks).toEqual([{ x: 128, y: 260 }]);
+		await session.quit();
+	});
+});
+
+/**
+ * A checkout page with a same-origin card form and a cross-site sign-in button, each in
+ * an iframe that is scrolled on its own. Inside a frame, boxes are in its content box.
+ */
+const CARD_FORM: FakeFrame = {
+	url: "https://shop.example/card-form",
+	// Its content box starts 2 px in, past Chromium's default iframe border.
+	box: { x: 64, y: 320, width: 640, height: 200 },
+	scroll: { x: 0, y: 300 },
+	nodes: [{ role: "button", name: "Pay now", box: { x: 62, y: 38, width: 128, height: 40 } }],
+};
+const SIGN_IN_WITH: FakeFrame = {
+	outOfProcess: true,
+	url: "https://accounts.example/button",
+	// 2 px of border and 6 of padding: the content box starts 8 px in.
+	box: { x: 640, y: 560, width: 576, height: 200 },
+	padding: 6,
+	scroll: { x: 0, y: 80 },
+	nodes: [
+		{
+			role: "button",
+			name: "Continue with Example",
+			testId: "continue",
+			box: { x: 120, y: 32, width: 256, height: 40 },
+		},
+	],
+};
+const CHECKOUT: Partial<FakeCdpOptions> = {
+	nodes: SIGN_IN,
+	frames: [CARD_FORM, SIGN_IN_WITH],
+	scroll: { x: 0, y: 1200 },
+};
+
+describe("web Direct lane: iframes", () => {
+	test("a button in a same-origin iframe is on the Screen, in the page's viewport", async () => {
+		const { session } = await attach(CHECKOUT);
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		expect(screen.elements?.find((el) => el.label === "Pay now")).toEqual({
+			type: "button",
+			label: "Pay now",
+			x: 100,
+			y: 450,
+			width: 100,
+			height: 50,
+			enabled: true,
+		});
+		await session.quit();
+	});
+
+	test("a button in an out-of-process iframe is on the Screen, in the page's viewport", async () => {
+		const { session } = await attach(CHECKOUT);
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		expect(screen.elements?.find((el) => el.label === "Continue with Example")).toEqual({
+			type: "button",
+			label: "Continue with Example",
+			id: "continue",
+			x: 600,
+			y: 750,
+			width: 200,
+			height: 50,
+			enabled: true,
+		});
+		await session.quit();
+	});
+
+	test("the page's own elements are where they were", async () => {
+		const { session } = await attach(CHECKOUT);
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		expect(screen.elements?.find((el) => el.label === "Sign in")).toMatchObject({ x: 50, y: 300 });
+		await session.quit();
+	});
+
+	test("a tap by label lands on a button inside either iframe", async () => {
+		const { browser, session } = await attach(CHECKOUT);
+		await performAction(session, { kind: "tap", label: "Pay now" });
+		await performAction(session, { kind: "tap", label: "Continue with Example" });
+		await performAction(session, { kind: "tap", id: "continue" });
+		expect(browser.clicks).toEqual([
+			{ x: 192, y: 380 },
+			{ x: 896, y: 620 },
+			{ x: 896, y: 620 },
+		]);
+		await session.quit();
+	});
+
+	test("--full is one tree: each frame's root hangs under its iframe, with no id twice", async () => {
+		const { session } = await attach(CHECKOUT);
+		const screen = await getScreen(session, { full: true, pauseMjpeg: false });
+		const { axTree } = JSON.parse(screen.raw ?? "") as {
+			axTree: Array<{
+				nodeId: string;
+				parentId?: string;
+				childIds?: string[];
+				role: { value: string };
+			}>;
+		};
+		const ids = axTree.map((node) => node.nodeId);
+		expect(new Set(ids).size).toBe(ids.length);
+		const roots = axTree.filter((node) => node.role.value === "RootWebArea");
+		expect(roots).toHaveLength(3);
+		expect(axTree.filter((node) => node.parentId === undefined)).toEqual(roots.slice(0, 1));
+		for (const frameRoot of roots.slice(1)) {
+			const owner = axTree.find((node) => node.nodeId === frameRoot.parentId);
+			expect(owner?.role.value).toBe("Iframe");
+			expect(owner?.childIds).toEqual([frameRoot.nodeId]);
+		}
 		await session.quit();
 	});
 });

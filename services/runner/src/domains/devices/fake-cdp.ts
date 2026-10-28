@@ -14,6 +14,12 @@
  * fit `maxWidth`×`maxHeight`, the next one only once the last is acked. Until the emulation
  * is set again after the screencast starts, a frame is the whole window's view, not the
  * emulated viewport, and its `metadata` says so.
+ *
+ * A page can hold iframes. A same-origin one is in the page's process: its document is in
+ * the page's snapshot, under its owner element, and `Accessibility.getFullAXTree` reads it by
+ * its `frameId`. An out-of-process one is a target of its own, attached through
+ * `Target.setAutoAttach` as Chromium does with site isolation, with node ids that start
+ * over. Either way its boxes are in its own document, which can scroll on its own.
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -36,6 +42,25 @@ export type FakeAxNode = {
 	hidden?: boolean;
 };
 
+type FakeBox = { x: number; y: number; width: number; height: number };
+
+/** An iframe on the page, and what is inside it. */
+export type FakeFrame = {
+	/** A cross-site frame: a target of its own, as Chromium runs it under site isolation. */
+	outOfProcess?: boolean;
+	url: string;
+	/** The iframe element's border box, in CSS pixels of the page viewport. */
+	box: FakeBox;
+	/** Its border width in CSS pixels: 2 unless given, as Chromium draws an iframe. */
+	border?: number;
+	/** Its padding in CSS pixels. */
+	padding?: number;
+	/** How far the frame's own document is scrolled, in CSS pixels. */
+	scroll?: { x: number; y: number };
+	/** Boxes in CSS pixels of the frame's viewport, its content box. */
+	nodes: FakeAxNode[];
+};
+
 export type FakeCdpOptions = {
 	/** The page viewport in CSS pixels, the window's, until the session emulates another. */
 	viewport: { width: number; height: number };
@@ -48,6 +73,8 @@ export type FakeCdpOptions = {
 	/** `Page.navigate`'s `errorText` for a URL the page cannot load. */
 	navigateError?: string;
 	nodes?: FakeAxNode[];
+	/** The page's iframes. */
+	frames?: FakeFrame[];
 	/**
 	 * A tab that has never painted, such as one behind a browser's sign-in wall:
 	 * `Page.getLayoutMetrics` answers zero sizes, as Chromium does.
@@ -362,76 +389,167 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		return Buffer.from(encodeRgbaPng({ width, height, rgba })).toString("base64");
 	};
 
-	const axTree = (): AxNode[] => [
+	const frames = options.frames ?? [];
+	/**
+	 * One document: its own node (`base`, which is also its root's accessibility node id),
+	 * then each node from `base + 1` on, in its own coordinates. The page's ends with one
+	 * owner element per iframe.
+	 */
+	type FakeDocument = {
+		frameId: string;
+		base: number;
+		nodes: Array<FakeAxNode & { frame?: FakeFrame }>;
+		size: { width: number; height: number };
+		scroll: { x: number; y: number };
+	};
+	const pageDocument = (page: Page | undefined): FakeDocument => ({
+		frameId: page?.targetId ?? "",
+		base: 1,
+		nodes: [
+			...nodes,
+			...frames.map((frame) => ({ role: "Iframe", name: "", box: frame.box, frame })),
+		],
+		size: { width: options.viewport.width, height: options.pageHeight ?? options.viewport.height },
+		scroll: options.scroll ?? { x: 0, y: 0 },
+	});
+	/** Where a frame's content box starts inside its iframe element: its border and padding. */
+	const insetOf = (frame: FakeFrame) => (frame.border ?? 2) + (frame.padding ?? 0);
+	const frameIdOf = (frame: FakeFrame) => `frame-${frames.indexOf(frame) + 1}`;
+	/** A same-origin frame's ids follow the page's in its process; an out-of-process one's start over. */
+	const frameDocument = (frame: FakeFrame): FakeDocument => {
+		const inset = insetOf(frame);
+		return {
+			frameId: frameIdOf(frame),
+			base: frame.outOfProcess ? 1 : 1000 * (frames.indexOf(frame) + 1),
+			nodes: frame.nodes,
+			size: { width: frame.box.width - 2 * inset, height: frame.box.height - 2 * inset },
+			scroll: frame.scroll ?? { x: 0, y: 0 },
+		};
+	};
+	/** The iframe element that owns a frame, by its backend node id in the page's document. */
+	const ownerIdOf = (frameId: unknown) => {
+		const frame = frames.find((candidate) => frameIdOf(candidate) === frameId);
+		if (!frame) throw new Error("Frame with the given id was not found.");
+		return 1 + 1 + nodes.length + frames.indexOf(frame);
+	};
+
+	/** `Accessibility.getFullAXTree` of one document: its root, then each node. */
+	const axTree = ({ base, nodes: docNodes }: FakeDocument): AxNode[] => [
 		{
-			nodeId: "1",
+			nodeId: String(base),
 			role: { value: "RootWebArea" },
 			name: { value: "" },
-			childIds: nodes.map((_, index) => String(index + 2)),
-			backendDOMNodeId: 1,
+			childIds: docNodes.map((_, index) => String(base + 1 + index)),
+			backendDOMNodeId: base,
 		},
-		...nodes.map((node, index) => ({
-			nodeId: String(index + 2),
+		...docNodes.map((node, index) => ({
+			nodeId: String(base + 1 + index),
 			...(node.hidden ? { ignored: true } : {}),
 			role: { value: node.role },
 			name: { value: node.name },
 			properties: node.disabled ? [{ name: "disabled", value: { value: true } }] : [],
-			parentId: "1",
+			parentId: String(base),
 			childIds: [],
-			backendDOMNodeId: index + 2,
+			backendDOMNodeId: base + 1 + index,
 		})),
 	];
 
 	/**
-	 * `DOMSnapshot.captureSnapshot`: the document node, then one element per node with its
-	 * attributes, and a layout box in document coordinates for each node that is shown. As
-	 * in Chromium, boxes and the scroll offset are in the display's device pixels; with
-	 * `includeDOMRects`, each box's `offsetRects` entry is in CSS pixels.
+	 * `DOMSnapshot.captureSnapshot` of some documents: each document node, then one element
+	 * per node with its attributes, and a layout box in document coordinates for each node
+	 * that is shown. As in Chromium, boxes and the scroll offset are in the display's device
+	 * pixels; with `includeDOMRects`, each box's `offsetRects` and `clientRects` entries are
+	 * in CSS pixels. An iframe element whose document is in the snapshot points at it.
 	 */
-	const domSnapshot = (includeDOMRects: boolean) => {
+	const domSnapshot = (
+		docs: FakeDocument[],
+		params: { includeDOMRects?: unknown; computedStyles?: unknown },
+	) => {
 		const strings: string[] = [];
 		const ref = (text: string) => {
 			const at = strings.indexOf(text);
 			return at >= 0 ? at : strings.push(text) - 1;
 		};
-		const scroll = options.scroll ?? { x: 0, y: 0 };
-		const pageHeight = options.pageHeight ?? options.viewport.height;
-		const css = [[0, 0, options.viewport.width, pageHeight]];
-		const nodeIndex = [0];
-		nodes.forEach((node, index) => {
-			if (node.hidden) return;
-			const { x, y, width, height } = node.box;
-			nodeIndex.push(index + 1);
-			css.push([x + scroll.x, y + scroll.y, width, height]);
-		});
-		const layout = {
-			nodeIndex,
-			bounds: css.map((box) => box.map((value) => value * scale)),
-			...(includeDOMRects ? { offsetRects: css } : {}),
-		};
-		const attributes = nodes.map((node) => [
-			...(node.domId ? [ref("id"), ref(node.domId)] : []),
-			...(node.testId ? [ref("data-testid"), ref(node.testId)] : []),
-		]);
-		return {
-			documents: [
-				{
-					nodes: {
-						parentIndex: [-1, ...nodes.map(() => 0)],
-						backendNodeId: [1, ...nodes.map((_, index) => index + 2)],
-						attributes: [[], ...attributes],
-					},
-					layout,
-					scrollOffsetX: scroll.x * scale,
-					scrollOffsetY: scroll.y * scale,
+		const computedStyles = Array.isArray(params.computedStyles)
+			? params.computedStyles.map(String)
+			: [];
+		const documents = docs.map((doc) => {
+			const { scroll } = doc;
+			const css = [[0, 0, doc.size.width, doc.size.height]];
+			const client = [[0, 0, doc.size.width, doc.size.height]];
+			const styles = [computedStyles.map(() => ref("0px"))];
+			const nodeIndex = [0];
+			const contentDocumentIndex = { index: [] as number[], value: [] as number[] };
+			doc.nodes.forEach((node, index) => {
+				const inProcess = node.frame && !node.frame.outOfProcess ? node.frame : undefined;
+				const childDoc = inProcess ? docs.findIndex((d) => d.frameId === frameIdOf(inProcess)) : -1;
+				if (childDoc >= 0) {
+					contentDocumentIndex.index.push(index + 1);
+					contentDocumentIndex.value.push(childDoc);
+				}
+				if (node.hidden) return;
+				const { x, y, width, height } = node.box;
+				const border = node.frame ? (node.frame.border ?? 2) : 0;
+				const padding = node.frame?.padding ?? 0;
+				nodeIndex.push(index + 1);
+				css.push([x + scroll.x, y + scroll.y, width, height]);
+				client.push([border, border, width - 2 * border, height - 2 * border]);
+				styles.push(
+					computedStyles.map((name) =>
+						ref(name === "padding-left" || name === "padding-top" ? `${padding}px` : ""),
+					),
+				);
+			});
+			const attributes = doc.nodes.map((node) => [
+				...(node.domId ? [ref("id"), ref(node.domId)] : []),
+				...(node.testId ? [ref("data-testid"), ref(node.testId)] : []),
+			]);
+			return {
+				frameId: ref(doc.frameId),
+				nodes: {
+					parentIndex: [-1, ...doc.nodes.map(() => 0)],
+					backendNodeId: [doc.base, ...doc.nodes.map((_, index) => doc.base + 1 + index)],
+					attributes: [[], ...attributes],
+					contentDocumentIndex,
 				},
-			],
-			strings,
-		};
+				layout: {
+					nodeIndex,
+					bounds: css.map((box) => box.map((value) => value * scale)),
+					...(params.includeDOMRects ? { offsetRects: css, clientRects: client } : {}),
+					...(computedStyles.length > 0 ? { styles } : {}),
+				},
+				scrollOffsetX: scroll.x * scale,
+				scrollOffsetY: scroll.y * scale,
+			};
+		});
+		return { documents, strings };
+	};
+	/** The page's document, then each same-origin frame's: one process's documents. */
+	const pageDocuments = (page: Page | undefined) => [
+		pageDocument(page),
+		...frames.filter((frame) => !frame.outOfProcess).map(frameDocument),
+	];
+	/** The out-of-process frames attached to a page's session, by their own session. */
+	const frameSessions = new Map<string, FakeFrame>();
+	const frameSessionOf = (page: Page, frame: FakeFrame) => `${page.sessionId}-${frameIdOf(frame)}`;
+
+	/** A command to an out-of-process frame's own session. */
+	const answerFrame = (message: Message, frame: FakeFrame): unknown => {
+		const params = message.params ?? {};
+		switch (message.method) {
+			case "Accessibility.getFullAXTree":
+				return { nodes: axTree(frameDocument(frame)) };
+			case "DOMSnapshot.captureSnapshot":
+				return domSnapshot([frameDocument(frame)], params);
+			default:
+				return {};
+		}
 	};
 
 	const answer = (message: Message): unknown => {
 		const params = message.params ?? {};
+		const outOfProcess = message.sessionId ? frameSessions.get(message.sessionId) : undefined;
+		if (outOfProcess) return answerFrame(message, outOfProcess);
 		const page = pageOf(message.sessionId);
 		switch (message.method) {
 			case "Browser.getVersion":
@@ -581,10 +699,40 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				keyEvents.push(params as KeyEvent);
 				if (params.type !== "keyUp") keys.push(String(params.key));
 				return {};
-			case "Accessibility.getFullAXTree":
-				return { nodes: axTree() };
+			case "Accessibility.getFullAXTree": {
+				const doc = pageDocuments(page).find((candidate, index) =>
+					params.frameId === undefined ? index === 0 : candidate.frameId === params.frameId,
+				);
+				if (!doc) throw new Error("Frame with the given frameId is not found.");
+				return { nodes: axTree(doc) };
+			}
 			case "DOMSnapshot.captureSnapshot":
-				return domSnapshot(Boolean(params.includeDOMRects));
+				return domSnapshot(pageDocuments(page), params);
+			case "DOM.getFrameOwner":
+				return { backendNodeId: ownerIdOf(params.frameId) };
+			case "Target.setAutoAttach":
+				// As Chrome does, the frames already there are attached before the answer.
+				if (!page || !params.autoAttach || !params.flatten) return {};
+				for (const outOfProcess of frames.filter((candidate) => candidate.outOfProcess)) {
+					const sessionId = frameSessionOf(page, outOfProcess);
+					if (frameSessions.has(sessionId)) continue;
+					frameSessions.set(sessionId, outOfProcess);
+					broadcast(
+						"Target.attachedToTarget",
+						{
+							sessionId,
+							targetInfo: {
+								targetId: frameIdOf(outOfProcess),
+								type: "iframe",
+								url: outOfProcess.url,
+								attached: true,
+							},
+							waitingForDebugger: false,
+						},
+						page.sessionId,
+					);
+				}
+				return {};
 			case "Page.getLayoutMetrics": {
 				const { width, height } = page?.viewport ?? options.viewport;
 				const ratio = options.unpainted ? 0 : 1;

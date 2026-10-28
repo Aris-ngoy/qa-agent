@@ -25,17 +25,29 @@ export type AxNode = {
  * One frame's document in `DOMSnapshot.captureSnapshot`: its nodes as parallel arrays,
  * and a layout box (x, y, width, height in the document) for each node shown. Boxes and
  * scroll offsets are in the display's device pixels, not CSS pixels: twice the CSS size on
- * a Retina Mac, whatever the page emulates. With `includeDOMRects`, `offsetRects` holds
- * each box's element's offset box in CSS pixels (empty for a node that has none).
+ * a Retina Mac, whatever the page emulates. Each document's boxes are in its own
+ * coordinates, an iframe's too. With `includeDOMRects`, `offsetRects` holds each box's
+ * element's offset box and `clientRects` its client box (`clientLeft`, `clientTop`, and
+ * the size inside its border), in CSS pixels (empty for a node that has none). `styles`
+ * holds each box's element's `computedStyles`, in the order they were asked for.
  * String fields index the snapshot's shared `strings` table.
  */
 export type DocumentSnapshot = {
+	frameId?: number;
 	nodes: {
 		backendNodeId?: number[];
 		/** Each node's attributes as name, value string indexes in turn. */
 		attributes?: number[][];
+		/** The iframe elements whose document is in this snapshot: node index, document index. */
+		contentDocumentIndex?: { index: number[]; value: number[] };
 	};
-	layout: { nodeIndex: number[]; bounds: number[][]; offsetRects?: number[][] };
+	layout: {
+		nodeIndex: number[];
+		bounds: number[][];
+		offsetRects?: number[][];
+		clientRects?: number[][];
+		styles?: number[][];
+	};
 	scrollOffsetX?: number;
 	scrollOffsetY?: number;
 };
@@ -120,6 +132,19 @@ export type CdpCommands = {
 		params: { targetId: string; flatten: true };
 		result: { sessionId: string };
 	};
+	/**
+	 * With `flatten`, each out-of-process iframe in the session's page is attached as a
+	 * session of its own, announced by `Target.attachedToTarget` on this session.
+	 */
+	"Target.setAutoAttach": {
+		params: { autoAttach: boolean; waitForDebuggerOnStart: boolean; flatten: true };
+		result: Record<string, never>;
+	};
+	/** The iframe element that holds a frame, in its parent frame's document. */
+	"DOM.getFrameOwner": {
+		params: { frameId: string };
+		result: { backendNodeId: number; nodeId?: number };
+	};
 	"Page.enable": { params: Record<string, never>; result: Record<string, never> };
 	"Page.bringToFront": { params: Record<string, never>; result: Record<string, never> };
 	"Page.handleJavaScriptDialog": {
@@ -173,7 +198,11 @@ export type CdpCommands = {
 		params: { origin: string; storageTypes: string };
 		result: Record<string, never>;
 	};
-	"Accessibility.getFullAXTree": { params: Record<string, never>; result: { nodes: AxNode[] } };
+	/** One frame's tree: the session's own frame unless `frameId` names another in its process. */
+	"Accessibility.getFullAXTree": {
+		params: { frameId?: string };
+		result: { nodes: AxNode[] };
+	};
 	"DOMSnapshot.captureSnapshot": {
 		params: { computedStyles: string[]; includeDOMRects?: boolean };
 		result: { documents: DocumentSnapshot[]; strings: string[] };
