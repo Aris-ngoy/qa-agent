@@ -242,6 +242,9 @@ function devicePixelsPerCss(
 /** An element's box, and where its content box starts: for an iframe, its document's origin. */
 type ElementBox = { layout: ElementLayout; content: PagePoint };
 
+/** A frame in a snapshot, by its iframe element's backend node id. */
+type FrameOwner = { frameId: string; owner: number };
+
 /**
  * A snapshot with each box's CSS offset and client boxes, and the padding that, past the
  * border, puts an iframe's content box where its document starts.
@@ -263,9 +266,9 @@ function layoutFrames(
 	{ documents, strings }: { documents: DocumentSnapshot[]; strings: string[] },
 	scale: number,
 	origin: PagePoint,
-): { boxes: Map<number, ElementBox>; frames: Array<{ frameId: string; owner: number }> } {
+): { boxes: Map<number, ElementBox>; frames: FrameOwner[] } {
 	const boxes = new Map<number, ElementBox>();
-	const frames: Array<{ frameId: string; owner: number }> = [];
+	const frames: FrameOwner[] = [];
 	const origins: Array<PagePoint | undefined> = [origin];
 	const cssPixels = (index: number | undefined) =>
 		Number.parseFloat(strings[index ?? -1] ?? "") || 0;
@@ -304,10 +307,10 @@ function layoutFrames(
 				y: bounds.y + borderTop + cssPixels(paddingTop),
 			};
 			boxes.set(backendId, { layout, content });
-			const childDoc = documents[contentDocuments.get(nodeIndex) ?? -1];
-			const frameId = strings[childDoc?.frameId ?? -1];
-			if (childDoc && frameId) {
-				origins[documents.indexOf(childDoc)] = content;
+			const childIndex = contentDocuments.get(nodeIndex) ?? -1;
+			const frameId = strings[documents[childIndex]?.frameId ?? -1];
+			if (frameId) {
+				origins[childIndex] = content;
 				frames.push({ frameId, owner: backendId });
 			}
 		});
@@ -460,8 +463,9 @@ export async function createWebDirectSession(
 		const { sessionId } = (params ?? {}) as { sessionId?: string };
 		if (!sessionId) return;
 		outOfProcessFrames.delete(sessionId);
-		const siblings = outOfProcessFrames.get(parentSession ?? "");
-		if (!parentSession || !siblings) return;
+		if (!parentSession) return;
+		const siblings = outOfProcessFrames.get(parentSession);
+		if (!siblings) return;
 		outOfProcessFrames.set(
 			parentSession,
 			siblings.filter((frame) => frame.sessionId !== sessionId),

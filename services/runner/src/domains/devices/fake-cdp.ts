@@ -413,7 +413,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		scroll: options.scroll ?? { x: 0, y: 0 },
 	});
 	/** Where a frame's content box starts inside its iframe element: its border and padding. */
-	const insetOf = (frame: FakeFrame) => (frame.border ?? 2) + (frame.padding ?? 0);
+	const borderOf = (frame: FakeFrame) => frame.border ?? 2;
+	const insetOf = (frame: FakeFrame) => borderOf(frame) + (frame.padding ?? 0);
 	const frameIdOf = (frame: FakeFrame) => `frame-${frames.indexOf(frame) + 1}`;
 	/** A same-origin frame's ids follow the page's in its process; an out-of-process one's start over. */
 	const frameDocument = (frame: FakeFrame): FakeDocument => {
@@ -430,7 +431,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const ownerIdOf = (frameId: unknown) => {
 		const frame = frames.find((candidate) => frameIdOf(candidate) === frameId);
 		if (!frame) throw new Error("Frame with the given id was not found.");
-		return 1 + 1 + nodes.length + frames.indexOf(frame);
+		// The page's document is 1 and its nodes follow, then one owner element per frame.
+		return 2 + nodes.length + frames.indexOf(frame);
 	};
 
 	/** `Accessibility.getFullAXTree` of one document: its root, then each node. */
@@ -489,7 +491,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				}
 				if (node.hidden) return;
 				const { x, y, width, height } = node.box;
-				const border = node.frame ? (node.frame.border ?? 2) : 0;
+				const border = node.frame ? borderOf(node.frame) : 0;
 				const padding = node.frame?.padding ?? 0;
 				nodeIndex.push(index + 1);
 				css.push([x + scroll.x, y + scroll.y, width, height]);
