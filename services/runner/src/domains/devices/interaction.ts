@@ -18,7 +18,8 @@ export type GetScreenOptions = {
 	full?: boolean;
 	/**
 	 * Abort live `/stream.mjpeg` proxies before pageSource (the device tool cannot serve both at once).
-	 * Default true. Inspector remounts the stream after the call.
+	 * Default true, except for a stream that survives a tree read (web). Inspector remounts
+	 * the stream after the call.
 	 */
 	pauseMjpeg?: boolean;
 };
@@ -50,7 +51,7 @@ export async function getScreen(
 	session: DeviceSession,
 	options: GetScreenOptions = {},
 ): Promise<ScreenResponse> {
-	if (options.pauseMjpeg !== false) {
+	if (options.pauseMjpeg !== false && !session.stream?.survivesTreeRead) {
 		const paused = abortAllMjpegProxies();
 		if (paused) await Bun.sleep(MJPEG_PAUSE_SETTLE_MS);
 	}

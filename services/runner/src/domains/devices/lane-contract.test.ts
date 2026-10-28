@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdir, unlink } from "node:fs/promises";
 import { KEY_MODIFIERS, KEY_NAMES, VIEWPORT_PRESETS } from "@yoqa/runner-client";
 import { pngSizeFromBase64 } from "./android-gestures";
+import { jpegSize, readMjpegFrames } from "./fake-cdp";
 import { getScreen, performAction } from "./interaction";
 import { UnsupportedKeyError, isDeadSessionError } from "./lane";
 import {
@@ -369,6 +370,19 @@ describe("Lane contract: web Direct (Viewport presets)", () => {
 				height: preset.height * preset.deviceScaleFactor,
 			});
 			expect(session.viewport).toBe(preset.name);
+			await session.quit();
+		});
+
+		// The screencast paints in the display's pixels (2 on a Retina Mac) and at first the
+		// whole window's view; the Stream is the preset's viewport at its CSS size.
+		test(`on a 2x display, the ${preset.name} preset's Stream frames are the preset's size`, async () => {
+			const harness = webCdpLane({ viewport: preset.name });
+			const { session } = await open(harness);
+			const upstream = session.stream?.upstreamUrl ?? "";
+			const frames = await readMjpegFrames(await fetch(upstream), 3);
+			for (const frame of frames) {
+				expect(jpegSize(frame)).toEqual({ width: preset.width, height: preset.height });
+			}
 			await session.quit();
 		});
 

@@ -256,6 +256,10 @@ export function createSessionRoutes() {
 				);
 			}
 			const proxyAbort = trackMjpegProxy();
+			// The Inspector hanging up cuts the upstream too: a fetch whose body is only
+			// cancelled keeps its socket, and a Lane that streams while watched (web) never
+			// sees its last watcher leave.
+			c.req.raw.signal.addEventListener("abort", () => proxyAbort.abort(), { once: true });
 			let upstream: Response;
 			try {
 				upstream = await fetch(stream.upstreamUrl, {

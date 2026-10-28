@@ -9,6 +9,7 @@
  */
 
 import type { LiveStream } from "./lane";
+import { MJPEG_CONTENT_TYPE, mjpegPart } from "./mjpeg-server";
 import { YoqaRunnerCommandError } from "./yoqa-runner-link";
 
 /** What the phone captures for the mirror and for a Run recording that shares it. */
@@ -20,8 +21,6 @@ const FAST_PULL_MS = 40;
 const KEEPALIVE_PULL_MS = 20_000;
 /** Resend the current frame when the screen has not changed, so a gone client is noticed. */
 const HEARTBEAT_MS = 1_000;
-
-const BOUNDARY = "yoqa-frame";
 
 type PreviewSend = (command: string, fields?: Record<string, unknown>) => Promise<unknown>;
 
@@ -41,17 +40,6 @@ export type PhonePreview = {
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
-}
-
-function part(bytes: Uint8Array): Uint8Array {
-	const head = `--${BOUNDARY}\r\nContent-Type: image/jpeg\r\nContent-Length: ${bytes.byteLength}\r\n\r\n`;
-	const headBytes = new TextEncoder().encode(head);
-	const tail = new TextEncoder().encode("\r\n");
-	const out = new Uint8Array(headBytes.byteLength + bytes.byteLength + tail.byteLength);
-	out.set(headBytes, 0);
-	out.set(bytes, headBytes.byteLength);
-	out.set(tail, headBytes.byteLength + bytes.byteLength);
-	return out;
 }
 
 /**
@@ -153,7 +141,7 @@ export async function startPhonePreview(send: PreviewSend): Promise<PhonePreview
 							if (frame && (frame.seq !== lastSeq || now - lastSent >= HEARTBEAT_MS)) {
 								lastSeq = frame.seq;
 								lastSent = now;
-								controller.enqueue(part(frame.bytes));
+								controller.enqueue(mjpegPart(frame.bytes));
 							}
 							await Bun.sleep(FAST_PULL_MS);
 						}
@@ -171,7 +159,7 @@ export async function startPhonePreview(send: PreviewSend): Promise<PhonePreview
 			});
 			return new Response(body, {
 				headers: {
-					"Content-Type": `multipart/x-mixed-replace; boundary=${BOUNDARY}`,
+					"Content-Type": MJPEG_CONTENT_TYPE,
 					"Cache-Control": "no-store",
 					Connection: "close",
 				},

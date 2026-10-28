@@ -26,8 +26,12 @@
  * background-app fails.
  *
  * The browser closing its socket, or the page going away with no opener to go back to, is
- * a Dead Session; a Yoqa-owned instance is then quit too. The Frame Feed is Screenshot Poll
- * (no stream) and the lane does not record.
+ * a Dead Session; a Yoqa-owned instance is then quit too. The lane does not record.
+ *
+ * The Frame Feed is a Stream: while someone watches it, the page screencasts JPEG frames at
+ * the preset's size, served as MJPEG. A screenshot under device emulation re-emulates and
+ * resizes the browser's view, which the user sees as flicker, so the Stream never takes
+ * one. Single shots (Run step screenshots, `/screenshot/image`) still do.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -48,6 +52,8 @@ import {
 	type CdpMethod,
 	type DocumentSnapshot,
 	type KeyEvent,
+	type ScreencastFrame,
+	type ScreencastFrameMetadata,
 	type TargetInfo,
 	connectCdp,
 } from "./cdp-client";
@@ -70,6 +76,7 @@ import {
 	type SessionOptions,
 	assertKeySupported,
 } from "./lane";
+import { startMjpegServer } from "./mjpeg-server";
 import type { WebAxSource, WebAxSourceNode } from "./screen";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
@@ -94,6 +101,13 @@ const DEFAULT_DRAG_MS = 800;
 const DEFAULT_SWIPE_MS = 400;
 /** The longest a navigation waits for its page to load before the session carries on. */
 const NAVIGATE_LOAD_MS = 10_000;
+
+/** Screencast JPEG quality: sharp enough to read text, small enough for 30 frames a second. */
+const SCREENCAST_QUALITY = 70;
+/** Every second frame the page paints: about 30 a second on a 60 Hz display. */
+const SCREENCAST_EVERY_NTH_FRAME = 2;
+/** How often a frame that is not the preset's makes the lane set the emulation again. */
+const REEMULATE_MS = 500;
 
 /** The mobile preset's user agent: Safari on the iPhone whose screen it is. */
 const MOBILE_USER_AGENT =
@@ -274,6 +288,24 @@ function originOf(url: string): string | null {
 }
 
 /**
+ * A screencast frame shows the preset's viewport, and nothing else, so the Stream's 0–1000
+ * is the page's. Chromium paints the whole browser window's view until the emulation is
+ * set again after the screencast starts; such a frame is not one.
+ */
+export function showsPreset(metadata: ScreencastFrameMetadata, preset: ViewportPreset): boolean {
+	return (
+		Math.round(metadata.deviceWidth) === preset.width &&
+		Math.round(metadata.deviceHeight) === preset.height &&
+		Math.round(metadata.offsetTop) === 0
+	);
+}
+
+/** The emulation that makes a page the preset's size and kind. */
+function deviceMetrics({ width, height, deviceScaleFactor, mobile }: ViewportPreset) {
+	return { width, height, deviceScaleFactor, mobile };
+}
+
+/**
  * Attach to a page so the session can drive it, at the session's Viewport preset. Enabling
  * the Page domain is what makes a JavaScript dialog wait for the session's answer, and a
  * tab in the background never paints, so its screenshot would never come back.
@@ -285,13 +317,8 @@ async function attachPage(
 ): Promise<DrivenPage> {
 	const { sessionId } = await client.send("Target.attachToTarget", { targetId, flatten: true });
 	await client.send("Page.enable", {}, sessionId);
-	const { width, height, deviceScaleFactor, mobile } = preset;
-	await client.send(
-		"Emulation.setDeviceMetricsOverride",
-		{ width, height, deviceScaleFactor, mobile },
-		sessionId,
-	);
-	if (mobile) {
+	await client.send("Emulation.setDeviceMetricsOverride", deviceMetrics(preset), sessionId);
+	if (preset.mobile) {
 		await client.send(
 			"Emulation.setTouchEmulationEnabled",
 			{ enabled: true, maxTouchPoints: 5 },
@@ -342,6 +369,7 @@ export async function createWebDirectSession(
 			sessionEnded = new DeadSessionError(`Device session ended: ${reason}`);
 			if (!quitting) {
 				// Nobody quits a dead session, so a browser Yoqa launched is quit here.
+				feed.stop();
 				void owned?.stop();
 				options.onSessionDead?.();
 			}
@@ -373,6 +401,7 @@ export async function createWebDirectSession(
 			openers.push(page);
 			page = popup;
 			openDialog = null;
+			followPage();
 		});
 	});
 	client.on("Target.detachedFromTarget", (params) => {
@@ -389,6 +418,70 @@ export async function createWebDirectSession(
 		page = opener;
 		openDialog = null;
 		switchPage(() => client.send("Page.bringToFront", {}, opener.sessionId));
+		followPage();
+	});
+	/** The page whose screencast feeds the Stream, by its session; null while nobody watches. */
+	let screencastOn: string | null = null;
+	let reemulatedAt = 0;
+	/**
+	 * Screencast the page the session drives. Its emulation is set again first thing, so
+	 * Chromium paints the preset's viewport, not the window's view.
+	 */
+	const startScreencast = async () => {
+		const sessionId = page.sessionId;
+		screencastOn = sessionId;
+		await client.send(
+			"Page.startScreencast",
+			{
+				format: "jpeg",
+				quality: SCREENCAST_QUALITY,
+				maxWidth: preset.width,
+				maxHeight: preset.height,
+				everyNthFrame: SCREENCAST_EVERY_NTH_FRAME,
+			},
+			sessionId,
+		);
+		reemulatedAt = performance.now();
+		await client.send("Emulation.setDeviceMetricsOverride", deviceMetrics(preset), sessionId);
+	};
+	const stopScreencast = async () => {
+		const sessionId = screencastOn;
+		screencastOn = null;
+		if (sessionId) await client.send("Page.stopScreencast", {}, sessionId);
+	};
+	/** The Stream shows whichever page the session drives: a popup, or the opener again. */
+	const followPage = () => {
+		if (screencastOn === null || screencastOn === page.sessionId || sessionEnded) return;
+		void stopScreencast()
+			.catch(() => undefined)
+			.then(startScreencast)
+			.catch(() => undefined);
+	};
+	const feed = startMjpegServer({
+		onWatched: () => {
+			if (!sessionEnded && !quitting) void startScreencast().catch(() => undefined);
+		},
+		onUnwatched: () => {
+			void stopScreencast().catch(() => undefined);
+		},
+	});
+	client.on("Page.screencastFrame", (params, eventSession) => {
+		const frame = params as ScreencastFrame;
+		// Unacked, the browser stops sending frames.
+		void client
+			.send("Page.screencastFrameAck", { sessionId: frame.sessionId }, eventSession)
+			.catch(() => undefined);
+		if (eventSession !== screencastOn || eventSession !== page.sessionId) return;
+		if (showsPreset(frame.metadata, preset)) {
+			feed.push(Uint8Array.from(Buffer.from(frame.data, "base64")));
+			return;
+		}
+		// The window's view, not the preset's: set the emulation again, as at the start.
+		if (performance.now() - reemulatedAt < REEMULATE_MS) return;
+		reemulatedAt = performance.now();
+		void client
+			.send("Emulation.setDeviceMetricsOverride", deviceMetrics(preset), eventSession)
+			.catch(() => undefined);
 	});
 	client.on("Page.javascriptDialogOpening", (params, eventSession) => {
 		if (eventSession === page.sessionId) openDialog = params as JavaScriptDialog;
@@ -586,6 +679,7 @@ export async function createWebDirectSession(
 		const { targetId } = await callBrowser("Target.createTarget", { url: "about:blank" });
 		page = await guarded(() => attachPage(client, targetId, preset));
 		openDialog = null;
+		followPage();
 		await callBrowser("Target.closeTarget", { targetId: appPage.targetId });
 	};
 
@@ -671,12 +765,14 @@ export async function createWebDirectSession(
 
 	return {
 		lane: "direct",
-		stream: null,
+		stream: { ...feed.stream, survivesTreeRead: true },
 		browser,
 		viewport: preset.name,
 		noRecordingReason: "Run recording is not available on web",
 		quit: async () => {
 			quitting = true;
+			feed.stop();
+			await stopScreencast().catch(() => undefined);
 			await client.close();
 			await owned?.stop();
 		},

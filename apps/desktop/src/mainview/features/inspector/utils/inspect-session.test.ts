@@ -5,6 +5,7 @@ import {
 	isDeviceSessionGone,
 	isDeviceUnreachable,
 	isStaleSessionReply,
+	treeReadPausesStream,
 } from "./inspect-session";
 
 describe("isDeviceSessionGone", () => {
@@ -71,6 +72,16 @@ describe("isDeviceUnreachable", () => {
 	});
 });
 
+const WEB_SESSION = {
+	deviceId: "web-chrome",
+	platform: "web" as const,
+	connectedAt: 1,
+	streamState: "ready" as const,
+	streamReady: true,
+	streamUrl: "/stream.mjpeg",
+	viewport: "mobile" as const,
+};
+
 describe("feedModeFor", () => {
 	const SESSION = { deviceId: "dev-1", platform: "ios" as const, connectedAt: 1 };
 
@@ -86,17 +97,8 @@ describe("feedModeFor", () => {
 		expect(feedModeFor({ ...SESSION, mjpegPort: 9100 })).toBe("mjpeg");
 	});
 
-	test("polls a web session, whose Lane never streams", () => {
-		expect(
-			feedModeFor({
-				deviceId: "web-chrome",
-				platform: "web",
-				connectedAt: 1,
-				streamState: "none",
-				streamReady: false,
-				viewport: "desktop",
-			}),
-		).toBe("poll");
+	test("streams a web session's screencast, and never polls its screenshots while it is up", () => {
+		expect(feedModeFor(WEB_SESSION)).toBe("mjpeg");
 	});
 
 	test("polls when the Stream failed, or there is nothing to stream from", () => {
@@ -109,5 +111,15 @@ describe("feedModeFor", () => {
 			}),
 		).toBe("poll");
 		expect(feedModeFor(SESSION)).toBe("poll");
+	});
+});
+
+describe("treeReadPausesStream", () => {
+	test("a phone's Stream pauses while its tree is read", () => {
+		expect(treeReadPausesStream({ deviceId: "dev-1", platform: "ios", connectedAt: 1 })).toBe(true);
+	});
+
+	test("a web screencast keeps streaming while the page's tree is read", () => {
+		expect(treeReadPausesStream(WEB_SESSION)).toBe(false);
 	});
 });

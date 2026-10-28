@@ -9,6 +9,11 @@
  * and a page can open another as its popup. A page takes device emulation as Chromium
  * does: an emulated viewport replaces its window's, and a touch that ends where it
  * started is a click.
+ *
+ * A page screencasts as Chromium does: JPEG frames in the display's pixels, scaled down to
+ * fit `maxWidth`×`maxHeight`, the next one only once the last is acked. Until the emulation
+ * is set again after the screencast starts, a frame is the whole window's view, not the
+ * emulated viewport, and its `metadata` says so.
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -100,6 +105,12 @@ export type FakeCdp = {
 	dialogAnswers: Array<{ accept: boolean; promptText?: string }>;
 	/** Origins whose storage was cleared. */
 	clearedOrigins: string[];
+	/** Every `Page.startScreencast`, with the page it started on. */
+	screencastStarts: Array<{ targetId: string } & Record<string, unknown>>;
+	/** Every screencast frame sent, in order. */
+	screencastFrames: FakeScreencastFrame[];
+	/** Whether a page is screencasting, the one in front by default. */
+	screencasting: (targetId?: string) => boolean;
 	/** The URLs of the open pages, oldest first. */
 	pages: () => string[];
 	/** Where clicks on one page landed, in its CSS pixels. */
@@ -126,6 +137,27 @@ export type FakeCdp = {
 
 type Message = { id: number; method: string; params?: Record<string, unknown>; sessionId?: string };
 
+/** One `Page.screencastFrame` the browser sent, as the session received it. */
+export type FakeScreencastFrame = {
+	targetId: string;
+	/** The view the frame shows, in CSS pixels. */
+	deviceWidth: number;
+	deviceHeight: number;
+	/** The JPEG's own size. */
+	width: number;
+	height: number;
+};
+
+type Screencast = {
+	maxWidth?: number;
+	maxHeight?: number;
+	/** The emulation was set again since the screencast started: frames are the emulated viewport. */
+	emulated: boolean;
+	/** The frame sent and not yet acked. */
+	unacked: number | null;
+	timer?: ReturnType<typeof setTimeout>;
+};
+
 type Page = FakeEmulation & {
 	targetId: string;
 	url: string;
@@ -136,10 +168,69 @@ type Page = FakeEmulation & {
 	openerId?: string;
 	/** Between `Page.navigate` and its load event, while the new document comes in. */
 	loading?: boolean;
+	screencast?: Screencast;
 };
 
 /** How long a navigation takes to load, as Chrome swaps in the new document. */
 const FAKE_LOAD_MS = 20;
+/** How long after an ack the next screencast frame comes. */
+const FAKE_FRAME_MS = 10;
+
+/**
+ * A JPEG's markers without its pixels: SOI, a comment naming `shade`, a baseline frame
+ * header of `width`×`height`, EOI. Enough for anything that reads a JPEG's size.
+ */
+export function fakeJpeg(width: number, height: number, shade: number): Uint8Array {
+	const comment = new TextEncoder().encode(`shade ${shade}`);
+	const bytes = [0xff, 0xd8, 0xff, 0xfe, 0, comment.length + 2, ...comment];
+	bytes.push(0xff, 0xc0, 0, 17, 8, height >> 8, height & 0xff, width >> 8, width & 0xff, 3);
+	for (let component = 1; component <= 3; component++) bytes.push(component, 0x11, 0);
+	bytes.push(0xff, 0xd9);
+	return Uint8Array.from(bytes);
+}
+
+/**
+ * The first `count` JPEGs of a multipart MJPEG response, read by each part's
+ * Content-Length. Cancels the body once it has them, as a watcher hanging up does.
+ */
+export async function readMjpegFrames(response: Response, count: number): Promise<Uint8Array[]> {
+	const reader = response.body?.getReader();
+	if (!reader) throw new Error("The MJPEG response has no body");
+	const frames: Uint8Array[] = [];
+	let buffer = Buffer.alloc(0);
+	while (frames.length < count) {
+		const header = buffer.indexOf("\r\n\r\n");
+		const length = /Content-Length: (\d+)/i.exec(buffer.subarray(0, header).toString("latin1"));
+		if (header >= 0 && length && buffer.length >= header + 4 + Number(length[1])) {
+			const start = header + 4;
+			frames.push(Uint8Array.from(buffer.subarray(start, start + Number(length[1]))));
+			buffer = buffer.subarray(start + Number(length[1]));
+			continue;
+		}
+		const next = await reader.read();
+		if (next.done) throw new Error(`The MJPEG stream ended after ${frames.length} frames`);
+		buffer = Buffer.concat([buffer, next.value]);
+	}
+	await reader.cancel();
+	return frames;
+}
+
+/** A JPEG's size, from its first frame header. */
+export function jpegSize(jpeg: Uint8Array): { width: number; height: number } {
+	let at = 2;
+	while (at + 9 < jpeg.length) {
+		const marker = jpeg[at + 1] ?? 0;
+		const length = ((jpeg[at + 2] ?? 0) << 8) | (jpeg[at + 3] ?? 0);
+		if (marker >= 0xc0 && marker <= 0xc3) {
+			return {
+				height: ((jpeg[at + 5] ?? 0) << 8) | (jpeg[at + 6] ?? 0),
+				width: ((jpeg[at + 7] ?? 0) << 8) | (jpeg[at + 8] ?? 0),
+			};
+		}
+		at += 2 + length;
+	}
+	throw new Error("Not a JPEG with a frame header");
+}
 
 export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const scale = options.deviceScaleFactor ?? 1;
@@ -154,6 +245,9 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const navigations: string[] = [];
 	const dialogAnswers: FakeCdp["dialogAnswers"] = [];
 	const clearedOrigins: string[] = [];
+	const screencastStarts: FakeCdp["screencastStarts"] = [];
+	const screencastFrames: FakeScreencastFrame[] = [];
+	let nextScreencastFrame = 1;
 	const sockets = new Set<ServerWebSocket<unknown>>();
 	const pages: Page[] = [];
 	let nextPage = 1;
@@ -200,7 +294,54 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		return page;
 	};
 	createPage("about:blank");
+	const stopScreencast = (page: Page) => {
+		clearTimeout(page.screencast?.timer);
+		page.screencast = undefined;
+	};
+	/** The page's next screencast frame, sent once the browser has painted it. */
+	const sendScreencastFrame = (page: Page, afterMs: number) => {
+		const screencast = page.screencast;
+		if (!screencast) return;
+		clearTimeout(screencast.timer);
+		screencast.timer = setTimeout(() => {
+			if (page.screencast !== screencast || !page.sessionId) return;
+			const view = screencast.emulated ? page.viewport : options.viewport;
+			const fit = Math.min(
+				1,
+				(screencast.maxWidth ?? Number.POSITIVE_INFINITY) / (view.width * scale),
+				(screencast.maxHeight ?? Number.POSITIVE_INFINITY) / (view.height * scale),
+			);
+			const width = Math.round(view.width * scale * fit);
+			const height = Math.round(view.height * scale * fit);
+			const id = nextScreencastFrame++;
+			screencast.unacked = id;
+			screencastFrames.push({
+				targetId: page.targetId,
+				deviceWidth: view.width,
+				deviceHeight: view.height,
+				width,
+				height,
+			});
+			broadcast(
+				"Page.screencastFrame",
+				{
+					data: Buffer.from(fakeJpeg(width, height, clicks.length)).toString("base64"),
+					metadata: {
+						deviceWidth: view.width,
+						deviceHeight: view.height,
+						offsetTop: 0,
+						pageScaleFactor: 1,
+						scrollOffsetX: 0,
+						scrollOffsetY: 0,
+					},
+					sessionId: id,
+				},
+				page.sessionId,
+			);
+		}, afterMs);
+	};
 	const closeTarget = (page: Page) => {
+		stopScreencast(page);
 		pages.splice(pages.indexOf(page), 1);
 		if (front === page) front = pages.at(-1);
 		if (page.sessionId) {
@@ -333,7 +474,29 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 					// 0 keeps the window's own scale, as in Chromium.
 					if (Number(params.deviceScaleFactor) > 0) page.scale = Number(params.deviceScaleFactor);
 					page.mobile = Boolean(params.mobile);
+					if (page.screencast) page.screencast.emulated = true;
 				}
+				return {};
+			case "Page.startScreencast":
+				if (!page) return {};
+				stopScreencast(page);
+				screencastStarts.push({ targetId: page.targetId, ...params });
+				page.screencast = {
+					maxWidth: params.maxWidth === undefined ? undefined : Number(params.maxWidth),
+					maxHeight: params.maxHeight === undefined ? undefined : Number(params.maxHeight),
+					emulated: false,
+					unacked: null,
+				};
+				sendScreencastFrame(page, 0);
+				return {};
+			case "Page.screencastFrameAck":
+				if (page?.screencast && page.screencast.unacked === Number(params.sessionId)) {
+					page.screencast.unacked = null;
+					sendScreencastFrame(page, FAKE_FRAME_MS);
+				}
+				return {};
+			case "Page.stopScreencast":
+				if (page) stopScreencast(page);
 				return {};
 			case "Emulation.setTouchEmulationEnabled":
 				if (page) page.touch = Boolean(params.enabled);
@@ -458,6 +621,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			},
 			close(ws) {
 				sockets.delete(ws);
+				// A page's screencast ends with the DevTools session that started it.
+				if (sockets.size === 0) for (const page of pages) stopScreencast(page);
 			},
 			message(ws, raw) {
 				const message = JSON.parse(String(raw)) as Message;
@@ -487,6 +652,12 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		navigations,
 		dialogAnswers,
 		clearedOrigins,
+		screencastStarts,
+		screencastFrames,
+		screencasting: (targetId) => {
+			const page = targetId === undefined ? front : targetOf(targetId);
+			return Boolean(page?.screencast);
+		},
 		pages: () => pages.map((page) => page.url),
 		clicksOn: (targetId) => targetOf(targetId).clicks,
 		frontPage: () => front?.targetId,
@@ -514,6 +685,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			if (page) closeTarget(page);
 		},
 		kill: () => {
+			for (const page of pages) stopScreencast(page);
 			for (const ws of sockets) ws.close();
 			server.stop(true);
 		},
