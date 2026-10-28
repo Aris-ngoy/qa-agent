@@ -200,13 +200,36 @@ async function pickPage(client: CdpClient): Promise<string> {
 type ElementLayout = Pick<WebAxSourceNode, "bounds" | "testId" | "domId">;
 
 /**
+ * Device pixels per CSS pixel in a DOM snapshot: the display's scale (2 on a Retina Mac),
+ * which Chromium lays snapshots out in whatever the page emulates. The layout viewport's
+ * two widths give it. A tab that has never painted reports 0 for both, and then a box
+ * against its element's CSS offset box in the same snapshot does.
+ */
+function devicePixelsPerCss(
+	metrics: CdpCommands["Page.getLayoutMetrics"]["result"],
+	doc: DocumentSnapshot | undefined,
+): number {
+	const device = metrics.layoutViewport?.clientWidth ?? 0;
+	const css = metrics.cssLayoutViewport?.clientWidth ?? 0;
+	if (device > 0 && css > 0) return device / css;
+	const offsets = doc?.layout.offsetRects ?? [];
+	for (const [index, offset] of offsets.entries()) {
+		const cssWidth = offset[2] ?? 0;
+		const deviceWidth = doc?.layout.bounds[index]?.[2] ?? 0;
+		if (cssWidth > 0 && deviceWidth > 0) return deviceWidth / cssWidth;
+	}
+	return 1;
+}
+
+/**
  * Each laid-out element of the main frame by its backend node id: its box in the
- * viewport's CSS pixels (the snapshot's are in the document's, so scrolling is taken
- * off) and its `data-testid` and `id` attributes.
+ * viewport's CSS pixels (the snapshot's are in the document's device pixels, so scrolling
+ * is taken off and the result scaled by `scale`) and its `data-testid` and `id` attributes.
  */
 function layoutByBackendId(
 	documents: DocumentSnapshot[],
 	strings: string[],
+	scale: number,
 ): Map<number, ElementLayout> {
 	const layouts = new Map<number, ElementLayout>();
 	const doc = documents[0];
@@ -217,7 +240,14 @@ function layoutByBackendId(
 		const backendId = doc.nodes.backendNodeId?.[nodeIndex];
 		const [x = 0, y = 0, width = 0, height = 0] = doc.layout.bounds[layoutIndex] ?? [];
 		if (backendId === undefined || layouts.has(backendId)) return;
-		const layout: ElementLayout = { bounds: { x: x - scrollX, y: y - scrollY, width, height } };
+		const layout: ElementLayout = {
+			bounds: {
+				x: (x - scrollX) / scale,
+				y: (y - scrollY) / scale,
+				width: width / scale,
+				height: height / scale,
+			},
+		};
 		const attributes = doc.nodes.attributes?.[nodeIndex] ?? [];
 		for (let at = 0; at + 1 < attributes.length; at += 2) {
 			const name = strings[attributes[at] ?? -1];
@@ -622,11 +652,13 @@ export async function createWebDirectSession(
 	 * page costs two commands, not one per node.
 	 */
 	const pageSource = async () => {
-		const [{ nodes }, snapshot] = await Promise.all([
+		const [{ nodes }, snapshot, metrics] = await Promise.all([
 			call("Accessibility.getFullAXTree", {}),
-			call("DOMSnapshot.captureSnapshot", { computedStyles: [] }),
+			call("DOMSnapshot.captureSnapshot", { computedStyles: [], includeDOMRects: true }),
+			call("Page.getLayoutMetrics", {}),
 		]);
-		const layouts = layoutByBackendId(snapshot.documents, snapshot.strings);
+		const scale = devicePixelsPerCss(metrics, snapshot.documents[0]);
+		const layouts = layoutByBackendId(snapshot.documents, snapshot.strings, scale);
 		const axTree = nodes.map((node): WebAxSourceNode => {
 			const layout =
 				node.backendDOMNodeId === undefined ? undefined : layouts.get(node.backendDOMNodeId);

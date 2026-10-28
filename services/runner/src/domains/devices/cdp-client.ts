@@ -23,7 +23,10 @@ export type AxNode = {
 
 /**
  * One frame's document in `DOMSnapshot.captureSnapshot`: its nodes as parallel arrays,
- * and a layout box (x, y, width, height in document CSS pixels) for each node shown.
+ * and a layout box (x, y, width, height in the document) for each node shown. Boxes and
+ * scroll offsets are in the display's device pixels, not CSS pixels: twice the CSS size on
+ * a Retina Mac, whatever the page emulates. With `includeDOMRects`, `offsetRects` holds
+ * each box's element's offset box in CSS pixels (empty for a node that has none).
  * String fields index the snapshot's shared `strings` table.
  */
 export type DocumentSnapshot = {
@@ -32,7 +35,7 @@ export type DocumentSnapshot = {
 		/** Each node's attributes as name, value string indexes in turn. */
 		attributes?: number[][];
 	};
-	layout: { nodeIndex: number[]; bounds: number[][] };
+	layout: { nodeIndex: number[]; bounds: number[][]; offsetRects?: number[][] };
 	scrollOffsetX?: number;
 	scrollOffsetY?: number;
 };
@@ -102,6 +105,14 @@ export type CdpCommands = {
 		params: { accept: boolean; promptText?: string };
 		result: Record<string, never>;
 	};
+	/** The layout viewport in device pixels and in CSS pixels; both 0 in a tab never painted. */
+	"Page.getLayoutMetrics": {
+		params: Record<string, never>;
+		result: {
+			layoutViewport?: { clientWidth: number };
+			cssLayoutViewport?: { clientWidth: number };
+		};
+	};
 	"Page.captureScreenshot": { params: { format: "png" }; result: { data: string } };
 	/** No `loaderId` for a same-document navigation (a hash change), which loads nothing. */
 	"Page.navigate": {
@@ -130,7 +141,7 @@ export type CdpCommands = {
 	};
 	"Accessibility.getFullAXTree": { params: Record<string, never>; result: { nodes: AxNode[] } };
 	"DOMSnapshot.captureSnapshot": {
-		params: { computedStyles: string[] };
+		params: { computedStyles: string[]; includeDOMRects?: boolean };
 		result: { documents: DocumentSnapshot[]; strings: string[] };
 	};
 };

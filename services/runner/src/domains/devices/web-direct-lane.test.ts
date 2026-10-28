@@ -278,6 +278,22 @@ describe("web Direct lane: Screen", () => {
 		await session.quit();
 	});
 
+	test("a tab that has not painted still gets boxes in CSS pixels", async () => {
+		const { session } = await attach({
+			nodes: SIGN_IN,
+			unpainted: true,
+			scroll: { x: 0, y: 1200 },
+		});
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		expect(screen.elements?.find((el) => el.label === "Sign in")).toMatchObject({
+			x: 50,
+			y: 300,
+			width: 100,
+			height: 50,
+		});
+		await session.quit();
+	});
+
 	test("--full is the raw accessibility tree, hidden nodes and all, with boxes", async () => {
 		const { session } = await attach({ nodes: SIGN_IN });
 		const screen = await getScreen(session, { full: true, pauseMjpeg: false });
