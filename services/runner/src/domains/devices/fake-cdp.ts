@@ -4,7 +4,8 @@
  * (clicks, mouse, wheel and touch events, text, navigations, keys, dialog answers, cleared
  * storage) in CSS pixels, and serves a viewport-sized PNG that darkens with each click,
  * plus an accessibility tree with whatever nodes it is given and a DOM snapshot that lays
- * them out. Pages open and close as targets, the way tabs do, each with its own viewport,
+ * them out. As in Chromium, the snapshot's boxes and scroll offset are in the display's
+ * device pixels, whatever the emulation, and `Page.getLayoutMetrics` gives the ratio. Pages open and close as targets, the way tabs do, each with its own viewport,
  * and a page can open another as its popup. A page takes device emulation as Chromium
  * does: an emulated viewport replaces its window's, and a touch that ends where it
  * started is a click.
@@ -42,6 +43,11 @@ export type FakeCdpOptions = {
 	/** `Page.navigate`'s `errorText` for a URL the page cannot load. */
 	navigateError?: string;
 	nodes?: FakeAxNode[];
+	/**
+	 * A tab that has never painted, such as one behind a browser's sign-in wall:
+	 * `Page.getLayoutMetrics` answers zero sizes, as Chromium does.
+	 */
+	unpainted?: boolean;
 };
 
 export type FakeMouseEvent = {
@@ -237,9 +243,11 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 
 	/**
 	 * `DOMSnapshot.captureSnapshot`: the document node, then one element per node with its
-	 * attributes, and a layout box in document coordinates for each node that is shown.
+	 * attributes, and a layout box in document coordinates for each node that is shown. As
+	 * in Chromium, boxes and the scroll offset are in the display's device pixels; with
+	 * `includeDOMRects`, each box's `offsetRects` entry is in CSS pixels.
 	 */
-	const domSnapshot = () => {
+	const domSnapshot = (includeDOMRects: boolean) => {
 		const strings: string[] = [];
 		const ref = (text: string) => {
 			const at = strings.indexOf(text);
@@ -247,13 +255,19 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		};
 		const scroll = options.scroll ?? { x: 0, y: 0 };
 		const pageHeight = options.pageHeight ?? options.viewport.height;
-		const layout = { nodeIndex: [0], bounds: [[0, 0, options.viewport.width, pageHeight]] };
+		const css = [[0, 0, options.viewport.width, pageHeight]];
+		const nodeIndex = [0];
 		nodes.forEach((node, index) => {
 			if (node.hidden) return;
 			const { x, y, width, height } = node.box;
-			layout.nodeIndex.push(index + 1);
-			layout.bounds.push([x + scroll.x, y + scroll.y, width, height]);
+			nodeIndex.push(index + 1);
+			css.push([x + scroll.x, y + scroll.y, width, height]);
 		});
+		const layout = {
+			nodeIndex,
+			bounds: css.map((box) => box.map((value) => value * scale)),
+			...(includeDOMRects ? { offsetRects: css } : {}),
+		};
 		const attributes = nodes.map((node) => [
 			...(node.domId ? [ref("id"), ref(node.domId)] : []),
 			...(node.testId ? [ref("data-testid"), ref(node.testId)] : []),
@@ -267,8 +281,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 						attributes: [[], ...attributes],
 					},
 					layout,
-					scrollOffsetX: scroll.x,
-					scrollOffsetY: scroll.y,
+					scrollOffsetX: scroll.x * scale,
+					scrollOffsetY: scroll.y * scale,
 				},
 			],
 			strings,
@@ -407,7 +421,18 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			case "Accessibility.getFullAXTree":
 				return { nodes: axTree() };
 			case "DOMSnapshot.captureSnapshot":
-				return domSnapshot();
+				return domSnapshot(Boolean(params.includeDOMRects));
+			case "Page.getLayoutMetrics": {
+				const { width, height } = page?.viewport ?? options.viewport;
+				const ratio = options.unpainted ? 0 : 1;
+				const viewport = (pixels: number) => ({
+					pageX: 0,
+					pageY: 0,
+					clientWidth: width * pixels * ratio,
+					clientHeight: height * pixels * ratio,
+				});
+				return { layoutViewport: viewport(scale), cssLayoutViewport: viewport(1) };
+			}
 			default:
 				return {};
 		}

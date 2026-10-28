@@ -7,7 +7,7 @@ Give a web device a real **Screen** ([#304](https://github.com/Aris-ngoy/qa-agen
 ## Plan summary
 
 - **The page source is the raw tree.** The lane's `pageSource` is CDP's `Accessibility.getFullAXTree`, as JSON (`{ "axTree": [...] }`). Each node whose element is laid out also carries `bounds` (viewport CSS pixels), `testId` (`data-testid`) and `domId` (`id`). `--full` returns that JSON unchanged, hidden nodes included.
-- **Two commands per read, not one per node.** Boxes and attributes come from a single `DOMSnapshot.captureSnapshot`, joined to the tree by backend node id. Snapshot boxes are in document coordinates, so the document's scroll offset is subtracted. Rejected: the tracer bullet's `DOM.getBoxModel` per node, which costs one round trip per node on a large page.
+- **Three commands per read, not one per node.** Boxes and attributes come from a single `DOMSnapshot.captureSnapshot`, joined to the tree by backend node id. Snapshot boxes are in document coordinates, so the document's scroll offset is subtracted. They are also in the display's device pixels, so the result is divided by the scale `Page.getLayoutMetrics` gives: see [web-device-pixel-boxes.md](./web-device-pixel-boxes.md). Rejected: the tracer bullet's `DOM.getBoxModel` per node, which costs one round trip per node on a large page.
 - **The cleaner is pure** (`cleanWebAxSource` in `screen.ts`, next to the Android and iOS cleaners). `cleanPageSource` picks it when the JSON has `axTree`.
   - It drops ignored (hidden) nodes, nodes with no layout box, zero-size nodes and offscreen nodes.
   - It drops `RootWebArea`, `InlineTextBox` and `LineBreak` always.

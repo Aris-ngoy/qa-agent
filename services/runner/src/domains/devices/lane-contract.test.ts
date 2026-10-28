@@ -371,6 +371,20 @@ describe("Lane contract: web Direct (Viewport presets)", () => {
 			expect(session.viewport).toBe(preset.name);
 			await session.quit();
 		});
+
+		// Chromium lays out DOM snapshots in the display's device pixels (2 on a Retina Mac),
+		// whatever the preset emulates; the Screen and taps by label are in CSS pixels.
+		test(`on a 2x display, the ${preset.name} preset's Screen is in CSS pixels and a tap by label lands on it`, async () => {
+			const harness = webCdpLane({ viewport: preset.name });
+			const { session } = await open(harness);
+			const screen = await getScreen(session, { pauseMjpeg: false });
+			expect(screen.elements).toEqual([expect.objectContaining(BUTTON)]);
+			await performAction(session, { kind: "tap", label: BUTTON.label });
+			const [click] = harness.browser.clicks;
+			expect(click?.x).toBeCloseTo(((BUTTON.x + BUTTON.width / 2) / 1000) * preset.width, 0);
+			expect(click?.y).toBeCloseTo(((BUTTON.y + BUTTON.height / 2) / 1000) * preset.height, 0);
+			await session.quit();
+		});
 	}
 
 	test("a connect with no preset is desktop", async () => {
