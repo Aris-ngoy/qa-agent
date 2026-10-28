@@ -32,10 +32,19 @@ export function isDeviceUnreachable(error: unknown): boolean {
 
 /**
  * The Frame Feed the Inspector opens on `session`: the live Stream when it is up, else
- * Screenshot Poll. A Lane with no Stream (web) always polls, and that is not a failure.
+ * Screenshot Poll. A Lane with no Stream always polls, and that is not a failure.
  */
 export function feedModeFor(session: ActiveDeviceResponse): "mjpeg" | "poll" {
 	if (session.streamState === "none" || session.streamState === "failed") return "poll";
 	if (session.streamReady === false) return "poll";
 	return session.streamUrl || session.mjpegPort ? "mjpeg" : "poll";
+}
+
+/**
+ * Whether reading the tree cuts `session`'s Stream for the read. A phone's device tool
+ * cannot serve both at once; a web screencast over CDP can, so its tree is read (and
+ * refreshed on a timer) with the Stream left up.
+ */
+export function treeReadPausesStream(session: ActiveDeviceResponse): boolean {
+	return session.platform !== "web";
 }

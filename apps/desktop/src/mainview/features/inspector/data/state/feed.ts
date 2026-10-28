@@ -10,6 +10,7 @@ import {
 	isDeviceSessionGone,
 	isDeviceUnreachable,
 	isStaleSessionReply,
+	treeReadPausesStream,
 } from "@/features/inspector/utils/inspect-session";
 import {
 	type InspectorSelection,
@@ -167,12 +168,13 @@ export class InspectorFeedController {
 		);
 	}
 
-	/** Read the accessibility tree (pauses MJPEG briefly under Stream). */
+	/** Read the accessibility tree (pauses a phone's MJPEG briefly under Stream). */
 	async refreshTree(options: { silent?: boolean } = {}): Promise<ScreenElement[] | null> {
 		const silent = options.silent ?? false;
-		if (this.inFlight || !this.feed$.active.peek()) return null;
+		const active = this.feed$.active.peek();
+		if (this.inFlight || !active) return null;
 		const epoch = this.epoch;
-		const pauseMjpeg = this.feed$.feedMode.peek() === "mjpeg";
+		const pauseMjpeg = this.feed$.feedMode.peek() === "mjpeg" && treeReadPausesStream(active);
 		this.inFlight = true;
 		this.feed$.treeRefreshing.set(true);
 		try {

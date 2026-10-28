@@ -5,10 +5,11 @@ import { InspectorFeedController } from "@/features/inspector/data/state/feed";
 import { initialPageState } from "@/features/inspector/data/state/page";
 import { useInspectorDevice } from "@/features/inspector/hooks/usequery/use-inspector-device";
 import { inspectorSessionKey, shouldAutoAttach } from "@/features/inspector/utils/auto-attach";
+import { treeReadPausesStream } from "@/features/inspector/utils/inspect-session";
 import { useObservable, useObserveEffect, useValue } from "@legendapp/state/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
-/** Accessibility tree refresh when using screenshot poll (not during MJPEG). */
+/** Accessibility tree refresh on screenshot poll, and on a Stream a tree read leaves up. */
 const TREE_REFRESH_MS = 8000;
 /** Fallback screenshot poll when the MJPEG stream is unavailable. */
 const FALLBACK_SCREENSHOT_MS = 250;
@@ -106,13 +107,14 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 		};
 	}, [controller]);
 
-	// Accessibility tree refresh — only on poll feed. MJPEG + pageSource on the
-	// same device session routinely kills the stream a few seconds after connect.
+	// Accessibility tree refresh — on poll feed, and on a Stream a tree read leaves up (web).
+	// A phone's MJPEG + pageSource on the same device session routinely kills the stream a
+	// few seconds after connect.
 	useObserveEffect(
 		(): "off" | "run" => {
-			if (feed$.active.get() == null || !page$.visible.get() || feed$.feedMode.get() !== "poll") {
-				return "off";
-			}
+			const attached = feed$.active.get();
+			if (attached == null || !page$.visible.get()) return "off";
+			if (feed$.feedMode.get() !== "poll" && treeReadPausesStream(attached)) return "off";
 			return "run";
 		},
 		(event) => {

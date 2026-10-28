@@ -59,6 +59,11 @@ export type LiveStream = {
 	port: number;
 	/** URL the runner fetches the MJPEG feed from. */
 	upstreamUrl: string;
+	/**
+	 * Reading the Screen does not disturb this stream (a web screencast over CDP), so a
+	 * tree read leaves its watchers alone instead of pausing them.
+	 */
+	survivesTreeRead?: boolean;
 };
 
 /** A screen recording in flight (Run recording). `stop` finalizes the file at the path it was started with. */

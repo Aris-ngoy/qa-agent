@@ -40,6 +40,27 @@ export type DocumentSnapshot = {
 	scrollOffsetY?: number;
 };
 
+/**
+ * What one screencast frame shows: the view it was painted from (`deviceWidth`×
+ * `deviceHeight`, in CSS pixels), how far below the frame's top that view starts, and the
+ * page's pinch zoom.
+ */
+export type ScreencastFrameMetadata = {
+	deviceWidth: number;
+	deviceHeight: number;
+	offsetTop: number;
+	pageScaleFactor: number;
+	scrollOffsetX?: number;
+	scrollOffsetY?: number;
+};
+
+/** `Page.screencastFrame`: a base64 JPEG, and the id to ack it with. */
+export type ScreencastFrame = {
+	data: string;
+	metadata: ScreencastFrameMetadata;
+	sessionId: number;
+};
+
 export type TargetInfo = {
 	targetId: string;
 	type: string;
@@ -114,6 +135,19 @@ export type CdpCommands = {
 		};
 	};
 	"Page.captureScreenshot": { params: { format: "png" }; result: { data: string } };
+	/** Frames come as `Page.screencastFrame` events, each acked before the next is sent. */
+	"Page.startScreencast": {
+		params: {
+			format: "jpeg" | "png";
+			quality?: number;
+			maxWidth?: number;
+			maxHeight?: number;
+			everyNthFrame?: number;
+		};
+		result: Record<string, never>;
+	};
+	"Page.stopScreencast": { params: Record<string, never>; result: Record<string, never> };
+	"Page.screencastFrameAck": { params: { sessionId: number }; result: Record<string, never> };
 	/** No `loaderId` for a same-document navigation (a hash change), which loads nothing. */
 	"Page.navigate": {
 		params: { url: string };

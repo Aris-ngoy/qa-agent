@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createConnection } from "node:net";
-import { startFakeCdp } from "./fake-cdp";
+import { jpegSize, readMjpegFrames, startFakeCdp } from "./fake-cdp";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
 import { type IdbExec, createIosDirectSession } from "./ios-direct-lane";
 import type { LaneFactory, LaneName } from "./lane";
@@ -577,5 +577,67 @@ describe("connecting a web device at a Viewport preset", () => {
 	test("a phone has no Viewport preset", async () => {
 		const response = await connect({ deviceId: "dev-1", platform: "android" });
 		expect(await response.json()).not.toHaveProperty("viewport");
+	});
+});
+
+describe("the web Frame Feed on /stream.mjpeg", () => {
+	/** A mobile web session on a 2× display, and the runner's routes on a real port. */
+	async function webSession() {
+		const browser = startFakeCdp({ viewport: { width: 900, height: 700 }, deviceScaleFactor: 2 });
+		directLane = (options) => createWebDirectSession(options);
+		const info = await connectDevice({
+			deviceId: `chromium-cdp-${browser.port}`,
+			platform: "web",
+			viewport: "mobile",
+		});
+		const runner = Bun.serve({
+			hostname: "127.0.0.1",
+			port: 0,
+			fetch: createSessionRoutes().fetch,
+		});
+		phoneServers.push(runner);
+		const watch = async () => {
+			const hangUp = new AbortController();
+			const response = await fetch(`http://127.0.0.1:${runner.port}${info.streamUrl}`, {
+				signal: hangUp.signal,
+			});
+			return { response, hangUp: () => hangUp.abort() };
+		};
+		return { browser, info, watch };
+	}
+
+	/** Wait up to a second for `check` to hold. */
+	async function eventually(check: () => boolean): Promise<boolean> {
+		for (let tries = 0; tries < 50 && !check(); tries++) await Bun.sleep(20);
+		return check();
+	}
+
+	test("a web session reports a Stream, and its frames are JPEGs at the preset's size", async () => {
+		const { info, watch } = await webSession();
+		expect(info).toMatchObject({ streamState: "ready", streamUrl: "/stream.mjpeg" });
+		const { response } = await watch();
+		expect(response.status).toBe(200);
+		expect(response.headers.get("Content-Type")).toContain("multipart/x-mixed-replace");
+		const frames = await readMjpegFrames(response, 3);
+		for (const frame of frames) expect(jpegSize(frame)).toEqual({ width: 390, height: 844 });
+	});
+
+	test("the screencast stops when the Inspector hangs up", async () => {
+		const { browser, watch } = await webSession();
+		const watcher = await watch();
+		const reader = watcher.response.body?.getReader();
+		await reader?.read();
+		expect(browser.screencasting()).toBe(true);
+		watcher.hangUp();
+		expect(await eventually(() => !browser.screencasting())).toBe(true);
+	});
+
+	test("the screencast stops when the session is disconnected", async () => {
+		const { browser, watch } = await webSession();
+		const reader = (await watch()).response.body?.getReader();
+		await reader?.read();
+		expect(browser.screencasting()).toBe(true);
+		await disconnectDevice();
+		expect(await eventually(() => !browser.screencasting())).toBe(true);
 	});
 });
