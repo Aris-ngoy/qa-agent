@@ -285,4 +285,75 @@ describe("cleanPageSource on a web page's accessibility tree", () => {
 	test("an empty page is an empty Screen", () => {
 		expect(cleanPageSource(JSON.stringify({ axTree: [] }), VIEWPORT).elements).toEqual([]);
 	});
+
+	/** A page's AX tree from `[nodeId, parentId, role, name, extras]` rows, every node laid out. */
+	const page = (
+		rows: Array<[string, string | undefined, string, string, Record<string, unknown>?]>,
+	): string =>
+		JSON.stringify({
+			axTree: rows.map(([nodeId, parentId, role, name, extras]) => ({
+				nodeId,
+				ignored: false,
+				role: { type: "role", value: role },
+				name: { type: "computedString", value: name },
+				...(parentId ? { parentId } : {}),
+				bounds: { x: 64, y: 64, width: 128, height: 32 },
+				...extras,
+			})),
+		});
+
+	test("drops text inside a control even when it differs from the control's name", () => {
+		const source = page([
+			["1", undefined, "RootWebArea", "Settings"],
+			["2", "1", "button", "Switch color theme", { domId: "theme" }],
+			["3", "2", "generic", ""],
+			["4", "3", "StaticText", "Theme"],
+			["5", "1", "link", "Read the docs"],
+			["6", "5", "StaticText", "read the DOCS"],
+		]);
+		expect(cleanPageSource(source, VIEWPORT).elements.map((el) => [el.type, el.label])).toEqual([
+			["button", "Switch color theme"],
+			["link", "Read the docs"],
+		]);
+	});
+
+	test("keeps text that is not inside a control, and text whose control is off the Screen", () => {
+		const source = page([
+			["1", undefined, "RootWebArea", "Settings"],
+			["2", "1", "paragraph", ""],
+			["3", "2", "StaticText", "Theme"],
+			["4", "1", "button", "Open", { bounds: { x: 64, y: 64, width: 0, height: 0 } }],
+			["5", "4", "StaticText", "Open the menu"],
+		]);
+		expect(cleanPageSource(source, VIEWPORT).elements.map((el) => [el.type, el.label])).toEqual([
+			["StaticText", "Theme"],
+			["StaticText", "Open the menu"],
+		]);
+	});
+
+	test("keeps an unnamed image that has a data-testid or DOM id, so it can be tapped by id", () => {
+		const source = page([
+			["1", undefined, "RootWebArea", "Profile"],
+			["2", "1", "img", "", { testId: "avatar" }],
+			["3", "1", "image", "", { domId: "banner" }],
+			["4", "1", "image", ""],
+			["5", "1", "image", "", { domId: ":r1:" }],
+			["6", "1", "generic", "", { testId: "wrapper" }],
+		]);
+		expect(cleanPageSource(source, VIEWPORT).elements.map((el) => [el.type, el.id])).toEqual([
+			["img", "avatar"],
+			["image", "banner"],
+		]);
+	});
+
+	test("keeps aria-hidden content out, id'd images and text included", () => {
+		const hidden = { ignored: true, ignoredReasons: [{ name: "ariaHiddenSubtree" }] };
+		const source = page([
+			["1", undefined, "RootWebArea", "Profile"],
+			["2", "1", "generic", "", hidden],
+			["3", "2", "image", "", { ...hidden, testId: "decoration" }],
+			["4", "2", "StaticText", "Decorative", hidden],
+		]);
+		expect(cleanPageSource(source, VIEWPORT).elements).toEqual([]);
+	});
 });

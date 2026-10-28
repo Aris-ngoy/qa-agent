@@ -11,8 +11,10 @@ Give a web device a real **Screen** ([#304](https://github.com/Aris-ngoy/qa-agen
 - **The cleaner is pure** (`cleanWebAxSource` in `screen.ts`, next to the Android and iOS cleaners). `cleanPageSource` picks it when the JSON has `axTree`.
   - It drops ignored (hidden) nodes, nodes with no layout box, zero-size nodes and offscreen nodes.
   - It drops `RootWebArea`, `InlineTextBox` and `LineBreak` always.
-  - It drops any unnamed node unless its role is a control (button, link, textbox, checkbox, option and similar), so a bare icon button still shows.
-  - It drops a `StaticText` that its nearest named ancestor already says, such as the text inside a button, link or heading.
+  - It drops any unnamed node unless its role is a control (button, link, textbox, checkbox, option and similar), so a bare icon button still shows, or an image (`img`, `image`) with a `data-testid` or DOM `id`, so it can be picked and tapped by id ([#361](https://github.com/Aris-ngoy/qa-agent/issues/361)).
+  - It drops a `StaticText` that its nearest named ancestor already says, such as the text inside a heading.
+  - It drops a `StaticText` whose nearest control ancestor is on the Screen, whatever the text says: "Theme" inside button "Switch color theme", or text that differs from the link's name in case. The control is what a tap or a pick lands on. Text inside a control that is itself off the Screen (no box, zero-size, offscreen) stays ([#361](https://github.com/Aris-ngoy/qa-agent/issues/361)).
+  - `aria-hidden` content stays out: Chrome marks it ignored, and ignored nodes are dropped, id'd images included.
   - The type is the ARIA role. The label is the accessible name (whitespace collapsed), or a field's value.
 - **id** is `data-testid` first, because React Native Web renders `testID` as `data-testid`, then the DOM `id`. React `useId` values (`:r1:`) change between renders, so they are not used as ids.
 - **Clickable is the role.** The mobile node shape has no `clickable` field, and this change does not add one. Tree assist decides "tappable" from the type, and its role pattern now also matches `textbox`, `searchbox`, `combobox` and `option`.
@@ -30,6 +32,14 @@ Give a web device a real **Screen** ([#304](https://github.com/Aris-ngoy/qa-agen
   - `screen.test.ts` has fixture tests on a recorded-shape sign-in page (`fixtures/web-ax-sign-in.json`).
   - `web-direct-lane.test.ts` covers the cleaned and `--full` Screen, a scrolled page, label and id taps, and a Case Script label tap replaying through `executeScriptCase`.
   - The web harness's Lane contract tree case now goes through the new cleaner.
+
+### Cleaner fixes from the picking measurements (#361)
+
+[#345](https://github.com/Aris-ngoy/qa-agent/issues/345) measured two misses, and [#348](https://github.com/Aris-ngoy/qa-agent/issues/348) decided to fix them in the one shared cleaner rather than an Inspector-only tree. So Grounding, Tree assist and the Inspector all see the change, on purpose.
+
+- Echoed text: the old rule dropped a text run only when its named ancestor's name contained it exactly, so "Theme" inside "Switch color theme" or "read the DOCS" inside link "Read the docs" stayed as a second node over the control. Text inside a control on the Screen is now dropped outright. Rejected: a case-insensitive substring match, which still misses text the control's `aria-label` does not repeat.
+- Id'd images: an unnamed `<img data-testid="avatar">` had no label and no control role, so it was dropped and could not be tapped by id. It now stays with an empty label and its id. Unnamed images without an id, and React `useId` ids, stay out.
+- Tests: fixture cases in `screen.test.ts` for both rules, text outside a control (and inside an off-Screen control) staying, and `aria-hidden` content staying out.
 
 ## Iframes
 
@@ -87,4 +97,5 @@ For iframes, open a page that embeds both kinds, such as a local page with a sam
 ## Follow-ups
 
 - Iframes: a frame under a CSS transform or zoom gets an untransformed origin. It has not been checked by hand on a real page with both kinds of frame.
+- Text inside a control is dropped even when the control's name does not mention it, so a label tap on that text no longer finds anything; tap the control's name or id.
 - Labels are not truncated. A long paragraph is one long label, as on mobile.

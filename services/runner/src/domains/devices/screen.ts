@@ -183,6 +183,18 @@ function idbFrame(frame: IdbFrame | undefined): {
 	return { x, y, width, height };
 }
 
+function isOffscreen(
+	rect: { x: number; y: number; width: number; height: number },
+	window: { width: number; height: number },
+): boolean {
+	return (
+		rect.x + rect.width < 0 ||
+		rect.y + rect.height < 0 ||
+		rect.x > window.width ||
+		rect.y > window.height
+	);
+}
+
 function pushNormalized(
 	elements: ScreenElement[],
 	window: { width: number; height: number },
@@ -194,14 +206,7 @@ function pushNormalized(
 		enabled?: boolean;
 	},
 ): void {
-	if (
-		input.rect.x + input.rect.width < 0 ||
-		input.rect.y + input.rect.height < 0 ||
-		input.rect.x > window.width ||
-		input.rect.y > window.height
-	) {
-		return;
-	}
+	if (isOffscreen(input.rect, window)) return;
 	if (isLayoutOnly(input.type, input.label)) return;
 	elements.push({
 		type: input.type,
@@ -300,6 +305,9 @@ const WEB_CONTROL_ROLES = new Set([
 /** Text runs that repeat their parent's name, the way a button's label is also its text. */
 const WEB_TEXT_ROLES = new Set(["StaticText"]);
 
+/** Images: kept unnamed only when they carry an id, so they can be picked and tapped by id. */
+const WEB_IMAGE_ROLES = new Set(["img", "image"]);
+
 /** React's `useId` values (`:r1:`, `«r1»`) change between renders; they are not ids. */
 const GENERATED_DOM_ID = /^(:r[0-9a-z]+:|«r[0-9a-z]+»)$/i;
 
@@ -315,15 +323,22 @@ function webIdOf(node: WebAxSourceNode): string {
 }
 
 /**
- * A web page's accessibility tree into the same Screen as mobile: each named node, and
- * each control, with its role as the type. Hidden (ignored), unnamed structural, zero-size
- * and offscreen nodes are dropped, and so is a text run its named parent already says.
+ * A web page's accessibility tree into the same Screen as mobile: each named node, each
+ * control, and each image with an id, with its role as the type. Hidden (ignored, which
+ * covers `aria-hidden`), unnamed structural, zero-size and offscreen nodes are dropped, and
+ * so is a text run its named parent already says or that sits inside a control on the Screen.
  */
 export function cleanWebAxSource(
 	source: WebAxSource,
 	window: { width: number; height: number },
 ): CleanedScreen {
 	const byId = new Map(source.axTree.map((node) => [node.nodeId, node]));
+	const isLaidOut = (node: WebAxSourceNode): node is WebAxSourceNode & { bounds: Rect } =>
+		!node.ignored &&
+		!!node.bounds &&
+		node.bounds.width > 0 &&
+		node.bounds.height > 0 &&
+		!isOffscreen(node.bounds, window);
 	/** The nearest ancestor that has a name of its own. */
 	const namedParentLabel = (node: WebAxSourceNode): string => {
 		let parent = node.parentId ? byId.get(node.parentId) : undefined;
@@ -334,17 +349,27 @@ export function cleanWebAxSource(
 		}
 		return "";
 	};
+	/** Whether the nearest control ancestor is on the Screen, so it already stands for the text. */
+	const inControlOnScreen = (node: WebAxSourceNode): boolean => {
+		let parent = node.parentId ? byId.get(node.parentId) : undefined;
+		while (parent) {
+			if (WEB_CONTROL_ROLES.has(axText(parent.role))) return isLaidOut(parent);
+			parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+		}
+		return false;
+	};
 
 	const elements: ScreenElement[] = [];
 	for (const node of source.axTree) {
-		if (node.ignored || !node.bounds) continue;
-		if (node.bounds.width <= 0 || node.bounds.height <= 0) continue;
+		if (!isLaidOut(node)) continue;
 		const type = axText(node.role);
 		if (WEB_STRUCTURAL_ROLES.has(type)) continue;
 		const label = axText(node.name) || axText(node.value);
-		if (!label && !WEB_CONTROL_ROLES.has(type)) continue;
-		if (WEB_TEXT_ROLES.has(type) && namedParentLabel(node).includes(label)) continue;
 		const id = webIdOf(node);
+		if (!label && !WEB_CONTROL_ROLES.has(type) && !(id && WEB_IMAGE_ROLES.has(type))) continue;
+		if (WEB_TEXT_ROLES.has(type)) {
+			if (namedParentLabel(node).includes(label) || inControlOnScreen(node)) continue;
+		}
 		const disabled = node.properties?.some(
 			(property) => property.name === "disabled" && property.value?.value === true,
 		);
