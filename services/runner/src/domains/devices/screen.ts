@@ -183,10 +183,7 @@ function idbFrame(frame: IdbFrame | undefined): {
 	return { x, y, width, height };
 }
 
-function isOffscreen(
-	rect: { x: number; y: number; width: number; height: number },
-	window: { width: number; height: number },
-): boolean {
+function isOffscreen(rect: Rect, window: { width: number; height: number }): boolean {
 	return (
 		rect.x + rect.width < 0 ||
 		rect.y + rect.height < 0 ||
@@ -333,6 +330,8 @@ export function cleanWebAxSource(
 	window: { width: number; height: number },
 ): CleanedScreen {
 	const byId = new Map(source.axTree.map((node) => [node.nodeId, node]));
+	const parentOf = (node: WebAxSourceNode): WebAxSourceNode | undefined =>
+		node.parentId ? byId.get(node.parentId) : undefined;
 	const isLaidOut = (node: WebAxSourceNode): node is WebAxSourceNode & { bounds: Rect } =>
 		!node.ignored &&
 		!!node.bounds &&
@@ -341,20 +340,20 @@ export function cleanWebAxSource(
 		!isOffscreen(node.bounds, window);
 	/** The nearest ancestor that has a name of its own. */
 	const namedParentLabel = (node: WebAxSourceNode): string => {
-		let parent = node.parentId ? byId.get(node.parentId) : undefined;
+		let parent = parentOf(node);
 		while (parent) {
 			const label = axText(parent.name);
 			if (label && !parent.ignored) return label;
-			parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+			parent = parentOf(parent);
 		}
 		return "";
 	};
 	/** Whether the nearest control ancestor is on the Screen, so it already stands for the text. */
 	const inControlOnScreen = (node: WebAxSourceNode): boolean => {
-		let parent = node.parentId ? byId.get(node.parentId) : undefined;
+		let parent = parentOf(node);
 		while (parent) {
 			if (WEB_CONTROL_ROLES.has(axText(parent.role))) return isLaidOut(parent);
-			parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+			parent = parentOf(parent);
 		}
 		return false;
 	};
@@ -366,7 +365,8 @@ export function cleanWebAxSource(
 		if (WEB_STRUCTURAL_ROLES.has(type)) continue;
 		const label = axText(node.name) || axText(node.value);
 		const id = webIdOf(node);
-		if (!label && !WEB_CONTROL_ROLES.has(type) && !(id && WEB_IMAGE_ROLES.has(type))) continue;
+		const keptUnnamed = WEB_CONTROL_ROLES.has(type) || (WEB_IMAGE_ROLES.has(type) && !!id);
+		if (!label && !keptUnnamed) continue;
 		if (WEB_TEXT_ROLES.has(type)) {
 			if (namedParentLabel(node).includes(label) || inControlOnScreen(node)) continue;
 		}
