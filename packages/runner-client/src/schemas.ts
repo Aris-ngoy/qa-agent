@@ -1102,6 +1102,16 @@ export type ControlPointerMessage = z.infer<typeof controlPointerMessageSchema>;
 export const controlMessageSchema = controlPointerMessageSchema;
 export type ControlMessage = z.infer<typeof controlMessageSchema>;
 
+/**
+ * Runner to Inspector on `/ws/control`: what the Screen reads may have changed (a web page
+ * navigated, scrolled or painted), debounced. The Inspector reads the Screen again.
+ */
+export const controlScreenChangedMessageSchema = z.object({
+	ok: z.literal(true),
+	type: z.literal("screen-changed"),
+});
+export type ControlScreenChangedMessage = z.infer<typeof controlScreenChangedMessageSchema>;
+
 export const screenElementSchema = z.object({
 	type: z.string(),
 	label: z.string(),

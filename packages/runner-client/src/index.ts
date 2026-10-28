@@ -24,6 +24,7 @@ import {
 	type ConnectDeviceRequest,
 	type ControlMessage,
 	type ControlPointerMessage,
+	type ControlScreenChangedMessage,
 	type CreateAppRequest,
 	type CreateBuildRequest,
 	type CreateCaseRequest,
@@ -127,6 +128,7 @@ import {
 	connectDeviceRequestSchema,
 	controlMessageSchema,
 	controlPointerMessageSchema,
+	controlScreenChangedMessageSchema,
 	createAppRequestSchema,
 	createBuildRequestSchema,
 	createCaseFlowsSchema,
@@ -230,6 +232,7 @@ export {
 	connectDeviceRequestSchema,
 	controlMessageSchema,
 	controlPointerMessageSchema,
+	controlScreenChangedMessageSchema,
 	createAppRequestSchema,
 	createBuildRequestSchema,
 	createCaseFlowsSchema,
@@ -321,6 +324,7 @@ export {
 	type ConnectDeviceRequest,
 	type ControlMessage,
 	type ControlPointerMessage,
+	type ControlScreenChangedMessage,
 	type CreateAppRequest,
 	type CreateBuildRequest,
 	type CreateCaseRequest,
@@ -1240,7 +1244,7 @@ export class RunnerClient {
 		return `${this.baseUrl}/stream.mjpeg`;
 	}
 
-	/** WebSocket URL for live pointer control. */
+	/** WebSocket URL for live pointer control, and the runner's screen-changed signal. */
 	getControlWsUrl(): string {
 		const base = this.baseUrl.replace(/^http/i, "ws");
 		return `${base}/ws/control`;

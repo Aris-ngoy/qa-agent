@@ -80,6 +80,12 @@ export type FakeCdpOptions = {
 	 * `Page.getLayoutMetrics` answers zero sizes, as Chromium does.
 	 */
 	unpainted?: boolean;
+	/**
+	 * A page with nothing moving: once screencasting, it paints a frame only when something
+	 * changes (a scroll, a navigation, a new emulation), as Chromium does. Otherwise a frame
+	 * follows every ack, as on a page that keeps animating.
+	 */
+	still?: boolean;
 };
 
 export type FakeMouseEvent = {
@@ -156,6 +162,13 @@ export type FakeCdp = {
 	openDialog: (type: FakeDialogType, message?: string, defaultPrompt?: string) => void;
 	/** The front page's viewport PNG after `clicks` clicks, base64-encoded. */
 	frame: (clicks: number) => string;
+	/**
+	 * The user follows a link on the page in front: it navigates and loads, with the events
+	 * Chromium sends for it.
+	 */
+	navigate: (url: string) => void;
+	/** The user scrolls the page to `to`, in CSS pixels, and it paints the new view. */
+	scroll: (to: { x: number; y: number }) => void;
 	/** The user closes a page, the one in front by default; the browser stays open. */
 	closePage: (targetId?: string) => void;
 	/** The browser quits: every socket closes and the port stops answering. */
@@ -182,6 +195,8 @@ type Screencast = {
 	emulated: boolean;
 	/** The frame sent and not yet acked. */
 	unacked: number | null;
+	/** A still page changed while a frame was unacked: the ack brings the next frame. */
+	dirty?: boolean;
 	timer?: ReturnType<typeof setTimeout>;
 };
 
@@ -196,6 +211,8 @@ type Page = FakeEmulation & {
 	/** Between `Page.navigate` and its load event, while the new document comes in. */
 	loading?: boolean;
 	screencast?: Screencast;
+	/** `Page.setLifecycleEventsEnabled`: the page reports each step of a load. */
+	lifecycleEvents?: boolean;
 };
 
 /** How long a navigation takes to load, as Chrome swaps in the new document. */
@@ -281,6 +298,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	let front: Page | undefined;
 	let discovering = false;
 	let dialogOpen: { sessionId: string } | null = null;
+	/** How far the page is scrolled now; `options.scroll` is where its boxes were given. */
+	let scrolled = options.scroll ?? { x: 0, y: 0 };
 
 	const broadcast = (method: string, params: unknown, sessionId?: string) => {
 		for (const ws of sockets) {
@@ -358,14 +377,46 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 						deviceHeight: view.height,
 						offsetTop: 0,
 						pageScaleFactor: 1,
-						scrollOffsetX: 0,
-						scrollOffsetY: 0,
+						scrollOffsetX: scrolled.x,
+						scrollOffsetY: scrolled.y,
 					},
 					sessionId: id,
 				},
 				page.sessionId,
 			);
 		}, afterMs);
+	};
+	/** The page's view changed: a screencast paints it, after the frame in flight is acked. */
+	const paint = (page: Page) => {
+		const screencast = page.screencast;
+		if (!screencast) return;
+		if (screencast.unacked === null) sendScreencastFrame(page, FAKE_FRAME_MS);
+		else screencast.dirty = true;
+	};
+	/** A page's document starts loading `url`: navigated, then each lifecycle step, then load. */
+	const load = (page: Page, url: string) => {
+		page.url = url;
+		page.loading = true;
+		const frame = { id: page.targetId, loaderId: `loader-${navigations.length}`, url };
+		broadcast("Page.frameNavigated", { frame, type: "Navigation" }, page.sessionId);
+		const lifecycle = (name: string) => {
+			if (!page.lifecycleEvents) return;
+			broadcast(
+				"Page.lifecycleEvent",
+				{ frameId: page.targetId, loaderId: frame.loaderId, name, timestamp: 0 },
+				page.sessionId,
+			);
+		};
+		lifecycle("init");
+		paint(page);
+		// The answer comes as the navigation starts; the load event once it is in.
+		setTimeout(() => {
+			page.loading = false;
+			lifecycle("DOMContentLoaded");
+			lifecycle("load");
+			broadcast("Page.loadEventFired", { timestamp: 0 }, page.sessionId);
+			paint(page);
+		}, FAKE_LOAD_MS);
 	};
 	const closeTarget = (page: Page) => {
 		stopScreencast(page);
@@ -400,6 +451,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		base: number;
 		nodes: Array<FakeAxNode & { frame?: FakeFrame }>;
 		size: { width: number; height: number };
+		/** The scroll its nodes' boxes were given at, in the viewport. */
+		given: { x: number; y: number };
 		scroll: { x: number; y: number };
 	};
 	const pageDocument = (page: Page | undefined): FakeDocument => ({
@@ -410,7 +463,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			...frames.map((frame) => ({ role: "Iframe", name: "", box: frame.box, frame })),
 		],
 		size: { width: options.viewport.width, height: options.pageHeight ?? options.viewport.height },
-		scroll: options.scroll ?? { x: 0, y: 0 },
+		given: options.scroll ?? { x: 0, y: 0 },
+		scroll: scrolled,
 	});
 	/** Where a frame's content box starts inside its iframe element: its border and padding. */
 	const borderOf = (frame: FakeFrame) => frame.border ?? 2;
@@ -424,6 +478,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			base: frame.outOfProcess ? 1 : 1000 * (frames.indexOf(frame) + 1),
 			nodes: frame.nodes,
 			size: { width: frame.box.width - 2 * inset, height: frame.box.height - 2 * inset },
+			given: frame.scroll ?? { x: 0, y: 0 },
 			scroll: frame.scroll ?? { x: 0, y: 0 },
 		};
 	};
@@ -476,7 +531,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			? params.computedStyles.map(String)
 			: [];
 		const documents = docs.map((doc) => {
-			const { scroll } = doc;
+			const { given, scroll } = doc;
 			const css = [[0, 0, doc.size.width, doc.size.height]];
 			const client = [[0, 0, doc.size.width, doc.size.height]];
 			const styles = [computedStyles.map(() => ref("0px"))];
@@ -494,7 +549,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				const border = node.frame ? borderOf(node.frame) : 0;
 				const padding = node.frame?.padding ?? 0;
 				nodeIndex.push(index + 1);
-				css.push([x + scroll.x, y + scroll.y, width, height]);
+				css.push([x + given.x, y + given.y, width, height]);
 				client.push([border, border, width - 2 * border, height - 2 * border]);
 				styles.push(
 					computedStyles.map((name) =>
@@ -595,6 +650,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 					if (Number(params.deviceScaleFactor) > 0) page.scale = Number(params.deviceScaleFactor);
 					page.mobile = Boolean(params.mobile);
 					if (page.screencast) page.screencast.emulated = true;
+					if (options.still) paint(page);
 				}
 				return {};
 			case "Page.startScreencast":
@@ -612,11 +668,17 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			case "Page.screencastFrameAck":
 				if (page?.screencast && page.screencast.unacked === Number(params.sessionId)) {
 					page.screencast.unacked = null;
-					sendScreencastFrame(page, FAKE_FRAME_MS);
+					if (!options.still || page.screencast.dirty) {
+						page.screencast.dirty = false;
+						sendScreencastFrame(page, FAKE_FRAME_MS);
+					}
 				}
 				return {};
 			case "Page.stopScreencast":
 				if (page) stopScreencast(page);
+				return {};
+			case "Page.setLifecycleEventsEnabled":
+				if (page) page.lifecycleEvents = Boolean(params.enabled);
 				return {};
 			case "Emulation.setTouchEmulationEnabled":
 				if (page) page.touch = Boolean(params.enabled);
@@ -648,16 +710,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			}
 			case "Page.navigate":
 				navigations.push(String(params.url));
-				if (page && !options.navigateError) {
-					const loading = page;
-					loading.url = String(params.url);
-					loading.loading = true;
-					// The answer comes as the navigation starts; the load event once it is in.
-					setTimeout(() => {
-						loading.loading = false;
-						broadcast("Page.loadEventFired", { timestamp: 0 }, loading.sessionId);
-					}, FAKE_LOAD_MS);
-				}
+				if (page && !options.navigateError) load(page, String(params.url));
 				return {
 					frameId: page?.targetId ?? "",
 					...(options.navigateError
@@ -830,6 +883,15 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			);
 		},
 		frame: (count) => frame(count, front),
+		navigate: (url) => {
+			if (!front) throw new Error("No page is open");
+			navigations.push(url);
+			load(front, url);
+		},
+		scroll: (to) => {
+			scrolled = to;
+			if (front) paint(front);
+		},
 		closePage: (targetId) => {
 			const page = targetId === undefined ? front : targetOf(targetId);
 			if (page) closeTarget(page);

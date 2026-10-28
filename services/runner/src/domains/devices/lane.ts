@@ -19,6 +19,12 @@ export type SessionOptions = {
 	/** Called once when the lane reports the session is gone. */
 	onSessionDead?: () => void;
 	/**
+	 * Called, debounced, when what the Screen reads may have changed: on web, the page
+	 * navigating, scrolling or painting a frame, or an Action. A Lane that cannot tell
+	 * never calls it.
+	 */
+	onScreenChanged?: () => void;
+	/**
 	 * Called when the Lane falls back inside a running session (a Direct implementation's
 	 * helper process failed). The session's Lane warning gains the same text.
 	 */

@@ -17,14 +17,13 @@ import {
 	cycleChangeSelector,
 	selectionFromPoint,
 } from "@/features/inspector/utils/selection";
+import { isTreeStale, treeReadOnScreenChange } from "@/features/inspector/utils/tree-freshness";
 import { toast } from "@heroui/react";
 import { type Observable, observable } from "@legendapp/state";
 import type { ActiveDeviceResponse, ScreenElement } from "@yoqa/runner-client";
 
 /** Log a stuck poll about every 5 s (20 ticks of the 250 ms poll). */
 const POLL_SKIP_LOG_EVERY = 20;
-/** Background-refresh the cached tree if older than this on select. */
-const TREE_STALE_MS = 3000;
 /** While the device is not answering, poll about once a second instead of every tick. */
 const UNREACHABLE_POLL_EVERY = 4;
 
@@ -91,6 +90,12 @@ export class InspectorFeedController {
 	private pollSkips = 0;
 	private pollTicks = 0;
 	private treeUpdatedAt = 0;
+	/** When the cached tree's read began: a web page that changed after it is not in it. */
+	private treeReadStartedAt = 0;
+	/** When the runner, or an Inspector action, last said the page changed. */
+	private screenChangedAt = 0;
+	/** The page changed during a read: read once more when it ends. */
+	private rereadQueued = false;
 	/** Bumps on each connect/clear so late 410s from a dead session cannot kill the next one. */
 	private epoch = 0;
 
@@ -103,6 +108,22 @@ export class InspectorFeedController {
 	/** The cached tree was read for another app; the next selection reads the Screen again. */
 	markTreeStale(): void {
 		this.treeUpdatedAt = 0;
+	}
+
+	/**
+	 * The page may have changed: the runner's screen-changed signal, or an Inspector action
+	 * ended. On web the Screen is read again, so the hover tree keeps up with the frame.
+	 */
+	screenChanged(): void {
+		const active = this.feed$.active.peek();
+		if (!active) return;
+		this.screenChangedAt = Date.now();
+		const next = treeReadOnScreenChange(active, {
+			reading: this.inFlight,
+			liveControl: this.feed$.liveControl.peek(),
+		});
+		if (next === "read") void this.refreshTree({ silent: true });
+		if (next === "after-read") this.rereadQueued = true;
 	}
 
 	/** Attach to `session` and start its feed. The page calls this when a Device Session is up, and from Connect. */
@@ -122,6 +143,9 @@ export class InspectorFeedController {
 	clear(): void {
 		this.epoch += 1;
 		this.treeUpdatedAt = 0;
+		this.treeReadStartedAt = 0;
+		this.screenChangedAt = 0;
+		this.rereadQueued = false;
 		this.pollTicks = 0;
 		this.setFrame(null, false);
 		this.feed$.set(detachedFeed());
@@ -145,7 +169,12 @@ export class InspectorFeedController {
 
 	/** After a local select, refresh in the background if the cache is stale. */
 	async selectWithPoint(next: InspectorSelection): Promise<void> {
-		if (Date.now() - this.treeUpdatedAt <= TREE_STALE_MS) return;
+		const active = this.feed$.active.peek();
+		if (!active) return;
+		const read = { startedAt: this.treeReadStartedAt, doneAt: this.treeUpdatedAt };
+		if (!isTreeStale(read, { session: active, changedAt: this.screenChangedAt }, Date.now())) {
+			return;
+		}
 		const tree = await this.refreshTree({ silent: true });
 		if (!tree) return;
 		const current = this.feed$.selection.peek();
@@ -175,6 +204,7 @@ export class InspectorFeedController {
 		if (this.inFlight || !active) return null;
 		const epoch = this.epoch;
 		const pauseMjpeg = this.feed$.feedMode.peek() === "mjpeg" && treeReadPausesStream(active);
+		const startedAt = Date.now();
 		this.inFlight = true;
 		this.feed$.treeRefreshing.set(true);
 		try {
@@ -184,6 +214,7 @@ export class InspectorFeedController {
 			if (this.epoch !== epoch || !this.feed$.active.peek()) return null;
 			const next = screen.elements ?? [];
 			this.feed$.elements.set(next);
+			this.treeReadStartedAt = startedAt;
 			this.treeUpdatedAt = Date.now();
 			return next;
 		} catch (error) {
@@ -209,6 +240,7 @@ export class InspectorFeedController {
 			if (pauseMjpeg && this.epoch === epoch && this.feed$.active.peek()) {
 				void this.remountMjpegStream();
 			}
+			this.readQueuedTree();
 		}
 	}
 
@@ -237,6 +269,7 @@ export class InspectorFeedController {
 		this.inFlight = true;
 		if (!silent && !this.feed$.imageUrl.peek()) this.feed$.bootLoading.set(true);
 		try {
+			const startedAt = Date.now();
 			const bytesPromise = readScreenshotBytes();
 			const treePromise = includeTree ? readScreen() : Promise.resolve(null);
 			const [bytes, screen] = await Promise.all([bytesPromise, treePromise]);
@@ -248,6 +281,7 @@ export class InspectorFeedController {
 			this.setFrame(URL.createObjectURL(bytesToImageBlob(bytes)), true);
 			if (screen) {
 				this.feed$.elements.set(screen.elements ?? []);
+				this.treeReadStartedAt = startedAt;
 				this.treeUpdatedAt = Date.now();
 			}
 		} catch (error) {
@@ -269,7 +303,15 @@ export class InspectorFeedController {
 		} finally {
 			this.inFlight = false;
 			this.feed$.bootLoading.set(false);
+			this.readQueuedTree();
 		}
+	}
+
+	/** The page changed while a screen request was in flight: read the tree once more. */
+	private readQueuedTree(): void {
+		if (!this.rereadQueued || this.inFlight) return;
+		this.rereadQueued = false;
+		if (this.feed$.active.peek()) void this.refreshTree({ silent: true });
 	}
 
 	/**
