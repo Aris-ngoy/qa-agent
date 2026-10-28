@@ -1,0 +1,284 @@
+[
+	{
+		"page": "todomvc-react",
+		"preset": "mobile",
+		"boxes": "corrected",
+		"targets": 14,
+		"hits": 14,
+		"controlsPickedByTheirText": 0,
+		"controls": "6/6",
+		"text": "8/8",
+		"images": "0/0",
+		"screenElements": 18,
+		"axNodes": 169,
+		"treeReadMs": 14,
+		"missesByCause": {},
+		"scroll": null,
+		"change": {
+			"targets": 12,
+			"hitWithStaleTree": 5,
+			"hitWithFreshTree": 12,
+			"treeReadMs": 10
+		},
+		"misses": []
+	},
+	{
+		"page": "react-dev",
+		"preset": "mobile",
+		"boxes": "corrected",
+		"targets": 22,
+		"hits": 21,
+		"controlsPickedByTheirText": 0,
+		"controls": "9/9",
+		"text": "12/12",
+		"images": "0/1",
+		"screenElements": 28,
+		"axNodes": 4865,
+		"treeReadMs": 71,
+		"missesByCause": {
+			"cleaner: unnamed non-control (image)": 1
+		},
+		"scroll": {
+			"targets": 23,
+			"hitWithStaleTree": 7,
+			"hitWithFreshTree": 23
+		},
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: unnamed non-control (image)",
+				"kind": "image",
+				"tag": "svg",
+				"text": "",
+				"frame": "main",
+				"picked": "link \"v19.3\""
+			}
+		]
+	},
+	{
+		"page": "expo-demo",
+		"preset": "mobile",
+		"boxes": "corrected",
+		"targets": 5,
+		"hits": 5,
+		"controlsPickedByTheirText": 0,
+		"controls": "3/3",
+		"text": "2/2",
+		"images": "0/0",
+		"screenElements": 5,
+		"axNodes": 26,
+		"treeReadMs": 10,
+		"missesByCause": {},
+		"scroll": null,
+		"change": {
+			"targets": 3,
+			"hitWithStaleTree": 2,
+			"hitWithFreshTree": 3,
+			"treeReadMs": 3
+		},
+		"misses": []
+	},
+	{
+		"page": "frames-shadow",
+		"preset": "mobile",
+		"boxes": "corrected",
+		"targets": 19,
+		"hits": 7,
+		"controlsPickedByTheirText": 1,
+		"controls": "3/10",
+		"text": "4/8",
+		"images": "0/1",
+		"screenElements": 7,
+		"axNodes": 29,
+		"treeReadMs": 3,
+		"missesByCause": {
+			"cleaner: unnamed non-control (generic)": 1,
+			"not in the accessibility tree": 1,
+			"in a same-origin iframe": 5,
+			"in a cross-origin iframe": 5
+		},
+		"scroll": null,
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: unnamed non-control (generic)",
+				"kind": "control",
+				"tag": "div",
+				"text": "",
+				"frame": "main",
+				"picked": "button \"Page button\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "image",
+				"tag": "img",
+				"text": "",
+				"frame": "main",
+				"picked": "StaticText \"Clickable div\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "text",
+				"tag": "h3",
+				"text": "Inside the frame",
+				"frame": "same-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "control",
+				"tag": "button",
+				"text": "Frame button",
+				"frame": "same-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "control",
+				"tag": "a",
+				"text": "Frame link",
+				"frame": "same-origin iframe",
+				"picked": "heading \"Shadow card\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "text",
+				"tag": "p",
+				"text": "Frame paragraph text.",
+				"frame": "same-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "control",
+				"tag": "input",
+				"text": "Frame input",
+				"frame": "same-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "text",
+				"tag": "h3",
+				"text": "Inside the frame",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "control",
+				"tag": "button",
+				"text": "Frame button",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "control",
+				"tag": "a",
+				"text": "Frame link",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "text",
+				"tag": "p",
+				"text": "Frame paragraph text.",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "control",
+				"tag": "input",
+				"text": "Frame input",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			}
+		]
+	},
+	{
+		"page": "mdn-iframe",
+		"preset": "mobile",
+		"boxes": "corrected",
+		"targets": 25,
+		"hits": 22,
+		"controlsPickedByTheirText": 0,
+		"controls": "20/20",
+		"text": "2/5",
+		"images": "0/0",
+		"screenElements": 31,
+		"axNodes": 19038,
+		"treeReadMs": 434,
+		"missesByCause": {
+			"cleaner: text merged into its parent": 2,
+			"hit test: a smaller element won": 1
+		},
+		"scroll": {
+			"targets": 22,
+			"hitWithStaleTree": 8,
+			"hitWithFreshTree": 21
+		},
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "code",
+				"text": "<iframe>",
+				"frame": "main",
+				"picked": "heading \"<iframe> HTML inline frame ele\""
+			},
+			{
+				"cause": "hit test: a smaller element won",
+				"kind": "text",
+				"tag": "p",
+				"text": "The element represents a nested , embedding another document",
+				"frame": "main",
+				"picked": "link \"browsing context\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "code",
+				"text": "<iframe>",
+				"frame": "main",
+				"picked": "StaticText \"element represents a nested\""
+			}
+		]
+	},
+	{
+		"page": "bootstrap-forms",
+		"preset": "mobile",
+		"boxes": "corrected",
+		"targets": 15,
+		"hits": 14,
+		"controlsPickedByTheirText": 0,
+		"controls": "13/13",
+		"text": "1/2",
+		"images": "0/0",
+		"screenElements": 19,
+		"axNodes": 1937,
+		"treeReadMs": 43,
+		"missesByCause": {
+			"cleaner: text merged into its parent": 1
+		},
+		"scroll": {
+			"targets": 14,
+			"hitWithStaleTree": 9,
+			"hitWithFreshTree": 14
+		},
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h1",
+				"text": "Forms",
+				"frame": "main",
+				"picked": "heading \"Forms\""
+			}
+		]
+	}
+]

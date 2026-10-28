@@ -1,0 +1,413 @@
+[
+	{
+		"page": "todomvc-react",
+		"preset": "desktop",
+		"boxes": "corrected",
+		"targets": 31,
+		"hits": 29,
+		"controlsPickedByTheirText": 0,
+		"controls": "16/16",
+		"text": "13/15",
+		"images": "0/0",
+		"screenElements": 42,
+		"axNodes": 169,
+		"treeReadMs": 14,
+		"missesByCause": {
+			"cleaner: text merged into its parent": 2
+		},
+		"scroll": null,
+		"change": {
+			"targets": 29,
+			"hitWithStaleTree": 20,
+			"hitWithFreshTree": 27,
+			"treeReadMs": 11
+		},
+		"misses": [
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h3",
+				"text": "React",
+				"frame": "main",
+				"picked": "heading \"React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h5",
+				"text": "React",
+				"frame": "main",
+				"picked": "heading \"React\""
+			}
+		]
+	},
+	{
+		"page": "react-dev",
+		"preset": "desktop",
+		"boxes": "corrected",
+		"targets": 38,
+		"hits": 34,
+		"controlsPickedByTheirText": 0,
+		"controls": "22/22",
+		"text": "12/15",
+		"images": "0/1",
+		"screenElements": 44,
+		"axNodes": 4821,
+		"treeReadMs": 88,
+		"missesByCause": {
+			"cleaner: text merged into its parent": 3,
+			"cleaner: unnamed non-control (image)": 1
+		},
+		"scroll": {
+			"targets": 58,
+			"hitWithStaleTree": 21,
+			"hitWithFreshTree": 56
+		},
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h3",
+				"text": "GET STARTED",
+				"frame": "main",
+				"picked": "heading \"GET STARTED\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h3",
+				"text": "LEARN REACT",
+				"frame": "main",
+				"picked": "heading \"LEARN REACT\""
+			},
+			{
+				"cause": "cleaner: unnamed non-control (image)",
+				"kind": "image",
+				"tag": "svg",
+				"text": "",
+				"frame": "main",
+				"picked": "link \"LEARN REACT\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h3",
+				"text": "You will learn",
+				"frame": "main",
+				"picked": "heading \"You will learn\""
+			}
+		]
+	},
+	{
+		"page": "expo-demo",
+		"preset": "desktop",
+		"boxes": "corrected",
+		"targets": 5,
+		"hits": 5,
+		"controlsPickedByTheirText": 0,
+		"controls": "3/3",
+		"text": "2/2",
+		"images": "0/0",
+		"screenElements": 5,
+		"axNodes": 26,
+		"treeReadMs": 5,
+		"missesByCause": {},
+		"scroll": null,
+		"change": {
+			"targets": 3,
+			"hitWithStaleTree": 2,
+			"hitWithFreshTree": 3,
+			"treeReadMs": 3
+		},
+		"misses": []
+	},
+	{
+		"page": "frames-shadow",
+		"preset": "desktop",
+		"boxes": "corrected",
+		"targets": 19,
+		"hits": 7,
+		"controlsPickedByTheirText": 1,
+		"controls": "3/10",
+		"text": "4/8",
+		"images": "0/1",
+		"screenElements": 7,
+		"axNodes": 28,
+		"treeReadMs": 2,
+		"missesByCause": {
+			"cleaner: unnamed non-control (generic)": 1,
+			"not in the accessibility tree": 1,
+			"in a same-origin iframe": 5,
+			"in a cross-origin iframe": 5
+		},
+		"scroll": null,
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: unnamed non-control (generic)",
+				"kind": "control",
+				"tag": "div",
+				"text": "",
+				"frame": "main",
+				"picked": "StaticText \"Clickable div\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "image",
+				"tag": "img",
+				"text": "",
+				"frame": "main",
+				"picked": "StaticText \"Clickable div\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "text",
+				"tag": "h3",
+				"text": "Inside the frame",
+				"frame": "same-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "control",
+				"tag": "button",
+				"text": "Frame button",
+				"frame": "same-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "control",
+				"tag": "a",
+				"text": "Frame link",
+				"frame": "same-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "text",
+				"tag": "p",
+				"text": "Frame paragraph text.",
+				"frame": "same-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "control",
+				"tag": "input",
+				"text": "Frame input",
+				"frame": "same-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "text",
+				"tag": "h3",
+				"text": "Inside the frame",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "control",
+				"tag": "button",
+				"text": "Frame button",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "control",
+				"tag": "a",
+				"text": "Frame link",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "text",
+				"tag": "p",
+				"text": "Frame paragraph text.",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "control",
+				"tag": "input",
+				"text": "Frame input",
+				"frame": "cross-origin iframe",
+				"picked": "button \"Shadow button\""
+			}
+		]
+	},
+	{
+		"page": "mdn-iframe",
+		"preset": "desktop",
+		"boxes": "corrected",
+		"targets": 63,
+		"hits": 54,
+		"controlsPickedByTheirText": 0,
+		"controls": "50/54",
+		"text": "4/9",
+		"images": "0/0",
+		"screenElements": 104,
+		"axNodes": 13231,
+		"treeReadMs": 431,
+		"missesByCause": {
+			"hit test: a smaller element won": 3,
+			"cleaner: text merged into its parent": 2,
+			"not in the accessibility tree": 1,
+			"hit test: a larger element won": 2,
+			"cleaner: text merged into its parent (shadow DOM)": 1
+		},
+		"scroll": {
+			"targets": 64,
+			"hitWithStaleTree": 11,
+			"hitWithFreshTree": 51
+		},
+		"change": null,
+		"misses": [
+			{
+				"cause": "hit test: a smaller element won",
+				"kind": "control",
+				"tag": "button",
+				"text": "Switch color theme",
+				"frame": "main",
+				"picked": "StaticText \"Theme\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "code",
+				"text": "<iframe>",
+				"frame": "main",
+				"picked": "heading \"<iframe> HTML inline frame ele\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "text",
+				"tag": "p",
+				"text": "* Some parts of this feature may have varying levels of supp",
+				"frame": "main",
+				"picked": "StaticText \"element represents a nested\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "code",
+				"text": "<iframe>",
+				"frame": "main",
+				"picked": "StaticText \", embedding another document i\""
+			},
+			{
+				"cause": "hit test: a larger element won",
+				"kind": "control",
+				"tag": "a",
+				"text": "Try it",
+				"frame": "main",
+				"picked": "region \"Try it\""
+			},
+			{
+				"cause": "hit test: a larger element won",
+				"kind": "text",
+				"tag": "h4",
+				"text": "HTML Demo: <iframe>",
+				"frame": "main",
+				"picked": "generic \"HTML Demo: <iframe>\""
+			},
+			{
+				"cause": "hit test: a smaller element won",
+				"kind": "control",
+				"tag": "mdn-ix-tab-panel",
+				"text": "",
+				"frame": "main",
+				"picked": "StaticText \"\"https://www.openstreetmap.org\""
+			},
+			{
+				"cause": "hit test: a smaller element won",
+				"kind": "control",
+				"tag": "div",
+				"text": "<iframe id=\"inlineFrameExample\" title=\"Inline Frame Example\"",
+				"frame": "main",
+				"picked": "StaticText \"\"https://www.openstreetmap.org\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent (shadow DOM)",
+				"kind": "text",
+				"tag": "h4",
+				"text": "Output",
+				"frame": "main",
+				"picked": "heading \"OUTPUT\""
+			}
+		]
+	},
+	{
+		"page": "bootstrap-forms",
+		"preset": "desktop",
+		"boxes": "corrected",
+		"targets": 64,
+		"hits": 59,
+		"controlsPickedByTheirText": 0,
+		"controls": "48/49",
+		"text": "11/12",
+		"images": "0/3",
+		"screenElements": 83,
+		"axNodes": 2468,
+		"treeReadMs": 45,
+		"missesByCause": {
+			"hit test: a smaller element won": 1,
+			"not in the accessibility tree": 3,
+			"cleaner: text merged into its parent": 1
+		},
+		"scroll": {
+			"targets": 66,
+			"hitWithStaleTree": 45,
+			"hitWithFreshTree": 62
+		},
+		"change": null,
+		"misses": [
+			{
+				"cause": "hit test: a smaller element won",
+				"kind": "control",
+				"tag": "a",
+				"text": "Bootstrap",
+				"frame": "main",
+				"picked": "link \"Grid\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "image",
+				"tag": "svg",
+				"text": "",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "image",
+				"tag": "svg",
+				"text": "",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "image",
+				"tag": "svg",
+				"text": "",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h2",
+				"text": "Overview",
+				"frame": "main",
+				"picked": "heading \"Overview Link to this section:\""
+			}
+		]
+	}
+]

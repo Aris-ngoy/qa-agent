@@ -1,0 +1,1935 @@
+[
+	{
+		"page": "todomvc-react",
+		"preset": "desktop",
+		"boxes": "as shipped",
+		"targets": 31,
+		"hits": 0,
+		"controlsPickedByTheirText": 0,
+		"controls": "0/16",
+		"text": "0/15",
+		"images": "0/0",
+		"screenElements": 18,
+		"axNodes": 169,
+		"treeReadMs": 6,
+		"missesByCause": {
+			"cleaner: text merged into its parent": 30,
+			"cleaner: dropped other (textbox)": 1
+		},
+		"scroll": null,
+		"change": {
+			"targets": 29,
+			"hitWithStaleTree": 0,
+			"hitWithFreshTree": 0,
+			"treeReadMs": 4
+		},
+		"misses": [
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h3",
+				"text": "React",
+				"frame": "main",
+				"picked": "link \"Source\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "span",
+				"text": ",",
+				"frame": "main",
+				"picked": "heading \"React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h5",
+				"text": "React",
+				"frame": "main",
+				"picked": "heading \"React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Source",
+				"frame": "main",
+				"picked": "heading \"React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h5",
+				"text": "TypeScript + React",
+				"frame": "main",
+				"picked": "link \"Source\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Demo",
+				"frame": "main",
+				"picked": "heading \"React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Source",
+				"frame": "main",
+				"picked": "heading \"React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "React is a JavaScript library for building user interfaces. ",
+				"frame": "main",
+				"picked": "link \"Source\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "React",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h4",
+				"text": "Official Resources",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Quick Start",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "API Reference",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Philosophy",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "React Community",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h4",
+				"text": "Community",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "ReactJS on Stack Overflow",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "em",
+				"text": "If you have other helpful links to share, or find any of the",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "let us know",
+				"frame": "main",
+				"picked": "StaticText \"React is a JavaScript library \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h1",
+				"text": "todos",
+				"frame": "main",
+				"picked": "heading \"React\""
+			},
+			{
+				"cause": "cleaner: dropped other (textbox)",
+				"kind": "control",
+				"tag": "input",
+				"text": "New Todo Input",
+				"frame": "main",
+				"picked": "checkbox \"❯ Toggle All Input\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "label",
+				"text": "Buy milk",
+				"frame": "main",
+				"picked": "heading \"TypeScript + React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "label",
+				"text": "Walk the dog",
+				"frame": "main",
+				"picked": "heading \"TypeScript + React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "label",
+				"text": "Write the report",
+				"frame": "main",
+				"picked": "heading \"TypeScript + React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "All",
+				"frame": "main",
+				"picked": "checkbox \"\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Active",
+				"frame": "main",
+				"picked": "checkbox \"\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Completed",
+				"frame": "main",
+				"picked": "checkbox \"\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "button",
+				"text": "Clear completed",
+				"frame": "main",
+				"picked": "checkbox \"\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "Double-click to edit a todo",
+				"frame": "main",
+				"picked": "checkbox \"\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "Created by the TodoMVC Team",
+				"frame": "main",
+				"picked": "checkbox \"\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "Part of",
+				"frame": "main",
+				"picked": "checkbox \"\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "TodoMVC",
+				"frame": "main",
+				"picked": "checkbox \"\""
+			}
+		]
+	},
+	{
+		"page": "react-dev",
+		"preset": "desktop",
+		"boxes": "as shipped",
+		"targets": 38,
+		"hits": 0,
+		"controlsPickedByTheirText": 0,
+		"controls": "0/22",
+		"text": "0/15",
+		"images": "0/1",
+		"screenElements": 18,
+		"axNodes": 4821,
+		"treeReadMs": 84,
+		"missesByCause": {
+			"cleaner: dropped other (link)": 13,
+			"cleaner: text merged into its parent": 22,
+			"cleaner: dropped other (button)": 2,
+			"cleaner: unnamed non-control (image)": 1
+		},
+		"scroll": {
+			"targets": 58,
+			"hitWithStaleTree": 0,
+			"hitWithFreshTree": 0
+		},
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "React",
+				"frame": "main",
+				"picked": "link \"React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "v19.3",
+				"frame": "main",
+				"picked": "link \"React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "button",
+				"text": "Search ⌘ K",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Learn",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Reference",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Community",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Blog",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Use Light Mode",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Translations",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Open on GitHub",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h3",
+				"text": "GET STARTED",
+				"frame": "main",
+				"picked": "link \"React\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Quick Start",
+				"frame": "main",
+				"picked": "link \"v19.3\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Tutorial: Tic-Tac-Toe",
+				"frame": "main",
+				"picked": "heading \"GET STARTED\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Thinking in React",
+				"frame": "main",
+				"picked": "link \"Quick Start\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Installation",
+				"frame": "main",
+				"picked": "link \"Quick Start\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Setup",
+				"frame": "main",
+				"picked": "link \"Tutorial: Tic-Tac-Toe\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "React Compiler",
+				"frame": "main",
+				"picked": "link \"Tutorial: Tic-Tac-Toe\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h3",
+				"text": "LEARN REACT",
+				"frame": "main",
+				"picked": "link \"Thinking in React\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Describing the UI",
+				"frame": "main",
+				"picked": "link \"Thinking in React\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Adding Interactivity",
+				"frame": "main",
+				"picked": "link \"Installation\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Managing State",
+				"frame": "main",
+				"picked": "link \"Installation\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Escape Hatches",
+				"frame": "main",
+				"picked": "link \"Setup\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "LEARN REACT",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: unnamed non-control (image)",
+				"kind": "image",
+				"tag": "svg",
+				"text": "",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Copy page",
+				"frame": "main",
+				"picked": "button \"Search ⌘ K\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h1",
+				"text": "Quick Start",
+				"frame": "main",
+				"picked": "heading \"GET STARTED\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "Welcome to the React documentation! This page will give you ",
+				"frame": "main",
+				"picked": "link \"LEARN REACT\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h3",
+				"text": "You will learn",
+				"frame": "main",
+				"picked": "link \"Tutorial: Tic-Tac-Toe\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "li",
+				"text": "How to create and nest components",
+				"frame": "main",
+				"picked": "link \"Tutorial: Tic-Tac-Toe\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "li",
+				"text": "How to add markup and styles",
+				"frame": "main",
+				"picked": "link \"Tutorial: Tic-Tac-Toe\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "li",
+				"text": "How to display data",
+				"frame": "main",
+				"picked": "link \"Thinking in React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "li",
+				"text": "How to render conditions and lists",
+				"frame": "main",
+				"picked": "link \"Thinking in React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "li",
+				"text": "How to respond to events and update the screen",
+				"frame": "main",
+				"picked": "link \"Thinking in React\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "li",
+				"text": "How to share data between components",
+				"frame": "main",
+				"picked": "link \"Installation\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h2",
+				"text": "Creating and nesting components",
+				"frame": "main",
+				"picked": "link \"Setup\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "React apps are made out of . A component is a piece of the U",
+				"frame": "main",
+				"picked": "ListMarker \"•\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "em",
+				"text": "components",
+				"frame": "main",
+				"picked": "ListMarker \"•\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "React components are JavaScript functions that return markup",
+				"frame": "main",
+				"picked": "link \"React Compiler\""
+			}
+		]
+	},
+	{
+		"page": "expo-demo",
+		"preset": "desktop",
+		"boxes": "as shipped",
+		"targets": 5,
+		"hits": 0,
+		"controlsPickedByTheirText": 0,
+		"controls": "0/3",
+		"text": "0/2",
+		"images": "0/0",
+		"screenElements": 3,
+		"axNodes": 26,
+		"treeReadMs": 4,
+		"missesByCause": {
+			"cleaner: text merged into its parent": 2,
+			"cleaner: dropped other (button)": 3
+		},
+		"scroll": null,
+		"change": {
+			"targets": 3,
+			"hitWithStaleTree": 0,
+			"hitWithFreshTree": 0,
+			"treeReadMs": 1
+		},
+		"misses": [
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h1",
+				"text": "Yoqa Demo",
+				"frame": "main",
+				"picked": "heading \"Yoqa Demo\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "div",
+				"text": "Count: 0",
+				"frame": "main",
+				"picked": "heading \"Yoqa Demo\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Increment",
+				"frame": "main",
+				"picked": "heading \"Yoqa Demo\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Decrement",
+				"frame": "main",
+				"picked": "heading \"Yoqa Demo\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Open greeting",
+				"frame": "main",
+				"picked": "heading \"Yoqa Demo\""
+			}
+		]
+	},
+	{
+		"page": "frames-shadow",
+		"preset": "desktop",
+		"boxes": "as shipped",
+		"targets": 19,
+		"hits": 0,
+		"controlsPickedByTheirText": 0,
+		"controls": "0/10",
+		"text": "0/8",
+		"images": "0/1",
+		"screenElements": 7,
+		"axNodes": 28,
+		"treeReadMs": 1,
+		"missesByCause": {
+			"cleaner: text merged into its parent": 4,
+			"cleaner: unnamed non-control (generic)": 1,
+			"not in the accessibility tree": 1,
+			"cleaner: text merged into its parent (shadow DOM)": 3,
+			"in a same-origin iframe": 5,
+			"in a cross-origin iframe": 5
+		},
+		"scroll": null,
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h1",
+				"text": "Frames and shadow DOM",
+				"frame": "main",
+				"picked": "StaticText \"A paragraph in the page itself\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "A paragraph in the page itself.",
+				"frame": "main",
+				"picked": "heading \"Frames and shadow DOM\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "button",
+				"text": "Page button",
+				"frame": "main",
+				"picked": "StaticText \"A paragraph in the page itself\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "div",
+				"text": "Clickable div",
+				"frame": "main",
+				"picked": "StaticText \"A paragraph in the page itself\""
+			},
+			{
+				"cause": "cleaner: unnamed non-control (generic)",
+				"kind": "control",
+				"tag": "div",
+				"text": "",
+				"frame": "main",
+				"picked": "StaticText \"A paragraph in the page itself\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "image",
+				"tag": "img",
+				"text": "",
+				"frame": "main",
+				"picked": "button \"Page button\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent (shadow DOM)",
+				"kind": "text",
+				"tag": "h2",
+				"text": "Shadow card",
+				"frame": "main",
+				"picked": "StaticText \"Clickable div\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent (shadow DOM)",
+				"kind": "text",
+				"tag": "p",
+				"text": "Shadow text",
+				"frame": "main",
+				"picked": "StaticText \"Clickable div\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent (shadow DOM)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Shadow button",
+				"frame": "main",
+				"picked": "StaticText \"Clickable div\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "text",
+				"tag": "h3",
+				"text": "Inside the frame",
+				"frame": "same-origin iframe",
+				"picked": "StaticText \"Clickable div\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "control",
+				"tag": "button",
+				"text": "Frame button",
+				"frame": "same-origin iframe",
+				"picked": "StaticText \"Clickable div\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "control",
+				"tag": "a",
+				"text": "Frame link",
+				"frame": "same-origin iframe",
+				"picked": "heading \"Shadow card\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "text",
+				"tag": "p",
+				"text": "Frame paragraph text.",
+				"frame": "same-origin iframe",
+				"picked": "heading \"Shadow card\""
+			},
+			{
+				"cause": "in a same-origin iframe",
+				"kind": "control",
+				"tag": "input",
+				"text": "Frame input",
+				"frame": "same-origin iframe",
+				"picked": "heading \"Shadow card\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "text",
+				"tag": "h3",
+				"text": "Inside the frame",
+				"frame": "cross-origin iframe",
+				"picked": "heading \"Shadow card\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "control",
+				"tag": "button",
+				"text": "Frame button",
+				"frame": "cross-origin iframe",
+				"picked": "heading \"Shadow card\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "control",
+				"tag": "a",
+				"text": "Frame link",
+				"frame": "cross-origin iframe",
+				"picked": "heading \"Shadow card\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "text",
+				"tag": "p",
+				"text": "Frame paragraph text.",
+				"frame": "cross-origin iframe",
+				"picked": "heading \"Shadow card\""
+			},
+			{
+				"cause": "in a cross-origin iframe",
+				"kind": "control",
+				"tag": "input",
+				"text": "Frame input",
+				"frame": "cross-origin iframe",
+				"picked": "heading \"Shadow card\""
+			}
+		]
+	},
+	{
+		"page": "mdn-iframe",
+		"preset": "desktop",
+		"boxes": "as shipped",
+		"targets": 63,
+		"hits": 0,
+		"controlsPickedByTheirText": 0,
+		"controls": "0/54",
+		"text": "0/9",
+		"images": "0/0",
+		"screenElements": 36,
+		"axNodes": 13230,
+		"treeReadMs": 404,
+		"missesByCause": {
+			"cleaner: text merged into its parent (shadow DOM)": 5,
+			"cleaner: dropped other (link)": 20,
+			"cleaner: dropped other (button)": 8,
+			"cleaner: text merged into its parent": 18,
+			"cleaner: dropped other (button) (shadow DOM)": 3,
+			"cleaner: dropped other (DisclosureTriangle)": 1,
+			"not in the accessibility tree": 1,
+			"cleaner: dropped other (link) (shadow DOM)": 1,
+			"cleaner: unnamed non-control (generic) (shadow DOM)": 1,
+			"cleaner: dropped other (tab) (shadow DOM)": 2,
+			"cleaner: dropped other (tabpanel) (shadow DOM)": 1,
+			"cleaner: unnamed non-control (textbox) (shadow DOM)": 1,
+			"cleaner: dropped other (textbox) (shadow DOM)": 1
+		},
+		"scroll": {
+			"targets": 64,
+			"hitWithStaleTree": 0,
+			"hitWithFreshTree": 0
+		},
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: text merged into its parent (shadow DOM)",
+				"kind": "control",
+				"tag": "a",
+				"text": "AD",
+				"frame": "main",
+				"picked": "button \"All\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent (shadow DOM)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Don't want to see ads?",
+				"frame": "main",
+				"picked": "button \"All\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "",
+				"frame": "main",
+				"picked": "image \"AWS\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "HTML",
+				"frame": "main",
+				"picked": "image \"Deprecated\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "CSS",
+				"frame": "main",
+				"picked": "image \"Deprecated\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "JavaScript",
+				"frame": "main",
+				"picked": "image \"Experimental\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Web APIs",
+				"frame": "main",
+				"picked": "button \"HTML\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "All",
+				"frame": "main",
+				"picked": "button \"CSS\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Learn",
+				"frame": "main",
+				"picked": "button \"CSS\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Tools",
+				"frame": "main",
+				"picked": "button \"JavaScript\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "About",
+				"frame": "main",
+				"picked": "button \"JavaScript\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Blog",
+				"frame": "main",
+				"picked": "button \"Web APIs\""
+			},
+			{
+				"cause": "cleaner: dropped other (button) (shadow DOM)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Search the site",
+				"frame": "main",
+				"picked": "button \"Web APIs\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Web",
+				"frame": "main",
+				"picked": "image \"MDN\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "HTML",
+				"frame": "main",
+				"picked": "link \"<geolocation> Experimental\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Reference",
+				"frame": "main",
+				"picked": "link \"<geolocation> Experimental\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Elements",
+				"frame": "main",
+				"picked": "link \"<geolocation> Experimental\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<iframe>",
+				"frame": "main",
+				"picked": "image \"Experimental\""
+			},
+			{
+				"cause": "cleaner: dropped other (button) (shadow DOM)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Switch color theme",
+				"frame": "main",
+				"picked": "button \"Web APIs\""
+			},
+			{
+				"cause": "cleaner: dropped other (button) (shadow DOM)",
+				"kind": "control",
+				"tag": "button",
+				"text": "English (US)",
+				"frame": "main",
+				"picked": "button \"Web APIs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h1",
+				"text": "HTML inline frame element",
+				"frame": "main",
+				"picked": "button \"CSS\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "code",
+				"text": "<iframe>",
+				"frame": "main",
+				"picked": "image \"Experimental\""
+			},
+			{
+				"cause": "cleaner: dropped other (DisclosureTriangle)",
+				"kind": "control",
+				"tag": "summary",
+				"text": "Baseline WIDELY AVAILABLE *",
+				"frame": "main",
+				"picked": "link \"Elements\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "text",
+				"tag": "p",
+				"text": "* Some parts of this feature may have varying levels of supp",
+				"frame": "main",
+				"picked": "link \"Elements\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "The element represents a nested , embedding another document",
+				"frame": "main",
+				"picked": "link \"Elements\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "code",
+				"text": "<iframe>",
+				"frame": "main",
+				"picked": "link \"Reference\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "HTML",
+				"frame": "main",
+				"picked": "link \"Reference\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "browsing context",
+				"frame": "main",
+				"picked": "link \"<iframe>\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h2",
+				"text": "In this article",
+				"frame": "main",
+				"picked": "button \"Web APIs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Try it",
+				"frame": "main",
+				"picked": "button \"Web APIs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Attributes",
+				"frame": "main",
+				"picked": "button \"Web APIs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Usage notes",
+				"frame": "main",
+				"picked": "button \"Web APIs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Accessibility",
+				"frame": "main",
+				"picked": "button \"Web APIs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Examples",
+				"frame": "main",
+				"picked": "heading \"<iframe> HTML inline frame ele\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Technical summary",
+				"frame": "main",
+				"picked": "heading \"<iframe> HTML inline frame ele\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Specifications",
+				"frame": "main",
+				"picked": "heading \"<iframe> HTML inline frame ele\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Browser compatibility",
+				"frame": "main",
+				"picked": "heading \"<iframe> HTML inline frame ele\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "See also",
+				"frame": "main",
+				"picked": "heading \"<iframe> HTML inline frame ele\""
+			},
+			{
+				"cause": "cleaner: dropped other (link) (shadow DOM)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Strands Agents One SDK. Any model. Ship agents. Get started",
+				"frame": "main",
+				"picked": "DisclosureTriangle \"Baseline Check Baseline WIDELY\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent (shadow DOM)",
+				"kind": "control",
+				"tag": "a",
+				"text": "AD",
+				"frame": "main",
+				"picked": "DisclosureTriangle \"Baseline Check Baseline WIDELY\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Try it",
+				"frame": "main",
+				"picked": "textbox \"Filter sidebar\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent (shadow DOM)",
+				"kind": "text",
+				"tag": "h4",
+				"text": "HTML Demo: <iframe>",
+				"frame": "main",
+				"picked": "textbox \"Filter sidebar\""
+			},
+			{
+				"cause": "cleaner: unnamed non-control (generic) (shadow DOM)",
+				"kind": "text",
+				"tag": "mdn-button",
+				"text": "Reset",
+				"frame": "main",
+				"picked": "image \"Baseline Check\""
+			},
+			{
+				"cause": "cleaner: dropped other (tab) (shadow DOM)",
+				"kind": "control",
+				"tag": "mdn-ix-tab",
+				"text": "HTML",
+				"frame": "main",
+				"picked": "link \"<hr>\""
+			},
+			{
+				"cause": "cleaner: dropped other (tabpanel) (shadow DOM)",
+				"kind": "control",
+				"tag": "mdn-ix-tab-panel",
+				"text": "",
+				"frame": "main",
+				"picked": "StaticText \"The\""
+			},
+			{
+				"cause": "cleaner: unnamed non-control (textbox) (shadow DOM)",
+				"kind": "control",
+				"tag": "div",
+				"text": "<iframe id=\"inlineFrameExample\" title=\"Inline Frame Example\"",
+				"frame": "main",
+				"picked": "StaticText \"The\""
+			},
+			{
+				"cause": "cleaner: dropped other (tab) (shadow DOM)",
+				"kind": "control",
+				"tag": "mdn-ix-tab",
+				"text": "CSS",
+				"frame": "main",
+				"picked": "image \"Baseline Check\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent (shadow DOM)",
+				"kind": "text",
+				"tag": "h4",
+				"text": "Output",
+				"frame": "main",
+				"picked": "DisclosureTriangle \"Baseline Check Baseline WIDELY\""
+			},
+			{
+				"cause": "cleaner: dropped other (textbox) (shadow DOM)",
+				"kind": "control",
+				"tag": "input",
+				"text": "Filter",
+				"frame": "main",
+				"picked": "link \"MDN\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<hr>",
+				"frame": "main",
+				"picked": "link \"MDN\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<html>",
+				"frame": "main",
+				"picked": "link \"Web\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<i>",
+				"frame": "main",
+				"picked": "link \"Web\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<iframe>",
+				"frame": "main",
+				"picked": "textbox \"Filter sidebar\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<img>",
+				"frame": "main",
+				"picked": "textbox \"Filter sidebar\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<input>",
+				"frame": "main",
+				"picked": "link \"<hgroup>\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<ins>",
+				"frame": "main",
+				"picked": "link \"<hr>\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<kbd>",
+				"frame": "main",
+				"picked": "link \"<hr>\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<label>",
+				"frame": "main",
+				"picked": "link \"<hr>\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<legend>",
+				"frame": "main",
+				"picked": "link \"<html>\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<li>",
+				"frame": "main",
+				"picked": "link \"<i>\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<link>",
+				"frame": "main",
+				"picked": "link \"<i>\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<main>",
+				"frame": "main",
+				"picked": "link \"<i>\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "<map>",
+				"frame": "main",
+				"picked": "link \"<iframe>\""
+			}
+		]
+	},
+	{
+		"page": "bootstrap-forms",
+		"preset": "desktop",
+		"boxes": "as shipped",
+		"targets": 64,
+		"hits": 0,
+		"controlsPickedByTheirText": 0,
+		"controls": "0/49",
+		"text": "0/12",
+		"images": "0/3",
+		"screenElements": 30,
+		"axNodes": 2466,
+		"treeReadMs": 43,
+		"missesByCause": {
+			"cleaner: dropped other (link)": 14,
+			"cleaner: dropped other (button)": 2,
+			"cleaner: text merged into its parent": 45,
+			"not in the accessibility tree": 3
+		},
+		"scroll": {
+			"targets": 66,
+			"hitWithStaleTree": 0,
+			"hitWithFreshTree": 0
+		},
+		"change": null,
+		"misses": [
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Bootstrap",
+				"frame": "main",
+				"picked": "link \"Skip to main content\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Search (Command+K)",
+				"frame": "main",
+				"picked": "link \"Skip to docs navigation\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Docs",
+				"frame": "main",
+				"picked": "link \"Grid\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Examples",
+				"frame": "main",
+				"picked": "link \"Grid\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Icons",
+				"frame": "main",
+				"picked": "link \"Docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Blog",
+				"frame": "main",
+				"picked": "link \"Examples\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "button",
+				"text": "Bootstrap v5.3 (switch to other versions)",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: dropped other (button)",
+				"kind": "control",
+				"tag": "button",
+				"text": "Toggle theme (dark)",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Utilities",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Z-index",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "CSS Grid",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "strong",
+				"text": "Content",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "image",
+				"tag": "svg",
+				"text": "",
+				"frame": "main",
+				"picked": "link \"Utilities\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Reboot",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Typography",
+				"frame": "main",
+				"picked": "link \"Z-index\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Images",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Tables",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Figures",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "strong",
+				"text": "Forms",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "image",
+				"tag": "svg",
+				"text": "",
+				"frame": "main",
+				"picked": "StaticText \"Content\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Overview",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Form control",
+				"frame": "main",
+				"picked": "link \"Reboot\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Select",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Checks & radios",
+				"frame": "main",
+				"picked": "link \"Typography\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Range",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Input group",
+				"frame": "main",
+				"picked": "link \"Images\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Floating labels",
+				"frame": "main",
+				"picked": "link \"Images\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Layout",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Validation",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "strong",
+				"text": "Components",
+				"frame": "main",
+				"picked": "link \"Figures\""
+			},
+			{
+				"cause": "not in the accessibility tree",
+				"kind": "image",
+				"tag": "svg",
+				"text": "",
+				"frame": "main",
+				"picked": "link \"Figures\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Accordion",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Alerts",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Badge",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "View on GitHub",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h1",
+				"text": "Forms",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "Examples and usage guidelines for form control styles, layou",
+				"frame": "main",
+				"picked": "heading \"Forms\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "strong",
+				"text": "On this page",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Overview",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Disabled forms",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Accessibility",
+				"frame": "main",
+				"picked": "button \"Search (Command+K)\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "CSS",
+				"frame": "main",
+				"picked": "StaticText \"Examples and usage guidelines \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "Sass variables",
+				"frame": "main",
+				"picked": "StaticText \"Examples and usage guidelines \""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "",
+				"frame": "main",
+				"picked": "StaticText \"Examples and usage guidelines \""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Your edge case? Another builder solved it last Tuesday. Find",
+				"frame": "main",
+				"picked": "StaticText \"Examples and usage guidelines \""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "ads via Carbon",
+				"frame": "main",
+				"picked": "StaticText \"Examples and usage guidelines \""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Form control Style textual inputs and textareas with support",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Select Improve browser default select elements with a custom",
+				"frame": "main",
+				"picked": "heading \"Forms\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Checks & radios Use our custom radio buttons and checkboxes ",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Range Replace browser default range inputs with our custom v",
+				"frame": "main",
+				"picked": "StaticText \"Examples and usage guidelines \""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Input group Attach labels and buttons to your inputs for inc",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Floating labels Create beautifully simple form labels that f",
+				"frame": "main",
+				"picked": "link \"Form control Style textual inp\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Layout Create inline, horizontal, or complex grid-based layo",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: dropped other (link)",
+				"kind": "control",
+				"tag": "a",
+				"text": "Validation Validate your forms with custom or native validat",
+				"frame": "main",
+				"picked": "link \"Form control Style textual inp\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "h2",
+				"text": "Overview",
+				"frame": "main",
+				"picked": "generic \"Browse docs\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "Bootstrap’s form controls expand on with classes. Use these ",
+				"frame": "main",
+				"picked": "link \"Checks & radios Use our custom\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "control",
+				"tag": "a",
+				"text": "our Rebooted form styles",
+				"frame": "main",
+				"picked": "link \"Checks & radios Use our custom\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "p",
+				"text": "Be sure to use an appropriate attribute on all inputs (e.g.,",
+				"frame": "main",
+				"picked": "link \"Checks & radios Use our custom\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "code",
+				"text": "type",
+				"frame": "main",
+				"picked": "link \"Figures\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "code",
+				"text": "email",
+				"frame": "main",
+				"picked": "link \"Checks & radios Use our custom\""
+			},
+			{
+				"cause": "cleaner: text merged into its parent",
+				"kind": "text",
+				"tag": "code",
+				"text": "number",
+				"frame": "main",
+				"picked": "link \"Checks & radios Use our custom\""
+			}
+		]
+	}
+]
