@@ -277,6 +277,95 @@ describe("web Direct lane: screencast Frame Feed", () => {
 	});
 });
 
+/** A session that counts its screen-changed signals. */
+async function attachCountingChanges(options: Partial<FakeCdpOptions> = {}) {
+	const browser = startFakeCdp({ viewport: VIEWPORT, deviceScaleFactor: 2, ...options });
+	let changes = 0;
+	const session = await createDeviceSession({
+		platform: "web",
+		deviceId: `chromium-cdp-${browser.port}`,
+		onScreenChanged: () => {
+			changes += 1;
+		},
+	});
+	return { browser, session, changes: () => changes };
+}
+
+/** Wait until no screen-changed signal has come for a while, and say how many came. */
+async function settledChanges(changes: () => number): Promise<number> {
+	let seen = changes();
+	for (let tries = 0; tries < 20; tries++) {
+		await Bun.sleep(400);
+		if (changes() === seen) return seen;
+		seen = changes();
+	}
+	return seen;
+}
+
+describe("web Direct lane: the screen-changed signal", () => {
+	test("the page navigating raises it, with nobody watching the Stream", async () => {
+		const { browser, session, changes } = await attachCountingChanges();
+		const before = await settledChanges(changes);
+		browser.navigate("https://app.example.com/next");
+		expect(await eventually(() => changes() > before)).toBe(true);
+		await session.quit();
+	});
+
+	test("a navigation's events (navigated, lifecycle, load) are one signal", async () => {
+		const { browser, session, changes } = await attachCountingChanges();
+		const before = await settledChanges(changes);
+		browser.navigate("https://app.example.com/next");
+		expect(await settledChanges(changes)).toBe(before + 1);
+		await session.quit();
+	});
+
+	test("a scroll raises it through the frame the page paints", async () => {
+		const { browser, session, changes } = await attachCountingChanges({ still: true });
+		await readMjpegFrames((await watch(session)).response, 1);
+		const before = await settledChanges(changes);
+		// A still page paints nothing more, so nothing more is signalled.
+		await Bun.sleep(300);
+		expect(changes()).toBe(before);
+		browser.scroll({ x: 0, y: 300 });
+		expect(await eventually(() => changes() > before)).toBe(true);
+		await session.quit();
+	});
+
+	test("a scroll is on the Screen read after the signal", async () => {
+		const button = { role: "button", name: "Pay", box: { x: 100, y: 500, width: 200, height: 40 } };
+		const { browser, session, changes } = await attachCountingChanges({
+			still: true,
+			pageHeight: 2000,
+			nodes: [button],
+		});
+		await readMjpegFrames((await watch(session)).response, 1);
+		const before = await settledChanges(changes);
+		browser.scroll({ x: 0, y: 300 });
+		expect(await eventually(() => changes() > before)).toBe(true);
+		const pay = (await getScreen(session)).elements?.find((element) => element.label === "Pay");
+		// 200 CSS pixels from the top of an 800-pixel viewport is 250 of 1000.
+		expect(pay?.y).toBe(250);
+		await session.quit();
+	});
+
+	test("an Action raises it", async () => {
+		const { session, changes } = await attachCountingChanges();
+		const before = await settledChanges(changes);
+		await session.swipe(500, 800, 500, 200);
+		expect(await eventually(() => changes() > before)).toBe(true);
+		await session.quit();
+	});
+
+	test("nothing is signalled after disconnect", async () => {
+		const { browser, session, changes } = await attachCountingChanges();
+		const before = await settledChanges(changes);
+		await session.quit();
+		browser.navigate("https://app.example.com/next");
+		await Bun.sleep(400);
+		expect(changes()).toBe(before);
+	});
+});
+
 const APP_URL = "https://app.example.com/home";
 
 describe("web Direct lane: app lifecycle", () => {

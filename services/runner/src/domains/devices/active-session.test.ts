@@ -641,3 +641,66 @@ describe("the web Frame Feed on /stream.mjpeg", () => {
 		expect(await eventually(() => !browser.screencasting())).toBe(true);
 	});
 });
+
+describe("the screen-changed signal on /ws/control", () => {
+	/** The runner's control socket on a real port, as `index.ts` serves it. */
+	async function controlSocket() {
+		const { controlWebSocket, isControlUpgrade } = await import("../../interfaces/http/control-ws");
+		const runner = Bun.serve<{ kind: "control" }>({
+			hostname: "127.0.0.1",
+			port: 0,
+			fetch(request, server) {
+				if (isControlUpgrade(new URL(request.url).pathname)) {
+					if (server.upgrade(request, { data: { kind: "control" } })) return undefined;
+				}
+				return new Response("not found", { status: 404 });
+			},
+			websocket: {
+				open: (ws) => controlWebSocket.open(ws),
+				message: (ws, message) => void controlWebSocket.message(ws, message),
+				close: (ws, code, reason) => controlWebSocket.close(ws, code, reason),
+			},
+		});
+		phoneServers.push(runner);
+		const messages: unknown[] = [];
+		const ws = new WebSocket(`ws://127.0.0.1:${runner.port}/ws/control`);
+		ws.onmessage = (event) => messages.push(JSON.parse(String(event.data)));
+		await new Promise((resolve) => {
+			ws.onopen = resolve;
+		});
+		const screenChanges = () =>
+			messages.filter((message) => (message as { type?: string }).type === "screen-changed").length;
+		return { ws, screenChanges };
+	}
+
+	async function eventually(check: () => boolean): Promise<boolean> {
+		for (let tries = 0; tries < 50 && !check(); tries++) await Bun.sleep(20);
+		return check();
+	}
+
+	test("the Active Session's web page navigating reaches every open control socket", async () => {
+		const browser = startFakeCdp({ viewport: { width: 900, height: 700 } });
+		directLane = (options) => createWebDirectSession(options);
+		await connectDevice({ deviceId: `chromium-cdp-${browser.port}`, platform: "web" });
+		const first = await controlSocket();
+		const second = await controlSocket();
+		await Bun.sleep(400);
+		const before = first.screenChanges();
+		browser.navigate("https://app.example.com/next");
+		expect(await eventually(() => first.screenChanges() > before)).toBe(true);
+		expect(await eventually(() => second.screenChanges() > 0)).toBe(true);
+		first.ws.close();
+		second.ws.close();
+	});
+
+	test("a closed control socket hears nothing more", async () => {
+		const browser = startFakeCdp({ viewport: { width: 900, height: 700 } });
+		directLane = (options) => createWebDirectSession(options);
+		await connectDevice({ deviceId: `chromium-cdp-${browser.port}`, platform: "web" });
+		const { ws } = await controlSocket();
+		const { controlWebSocket } = await import("../../interfaces/http/control-ws");
+		expect(controlWebSocket.listening()).toBe(1);
+		ws.close();
+		expect(await eventually(() => controlWebSocket.listening() === 0)).toBe(true);
+	});
+});

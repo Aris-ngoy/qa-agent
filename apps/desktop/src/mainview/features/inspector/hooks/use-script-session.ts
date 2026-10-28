@@ -138,6 +138,7 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 				onStep: (event) => {
 					const { status, error } = event;
 					const line = formatCaseScriptReplayStep(event);
+					if (status === "ok" || status === "error") controller.screenChanged();
 					if (status === "running") log(`→ ${line}`);
 					else if (status === "ok") log(`✓ ${line}`, "ok");
 					else if (status === "error") log(`✗ ${line}: ${error ?? "failed"}`, "error");
@@ -202,6 +203,7 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 					const lineNumber = parsed.actionLines[index] ?? null;
 					const summary = formatCaseScriptReplayStep(event);
 					if (status === "skipped") return;
+					if (status === "ok" || status === "error") controller.screenChanged();
 					script$.activeLineNumber.set(lineNumber);
 					if (status === "running") {
 						stepStartedAt = Date.now();

@@ -146,6 +146,11 @@ export type CdpCommands = {
 		result: { backendNodeId: number; nodeId?: number };
 	};
 	"Page.enable": { params: Record<string, never>; result: Record<string, never> };
+	/** The page then sends `Page.lifecycleEvent` for each step of a load. */
+	"Page.setLifecycleEventsEnabled": {
+		params: { enabled: boolean };
+		result: Record<string, never>;
+	};
 	"Page.bringToFront": { params: Record<string, never>; result: Record<string, never> };
 	"Page.handleJavaScriptDialog": {
 		params: { accept: boolean; promptText?: string };

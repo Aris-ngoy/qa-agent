@@ -1,15 +1,22 @@
 import { devLog } from "@/app/dev-log";
-import { showErrorToast } from "@/app/show-error-toast";
+import { logDevError, showErrorToast } from "@/app/show-error-toast";
 import { controlSocketUrl } from "@/features/inspector/data/api/screen";
 import { InspectorFeedController } from "@/features/inspector/data/state/feed";
 import { initialPageState } from "@/features/inspector/data/state/page";
 import { useInspectorDevice } from "@/features/inspector/hooks/usequery/use-inspector-device";
 import { inspectorSessionKey, shouldAutoAttach } from "@/features/inspector/utils/auto-attach";
 import { treeReadPausesStream } from "@/features/inspector/utils/inspect-session";
+import {
+	controlSocketWanted,
+	isScreenChangedMessage,
+} from "@/features/inspector/utils/tree-freshness";
 import { useObservable, useObserveEffect, useValue } from "@legendapp/state/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
-/** Accessibility tree refresh on screenshot poll, and on a Stream a tree read leaves up. */
+/**
+ * Accessibility tree refresh on screenshot poll, and on a Stream a tree read leaves up. On
+ * web it is the backstop: the runner's screen-changed signal re-reads the tree as the page changes.
+ */
 const TREE_REFRESH_MS = 8000;
 /** Fallback screenshot poll when the MJPEG stream is unavailable. */
 const FALLBACK_SCREENSHOT_MS = 250;
@@ -171,9 +178,14 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 		},
 	);
 
-	// Live control WebSocket while the toggle is on.
+	// Control WebSocket: the pointer while live control is on, and on web the runner's
+	// screen-changed signal, on which the tree is read again.
 	useObserveEffect(
-		() => feed$.active.get() != null && feed$.liveControl.get() && page$.visible.get(),
+		() => {
+			const attached = feed$.active.get();
+			if (attached == null || !page$.visible.get()) return false;
+			return controlSocketWanted(attached, feed$.liveControl.get());
+		},
 		(event) => {
 			if (!event.value) return;
 
@@ -185,6 +197,9 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 					if (cancelled) return;
 					ws = new WebSocket(url);
 					controlWsRef.current = ws;
+					ws.onmessage = (message) => {
+						if (isScreenChangedMessage(message.data)) controller.screenChanged();
+					};
 					ws.onclose = () => {
 						if (controlWsRef.current === ws) {
 							controlWsRef.current = null;
@@ -193,6 +208,10 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 				},
 				(error: unknown) => {
 					if (cancelled) return;
+					if (!feed$.liveControl.peek()) {
+						logDevError("Could not open the control socket", error);
+						return;
+					}
 					showErrorToast(error, "Failed to open live control");
 					controller.setLiveControl(false);
 				},

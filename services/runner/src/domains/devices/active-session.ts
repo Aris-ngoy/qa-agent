@@ -37,6 +37,20 @@ type ActiveSession = {
 
 let active: ActiveSession | null = null;
 
+/** Who hears that the Active Session's Screen may have changed: the open control sockets. */
+const screenChangedListeners = new Set<() => void>();
+
+/**
+ * Hear the Active Session's screen-changed signal (a web page navigating, scrolling or
+ * painting), whichever session is active when it comes. Returns the unsubscribe.
+ */
+export function onActiveScreenChanged(listener: () => void): () => void {
+	screenChangedListeners.add(listener);
+	return () => {
+		screenChangedListeners.delete(listener);
+	};
+}
+
 /** The device session is in use by a Run and cannot be replaced or disconnected interactively. */
 export class SessionBusyError extends Error {
 	constructor(message: string) {
@@ -113,6 +127,7 @@ async function createAndRegister(options: {
 	viewport?: ViewportPresetName;
 	heldByRunId: string | null;
 }): Promise<DeviceSession> {
+	let opened: DeviceSession | null = null;
 	const session = await createDeviceSession({
 		platform: options.platform,
 		deviceId: options.deviceId,
@@ -123,7 +138,12 @@ async function createAndRegister(options: {
 		onSessionDead: () => {
 			abandonActiveSession();
 		},
+		onScreenChanged: () => {
+			if (!opened || active?.session !== opened) return;
+			for (const listener of screenChangedListeners) listener();
+		},
 	});
+	opened = session;
 
 	active = {
 		deviceId: options.deviceId,

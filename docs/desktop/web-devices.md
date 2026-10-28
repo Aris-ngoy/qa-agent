@@ -42,3 +42,43 @@ By hand, on a Mac with Chrome (not run here: this sandbox has no macOS browser o
 - The Inspector's command bar has no key picker yet ([key-action.md](../devices/key-action.md)).
 - A CDP screencast Stream for the Inspector, and Run recording on web, stay out of scope (#301).
 - The skill and public docs are [#312](https://github.com/Aris-ngoy/qa-agent/issues/312).
+
+## Keeping the hover tree fresh
+
+### Goal
+
+The web Inspector's hover and pick tree is never older than the frame on screen ([#362](https://github.com/Aris-ngoy/qa-agent/issues/362), decided in [#348](https://github.com/Aris-ngoy/qa-agent/issues/348)). Before, it re-read the **Screen** every 8 s, and on a click only when the tree was more than 3 s old, so after a scroll or a navigation hover outlined where elements used to be. A phone keeps its behaviour.
+
+### Plan summary
+
+- **The runner says when a web page changed.** The web Direct lane counts `Page.frameNavigated`, `Page.navigatedWithinDocument`, `Page.lifecycleEvent` (now enabled on every page), every screencast frame it serves, the end of every Action, and a live-control pointer release. Chromium paints a screencast frame only when the view changed, so a scroll, an animation or new content reaches the Inspector through the **Frame Feed** it is already watching. Rejected: a scroll listener injected into the page (a script and a binding the page can see, in the user's own browser).
+- **Debounced at the source.** A page loading or a scroll's frames is one signal once the page has been quiet for 200 ms; a page that keeps painting (an animation, a blinking caret) signals once a second.
+- **Over the existing control socket.** `SessionOptions.onScreenChanged` reaches the Active Session, which sends `{ ok: true, type: "screen-changed" }` to every open `/ws/control` socket. On web the Inspector holds that socket open whenever it is attached and visible, not only under live control. Rejected: a second socket or an SSE route for one message.
+- **The Inspector re-reads on it.** A change starts a tree read, or one more read when the one in flight ends, however many changes came during it. Under live control nothing is read until Select mode, which reads on the way in. Each Inspector action (tap, type, swipe, open URL, any Case Script step) counts as a change too.
+- **The refresh rule.** A web tree is stale once the page changed after its read *began* (a change during the read may not be in it), or past 3 s. A phone's tree is stale with time only, and a phone is never read on a change: its tree read cuts its Stream. The 8 s timer stays as the backstop.
+
+### What shipped
+
+- Runner: `screen-changes.ts` (`debounceScreenChanges`), the web lane's change sources, `onActiveScreenChanged` in `active-session.ts`, and the signal on `/ws/control` (`control-ws.ts`). `controlScreenChangedMessageSchema` in `@yoqa/runner-client`.
+- `FakeCdp` navigates as Chromium does (`Page.frameNavigated`, lifecycle events, load), lets the user follow a link (`navigate`) or scroll (`scroll`), and with `still` paints a screencast frame only when something changed.
+- Desktop: `utils/tree-freshness.ts` (`isTreeStale`, `treeReadOnScreenChange`, `controlSocketWanted`, `isScreenChangedMessage`), `InspectorFeedController.screenChanged`, the control socket kept open on web, and a change after each Case Script step.
+
+### How to verify
+
+```bash
+bun test services/runner/src/domains/devices/screen-changes.test.ts services/runner/src/domains/devices/web-direct-lane.test.ts services/runner/src/domains/devices/active-session.test.ts apps/desktop/src/mainview/features/inspector/utils
+bun run lint:ci && bun run test && bun run check
+```
+
+By hand, on a Mac with Chrome (not run here: this sandbox has no macOS browser or desktop shell):
+
+1. Connect a web device, open a long page, Inspector → Connect Inspector, Select mode.
+2. Scroll the page in the browser window (or with a swipe from the Inspector). Within about a second, hovering outlines the element under the pointer, not where it was before the scroll.
+3. Follow a link in the browser: hover matches the new page without pressing refresh.
+4. Connect a phone: the tree refreshes as before (on its timer and after commands), and the Stream does not pause on page changes.
+
+### Follow-ups
+
+- The by-hand check above on a Mac.
+- A control socket that drops (the runner restarted) is not reopened until the Inspector reattaches; the 8 s timer covers it meanwhile.
+

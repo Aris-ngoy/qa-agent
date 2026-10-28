@@ -79,6 +79,7 @@ import {
 } from "./lane";
 import { startMjpegServer } from "./mjpeg-server";
 import type { WebAxSource, WebAxSourceNode } from "./screen";
+import { debounceScreenChanges } from "./screen-changes";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
 export type WebDirectDeps = {
@@ -109,6 +110,11 @@ const SCREENCAST_QUALITY = 70;
 const SCREENCAST_EVERY_NTH_FRAME = 2;
 /** How often a frame that is not the preset's makes the lane set the emulation again. */
 const REEMULATE_MS = 500;
+/**
+ * A page loading or a scroll's frames is one screen-changed signal, once the page has been
+ * quiet this long; a page that keeps painting (an animation, a caret) signals once a second.
+ */
+const SCREEN_CHANGE_TIMING = { quietMs: 200, maxWaitMs: 1000 };
 
 /** The mobile preset's user agent: Safari on the iPhone whose screen it is. */
 const MOBILE_USER_AGENT =
@@ -411,6 +417,7 @@ async function attachPage(
 ): Promise<DrivenPage> {
 	const { sessionId } = await client.send("Target.attachToTarget", { targetId, flatten: true });
 	await client.send("Page.enable", {}, sessionId);
+	await client.send("Page.setLifecycleEventsEnabled", { enabled: true }, sessionId);
 	await client.send("Target.setAutoAttach", AUTO_ATTACH, sessionId);
 	await client.send("Emulation.setDeviceMetricsOverride", deviceMetrics(preset), sessionId);
 	if (preset.mobile) {
@@ -487,9 +494,14 @@ export async function createWebDirectSession(
 
 	let quitting = false;
 	let sessionEnded: DeadSessionError | null = null;
+	const screenChanges = debounceScreenChanges(
+		() => options.onScreenChanged?.(),
+		SCREEN_CHANGE_TIMING,
+	);
 	const dead = (reason: string) => {
 		if (!sessionEnded) {
 			sessionEnded = new DeadSessionError(`Device session ended: ${reason}`);
+			screenChanges.stop();
 			if (!quitting) {
 				// Nobody quits a dead session, so a browser Yoqa launched is quit here.
 				feed.stop();
@@ -597,6 +609,8 @@ export async function createWebDirectSession(
 		if (eventSession !== screencastOn || eventSession !== page.sessionId) return;
 		if (showsPreset(frame.metadata, preset)) {
 			feed.push(Uint8Array.from(Buffer.from(frame.data, "base64")));
+			// Chromium paints a frame only when the view changed: a scroll, an animation, new content.
+			screenChanges.changed();
 			return;
 		}
 		// The window's view, not the preset's: set the emulation again, as at the start.
@@ -606,6 +620,16 @@ export async function createWebDirectSession(
 			.send("Emulation.setDeviceMetricsOverride", deviceMetrics(preset), eventSession)
 			.catch(() => undefined);
 	});
+	// The page's document, or one of its frames, navigated (in-document too) or moved on in loading.
+	for (const event of [
+		"Page.frameNavigated",
+		"Page.navigatedWithinDocument",
+		"Page.lifecycleEvent",
+	]) {
+		client.on(event, (_params, eventSession) => {
+			if (eventSession === page.sessionId) screenChanges.changed();
+		});
+	}
 	client.on("Page.javascriptDialogOpening", (params, eventSession) => {
 		if (eventSession === page.sessionId) openDialog = params as JavaScriptDialog;
 	});
@@ -636,10 +660,11 @@ export async function createWebDirectSession(
 		guarded(() => client.send(method, params));
 
 	let chain: Promise<unknown> = Promise.resolve();
+	/** An Action's work, one at a time; whatever it did, the Screen may have changed. */
 	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
 		const after = () => switching.then(fn);
 		const run = chain.then(after, after);
-		chain = run.catch(() => undefined);
+		chain = run.catch(() => undefined).finally(screenChanges.changed);
 		return run;
 	};
 
@@ -970,6 +995,7 @@ export async function createWebDirectSession(
 		noRecordingReason: "Run recording is not available on web",
 		quit: async () => {
 			quitting = true;
+			screenChanges.stop();
 			feed.stop();
 			await stopScreencast().catch(() => undefined);
 			await client.close();
@@ -1026,6 +1052,7 @@ export async function createWebDirectSession(
 			} else {
 				pointerDown = false;
 				await pointer.release(point);
+				screenChanges.changed();
 			}
 		},
 		isPointerActive: () => pointerDown,
