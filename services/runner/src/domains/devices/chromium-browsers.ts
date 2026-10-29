@@ -273,7 +273,7 @@ export async function launchChromium(
 	const spawn = deps.spawn ?? spawnBrowser;
 	const readyTimeoutMs = deps.readyTimeoutMs ?? READY_TIMEOUT_MS;
 	const { profileDir, clean } = await prepareProfile(browser, request, deps);
-	const removeProfile = async () => {
+	const removeCleanProfile = async () => {
 		if (clean) await rm(profileDir, { recursive: true, force: true });
 	};
 
@@ -286,7 +286,7 @@ export async function launchChromium(
 			"about:blank",
 		]);
 	} catch (error) {
-		await removeProfile();
+		await removeCleanProfile();
 		throw error;
 	}
 	let hasExited = false;
@@ -309,7 +309,7 @@ export async function launchChromium(
 				if (!exitedInTime) proc.kill("SIGKILL");
 			}
 			running.delete(browser.id);
-			await removeProfile();
+			await removeCleanProfile();
 		})();
 		return stopping;
 	};
