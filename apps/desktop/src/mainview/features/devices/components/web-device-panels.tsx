@@ -1,6 +1,13 @@
 import { RhfTextField } from "@/app/forms";
-import { attachDeviceId } from "@/features/devices/utils/web-device";
-import { Button, Form } from "@heroui/react";
+import { useApps } from "@/features/apps/hooks/use-apps";
+import { useResetBrowserProfile } from "@/features/devices/hooks/usequery/use-devices";
+import {
+	attachDeviceId,
+	resetProfileConfirmation,
+	resetProfileDone,
+	resetProfileRequest,
+} from "@/features/devices/utils/web-device";
+import { AlertDialog, Button, Form, toast } from "@heroui/react";
 import {
 	VIEWPORT_PRESETS,
 	VIEWPORT_PRESET_NAMES,
@@ -117,5 +124,77 @@ export function AttachByPortForm({
 				</Button>
 			</Form>
 		</div>
+	);
+}
+
+/** An installed browser whose Kept profile "Reset browser profile" deletes. */
+export type ResetProfileTarget = { id: string; name: string };
+
+/**
+ * Confirm, then delete `browser`'s Kept profile for the selected app. The runner refuses
+ * while that browser has the profile open; its reason stays in the dialog until closed.
+ */
+export function ResetProfileDialog({
+	browser,
+	onClose,
+}: {
+	browser: ResetProfileTarget | null;
+	onClose: () => void;
+}) {
+	const { selectedApp } = useApps();
+	const resetMutation = useResetBrowserProfile();
+	const { reset: clearResult } = resetMutation;
+
+	const close = () => {
+		clearResult();
+		onClose();
+	};
+
+	const handleReset = () => {
+		if (!browser) return;
+		resetMutation.mutate(resetProfileRequest(browser.id, selectedApp), {
+			onSuccess: (result) => {
+				toast.success(resetProfileDone(browser.name, selectedApp, result));
+				close();
+			},
+		});
+	};
+
+	const refusal = resetMutation.error
+		? resetMutation.error instanceof Error
+			? resetMutation.error.message
+			: "Failed to reset the browser profile"
+		: null;
+
+	return (
+		<AlertDialog>
+			<AlertDialog.Backdrop isOpen={browser != null} onOpenChange={(open) => !open && close()}>
+				<AlertDialog.Container>
+					<AlertDialog.Dialog className="sm:max-w-[420px]">
+						<AlertDialog.CloseTrigger />
+						<AlertDialog.Header>
+							<AlertDialog.Icon status="danger" />
+							<AlertDialog.Heading>Reset browser profile?</AlertDialog.Heading>
+						</AlertDialog.Header>
+						<AlertDialog.Body className="flex flex-col gap-3">
+							<p>{browser ? resetProfileConfirmation(browser.name, selectedApp) : null}</p>
+							{refusal ? (
+								<p className="m-0 text-body-sm text-danger" role="alert">
+									{refusal}
+								</p>
+							) : null}
+						</AlertDialog.Body>
+						<AlertDialog.Footer>
+							<Button slot="close" variant="tertiary">
+								Cancel
+							</Button>
+							<Button isDisabled={resetMutation.isPending} onPress={handleReset} variant="danger">
+								{resetMutation.isPending ? "Resetting…" : "Reset"}
+							</Button>
+						</AlertDialog.Footer>
+					</AlertDialog.Dialog>
+				</AlertDialog.Container>
+			</AlertDialog.Backdrop>
+		</AlertDialog>
 	);
 }

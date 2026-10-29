@@ -4,6 +4,8 @@ import type {
 	ConnectDeviceRequest,
 	Device,
 	DevicePlatform,
+	ResetWebProfileRequest,
+	ResetWebProfileResponse,
 	RetargetDeviceRequest,
 } from "@yoqa/runner-client";
 
@@ -32,6 +34,17 @@ export async function listAllDevices(): Promise<Device[]> {
 export async function connectDevice(request: ConnectDeviceRequest): Promise<ActiveDeviceResponse> {
 	const client = await getRunnerClient();
 	return client.connectDevice(request);
+}
+
+/**
+ * Delete a browser's Kept profile for an App, so its next connect starts signed out. The
+ * runner refuses (409) while a browser has that profile open.
+ */
+export async function resetBrowserProfile(
+	request: ResetWebProfileRequest,
+): Promise<ResetWebProfileResponse> {
+	const client = await getRunnerClient();
+	return client.resetWebProfile(request);
 }
 
 export async function disconnectDevice(): Promise<void> {

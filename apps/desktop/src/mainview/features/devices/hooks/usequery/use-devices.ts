@@ -1,5 +1,9 @@
-import { listAllDevices, listPlatformDevices } from "@/features/devices/data/api/devices";
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import {
+	listAllDevices,
+	listPlatformDevices,
+	resetBrowserProfile,
+} from "@/features/devices/data/api/devices";
+import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import type { Device, DevicePlatform } from "@yoqa/runner-client";
 
 /** Query key for a platform's device list, shared by the picker and the session bar. */
@@ -58,4 +62,12 @@ export function useListedDevices(
 /** The cached device list, kept current but never fetched here: the run views load it. */
 export function useCachedListedDevices(platform: DevicePlatform | "all" | null | undefined) {
 	return useQuery({ ...listedDevicesQueryOptions(platform), enabled: false }).data;
+}
+
+/**
+ * Delete a browser's Kept profile. Nothing cached holds a profile, so there is nothing to
+ * update; the caller shows the result and the runner's refusal while the browser is open.
+ */
+export function useResetBrowserProfile() {
+	return useMutation({ mutationFn: resetBrowserProfile });
 }

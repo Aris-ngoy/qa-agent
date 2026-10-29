@@ -27,20 +27,26 @@ export function appTargetFor(
 
 /**
  * The connect for `target`: the selected app's start target, and on web the Viewport preset
- * the session emulates (desktop unless another was chosen).
+ * the session emulates (desktop unless another was chosen) and the app whose Kept profile a
+ * launched browser opens on, the one its Runs use (the default profile with no app).
  */
 export function connectRequestFor(
 	target: Pick<SelectedDevice, "id" | "platform" | "viewport">,
-	app: Pick<Application, "iosBundleId" | "androidApplicationId" | "webUrl"> | null | undefined,
+	app:
+		| Pick<Application, "id" | "iosBundleId" | "androidApplicationId" | "webUrl">
+		| null
+		| undefined,
 	lane?: LaneName,
 ): ConnectDeviceRequest {
 	const viewport = viewportFor(target.platform, target.viewport);
+	const appId = target.platform === "web" ? app?.id : undefined;
 	return {
 		deviceId: target.id,
 		platform: target.platform,
 		...appTargetFor(target.platform, app),
 		...(lane ? { lane } : {}),
 		...(viewport ? { viewport } : {}),
+		...(appId ? { appId } : {}),
 	};
 }
 
