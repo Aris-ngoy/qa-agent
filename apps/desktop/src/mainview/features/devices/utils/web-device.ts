@@ -1,8 +1,11 @@
+import type { Application } from "@/features/apps/data/api/apps";
 import type { SelectedDevice } from "@/features/devices/data/state/session-bar";
 import {
 	DEFAULT_VIEWPORT_PRESET,
 	type Device,
 	type DevicePlatform,
+	type ResetWebProfileRequest,
+	type ResetWebProfileResponse,
 	VIEWPORT_PRESETS,
 	type ViewportPresetName,
 } from "@yoqa/runner-client";
@@ -79,4 +82,37 @@ export function screenAspect(
 	if (platform !== "web") return null;
 	const { width, height } = VIEWPORT_PRESETS[viewport ?? DEFAULT_VIEWPORT_PRESET];
 	return `${width} / ${height}`;
+}
+
+/** The Kept profile reset for `browserId`: the selected app's, the default one with no app. */
+export function resetProfileRequest(
+	browserId: string,
+	app: Pick<Application, "id"> | null | undefined,
+): ResetWebProfileRequest {
+	return { browserId, ...(app ? { appId: app.id } : {}) };
+}
+
+/** `Google Chrome's profile for Shop`, or its default profile with no app. */
+function profileLabel(browserName: string, app: Pick<Application, "name"> | null | undefined) {
+	return app ? `${browserName}'s profile for ${app.name}` : `${browserName}'s default profile`;
+}
+
+/** What "Reset browser profile" asks before it deletes a Kept profile. */
+export function resetProfileConfirmation(
+	browserName: string,
+	app: Pick<Application, "name"> | null | undefined,
+): string {
+	return `Every login and site setting in ${profileLabel(browserName, app)} is deleted. Its next connect, and the next Run on it, start signed out.`;
+}
+
+/** The toast after a reset: done, or nothing there to delete. */
+export function resetProfileDone(
+	browserName: string,
+	app: Pick<Application, "name"> | null | undefined,
+	result: ResetWebProfileResponse,
+): string {
+	const label = profileLabel(browserName, app);
+	return result.browserIds.length > 0
+		? `Reset ${label}`
+		: `Nothing to reset: ${label} is already empty`;
 }

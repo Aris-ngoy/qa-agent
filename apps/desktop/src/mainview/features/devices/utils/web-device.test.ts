@@ -3,6 +3,9 @@ import {
 	attachDeviceId,
 	attachedBrowser,
 	browserDevices,
+	resetProfileConfirmation,
+	resetProfileDone,
+	resetProfileRequest,
 	screenAspect,
 	viewportFor,
 	withViewport,
@@ -91,5 +94,50 @@ describe("screenAspect", () => {
 	test("is nothing on a phone, which keeps its phone frame", () => {
 		expect(screenAspect("ios", undefined)).toBeNull();
 		expect(screenAspect("android", "mobile")).toBeNull();
+	});
+});
+
+describe("resetProfileRequest", () => {
+	test("names the browser and the selected app's Kept profile", () => {
+		expect(resetProfileRequest("web-chrome", { id: "app_1" })).toEqual({
+			browserId: "web-chrome",
+			appId: "app_1",
+		});
+	});
+
+	test("names the default profile when no app is selected", () => {
+		expect(resetProfileRequest("web-chrome", null)).toEqual({ browserId: "web-chrome" });
+	});
+});
+
+describe("resetProfileConfirmation", () => {
+	test("says whose logins go: the browser's, for the selected app", () => {
+		expect(resetProfileConfirmation("Google Chrome", { name: "Shop" })).toBe(
+			"Every login and site setting in Google Chrome's profile for Shop is deleted. Its next connect, and the next Run on it, start signed out.",
+		);
+	});
+
+	test("names the default profile with no app", () => {
+		expect(resetProfileConfirmation("Google Chrome", null)).toStartWith(
+			"Every login and site setting in Google Chrome's default profile is deleted.",
+		);
+	});
+});
+
+describe("resetProfileDone", () => {
+	test("says the profile was reset when the browser had one", () => {
+		expect(
+			resetProfileDone(
+				"Google Chrome",
+				{ name: "Shop" },
+				{ appId: "app_1", browserIds: ["web-chrome"] },
+			),
+		).toBe("Reset Google Chrome's profile for Shop");
+	});
+
+	test("says there was nothing to reset when it had none", () => {
+		expect(resetProfileDone("Google Chrome", null, { appId: "default", browserIds: [] })).toBe(
+			"Nothing to reset: Google Chrome's default profile is already empty",
+		);
 	});
 });

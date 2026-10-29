@@ -14,7 +14,7 @@ Bring web into the desktop app ([#301](https://github.com/Aris-ngoy/qa-agent/iss
 
 ## What shipped
 
-- Device picker (`select-device-modal.tsx`, `web-device-panels.tsx`): Web title, the Viewport choice, the Browsers list (with a note that Yoqa opens its own window on a throwaway profile), and the Attach-by-port form (react-hook-form, port 1–65535).
+- Device picker (`select-device-modal.tsx`, `web-device-panels.tsx`): Web title, the Viewport choice, the Browsers list (with a note that Yoqa opens its own window on the App's Kept profile; see [below](#the-apps-kept-profile-and-its-reset)), and the Attach-by-port form (react-hook-form, port 1–65535).
 - `web-device.ts`: `attachDeviceId`, `attachedBrowser`, `browserDevices`, `viewportFor` (desktop by default, nothing on a phone), `withViewport` (`Google Chrome · mobile` in the bar) and `screenAspect`.
 - Session bar: `connectRequestFor` in `session-app.ts` builds every connect (Connect, Restart, Run, trust reconnect) and adds `viewport` on web only. `deviceForSession` keeps the session's preset and names an attached browser. `RememberedDevice` carries an optional `viewport`, and an unreadable one is dropped.
 - Inspector: `feedModeFor` in `inspect-session.ts`, used by the feed controller. The frame and its loading skeleton take the preset's aspect on web.
@@ -82,3 +82,43 @@ By hand, on a Mac with Chrome (not run here: this sandbox has no macOS browser o
 - The by-hand check above on a Mac.
 - A control socket that drops (the runner restarted) is not reopened until the Inspector reattaches; the 8 s timer covers it meanwhile.
 
+
+## The App's Kept profile and its reset
+
+### Goal
+
+The desktop app opens a browser on the selected App's **Kept profile**, the one that App's Runs use, so the Inspector and Runs share its logins, and offers "Reset browser profile" to start signed out again ([#366](https://github.com/Aris-ngoy/qa-agent/issues/366), decided in [#346](https://github.com/Aris-ngoy/qa-agent/issues/346)). The runner side is [web-kept-profile.md](../devices/web-kept-profile.md).
+
+### Plan summary
+
+- **Every web connect names the App.** `connectRequestFor` adds the selected App's id as `appId` on web, so Connect, Restart, Run and the trust reconnect all open its Kept profile; with no App selected the runner uses `default`. A phone's connect is unchanged. Since the Inspector's session is now on the Run's App and profile, a Run adopts it instead of relaunching the browser.
+- **Reset sits with the browsers, where the Viewport preset is chosen.** Each row of the picker's Browsers tab has a "Reset browser profile" button next to picking it. It resets that one browser's profile for the selected App. Rejected: one button for every browser's profile (a user signed in on Chrome rarely means to sign Edge out too), and a control in the top bar, which is for the session, not a browser that may be closed.
+- **Confirm first; show the refusal where it was asked.** A danger dialog says whose logins go. While the browser has that profile open the runner answers 409 (disconnect first); the dialog stays open and shows the runner's own words, so the user can disconnect and try again. A reset that found no profile says there was nothing to reset.
+- An attached browser (Attach by port) has no Kept profile and no reset.
+
+### What shipped
+
+- `connectRequestFor` (`devices/utils/session-app.ts`) sends `appId` on web.
+- `resetBrowserProfile` in `devices/data/api/devices.ts` (`DELETE /devices/web/profiles` through `RunnerClient.resetWebProfile`), `useResetBrowserProfile` in `devices/hooks/usequery/use-devices.ts`.
+- `resetProfileRequest`, `resetProfileConfirmation` and `resetProfileDone` in `devices/utils/web-device.ts`.
+- `ResetProfileDialog` in `web-device-panels.tsx`, and a per-row action in the picker's device list. The Browsers tab no longer calls the profile throwaway.
+- Tests: `devices/data/api/devices.test.ts` (the request, the default profile, a 409's message) with the desktop RPC mocked; the helpers in `web-device.test.ts`; `appId` in `session-app.test.ts`.
+
+### How to verify
+
+```bash
+bun test apps/desktop/src/mainview/features/devices
+bun run lint:ci && bun run test && bun run check
+```
+
+By hand, on a Mac with Chrome (not run here: this sandbox has no macOS browser or desktop shell):
+
+1. Select an App, platform Web, Google Chrome, Connect. Sign in to the App's site in the window. Disconnect and Connect again: still signed in, and `~/.yoqa/browser-profiles/<app id>/web-chrome/` exists.
+2. Start a Run on it: the Run adopts the session (no new window) and is signed in.
+3. While connected, Select device → Reset browser profile on Google Chrome → Reset: the dialog shows the runner's "Disconnect it before resetting the profile." and the folder stays.
+4. Disconnect, reset again: a toast says it reset Google Chrome's profile for the App, the folder is gone, and the next connect starts signed out. Reset once more: "Nothing to reset".
+
+### Follow-ups
+
+- Switching App in the side menu while a web session is up retargets without reconnecting, so the browser stays on the previous App's profile until it reconnects; a Run reopens it on its own App's profile meanwhile.
+- No desktop control for a Run's `profile: clean` yet; a Case Script's `profile: clean` asks for one.

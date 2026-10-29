@@ -1,8 +1,13 @@
-import { AttachByPortForm, ViewportChoice } from "@/features/devices/components/web-device-panels";
+import {
+	AttachByPortForm,
+	ResetProfileDialog,
+	type ResetProfileTarget,
+	ViewportChoice,
+} from "@/features/devices/components/web-device-panels";
 import type { DevicePlatform, SelectedDevice } from "@/features/devices/data/state/session-bar";
 import { usePickerDevices } from "@/features/devices/hooks/usequery/use-devices";
 import { attachedBrowser, browserDevices } from "@/features/devices/utils/web-device";
-import { Modal, Tabs } from "@heroui/react";
+import { Button, Modal, Tabs } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
 import {
 	DEFAULT_VIEWPORT_PRESET,
@@ -10,7 +15,7 @@ import {
 	type DeviceKind,
 	type ViewportPresetName,
 } from "@yoqa/runner-client";
-import { type SVGProps, useEffect, useMemo } from "react";
+import { type ReactNode, type SVGProps, useEffect, useMemo } from "react";
 
 /** Phones: cabled devices and simulators/emulators. Web: installed browsers and attach by port. */
 type DeviceTab = "local" | "simulators" | "browsers" | "attach";
@@ -166,12 +171,15 @@ function DeviceList({
 	loading,
 	error,
 	onSelect,
+	action,
 	emptyMessage = "No devices found.",
 }: {
 	devices: DeviceRow[];
 	loading: boolean;
 	error: string | null;
 	onSelect: (device: DeviceRow) => void;
+	/** A second control beside each row's pick (a browser's profile reset). */
+	action?: (device: DeviceRow) => ReactNode;
 	emptyMessage?: string;
 }) {
 	if (loading) {
@@ -195,9 +203,9 @@ function DeviceList({
 	return (
 		<ul className="divide-y divide-outline-variant/60">
 			{devices.map((device) => (
-				<li key={device.id}>
+				<li className="flex items-center gap-2" key={device.id}>
 					<button
-						className="flex w-full items-center justify-between gap-4 px-1 py-3.5 text-left transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+						className="flex min-w-0 flex-1 items-center justify-between gap-4 px-1 py-3.5 text-left transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
 						disabled={Boolean(device.unavailableReason)}
 						onClick={() => onSelect(device)}
 						type="button"
@@ -222,6 +230,7 @@ function DeviceList({
 							) : null}
 						</span>
 					</button>
+					{action?.(device)}
 				</li>
 			))}
 		</ul>
@@ -239,8 +248,11 @@ export function SelectDeviceModal({
 	const firstTab: DeviceTab = isWeb ? "browsers" : "local";
 	const tab$ = useObservable<DeviceTab>(firstTab);
 	const preset$ = useObservable<ViewportPresetName>(viewport ?? DEFAULT_VIEWPORT_PRESET);
+	/** The browser whose Kept profile the reset dialog is asking about. */
+	const resetTarget$ = useObservable<ResetProfileTarget | null>(null);
 	const tab = useValue(tab$);
 	const preset = useValue(preset$);
+	const resetTarget = useValue(resetTarget$);
 	const copy = PLATFORM_COPY[platform];
 
 	const devicesQuery = usePickerDevices(platform, open);
@@ -357,15 +369,30 @@ export function SelectDeviceModal({
 									<>
 										<Tabs.Panel className="pt-5" id="browsers">
 											<p className="mb-2 text-body-sm text-on-surface-variant">
-												Connecting opens a Yoqa-owned window on a throwaway profile. Your own
-												browser and its profile are never touched.
+												Connecting opens a Yoqa-owned window on this app's own profile, so its
+												logins stay for the next connect and Run. Your own browser and its profile
+												are never touched.
 											</p>
 											<DeviceList
+												action={(browser) => (
+													<Button
+														className="shrink-0 rounded-lg text-body-sm"
+														onPress={() => resetTarget$.set({ id: browser.id, name: browser.name })}
+														size="sm"
+														variant="tertiary"
+													>
+														Reset browser profile
+													</Button>
+												)}
 												devices={browsers}
 												emptyMessage="No Chrome, Edge, Brave or Chromium found in Applications. Attach by port instead."
 												error={error}
 												loading={loading}
 												onSelect={handleSelect}
+											/>
+											<ResetProfileDialog
+												browser={resetTarget}
+												onClose={() => resetTarget$.set(null)}
 											/>
 										</Tabs.Panel>
 

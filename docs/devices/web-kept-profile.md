@@ -36,6 +36,7 @@ Never sign in twice. A browser Yoqa launches used to start on a throwaway profil
 - Tests: reset in `chromium-browsers.test.ts` (one browser, every browser, default, missing, live and stale locks, a bad App id); the route in `active-session.test.ts` (deletes the folder, refused with 409 while the session's browser or another browser has it open, leaves the folder); the command and its flags in `packages/cli/src/devices-web-reset-profile.test.ts`.
 - Tests: launch, keep, relaunch, clean, stale and live locks in `chromium-browsers.test.ts`; the lane keeping the profile across a disconnect and a Dead Session in `web-direct-lane.test.ts`; the route, the default App, clean, and the second connect in `active-session.test.ts`. Every launch in the tests, including the Lane contract harness, uses a temporary home.
 - Runs (#367): `profile` on `caseScriptSchema` (read and written as `profile:` in a Case Script file), on `createRunRequestSchema` and on `runSchema`. The runs table gains `requested_profile` and `profile`. `executeRun` resolves the profile and passes it with the `appId` to `acquireSessionForRun`, which adopts a web session only on that App and profile and otherwise reopens at the session's preset. An agent run that re-records a Case Script keeps its `profile`. The report and the desktop Run detail line show `Profile kept|clean`. `yoqa runs create --profile`.
+- Desktop (#366): web connects send the selected App's `appId`, and the picker's Browsers tab has "Reset browser profile" per browser; see [web-devices.md](../desktop/web-devices.md#the-apps-kept-profile-and-its-reset).
 - `CONTEXT.md`: **Kept profile**, and **Browser device** says a launched browser uses its App's Kept profile.
 
 ## How to verify
@@ -67,8 +68,7 @@ yoqa runs create <app> --cases 1 --device web-chrome --profile clean --wait  # s
 
 ## Follow-ups
 
-- The desktop app's "Reset browser profile" and its device picker copy, which still says throwaway profile ([#366](https://github.com/Aris-ngoy/qa-agent/issues/366)).
-- `yoqa devices connect` has no `--app` or `--clean` yet; the route takes both. Until the desktop app connects with its App (#366), a Run after an Inspector connect relaunches the browser on the App's profile.
+- `yoqa devices connect` has no `--app` or `--clean` yet; the route takes both.
 - The desktop app has no control for a Run's profile yet; a Case Script that says `profile: clean` is the way to ask from there.
 - Windows Chromium locks the profile with a `lockfile` held open, not `SingletonLock`; the lock rules here are POSIX only, which is where discovery runs today.
 - A live pid that has been reused by another program reads as a held profile; the error names the pid so the user can check.

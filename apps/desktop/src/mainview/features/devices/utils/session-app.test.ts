@@ -29,7 +29,12 @@ describe("appTargetFor", () => {
 });
 
 describe("connectRequestFor", () => {
-	const app = { iosBundleId: "com.example.app", androidApplicationId: "", webUrl: "" };
+	const app = {
+		id: "app_1",
+		iosBundleId: "com.example.app",
+		androidApplicationId: "",
+		webUrl: "",
+	};
 
 	test("connects a phone for the selected app, with no Viewport preset", () => {
 		expect(connectRequestFor({ id: "sim-1", platform: "ios", viewport: "mobile" }, app)).toEqual({
@@ -42,9 +47,19 @@ describe("connectRequestFor", () => {
 	test("connects a browser at the chosen Viewport preset, desktop when none was chosen", () => {
 		expect(
 			connectRequestFor({ id: "web-chrome", platform: "web", viewport: "mobile" }, app),
-		).toEqual({ deviceId: "web-chrome", platform: "web", viewport: "mobile" });
+		).toEqual({ deviceId: "web-chrome", platform: "web", viewport: "mobile", appId: "app_1" });
 		expect(connectRequestFor({ id: "chromium-cdp-9222", platform: "web" }, app)).toEqual({
 			deviceId: "chromium-cdp-9222",
+			platform: "web",
+			viewport: "desktop",
+			appId: "app_1",
+		});
+	});
+
+	test("opens a browser on the selected app's Kept profile, the default one with no app", () => {
+		expect(connectRequestFor({ id: "web-chrome", platform: "web" }, app).appId).toBe("app_1");
+		expect(connectRequestFor({ id: "web-chrome", platform: "web" }, null)).toEqual({
+			deviceId: "web-chrome",
 			platform: "web",
 			viewport: "desktop",
 		});
