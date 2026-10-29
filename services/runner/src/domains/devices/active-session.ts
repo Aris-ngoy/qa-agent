@@ -1,4 +1,11 @@
-import type { DevicePlatform, StreamState, ViewportPresetName } from "@yoqa/runner-client";
+import {
+	type BrowserProfile,
+	DEFAULT_VIEWPORT_PRESET,
+	type DevicePlatform,
+	type StreamState,
+	type ViewportPresetName,
+} from "@yoqa/runner-client";
+import { DEFAULT_PROFILE_APP } from "./chromium-browsers";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
 import { type DeviceSession, createDeviceSession } from "./session";
 
@@ -33,6 +40,9 @@ type ActiveSession = {
 	session: DeviceSession;
 	/** Run id currently executing on this session, when a Run owns it. */
 	heldByRunId: string | null;
+	/** Web only: the App and profile a launched browser was opened on. */
+	appId?: string;
+	profile?: BrowserProfile;
 };
 
 let active: ActiveSession | null = null;
@@ -125,6 +135,8 @@ async function createAndRegister(options: {
 	appPackage?: string;
 	requestedLane?: import("./lane").LaneName | "auto";
 	viewport?: ViewportPresetName;
+	appId?: string;
+	profile?: BrowserProfile;
 	heldByRunId: string | null;
 }): Promise<DeviceSession> {
 	let opened: DeviceSession | null = null;
@@ -135,6 +147,8 @@ async function createAndRegister(options: {
 		appPackage: options.appPackage,
 		requestedLane: options.requestedLane,
 		viewport: options.viewport,
+		appId: options.appId,
+		profile: options.profile,
 		onSessionDead: () => {
 			abandonActiveSession();
 		},
@@ -152,14 +166,44 @@ async function createAndRegister(options: {
 		streamUrl: "/stream.mjpeg",
 		session,
 		heldByRunId: options.heldByRunId,
+		appId: options.appId,
+		profile: options.profile,
 	};
 
 	return session;
 }
 
 /**
+ * Whether a connect asks for the browser the Active Session already drives: the same web
+ * device, App, profile and Viewport preset. A second launch on a Kept profile would find
+ * it locked by the first.
+ */
+function isActiveBrowser(
+	current: ActiveSession,
+	options: {
+		deviceId: string;
+		platform: DevicePlatform;
+		viewport?: ViewportPresetName;
+		appId?: string;
+		profile?: BrowserProfile;
+	},
+): boolean {
+	return (
+		options.platform === "web" &&
+		current.platform === "web" &&
+		current.deviceId === options.deviceId &&
+		(current.appId ?? DEFAULT_PROFILE_APP) === (options.appId ?? DEFAULT_PROFILE_APP) &&
+		(current.profile ?? "kept") === (options.profile ?? "kept") &&
+		(current.session.viewport ?? DEFAULT_VIEWPORT_PRESET) ===
+			(options.viewport ?? DEFAULT_VIEWPORT_PRESET)
+	);
+}
+
+/**
  * Interactive connect (inspector / CLI). Replaces any existing session unless
- * a Run holds it — cancel the run first. A web session opens at `viewport`.
+ * a Run holds it — cancel the run first. A web session opens at `viewport`, and a browser
+ * Yoqa launches uses `appId`'s Kept profile unless `profile` is `clean`. A connect to the
+ * browser the Active Session already drives returns that session.
  */
 export async function connectDevice(options: {
 	deviceId: string;
@@ -168,11 +212,16 @@ export async function connectDevice(options: {
 	appPackage?: string;
 	requestedLane?: import("./lane").LaneName | "auto";
 	viewport?: ViewportPresetName;
+	appId?: string;
+	profile?: BrowserProfile;
 }): Promise<ActiveSessionInfo> {
 	if (isActiveSessionHeldByRun()) {
 		throw new SessionBusyError(
 			"A run is using the device session. Cancel the run before connecting another device.",
 		);
+	}
+	if (active && isActiveBrowser(active, options)) {
+		return toInfo(active);
 	}
 	if (active) {
 		await disconnectDevice();

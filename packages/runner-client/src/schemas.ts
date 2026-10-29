@@ -35,6 +35,16 @@ export const VIEWPORT_PRESET_NAMES = ["desktop", "mobile"] as const;
 export const viewportPresetSchema = z.enum(VIEWPORT_PRESET_NAMES);
 export type ViewportPresetName = z.infer<typeof viewportPresetSchema>;
 
+/**
+ * Which profile a launched browser uses: its App's Kept profile, kept across disconnects,
+ * or a clean temporary one, deleted on disconnect.
+ */
+export const browserProfileSchema = z.enum(["kept", "clean"]);
+export type BrowserProfile = z.infer<typeof browserProfileSchema>;
+
+/** An App id a Kept profile can be named by: one plain folder name, not `.` or `..`. */
+export const PROFILE_APP_ID_PATTERN = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
+
 export const deviceSchema = z.object({
 	id: z.string().min(1),
 	name: z.string().min(1),
@@ -1045,6 +1055,10 @@ export const connectDeviceRequestSchema = z.object({
 	lane: z.union([laneNameSchema, z.literal("auto")]).optional(),
 	/** Web only: the Viewport preset the session emulates. Desktop when omitted. */
 	viewport: viewportPresetSchema.optional(),
+	/** Web only: the App whose Kept profile a launched browser uses; `default` when omitted. */
+	appId: z.string().regex(PROFILE_APP_ID_PATTERN).optional(),
+	/** Web only: a launched browser's profile. Its App's Kept profile when omitted. */
+	profile: browserProfileSchema.optional(),
 });
 export type ConnectDeviceRequest = z.infer<typeof connectDeviceRequestSchema>;
 

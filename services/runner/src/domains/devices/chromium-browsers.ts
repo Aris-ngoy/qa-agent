@@ -1,16 +1,20 @@
 /**
  * Installed Chromium-family browsers (Chrome, Edge, Brave, Chromium) as web devices, and
  * the Yoqa-owned instance a connect launches (ADR-0007). Launching an installed browser is
- * to a web device what booting is to a simulator: a fresh temporary profile, a debug port
- * the browser picks itself, and no first-run screens. The user's own profile is never used.
+ * to a web device what booting is to a simulator: its App's Kept profile, a debug port the
+ * browser picks itself, and no first-run screens. The user's own profile is never used.
  * Discovery is macOS only.
+ *
+ * A Kept profile lives at `~/.yoqa/browser-profiles/<appId>/<browserId>/` (`default` when
+ * the connect names no App) and outlives the browser, so logins survive disconnects and
+ * Runs. A clean profile is a temporary folder, deleted when the browser stops.
  */
 
 import { constants } from "node:fs";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { access, mkdir, mkdtemp, readFile, readlink, rm } from "node:fs/promises";
+import { homedir, hostname, tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Device } from "@yoqa/runner-client";
+import { type BrowserProfile, type Device, PROFILE_APP_ID_PATTERN } from "@yoqa/runner-client";
 import type { ListDevicesOptions } from "./models";
 
 /** The stable device id of each browser Yoqa can launch, one per installed browser. */
@@ -131,21 +135,105 @@ export type ChromiumInstance = {
 	profileDir: string;
 	/** Resolves when the browser process exits, for whatever reason. */
 	exited: Promise<number>;
-	/** Kill the browser and delete its profile. Safe to call twice. */
+	/** Kill the browser, and delete its profile if it is a clean one. Safe to call twice. */
 	stop: () => Promise<void>;
 };
 
 export type LaunchDeps = {
 	spawn?: (command: string[]) => BrowserProcess;
 	readyTimeoutMs?: number;
+	/** The home folder `~/.yoqa` is under. */
+	home?: string;
+	/** Whether a process with this pid runs on this machine. */
+	isProcessAlive?: (pid: number) => boolean;
 };
+
+/** Which profile a launch uses: its App's Kept profile (the default) or a clean one. */
+export type ProfileRequest = {
+	profile?: BrowserProfile;
+	/** The App whose Kept profile it is; `default` when none is named. */
+	appId?: string;
+};
+
+/** The Kept profile's App folder when a connect names no App. */
+export const DEFAULT_PROFILE_APP = "default";
+
+/** The Kept profile of `browserId` for `appId`, under `home`. */
+export function keptProfileDir(
+	browserId: InstalledBrowserId,
+	appId: string = DEFAULT_PROFILE_APP,
+	home: string = homedir(),
+): string {
+	// One plain folder name, so a Kept profile stays under its root.
+	if (!PROFILE_APP_ID_PATTERN.test(appId)) {
+		throw new Error(`${appId} is not an App id a browser profile can be kept for`);
+	}
+	return join(home, ".yoqa", "browser-profiles", appId, browserId);
+}
+
+/** A Kept profile another live browser has open, so Yoqa cannot launch on it. */
+export class ProfileInUseError extends Error {
+	constructor(profileDir: string, pid: number) {
+		super(
+			`The browser profile ${profileDir} is in use by another browser (pid ${pid}). Quit that browser and connect again`,
+		);
+		this.name = "ProfileInUseError";
+	}
+}
+
+/** What Chromium leaves in a profile it has open, and after a crash. */
+const LOCK_FILES = ["SingletonLock", "SingletonSocket", "SingletonCookie"];
+
+function isProcessAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		// EPERM: alive, but someone else's.
+		return (error as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
+/**
+ * Clear the locks a browser that crashed left in `profileDir`, or fail when a live one
+ * holds it. Chromium's `SingletonLock` points at `<hostname>-<pid>`; a lock from another
+ * host, or from a pid that is gone, is stale.
+ */
+async function clearStaleLock(profileDir: string, alive: (pid: number) => boolean): Promise<void> {
+	const owner = await readlink(join(profileDir, "SingletonLock")).catch(() => null);
+	const match = owner ? /^(.*)-(\d+)$/.exec(owner) : null;
+	const pid = Number(match?.[2]);
+	if (match?.[1] === hostname() && pid > 0 && alive(pid)) {
+		throw new ProfileInUseError(profileDir, pid);
+	}
+	await Promise.all(LOCK_FILES.map((lock) => rm(join(profileDir, lock), { force: true })));
+}
+
+/**
+ * The profile folder a launch uses, ready for the browser: a clean one made fresh, or the
+ * Kept one made if missing, with stale locks cleared and the last browser's port file gone.
+ */
+async function prepareProfile(
+	browser: InstalledBrowser,
+	request: ProfileRequest,
+	deps: LaunchDeps,
+): Promise<{ profileDir: string; clean: boolean }> {
+	if (request.profile === "clean") {
+		return { profileDir: await mkdtemp(join(tmpdir(), "yoqa-web-")), clean: true };
+	}
+	const profileDir = keptProfileDir(browser.id, request.appId, deps.home);
+	await mkdir(profileDir, { recursive: true });
+	await clearStaleLock(profileDir, deps.isProcessAlive ?? isProcessAlive);
+	await rm(join(profileDir, "DevToolsActivePort"), { force: true });
+	return { profileDir, clean: false };
+}
 
 const READY_TIMEOUT_MS = 15_000;
 const READY_POLL_MS = 50;
 const STOP_GRACE_MS = 2_000;
 
 /**
- * Flags for a throwaway instance: no first-run, default-browser or search-engine screens,
+ * Flags for a Yoqa-owned instance: no first-run, default-browser or search-engine screens,
  * no sync, and a mock keychain so macOS never asks for the login password.
  */
 const LAUNCH_FLAGS = [
@@ -172,19 +260,22 @@ async function readActivePort(profileDir: string): Promise<string | null> {
 }
 
 /**
- * Launch `browser` on a fresh temporary profile with `--remote-debugging-port=0`, and
- * resolve once it has written the port it picked to the profile's `DevToolsActivePort`.
- * A browser that exits or stays silent first is killed, its profile deleted, and the
- * launch fails.
+ * Launch `browser` on its App's Kept profile, or a clean one, with
+ * `--remote-debugging-port=0`, and resolve once it has written the port it picked to the
+ * profile's `DevToolsActivePort`. A browser that exits or stays silent first is killed, a
+ * clean profile deleted, and the launch fails.
  */
 export async function launchChromium(
 	browser: InstalledBrowser,
 	deps: LaunchDeps = {},
+	request: ProfileRequest = {},
 ): Promise<ChromiumInstance> {
 	const spawn = deps.spawn ?? spawnBrowser;
 	const readyTimeoutMs = deps.readyTimeoutMs ?? READY_TIMEOUT_MS;
-	const profileDir = await mkdtemp(join(tmpdir(), "yoqa-web-"));
-	const removeProfile = () => rm(profileDir, { recursive: true, force: true });
+	const { profileDir, clean } = await prepareProfile(browser, request, deps);
+	const removeProfile = async () => {
+		if (clean) await rm(profileDir, { recursive: true, force: true });
+	};
 
 	let proc: BrowserProcess;
 	try {

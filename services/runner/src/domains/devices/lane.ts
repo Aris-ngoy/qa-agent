@@ -1,4 +1,10 @@
-import type { DevicePlatform, KeyModifier, KeyName, ViewportPresetName } from "@yoqa/runner-client";
+import type {
+	BrowserProfile,
+	DevicePlatform,
+	KeyModifier,
+	KeyName,
+	ViewportPresetName,
+} from "@yoqa/runner-client";
 
 /**
  * The control path a Device Session uses (see `Lane` in CONTEXT.md and ADR-0005).
@@ -16,6 +22,10 @@ export type SessionOptions = {
 	requestedLane?: LaneName | "auto";
 	/** Web only: the Viewport preset the session emulates for its whole life. Desktop by default. */
 	viewport?: ViewportPresetName;
+	/** Web only: the App whose Kept profile a launched browser uses; `default` when omitted. */
+	appId?: string;
+	/** Web only: a launched browser's profile, its App's Kept one unless `clean`. */
+	profile?: BrowserProfile;
 	/** Called once when the lane reports the session is gone. */
 	onSessionDead?: () => void;
 	/**

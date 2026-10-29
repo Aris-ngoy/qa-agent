@@ -2,7 +2,10 @@
  * Lane harnesses for the Lane contract suite (`lane-contract.test.ts`). Each one opens
  * a real Lane with its device tool faked, and reads back what reached the device.
  */
+import { mkdtempSync } from "node:fs";
 import { createConnection } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	KEY_MODIFIERS,
 	type KeyModifier,
@@ -487,11 +490,13 @@ export function webMobileLane(): LaneHarness & { browser: FakeCdp } {
 
 /**
  * Web Direct: an installed Chrome that the lane launches as a Yoqa-owned instance, with the
- * browser process faked so each launch starts a local CDP endpoint.
+ * browser process faked so each launch starts a local CDP endpoint. Its Kept profile is
+ * under a temporary home.
  */
 export function webLaunchedLane(): LaneHarness {
 	const preset = VIEWPORT_PRESETS.desktop;
 	const chromium = fakeChromium(webPage(preset));
+	const home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
 	const browser = () => {
 		const launched = chromium.browsers[0];
 		if (!launched) throw new Error("The lane has not launched the browser yet");
@@ -512,6 +517,7 @@ export function webLaunchedLane(): LaneHarness {
 						},
 					],
 					spawn: chromium.spawn,
+					home,
 				}),
 			),
 		taps: () => webTaps(browser(), preset),

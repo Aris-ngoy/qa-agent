@@ -31,6 +31,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/web-gestures-alerts-lifecycle.md](./devices/web-gestures-alerts-lifecycle.md) | Web swipe (wheel), drag, JavaScript dialogs as alerts, and app lifecycle on the Web URL |
 | [devices/key-action.md](./devices/key-action.md) | `key` Action on every platform: named keys and modifiers, declared per Lane |
 | [devices/web-installed-browsers.md](./devices/web-installed-browsers.md) | Installed Chrome/Edge/Brave/Chromium as web devices, launched as Yoqa-owned instances |
+| [devices/web-kept-profile.md](./devices/web-kept-profile.md) | A launched browser keeps its profile per App and browser under `~/.yoqa/browser-profiles/`, or a clean one on request; lock rules |
 | [devices/web-popups.md](./devices/web-popups.md) | Web: the session follows a popup the page opens and returns to the opener when it closes |
 | [devices/web-viewport-presets.md](./devices/web-viewport-presets.md) | Web Viewport presets: desktop or mobile (touch, mobile user agent) at connect, stored on the Run |
 | [devices/web-screencast-feed.md](./devices/web-screencast-feed.md) | Web Frame Feed: a `Page.startScreencast` Stream on `/stream.mjpeg` while the Inspector watches, sized to the Viewport preset |
