@@ -160,11 +160,13 @@ export function ResetProfileDialog({
 		});
 	};
 
-	const refusal = resetMutation.error
-		? resetMutation.error instanceof Error
-			? resetMutation.error.message
-			: "Failed to reset the browser profile"
-		: null;
+	let refusal: string | null = null;
+	if (resetMutation.error) {
+		refusal =
+			resetMutation.error instanceof Error
+				? resetMutation.error.message
+				: "Failed to reset the browser profile";
+	}
 
 	return (
 		<AlertDialog>
