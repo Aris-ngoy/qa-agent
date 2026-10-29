@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
 import { createConnection } from "node:net";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeChromium, jpegSize, profileDirOf, readMjpegFrames, startFakeCdp } from "./fake-cdp";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
@@ -583,6 +583,30 @@ describe("connecting a web device at a Viewport preset", () => {
 	});
 });
 
+/** An installed Chrome whose launches are faked, its Kept profiles under a temporary home. */
+function installedChrome() {
+	const chromium = fakeChromium({ viewport: { width: 900, height: 700 } });
+	const home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
+	directLane = (options) =>
+		createWebDirectSession(
+			options,
+			webDirectDeps({
+				installedBrowsers: async () => [
+					{
+						id: "web-chrome",
+						name: "Google Chrome",
+						version: "141.0",
+						executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+					},
+				],
+				spawn: chromium.spawn,
+				home,
+			}),
+		);
+	const profiles = () => chromium.launched.map((command) => profileDirOf(command));
+	return { chromium, home, profiles };
+}
+
 describe("connecting a browser Yoqa launches", () => {
 	const connect = (body: unknown) =>
 		createSessionRoutes().request("/devices/connect", {
@@ -590,30 +614,6 @@ describe("connecting a browser Yoqa launches", () => {
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
 		});
-
-	/** An installed Chrome whose launches are faked, its Kept profiles under a temporary home. */
-	function installedChrome() {
-		const chromium = fakeChromium({ viewport: { width: 900, height: 700 } });
-		const home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
-		directLane = (options) =>
-			createWebDirectSession(
-				options,
-				webDirectDeps({
-					installedBrowsers: async () => [
-						{
-							id: "web-chrome",
-							name: "Google Chrome",
-							version: "141.0",
-							executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-						},
-					],
-					spawn: chromium.spawn,
-					home,
-				}),
-			);
-		const profiles = () => chromium.launched.map((command) => profileDirOf(command));
-		return { chromium, home, profiles };
-	}
 
 	test("POST /devices/connect launches it on the Kept profile of the App it names", async () => {
 		const { home, profiles } = installedChrome();
@@ -676,6 +676,83 @@ describe("connecting a browser Yoqa launches", () => {
 	test("an App id that is not a folder name is a 400", async () => {
 		const response = await connect({ deviceId: "web-chrome", platform: "web", appId: "../x" });
 		expect(response.status).toBe(400);
+	});
+});
+
+describe("resetting a Kept profile over DELETE /devices/web/profiles", () => {
+	/** An installed Chrome, and the routes over the home its Kept profiles are in. */
+	function installedChromeRoutes() {
+		const { home } = installedChrome();
+		const routes = createSessionRoutes({ home });
+		const reset = (query: string) =>
+			routes.request(`/devices/web/profiles${query}`, { method: "DELETE" });
+		const kept = (app: string) => join(home, ".yoqa", "browser-profiles", app, "web-chrome");
+		return { reset, kept };
+	}
+
+	test("deletes the Kept profile's folder once its browser is closed", async () => {
+		const { reset, kept } = installedChromeRoutes();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		await disconnectDevice();
+		expect(existsSync(kept("app_1"))).toBe(true);
+
+		const response = await reset("?appId=app_1&browserId=web-chrome");
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ appId: "app_1", browserIds: ["web-chrome"] });
+		expect(existsSync(kept("app_1"))).toBe(false);
+	});
+
+	test("without an App or browser it resets every browser's default Kept profile", async () => {
+		const { reset, kept } = installedChromeRoutes();
+		await connectDevice({ deviceId: "web-chrome", platform: "web" });
+		await disconnectDevice();
+
+		const response = await reset("");
+		expect(await response.json()).toEqual({ appId: "default", browserIds: ["web-chrome"] });
+		expect(existsSync(kept("default"))).toBe(false);
+	});
+
+	test("is refused with a 409 while the profile's browser is open, and leaves the folder", async () => {
+		const { reset, kept } = installedChromeRoutes();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+
+		for (const query of ["?appId=app_1&browserId=web-chrome", "?appId=app_1"]) {
+			const response = await reset(query);
+			expect(response.status).toBe(409);
+			expect(((await response.json()) as { error: string }).error).toContain("web-chrome");
+		}
+		expect(existsSync(kept("app_1"))).toBe(true);
+		expect(getActiveSessionInfo()?.deviceId).toBe("web-chrome");
+	});
+
+	test("is refused with a 409 while another browser holds the profile", async () => {
+		const { reset, kept } = installedChromeRoutes();
+		mkdirSync(kept("app_1"), { recursive: true });
+		// This test process stands in for a live browser on this host.
+		symlinkSync(`${hostname()}-${process.pid}`, join(kept("app_1"), "SingletonLock"));
+
+		const response = await reset("?appId=app_1");
+		expect(response.status).toBe(409);
+		expect(((await response.json()) as { error: string }).error).toContain(kept("app_1"));
+		expect(existsSync(kept("app_1"))).toBe(true);
+	});
+
+	test("a browser's profile resets while another browser or App has its session open", async () => {
+		const { reset, kept } = installedChromeRoutes();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		await disconnectDevice();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_2" });
+
+		expect((await reset("?appId=app_1")).status).toBe(200);
+		expect((await reset("?appId=app_2&browserId=web-edge")).status).toBe(200);
+		expect(existsSync(kept("app_1"))).toBe(false);
+		expect(existsSync(kept("app_2"))).toBe(true);
+	});
+
+	test("an App id that is not a folder name, or a browser Yoqa does not launch, is a 400", async () => {
+		const { reset } = installedChromeRoutes();
+		expect((await reset("?appId=..")).status).toBe(400);
+		expect((await reset("?browserId=chromium-cdp-9222")).status).toBe(400);
 	});
 });
 

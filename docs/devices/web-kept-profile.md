@@ -2,7 +2,7 @@
 
 ## Goal
 
-Never sign in twice. A browser Yoqa launches used to start on a throwaway profile that disconnecting deleted, so every connect and every Run met the app's sign-in screen again. A launched browser now keeps its profile per App and browser across disconnects, reconnects and Runs ([#364](https://github.com/Aris-ngoy/qa-agent/issues/364), the tracer bullet of the decision in [#346](https://github.com/Aris-ngoy/qa-agent/issues/346), under [#339](https://github.com/Aris-ngoy/qa-agent/issues/339)). Vocabulary: **Kept profile**, **Browser device**, **Device Session** in [`CONTEXT.md`](../../CONTEXT.md). Background: [web-installed-browsers.md](./web-installed-browsers.md), [ADR-0007](../adr/0007-web-direct-lane-over-cdp.md).
+Never sign in twice. A browser Yoqa launches used to start on a throwaway profile that disconnecting deleted, so every connect and every Run met the app's sign-in screen again. A launched browser now keeps its profile per App and browser across disconnects, reconnects and Runs ([#364](https://github.com/Aris-ngoy/qa-agent/issues/364), the tracer bullet of the decision in [#346](https://github.com/Aris-ngoy/qa-agent/issues/346), under [#339](https://github.com/Aris-ngoy/qa-agent/issues/339)). A user resets a Kept profile from the runner and the CLI to start signed out again ([#365](https://github.com/Aris-ngoy/qa-agent/issues/365)). Vocabulary: **Kept profile**, **Browser device**, **Device Session** in [`CONTEXT.md`](../../CONTEXT.md). Background: [web-installed-browsers.md](./web-installed-browsers.md), [ADR-0007](../adr/0007-web-direct-lane-over-cdp.md).
 
 ## Plan summary
 
@@ -15,6 +15,9 @@ Never sign in twice. A browser Yoqa launches used to start on a throwaway profil
   - a `SingletonLock` whose `<hostname>-<pid>` names another host or a pid that is gone is stale: it, `SingletonSocket` and `SingletonCookie` are removed and the launch goes ahead;
   - a lock held by a live pid on this host fails the connect with `ProfileInUseError`, naming the folder and the pid.
 - **The last browser's `DevToolsActivePort` is deleted before launch**, or the launch would read the old port back from the kept folder and connect to nothing.
+- **Reset deletes the folder** ([#365](https://github.com/Aris-ngoy/qa-agent/issues/365)): `DELETE /devices/web/profiles?appId=&browserId=`, next to the other `/devices` routes, and `yoqa devices web reset-profile [--app] [--browser]`. Without a browser it is every browser's profile for the App; without an App, `default`. A whole profile is the unit: signing out of a single site stays inside the browser. Rejected: clearing cookies over CDP, which leaves the rest of the profile behind.
+- **Reset is refused while the profile's browser is open**, with a 409 and nothing deleted: when the Active Session drives a launched browser on that Kept profile (disconnect first), or when a live browser holds its `SingletonLock` (the same lock rule as launch). A clean profile, an attached browser, or another App's profile does not block it.
+- **The CLI's `--app` takes a prefix or an id.** A prefix the catalog knows becomes its id; anything else is used as given, so a deleted App's profile can still be reset.
 - **An App id must be one plain folder name** (letters, digits, `.`, `_`, `-`, not `.` or `..`), checked by the connect schema (a 400) and again when the folder is named, so a Kept profile never lands outside its root.
 
 ## What shipped
@@ -23,6 +26,10 @@ Never sign in twice. A browser Yoqa launches used to start on a throwaway profil
 - `@yoqa/runner-client`: `browserProfileSchema` (`kept` | `clean`), and `appId` and `profile` on `connectDeviceRequestSchema`.
 - `SessionOptions` gains `appId` and `profile` (web only), passed from `POST /devices/connect` through `connectDevice` to the web Direct lane's `launch`. `webDirectDeps` takes a `home` override.
 - `active-session.ts`: `connectDevice` returns the Active Session for a connect to the browser it already drives.
+- Reset: `resetKeptProfiles({ appId, browserId }, deps)` in `chromium-browsers.ts` checks every folder's lock before it deletes any; `resetKeptProfile` in `active-session.ts` refuses first when the Active Session has the profile open (`SessionBusyError`). The route answers `{ appId, browserIds }`, the browsers that had a profile; `ProfileInUseError` and `SessionBusyError` are 409s, a bad App id or a browser Yoqa does not launch a 400. `createSessionRoutes` takes a `home` for tests.
+- `@yoqa/runner-client`: `resetWebProfileRequestSchema`, `resetWebProfileResponseSchema`, `RunnerClient.resetWebProfile`.
+- CLI: `yoqa devices web reset-profile`. It reads `--base-url` and `--json` from `devices web`, which parses them wherever they are on the line. The skill's `references/devices.md` and the public `web.mdx`, `cli.mdx` and `device-preparation.mdx` now say the profile is kept, and how to reset it.
+- Tests: reset in `chromium-browsers.test.ts` (one browser, every browser, default, missing, live and stale locks, a bad App id); the route in `active-session.test.ts` (deletes the folder, refused with 409 while the session's browser or another browser has it open, leaves the folder); the command and its flags in `packages/cli/src/devices-web-reset-profile.test.ts`.
 - Tests: launch, keep, relaunch, clean, stale and live locks in `chromium-browsers.test.ts`; the lane keeping the profile across a disconnect and a Dead Session in `web-direct-lane.test.ts`; the route, the default App, clean, and the second connect in `active-session.test.ts`. Every launch in the tests, including the Lane contract harness, uses a temporary home.
 - `CONTEXT.md`: **Kept profile**, and **Browser device** says a launched browser uses its App's Kept profile.
 
@@ -31,6 +38,7 @@ Never sign in twice. A browser Yoqa launches used to start on a throwaway profil
 ```bash
 cd services/runner
 bun test src/domains/devices/chromium-browsers.test.ts src/domains/devices/web-direct-lane.test.ts src/domains/devices/active-session.test.ts
+cd ../../packages/cli && bun test src/devices-web-reset-profile.test.ts
 ```
 
 By hand on a Mac with Chrome, with the runner up:
@@ -42,9 +50,11 @@ curl -s localhost:<port>/devices/connect -H 'content-type: application/json' \
 
 Sign in to a site in the window, `POST /devices/disconnect`, connect again: the site is still signed in, and `~/.yoqa/browser-profiles/<app id>/web-chrome/` is there. With `"profile":"clean"` the window starts signed out and its temp folder is gone after disconnect. Opening the same folder in another Chrome (`--user-data-dir=…`) and connecting fails with an error naming the folder.
 
+Reset: while connected, `yoqa devices web reset-profile --app <app id> --browser web-chrome` fails with a message to disconnect first and the folder stays. After `yoqa devices disconnect` it prints the browser it reset, the folder is gone, and the next connect starts signed out.
+
 ## Follow-ups
 
-- Reset: `yoqa devices web reset-profile [--app]` and the runner route ([#365](https://github.com/Aris-ngoy/qa-agent/issues/365)); the desktop app's "Reset browser profile" and its device picker copy, which still says throwaway profile ([#366](https://github.com/Aris-ngoy/qa-agent/issues/366)); Runs passing their App and `profile: clean` ([#367](https://github.com/Aris-ngoy/qa-agent/issues/367)). Until then a Run's launched browser uses the `default` Kept profile.
+- The desktop app's "Reset browser profile" and its device picker copy, which still says throwaway profile ([#366](https://github.com/Aris-ngoy/qa-agent/issues/366)); Runs passing their App and `profile: clean` ([#367](https://github.com/Aris-ngoy/qa-agent/issues/367)). Until then a Run's launched browser uses the `default` Kept profile.
 - `yoqa devices connect` has no `--app` or `--clean` yet; the route takes both.
 - Windows Chromium locks the profile with a `lockfile` held open, not `SingletonLock`; the lock rules here are POSIX only, which is where discovery runs today.
 - A live pid that has been reused by another program reads as a held profile; the error names the pid so the user can check.

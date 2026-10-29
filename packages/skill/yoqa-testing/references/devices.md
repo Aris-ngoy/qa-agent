@@ -50,9 +50,19 @@ browser    Google Chrome — 131.0.6778.86 [not running]
            web-chrome
 ```
 
-Connecting launches a **new browser window that Yoqa owns**, with its own throwaway profile: none of the
-user's tabs, cookies or logins. Disconnecting (or connecting another device) closes that window and
-deletes the profile. `--booted-only` lists only browsers Yoqa has open.
+Connecting launches a **new browser window that Yoqa owns**, on its own Kept profile: none of the
+user's tabs, cookies or logins, but its own logins survive. Disconnecting (or connecting another device)
+closes that window and keeps the profile, so the next connect is still signed in. `--booted-only` lists
+only browsers Yoqa has open.
+
+To start signed out again, reset the Kept profile while its browser is closed (disconnect first):
+
+```bash
+yoqa devices web reset-profile                         # every browser's default profile
+yoqa devices web reset-profile --browser web-chrome    # only Chrome's
+```
+
+`--app <prefix>` resets an App's profile instead of the default one.
 
 **Viewport preset.** A web connect picks one of two fixed page sizes, kept for the whole session and
 stored on any Run that uses it:

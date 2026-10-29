@@ -8,6 +8,8 @@ import {
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	connectDeviceRequestSchema,
+	resetWebProfileRequestSchema,
+	resetWebProfileResponseSchema,
 	retargetDeviceRequestSchema,
 	screenResponseSchema,
 	screenshotRequestSchema,
@@ -23,9 +25,15 @@ import {
 	getActiveSessionInfo,
 	isActiveSessionHeldByRun,
 	requireActiveSession,
+	resetKeptProfile,
 	retargetActiveSession,
 } from "../../domains/devices/active-session";
 import { performActionBatch } from "../../domains/devices/batch";
+import {
+	DEFAULT_PROFILE_APP,
+	ProfileInUseError,
+	installedBrowserIdOf,
+} from "../../domains/devices/chromium-browsers";
 import { errorChain } from "../../domains/devices/error-chain";
 import {
 	ActionNotFoundError,
@@ -99,7 +107,7 @@ export function sessionErrorResponse(error: unknown) {
 	return null;
 }
 
-export function createSessionRoutes() {
+export function createSessionRoutes(profiles: { home?: string } = {}) {
 	const app = new Hono();
 
 	app.post("/devices/connect", async (c) => {
@@ -127,6 +135,34 @@ export function createSessionRoutes() {
 			if (mapped) return c.json(mapped.body, mapped.status);
 			const message = error instanceof Error ? error.message : String(error);
 			return c.json({ error: "Failed to connect device", detail: message }, 500);
+		}
+	});
+
+	app.delete("/devices/web/profiles", async (c) => {
+		const parsed = resetWebProfileRequestSchema.safeParse({
+			appId: c.req.query("appId"),
+			browserId: c.req.query("browserId"),
+		});
+		if (!parsed.success) {
+			return c.json({ error: "appId must be one plain folder name" }, 400);
+		}
+		const { appId = DEFAULT_PROFILE_APP, browserId } = parsed.data;
+		const installedBrowserId = browserId ? installedBrowserIdOf(browserId) : null;
+		if (browserId && !installedBrowserId) {
+			return c.json({ error: `${browserId} is not a browser Yoqa launches` }, 400);
+		}
+		try {
+			const browserIds = await resetKeptProfile(
+				{ appId, browserId: installedBrowserId ?? undefined },
+				{ home: profiles.home },
+			);
+			return c.json(resetWebProfileResponseSchema.parse({ appId, browserIds }));
+		} catch (error) {
+			const mapped = sessionErrorResponse(error);
+			if (mapped) return c.json(mapped.body, mapped.status);
+			const message = error instanceof Error ? error.message : String(error);
+			if (error instanceof ProfileInUseError) return c.json({ error: message }, 409);
+			return c.json({ error: "Failed to reset browser profile", detail: message }, 500);
 		}
 	});
 

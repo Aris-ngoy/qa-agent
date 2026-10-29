@@ -77,6 +77,8 @@ import {
 	type ProviderKind,
 	type ProviderModel,
 	type ProviderStatus,
+	type ResetWebProfileRequest,
+	type ResetWebProfileResponse,
 	type RetargetDeviceRequest,
 	type Run,
 	type RunError,
@@ -177,6 +179,8 @@ import {
 	providerKindSchema,
 	providerModelSchema,
 	providerStatusSchema,
+	resetWebProfileRequestSchema,
+	resetWebProfileResponseSchema,
 	retargetDeviceRequestSchema,
 	runErrorSchema,
 	runExecutionModeSchema,
@@ -235,6 +239,8 @@ export {
 	PROFILE_APP_ID_PATTERN,
 	caseScriptSchema,
 	connectDeviceRequestSchema,
+	resetWebProfileRequestSchema,
+	resetWebProfileResponseSchema,
 	controlMessageSchema,
 	controlPointerMessageSchema,
 	controlScreenChangedMessageSchema,
@@ -327,6 +333,8 @@ export {
 	type CaseScriptActionType,
 	type CaseScriptBranch,
 	type ConnectDeviceRequest,
+	type ResetWebProfileRequest,
+	type ResetWebProfileResponse,
 	type ControlMessage,
 	type ControlPointerMessage,
 	type ControlScreenChangedMessage,
@@ -1171,6 +1179,21 @@ export class RunnerClient {
 			"Connect device failed",
 		);
 		return activeDeviceResponseSchema.parse(json);
+	}
+
+	/** Delete a Kept browser profile (409 while a browser has it open). */
+	async resetWebProfile(request: ResetWebProfileRequest = {}): Promise<ResetWebProfileResponse> {
+		const { appId, browserId } = resetWebProfileRequestSchema.parse(request);
+		const params = new URLSearchParams();
+		if (appId) params.set("appId", appId);
+		if (browserId) params.set("browserId", browserId);
+		const query = params.toString();
+		const json = await this.requestJson(
+			`/devices/web/profiles${query ? `?${query}` : ""}`,
+			{ method: "DELETE" },
+			"Reset browser profile failed",
+		);
+		return resetWebProfileResponseSchema.parse(json);
 	}
 
 	async getActiveDevice(): Promise<ActiveDeviceResponse | null> {

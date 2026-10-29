@@ -24,12 +24,20 @@ yoqa devices web --json
 | Brave Browser | `web-brave` |
 | Chromium | `web-chromium` |
 
-Connecting launches a **new window that Yoqa owns**, on a fresh temporary profile. It never touches your own tabs, cookies or logins. Disconnecting, or connecting another device, closes the window and deletes its profile.
+Connecting launches a **new window that Yoqa owns**, on a profile Yoqa keeps for that browser. It never touches your own tabs, cookies or logins. Disconnecting, or connecting another device, closes the window and keeps the profile, so you sign in to your app once and stay signed in on the next connect.
 
 ```bash
 yoqa devices connect web-chrome   # --platform web is implied
 yoqa devices active
 yoqa devices disconnect
+```
+
+To start signed out, reset the kept profile while its window is closed. A reset while the window is open is refused.
+
+```bash
+yoqa devices web reset-profile                        # every browser's default profile
+yoqa devices web reset-profile --browser web-chrome   # only Chrome's
+yoqa devices web reset-profile --app <prefix>         # an App's profile
 ```
 
 Only one Device Session exists at a time, on web as on mobile.
