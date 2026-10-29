@@ -151,7 +151,7 @@ foo: 1
 				"Line 7, action 4: wait: ms: Number must be less than or equal to 10000",
 				'Line 8, action 5: tap: unknown field "colour" (allowed: x, y, label, id, double, durationMs, reason)',
 				"Line 9, action 6: swipe has no short form; write it as a map of fields",
-				'Line 10: unknown key "foo" (allowed: version, name, sourceRunId, savedAt, actions)',
+				'Line 10: unknown key "foo" (allowed: version, name, sourceRunId, savedAt, profile, actions)',
 			].join("\n"),
 		);
 	});
@@ -170,6 +170,18 @@ foo: 1
 			line: 1,
 			action: null,
 			message: "unsupported version 2 (expected 1)",
+		});
+	});
+
+	test("reads `profile: clean`, and names a profile it does not know", () => {
+		expect(parseOk("version: 1\nprofile: clean\nactions:\n  - tap: A\n").script.profile).toBe(
+			"clean",
+		);
+		expect(parseOk("version: 1\nactions:\n  - tap: A\n").script).not.toHaveProperty("profile");
+		expect(errorsOf("version: 1\nprofile: fresh\nactions:\n  - tap: A\n")[0]).toEqual({
+			line: 2,
+			action: null,
+			message: "profile must be kept or clean",
 		});
 	});
 
@@ -271,6 +283,18 @@ actions:
 
 	test("rejects a key outside the fixed set", () => {
 		expect(errorsOf("version: 1\nactions:\n  - key: F5\n")[0]?.message).toContain("key: key:");
+	});
+
+	test("writes a clean profile and re-imports it", () => {
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			profile: "clean",
+			actions: [{ type: "wait", ms: 100 }],
+		};
+		const text = formatCaseScriptFile(script, { name: "Signed out" });
+		expect(text).toBe("version: 1\nname: Signed out\nprofile: clean\nactions:\n  - wait: 100\n");
+		expect(parseOk(text).script).toEqual(script);
 	});
 
 	test("keeps sourceRunId and drops savedAt", () => {

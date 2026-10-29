@@ -16,6 +16,7 @@ import {
 	type CaseScriptActionType,
 	type CaseScriptBranch,
 	type ScreenElement,
+	browserProfileSchema,
 	caseScriptActionSchemaByType,
 } from "./schemas";
 import { shellToCaseScript } from "./shell-script";
@@ -120,7 +121,7 @@ const FIELD_ORDER = [
 	"reason",
 ];
 
-const TOP_LEVEL_KEYS = new Set(["version", "name", "sourceRunId", "savedAt", "actions"]);
+const TOP_LEVEL_KEYS = new Set(["version", "name", "sourceRunId", "savedAt", "profile", "actions"]);
 
 function isActionType(value: unknown): value is ActionType {
 	return typeof value === "string" && (ACTION_TYPES as string[]).includes(value);
@@ -429,6 +430,14 @@ export function parseCaseScriptFile(
 			message: "sourceRunId must be text",
 		});
 	}
+	const profile = browserProfileSchema.safeParse(top.profile);
+	if (top.profile != null && !profile.success) {
+		errors.push({
+			line: lineOf(root.get("profile", true) as YamlNode, lineCounter),
+			action: null,
+			message: `profile must be ${browserProfileSchema.options.join(" or ")}`,
+		});
+	}
 	const savedAt = top.savedAt;
 	const legacy = savedAt !== undefined;
 	if (legacy && (typeof savedAt !== "number" || !Number.isInteger(savedAt) || savedAt < 0)) {
@@ -488,6 +497,7 @@ export function parseCaseScriptFile(
 			version: 1,
 			...(typeof sourceRunId === "string" ? { sourceRunId } : {}),
 			savedAt: typeof savedAt === "number" ? savedAt : (options.savedAt ?? Date.now()),
+			...(profile.success ? { profile: profile.data } : {}),
 			actions,
 		},
 	};
@@ -626,6 +636,7 @@ export function formatCaseScriptFile(
 	const name = options.name?.trim();
 	if (name) lines.push(`name: ${yamlScalar(name)}`);
 	if (script.sourceRunId) lines.push(`sourceRunId: ${yamlScalar(script.sourceRunId)}`);
+	if (script.profile) lines.push(`profile: ${script.profile}`);
 	lines.push("actions:");
 	for (const action of script.actions) {
 		lines.push(...formatCaseScriptFileItemLines(action, "  "));

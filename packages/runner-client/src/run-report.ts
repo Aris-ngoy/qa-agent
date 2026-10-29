@@ -2,6 +2,7 @@ import { z } from "zod";
 import { formatKeyChord } from "./keys";
 import {
 	type ActionRequest,
+	type BrowserProfile,
 	type CallUsage,
 	type Run,
 	type RunStatus,
@@ -64,6 +65,8 @@ export type RunReportDocument = {
 	browser?: string | null;
 	/** The Viewport preset a web run's session emulated. */
 	viewport?: ViewportPresetName | null;
+	/** The browser profile a web run asked for: kept or clean. */
+	profile?: BrowserProfile | null;
 	error: string | null;
 	createdAt: number;
 	startedAt: number | null;
@@ -417,6 +420,7 @@ export function buildRunReportFromCatalogRun(
 		laneWarning: run.laneWarning ?? null,
 		browser: run.browser ?? null,
 		viewport: run.viewport ?? null,
+		profile: run.profile ?? null,
 		error: run.error,
 		createdAt: run.createdAt,
 		startedAt: run.startedAt,
@@ -538,6 +542,7 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 		...(doc.viewport
 			? ([["Viewport", formatViewportPreset(doc.viewport)]] as Array<[string, string]>)
 			: []),
+		...(doc.profile ? ([["Profile", doc.profile]] as Array<[string, string]>) : []),
 		["Mode", doc.executionMode ?? "—"],
 		...screenRows,
 		["Started", formatWhen(doc.startedAt ?? doc.createdAt)],
@@ -691,6 +696,7 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
 		...(doc.browser ? [`| Browser | ${escapeMd(doc.browser)} |`] : []),
 		...(doc.viewport ? [`| Viewport | ${escapeMd(formatViewportPreset(doc.viewport))} |`] : []),
+		...(doc.profile ? [`| Profile | ${escapeMd(doc.profile)} |`] : []),
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),
@@ -778,6 +784,7 @@ export function formatRunReportGithubSummary(doc: RunReportDocument): string {
 		`| Platform | ${escapeMd(doc.platform ?? "—")} |`,
 		...(doc.browser ? [`| Browser | ${escapeMd(doc.browser)} |`] : []),
 		...(doc.viewport ? [`| Viewport | ${escapeMd(formatViewportPreset(doc.viewport))} |`] : []),
+		...(doc.profile ? [`| Profile | ${escapeMd(doc.profile)} |`] : []),
 		`| Mode | ${escapeMd(doc.executionMode ?? "—")} |`,
 		...(doc.screenMode ? [`| Screen | ${escapeMd(doc.screenMode)} |`] : []),
 		...(doc.lane ? [`| Lane | ${escapeMd(doc.lane)} |`] : []),

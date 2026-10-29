@@ -195,16 +195,17 @@ export function formatRunDetailMeta(input: {
 }
 
 /**
- * The line under a web Run's title: the browser it drove, its Viewport preset and its
- * Lane, as the report names them. Null for a phone's Run, which shows none of these.
+ * The line under a web Run's title: the browser it drove, its Viewport preset, its browser
+ * profile and its Lane, as the report names them. Null for a phone's Run, which shows none of these.
  */
 export function formatRunEnvironment(
-	run: Pick<Run, "platform" | "browser" | "viewport" | "lane">,
+	run: Pick<Run, "platform" | "browser" | "viewport" | "profile" | "lane">,
 ): string | null {
 	if (run.platform !== "web") return null;
 	const parts = [
 		run.browser ? `Browser ${run.browser}` : null,
 		run.viewport ? `Viewport ${formatViewportPreset(run.viewport)}` : null,
+		run.profile ? `Profile ${run.profile}` : null,
 		run.lane ? `Lane ${laneLabel(run.lane)}` : null,
 	].filter((part): part is string => part != null);
 	return parts.length > 0 ? parts.join(" · ") : null;

@@ -545,6 +545,8 @@ export const caseScriptSchema = z.object({
 	version: z.literal(1),
 	sourceRunId: z.string().min(1).optional(),
 	savedAt: z.number().int().nonnegative(),
+	/** Web only: `clean` runs the case on a throwaway browser profile, not its App's Kept one. */
+	profile: browserProfileSchema.optional(),
 	actions: z.array(caseScriptActionSchema).min(1),
 });
 
@@ -931,6 +933,11 @@ export const createRunRequestSchema = z.object({
 	lane: z.union([laneNameSchema, z.literal("auto")]).optional(),
 	/** Record every case in this Run, whatever each case's own setting says. Omitted means off. */
 	recordVideo: z.boolean().optional(),
+	/**
+	 * Web only: the browser profile, whatever the cases ask for. Omitted, the Run is `clean`
+	 * when any of its Case Scripts asks for it, and its App's Kept profile otherwise.
+	 */
+	profile: browserProfileSchema.optional(),
 });
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 
@@ -1026,6 +1033,8 @@ export const runSchema = z.object({
 	browser: z.string().min(1).optional(),
 	/** The Viewport preset a web Run's session emulated. */
 	viewport: viewportPresetSchema.optional(),
+	/** The browser profile a web Run asked for: its App's Kept one, or a clean one. */
+	profile: browserProfileSchema.optional(),
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	startedAt: z.number().int().nonnegative().nullable(),

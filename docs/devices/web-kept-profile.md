@@ -18,6 +18,10 @@ Never sign in twice. A browser Yoqa launches used to start on a throwaway profil
 - **Reset deletes the folder** ([#365](https://github.com/Aris-ngoy/qa-agent/issues/365)): `DELETE /devices/web/profiles?appId=&browserId=`, next to the other `/devices` routes, and `yoqa devices web reset-profile [--app] [--browser]`. Without a browser it is every browser's profile for the App; without an App, `default`. A whole profile is the unit: signing out of a single site stays inside the browser. Rejected: clearing cookies over CDP, which leaves the rest of the profile behind.
 - **Reset is refused while the profile's browser is open**, with a 409 and nothing deleted: when the Active Session drives a launched browser on that Kept profile (disconnect first), or when a live browser holds its `SingletonLock` (the same lock rule as launch). A clean profile, an attached browser, or another App's profile does not block it.
 - **The CLI's `--app` takes a prefix or an id.** A prefix the catalog knows becomes its id; anything else is used as given, so a deleted App's profile can still be reset.
+- **Runs use their App's Kept profile** ([#367](https://github.com/Aris-ngoy/qa-agent/issues/367)). A web Run connects with its `appId` and `kept`, so it is signed in wherever the Inspector was for that App.
+  - A Case Script's top-level `profile: clean`, or the create-run request's `profile` (CLI `--profile kept|clean`), asks for a clean one. The Run's wins over its cases'; with none, one clean case makes the whole Run clean, since one session runs every case. Rejected: a fresh session per clean case, which would relaunch the browser mid-Run.
+  - A Run adopts the Active Session only when it is on the Run's App and profile; otherwise the browser reopens on them, at the preset the session was connected at, so a Run started on a `mobile` session still runs at `mobile`.
+  - The Run stores the profile it used (`kept` or `clean`) and its report, Markdown, GitHub summary and HTML, shows it next to the Viewport preset. An attached browser (`chromium-cdp-<port>`) runs on whatever profile it was started with; the Run still stores what it asked for.
 - **An App id must be one plain folder name** (letters, digits, `.`, `_`, `-`, not `.` or `..`), checked by the connect schema (a 400) and again when the folder is named, so a Kept profile never lands outside its root.
 
 ## What shipped
@@ -31,6 +35,7 @@ Never sign in twice. A browser Yoqa launches used to start on a throwaway profil
 - CLI: `yoqa devices web reset-profile`. It reads `--base-url` and `--json` from `devices web`, which parses them wherever they are on the line. The skill's `references/devices.md` and the public `web.mdx`, `cli.mdx` and `device-preparation.mdx` now say the profile is kept, and how to reset it.
 - Tests: reset in `chromium-browsers.test.ts` (one browser, every browser, default, missing, live and stale locks, a bad App id); the route in `active-session.test.ts` (deletes the folder, refused with 409 while the session's browser or another browser has it open, leaves the folder); the command and its flags in `packages/cli/src/devices-web-reset-profile.test.ts`.
 - Tests: launch, keep, relaunch, clean, stale and live locks in `chromium-browsers.test.ts`; the lane keeping the profile across a disconnect and a Dead Session in `web-direct-lane.test.ts`; the route, the default App, clean, and the second connect in `active-session.test.ts`. Every launch in the tests, including the Lane contract harness, uses a temporary home.
+- Runs (#367): `profile` on `caseScriptSchema` (read and written as `profile:` in a Case Script file), on `createRunRequestSchema` and on `runSchema`. The runs table gains `requested_profile` and `profile`. `executeRun` resolves the profile and passes it with the `appId` to `acquireSessionForRun`, which adopts a web session only on that App and profile and otherwise reopens at the session's preset. An agent run that re-records a Case Script keeps its `profile`. The report and the desktop Run detail line show `Profile kept|clean`. `yoqa runs create --profile`.
 - `CONTEXT.md`: **Kept profile**, and **Browser device** says a launched browser uses its App's Kept profile.
 
 ## How to verify
@@ -52,9 +57,18 @@ Sign in to a site in the window, `POST /devices/disconnect`, connect again: the 
 
 Reset: while connected, `yoqa devices web reset-profile --app <app id> --browser web-chrome` fails with a message to disconnect first and the folder stays. After `yoqa devices disconnect` it prints the browser it reset, the folder is gone, and the next connect starts signed out.
 
+Runs:
+
+```bash
+bun test services/runner/src/domains/runs/web-run.test.ts packages/runner-client/src/run-report.test.ts packages/runner-client/src/case-script-file.test.ts
+yoqa runs create <app> --cases 1 --device web-chrome --wait                  # signed in; report: Profile kept
+yoqa runs create <app> --cases 1 --device web-chrome --profile clean --wait  # signed out; report: Profile clean
+```
+
 ## Follow-ups
 
-- The desktop app's "Reset browser profile" and its device picker copy, which still says throwaway profile ([#366](https://github.com/Aris-ngoy/qa-agent/issues/366)); Runs passing their App and `profile: clean` ([#367](https://github.com/Aris-ngoy/qa-agent/issues/367)). Until then a Run's launched browser uses the `default` Kept profile.
-- `yoqa devices connect` has no `--app` or `--clean` yet; the route takes both.
+- The desktop app's "Reset browser profile" and its device picker copy, which still says throwaway profile ([#366](https://github.com/Aris-ngoy/qa-agent/issues/366)).
+- `yoqa devices connect` has no `--app` or `--clean` yet; the route takes both. Until the desktop app connects with its App (#366), a Run after an Inspector connect relaunches the browser on the App's profile.
+- The desktop app has no control for a Run's profile yet; a Case Script that says `profile: clean` is the way to ask from there.
 - Windows Chromium locks the profile with a `lockfile` held open, not `SingletonLock`; the lock rules here are POSIX only, which is where discovery runs today.
 - A live pid that has been reused by another program reads as a held profile; the error names the pid so the user can check.

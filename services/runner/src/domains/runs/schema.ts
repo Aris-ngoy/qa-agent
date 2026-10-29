@@ -23,6 +23,10 @@ export const runs = sqliteTable("runs", {
 	browser: text("browser"),
 	/** The Viewport preset a web Run's session emulated. Null on other platforms. */
 	viewport: text("viewport"),
+	/** kept | clean — the browser profile the create-run request asked for. Null when it did not. */
+	requestedProfile: text("requested_profile"),
+	/** kept | clean — the browser profile a web Run used. Null on other platforms. */
+	profile: text("profile"),
 	/** 1 when the Run was started asking to record every case, whatever the cases say. */
 	recordVideo: integer("record_video").notNull().default(0),
 	error: text("error"),

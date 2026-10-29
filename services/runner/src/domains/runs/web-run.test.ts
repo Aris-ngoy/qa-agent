@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import type { CaseScript, Run } from "@yoqa/runner-client";
 import { createApp, createCase, saveCaseScript } from "../catalog/application";
 import { closeCatalogDb, openCatalogDb } from "../catalog/db";
-import { connectDevice, disconnectDevice, getActiveSessionInfo } from "../devices/active-session";
+import {
+	connectDevice,
+	disconnectDevice,
+	getActiveSession,
+	getActiveSessionInfo,
+} from "../devices/active-session";
 import { type FakeCdp, startFakeCdp } from "../devices/fake-cdp";
 import { createRun, getRun } from "./application";
 
@@ -22,12 +27,18 @@ async function finished(runId: string): Promise<Run> {
 	throw new Error(`Run ${runId} did not finish`);
 }
 
-/** A case whose saved Case Script taps the middle of the page. */
-async function scriptedCase(appId: string, name: string, recordVideo = false): Promise<string> {
+/** A case whose saved Case Script taps the middle of the page, on the profile it asks for. */
+async function scriptedCase(
+	appId: string,
+	name: string,
+	recordVideo = false,
+	profile?: CaseScript["profile"],
+): Promise<string> {
 	const created = await createCase(appId, { name, recordVideo });
 	const script: CaseScript = {
 		version: 1,
 		savedAt: 1,
+		...(profile ? { profile } : {}),
 		actions: [{ type: "tap", x: 500, y: 500, reason: "tap the middle" }],
 	};
 	await saveCaseScript(created.id, JSON.stringify(script), script.savedAt);
@@ -116,6 +127,79 @@ describe("a Run on web", () => {
 		expect(run.viewport).toBe("mobile");
 		expect(browser.touches.map((touch) => touch.type)).toEqual(["touchStart", "touchEnd"]);
 		expect(browser.clicks).toEqual([{ x: 195, y: 422 }]);
+	});
+
+	test("connects on its App's Kept profile by default, and stores it", async () => {
+		startBrowser();
+		const app = await createApp({ name: "Kept", webUrl: WEB_URL });
+		const created = await createRun({
+			appId: app.id,
+			caseIds: [await scriptedCase(app.id, "Tap")],
+			deviceId,
+			platform: "web",
+			executionMode: "script",
+		});
+		const run = await finished(created.id);
+
+		expect(run.status).toBe("passed");
+		expect(getActiveSession()).toMatchObject({ appId: app.id, profile: "kept" });
+		expect(run.profile).toBe("kept");
+		expect((await getRun(created.id)).profile).toBe("kept");
+	});
+
+	test("connects on a clean profile when a Case Script asks for one", async () => {
+		startBrowser();
+		const app = await createApp({ name: "Clean case", webUrl: WEB_URL });
+		const created = await createRun({
+			appId: app.id,
+			caseIds: [
+				await scriptedCase(app.id, "Signed in"),
+				await scriptedCase(app.id, "Signed out", false, "clean"),
+			],
+			deviceId,
+			platform: "web",
+			executionMode: "script",
+		});
+		const run = await finished(created.id);
+
+		expect(run.status).toBe("passed");
+		expect(getActiveSession()).toMatchObject({ appId: app.id, profile: "clean" });
+		expect(run.profile).toBe("clean");
+	});
+
+	test("the Run's profile wins over its cases'", async () => {
+		startBrowser();
+		const app = await createApp({ name: "Run decides", webUrl: WEB_URL });
+		const keptRun = await finished(
+			(
+				await createRun({
+					appId: app.id,
+					caseIds: [await scriptedCase(app.id, "Asks clean", false, "clean")],
+					deviceId,
+					platform: "web",
+					executionMode: "script",
+					profile: "kept",
+				})
+			).id,
+		);
+		expect(keptRun.profile).toBe("kept");
+		expect(getActiveSession()?.profile).toBe("kept");
+
+		const cleanRun = await finished(
+			(
+				await createRun({
+					appId: app.id,
+					caseIds: [await scriptedCase(app.id, "Asks nothing")],
+					deviceId,
+					platform: "web",
+					executionMode: "script",
+					profile: "clean",
+				})
+			).id,
+		);
+		expect(cleanRun.status).toBe("passed");
+		expect(cleanRun.profile).toBe("clean");
+		expect(getActiveSession()?.profile).toBe("clean");
 	});
 
 	test("marks a requested recording as no video, with the reason, and still passes", async () => {
