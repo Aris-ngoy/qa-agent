@@ -219,7 +219,7 @@ describe("formatRunContextCaption", () => {
 });
 
 describe("formatRunEnvironment", () => {
-	test("names a web Run's browser, Viewport preset and Lane", () => {
+	test("names a web Run's browser, Viewport preset, profile and Lane", () => {
 		expect(
 			formatRunEnvironment(
 				run({
@@ -230,9 +230,10 @@ describe("formatRunEnvironment", () => {
 					lane: "direct",
 					browser: "Google Chrome 141.0",
 					viewport: "mobile",
+					profile: "clean",
 				}),
 			),
-		).toBe("Browser Google Chrome 141.0 · Viewport mobile (390×844) · Lane Direct");
+		).toBe("Browser Google Chrome 141.0 · Viewport mobile (390×844) · Profile clean · Lane Direct");
 	});
 
 	test("leaves out what the Run did not store", () => {

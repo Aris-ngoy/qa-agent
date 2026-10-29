@@ -179,6 +179,17 @@ async function createAndRegister(options: {
 	return session;
 }
 
+/** Whether a web session was opened on the App and profile asked for, `default` and `kept` when omitted. */
+function isOnProfile(
+	current: ActiveSession,
+	options: { appId?: string; profile?: BrowserProfile },
+): boolean {
+	return (
+		(current.appId ?? DEFAULT_PROFILE_APP) === (options.appId ?? DEFAULT_PROFILE_APP) &&
+		(current.profile ?? "kept") === (options.profile ?? "kept")
+	);
+}
+
 /**
  * Whether a connect asks for the browser the Active Session already drives: the same web
  * device, App, profile and Viewport preset. A second launch on a Kept profile would find
@@ -198,8 +209,7 @@ function isActiveBrowser(
 		options.platform === "web" &&
 		current.platform === "web" &&
 		current.deviceId === options.deviceId &&
-		(current.appId ?? DEFAULT_PROFILE_APP) === (options.appId ?? DEFAULT_PROFILE_APP) &&
-		(current.profile ?? "kept") === (options.profile ?? "kept") &&
+		isOnProfile(current, options) &&
 		(current.session.viewport ?? DEFAULT_VIEWPORT_PRESET) ===
 			(options.viewport ?? DEFAULT_VIEWPORT_PRESET)
 	);
@@ -308,8 +318,10 @@ export function retargetActiveSession(app: {
  * Run-side acquisition of the shared Device Session.
  *
  * - Adopts the Active Session when it already targets the requested device
- *   (no reconnect, no relaunch) and marks it held by this run.
- * - Replaces an unheld Active Session pointing at another device (device change).
+ *   (no reconnect, no relaunch) and marks it held by this run. On web it must also be
+ *   on the Run's App and profile (`appId`, `profile`).
+ * - Replaces an unheld Active Session pointing at another device (device change), or a
+ *   web one on another App or profile, which reopens at the session's Viewport preset.
  * - Opens a fresh Direct session when there is none to adopt. A failed
  *   Direct start fails it with that error.
  * - When another run owns the shared session, creates a detached session that
@@ -323,6 +335,9 @@ export async function acquireSessionForRun(options: {
 	bundleId?: string;
 	appPackage?: string;
 	requestedLane?: import("./lane").LaneName | "auto";
+	/** Web only: the App whose Kept profile a launched browser uses, and whether it is clean. */
+	appId?: string;
+	profile?: BrowserProfile;
 }): Promise<{ session: DeviceSession; shared: boolean }> {
 	const current = active;
 
@@ -338,12 +353,21 @@ export async function acquireSessionForRun(options: {
 			bundleId: options.bundleId,
 			appPackage: options.appPackage,
 			requestedLane: options.requestedLane,
+			appId: options.appId,
+			profile: options.profile,
 			onSessionDead: () => undefined,
 		});
 		return { session, shared: false };
 	}
 
-	if (current && current.deviceId === options.deviceId) {
+	const sameDevice = current != null && current.deviceId === options.deviceId;
+	// On web the session must also be on the Run's App and profile, or the browser reopens on
+	// it, at the preset the user connected at.
+	const adoptable =
+		current != null && sameDevice && (current.platform !== "web" || isOnProfile(current, options));
+	const viewport = sameDevice ? current?.session.viewport : undefined;
+
+	if (current && adoptable) {
 		// Health-check before adopting: a stale session (device restarted,
 		// its Lane dropped it) must not fail the whole run.
 		const healthy = await current.session
@@ -356,9 +380,6 @@ export async function acquireSessionForRun(options: {
 			current.session.setTargetApp(targetAppFor(options));
 			return { session: current.session, shared: true };
 		}
-	}
-
-	if (current && current.deviceId === options.deviceId) {
 		console.warn(
 			`[yoqa-runner] active session for ${options.deviceId} is dead — creating a fresh one for the run`,
 		);
@@ -375,6 +396,9 @@ export async function acquireSessionForRun(options: {
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
 		requestedLane: options.requestedLane,
+		viewport,
+		appId: options.appId,
+		profile: options.profile,
 		heldByRunId: options.runId,
 	});
 	return { session, shared: true };

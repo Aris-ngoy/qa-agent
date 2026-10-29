@@ -414,6 +414,23 @@ describe("Screen mode in the report", () => {
 		expect(formatRunReportMarkdown(sampleDoc())).not.toContain("| Viewport |");
 	});
 
+	test("names a web run's profile next to its Viewport preset, in every format", () => {
+		const doc = {
+			...sampleDoc(),
+			platform: "web",
+			viewport: "desktop" as const,
+			profile: "clean" as const,
+		};
+		expect(formatRunReportMarkdown(doc)).toContain(
+			"| Viewport | desktop (1280×800) |\n| Profile | clean |",
+		);
+		expect(formatRunReportGithubSummary(doc)).toContain(
+			"| Viewport | desktop (1280×800) |\n| Profile | clean |",
+		);
+		expect(formatRunReportHtml(doc)).toContain("<th>Profile</th>");
+		expect(formatRunReportMarkdown(sampleDoc())).not.toContain("| Profile |");
+	});
+
 	test("a catalog run's report carries its browser", () => {
 		const doc = buildRunReportFromCatalogRun({
 			id: "run_web",
@@ -426,6 +443,7 @@ describe("Screen mode in the report", () => {
 			lane: "direct",
 			browser: "Google Chrome 141.0",
 			viewport: "desktop",
+			profile: "kept",
 			error: null,
 			createdAt: 1,
 			startedAt: 1,
@@ -436,6 +454,7 @@ describe("Screen mode in the report", () => {
 			platform: "web",
 			browser: "Google Chrome 141.0",
 			viewport: "desktop",
+			profile: "kept",
 			lane: "direct",
 		});
 	});

@@ -126,4 +126,22 @@ describe("yoqa runs create on a web device", () => {
 		);
 		expect(runner.runs.at(-1)).toMatchObject({ deviceId: "chromium-cdp-9222", platform: "web" });
 	});
+
+	test("asks for a clean profile with --profile clean", async () => {
+		await yoqa(
+			"runs",
+			"create",
+			"shop",
+			"--cases",
+			"1",
+			"--device",
+			"web-chrome",
+			"--profile",
+			"clean",
+			"--no-github-output",
+			"--base-url",
+			runner.url,
+		);
+		expect(runner.runs.at(-1)).toMatchObject({ deviceId: "web-chrome", profile: "clean" });
+	});
 });

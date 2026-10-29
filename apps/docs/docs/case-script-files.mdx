@@ -35,6 +35,7 @@ actions:
 | `name` | no | Test case name. The Inspector uses it as the default name when you save. |
 | `actions` | yes | The list of actions, replayed in order. |
 | `sourceRunId` | no | The agent Run that recorded this Case Script. Written for you on export. |
+| `profile` | no | Web only. `clean` runs the case on a throwaway browser profile instead of its App's kept one, for a signed-out start. |
 
 Each action is a single-key map: the key is the action name, and the value is either a short form or a map of fields. Coordinates use Yoqa's 0–1000 screen space, so a Case Script works across screen sizes. Comments (`# …`) are allowed and group the steps after them in the Inspector. They are not kept once the Case Script is saved to a test case.
 

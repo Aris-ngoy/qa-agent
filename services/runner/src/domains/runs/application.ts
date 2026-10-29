@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import type {
+	BrowserProfile,
 	CreateRunRequest,
 	Run,
 	RunExecutionMode,
@@ -13,6 +14,7 @@ import type {
 } from "@yoqa/runner-client";
 import {
 	appStartTarget,
+	browserProfileSchema,
 	startTargetRequest,
 	stepPhasesSchema,
 	viewportPresetSchema,
@@ -128,6 +130,28 @@ function viewportOf(value: string | null): Pick<Run, "viewport"> {
 	return parsed.success ? { viewport: parsed.data } : {};
 }
 
+/** The browser profile a web Run stored; nothing for other platforms or an unknown name. */
+function profileOf(value: string | null): Pick<Run, "profile"> {
+	const parsed = browserProfileSchema.safeParse(value);
+	return parsed.success ? { profile: parsed.data } : {};
+}
+
+/**
+ * The browser profile a web Run opens: the one the Run asked for, else `clean` when any of
+ * its Case Scripts asks for it (one session runs every case), else its App's Kept profile.
+ */
+async function resolveRunProfile(
+	requested: string | null | undefined,
+	caseIds: string[],
+): Promise<BrowserProfile> {
+	const asked = browserProfileSchema.safeParse(requested);
+	if (asked.success) return asked.data;
+	for (const caseId of caseIds) {
+		if (parseCaseScript(await getCaseScriptJson(caseId))?.profile === "clean") return "clean";
+	}
+	return "kept";
+}
+
 function resolveCaseExecutionMode(
 	runMode: RunExecutionMode,
 	hasScript: boolean,
@@ -198,6 +222,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
 		...(runRow.browser ? { browser: runRow.browser } : {}),
 		...viewportOf(runRow.viewport),
+		...profileOf(runRow.profile),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -435,11 +460,13 @@ async function executeCase(input: {
 		.where(eq(runTests.id, input.runTestId));
 	await updateCaseLastRun(input.caseId, caseStatus, finishedAt);
 
-	// Persist a replayable script after a successful AI agent run.
+	// Persist a replayable script after a successful AI agent run, on the profile the old one asked for.
 	if (caseStatus === "passed" && input.caseMode === "agent") {
 		const script = buildScriptFromDecisions(decisions, input.runId);
 		if (script) {
-			await saveCaseScript(input.caseId, serializeCaseScript(script), script.savedAt);
+			const profile = parseCaseScript(await getCaseScriptJson(input.caseId))?.profile;
+			const saved = profile ? { ...script, profile } : script;
+			await saveCaseScript(input.caseId, serializeCaseScript(saved), saved.savedAt);
 		}
 	}
 
@@ -541,8 +568,15 @@ export async function executeRun(runId: string): Promise<void> {
 
 		const runRow = (await db.select().from(runs).where(eq(runs.id, runId)))[0];
 		const requestedLane = runRow?.requestedLane;
-		// Adopt the shared Active Session when it already targets this device;
-		// otherwise connect (replacing any unheld session) and keep it live after.
+		const profile =
+			run.platform === "web"
+				? await resolveRunProfile(
+						runRow?.requestedProfile,
+						run.tests.map((test) => test.caseId),
+					)
+				: undefined;
+		// Adopt the shared Active Session when it already targets this device (on web, on
+		// this App's profile); otherwise connect (replacing any unheld session) and keep it live after.
 		const acquired = await acquireSessionForRun({
 			runId,
 			deviceId: run.deviceId,
@@ -550,6 +584,7 @@ export async function executeRun(runId: string): Promise<void> {
 			...startTargetRequest(run.platform, startTarget),
 			requestedLane:
 				requestedLane === "direct" || requestedLane === "auto" ? requestedLane : undefined,
+			...(profile ? { appId: run.appId, profile } : {}),
 		});
 		const activeSession = acquired.session;
 		session = activeSession;
@@ -561,6 +596,7 @@ export async function executeRun(runId: string): Promise<void> {
 				laneWarning: session.laneWarning ?? null,
 				browser: session.browser ?? null,
 				viewport: session.viewport ?? null,
+				profile: profile ?? null,
 			})
 			.where(eq(runs.id, runId));
 		await openStartTarget(session, run.platform, startTarget);
@@ -754,6 +790,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		executionMode,
 		screenMode,
 		requestedLane: input.lane ?? null,
+		requestedProfile: input.profile ?? null,
 		recordVideo: input.recordVideo ? 1 : 0,
 		error: null,
 		createdAt: now,
@@ -847,6 +884,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
 		...(runRow.browser ? { browser: runRow.browser } : {}),
 		...viewportOf(runRow.viewport),
+		...profileOf(runRow.profile),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,

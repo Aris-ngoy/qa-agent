@@ -1756,6 +1756,10 @@ runsCmd
 		"--record-video",
 		"Record a screen video of every case in the run, even cases not set to record",
 	)
+	.option(
+		"--profile <profile>",
+		"web: kept | clean — the App's Kept browser profile or a throwaway one, whatever the cases ask (default: clean if a case asks, else kept)",
+	)
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.option("--wait", "Wait until the run finishes (passed / errored / cancelled)")
@@ -1780,6 +1784,7 @@ runsCmd
 				screenMode?: string;
 				lane?: string;
 				recordVideo?: boolean;
+				profile?: string;
 				json?: boolean;
 				wait?: boolean;
 				timeout?: string;
@@ -1840,6 +1845,12 @@ runsCmd
 					throw new Error("--lane must be direct or auto");
 				}
 
+				const profile =
+					options.profile === "kept" || options.profile === "clean" ? options.profile : undefined;
+				if (options.profile && !profile) {
+					throw new Error("--profile must be kept or clean");
+				}
+
 				let run = await c.createRun({
 					appId: resolved.id,
 					caseIds,
@@ -1851,6 +1862,7 @@ runsCmd
 					screenMode,
 					lane,
 					recordVideo: options.recordVideo || undefined,
+					profile,
 				});
 				if (options.wait) {
 					try {

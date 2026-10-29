@@ -673,6 +673,51 @@ describe("connecting a browser Yoqa launches", () => {
 		expect(profiles()[1]).toContain(join("app_2", "web-chrome"));
 	});
 
+	test("a Run launches it on its App's Kept profile, or a clean one when it asks", async () => {
+		const { home, profiles } = installedChrome();
+		const run = { deviceId: "web-chrome", platform: "web" as const, appId: "app_1" };
+		const kept = await acquireSessionForRun({ ...run, runId: "run_1" });
+		await releaseSessionFromRun("run_1", kept.session, kept.shared);
+		const clean = await acquireSessionForRun({ ...run, runId: "run_2", profile: "clean" });
+		await releaseSessionFromRun("run_2", clean.session, clean.shared);
+
+		expect(profiles()[0]).toBe(join(home, ".yoqa", "browser-profiles", "app_1", "web-chrome"));
+		expect(profiles()[1]).not.toContain(home);
+		expect(getActiveSession()).toMatchObject({ appId: "app_1", profile: "clean" });
+	});
+
+	test("a Run adopts the browser already open on its App's profile", async () => {
+		const { chromium } = installedChrome();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		const acquired = await acquireSessionForRun({
+			runId: "run_1",
+			deviceId: "web-chrome",
+			platform: "web",
+			appId: "app_1",
+			profile: "kept",
+		});
+		expect(chromium.launched).toHaveLength(1);
+		expect(acquired.shared).toBe(true);
+		expect(getActiveSession()?.heldByRunId).toBe("run_1");
+	});
+
+	test("a Run on another App's profile relaunches the browser at the same preset", async () => {
+		const { chromium, profiles } = installedChrome();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", viewport: "mobile" });
+		const acquired = await acquireSessionForRun({
+			runId: "run_1",
+			deviceId: "web-chrome",
+			platform: "web",
+			appId: "app_1",
+			profile: "kept",
+		});
+		expect(chromium.launched).toHaveLength(2);
+		expect(chromium.kills).toBe(1);
+		expect(profiles()[1]).toContain(join("app_1", "web-chrome"));
+		expect(acquired.session.viewport).toBe("mobile");
+		expect(getActiveSession()).toMatchObject({ appId: "app_1", profile: "kept" });
+	});
+
 	test("an App id that is not a folder name is a 400", async () => {
 		const response = await connect({ deviceId: "web-chrome", platform: "web", appId: "../x" });
 		expect(response.status).toBe(400);
