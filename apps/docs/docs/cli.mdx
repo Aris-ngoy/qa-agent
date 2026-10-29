@@ -104,6 +104,7 @@ yoqa devices ios                             # list devices & simulators (--all 
 yoqa devices android                         # list devices & emulators (--all for every emulator)
 yoqa devices web                             # installed Chrome, Edge, Brave, Chromium (macOS)
 yoqa devices web --booted-only --json        # only browsers Yoqa has open
+yoqa devices web reset-profile               # delete the kept browser profile (--app, --browser)
 yoqa devices connect <device-id>             # open a session (full id from the list)
 yoqa devices connect <device-id> --lane auto # direct | auto
 yoqa devices active                          # show the connected device (includes Lane)

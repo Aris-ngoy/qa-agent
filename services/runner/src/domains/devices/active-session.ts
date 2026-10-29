@@ -5,7 +5,13 @@ import {
 	type StreamState,
 	type ViewportPresetName,
 } from "@yoqa/runner-client";
-import { DEFAULT_PROFILE_APP } from "./chromium-browsers";
+import {
+	DEFAULT_PROFILE_APP,
+	type InstalledBrowserId,
+	type LaunchDeps,
+	installedBrowserIdOf,
+	resetKeptProfiles,
+} from "./chromium-browsers";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
 import { type DeviceSession, createDeviceSession } from "./session";
 
@@ -197,6 +203,30 @@ function isActiveBrowser(
 		(current.session.viewport ?? DEFAULT_VIEWPORT_PRESET) ===
 			(options.viewport ?? DEFAULT_VIEWPORT_PRESET)
 	);
+}
+
+/**
+ * Reset `appId`'s Kept profile for `browserId`, or every browser's, and return the browsers
+ * that had one. Refused while the Active Session's browser is open on one of them, or
+ * another browser holds one.
+ */
+export async function resetKeptProfile(
+	request: { appId?: string; browserId?: InstalledBrowserId },
+	deps: Pick<LaunchDeps, "home" | "isProcessAlive"> = {},
+): Promise<string[]> {
+	const appId = request.appId ?? DEFAULT_PROFILE_APP;
+	if (
+		active?.platform === "web" &&
+		installedBrowserIdOf(active.deviceId) &&
+		(active.profile ?? "kept") === "kept" &&
+		(active.appId ?? DEFAULT_PROFILE_APP) === appId &&
+		(!request.browserId || request.browserId === active.deviceId)
+	) {
+		throw new SessionBusyError(
+			`${active.deviceId} is open on the Kept profile of ${appId}. Disconnect it before resetting the profile.`,
+		);
+	}
+	return resetKeptProfiles({ appId, browserId: request.browserId }, deps);
 }
 
 /**

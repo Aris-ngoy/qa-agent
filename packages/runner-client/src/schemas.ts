@@ -1062,6 +1062,22 @@ export const connectDeviceRequestSchema = z.object({
 });
 export type ConnectDeviceRequest = z.infer<typeof connectDeviceRequestSchema>;
 
+/** Which Kept profile `DELETE /devices/web/profiles` resets: one browser's, or the App's every one. */
+export const resetWebProfileRequestSchema = z.object({
+	/** The App whose Kept profile it is; `default` when omitted. */
+	appId: z.string().regex(PROFILE_APP_ID_PATTERN).optional(),
+	/** An installed browser's device id (`web-chrome`); every browser's profile when omitted. */
+	browserId: z.string().min(1).optional(),
+});
+export type ResetWebProfileRequest = z.infer<typeof resetWebProfileRequestSchema>;
+
+/** The App whose Kept profiles were reset, and the browsers that had one. */
+export const resetWebProfileResponseSchema = z.object({
+	appId: z.string(),
+	browserIds: z.array(z.string()),
+});
+export type ResetWebProfileResponse = z.infer<typeof resetWebProfileResponseSchema>;
+
 /**
  * How the Inspector gets a Device Session's frames (its Frame Feed): `ready` is a live Stream;
  * `none` (the Lane has no stream) and `failed` (the stream did not answer) mean Screenshot Poll.

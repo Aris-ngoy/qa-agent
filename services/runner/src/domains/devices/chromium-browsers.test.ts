@@ -18,6 +18,7 @@ import {
 	installedBrowserIdOf,
 	launchChromium,
 	listWebDevices,
+	resetKeptProfiles,
 } from "./chromium-browsers";
 import { fakeChromium, profileDirOf } from "./fake-cdp";
 
@@ -321,6 +322,85 @@ describe("launching a Yoqa-owned browser", () => {
 		const error = await rejection(launchChromium(CHROME, { spawn, home, readyTimeoutMs: 100 }));
 		expect((error as Error).message).toContain("did not open a debug port within 100 ms");
 		expect(kills).toBe(1);
+	});
+});
+
+describe("resetting a Kept profile", () => {
+	let home = "";
+	beforeEach(() => {
+		home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
+	});
+	afterEach(() => {
+		rmSync(home, { recursive: true, force: true });
+	});
+	const keptDir = (app: string, browser = "web-chrome") =>
+		join(home, ".yoqa", "browser-profiles", app, browser);
+	/** A Kept profile with a login in it. */
+	const signedIn = (app: string, browser = "web-chrome") => {
+		mkdirSync(keptDir(app, browser), { recursive: true });
+		writeFileSync(join(keptDir(app, browser), "Cookies"), "signed in");
+	};
+
+	test("deletes one browser's Kept profile for the App, and keeps the others", async () => {
+		signedIn("app_1");
+		signedIn("app_1", "web-edge");
+		signedIn("app_2");
+		expect(await resetKeptProfiles({ appId: "app_1", browserId: "web-chrome" }, { home })).toEqual([
+			"web-chrome",
+		]);
+		expect(existsSync(keptDir("app_1"))).toBe(false);
+		expect(existsSync(keptDir("app_1", "web-edge"))).toBe(true);
+		expect(existsSync(keptDir("app_2"))).toBe(true);
+	});
+
+	test("without a browser it deletes every browser's Kept profile for the App", async () => {
+		signedIn("app_1");
+		signedIn("app_1", "web-edge");
+		signedIn("app_2");
+		const reset = await resetKeptProfiles({ appId: "app_1" }, { home });
+		expect(reset.sort()).toEqual(["web-chrome", "web-edge"]);
+		expect(existsSync(join(home, ".yoqa", "browser-profiles", "app_1"))).toBe(false);
+		expect(existsSync(keptDir("app_2"))).toBe(true);
+	});
+
+	test("without an App it is the default Kept profile", async () => {
+		signedIn("default");
+		expect(await resetKeptProfiles({}, { home })).toEqual(["web-chrome"]);
+		expect(existsSync(keptDir("default"))).toBe(false);
+	});
+
+	test("a profile that is not there resets nothing", async () => {
+		expect(await resetKeptProfiles({ appId: "app_1" }, { home })).toEqual([]);
+		expect(await resetKeptProfiles({ appId: "app_1", browserId: "web-edge" }, { home })).toEqual(
+			[],
+		);
+	});
+
+	test("a profile a live browser holds is refused, and nothing is deleted", async () => {
+		signedIn("app_1");
+		signedIn("app_1", "web-edge");
+		symlinkSync(`${hostname()}-4242`, join(keptDir("app_1", "web-edge"), "SingletonLock"));
+		const error = await rejection(
+			resetKeptProfiles({ appId: "app_1" }, { home, isProcessAlive: (pid) => pid === 4242 }),
+		);
+		expect(error).toBeInstanceOf(ProfileInUseError);
+		expect((error as Error).message).toContain(keptDir("app_1", "web-edge"));
+		expect(existsSync(join(keptDir("app_1"), "Cookies"))).toBe(true);
+		expect(existsSync(join(keptDir("app_1", "web-edge"), "Cookies"))).toBe(true);
+	});
+
+	test("a stale lock does not stop a reset", async () => {
+		signedIn("app_1");
+		symlinkSync(`${hostname()}-4242`, join(keptDir("app_1"), "SingletonLock"));
+		await resetKeptProfiles({ appId: "app_1" }, { home, isProcessAlive: () => false });
+		expect(existsSync(keptDir("app_1"))).toBe(false);
+	});
+
+	test("an App id that is not a folder name is refused", async () => {
+		signedIn("app_1");
+		const error = await rejection(resetKeptProfiles({ appId: ".." }, { home }));
+		expect((error as Error).message).toContain("..");
+		expect(existsSync(keptDir("app_1"))).toBe(true);
 	});
 });
 

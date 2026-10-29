@@ -300,8 +300,9 @@ function printDevicesTable(
 	}
 }
 
+const platformDevices = {} as Record<DevicePlatform, Command>;
 for (const platform of Object.keys(PLATFORM_DEVICES_DESCRIPTION) as DevicePlatform[]) {
-	devices
+	platformDevices[platform] = devices
 		.command(platform)
 		.description(PLATFORM_DEVICES_DESCRIPTION[platform])
 		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
@@ -331,6 +332,44 @@ for (const platform of Object.keys(PLATFORM_DEVICES_DESCRIPTION) as DevicePlatfo
 			},
 		);
 }
+
+// --base-url and --json are `devices web`'s, which parses them wherever they are.
+platformDevices.web
+	.command("reset-profile")
+	.description(
+		"Delete a Kept browser profile, signing out of every site in it (refused while its browser is open)",
+	)
+	.option("--app <app>", "App prefix or id whose profile to reset (default: the default profile)")
+	.option("--browser <id>", "One browser's profile, e.g. web-chrome (default: every browser's)")
+	.configureHelp({ showGlobalOptions: true })
+	.action(async (_options: unknown, command: Command) => {
+		const options = command.optsWithGlobals<{
+			app?: string;
+			browser?: string;
+			baseUrl: string;
+			json?: boolean;
+		}>();
+		try {
+			const c = client(options.baseUrl);
+			// A profile outlives its App, so an id the catalog no longer has is reset as given.
+			const appId = options.app
+				? (findCatalogApp(await c.listApps(), options.app)?.id ?? options.app)
+				: undefined;
+			const body = await c.resetWebProfile({ appId, browserId: options.browser });
+			if (options.json) {
+				console.log(JSON.stringify(body, null, 2));
+				return;
+			}
+			if (body.browserIds.length === 0) {
+				const browser = options.browser ? ` in ${options.browser}` : "";
+				console.log(`No Kept profile for ${body.appId}${browser} to reset.`);
+				return;
+			}
+			console.log(`reset the Kept profile for ${body.appId} in ${body.browserIds.join(", ")}`);
+		} catch (error) {
+			fail("devices web reset-profile", error);
+		}
+	});
 
 devices
 	.command("connect")

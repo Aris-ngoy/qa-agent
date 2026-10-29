@@ -7,11 +7,12 @@
  *
  * A Kept profile lives at `~/.yoqa/browser-profiles/<appId>/<browserId>/` (`default` when
  * the connect names no App) and outlives the browser, so logins survive disconnects and
- * Runs. A clean profile is a temporary folder, deleted when the browser stops.
+ * Runs, until it is reset. A clean profile is a temporary folder, deleted when the browser
+ * stops.
  */
 
 import { constants } from "node:fs";
-import { access, mkdir, mkdtemp, readFile, readlink, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, readlink, rm } from "node:fs/promises";
 import { homedir, hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { type BrowserProfile, type Device, PROFILE_APP_ID_PATTERN } from "@yoqa/runner-client";
@@ -158,24 +159,29 @@ export type ProfileRequest = {
 /** The Kept profile's App folder when a connect names no App. */
 export const DEFAULT_PROFILE_APP = "default";
 
+/** The folder `appId`'s Kept profiles live in, one per browser, under `home`. */
+function keptAppDir(appId: string, home: string): string {
+	// One plain folder name, so a Kept profile stays under its root.
+	if (!PROFILE_APP_ID_PATTERN.test(appId)) {
+		throw new Error(`${appId} is not an App id a browser profile can be kept for`);
+	}
+	return join(home, ".yoqa", "browser-profiles", appId);
+}
+
 /** The Kept profile of `browserId` for `appId`, under `home`. */
 export function keptProfileDir(
 	browserId: InstalledBrowserId,
 	appId: string = DEFAULT_PROFILE_APP,
 	home: string = homedir(),
 ): string {
-	// One plain folder name, so a Kept profile stays under its root.
-	if (!PROFILE_APP_ID_PATTERN.test(appId)) {
-		throw new Error(`${appId} is not an App id a browser profile can be kept for`);
-	}
-	return join(home, ".yoqa", "browser-profiles", appId, browserId);
+	return join(keptAppDir(appId, home), browserId);
 }
 
 /** A Kept profile another live browser has open, so Yoqa cannot launch on it. */
 export class ProfileInUseError extends Error {
 	constructor(profileDir: string, pid: number) {
 		super(
-			`The browser profile ${profileDir} is in use by another browser (pid ${pid}). Quit that browser and connect again`,
+			`The browser profile ${profileDir} is in use by another browser (pid ${pid}). Quit that browser and try again`,
 		);
 		this.name = "ProfileInUseError";
 	}
@@ -195,18 +201,49 @@ function isProcessAlive(pid: number): boolean {
 }
 
 /**
- * Clear the locks a browser that crashed left in `profileDir`, or fail when a live one
- * holds it. Chromium's `SingletonLock` points at `<hostname>-<pid>`; a lock from another
- * host, or from a pid that is gone, is stale.
+ * Fail when a live browser holds `profileDir`. Chromium's `SingletonLock` points at
+ * `<hostname>-<pid>`; a lock from another host, or from a pid that is gone, is stale.
  */
-async function clearStaleLock(profileDir: string, alive: (pid: number) => boolean): Promise<void> {
+async function assertNotHeld(profileDir: string, alive: (pid: number) => boolean): Promise<void> {
 	const owner = await readlink(join(profileDir, "SingletonLock")).catch(() => null);
 	const match = owner ? /^(.*)-(\d+)$/.exec(owner) : null;
 	const pid = Number(match?.[2]);
 	if (match?.[1] === hostname() && pid > 0 && alive(pid)) {
 		throw new ProfileInUseError(profileDir, pid);
 	}
+}
+
+/** Clear the locks a browser that crashed left in `profileDir`, or fail when a live one holds it. */
+async function clearStaleLock(profileDir: string, alive: (pid: number) => boolean): Promise<void> {
+	await assertNotHeld(profileDir, alive);
 	await Promise.all(LOCK_FILES.map((lock) => rm(join(profileDir, lock), { force: true })));
+}
+
+/**
+ * Delete `appId`'s Kept profile for `browserId`, or every browser's when none is named, and
+ * return the browsers whose profile was there. While a live browser holds any of them, fail
+ * with `ProfileInUseError` and delete none.
+ */
+export async function resetKeptProfiles(
+	request: { appId?: string; browserId?: InstalledBrowserId },
+	deps: Pick<LaunchDeps, "home" | "isProcessAlive"> = {},
+): Promise<string[]> {
+	const appDir = keptAppDir(request.appId ?? DEFAULT_PROFILE_APP, deps.home ?? homedir());
+	const folders = await readdir(appDir, { withFileTypes: true }).catch(() => []);
+	const browserIds = folders
+		.filter((folder) => folder.isDirectory())
+		.map((folder) => folder.name)
+		.filter((name) => !request.browserId || name === request.browserId);
+	const alive = deps.isProcessAlive ?? isProcessAlive;
+	await Promise.all(browserIds.map((id) => assertNotHeld(join(appDir, id), alive)));
+	if (request.browserId) {
+		await Promise.all(
+			browserIds.map((id) => rm(join(appDir, id), { recursive: true, force: true })),
+		);
+	} else {
+		await rm(appDir, { recursive: true, force: true });
+	}
+	return browserIds;
 }
 
 /**
