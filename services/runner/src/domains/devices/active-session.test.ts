@@ -1,11 +1,14 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { existsSync, mkdtempSync } from "node:fs";
 import { createConnection } from "node:net";
-import { jpegSize, readMjpegFrames, startFakeCdp } from "./fake-cdp";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fakeChromium, jpegSize, profileDirOf, readMjpegFrames, startFakeCdp } from "./fake-cdp";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
 import { type IdbExec, createIosDirectSession } from "./ios-direct-lane";
 import type { LaneFactory, LaneName } from "./lane";
 import * as actualSession from "./session";
-import { createWebDirectSession } from "./web-direct-lane";
+import { createWebDirectSession, webDirectDeps } from "./web-direct-lane";
 
 type FakeSession = {
 	quitCalls: number;
@@ -577,6 +580,102 @@ describe("connecting a web device at a Viewport preset", () => {
 	test("a phone has no Viewport preset", async () => {
 		const response = await connect({ deviceId: "dev-1", platform: "android" });
 		expect(await response.json()).not.toHaveProperty("viewport");
+	});
+});
+
+describe("connecting a browser Yoqa launches", () => {
+	const connect = (body: unknown) =>
+		createSessionRoutes().request("/devices/connect", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+
+	/** An installed Chrome whose launches are faked, its Kept profiles under a temporary home. */
+	function installedChrome() {
+		const chromium = fakeChromium({ viewport: { width: 900, height: 700 } });
+		const home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
+		directLane = (options) =>
+			createWebDirectSession(
+				options,
+				webDirectDeps({
+					installedBrowsers: async () => [
+						{
+							id: "web-chrome",
+							name: "Google Chrome",
+							version: "141.0",
+							executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+						},
+					],
+					spawn: chromium.spawn,
+					home,
+				}),
+			);
+		const profiles = () => chromium.launched.map((command) => profileDirOf(command));
+		return { chromium, home, profiles };
+	}
+
+	test("POST /devices/connect launches it on the Kept profile of the App it names", async () => {
+		const { home, profiles } = installedChrome();
+		const response = await connect({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		expect(response.status).toBe(200);
+		expect(profiles()).toEqual([join(home, ".yoqa", "browser-profiles", "app_1", "web-chrome")]);
+	});
+
+	test("without an App it is the default Kept profile, and disconnecting keeps it", async () => {
+		const { home, profiles } = installedChrome();
+		await connect({ deviceId: "web-chrome", platform: "web" });
+		const kept = join(home, ".yoqa", "browser-profiles", "default", "web-chrome");
+		expect(profiles()).toEqual([kept]);
+		await disconnectDevice();
+		expect(existsSync(kept)).toBe(true);
+	});
+
+	test("a connect may ask for a clean profile, which disconnecting deletes", async () => {
+		const { home, profiles } = installedChrome();
+		await connect({ deviceId: "web-chrome", platform: "web", appId: "app_1", profile: "clean" });
+		const [clean] = profiles();
+		expect(clean).not.toContain(home);
+		await disconnectDevice();
+		expect(existsSync(clean ?? "")).toBe(false);
+	});
+
+	test("a second connect to the browser whose session is active returns that session", async () => {
+		const { chromium } = installedChrome();
+		const first = await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		const session = getActiveSession()?.session;
+		const second = await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		expect(chromium.launched).toHaveLength(1);
+		expect(chromium.kills).toBe(0);
+		expect(getActiveSession()?.session).toBe(session);
+		expect(second).toEqual(first);
+	});
+
+	test("a connect to the same browser for another App, profile or preset replaces the session", async () => {
+		const { chromium, profiles } = installedChrome();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_2" });
+		await connectDevice({
+			deviceId: "web-chrome",
+			platform: "web",
+			appId: "app_2",
+			profile: "clean",
+		});
+		await connectDevice({
+			deviceId: "web-chrome",
+			platform: "web",
+			appId: "app_2",
+			profile: "clean",
+			viewport: "mobile",
+		});
+		expect(chromium.launched).toHaveLength(4);
+		expect(chromium.kills).toBe(3);
+		expect(profiles()[1]).toContain(join("app_2", "web-chrome"));
+	});
+
+	test("an App id that is not a folder name is a 400", async () => {
+		const response = await connect({ deviceId: "web-chrome", platform: "web", appId: "../x" });
+		expect(response.status).toBe(400);
 	});
 });
 

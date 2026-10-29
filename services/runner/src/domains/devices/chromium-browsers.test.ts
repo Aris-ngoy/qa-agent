@@ -1,8 +1,19 @@
-import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
+import { hostname, tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	type BrowserProcess,
 	type DiscoveryDeps,
+	ProfileInUseError,
 	findInstalledBrowsers,
 	installedBrowserIdOf,
 	launchChromium,
@@ -98,16 +109,35 @@ describe("launching a Yoqa-owned browser", () => {
 		executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 	};
 
-	test("starts the browser on a fresh temporary profile and a free debug port", async () => {
+	/** A temporary HOME, so a Kept profile never lands in the real one. */
+	let home = "";
+	beforeEach(() => {
+		home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
+	});
+	afterEach(() => {
+		rmSync(home, { recursive: true, force: true });
+	});
+	/** Whether a lock is there; a lock is a symlink to nothing, which `existsSync` misses. */
+	const hasLock = (app: string, lock: string) =>
+		lstatSync(join(keptDir(app), lock), { throwIfNoEntry: false }) !== undefined;
+	const keptDir = (app: string) => join(home, ".yoqa", "browser-profiles", app, "web-chrome");
+
+	test("starts the browser on its App's Kept profile and a free debug port", async () => {
 		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
-		const instance = await launchChromium(CHROME, { spawn: chromium.spawn });
+		const instance = await launchChromium(
+			CHROME,
+			{ spawn: chromium.spawn, home },
+			{ appId: "app_1" },
+		);
 		const [command] = chromium.launched;
 		expect(command?.[0]).toBe(CHROME.executable);
-		expect(command).toContain(`--user-data-dir=${instance.profileDir}`);
+		expect(instance.profileDir).toBe(keptDir("app_1"));
+		expect(command).toContain(`--user-data-dir=${keptDir("app_1")}`);
 		expect(command).toContain("--remote-debugging-port=0");
 		expect(command).toContain("--no-first-run");
 		expect(command).toContain("--no-default-browser-check");
-		expect(instance.profileDir).not.toContain("Library/Application Support");
+		expect(command).toContain("--use-mock-keychain");
+		expect(command).toContain("--password-store=basic");
 		expect(existsSync(instance.profileDir)).toBe(true);
 		// The port the browser picked, read back from its DevToolsActivePort file.
 		expect(instance.socketUrl).toBe(
@@ -116,23 +146,135 @@ describe("launching a Yoqa-owned browser", () => {
 		await instance.stop();
 	});
 
-	test("each launch gets its own profile", async () => {
+	test("without an App the Kept profile is the default one", async () => {
 		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
-		const first = await launchChromium(CHROME, { spawn: chromium.spawn });
-		const second = await launchChromium(CHROME, { spawn: chromium.spawn });
-		expect(first.profileDir).not.toBe(second.profileDir);
+		const instance = await launchChromium(CHROME, { spawn: chromium.spawn, home });
+		expect(instance.profileDir).toBe(keptDir("default"));
+		await instance.stop();
+	});
+
+	test("stop kills the browser and keeps its Kept profile, which the next launch reuses", async () => {
+		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
+		const first = await launchChromium(CHROME, { spawn: chromium.spawn, home }, { appId: "app_1" });
+		writeFileSync(join(first.profileDir, "Cookies"), "signed in");
 		await first.stop();
+		expect(chromium.kills).toBe(1);
+		expect(existsSync(join(keptDir("app_1"), "Cookies"))).toBe(true);
+		await first.stop();
+		expect(chromium.kills).toBe(1);
+
+		const second = await launchChromium(
+			CHROME,
+			{ spawn: chromium.spawn, home },
+			{ appId: "app_1" },
+		);
+		expect(second.profileDir).toBe(first.profileDir);
+		expect(existsSync(join(second.profileDir, "Cookies"))).toBe(true);
+		// The second browser's port, not the first one's left in the kept folder.
+		expect(second.socketUrl).toBe(
+			`ws://127.0.0.1:${chromium.browsers[1]?.port}/devtools/browser/fake`,
+		);
 		await second.stop();
 	});
 
-	test("stop kills the browser and deletes its profile", async () => {
+	test("each App and each browser has its own Kept profile", async () => {
 		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
-		const instance = await launchChromium(CHROME, { spawn: chromium.spawn });
+		const one = await launchChromium(CHROME, { spawn: chromium.spawn, home }, { appId: "app_1" });
+		await one.stop();
+		const two = await launchChromium(CHROME, { spawn: chromium.spawn, home }, { appId: "app_2" });
+		await two.stop();
+		const edge = await launchChromium(
+			{ ...CHROME, id: "web-edge", name: "Microsoft Edge" },
+			{ spawn: chromium.spawn, home },
+			{ appId: "app_1" },
+		);
+		await edge.stop();
+		expect([one.profileDir, two.profileDir, edge.profileDir]).toEqual([
+			keptDir("app_1"),
+			keptDir("app_2"),
+			join(home, ".yoqa", "browser-profiles", "app_1", "web-edge"),
+		]);
+	});
+
+	test("an App id that is not a folder name is refused", async () => {
+		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
+		const error = await rejection(
+			launchChromium(CHROME, { spawn: chromium.spawn, home }, { appId: "../elsewhere" }),
+		);
+		expect((error as Error).message).toContain("../elsewhere");
+		expect(chromium.launched).toEqual([]);
+	});
+
+	test("a clean profile is a temporary one, deleted on stop", async () => {
+		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
+		const first = await launchChromium(
+			CHROME,
+			{ spawn: chromium.spawn, home },
+			{ appId: "app_1", profile: "clean" },
+		);
+		const second = await launchChromium(
+			CHROME,
+			{ spawn: chromium.spawn, home },
+			{ appId: "app_1", profile: "clean" },
+		);
+		expect(first.profileDir).not.toBe(second.profileDir);
+		expect(first.profileDir).not.toContain(".yoqa");
+		expect(chromium.launched[0]).toContain(`--user-data-dir=${first.profileDir}`);
+		expect(existsSync(first.profileDir)).toBe(true);
+		await first.stop();
+		await second.stop();
+		expect(existsSync(first.profileDir)).toBe(false);
+		expect(existsSync(second.profileDir)).toBe(false);
+		expect(existsSync(keptDir("app_1"))).toBe(false);
+	});
+
+	test("a stale lock left by a browser that crashed is cleared, and the launch goes ahead", async () => {
+		mkdirSync(keptDir("app_1"), { recursive: true });
+		symlinkSync(`${hostname()}-4242`, join(keptDir("app_1"), "SingletonLock"));
+		symlinkSync("/tmp/gone/SingletonSocket", join(keptDir("app_1"), "SingletonSocket"));
+		symlinkSync("8361942", join(keptDir("app_1"), "SingletonCookie"));
+		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
+		const instance = await launchChromium(
+			CHROME,
+			{ spawn: chromium.spawn, home, isProcessAlive: (pid) => pid !== 4242 },
+			{ appId: "app_1" },
+		);
+		expect(chromium.launched).toHaveLength(1);
+		for (const lock of ["SingletonLock", "SingletonSocket", "SingletonCookie"]) {
+			expect(hasLock("app_1", lock)).toBe(false);
+		}
 		await instance.stop();
-		expect(chromium.kills).toBe(1);
-		expect(existsSync(instance.profileDir)).toBe(false);
+	});
+
+	test("a Kept profile a live browser holds fails the launch, naming the folder", async () => {
+		mkdirSync(keptDir("app_1"), { recursive: true });
+		symlinkSync(`${hostname()}-4242`, join(keptDir("app_1"), "SingletonLock"));
+		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
+		const error = await rejection(
+			launchChromium(
+				CHROME,
+				{ spawn: chromium.spawn, home, isProcessAlive: (pid) => pid === 4242 },
+				{ appId: "app_1" },
+			),
+		);
+		expect(error).toBeInstanceOf(ProfileInUseError);
+		expect((error as Error).message).toContain(keptDir("app_1"));
+		expect((error as Error).message).toContain("4242");
+		expect(chromium.launched).toEqual([]);
+		expect(hasLock("app_1", "SingletonLock")).toBe(true);
+	});
+
+	test("a lock taken on another computer is stale here", async () => {
+		mkdirSync(keptDir("app_1"), { recursive: true });
+		symlinkSync("some-other-mac.local-4242", join(keptDir("app_1"), "SingletonLock"));
+		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
+		const instance = await launchChromium(
+			CHROME,
+			{ spawn: chromium.spawn, home, isProcessAlive: () => true },
+			{ appId: "app_1" },
+		);
+		expect(chromium.launched).toHaveLength(1);
 		await instance.stop();
-		expect(chromium.kills).toBe(1);
 	});
 
 	test("a browser that exits before it opens a debug port fails the launch, with its stderr", async () => {
@@ -145,12 +287,22 @@ describe("launching a Yoqa-owned browser", () => {
 				kill: () => undefined,
 			};
 		};
-		const error = await rejection(launchChromium(CHROME, { spawn }));
+		const error = await rejection(launchChromium(CHROME, { spawn, home }, { profile: "clean" }));
 		expect((error as Error).message).toContain(
 			"Google Chrome exited before it opened a debug port",
 		);
 		expect((error as Error).message).toContain("Trace/BPT trap: 5");
 		expect(existsSync(profile)).toBe(false);
+	});
+
+	test("a failed launch keeps the Kept profile", async () => {
+		const spawn = (): BrowserProcess => ({
+			exited: Promise.resolve(1),
+			stderr: null,
+			kill: () => undefined,
+		});
+		await rejection(launchChromium(CHROME, { spawn, home }, { appId: "app_1" }));
+		expect(existsSync(keptDir("app_1"))).toBe(true);
 	});
 
 	test("a browser that never opens a debug port is killed after the timeout", async () => {
@@ -166,7 +318,7 @@ describe("launching a Yoqa-owned browser", () => {
 				exit(143);
 			},
 		});
-		const error = await rejection(launchChromium(CHROME, { spawn, readyTimeoutMs: 100 }));
+		const error = await rejection(launchChromium(CHROME, { spawn, home, readyTimeoutMs: 100 }));
 		expect((error as Error).message).toContain("did not open a debug port within 100 ms");
 		expect(kills).toBe(1);
 	});
@@ -203,11 +355,13 @@ describe("web devices", () => {
 		const [chrome] = await findInstalledBrowsers(installed);
 		if (!chrome) throw new Error("Chrome is installed");
 		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
-		const instance = await launchChromium(chrome, { spawn: chromium.spawn });
+		const home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
+		const instance = await launchChromium(chrome, { spawn: chromium.spawn, home });
 		const running = await listWebDevices({ includeUnavailable: false }, installed);
 		expect(running.map((device) => [device.id, device.state])).toEqual([["web-chrome", "running"]]);
 		await instance.stop();
 		expect(await listWebDevices({ includeUnavailable: false }, installed)).toEqual([]);
+		rmSync(home, { recursive: true, force: true });
 	});
 
 	test("nothing is listed when no browser is installed", async () => {

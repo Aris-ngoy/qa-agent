@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
-import { type CaseScript, VIEWPORT_PRESETS } from "@yoqa/runner-client";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { type BrowserProfile, type CaseScript, VIEWPORT_PRESETS } from "@yoqa/runner-client";
 import { executeScriptCase } from "../runs/case-executor";
 import type { InstalledBrowser } from "./chromium-browsers";
 import {
@@ -700,29 +702,39 @@ const CHROME: InstalledBrowser = {
 	executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 };
 
-/** A Mac with Chrome installed, and a Device Session on `deviceId` that launches it. */
-async function launch(deviceId = "web-chrome") {
+/**
+ * A Mac with Chrome installed, and a Device Session on `deviceId` that launches it, its
+ * Kept profile under a temporary home unless the connect asks for a clean one.
+ */
+async function launch(
+	deviceId = "web-chrome",
+	options: { appId?: string; profile?: BrowserProfile; home?: string } = {},
+) {
 	const chromium = fakeChromium({ viewport: VIEWPORT });
+	const home = options.home ?? mkdtempSync(join(tmpdir(), "yoqa-home-"));
 	let deadCalls = 0;
 	const session = await createWebDirectSession(
 		{
 			platform: "web",
 			deviceId,
+			appId: options.appId,
+			profile: options.profile,
 			onSessionDead: () => {
 				deadCalls += 1;
 			},
 		},
-		webDirectDeps({ installedBrowsers: async () => [CHROME], spawn: chromium.spawn }),
+		webDirectDeps({ installedBrowsers: async () => [CHROME], spawn: chromium.spawn, home }),
 	);
 	const profileDir = () => profileDirOf(chromium.launched[0] ?? []) ?? "";
-	return { chromium, session, profileDir, deadCalls: () => deadCalls };
+	return { chromium, session, home, profileDir, deadCalls: () => deadCalls };
 }
 
 describe("web Direct lane: a Yoqa-owned instance of an installed browser", () => {
-	test("connecting launches the browser on its own temporary profile and drives its page", async () => {
-		const { chromium, session, profileDir } = await launch();
+	test("connecting launches the browser on its App's Kept profile and drives its page", async () => {
+		const { chromium, session, home, profileDir } = await launch("web-chrome", { appId: "app_1" });
 		expect(chromium.launched).toHaveLength(1);
 		expect(chromium.launched[0]?.[0]).toBe(CHROME.executable);
+		expect(profileDir()).toBe(join(home, ".yoqa", "browser-profiles", "app_1", "web-chrome"));
 		expect(existsSync(profileDir())).toBe(true);
 		await performAction(session, { kind: "tap", x: 500, y: 250 });
 		expect(chromium.browsers[0]?.clicks).toEqual([{ x: 640, y: 200 }]);
@@ -735,12 +747,26 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 		await session.quit();
 	});
 
-	test("disconnecting kills the browser and deletes its profile, and is not a Dead Session", async () => {
-		const { chromium, session, profileDir, deadCalls } = await launch();
+	test("disconnecting kills the browser and keeps its profile for the next connect, and is not a Dead Session", async () => {
+		const { chromium, session, home, profileDir, deadCalls } = await launch();
+		writeFileSync(join(profileDir(), "Cookies"), "signed in");
 		await session.quit();
 		expect(chromium.kills).toBe(1);
-		expect(existsSync(profileDir())).toBe(false);
+		expect(existsSync(join(profileDir(), "Cookies"))).toBe(true);
 		expect(deadCalls()).toBe(0);
+
+		const again = await launch("web-chrome", { home });
+		expect(again.profileDir()).toBe(profileDir());
+		expect(existsSync(join(again.profileDir(), "Cookies"))).toBe(true);
+		await again.session.quit();
+	});
+
+	test("a connect that asks for a clean profile gets a temporary one, deleted on disconnect", async () => {
+		const { session, home, profileDir } = await launch("web-chrome", { profile: "clean" });
+		expect(profileDir()).not.toContain(home);
+		expect(existsSync(profileDir())).toBe(true);
+		await session.quit();
+		expect(existsSync(profileDir())).toBe(false);
 	});
 
 	test("a browser that is not installed fails the connect and launches nothing", async () => {
@@ -755,14 +781,14 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 		expect(chromium.launched).toEqual([]);
 	});
 
-	test("the browser quitting on its own is a Dead Session, and its profile is deleted", async () => {
+	test("the browser quitting on its own is a Dead Session, and its Kept profile stays", async () => {
 		const { chromium, session, profileDir, deadCalls } = await launch();
 		chromium.browsers[0]?.kill();
 		await Bun.sleep(50);
 		const error = await rejection(session.captureFrame());
 		expect(isDeadSessionError(error)).toBe(true);
 		expect(deadCalls()).toBe(1);
-		expect(existsSync(profileDir())).toBe(false);
+		expect(existsSync(profileDir())).toBe(true);
 	});
 
 	test("closing its page ends the session and quits the browser it launched", async () => {
@@ -772,6 +798,6 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 		expect(isDeadSessionError(await rejection(session.captureFrame()))).toBe(true);
 		expect(deadCalls()).toBe(1);
 		expect(chromium.kills).toBe(1);
-		expect(existsSync(profileDir())).toBe(false);
+		expect(existsSync(profileDir())).toBe(true);
 	});
 });

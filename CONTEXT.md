@@ -15,8 +15,12 @@ The control path a Device Session uses to drive its device. A Lane is Direct onl
 _Avoid_: driver (Provider drivers), backend (runner / cloud), adapter, transport, engine
 
 **Browser device**:
-A Chromium-family browser (Chrome, Edge, Brave, Chromium) as a `web` device. A browser the user started with remote debugging on a non-default profile is attached by naming its debug port (`chromium-cdp-<port>`); ports are never scanned. Disconnecting an attached browser leaves it open.
+A Chromium-family browser (Chrome, Edge, Brave, Chromium) as a `web` device. A browser Yoqa launches uses its App's Kept profile, and disconnecting quits it. A browser the user started with remote debugging on a non-default profile is attached by naming its debug port (`chromium-cdp-<port>`); ports are never scanned. Disconnecting an attached browser leaves it open.
 _Avoid_: tab, page (one page of it is what a Device Session drives), web driver
+
+**Kept profile**:
+The browser profile Yoqa keeps for one App and one browser, under `~/.yoqa/browser-profiles/<app>/<browser>/` (`default` when no App is named), so logins survive disconnects, reconnects and Runs. Disconnecting keeps it; a reset deletes it. A Run may ask for a clean profile instead: a throwaway one, deleted on disconnect. Never the user's own browser profile.
+_Avoid_: user profile, session storage, cookie jar
 
 **Viewport preset**:
 The page size a Device Session on a Browser device emulates, chosen at connect and fixed for the session's whole life: `desktop` (1280×800, the default) or `mobile` (390×844, with a mobile user agent and touch, so a tap or swipe is a finger). It applies to every page the session drives, whatever the window's size, and is what 0–1000 maps onto. The Run stores it and its report shows it.

@@ -1,7 +1,8 @@
 /**
  * The web Direct lane: CDP straight to a Chromium-family browser, with no driver in
  * between (ADR-0007). An installed browser (`web-chrome`) is launched as a Yoqa-owned
- * instance on a throwaway profile, and disconnecting kills it and deletes the profile. A
+ * instance on its App's Kept profile, and disconnecting kills it and keeps the profile, so
+ * logins survive. A connect may ask for a clean profile instead, deleted on disconnect. A
  * browser the user started with `--remote-debugging-port` is attached by its port
  * (`chromium-cdp-9222`), and disconnecting closes only the DevTools socket. Either way the
  * session drives the browser's first page, or a blank one it opens.
@@ -63,6 +64,7 @@ import {
 	type BrowserProcess,
 	type ChromiumInstance,
 	type InstalledBrowser,
+	type ProfileRequest,
 	findInstalledBrowsers,
 	installedBrowserIdOf,
 	launchChromium,
@@ -89,8 +91,8 @@ export type WebDirectDeps = {
 	connect: (url: string) => Promise<CdpClient>;
 	/** The browsers installed on this machine. */
 	installedBrowsers: () => Promise<InstalledBrowser[]>;
-	/** Launch a Yoqa-owned instance of one. */
-	launch: (browser: InstalledBrowser) => Promise<ChromiumInstance>;
+	/** Launch a Yoqa-owned instance of one, on the profile the connect asked for. */
+	launch: (browser: InstalledBrowser, profile: ProfileRequest) => Promise<ChromiumInstance>;
 };
 
 /** Typed text is cut at a newline, which presses Enter. */
@@ -172,13 +174,16 @@ export function webDirectDeps(
 	overrides: {
 		installedBrowsers?: () => Promise<InstalledBrowser[]>;
 		spawn?: (command: string[]) => BrowserProcess;
+		/** The home folder Kept profiles live under. */
+		home?: string;
 	} = {},
 ): WebDirectDeps {
 	return {
 		browserSocketUrl: (port) => browserSocketUrl(port),
 		connect: (url) => connectCdp(url),
 		installedBrowsers: overrides.installedBrowsers ?? (() => findInstalledBrowsers()),
-		launch: (browser) => launchChromium(browser, { spawn: overrides.spawn }),
+		launch: (browser, profile) =>
+			launchChromium(browser, { spawn: overrides.spawn, home: overrides.home }, profile),
 	};
 }
 
@@ -187,7 +192,7 @@ export function webDirectDeps(
  * this launches, or a user-started one attached by its port.
  */
 async function openBrowser(
-	deviceId: string,
+	{ deviceId, appId, profile }: SessionOptions,
 	deps: WebDirectDeps,
 ): Promise<{ socketUrl: string; owned: ChromiumInstance | null; name: string | null }> {
 	const port = attachPortOf(deviceId);
@@ -206,7 +211,7 @@ async function openBrowser(
 			`${browserId} is not installed. Run yoqa devices web to list the browsers here`,
 		);
 	}
-	const owned = await deps.launch(browser);
+	const owned = await deps.launch(browser, { appId, profile });
 	const name = browser.version ? `${browser.name} ${browser.version}` : browser.name;
 	return { socketUrl: owned.socketUrl, owned, name };
 }
@@ -445,7 +450,7 @@ export async function createWebDirectSession(
 	}
 
 	const preset = VIEWPORT_PRESETS[options.viewport ?? DEFAULT_VIEWPORT_PRESET];
-	const { socketUrl, owned, name } = await openBrowser(options.deviceId, deps);
+	const { socketUrl, owned, name } = await openBrowser(options, deps);
 	const client = await deps.connect(socketUrl).catch(async (error: unknown) => {
 		await owned?.stop();
 		throw error;
