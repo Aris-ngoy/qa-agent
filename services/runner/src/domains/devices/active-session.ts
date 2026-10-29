@@ -360,25 +360,23 @@ export async function acquireSessionForRun(options: {
 		return { session, shared: false };
 	}
 
-	const sameDevice = current != null && current.deviceId === options.deviceId;
-	// On web the session must also be on the Run's App and profile, or the browser reopens on
-	// it, at the preset the user connected at.
-	const adoptable =
-		current != null && sameDevice && (current.platform !== "web" || isOnProfile(current, options));
-	const viewport = sameDevice ? current?.session.viewport : undefined;
+	const onDevice = current?.deviceId === options.deviceId ? current : undefined;
+	// A replacement reopens at the preset the user connected at.
+	const viewport = onDevice?.session.viewport;
 
-	if (current && adoptable) {
+	// On web the session must also be on the Run's App and profile, or the browser reopens on them.
+	if (onDevice && (onDevice.platform !== "web" || isOnProfile(onDevice, options))) {
 		// Health-check before adopting: a stale session (device restarted,
 		// its Lane dropped it) must not fail the whole run.
-		const healthy = await current.session
+		const healthy = await onDevice.session
 			.getWindowSize()
 			.then(() => true)
 			.catch(() => false);
 		if (healthy) {
-			current.heldByRunId = options.runId;
+			onDevice.heldByRunId = options.runId;
 			// The session may have been opened for another app; the Run reads its own.
-			current.session.setTargetApp(targetAppFor(options));
-			return { session: current.session, shared: true };
+			onDevice.session.setTargetApp(targetAppFor(options));
+			return { session: onDevice.session, shared: true };
 		}
 		console.warn(
 			`[yoqa-runner] active session for ${options.deviceId} is dead — creating a fresh one for the run`,
