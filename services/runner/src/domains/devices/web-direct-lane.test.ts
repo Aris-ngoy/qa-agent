@@ -742,6 +742,15 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 		await session.quit();
 	});
 
+	test("restart-app clears the App origin's storage on its Kept profile", async () => {
+		const { chromium, session } = await launch();
+		const result = await performAction(session, { kind: "restart-app", appId: APP_URL });
+		expect(result.storage).toBe("cleared");
+		expect(chromium.browsers[0]?.clearedOrigins).toEqual(["https://app.example.com"]);
+		expect(chromium.browsers[0]?.navigations).toEqual([APP_URL]);
+		await session.quit();
+	});
+
 	test("names the installed browser it launched, with its version", async () => {
 		const { session } = await launch();
 		expect(session.browser).toBe("Google Chrome 141.0");
