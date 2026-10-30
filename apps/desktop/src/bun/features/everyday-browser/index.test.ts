@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { REMOTE_DEBUGGING_SETTING_URL, openRemoteDebuggingSetting } from "./index";
+import { REMOTE_DEBUGGING_SETTING_URL } from "../../../shared/everyday-browser";
+import { openRemoteDebuggingSetting } from "./index";
 
 function recorder(code = 0) {
 	const commands: string[][] = [];

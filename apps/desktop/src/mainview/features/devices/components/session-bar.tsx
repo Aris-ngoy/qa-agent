@@ -134,7 +134,7 @@ export function SessionBar() {
 		async (target: ConnectTarget, lane?: LaneName): Promise<ActiveDeviceResponse> => {
 			const everyday = target.platform === "web" && isEverydayDeviceId(target.id);
 			const browserName = everydayBrowserName(
-				devices?.find((listed) => listed.id === target.id)?.name ?? "your browser",
+				devices?.find((listed) => listed.id === target.id)?.name,
 			);
 			const controller = new AbortController();
 			connectAbortRef.current = controller;
@@ -255,10 +255,7 @@ export function SessionBar() {
 			invalidateActiveDeviceSession();
 			toast.success("Disconnected");
 			const note = disconnected
-				? takeDisconnectNote(
-						disconnected.deviceId,
-						everydayBrowserName(sessionDevice?.name ?? "your browser"),
-					)
+				? takeDisconnectNote(disconnected.deviceId, everydayBrowserName(sessionDevice?.name))
 				: null;
 			if (note) toast.info(note, { timeout: 12_000 });
 		} catch (error) {

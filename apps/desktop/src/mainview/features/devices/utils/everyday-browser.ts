@@ -1,3 +1,4 @@
+import { REMOTE_DEBUGGING_SETTING_URL } from "@/../shared/everyday-browser";
 import {
 	type ActiveDeviceResponse,
 	type ConnectDeviceRequest,
@@ -5,9 +6,6 @@ import {
 	type EverydayWarningRequired,
 	everydayWarningRequired,
 } from "@yoqa/runner-client";
-
-/** Where the user turns remote debugging on and off (ADR-0009). */
-export const REMOTE_DEBUGGING_SETTING_URL = "chrome://inspect/#remote-debugging";
 
 const EVERYDAY_ID = /^web-[a-z]+-everyday$/;
 const EVERYDAY_TAG = / \(everyday\)$/;
@@ -17,9 +15,12 @@ export function isEverydayDeviceId(deviceId: string): boolean {
 	return EVERYDAY_ID.test(deviceId);
 }
 
-/** `Dia` for the runner's `Dia (everyday)`: the browser as the user knows it. */
-export function everydayBrowserName(name: string): string {
-	return name.replace(EVERYDAY_TAG, "");
+/**
+ * `Dia` for the runner's `Dia (everyday)`: the browser as the user knows it, and "your
+ * browser" while the device is unlisted.
+ */
+export function everydayBrowserName(name: string | undefined): string {
+	return name?.replace(EVERYDAY_TAG, "") ?? "your browser";
 }
 
 /** An Everyday browser in the picker: ready to connect, or with remote debugging off. */

@@ -53,6 +53,7 @@ describe("everydayBrowserName", () => {
 	test("is the browser as the user knows it, without the list's tag", () => {
 		expect(everydayBrowserName("Dia (everyday)")).toBe("Dia");
 		expect(everydayBrowserName("Google Chrome")).toBe("Google Chrome");
+		expect(everydayBrowserName(undefined)).toBe("your browser");
 	});
 });
 
