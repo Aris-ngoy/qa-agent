@@ -22,21 +22,20 @@ export function parsePlatform(value: string | undefined): DevicePlatform {
 	return parsed.data;
 }
 
-/**
- * A web device id: an installed browser (`web-chrome`), its Everyday browser
- * (`web-chrome-everyday`), or a user-started Chromium's port.
- */
-const WEB_DEVICE_ID =
-	/^(web-(chrome|edge|brave|chromium)|web-(chrome|edge|brave|chromium|dia)-everyday|chromium-cdp-\d+)$/;
+/** A web device id: an installed browser (`web-chrome`) or a user-started Chromium's port. */
+const WEB_DEVICE_ID = /^(web-(chrome|edge|brave|chromium)|chromium-cdp-\d+)$/;
+
+/** An Everyday browser's device id (`web-chrome-everyday`). */
+const EVERYDAY_DEVICE_ID = /^web-(chrome|edge|brave|chromium|dia)-everyday$/;
 
 /** An Everyday browser's device id: the user's own browser, used only when named. */
 export function isEverydayDeviceId(deviceId: string): boolean {
-	return /^web-(chrome|edge|brave|chromium|dia)-everyday$/.test(deviceId);
+	return EVERYDAY_DEVICE_ID.test(deviceId);
 }
 
 /** Whether a device id names a web device, whose platform needs no `--platform`. */
 export function isWebDeviceId(deviceId: string): boolean {
-	return WEB_DEVICE_ID.test(deviceId);
+	return WEB_DEVICE_ID.test(deviceId) || isEverydayDeviceId(deviceId);
 }
 
 /**
