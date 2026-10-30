@@ -56,12 +56,26 @@ yoqa action restart-app --app-id https://example.com --json   # "storage": "kept
 yoqa devices disconnect                # Yoqa's window closes; Chrome and your tabs stay
 ```
 
-Click Deny instead, or wait 60 s, and the connect fails with its own message and exits 1; Ctrl-C while it waits cancels it and Chrome's prompt goes away. Turning the toggle off lists the device as `remote debugging off`.
+Click Deny instead, or wait 60 s, and the connect fails with its own message and exits 1; Ctrl-C while it waits cancels it. Turning the toggle off lists the device as `remote debugging off`.
 
-**Which profile does a `createTarget` with no `browserContextId` open in, with two profiles open?** Not checked by hand yet: this slice was built on Linux against the faked browser. Expected, from Chromium's code, is the profile of the browser's last active window; `browserProfileName` reports `Local State`'s `last_used`, which is the same profile in the common case. Record the answer here after checking on a Mac with two Chrome or Dia profiles open.
+**Checked by hand on 2026-10-30**, on Dia 1.55.1 (Chromium 156), macOS 27.2, on the user's everyday profile:
+
+- `yoqa devices web` listed `web-dia-everyday` as ready.
+- A connect without `--yes` printed the warning and exited 1. With `--yes` it printed "Click Allow in Dia…", and connected once the user clicked Allow (`profile Personal`).
+- `open-url`, `screen` and `tap --label "Learn more"` worked. The screenshot was Yoqa's page only.
+- `restart-app` answered `"storage": "kept"`.
+- `disconnect` closed Yoqa's window. Dia, its tabs and the toggle stayed, and the device was listed ready again.
+- Ctrl-C while waiting cancelled the connect (`cancelled before Allow in Dia`, exit 130).
+
+**Which profile does a `createTarget` with no `browserContextId` open in, with two profiles open?** The **default profile**, not the one in front.
+
+- Dia had `Default` ("Personal") and `Profile 1` ("Works") open, with a Works window in front.
+- Yoqa's window opened in Personal, and `browserProfileName` said `Personal`.
+- `Local State`'s `profile.last_used` stayed `Default` throughout, so the name matched where the window opened.
+- Opening in another profile needs that profile's `browserContextId`. That stays a follow-up.
 
 ## Follow-ups
 
-- The hand check above, and the profile question, on Dia or Chrome 144+.
-- By hand: that Ctrl-C from the CLI closes Chrome's Allow prompt, not only the runner's wait.
+- The same hand check on Chrome 144+ and Edge (only Dia is installed on the Mac it was checked on).
+- Whether a cancelled connect also closes the browser's Allow prompt, not only the runner's wait, was not observed.
 - Windows paths ([#354](https://github.com/Aris-ngoy/qa-agent/issues/354)) and picking a profile other than the default context are not decided.
