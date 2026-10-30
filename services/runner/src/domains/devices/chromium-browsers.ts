@@ -1,5 +1,5 @@
 /**
- * Installed Chromium-family browsers (Chrome, Edge, Brave, Chromium) as web devices, and
+ * Installed Chromium-family browsers (Chrome, Edge, Brave, Chromium, Dia) as web devices, and
  * the Yoqa-owned instance a connect launches (ADR-0007). Launching an installed browser is
  * to a web device what booting is to a simulator: its App's Kept profile, a debug port the
  * browser picks itself, and no first-run screens. The user's own profile is never used.
@@ -19,7 +19,12 @@ import { type BrowserProfile, type Device, PROFILE_APP_ID_PATTERN } from "@yoqa/
 import type { ListDevicesOptions } from "./models";
 
 /** The stable device id of each browser Yoqa can launch, one per installed browser. */
-export type InstalledBrowserId = "web-chrome" | "web-edge" | "web-brave" | "web-chromium";
+export type InstalledBrowserId =
+	| "web-chrome"
+	| "web-edge"
+	| "web-brave"
+	| "web-chromium"
+	| "web-dia";
 
 export type InstalledBrowser = {
 	id: InstalledBrowserId;
@@ -29,17 +34,33 @@ export type InstalledBrowser = {
 	executable: string;
 };
 
-/** Each browser's app bundle and the binary inside it, in listing order. */
-const KNOWN_BROWSERS: ReadonlyArray<{ id: InstalledBrowserId; name: string; app: string }> = [
+/**
+ * Each browser's app bundle and the binary inside it, in listing order, and the folder
+ * under `--user-data-dir` it writes `DevToolsActivePort` to when not the folder itself.
+ */
+const KNOWN_BROWSERS: ReadonlyArray<{
+	id: InstalledBrowserId;
+	name: string;
+	app: string;
+	portFileDir?: string;
+}> = [
 	{ id: "web-chrome", name: "Google Chrome", app: "Google Chrome" },
 	{ id: "web-edge", name: "Microsoft Edge", app: "Microsoft Edge" },
 	{ id: "web-brave", name: "Brave Browser", app: "Brave Browser" },
 	{ id: "web-chromium", name: "Chromium", app: "Chromium" },
+	// Dia writes it one level down, under `User Data/` (#343).
+	{ id: "web-dia", name: "Dia", app: "Dia", portFileDir: "User Data" },
 ];
 
 /** The installed-browser id a device id names, or null when it is not one. */
 export function installedBrowserIdOf(deviceId: string): InstalledBrowserId | null {
 	return KNOWN_BROWSERS.find((browser) => browser.id === deviceId)?.id ?? null;
+}
+
+/** Where `browserId` writes `DevToolsActivePort` when launched on `profileDir`. */
+function activePortFile(browserId: InstalledBrowserId, profileDir: string): string {
+	const portFileDir = KNOWN_BROWSERS.find((browser) => browser.id === browserId)?.portFileDir;
+	return join(profileDir, portFileDir ?? "", "DevToolsActivePort");
 }
 
 /** What discovery reads from the host, so tests can fake the filesystem. */
@@ -261,7 +282,7 @@ async function prepareProfile(
 	const profileDir = keptProfileDir(browser.id, request.appId, deps.home);
 	await mkdir(profileDir, { recursive: true });
 	await clearStaleLock(profileDir, deps.isProcessAlive ?? isProcessAlive);
-	await rm(join(profileDir, "DevToolsActivePort"), { force: true });
+	await rm(activePortFile(browser.id, profileDir), { force: true });
 	return { profileDir, clean: false };
 }
 
@@ -289,8 +310,8 @@ function spawnBrowser(command: string[]): BrowserProcess {
 }
 
 /** The port and socket path from `DevToolsActivePort`, or null until the browser wrote both. */
-async function readActivePort(profileDir: string): Promise<string | null> {
-	const text = await readFile(join(profileDir, "DevToolsActivePort"), "utf8").catch(() => "");
+async function readActivePort(portFile: string): Promise<string | null> {
+	const text = await readFile(portFile, "utf8").catch(() => "");
 	const [port, path] = text.split("\n").map((line) => line.trim());
 	if (!port || !/^\d+$/.test(port) || !path?.startsWith("/")) return null;
 	return `ws://127.0.0.1:${port}${path}`;
@@ -299,7 +320,7 @@ async function readActivePort(profileDir: string): Promise<string | null> {
 /**
  * Launch `browser` on its App's Kept profile, or a clean one, with
  * `--remote-debugging-port=0`, and resolve once it has written the port it picked to the
- * profile's `DevToolsActivePort`. A browser that exits or stays silent first is killed, a
+ * profile's `DevToolsActivePort` (under `User Data/` for Dia). A browser that exits or stays silent first is killed, a
  * clean profile deleted, and the launch fails.
  */
 export async function launchChromium(
@@ -353,7 +374,7 @@ export async function launchChromium(
 
 	const deadline = Date.now() + readyTimeoutMs;
 	while (true) {
-		const socketUrl = await readActivePort(profileDir);
+		const socketUrl = await readActivePort(activePortFile(browser.id, profileDir));
 		if (socketUrl) {
 			running.add(browser.id);
 			return { socketUrl, profileDir, exited, stop };

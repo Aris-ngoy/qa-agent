@@ -55,6 +55,7 @@ describe("installed browser discovery", () => {
 				"/Applications/Microsoft Edge.app": "141.0.3537.57",
 				[`${HOME}/Applications/Brave Browser.app`]: "1.83.112",
 				"/Applications/Chromium.app": null,
+				"/Applications/Dia.app": "1.55.1",
 			}),
 		);
 		expect(browsers.map(({ id, name, version }) => ({ id, name, version }))).toEqual([
@@ -62,6 +63,7 @@ describe("installed browser discovery", () => {
 			{ id: "web-edge", name: "Microsoft Edge", version: "141.0.3537.57" },
 			{ id: "web-brave", name: "Brave Browser", version: "1.83.112" },
 			{ id: "web-chromium", name: "Chromium", version: null },
+			{ id: "web-dia", name: "Dia", version: "1.55.1" },
 		]);
 		expect(browsers[0]?.executable).toBe(
 			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -69,6 +71,7 @@ describe("installed browser discovery", () => {
 		expect(browsers[2]?.executable).toBe(
 			`${HOME}/Applications/Brave Browser.app/Contents/MacOS/Brave Browser`,
 		);
+		expect(browsers[4]?.executable).toBe("/Applications/Dia.app/Contents/MacOS/Dia");
 	});
 
 	test("a browser in /Applications wins over a copy in ~/Applications", async () => {
@@ -97,6 +100,7 @@ describe("installed browser discovery", () => {
 	test("the device id names the browser", () => {
 		expect(installedBrowserIdOf("web-chrome")).toBe("web-chrome");
 		expect(installedBrowserIdOf("web-edge")).toBe("web-edge");
+		expect(installedBrowserIdOf("web-dia")).toBe("web-dia");
 		expect(installedBrowserIdOf("web-firefox")).toBeNull();
 		expect(installedBrowserIdOf("chromium-cdp-9222")).toBeNull();
 	});
@@ -195,6 +199,66 @@ describe("launching a Yoqa-owned browser", () => {
 			keptDir("app_2"),
 			join(home, ".yoqa", "browser-profiles", "app_1", "web-edge"),
 		]);
+	});
+
+	test("Dia's port is read from, and a stale one deleted in, the User Data folder it writes it to", async () => {
+		const dia = {
+			id: "web-dia" as const,
+			name: "Dia",
+			version: "1.55.1",
+			executable: "/Applications/Dia.app/Contents/MacOS/Dia",
+		};
+		const diaDir = join(home, ".yoqa", "browser-profiles", "app_1", "web-dia");
+		const stale = join(diaDir, "User Data", "DevToolsActivePort");
+		mkdirSync(join(diaDir, "User Data"), { recursive: true });
+		writeFileSync(stale, "1\n/devtools/browser/stale\n");
+		let staleAtSpawn = true;
+		const chromium = fakeChromium(
+			{ viewport: { width: 1280, height: 800 } },
+			{ portFileDir: "User Data" },
+		);
+		const instance = await launchChromium(
+			dia,
+			{
+				spawn: (command) => {
+					staleAtSpawn = existsSync(stale);
+					return chromium.spawn(command);
+				},
+				home,
+			},
+			{ appId: "app_1" },
+		);
+		expect(staleAtSpawn).toBe(false);
+		expect(chromium.launched[0]).toContain(`--user-data-dir=${diaDir}`);
+		expect(instance.profileDir).toBe(diaDir);
+		expect(instance.socketUrl).toBe(
+			`ws://127.0.0.1:${chromium.browsers[0]?.port}/devtools/browser/fake`,
+		);
+		await instance.stop();
+	});
+
+	test("the other browsers' port is read from the profile folder itself", async () => {
+		mkdirSync(keptDir("app_1"), { recursive: true });
+		writeFileSync(join(keptDir("app_1"), "DevToolsActivePort"), "1\n/devtools/browser/stale\n");
+		let staleAtSpawn = true;
+		const chromium = fakeChromium({ viewport: { width: 1280, height: 800 } });
+		const instance = await launchChromium(
+			CHROME,
+			{
+				spawn: (command) => {
+					staleAtSpawn = existsSync(join(keptDir("app_1"), "DevToolsActivePort"));
+					return chromium.spawn(command);
+				},
+				home,
+			},
+			{ appId: "app_1" },
+		);
+		expect(staleAtSpawn).toBe(false);
+		expect(existsSync(join(keptDir("app_1"), "User Data"))).toBe(false);
+		expect(instance.socketUrl).toBe(
+			`ws://127.0.0.1:${chromium.browsers[0]?.port}/devtools/browser/fake`,
+		);
+		await instance.stop();
 	});
 
 	test("an App id that is not a folder name is refused", async () => {
