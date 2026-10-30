@@ -28,8 +28,8 @@
  * move and release.
  * An alert is the page's JavaScript dialog. On web, an app id is the App's Web URL:
  * terminate-app closes the App's page, activate-app opens it again, and restart-app does
- * both with the origin's storage cleared in between. A page has no background, so
- * background-app fails.
+ * both with the origin's storage cleared in between, except in the Everyday browser, where
+ * nothing is ever cleared. A page has no background, so background-app fails.
  *
  * The browser closing its socket, or the page going away with no opener to go back to, is
  * a Dead Session; a Yoqa-owned instance is then quit too. The lane does not record.
@@ -1120,11 +1120,16 @@ export async function createWebDirectSession(
 			withActionLock(async () => {
 				const url = webUrlOf(appId);
 				await closeAppPage();
-				await callBrowser("Storage.clearDataForOrigin", {
-					origin: url.origin,
-					storageTypes: "all",
-				});
+				// Clearing the origin in the Everyday browser would sign the user out of their real account.
+				const storage = everyday ? "kept" : "cleared";
+				if (storage === "cleared") {
+					await callBrowser("Storage.clearDataForOrigin", {
+						origin: url.origin,
+						storageTypes: "all",
+					});
+				}
 				await navigate(url.href);
+				return { storage };
 			}),
 		backgroundApp: () =>
 			Promise.reject(

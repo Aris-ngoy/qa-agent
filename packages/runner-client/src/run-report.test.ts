@@ -459,6 +459,33 @@ describe("Screen mode in the report", () => {
 		});
 	});
 
+	test("a run on the Everyday browser says so, with the profile its window opened in", () => {
+		const doc = buildRunReportFromCatalogRun({
+			id: "run_everyday",
+			appId: "app_1",
+			deviceId: "web-chrome-everyday",
+			platform: "web",
+			buildId: null,
+			status: "passed",
+			executionMode: "script",
+			lane: "direct",
+			browser: "Everyday Google Chrome 144.0.0.0",
+			browserProfileName: "Work",
+			viewport: "desktop",
+			error: null,
+			createdAt: 1,
+			startedAt: 1,
+			finishedAt: 2,
+			tests: [],
+		});
+		const row = "| Browser | Everyday Google Chrome 144.0.0.0 · profile Work |";
+		expect(formatRunReportMarkdown(doc)).toContain(row);
+		expect(formatRunReportGithubSummary(doc)).toContain(row);
+		expect(formatRunReportHtml(doc)).toContain("Everyday Google Chrome 144.0.0.0 · profile Work");
+		// The user's own profile is neither a Kept one nor clean.
+		expect(formatRunReportMarkdown(doc)).not.toContain("| Profile |");
+	});
+
 	test("omits the Screen row when the run has no Screen mode", () => {
 		expect(formatRunReportMarkdown(sampleDoc())).not.toContain("| Screen |");
 		expect(formatRunReportGithubSummary(sampleDoc())).not.toContain("| Screen |");

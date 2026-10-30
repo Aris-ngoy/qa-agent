@@ -19,13 +19,18 @@ export const runs = sqliteTable("runs", {
 	/** direct — Lane that ran. Null on rows from before Lanes, or that ran on a removed Lane. */
 	lane: text("lane"),
 	laneWarning: text("lane_warning"),
-	/** The browser a web Run drove, with its version. Null on other platforms. */
+	/**
+	 * The browser a web Run drove, with its version; `Everyday Google Chrome 144.0…` for the
+	 * user's Everyday browser. Null on other platforms.
+	 */
 	browser: text("browser"),
+	/** The Everyday browser's profile a Run's window opened in. Null elsewhere, or when unknown. */
+	browserProfileName: text("browser_profile_name"),
 	/** The Viewport preset a web Run's session emulated. Null on other platforms. */
 	viewport: text("viewport"),
 	/** kept | clean — the browser profile the create-run request asked for. Null when it did not. */
 	requestedProfile: text("requested_profile"),
-	/** kept | clean — the browser profile a web Run used. Null on other platforms. */
+	/** kept | clean — the browser profile a web Run used. Null on other platforms and the Everyday browser. */
 	profile: text("profile"),
 	/** 1 when the Run was started asking to record every case, whatever the cases say. */
 	recordVideo: integer("record_video").notNull().default(0),

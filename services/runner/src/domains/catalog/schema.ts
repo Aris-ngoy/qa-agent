@@ -22,6 +22,15 @@ export const apps = sqliteTable(
 	(table) => [uniqueIndex("apps_prefix_idx").on(table.prefix)],
 );
 
+/**
+ * The Apps whose user accepted the Everyday browser's first-use warning, by App id, or
+ * `default` for connects with no App. Not a foreign key, since `default` is no App.
+ */
+export const everydayWarningAcceptances = sqliteTable("everyday_warning_acceptances", {
+	appId: text("app_id").primaryKey(),
+	acceptedAt: integer("accepted_at").notNull(),
+});
+
 export const tags = sqliteTable(
 	"tags",
 	{

@@ -36,6 +36,11 @@ function ensureSchema(sqlite: Database): void {
 			updated_at INTEGER NOT NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS everyday_warning_acceptances (
+			app_id TEXT PRIMARY KEY NOT NULL,
+			accepted_at INTEGER NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS tags (
 			id TEXT PRIMARY KEY NOT NULL,
 			app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
@@ -220,6 +225,7 @@ function migrateRunLane(sqlite: Database): void {
 	addColumnIfMissing(sqlite, "runs", "viewport", "viewport TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "requested_profile", "requested_profile TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "profile", "profile TEXT", runCols);
+	addColumnIfMissing(sqlite, "runs", "browser_profile_name", "browser_profile_name TEXT", runCols);
 }
 
 function migrateRecording(sqlite: Database): void {

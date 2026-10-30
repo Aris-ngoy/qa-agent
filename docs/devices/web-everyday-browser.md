@@ -2,7 +2,7 @@
 
 ## Goal
 
-Let a user test in their real session: the account, extensions and state their own browser already has. Yoqa connects to the user's running Chromium browser on its default profile through the consent toggle at `chrome://inspect/#remote-debugging`, and drives a page in a window of its own ([#370](https://github.com/Aris-ngoy/qa-agent/issues/370), the tracer bullet of [ADR-0009](../adr/0009-everyday-browser-consent-attach.md), under [#339](https://github.com/Aris-ngoy/qa-agent/issues/339)). The Kept profile ([web-kept-profile.md](./web-kept-profile.md)) stays the default way in. Vocabulary: **Everyday browser**, **Browser device**, **Device Session**, **Viewport preset**, **Frame Feed** in [`CONTEXT.md`](../../CONTEXT.md).
+Let a user test in their real session: the account, extensions and state their own browser already has. Yoqa connects to the user's running Chromium browser on its default profile through the consent toggle at `chrome://inspect/#remote-debugging`, and drives a page in a window of its own ([#370](https://github.com/Aris-ngoy/qa-agent/issues/370), the tracer bullet of [ADR-0009](../adr/0009-everyday-browser-consent-attach.md), under [#339](https://github.com/Aris-ngoy/qa-agent/issues/339)). Then keep that session safe and the user's consent explicit: no wipes, Runs only when named, and a first-use warning per App ([#371](https://github.com/Aris-ngoy/qa-agent/issues/371)). The Kept profile ([web-kept-profile.md](./web-kept-profile.md)) stays the default way in. Vocabulary: **Everyday browser**, **Browser device**, **Device Session**, **Viewport preset**, **Frame Feed** in [`CONTEXT.md`](../../CONTEXT.md).
 
 ## Plan summary
 
@@ -14,6 +14,10 @@ Let a user test in their real session: the account, extensions and state their o
 - **Disconnect closes only Yoqa's pages** (its page, and any popup chain it followed), then the socket. The browser, the user's tabs and the toggle stay as they were. The user closing Yoqa's window is a Dead Session, as on any web device.
 - **The profile name** the window opened in is read from the browser's `Local State`: `profile.info_cache[profile.last_used].name`, `Default` when none was last used, or null when the file cannot be read. It is on the connect answer as `browserProfileName`.
 - Rejected: probing with a WebSocket in discovery (prompts on every list), retrying a failed connect (prompts again), and attaching to the user's front tab (ADR-0009).
+- **No wipes (#371).** restart-app there closes Yoqa's page and opens the Web URL again in a new window of its own, without `Storage.clearDataForOrigin`, which would sign the user out of their real account. No other lane call clears cookies, storage or cache either. The Action's result says `storage: "kept"` (`"cleared"` on a launched or attached browser).
+- **The first-use warning, per App.** `POST /devices/connect` to an Everyday browser answers 428 `EVERYDAY_WARNING_REQUIRED` with the warning text and the App, before opening any socket, until a request says `acceptEverydayWarning: true` for that App (`default` with no App). The acceptance is kept in the catalog's `everyday_warning_acceptances` table, keyed by App id, so the desktop and the CLI share it; a table rather than an `apps` column because `default` is no App. Deleting an App deletes its row. Gated at the HTTP route, not in `connectDevice`, so the restart of an already-connected session from the servers list does not ask again.
+- **Runs only when named.** `createRun` on an Everyday device fails before the Run starts when its App has not accepted the warning, and when the Run resolves to `profile: clean` (from the request or a Case Script), with a message pointing to the launched browser's Kept profile for a clean start. `yoqa runs create` with no `--device` refuses to fall back to an Active Session on an Everyday browser. A Run adopts an Everyday Active Session whichever App it was connected for, since reopening would prompt again and there is only the user's profile.
+- **The report names it.** The Run stores `browser` as `Everyday <Browser> <version>` and the connect's `browserProfileName` (column `browser_profile_name`), and no `profile`: it is neither Kept nor clean. The report's Browser row reads `Everyday Google Chrome 144.0 · profile Work` in HTML, Markdown and the GitHub summary.
 
 ## What shipped
 
@@ -22,24 +26,31 @@ Let a user test in their real session: the account, extensions and state their o
 - `web-direct-lane.ts`: `openBrowser` resolves and connects all three ways in; an Everyday browser gets its own window, `browser` is its name with the version it reports (`Google Chrome 144.0…`), `browserProfileName` is set, and `quit` closes Yoqa's targets before the socket. `webDirectDeps` takes `everydayBrowsers` and `allowTimeoutMs` for tests.
 - `SessionOptions.signal`, passed from `POST /devices/connect` (`c.req.raw.signal`) through `connectDevice`. `browserProfileName` on `DeviceSession`, `ActiveSessionInfo` and `activeDeviceResponseSchema`.
 - `GET /devices?platform=web` (and `yoqa devices web`) lists the Everyday browsers after the launched ones.
+- #371: `restartApp` returns `{ storage }`, surfaced as `ActionResponse.storage`; `everyday-warning.ts` (`EVERYDAY_WARNING`, `EverydayWarningRequiredError`, `passEverydayWarning`); `isEverydayWarningAccepted` / `acceptEverydayWarning` in the catalog; `connectDeviceRequestSchema.acceptEverydayWarning`, `everydayWarningRequiredSchema` and the client's `everydayWarningRequired(error)` for #372 and #373; `Run.browserProfileName`; the CLI's `isEverydayDeviceId`, and `isWebDeviceId` takes Everyday ids. The fake CDP records every command's `methods`.
 - Fake CDP: `consent` mode (`/json/*` is 404, each socket waits for `allow()` / `deny()`), with `socketRequests()`, `createdTargets` and `attachedTargets`. The Lane contract suite gains `webEverydayLane`, an Everyday Chrome with a tab of the user's own.
 
 ## How to verify
 
 ```bash
 cd services/runner
-bun test src/domains/devices/chromium-everyday.test.ts src/domains/devices/web-direct-lane.test.ts src/domains/devices/active-session.test.ts src/domains/devices/lane-contract.test.ts
+bun test src/domains/devices/chromium-everyday.test.ts src/domains/devices/web-direct-lane.test.ts src/domains/devices/active-session.test.ts src/domains/devices/lane-contract.test.ts src/domains/runs/web-run.test.ts
+cd ../../packages && bun test runner-client/src/run-report.test.ts cli/src/runs-create-web.test.ts
 ```
+
+The Everyday tests in `web-direct-lane.test.ts` fail if any command matching `Storage.clear…`, `Network.clear…` or `Network.deleteCookies` reaches the browser; `web-run.test.ts` fakes an Everyday Chrome for a whole Run by mocking `findEverydayBrowsers`.
 
 By hand on a Mac with Chrome 144+ or Dia, with the runner up and the toggle on at `chrome://inspect/#remote-debugging`:
 
 ```bash
 yoqa devices web                       # web-chrome-everyday … ready
 curl -s localhost:<port>/devices/connect -H 'content-type: application/json' \
-  -d '{"deviceId":"web-chrome-everyday","platform":"web"}'   # click Allow in Chrome
+  -d '{"deviceId":"web-chrome-everyday","platform":"web"}'   # 428: the first-use warning
+curl -s localhost:<port>/devices/connect -H 'content-type: application/json' \
+  -d '{"deviceId":"web-chrome-everyday","platform":"web","acceptEverydayWarning":true}'   # click Allow in Chrome
 yoqa action open-url --url https://example.com
 yoqa action tap --label "More information..."
 yoqa screenshot /tmp/page.png          # Yoqa's page only, never your tabs
+yoqa action restart-app --app-id https://example.com --json   # "storage": "kept"; still signed in
 yoqa devices disconnect                # Yoqa's window closes; Chrome and your tabs stay
 ```
 
@@ -50,7 +61,7 @@ Click Deny instead, or wait 60 s, and the connect fails with its own message. Tu
 ## Follow-ups
 
 - The hand check above, and the profile question, on Dia or Chrome 144+.
-- Limits and the per-App first-use warning: no storage wipe on restart-app, `profile: clean` an error, Runs use it only when named ([#371](https://github.com/Aris-ngoy/qa-agent/issues/371)).
+- The desktop and CLI showing the warning and connecting with `acceptEverydayWarning` (#372, #373): until then `yoqa devices connect web-chrome-everyday` only reports the 428.
 - Desktop: the picker, "Click Allow in <Browser>" while waiting, and cancel ([#372](https://github.com/Aris-ngoy/qa-agent/issues/372)).
 - CLI: connect with the warning and `--yes`, attach by port as CLI/CI only ([#373](https://github.com/Aris-ngoy/qa-agent/issues/373)).
 - Windows paths ([#354](https://github.com/Aris-ngoy/qa-agent/issues/354)) and picking a profile other than the default context are not decided.

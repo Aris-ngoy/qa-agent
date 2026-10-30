@@ -146,6 +146,8 @@ export type FakeCdp = {
 	dialogAnswers: Array<{ accept: boolean; promptText?: string }>;
 	/** Origins whose storage was cleared. */
 	clearedOrigins: string[];
+	/** The method of every command the browser was sent, in order. */
+	methods: string[];
 	/** Every `Page.startScreencast`, with the page it started on. */
 	screencastStarts: Array<{ targetId: string } & Record<string, unknown>>;
 	/** Every screencast frame sent, in order. */
@@ -307,6 +309,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const navigations: string[] = [];
 	const dialogAnswers: FakeCdp["dialogAnswers"] = [];
 	const clearedOrigins: string[] = [];
+	const methods: string[] = [];
 	const screencastStarts: FakeCdp["screencastStarts"] = [];
 	const screencastFrames: FakeScreencastFrame[] = [];
 	let nextScreencastFrame = 1;
@@ -872,6 +875,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			},
 			message(ws, raw) {
 				const message = JSON.parse(String(raw)) as Message;
+				methods.push(message.method);
 				const session = message.sessionId ? { sessionId: message.sessionId } : {};
 				try {
 					ws.send(JSON.stringify({ id: message.id, result: answer(message), ...session }));
@@ -898,6 +902,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		navigations,
 		dialogAnswers,
 		clearedOrigins,
+		methods,
 		screencastStarts,
 		screencastFrames,
 		screencasting: (targetId) => {

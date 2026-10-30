@@ -17,7 +17,15 @@ import {
 import { and, asc, desc, eq, max } from "drizzle-orm";
 import { parseCaseScript } from "../runs/script";
 import { getCatalogDb } from "./db";
-import { apps, caseFlows, caseTags, cases, flows, tags } from "./schema";
+import {
+	apps,
+	caseFlows,
+	caseTags,
+	cases,
+	everydayWarningAcceptances,
+	flows,
+	tags,
+} from "./schema";
 
 function newId(prefix: string): string {
 	return `${prefix}_${crypto.randomUUID()}`;
@@ -360,7 +368,24 @@ export async function deleteApp(appId: string): Promise<void> {
 	await db.delete(cases).where(eq(cases.appId, appId));
 	await db.delete(flows).where(eq(flows.appId, appId));
 	await db.delete(tags).where(eq(tags.appId, appId));
+	await db.delete(everydayWarningAcceptances).where(eq(everydayWarningAcceptances.appId, appId));
 	await db.delete(apps).where(eq(apps.id, appId));
+}
+
+/** Whether the Everyday browser's first-use warning was accepted for an App id, or `default`. */
+export async function isEverydayWarningAccepted(appId: string): Promise<boolean> {
+	const row = await getCatalogDb().query.everydayWarningAcceptances.findFirst({
+		where: eq(everydayWarningAcceptances.appId, appId),
+	});
+	return row !== undefined;
+}
+
+/** Remember that the Everyday browser's first-use warning was accepted for an App id, or `default`. */
+export async function acceptEverydayWarning(appId: string): Promise<void> {
+	await getCatalogDb()
+		.insert(everydayWarningAcceptances)
+		.values({ appId, acceptedAt: Date.now() })
+		.onConflictDoNothing();
 }
 
 export async function listCases(appId: string): Promise<CatalogCase[]> {

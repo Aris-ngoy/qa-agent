@@ -35,9 +35,10 @@ const CASE: CatalogCase = {
 	updatedAt: 1,
 };
 
-/** A runner with one App and one case, with no Active Session, that records each Run asked for. */
+/** A runner with one App and one case, and no Active Session until one is set, that records each Run asked for. */
 function fakeRunner() {
 	const runs: CreateRunRequest[] = [];
+	let activeDevice: { deviceId: string; platform: "web" } | null = null;
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
 		port: 0,
@@ -45,7 +46,18 @@ function fakeRunner() {
 			const { pathname } = new URL(request.url);
 			if (pathname === "/apps") return Response.json({ apps: [APP] });
 			if (pathname === `/apps/${APP.id}/cases`) return Response.json({ cases: [CASE] });
-			if (pathname === "/devices/active") return Response.json({ error: "none" }, { status: 404 });
+			if (pathname === "/devices/active") {
+				if (!activeDevice) return Response.json({ error: "none" }, { status: 404 });
+				return Response.json({
+					...activeDevice,
+					connectedAt: 1,
+					streamReady: false,
+					streamState: "none",
+					streamUrl: "/stream.mjpeg",
+					heldByRun: false,
+					lane: "direct",
+				});
+			}
 			if (request.method === "POST" && pathname === "/runs") {
 				const body = (await request.json()) as CreateRunRequest;
 				runs.push(body);
@@ -68,7 +80,14 @@ function fakeRunner() {
 			return Response.json({ error: "not found" }, { status: 404 });
 		},
 	});
-	return { runs, url: `http://127.0.0.1:${server.port}`, stop: () => server.stop(true) };
+	return {
+		runs,
+		url: `http://127.0.0.1:${server.port}`,
+		stop: () => server.stop(true),
+		connect: (deviceId: string | null) => {
+			activeDevice = deviceId ? { deviceId, platform: "web" } : null;
+		},
+	};
 }
 
 async function yoqa(...args: string[]): Promise<void> {
@@ -143,5 +162,51 @@ describe("yoqa runs create on a web device", () => {
 			runner.url,
 		);
 		expect(runner.runs.at(-1)).toMatchObject({ deviceId: "web-chrome", profile: "clean" });
+	});
+
+	test("runs on the Everyday browser when --device names it", async () => {
+		await yoqa(
+			"runs",
+			"create",
+			"shop",
+			"--cases",
+			"1",
+			"--device",
+			"web-chrome-everyday",
+			"--no-github-output",
+			"--base-url",
+			runner.url,
+		);
+		expect(runner.runs.at(-1)).toMatchObject({
+			deviceId: "web-chrome-everyday",
+			platform: "web",
+		});
+	});
+
+	test("with no --device, never runs on the Everyday browser the session is connected to", async () => {
+		const error = console.error;
+		const errors: string[] = [];
+		console.error = (message: string) => errors.push(message);
+		runner.connect("web-chrome-everyday");
+		const before = runner.runs.length;
+		try {
+			await yoqa(
+				"runs",
+				"create",
+				"shop",
+				"--cases",
+				"1",
+				"--no-github-output",
+				"--base-url",
+				runner.url,
+			);
+		} finally {
+			console.error = error;
+			runner.connect(null);
+		}
+		expect(runner.runs).toHaveLength(before);
+		expect(process.exitCode).toBe(1);
+		expect(errors[0]).toContain("--device web-chrome-everyday");
+		process.exitCode = 0;
 	});
 });

@@ -95,6 +95,22 @@ A Run launches the browser on its App's kept profile, so it starts signed in whe
 yoqa runs create APP --cases 3 --device web-chrome --profile clean --wait
 ```
 
+## Runs on your Everyday browser
+
+Your **Everyday browser** (`web-chrome-everyday`, `web-edge-everyday`, `web-brave-everyday`, `web-chromium-everyday`, `web-dia-everyday`) is your own running browser, on your default profile, connected through the toggle at `chrome://inspect/#remote-debugging` and your **Allow** in the browser. Yoqa drives a page in a window of its own and never your tabs.
+
+There the agent acts in your real, signed-in accounts, so it comes with limits:
+
+- **A warning, once per App.** The first connect for an App fails with a warning about acting in your own session, until you accept it. It is remembered for that App, in the desktop app and the CLI alike.
+- **Named only.** A Run uses your Everyday browser only when you name it, as `--device web-chrome-everyday`. `yoqa runs create` without `--device` never picks it, even when the session is on it. A Run for an App that has not accepted the warning fails before it starts.
+- **Nothing is wiped.** No Action clears your cookies, storage or cache. `restart-app` reopens the Web URL with your storage kept, and says so in its result.
+- **No clean profile.** A Run with `--profile clean`, or a case with `profile: clean`, fails before it starts. For a clean start, run on the browser Yoqa launches (`web-chrome`) on its kept profile, with `--profile clean` or after `yoqa devices web reset-profile`.
+- **Reports say so.** The report's Browser row reads `Everyday Google Chrome 144.0 · profile Work`, so a result from your real session is not taken for a clean one.
+
+```bash
+yoqa runs create APP --cases 1,2 --device web-chrome-everyday --wait   # click Allow in Chrome
+```
+
 ## What each Action does on web
 
 Coordinates are 0–1000 relative to the page viewport, never the browser window. The screenshot is the viewport only, with no tabs or address bar.
@@ -110,7 +126,7 @@ Coordinates are 0–1000 relative to the page viewport, never the browser window
 | `alert` | Accepts or dismisses the page's JavaScript dialog (`alert`, `confirm`, `prompt`, "Leave site?"). |
 | `activate-app` | Brings a page already on the Web URL's origin to the front, or navigates to the Web URL. |
 | `terminate-app` | Closes the App's page. The session moves to a blank page. |
-| `restart-app` | Closes the page, clears storage and cookies for its origin, and loads the Web URL fresh. |
+| `restart-app` | Closes the page, clears storage and cookies for its origin, and loads the Web URL fresh. On your Everyday browser it clears nothing and only reopens the Web URL. |
 | `background-app` | **Not supported.** It fails, so a cross-platform case never passes a step it did not run. |
 
 On web, `--app-id` is the Web URL:

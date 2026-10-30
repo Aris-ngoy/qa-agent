@@ -6,6 +6,7 @@ import {
 	type ActionResultScreenshot,
 	type ActiveDeviceResponse,
 	type AiProvider,
+	type AppStorage,
 	BRANCH_DEFAULT_TIMEOUT_MS,
 	type BrowserProfile,
 	type Build,
@@ -44,6 +45,7 @@ import {
 	type DoctorRepairResponse,
 	type DoctorReport,
 	type DoctorStep,
+	type EverydayWarningRequired,
 	type HealthResponse,
 	type IosSigningCheckRequest,
 	type IosSigningCheckResponse,
@@ -116,6 +118,7 @@ import {
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	aiProviderSchema,
+	appStorageSchema,
 	browserProfileSchema,
 	buildSchema,
 	callUsageSchema,
@@ -149,6 +152,7 @@ import {
 	doctorRepairRequestSchema,
 	doctorRepairResponseSchema,
 	doctorReportSchema,
+	everydayWarningRequiredSchema,
 	healthResponseSchema,
 	iosSigningCheckRequestSchema,
 	iosSigningCheckResponseSchema,
@@ -216,6 +220,7 @@ export {
 	actionResponseSchema,
 	activeDeviceResponseSchema,
 	aiProviderSchema,
+	appStorageSchema,
 	buildSchema,
 	callUsageSchema,
 	capabilitySchema,
@@ -257,6 +262,7 @@ export {
 	doctorRepairResponseSchema,
 	developerNotTrustedSchema,
 	doctorReportSchema,
+	everydayWarningRequiredSchema,
 	iosSigningCheckRequestSchema,
 	iosSigningCheckResponseSchema,
 	iosSigningSourceSchema,
@@ -318,6 +324,7 @@ export {
 	type ActionResultScreenshot,
 	type ActiveDeviceResponse,
 	type AiProvider,
+	type AppStorage,
 	type Build,
 	type CallUsage,
 	type Capability,
@@ -356,6 +363,7 @@ export {
 	type DoctorRepairRequest,
 	type DoctorRepairResponse,
 	type DoctorReport,
+	type EverydayWarningRequired,
 	type DeveloperNotTrusted,
 	type DoctorStep,
 	type IosSigningCheckRequest,
@@ -597,6 +605,13 @@ export class RunnerRequestError extends Error {
 		super(message);
 		this.name = "RunnerRequestError";
 	}
+}
+
+/** The 428 a connect answers when the App has not accepted the Everyday browser's warning; else null. */
+export function everydayWarningRequired(error: unknown): EverydayWarningRequired | null {
+	if (!(error instanceof RunnerRequestError) || error.status !== 428) return null;
+	const parsed = everydayWarningRequiredSchema.safeParse(error.body);
+	return parsed.success ? parsed.data : null;
 }
 
 /** The 428 a connect answers when the iPhone does not trust the developer yet; else null. */

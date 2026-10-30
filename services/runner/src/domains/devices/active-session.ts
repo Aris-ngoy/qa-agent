@@ -12,6 +12,7 @@ import {
 	installedBrowserIdOf,
 	resetKeptProfiles,
 } from "./chromium-browsers";
+import { everydayBrowserIdOf } from "./chromium-everyday";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
 import { type DeviceSession, createDeviceSession } from "./session";
 
@@ -373,8 +374,14 @@ export async function acquireSessionForRun(options: {
 	// A replacement reopens at the preset the user connected at.
 	const viewport = onDevice?.session.viewport;
 
-	// On web the session must also be on the Run's App and profile, or the browser reopens on them.
-	if (onDevice && (onDevice.platform !== "web" || isOnProfile(onDevice, options))) {
+	// On web the session must also be on the Run's App and profile, or the browser reopens on
+	// them. The Everyday browser has only the user's profile, and reopening asks for Allow again.
+	if (
+		onDevice &&
+		(onDevice.platform !== "web" ||
+			everydayBrowserIdOf(onDevice.deviceId) !== null ||
+			isOnProfile(onDevice, options))
+	) {
 		// Health-check before adopting: a stale session (device restarted,
 		// its Lane dropped it) must not fail the whole run.
 		const healthy = await onDevice.session

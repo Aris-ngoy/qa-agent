@@ -403,7 +403,8 @@ describe("web Direct lane: app lifecycle", () => {
 	test("restart-app clears the App origin's storage, then loads the App again", async () => {
 		const { browser, session } = await attach();
 		await performAction(session, { kind: "open-url", url: "https://app.example.com/cart" });
-		await performAction(session, { kind: "restart-app", appId: APP_URL });
+		const result = await performAction(session, { kind: "restart-app", appId: APP_URL });
+		expect(result.storage).toBe("cleared");
 		expect(browser.clearedOrigins).toEqual(["https://app.example.com"]);
 		expect(browser.navigations).toEqual(["https://app.example.com/cart", APP_URL]);
 		expect(browser.pages()).toEqual([APP_URL]);
@@ -802,6 +803,10 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 	});
 });
 
+/** CDP commands that clear a browser's cookies, storage or cache. */
+const WIPES =
+	/^(Storage\.clear|Network\.clear|Network\.deleteCookies|Storage\.deleteStorageBucket)/;
+
 /**
  * The user's Chrome with the remote-debugging toggle on and a tab of their own open, and a
  * Device Session on its Everyday browser, which the user allows.
@@ -916,6 +921,44 @@ describe("web Direct lane: the Everyday browser", () => {
 		const status = await fetch(`http://127.0.0.1:${browser.port}/json/version`);
 		expect(status.status).toBe(404);
 		browser.kill();
+	});
+
+	test("restart-app keeps the user's storage: it reopens the Web URL and clears nothing", async () => {
+		const { browser, session, own } = await everyday();
+		await performAction(session, { kind: "open-url", url: "https://app.example.com/cart" });
+		const result = await performAction(session, { kind: "restart-app", appId: APP_URL });
+		expect(result.storage).toBe("kept");
+		expect(browser.clearedOrigins).toEqual([]);
+		expect(browser.methods.filter((method) => WIPES.test(method))).toEqual([]);
+		expect(browser.navigations).toEqual(["https://app.example.com/cart", APP_URL]);
+		expect(browser.pages()).toEqual(["about:blank", "https://mail.example.com/inbox", APP_URL]);
+		// The App's page opened again in a window of Yoqa's own.
+		expect(browser.createdTargets).toEqual([
+			{ url: "about:blank", newWindow: true },
+			{ url: "about:blank", newWindow: true },
+		]);
+		expect(browser.attachedTargets[0]).toBe(own);
+		await session.quit();
+	});
+
+	test("no Action clears the user's cookies, storage or cache", async () => {
+		const { browser, session } = await everyday();
+		for (const action of [
+			{ kind: "open-url", url: APP_URL },
+			{ kind: "tap", x: 500, y: 500 },
+			{ kind: "input", x: 500, y: 500, text: "hello\n" },
+			{ kind: "swipe", x: 500, y: 800, x2: 500, y2: 200 },
+			{ kind: "key", key: "Escape" },
+			{ kind: "terminate-app", appId: APP_URL },
+			{ kind: "activate-app", appId: APP_URL },
+			{ kind: "restart-app", appId: APP_URL },
+		] as const) {
+			await performAction(session, action);
+		}
+		await getScreen(session);
+		await session.captureFrame();
+		await session.quit();
+		expect(browser.methods.filter((method) => WIPES.test(method))).toEqual([]);
 	});
 
 	test("a Deny fails the connect once, and nothing is opened in the browser", async () => {
