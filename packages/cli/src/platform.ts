@@ -9,7 +9,7 @@ import {
 export const PLATFORM_DEVICES_DESCRIPTION: Record<DevicePlatform, string> = {
 	ios: "List iOS devices and simulators",
 	android: "List Android devices and emulators",
-	web: "List installed web browsers (attach a Chromium you started by naming its port: chromium-cdp-<port>)",
+	web: "List installed web browsers and your Everyday browsers (CI: attach a Chromium you started by naming its port, chromium-cdp-<port>)",
 };
 
 /** A `--platform` value, or an error naming the platforms the CLI takes. */
@@ -25,12 +25,23 @@ export function parsePlatform(value: string | undefined): DevicePlatform {
 /** A web device id: an installed browser (`web-chrome`) or a user-started Chromium's port. */
 const WEB_DEVICE_ID = /^(web-(chrome|edge|brave|chromium)|chromium-cdp-\d+)$/;
 
-/** An Everyday browser's device id (`web-chrome-everyday`). */
-const EVERYDAY_DEVICE_ID = /^web-(chrome|edge|brave|chromium|dia)-everyday$/;
+/** Each Everyday browser's device id, and the browser its Allow prompt appears in. */
+const EVERYDAY_BROWSER_NAMES = new Map([
+	["web-chrome-everyday", "Google Chrome"],
+	["web-edge-everyday", "Microsoft Edge"],
+	["web-brave-everyday", "Brave Browser"],
+	["web-chromium-everyday", "Chromium"],
+	["web-dia-everyday", "Dia"],
+]);
+
+/** The browser an Everyday browser's device id names (`Google Chrome`), or null. */
+export function everydayBrowserName(deviceId: string): string | null {
+	return EVERYDAY_BROWSER_NAMES.get(deviceId) ?? null;
+}
 
 /** An Everyday browser's device id: the user's own browser, used only when named. */
 export function isEverydayDeviceId(deviceId: string): boolean {
-	return EVERYDAY_DEVICE_ID.test(deviceId);
+	return everydayBrowserName(deviceId) !== null;
 }
 
 /** Whether a device id names a web device, whose platform needs no `--platform`. */
