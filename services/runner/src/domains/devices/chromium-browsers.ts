@@ -320,8 +320,8 @@ async function readActivePort(portFile: string): Promise<string | null> {
 /**
  * Launch `browser` on its App's Kept profile, or a clean one, with
  * `--remote-debugging-port=0`, and resolve once it has written the port it picked to the
- * profile's `DevToolsActivePort` (under `User Data/` for Dia). A browser that exits or stays silent first is killed, a
- * clean profile deleted, and the launch fails.
+ * profile's `DevToolsActivePort` (under `User Data/` for Dia). A browser that exits or stays
+ * silent first is killed, a clean profile deleted, and the launch fails.
  */
 export async function launchChromium(
 	browser: InstalledBrowser,
@@ -372,9 +372,10 @@ export async function launchChromium(
 		return stopping;
 	};
 
+	const portFile = activePortFile(browser.id, profileDir);
 	const deadline = Date.now() + readyTimeoutMs;
 	while (true) {
-		const socketUrl = await readActivePort(activePortFile(browser.id, profileDir));
+		const socketUrl = await readActivePort(portFile);
 		if (socketUrl) {
 			running.add(browser.id);
 			return { socketUrl, profileDir, exited, stop };
