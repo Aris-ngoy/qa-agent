@@ -36,6 +36,12 @@ describe("connectPlatform", () => {
 		expect(connectPlatform("web-dia-everyday", undefined)).toBe("web");
 	});
 
+	test("a Firefox or Safari id is web, so the runner says why it is not supported", () => {
+		for (const id of ["web-firefox", "web-safari", "web-firefox-everyday", "web-safari-everyday"]) {
+			expect(connectPlatform(id, undefined)).toBe("web");
+		}
+	});
+
 	test("an explicit --platform wins", () => {
 		expect(connectPlatform("emulator-5554", "android")).toBe("android");
 		expect(connectPlatform("chromium-cdp-9222", "web")).toBe("web");

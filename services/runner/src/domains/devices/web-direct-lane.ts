@@ -225,8 +225,9 @@ type OpenedBrowser = {
 /** Firefox and Safari device ids, refused with the reason (ADR-0010) rather than as unknown. */
 const UNSUPPORTED_BROWSER_ID = /^web-(firefox|safari)(-everyday)?$/;
 
-const WEB_DEVICE_IDS =
-	"A web device is an installed browser (web-chrome, web-edge, web-brave, web-chromium), its Everyday browser (web-chrome-everyday), or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>";
+/** The error for a web device id that names nothing: the kinds of web device id there are. */
+const WEB_DEVICE_ID_HINT =
+	"A web device is an installed browser (web-chrome, web-edge, web-brave, web-chromium), its Everyday browser (web-chrome-everyday, web-dia-everyday, …), or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>";
 
 /**
  * Connect to the browser a web device id names: a Yoqa-owned instance of an installed
@@ -263,8 +264,8 @@ async function openBrowser(
 	if (browserId === null) {
 		throw new Error(
 			UNSUPPORTED_BROWSER_ID.test(deviceId)
-				? `Firefox and Safari are not supported: the web lane drives Chromium browsers over CDP (ADR-0010). ${WEB_DEVICE_IDS}`
-				: WEB_DEVICE_IDS,
+				? `Firefox and Safari are not supported yet: the web lane drives Chromium browsers over CDP (ADR-0010). ${WEB_DEVICE_ID_HINT}`
+				: WEB_DEVICE_ID_HINT,
 		);
 	}
 	const browser = (await deps.installedBrowsers()).find((installed) => installed.id === browserId);
