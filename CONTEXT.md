@@ -15,8 +15,12 @@ The control path a Device Session uses to drive its device. A Lane is Direct onl
 _Avoid_: driver (Provider drivers), backend (runner / cloud), adapter, transport, engine
 
 **Browser device**:
-A Chromium-family browser (Chrome, Edge, Brave, Chromium) as a `web` device. A browser Yoqa launches uses its App's Kept profile, and disconnecting quits it. A browser the user started with remote debugging on a non-default profile is attached by naming its debug port (`chromium-cdp-<port>`); ports are never scanned. Disconnecting an attached browser leaves it open.
+A Chromium-family browser (Chrome, Edge, Brave, Chromium) as a `web` device. It has three ways in. A browser Yoqa launches uses its App's Kept profile, and disconnecting quits it; this is the default. An Everyday browser is the user's own, attached by consent. From the CLI or CI, a browser the user started with remote debugging on a non-default profile is attached by naming its debug port (`chromium-cdp-<port>`); ports are never scanned. Disconnecting an attached browser leaves it open.
 _Avoid_: tab, page (one page of it is what a Device Session drives), web driver
+
+**Everyday browser**:
+The user's own running Chromium browser on its default profile, attached by consent: the user turns on the remote-debugging toggle at `chrome://inspect/#remote-debugging` and clicks Allow on each connect. Yoqa never launches, quits or reconfigures it. Yoqa drives only a page in its own window, never the user's tabs, and a Run uses it only when it names that device.
+_Avoid_: user profile, real browser, attach by port (that is the CLI path)
 
 **Kept profile**:
 The browser profile Yoqa keeps for one App and one browser, under `~/.yoqa/browser-profiles/<app>/<browser>/` (`default` when no App is named), so logins survive disconnects, reconnects and Runs. Disconnecting keeps it; a reset deletes it. A Run may ask for a clean profile instead: a throwaway one, deleted on disconnect. Never the user's own browser profile.
