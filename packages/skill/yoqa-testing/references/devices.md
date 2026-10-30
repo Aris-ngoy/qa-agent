@@ -43,7 +43,7 @@ yoqa devices connect <device_id> --platform android --app-package com.example.ap
 ## Web browsers
 
 A web device is a Chromium browser installed on this Mac. Its id is stable per browser: `web-chrome`,
-`web-edge`, `web-brave`, `web-chromium`. It is listed even when the browser is not running.
+`web-edge`, `web-brave`, `web-chromium`, `web-dia`. It is listed even when the browser is not running.
 
 ```
 browser    Google Chrome — 131.0.6778.86 [not running]

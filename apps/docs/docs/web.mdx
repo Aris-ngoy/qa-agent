@@ -1,6 +1,6 @@
 ---
 title: Web
-description: Test a web app or a React Native Web build in Chrome, Edge, Brave or Chromium.
+description: Test a web app or a React Native Web build in Chrome, Edge, Brave, Chromium or Dia.
 ---
 
 Web is a third platform next to iOS and Android. The same Test Cases, Flows, App context, CLI loop and reports work against a page in a Chromium browser. The agent decides each Action from screenshots, exactly as it does on a phone.
@@ -9,7 +9,7 @@ Yoqa drives the browser over the Chrome DevTools Protocol, with no WebDriver or 
 
 ## Web devices
 
-A web device is a Chromium browser installed on your Mac: Chrome, Edge, Brave or Chromium. Each one is listed even when it is not running, and its id stays the same across launches, so saved commands and CI scripts keep working.
+A web device is a Chromium browser installed on your Mac: Chrome, Edge, Brave, Chromium or Dia. Each one is listed even when it is not running, and its id stays the same across launches, so saved commands and CI scripts keep working.
 
 ```bash
 yoqa devices web                # every installed browser
@@ -23,6 +23,7 @@ yoqa devices web --json
 | Microsoft Edge | `web-edge` |
 | Brave Browser | `web-brave` |
 | Chromium | `web-chromium` |
+| Dia | `web-dia` |
 
 Connecting launches a **new window that Yoqa owns**, on a profile Yoqa keeps for each App and browser under `~/.yoqa/browser-profiles/`. It never touches your own tabs, cookies or logins. Disconnecting, or connecting another device, closes the window and keeps the profile, so you sign in to your app once and stay signed in on the next connect.
 
@@ -31,6 +32,8 @@ yoqa devices connect web-chrome   # --platform web is implied
 yoqa devices active
 yoqa devices disconnect
 ```
+
+A new Dia profile opens on Dia's sign-up wall, which has a reCAPTCHA the agent cannot pass. Sign in by hand once in Yoqa's Dia window; the kept profile remembers it, so later connects skip the wall.
 
 To start signed out, reset the kept profile while its window is closed. A reset while the window is open is refused.
 

@@ -29,6 +29,7 @@ describe("connectPlatform", () => {
 		expect(connectPlatform("web-edge", undefined)).toBe("web");
 		expect(connectPlatform("web-brave", undefined)).toBe("web");
 		expect(connectPlatform("web-chromium", undefined)).toBe("web");
+		expect(connectPlatform("web-dia", undefined)).toBe("web");
 	});
 
 	test("an Everyday browser is web, with no --platform", () => {

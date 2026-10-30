@@ -23,7 +23,7 @@ export function parsePlatform(value: string | undefined): DevicePlatform {
 }
 
 /** A web device id: an installed browser (`web-chrome`) or a user-started Chromium's port. */
-const WEB_DEVICE_ID = /^(web-(chrome|edge|brave|chromium)|chromium-cdp-\d+)$/;
+const WEB_DEVICE_ID = /^(web-(chrome|edge|brave|chromium|dia)|chromium-cdp-\d+)$/;
 
 /** Each Everyday browser's device id, and the browser its Allow prompt appears in. */
 const EVERYDAY_BROWSER_NAMES = new Map([

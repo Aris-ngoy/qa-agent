@@ -13,7 +13,7 @@ Say which browsers are web devices, and make a Firefox or Safari device id fail 
 ## What shipped
 
 - **Supported web devices:**
-  - Installed browsers Yoqa launches: `web-chrome`, `web-edge`, `web-brave`, `web-chromium` ([web-installed-browsers.md](./web-installed-browsers.md)).
+  - Installed browsers Yoqa launches: `web-chrome`, `web-edge`, `web-brave`, `web-chromium`, `web-dia` ([web-installed-browsers.md](./web-installed-browsers.md)). A fresh Dia profile opens on a sign-up wall with a reCAPTCHA: sign in by hand once, and the Kept profile keeps it (#352).
   - Everyday browsers attached by consent: `web-chrome-everyday`, `web-edge-everyday`, `web-brave-everyday`, `web-chromium-everyday`, `web-dia-everyday` ([web-everyday-browser.md](./web-everyday-browser.md)).
   - A Chromium started with a debug port, from the CLI and CI: `chromium-cdp-<port>` ([web-attach-by-port.md](./web-attach-by-port.md)).
 - **Not supported:** Firefox and Safari. `web-firefox`, `web-safari`, `web-firefox-everyday` and `web-safari-everyday` fail before anything is probed with "Firefox and Safari are not supported yet: the web lane drives Chromium browsers over CDP (ADR-0010)", followed by the list of web device ids. Any other unknown web id keeps the plain list. The CLI treats the four ids as web devices, so they need no `--platform`.

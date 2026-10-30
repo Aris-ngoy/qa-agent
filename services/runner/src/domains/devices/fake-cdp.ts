@@ -24,7 +24,7 @@
  * With `consent`, it is an everyday browser with the remote-debugging toggle on: `/json/*`
  * answers 404, and each WebSocket waits until the user allows or denies it.
  */
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { encodeRgbaPng } from "../runs/coord-grid";
@@ -978,9 +978,13 @@ export type FakeChromium = {
 /**
  * An installed Chromium at its launch protocol: each spawn starts a faked CDP endpoint and
  * writes its port to `DevToolsActivePort` in the `--user-data-dir` it was given, as Chrome
- * does for `--remote-debugging-port=0`. Killing it quits that browser.
+ * does for `--remote-debugging-port=0`, or in `portFileDir` under it, as Dia does. Killing
+ * it quits that browser.
  */
-export function fakeChromium(options: FakeCdpOptions): FakeChromium {
+export function fakeChromium(
+	options: FakeCdpOptions,
+	{ portFileDir = "" }: { portFileDir?: string } = {},
+): FakeChromium {
 	const fake: FakeChromium = {
 		launched: [],
 		browsers: [],
@@ -991,8 +995,9 @@ export function fakeChromium(options: FakeCdpOptions): FakeChromium {
 			if (!profile) throw new Error("fakeChromium: no --user-data-dir");
 			const browser = startFakeCdp(options);
 			fake.browsers.push(browser);
+			mkdirSync(join(profile, portFileDir), { recursive: true });
 			writeFileSync(
-				join(profile, "DevToolsActivePort"),
+				join(profile, portFileDir, "DevToolsActivePort"),
 				`${browser.port}\n/devtools/browser/fake\n`,
 			);
 			let exit: (code: number) => void = () => undefined;
