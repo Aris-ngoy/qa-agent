@@ -1,5 +1,6 @@
 import { showErrorToast } from "@/app/show-error-toast";
 import { activeDeviceSessionQueryKey } from "@/features/devices/hooks/usequery/use-active-device-session";
+import { isConnectCancelled } from "@/features/devices/utils/everyday-browser";
 import {
 	cancelRun,
 	createRun,
@@ -87,6 +88,8 @@ export function useStartRun() {
 			setActiveRun(run.id);
 		},
 		onError: (error) => {
+			// A Cancel on the Everyday browser's warning or Allow wait connected nothing: no error.
+			if (isConnectCancelled(error)) return;
 			showErrorToast(error, "Failed to start run");
 		},
 	});

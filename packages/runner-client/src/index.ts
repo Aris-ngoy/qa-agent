@@ -1182,7 +1182,14 @@ export class RunnerClient {
 		);
 	}
 
-	async connectDevice(request: ConnectDeviceRequest): Promise<ActiveDeviceResponse> {
+	/**
+	 * Connect a device. `signal` cancels the request; the runner then stops waiting, as for
+	 * the Everyday browser's Allow prompt.
+	 */
+	async connectDevice(
+		request: ConnectDeviceRequest,
+		options: { signal?: AbortSignal } = {},
+	): Promise<ActiveDeviceResponse> {
 		const body = connectDeviceRequestSchema.parse(request);
 		const json = await this.requestJson(
 			"/devices/connect",
@@ -1190,6 +1197,7 @@ export class RunnerClient {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(body),
+				signal: options.signal,
 			},
 			"Connect device failed",
 		);

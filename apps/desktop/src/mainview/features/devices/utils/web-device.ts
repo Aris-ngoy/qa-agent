@@ -1,5 +1,6 @@
 import type { Application } from "@/features/apps/data/api/apps";
 import type { SelectedDevice } from "@/features/devices/data/state/session-bar";
+import { isEverydayDeviceId } from "@/features/devices/utils/everyday-browser";
 import {
 	DEFAULT_VIEWPORT_PRESET,
 	type Device,
@@ -19,17 +20,9 @@ function portOf(value: string): number | null {
 }
 
 /**
- * The device id of a Chromium the user started with `--remote-debugging-port`, named by
- * that port (`chromium-cdp-9222`). Null when the value is not a port.
- */
-export function attachDeviceId(port: string): string | null {
-	const parsed = portOf(port.trim());
-	return parsed == null ? null : `chromium-cdp-${parsed}`;
-}
-
-/**
- * An attached browser as the bar shows and connects it. It is never listed (ports are
- * not scanned), so the bar names it from its id. Null for an id that names no port.
+ * A browser attached by port (`chromium-cdp-9222`, from the CLI) as the bar shows it. It is
+ * never listed (ports are not scanned), so the bar names it from its id. Null for an id
+ * that names no port.
  */
 export function attachedBrowser(
 	deviceId: string,
@@ -49,9 +42,15 @@ export function attachedBrowser(
 	};
 }
 
-/** The installed browsers in a device list: the picker's Browsers tab. */
+/**
+ * The browsers Yoqa launches, from a device list: the picker's Browsers tab. The Everyday
+ * browsers have a tab of their own, and attach by port is CLI/CI only (ADR-0009).
+ */
 export function browserDevices(devices: readonly Device[]): Device[] {
-	return devices.filter((device) => device.kind === "browser");
+	return devices.filter(
+		(device) =>
+			device.kind === "browser" && !isEverydayDeviceId(device.id) && !ATTACH_ID.test(device.id),
+	);
 }
 
 /** The Viewport preset a connect on `platform` names: web only, desktop by default. */

@@ -1,5 +1,6 @@
 import { SelectDeviceModal } from "@/features/devices/components/select-device-modal";
 import type { DevicePlatform, SelectedDevice } from "@/features/devices/data/state/session-bar";
+import { allowPrompt } from "@/features/devices/utils/everyday-browser";
 import { sessionPillLabel } from "@/features/devices/utils/session-status";
 import { withViewport } from "@/features/devices/utils/web-device";
 import { ServersDoctorPanel } from "@/features/doctor/components/servers-doctor-panel";
@@ -158,6 +159,9 @@ type SessionToolbarProps = {
 	onDisconnect: () => void;
 	/** A Run owns the shared session — watch-only until it finishes. */
 	viewOnly: boolean;
+	/** The Everyday browser a connect waits on for the user's Allow; Cancel aborts it. */
+	waitingForAllow: string | null;
+	onCancelConnect: () => void;
 };
 
 export function SessionToolbar({
@@ -171,6 +175,8 @@ export function SessionToolbar({
 	onRestart,
 	onDisconnect,
 	viewOnly,
+	waitingForAllow,
+	onCancelConnect,
 }: SessionToolbarProps) {
 	const pickerOpen$ = useObservable(false);
 	const serversOpen$ = useObservable(false);
@@ -294,6 +300,22 @@ export function SessionToolbar({
 						</button>
 					</>
 				)
+			) : waitingForAllow ? (
+				<span className="motion-fade-in inline-flex h-8 items-center gap-2">
+					<output className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-secondary-container/70 px-3 text-[13px] font-medium text-on-secondary-container">
+						<RestartIcon spinning />
+						{allowPrompt(waitingForAllow)}
+					</output>
+					<button
+						type="button"
+						className="inline-flex h-8 items-center rounded-lg border border-outline-variant px-3 text-xs font-medium text-on-surface transition-colors hover:bg-hover-surface"
+						onClick={() => {
+							onCancelConnect();
+						}}
+					>
+						Cancel
+					</button>
+				</span>
 			) : (
 				<>
 					{canRestart && device ? (

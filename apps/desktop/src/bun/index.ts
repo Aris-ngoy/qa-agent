@@ -10,6 +10,7 @@ import {
 	installSkill,
 	openSkillFolder,
 } from "./features/cli-environment";
+import { openRemoteDebuggingSetting } from "./features/everyday-browser";
 import { getIosToolchainSnapshot, setIosToolchainSelection } from "./features/ios-toolchain";
 import {
 	ensureLocalServices,
@@ -102,6 +103,7 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 				}
 				return { ok: Utils.openExternal(parsed.toString()) };
 			},
+			openRemoteDebuggingSetting: ({ browserId }) => openRemoteDebuggingSetting(browserId),
 			minimizeWindow: () => {
 				mainWindow.minimize();
 				return { ok: true };

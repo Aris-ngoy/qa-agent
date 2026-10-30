@@ -30,6 +30,7 @@ export type DesktopRpcClient = {
 		installSkill: () => Promise<InstallSkillResult>;
 		openSkillFolder: () => Promise<OpenPathResult>;
 		openExternalUrl: (params: { url: string }) => Promise<{ ok: boolean }>;
+		openRemoteDebuggingSetting: (params: { browserId: string }) => Promise<OpenPathResult>;
 		minimizeWindow: () => Promise<{ ok: true }>;
 		toggleMaximizeWindow: () => Promise<WindowState>;
 		closeWindow: () => Promise<{ ok: true }>;

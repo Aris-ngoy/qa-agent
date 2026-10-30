@@ -1,5 +1,6 @@
 import { showErrorToast } from "@/app/show-error-toast";
 import { useApps } from "@/features/apps/hooks/use-apps";
+import { EverydayWarningDialog } from "@/features/devices/components/everyday-warning-dialog";
 import { SessionBarTitle } from "@/features/devices/components/session-bar-title";
 import { SessionRunChip } from "@/features/devices/components/session-run-chip";
 import { SessionToolbar } from "@/features/devices/components/session-toolbar";
@@ -18,6 +19,13 @@ import {
 	useActiveDeviceSession,
 } from "@/features/devices/hooks/usequery/use-active-device-session";
 import { usePlatformDevices } from "@/features/devices/hooks/usequery/use-devices";
+import {
+	connectAcceptingWarning,
+	everydayBrowserName,
+	isConnectCancelled,
+	isEverydayDeviceId,
+	takeDisconnectNote,
+} from "@/features/devices/utils/everyday-browser";
 import { connectRequestFor } from "@/features/devices/utils/session-app";
 import {
 	deviceForSession,
@@ -55,6 +63,12 @@ export function SessionBar() {
 	const device = useValue(bar$.device);
 	const connecting = useValue(bar$.connecting);
 	const untrusted = useValue(bar$.untrusted);
+	const everydayWarning = useValue(bar$.everydayWarning);
+	const waitingForAllow = useValue(bar$.waitingForAllow);
+	/** Answers the open first-use warning: Continue or Cancel. */
+	const warningAnswerRef = useRef<((accepted: boolean) => void) | null>(null);
+	/** Cancels the connect in flight, as while an Everyday browser waits for Allow. */
+	const connectAbortRef = useRef<AbortController | null>(null);
 	/** The remembered device is offered once, at launch; a session or a pick replaces it. */
 	const rememberedPendingRef = useRef(remembered != null);
 
@@ -93,15 +107,49 @@ export function SessionBar() {
 	/** The session's device from the list; null while unlisted (the bar then shows its id). */
 	const sessionDevice = activeSession ? deviceForSession(activeSession, sessionDevices) : null;
 
+	/** Show the first-use warning for `browserName`; resolves to the user's answer. */
+	const askEverydayWarning = useCallback(
+		(browserName: string, warning: string) =>
+			new Promise<boolean>((resolve) => {
+				warningAnswerRef.current = resolve;
+				bar$.everydayWarning.set({ browserName, warning });
+			}),
+		[bar$],
+	);
+
+	const answerEverydayWarning = (accepted: boolean) => {
+		const answer = warningAnswerRef.current;
+		warningAnswerRef.current = null;
+		bar$.everydayWarning.set(null);
+		answer?.(accepted);
+	};
+
 	/**
 	 * Connect `target` for the selected app; the one connect path for Connect, Restart and
-	 * Run. The bar shows "Connecting…" meanwhile. Errors are the caller's to show.
+	 * Run. The bar shows "Connecting…" meanwhile, and "Click Allow in <Browser>" with Cancel
+	 * for an Everyday browser. An App's first connect to one asks the warning first. Errors
+	 * are the caller's to show; a Cancel rejects with one `isConnectCancelled` knows.
 	 */
 	const connectDevice = useCallback(
 		async (target: ConnectTarget, lane?: LaneName): Promise<ActiveDeviceResponse> => {
+			const everyday = target.platform === "web" && isEverydayDeviceId(target.id);
+			const browserName = everydayBrowserName(
+				devices?.find((listed) => listed.id === target.id)?.name ?? "your browser",
+			);
+			const controller = new AbortController();
+			connectAbortRef.current = controller;
 			bar$.connecting.set(true);
 			try {
-				const info = await connectRunnerDevice(connectRequestFor(target, selectedApp, lane));
+				const info = await connectAcceptingWarning(connectRequestFor(target, selectedApp, lane), {
+					connect: (request) => {
+						if (everyday) bar$.waitingForAllow.set(browserName);
+						return connectRunnerDevice(request, { signal: controller.signal });
+					},
+					confirm: ({ warning }) => {
+						bar$.waitingForAllow.set(null);
+						return askEverydayWarning(browserName, warning);
+					},
+				});
 				writeRememberedDevice({
 					platform: target.platform,
 					deviceId: target.id,
@@ -111,14 +159,22 @@ export function SessionBar() {
 				invalidateActiveDeviceSession();
 				return info;
 			} finally {
-				bar$.connecting.set(false);
+				if (connectAbortRef.current === controller) connectAbortRef.current = null;
+				batch(() => {
+					bar$.connecting.set(false);
+					bar$.waitingForAllow.set(null);
+				});
 			}
 		},
-		[invalidateActiveDeviceSession, queryClient, selectedApp, bar$],
+		[askEverydayWarning, devices, invalidateActiveDeviceSession, queryClient, selectedApp, bar$],
 	);
 
-	/** A connect error: the trust steps when the iPhone must trust the developer, else a toast. */
+	/**
+	 * A connect error: nothing when the user cancelled, the trust steps when the iPhone must
+	 * trust the developer, else a toast with the runner's message (a Deny, a timeout).
+	 */
 	const reportConnectError = (error: unknown, target: ConnectTarget, fallback: string) => {
+		if (isConnectCancelled(error)) return;
 		const info = developerNotTrusted(error);
 		if (info) {
 			bar$.untrusted.set({ info, target });
@@ -191,12 +247,20 @@ export function SessionBar() {
 	};
 
 	const handleDisconnect = async () => {
+		const disconnected = activeSession;
 		bar$.connecting.set(true);
 		try {
 			await disconnectDevice();
 			queryClient.setQueryData(activeDeviceSessionQueryKey, null);
 			invalidateActiveDeviceSession();
 			toast.success("Disconnected");
+			const note = disconnected
+				? takeDisconnectNote(
+						disconnected.deviceId,
+						everydayBrowserName(sessionDevice?.name ?? "your browser"),
+					)
+				: null;
+			if (note) toast.info(note, { timeout: 12_000 });
 		} catch (error) {
 			showErrorToast(error, "Failed to disconnect");
 		} finally {
@@ -232,12 +296,17 @@ export function SessionBar() {
 				onDisconnect={() => {
 					void handleDisconnect();
 				}}
+				waitingForAllow={waitingForAllow}
+				onCancelConnect={() => {
+					connectAbortRef.current?.abort();
+				}}
 				viewOnly={Boolean(activeSession?.heldByRun)}
 			/>
 			<SessionRunChip />
 			{showRun && !activeSession?.heldByRun ? (
 				<RunControls connectDevice={connectDevice} connecting={connecting} device={device} />
 			) : null}
+			<EverydayWarningDialog onAnswer={answerEverydayWarning} prompt={everydayWarning} />
 			<TrustDeveloperDialog
 				onClose={() => bar$.untrusted.set(null)}
 				onReconnect={() => {

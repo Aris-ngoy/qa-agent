@@ -84,6 +84,16 @@ export type DesktopRPC = {
 					ok: boolean;
 				};
 			};
+			/**
+			 * Open `chrome://inspect/#remote-debugging` in an Everyday browser (`web-dia-everyday`),
+			 * where the user turns remote debugging on. macOS only.
+			 */
+			openRemoteDebuggingSetting: {
+				params: {
+					browserId: string;
+				};
+				response: OpenPathResult;
+			};
 			/** Custom window controls (Windows has no inset native ones under `hiddenInset`). */
 			minimizeWindow: {
 				params: undefined;

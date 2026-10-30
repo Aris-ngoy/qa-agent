@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-	attachDeviceId,
 	attachedBrowser,
 	browserDevices,
 	resetProfileConfirmation,
@@ -20,21 +19,6 @@ const CHROME: Device = {
 	kind: "browser",
 	state: "not running",
 };
-
-describe("attachDeviceId", () => {
-	test("names a user-started Chromium by its debug port", () => {
-		expect(attachDeviceId("9222")).toBe("chromium-cdp-9222");
-		expect(attachDeviceId(" 9333 ")).toBe("chromium-cdp-9333");
-	});
-
-	test("is nothing for a value that is not a port", () => {
-		expect(attachDeviceId("")).toBeNull();
-		expect(attachDeviceId("0")).toBeNull();
-		expect(attachDeviceId("65536")).toBeNull();
-		expect(attachDeviceId("92a2")).toBeNull();
-		expect(attachDeviceId("-1")).toBeNull();
-	});
-});
 
 describe("attachedBrowser", () => {
 	test("is the browser on that port, at the chosen preset", () => {
@@ -58,6 +42,12 @@ describe("browserDevices", () => {
 	test("keeps only browsers, for the picker's Browsers tab", () => {
 		const phone: Device = { ...CHROME, id: "x", platform: "ios", kind: "simulator" };
 		expect(browserDevices([CHROME, phone])).toEqual([CHROME]);
+	});
+
+	test("leaves out the Everyday browsers, and attach by port, which is CLI only", () => {
+		const everyday: Device = { ...CHROME, id: "web-chrome-everyday", state: "ready" };
+		const attached: Device = { ...CHROME, id: "chromium-cdp-9222", name: "Chromium" };
+		expect(browserDevices([CHROME, everyday, attached])).toEqual([CHROME]);
 	});
 });
 

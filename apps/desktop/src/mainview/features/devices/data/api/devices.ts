@@ -1,3 +1,4 @@
+import { getDesktopRpc } from "@/app/desktop-rpc";
 import { getRunnerClient } from "@/app/runner-client";
 import type {
 	ActiveDeviceResponse,
@@ -31,9 +32,22 @@ export async function listAllDevices(): Promise<Device[]> {
 	return [...ios, ...android, ...web];
 }
 
-export async function connectDevice(request: ConnectDeviceRequest): Promise<ActiveDeviceResponse> {
+/** Connect a device; `signal` cancels it, as while an Everyday browser waits for Allow. */
+export async function connectDevice(
+	request: ConnectDeviceRequest,
+	options: { signal?: AbortSignal } = {},
+): Promise<ActiveDeviceResponse> {
 	const client = await getRunnerClient();
-	return client.connectDevice(request);
+	return client.connectDevice(request, options);
+}
+
+/**
+ * Open `chrome://inspect/#remote-debugging` in the Everyday browser `browserId` names, so
+ * the user can turn remote debugging on. Rejects with the host's reason when it could not.
+ */
+export async function openRemoteDebuggingSetting(browserId: string): Promise<void> {
+	const result = await getDesktopRpc().request.openRemoteDebuggingSetting({ browserId });
+	if (!result.ok) throw new Error(result.error);
 }
 
 /**
