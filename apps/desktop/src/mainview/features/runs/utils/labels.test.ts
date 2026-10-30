@@ -229,11 +229,49 @@ describe("formatRunEnvironment", () => {
 					deviceId: "web-chrome",
 					lane: "direct",
 					browser: "Google Chrome 141.0",
+					viewport: "desktop",
+					profile: "kept",
+				}),
+			),
+		).toBe(
+			"Browser Google Chrome 141.0 · Viewport desktop (1280×800) · Profile kept · Lane Direct",
+		);
+	});
+
+	test("says a Run had a clean profile", () => {
+		expect(
+			formatRunEnvironment(
+				run({
+					status: "passed",
+					tests: [],
+					platform: "web",
+					deviceId: "web-chrome",
+					lane: "direct",
+					browser: "Google Chrome 141.0",
 					viewport: "mobile",
 					profile: "clean",
 				}),
 			),
-		).toBe("Browser Google Chrome 141.0 · Viewport mobile (390×844) · Profile clean · Lane Direct");
+		).toBe("Browser Google Chrome 141.0 · Viewport mobile (390×844) · clean profile · Lane Direct");
+	});
+
+	test("names the Everyday browser's profile the Run's window opened in", () => {
+		expect(
+			formatRunEnvironment(
+				run({
+					status: "passed",
+					tests: [],
+					platform: "web",
+					deviceId: "web-chrome-everyday",
+					lane: "direct",
+					browser: "Everyday Google Chrome 144.0",
+					browserProfileName: "Work",
+					viewport: "desktop",
+				}),
+			),
+		).toBe(
+			"Browser Everyday Google Chrome 144.0 · Viewport desktop (1280×800) · profile Work · Lane Direct",
+		);
 	});
 
 	test("leaves out what the Run did not store", () => {

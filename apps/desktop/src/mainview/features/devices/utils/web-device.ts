@@ -61,13 +61,19 @@ export function viewportFor(
 	return platform === "web" ? (viewport ?? DEFAULT_VIEWPORT_PRESET) : undefined;
 }
 
-/** `Google Chrome · mobile`: a browser's label with its preset. A phone's stays as it is. */
+/**
+ * `Google Chrome · mobile`: a browser's label with its preset, and `Dia · desktop · profile
+ * Work` when the runner read the Everyday browser's profile. A launched browser has none: its
+ * Kept profile follows the App. A phone's label stays as it is.
+ */
 export function withViewport(
 	label: string,
 	platform: DevicePlatform,
 	viewport: ViewportPresetName | undefined,
+	profileName?: string | null,
 ): string {
-	return platform === "web" && viewport ? `${label} · ${viewport}` : label;
+	if (platform !== "web" || !viewport) return label;
+	return profileName ? `${label} · ${viewport} · profile ${profileName}` : `${label} · ${viewport}`;
 }
 
 /**

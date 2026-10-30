@@ -184,10 +184,18 @@ export function SessionToolbar({
 	const serversOpen = useValue(serversOpen$);
 	const connected = active != null;
 	const canRestart = connected || device != null;
-	/** A session's device the list does not have yet shows by its id; a browser adds its preset. */
+	/**
+	 * A session's device the list does not have yet shows by its id; a browser adds its preset,
+	 * and an Everyday session the profile the runner read.
+	 */
 	const listedLabel = device?.label ?? active?.deviceId;
 	const deviceLabel = listedLabel
-		? withViewport(listedLabel, platform, active?.viewport ?? device?.viewport)
+		? withViewport(
+				listedLabel,
+				platform,
+				active?.viewport ?? device?.viewport,
+				active?.browserProfileName,
+			)
 		: undefined;
 
 	const platformLabel = PLATFORM_LABELS[platform];

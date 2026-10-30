@@ -194,18 +194,25 @@ export function formatRunDetailMeta(input: {
 	return parts.join(" · ");
 }
 
+/** A web Run's browser profile: the Everyday browser's by name, a clean one, or its App's Kept one. */
+function formatRunProfile(run: Pick<Run, "browserProfileName" | "profile">): string | null {
+	if (run.browserProfileName) return `profile ${run.browserProfileName}`;
+	if (run.profile === "clean") return "clean profile";
+	return run.profile ? `Profile ${run.profile}` : null;
+}
+
 /**
  * The line under a web Run's title: the browser it drove, its Viewport preset, its browser
  * profile and its Lane, as the report names them. Null for a phone's Run, which shows none of these.
  */
 export function formatRunEnvironment(
-	run: Pick<Run, "platform" | "browser" | "viewport" | "profile" | "lane">,
+	run: Pick<Run, "platform" | "browser" | "browserProfileName" | "viewport" | "profile" | "lane">,
 ): string | null {
 	if (run.platform !== "web") return null;
 	const parts = [
 		run.browser ? `Browser ${run.browser}` : null,
 		run.viewport ? `Viewport ${formatViewportPreset(run.viewport)}` : null,
-		run.profile ? `Profile ${run.profile}` : null,
+		formatRunProfile(run),
 		run.lane ? `Lane ${laneLabel(run.lane)}` : null,
 	].filter((part): part is string => part != null);
 	return parts.length > 0 ? parts.join(" · ") : null;

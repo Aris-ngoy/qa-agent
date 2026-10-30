@@ -69,6 +69,20 @@ describe("withViewport", () => {
 		expect(withViewport("Google Chrome", "web", undefined)).toBe("Google Chrome");
 	});
 
+	test("adds the profile an Everyday session's window opened in", () => {
+		expect(withViewport("Dia", "web", "desktop", "Work")).toBe("Dia · desktop · profile Work");
+	});
+
+	test("leaves the profile out when the runner could not read it", () => {
+		expect(withViewport("Dia", "web", "desktop", null)).toBe("Dia · desktop");
+	});
+
+	test("adds no profile for a launched browser, whose Kept profile follows the App", () => {
+		expect(withViewport("Google Chrome", "web", "desktop", undefined)).toBe(
+			"Google Chrome · desktop",
+		);
+	});
+
 	test("leaves a phone's label as it is", () => {
 		expect(withViewport("iPhone 16", "ios", "mobile")).toBe("iPhone 16");
 	});
