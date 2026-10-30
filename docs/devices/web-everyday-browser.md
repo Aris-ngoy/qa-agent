@@ -2,7 +2,7 @@
 
 ## Goal
 
-Let a user test in their real session: the account, extensions and state their own browser already has. Yoqa connects to the user's running Chromium browser on its default profile through the consent toggle at `chrome://inspect/#remote-debugging`, and drives a page in a window of its own ([#370](https://github.com/Aris-ngoy/qa-agent/issues/370), the tracer bullet of [ADR-0009](../adr/0009-everyday-browser-consent-attach.md), under [#339](https://github.com/Aris-ngoy/qa-agent/issues/339)). Then keep that session safe and the user's consent explicit: no wipes, Runs only when named, and a first-use warning per App ([#371](https://github.com/Aris-ngoy/qa-agent/issues/371)). The Kept profile ([web-kept-profile.md](./web-kept-profile.md)) stays the default way in. Vocabulary: **Everyday browser**, **Browser device**, **Device Session**, **Viewport preset**, **Frame Feed** in [`CONTEXT.md`](../../CONTEXT.md).
+Let a user test in their real session: the account, extensions and state their own browser already has. Yoqa connects to the user's running Chromium browser on its default profile through the consent toggle at `chrome://inspect/#remote-debugging`, and drives a page in a window of its own ([#370](https://github.com/Aris-ngoy/qa-agent/issues/370), the tracer bullet of [ADR-0009](../adr/0009-everyday-browser-consent-attach.md), under [#339](https://github.com/Aris-ngoy/qa-agent/issues/339)). Then keep that session safe and the user's consent explicit: no wipes, Runs only when named, and a first-use warning per App ([#371](https://github.com/Aris-ngoy/qa-agent/issues/371)). Then let the CLI list and connect it, and teach an agent to ask the user for the toggle and the Allow ([#373](https://github.com/Aris-ngoy/qa-agent/issues/373)). The Kept profile ([web-kept-profile.md](./web-kept-profile.md)) stays the default way in. Vocabulary: **Everyday browser**, **Browser device**, **Device Session**, **Viewport preset**, **Frame Feed** in [`CONTEXT.md`](../../CONTEXT.md).
 
 ## Plan summary
 
@@ -18,6 +18,9 @@ Let a user test in their real session: the account, extensions and state their o
 - **The first-use warning, per App.** `POST /devices/connect` to an Everyday browser answers 428 `EVERYDAY_WARNING_REQUIRED` with the warning text and the App, before opening any socket, until a request says `acceptEverydayWarning: true` for that App (`default` with no App). The acceptance is kept in the catalog's `everyday_warning_acceptances` table, keyed by App id, so the desktop and the CLI share it; a table rather than an `apps` column because `default` is no App. Deleting an App deletes its row. Gated at the HTTP route, not in `connectDevice`, so the restart of an already-connected session from the servers list does not ask again.
 - **Runs only when named.** `createRun` on an Everyday device fails before the Run starts when its App has not accepted the warning, and when the Run resolves to `profile: clean` (from the request or a Case Script), with a message pointing to the launched browser's Kept profile for a clean start. `yoqa runs create` with no `--device` refuses to fall back to an Active Session on an Everyday browser. A Run adopts an Everyday Active Session whichever App it was connected for, since reopening would prompt again and there is only the user's profile.
 - **The report names it.** The Run stores `browser` as `Everyday <Browser> <version>` and the connect's `browserProfileName` (column `browser_profile_name`), and no `profile`: it is neither Kept nor clean. The report's Browser row reads `Everyday Google Chrome 144.0 · profile Work` in HTML, Markdown and the GitHub summary.
+- **The CLI (#373).** `yoqa devices web` prints each Everyday browser's state, and an off one gets the line `Turn it on at chrome://inspect/#remote-debugging, then connect`. `yoqa devices connect web-<browser>-everyday` prints `Click Allow in <Browser>… (up to 60 s; Ctrl-C cancels)` on stderr, so `--json` stays clean, once the runner has not answered within 250 ms: the runner refuses an unaccepted App at once, before any prompt, so that refusal never says to click Allow, and there is no endpoint to ask first. Ctrl-C aborts the request, which ends the runner's wait (the request's signal), and exits 130. A Deny or timeout is the runner's message, exit 1. On success the session line ends `profile Work`.
+- **`--yes` and `--app` on connect.** The 428 prints the warning and the command to run again with `--yes`, which sends `acceptEverydayWarning: true`; the runner remembers it, so later connects need no flag. `--app <prefix|id>` names the App the warning is for (and a launched browser's Kept profile), resolved in the catalog and refused for an App it does not have; without it the App is `default`. Rejected: an interactive y/N prompt, which an agent or CI cannot answer and which `--yes` covers.
+- **Attach by port** (`chromium-cdp-<port>`) is unchanged, and documented as the CI path.
 
 ## What shipped
 
@@ -27,6 +30,7 @@ Let a user test in their real session: the account, extensions and state their o
 - `SessionOptions.signal`, passed from `POST /devices/connect` (`c.req.raw.signal`) through `connectDevice`. `browserProfileName` on `DeviceSession`, `ActiveSessionInfo` and `activeDeviceResponseSchema`.
 - `GET /devices?platform=web` (and `yoqa devices web`) lists the Everyday browsers after the launched ones.
 - #371: `restartApp` returns `{ storage }`, surfaced as `ActionResponse.storage`; `everyday-warning.ts` (`EVERYDAY_WARNING`, `EverydayWarningRequiredError`, `passEverydayWarning`); `isEverydayWarningAccepted` / `acceptEverydayWarning` in the catalog; `connectDeviceRequestSchema.acceptEverydayWarning`, `everydayWarningRequiredSchema` and the client's `everydayWarningRequired(error)` for #372 and #373; `Run.browserProfileName`; the CLI's `isEverydayDeviceId`, and `isWebDeviceId` takes Everyday ids. The fake CDP records every command's `methods`.
+- #373: `connectEveryday` and the warning's refusal in `program.ts`; `everydayBrowserName` in the CLI's `platform.ts` (which `isEverydayDeviceId` now uses); `RunnerClient.connectDevice(request, { signal })`; `devices-everyday.test.ts` against a fake runner whose Chrome allows, Edge denies, Brave times out and Dia waits for Ctrl-C. The skill's `references/devices.md` says how to ask the user for the toggle and Allow, when to pass `--yes`, and never to relaunch the browser with a debug flag; the docs site's Web and CLI pages cover the same.
 - Fake CDP: `consent` mode (`/json/*` is 404, each socket waits for `allow()` / `deny()`), with `socketRequests()`, `createdTargets` and `attachedTargets`. The Lane contract suite gains `webEverydayLane`, an Everyday Chrome with a tab of the user's own.
 
 ## How to verify
@@ -34,7 +38,7 @@ Let a user test in their real session: the account, extensions and state their o
 ```bash
 cd services/runner
 bun test src/domains/devices/chromium-everyday.test.ts src/domains/devices/web-direct-lane.test.ts src/domains/devices/active-session.test.ts src/domains/devices/lane-contract.test.ts src/domains/runs/web-run.test.ts
-cd ../../packages && bun test runner-client/src/run-report.test.ts cli/src/runs-create-web.test.ts
+cd ../../packages && bun test runner-client/src/run-report.test.ts cli/src/runs-create-web.test.ts cli/src/devices-everyday.test.ts cli/src/skill-docs.test.ts
 ```
 
 The Everyday tests in `web-direct-lane.test.ts` fail if any command matching `Storage.clear…`, `Network.clear…` or `Network.deleteCookies` reaches the browser; `web-run.test.ts` fakes an Everyday Chrome for a whole Run by mocking `findEverydayBrowsers`.
@@ -43,10 +47,8 @@ By hand on a Mac with Chrome 144+ or Dia, with the runner up and the toggle on a
 
 ```bash
 yoqa devices web                       # web-chrome-everyday … ready
-curl -s localhost:<port>/devices/connect -H 'content-type: application/json' \
-  -d '{"deviceId":"web-chrome-everyday","platform":"web"}'   # 428: the first-use warning
-curl -s localhost:<port>/devices/connect -H 'content-type: application/json' \
-  -d '{"deviceId":"web-chrome-everyday","platform":"web","acceptEverydayWarning":true}'   # click Allow in Chrome
+yoqa devices connect web-chrome-everyday         # first use: prints the warning, exits 1
+yoqa devices connect web-chrome-everyday --yes   # "Click Allow in Google Chrome…"; then "… profile Work"
 yoqa action open-url --url https://example.com
 yoqa action tap --label "More information..."
 yoqa screenshot /tmp/page.png          # Yoqa's page only, never your tabs
@@ -54,13 +56,12 @@ yoqa action restart-app --app-id https://example.com --json   # "storage": "kept
 yoqa devices disconnect                # Yoqa's window closes; Chrome and your tabs stay
 ```
 
-Click Deny instead, or wait 60 s, and the connect fails with its own message. Turning the toggle off lists the device as `remote debugging off`.
+Click Deny instead, or wait 60 s, and the connect fails with its own message and exits 1; Ctrl-C while it waits cancels it and Chrome's prompt goes away. Turning the toggle off lists the device as `remote debugging off`.
 
 **Which profile does a `createTarget` with no `browserContextId` open in, with two profiles open?** Not checked by hand yet: this slice was built on Linux against the faked browser. Expected, from Chromium's code, is the profile of the browser's last active window; `browserProfileName` reports `Local State`'s `last_used`, which is the same profile in the common case. Record the answer here after checking on a Mac with two Chrome or Dia profiles open.
 
 ## Follow-ups
 
 - The hand check above, and the profile question, on Dia or Chrome 144+.
-- The CLI showing the warning and connecting with `acceptEverydayWarning` (#373): until then `yoqa devices connect web-chrome-everyday` only reports the 428. The desktop does both ([#372](https://github.com/Aris-ngoy/qa-agent/issues/372), [desktop/web-devices.md](../desktop/web-devices.md#the-everyday-browser)).
-- CLI: connect with the warning and `--yes`, attach by port as CLI/CI only ([#373](https://github.com/Aris-ngoy/qa-agent/issues/373)).
+- By hand: that Ctrl-C from the CLI closes Chrome's Allow prompt, not only the runner's wait.
 - Windows paths ([#354](https://github.com/Aris-ngoy/qa-agent/issues/354)) and picking a profile other than the default context are not decided.

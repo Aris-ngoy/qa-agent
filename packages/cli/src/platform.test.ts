@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { PLATFORM_DEVICES_DESCRIPTION, connectPlatform, parsePlatform } from "./platform";
+import {
+	PLATFORM_DEVICES_DESCRIPTION,
+	connectPlatform,
+	everydayBrowserName,
+	parsePlatform,
+} from "./platform";
 
 describe("parsePlatform", () => {
 	test("accepts each platform", () => {
@@ -26,6 +31,11 @@ describe("connectPlatform", () => {
 		expect(connectPlatform("web-chromium", undefined)).toBe("web");
 	});
 
+	test("an Everyday browser is web, with no --platform", () => {
+		expect(connectPlatform("web-chrome-everyday", undefined)).toBe("web");
+		expect(connectPlatform("web-dia-everyday", undefined)).toBe("web");
+	});
+
 	test("an explicit --platform wins", () => {
 		expect(connectPlatform("emulator-5554", "android")).toBe("android");
 		expect(connectPlatform("chromium-cdp-9222", "web")).toBe("web");
@@ -38,12 +48,24 @@ describe("connectPlatform", () => {
 	});
 });
 
+describe("everydayBrowserName", () => {
+	test("names the browser an Everyday id's Allow prompt appears in", () => {
+		expect(everydayBrowserName("web-chrome-everyday")).toBe("Google Chrome");
+		expect(everydayBrowserName("web-dia-everyday")).toBe("Dia");
+	});
+
+	test("is null for any other device", () => {
+		expect(everydayBrowserName("web-chrome")).toBeNull();
+		expect(everydayBrowserName("chromium-cdp-9222")).toBeNull();
+	});
+});
+
 describe("PLATFORM_DEVICES_DESCRIPTION", () => {
 	test("describes each platform's device list", () => {
 		expect(PLATFORM_DEVICES_DESCRIPTION).toEqual({
 			ios: "List iOS devices and simulators",
 			android: "List Android devices and emulators",
-			web: "List installed web browsers (attach a Chromium you started by naming its port: chromium-cdp-<port>)",
+			web: "List installed web browsers and your Everyday browsers (CI: attach a Chromium you started by naming its port, chromium-cdp-<port>)",
 		});
 	});
 });

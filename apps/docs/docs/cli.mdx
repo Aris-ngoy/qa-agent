@@ -102,7 +102,7 @@ In the desktop app: **Servers** button next to Play, and **Settings → Diagnost
 ```bash
 yoqa devices ios                             # list devices & simulators (--all for every simulator)
 yoqa devices android                         # list devices & emulators (--all for every emulator)
-yoqa devices web                             # installed Chrome, Edge, Brave, Chromium (macOS)
+yoqa devices web                             # installed Chrome, Edge, Brave, Chromium, and your Everyday browsers (macOS)
 yoqa devices web --booted-only --json        # only browsers Yoqa has open
 yoqa devices web reset-profile               # delete the kept browser profile (--app, --browser)
 yoqa devices connect <device-id>             # open a session (full id from the list)
@@ -119,16 +119,19 @@ yoqa devices disconnect
 | `--lane <direct\|auto>` | all | The Lane. Direct is the only one. |
 | `--bundle-id <id>` | iOS | Launch this app once connected. |
 | `--app-package <id>` | Android | Launch this app once connected. |
+| `--app <app>` | web | The App, by prefix or id: a launched browser opens its Kept profile, and the Everyday browser's warning is its. |
+| `--yes` | Everyday browser | Accept the first-use warning for the App. Needed once per App. |
 | `--viewport <desktop\|mobile>` | web | Viewport preset: `desktop` (1280×800, the default) or `mobile` (390×844, touch and a mobile user agent). Fails on a phone. |
 | `--json` | all | Print the session as JSON. |
 
 ```bash
 yoqa devices connect web-chrome                      # launch a Yoqa-owned Chrome, desktop preset
 yoqa devices connect web-chrome --viewport mobile    # phone-sized page with touch
-yoqa devices connect chromium-cdp-9222               # attach to a Chromium you started on port 9222
+yoqa devices connect web-chrome-everyday --yes      # your own Chrome: accept the warning, click Allow
+yoqa devices connect chromium-cdp-9222               # CI: attach to a Chromium you started on port 9222
 ```
 
-Attach needs the browser started with `--remote-debugging-port` and a non-default `--user-data-dir`. See [Web](/docs/web).
+Your Everyday browser needs remote debugging on at `chrome://inspect/#remote-debugging`. A connect prints `Click Allow in <Browser>…` and waits up to 60 s for it; Ctrl-C cancels. Without `--yes`, the first connect for an App prints the warning and exits 1. Attach by port, for CI, needs the browser started with `--remote-debugging-port` and a non-default `--user-data-dir`. See [Web](/docs/web).
 
 ## Inspect the screen
 

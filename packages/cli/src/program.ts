@@ -4,6 +4,7 @@ import {
 	type ActionRequest,
 	type ActionResponse,
 	type ActiveDeviceResponse,
+	type ConnectDeviceRequest,
 	type DevicePlatform,
 	KEY_MODIFIERS,
 	KEY_NAMES,
@@ -14,6 +15,7 @@ import {
 	createCaseFlowsSchema,
 	createRunnerClient,
 	developerNotTrusted,
+	everydayWarningRequired,
 	formatCaseScriptFile,
 	formatCaseScriptFileErrors,
 	formatCaseScriptReplayStep,
@@ -56,6 +58,7 @@ import {
 import {
 	PLATFORM_DEVICES_DESCRIPTION,
 	connectPlatform,
+	everydayBrowserName,
 	isEverydayDeviceId,
 	isWebDeviceId,
 	parsePlatform,
@@ -95,10 +98,14 @@ function client(baseUrl: string) {
 	return createRunnerClient({ baseUrl });
 }
 
-/** `web web-chrome lane direct viewport mobile (390×844)`: a Device Session in one line. */
+/**
+ * `web web-chrome lane direct viewport mobile (390×844)`: a Device Session in one line, with
+ * the Everyday browser's profile (`profile Work`) when it was read.
+ */
 function describeSession(body: ActiveDeviceResponse): string {
 	const viewport = body.viewport ? ` viewport ${formatViewportPreset(body.viewport)}` : "";
-	return `${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}${viewport}`;
+	const profile = body.browserProfileName ? ` profile ${body.browserProfileName}` : "";
+	return `${body.platform} ${body.deviceId} lane ${body.lane ?? "direct"}${viewport}${profile}`;
 }
 
 function fail(command: string, error: unknown): void {
@@ -298,6 +305,9 @@ function printDevicesTable(
 		if (device.unavailableReason) {
 			console.log(`           Not a target: ${device.unavailableReason}`);
 		}
+		if (isEverydayDeviceId(device.id) && device.state === "remote debugging off") {
+			console.log("           Turn it on at chrome://inspect/#remote-debugging, then connect");
+		}
 	}
 }
 
@@ -372,12 +382,46 @@ platformDevices.web
 		}
 	});
 
+/**
+ * How long a connect to the Everyday browser runs before the CLI says to click Allow. The
+ * runner refuses a connect whose App has not accepted the warning at once, before any prompt.
+ */
+const ALLOW_LINE_DELAY_MS = 250;
+
+/**
+ * Connect to the Everyday browser, saying to click Allow while the runner waits on the user,
+ * and cancelling the wait on Ctrl-C. Null when the user cancelled it.
+ */
+async function connectEveryday(
+	c: ReturnType<typeof client>,
+	request: ConnectDeviceRequest,
+	browser: string,
+): Promise<ActiveDeviceResponse | null> {
+	const controller = new AbortController();
+	const cancel = () => controller.abort();
+	process.once("SIGINT", cancel);
+	// On stderr, so --json still prints only the session.
+	const allowLine = setTimeout(
+		() => console.error(`Click Allow in ${browser}… (up to 60 s; Ctrl-C cancels)`),
+		ALLOW_LINE_DELAY_MS,
+	);
+	try {
+		return await c.connectDevice(request, { signal: controller.signal });
+	} catch (error) {
+		if (controller.signal.aborted) return null;
+		throw error;
+	} finally {
+		clearTimeout(allowLine);
+		process.off("SIGINT", cancel);
+	}
+}
+
 devices
 	.command("connect")
 	.description("Open a Device Session on a device")
 	.argument(
 		"<deviceId>",
-		"Device UDID / serial, a browser id (web-chrome), or chromium-cdp-<port> for a Chromium you started",
+		"Device UDID / serial, a browser id (web-chrome), your Everyday browser (web-chrome-everyday), or chromium-cdp-<port> for a Chromium you started (CI)",
 	)
 	.option("--platform <platform>", "ios | android | web (web for web-* and chromium-cdp-<port>)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
@@ -388,6 +432,11 @@ devices
 		"--viewport <preset>",
 		"Web only: desktop (1280×800, the default) | mobile (390×844, touch and a mobile user agent)",
 	)
+	.option(
+		"--app <app>",
+		"Web only: App prefix or id whose Kept profile to open, and whose Everyday browser warning applies (default: the default profile)",
+	)
+	.option("--yes", "Everyday browser only: accept its first-use warning for the App")
 	.option("--json", "Print raw JSON")
 	.action(
 		async (
@@ -399,9 +448,12 @@ devices
 				appPackage?: string;
 				lane?: string;
 				viewport?: string;
+				app?: string;
+				yes?: boolean;
 				json?: boolean;
 			},
 		) => {
+			const everyday = everydayBrowserName(deviceId);
 			try {
 				const platform = connectPlatform(deviceId, options.platform);
 				const lane = options.lane;
@@ -409,14 +461,29 @@ devices
 					throw new Error("--lane must be direct or auto");
 				}
 				const viewport = parseViewportPreset(options.viewport, platform);
-				const body = await client(options.baseUrl).connectDevice({
+				if (options.app && platform !== "web") {
+					throw new Error("--app is for web devices: a phone takes --bundle-id or --app-package");
+				}
+				const c = client(options.baseUrl);
+				const appId = options.app ? (await resolveAppId(c, options.app)).id : undefined;
+				const request: ConnectDeviceRequest = {
 					deviceId,
 					platform,
 					bundleId: options.bundleId,
 					appPackage: options.appPackage,
 					lane,
 					...(viewport ? { viewport } : {}),
-				});
+					...(appId ? { appId } : {}),
+					...(everyday && options.yes ? { acceptEverydayWarning: true } : {}),
+				};
+				const body = everyday
+					? await connectEveryday(c, request, everyday)
+					: await c.connectDevice(request);
+				if (!body) {
+					console.error(`yoqa devices connect cancelled before Allow in ${everyday}`);
+					process.exitCode = 130;
+					return;
+				}
 				if (options.json) {
 					console.log(JSON.stringify(body, null, 2));
 					return;
@@ -424,6 +491,15 @@ devices
 				console.log(`connected ${describeSession(body)}`);
 				if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
 			} catch (error) {
+				const warning = everydayWarningRequired(error);
+				if (warning) {
+					const app = options.app ? ` --app ${options.app}` : "";
+					console.error(
+						`${warning.warning}\n\nTo accept this for ${warning.appId} and connect, run:\n  yoqa devices connect ${deviceId}${app} --yes`,
+					);
+					process.exitCode = 1;
+					return;
+				}
 				const untrusted = developerNotTrusted(error);
 				if (untrusted && !options.json) {
 					console.error(

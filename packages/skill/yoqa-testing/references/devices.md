@@ -5,7 +5,7 @@
 ```bash
 yoqa devices ios                   # iOS simulators + physical devices
 yoqa devices android               # Android emulators + physical devices
-yoqa devices web                   # installed Chromium browsers (Chrome, Edge, Brave, Chromium)
+yoqa devices web                   # installed Chromium browsers, and the user's Everyday browsers
 yoqa devices ios --booted-only     # only booted / online devices
 yoqa devices ios --json            # stable shape for parsing
 yoqa devices active                # currently connected device
@@ -84,8 +84,41 @@ yoqa devices active                                 # names the browser and its 
 The new window opens on a blank page. Open the app with
 `yoqa action open-url --url <Web URL>` (see [Inspect & App Control](inspect-and-app-control.md)).
 
-**Attach to a browser the user started.** Only when the user asks for it (a prepared profile, an
-Electron-like setup). The user starts Chrome, Edge or Brave with a debug port **and a non-default
+**The user's Everyday browser.** Only when the user asks to test in their own, signed-in browser.
+`web-chrome-everyday`, `web-edge-everyday`, `web-brave-everyday`, `web-chromium-everyday` and
+`web-dia-everyday` are the user's running browser on its default profile. Yoqa drives a page in a
+window of its own, never the user's tabs, and nothing there is wiped: you act in the user's real
+accounts.
+
+```
+browser    Google Chrome (everyday) — everyday browser [remote debugging off]
+           web-chrome-everyday
+           Turn it on at chrome://inspect/#remote-debugging, then connect
+```
+
+It is `[ready]` once the user has turned remote debugging on. When it is off, **ask the user** to open
+`chrome://inspect/#remote-debugging` in that browser and turn the toggle on, then list again. Each
+connect then waits up to 60 s on an Allow prompt in the browser: before you connect, **tell the user to
+click Allow** when it appears. A Deny or no answer fails the connect with its own message; ask before
+trying again, since each try prompts again.
+
+The first connect for an App fails with a warning about acting in the user's real session. Show the
+user that warning and connect with `--yes` only once they agree; it is remembered for that App.
+
+```bash
+yoqa devices connect web-chrome-everyday --app <prefix>          # first use: prints the warning
+yoqa devices connect web-chrome-everyday --app <prefix> --yes    # the user agreed; they click Allow
+```
+
+On success it prints the browser profile the window opened in (`profile Work`). A Run uses the Everyday
+browser only when named with `--device web-chrome-everyday`, and `--profile clean` fails there.
+
+**Never relaunch the user's browser with `--remote-debugging-port`** or any other debug flag, and never
+quit it, to get past the toggle or the Allow prompt. That skips the user's consent. If the toggle is off
+or the user denies, stop and ask.
+
+**Attach to a browser the user started (CI).** For CI and scripts, or only when the user asks for it (a
+prepared profile, an Electron-like setup). The user starts Chrome, Edge or Brave with a debug port **and a non-default
 profile** — Chrome 136 and later refuse remote debugging on the everyday profile:
 
 ```bash

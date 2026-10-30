@@ -57,9 +57,42 @@ yoqa devices connect web-chrome --viewport mobile
 
 Use `mobile` for a React Native Web or Expo web build, so it lays out and responds as it does on a phone. Free-form sizes are not accepted.
 
-## Attach to a browser you started
+## Connect your Everyday browser
 
-To test against a browser profile you prepared, start Chrome, Edge or Brave yourself with a debug port **and a non-default profile directory**, then attach by port:
+To test in your own, signed-in session, connect your **Everyday browser**: the Chrome, Edge, Brave, Chromium or Dia you already have open, on its default profile. `yoqa devices web` lists one for each installed browser, after the ones Yoqa launches:
+
+| Browser | Device id |
+| ------- | --------- |
+| Google Chrome | `web-chrome-everyday` |
+| Microsoft Edge | `web-edge-everyday` |
+| Brave Browser | `web-brave-everyday` |
+| Chromium | `web-chromium-everyday` |
+| Dia | `web-dia-everyday` |
+
+```
+browser    Google Chrome (everyday) — everyday browser [remote debugging off]
+           web-chrome-everyday
+           Turn it on at chrome://inspect/#remote-debugging, then connect
+```
+
+Open `chrome://inspect/#remote-debugging` in the browser and turn remote debugging on; the device is then `[ready]`. Each connect asks you in the browser: the CLI prints `Click Allow in Google Chrome…` and waits up to 60 seconds. Ctrl-C cancels the wait. A Deny or no answer fails the connect with its own message, and the CLI exits non-zero.
+
+The first connect for an App prints a warning instead, since the agent acts in your real accounts there, and connects only with `--yes`. Your answer is remembered for that App, in the desktop app too. Without `--app` it is for the default App.
+
+```bash
+yoqa devices connect web-chrome-everyday --app <prefix>         # prints the warning the first time
+yoqa devices connect web-chrome-everyday --app <prefix> --yes   # accept it, then click Allow
+```
+
+Once connected, the CLI names the browser profile Yoqa's window opened in, as `profile Work`. Yoqa drives only that window, never your tabs, and disconnecting closes it and leaves your browser open. See [Runs on your Everyday browser](#runs-on-your-everyday-browser) for the limits.
+
+<Warning>
+  Yoqa never relaunches your browser with `--remote-debugging-port`. The toggle and your Allow are the only way in.
+</Warning>
+
+## Attach to a browser you started (CI)
+
+Attach by port is for CI and scripts, from the CLI only. To test against a browser profile you prepared, start Chrome, Edge or Brave yourself with a debug port **and a non-default profile directory**, then attach by port:
 
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
