@@ -1029,11 +1029,19 @@ export const runSchema = z.object({
 	screenMode: runScreenModeSchema.optional(),
 	lane: laneNameSchema.optional(),
 	laneWarning: z.string().min(1).optional(),
-	/** The browser a web Run drove, with its version (`Google Chrome 141.0`). */
+	/**
+	 * The browser a web Run drove, with its version (`Google Chrome 141.0`), or the user's
+	 * own (`Everyday Google Chrome 144.0`).
+	 */
 	browser: z.string().min(1).optional(),
+	/** The Everyday browser's profile the Run's window opened in, when it could be read. */
+	browserProfileName: z.string().min(1).optional(),
 	/** The Viewport preset a web Run's session emulated. */
 	viewport: viewportPresetSchema.optional(),
-	/** The browser profile a web Run asked for: its App's Kept one, or a clean one. */
+	/**
+	 * The browser profile a web Run asked for: its App's Kept one, or a clean one. None on
+	 * the Everyday browser, which runs on the user's own profile.
+	 */
 	profile: browserProfileSchema.optional(),
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
@@ -1068,8 +1076,26 @@ export const connectDeviceRequestSchema = z.object({
 	appId: z.string().regex(PROFILE_APP_ID_PATTERN).optional(),
 	/** Web only: a launched browser's profile. Its App's Kept profile when omitted. */
 	profile: browserProfileSchema.optional(),
+	/**
+	 * Everyday browser only: the user accepted the first-use warning, for `appId` (`default`
+	 * when omitted). Needed once per App; the runner remembers it.
+	 */
+	acceptEverydayWarning: z.boolean().optional(),
 });
 export type ConnectDeviceRequest = z.infer<typeof connectDeviceRequestSchema>;
+
+/**
+ * A connect that failed with HTTP 428: the App has not accepted the Everyday browser's
+ * first-use warning yet. Show `warning`, then connect again with `acceptEverydayWarning`.
+ */
+export const everydayWarningRequiredSchema = z.object({
+	error: z.string(),
+	code: z.literal("EVERYDAY_WARNING_REQUIRED"),
+	/** The App the warning is for; `default` for a connect with no App. */
+	appId: z.string().min(1),
+	warning: z.string().min(1),
+});
+export type EverydayWarningRequired = z.infer<typeof everydayWarningRequiredSchema>;
 
 /** Which Kept profile `DELETE /devices/web/profiles` resets: one browser's, or the App's every one. */
 export const resetWebProfileRequestSchema = z.object({
@@ -1259,6 +1285,10 @@ export const actionPhasesSchema = z.object({
 });
 export type ActionPhases = z.infer<typeof actionPhasesSchema>;
 
+/** What a web restart-app did to the App origin's storage. */
+export const appStorageSchema = z.union([z.literal("cleared"), z.literal("kept")]);
+export type AppStorage = z.infer<typeof appStorageSchema>;
+
 export const actionResponseSchema = z.object({
 	ok: z.literal(true),
 	kind: actionKindSchema,
@@ -1270,6 +1300,11 @@ export const actionResponseSchema = z.object({
 		.optional(),
 	screenshot: actionResultScreenshotSchema.optional(),
 	phases: actionPhasesSchema.optional(),
+	/**
+	 * restart-app on web: whether the App origin's storage was cleared, or kept because the
+	 * session is the user's Everyday browser.
+	 */
+	storage: appStorageSchema.optional(),
 });
 export type ActionResponse = z.infer<typeof actionResponseSchema>;
 

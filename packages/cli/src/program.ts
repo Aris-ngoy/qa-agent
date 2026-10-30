@@ -56,6 +56,7 @@ import {
 import {
 	PLATFORM_DEVICES_DESCRIPTION,
 	connectPlatform,
+	isEverydayDeviceId,
 	isWebDeviceId,
 	parsePlatform,
 	parseViewportPreset,
@@ -1816,6 +1817,12 @@ runsCmd
 					if (!active) {
 						throw new Error(
 							"No --device/--platform and no active session. Connect first or pass both flags.",
+						);
+					}
+					// The user's own browser is never a Run's by default: only when --device names it.
+					if (!deviceId && isEverydayDeviceId(active.deviceId)) {
+						throw new Error(
+							`The session is on your Everyday browser, which a Run uses only when named. Pass --device ${active.deviceId} to run there.`,
 						);
 					}
 					deviceId = deviceId ?? active.deviceId;

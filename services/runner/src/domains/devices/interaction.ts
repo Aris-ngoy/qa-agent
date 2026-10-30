@@ -1,6 +1,7 @@
 import {
 	type ActionRequest,
 	type ActionResponse,
+	type AppStorage,
 	type ScreenElement,
 	type ScreenResponse,
 	elementCenterNorm,
@@ -114,6 +115,7 @@ export async function performAction(
 		coordSpace: locatorTap ? ("window" as const) : ("screenshot" as const),
 	};
 
+	let storage: AppStorage | undefined;
 	switch (body.kind) {
 		case "tap": {
 			if (x == null || y == null) {
@@ -162,7 +164,7 @@ export async function performAction(
 		case "restart-app": {
 			if (!body.appId) throw new ActionValidationError("restart-app requires appId");
 			if (session.restartApp) {
-				await session.restartApp(body.appId);
+				({ storage } = await session.restartApp(body.appId));
 			} else {
 				await session.terminateApp(body.appId);
 				await session.activateApp(body.appId);
@@ -203,5 +205,6 @@ export async function performAction(
 		ok: true,
 		kind: body.kind,
 		resolved: x != null && y != null ? { x, y } : undefined,
+		...(storage ? { storage } : {}),
 	};
 }

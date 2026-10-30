@@ -1,8 +1,12 @@
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
+import { everydayWarningRequiredSchema } from "@yoqa/runner-client";
+import { createApp, isEverydayWarningAccepted } from "../catalog/application";
+import { closeCatalogDb, openCatalogDb } from "../catalog/db";
+import { EVERYDAY_WARNING } from "./everyday-warning";
 import { fakeChromium, jpegSize, profileDirOf, readMjpegFrames, startFakeCdp } from "./fake-cdp";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
 import { type IdbExec, createIosDirectSession } from "./ios-direct-lane";
@@ -615,10 +619,83 @@ describe("connecting the Everyday browser", () => {
 			body: JSON.stringify(body),
 			signal,
 		});
+	/** A connect that accepts the first-use warning for the default App. */
+	const EVERYDAY_ACCEPTED = {
+		deviceId: "web-chrome-everyday",
+		platform: "web",
+		acceptEverydayWarning: true,
+	};
+
+	beforeAll(async () => {
+		closeCatalogDb();
+		openCatalogDb(join(mkdtempSync(join(tmpdir(), "yoqa-everyday-")), "catalog.db"));
+	});
+	afterAll(() => closeCatalogDb());
+
+	test("a first connect for an App fails with the warning, and opens no socket", async () => {
+		const browser = everydayChrome();
+		const app = await createApp({ name: "Warned", webUrl: "https://shop.example.com" });
+		const response = await connect({
+			deviceId: "web-chrome-everyday",
+			platform: "web",
+			appId: app.id,
+		});
+		expect(response.status).toBe(428);
+		const body = await response.json();
+		expect(body).toMatchObject({ code: "EVERYDAY_WARNING_REQUIRED", appId: app.id });
+		expect(everydayWarningRequiredSchema.parse(body).warning).toBe(EVERYDAY_WARNING);
+		expect(browser.socketRequests()).toBe(0);
+		expect(getActiveSession()).toBeNull();
+		browser.kill();
+	});
+
+	test("after one accepted connect, the App connects without the warning; another App still gets it", async () => {
+		const browser = everydayChrome();
+		const app = await createApp({ name: "Accepted", webUrl: "https://shop.example.com" });
+		const other = await createApp({ name: "Not yet", webUrl: "https://shop.example.com" });
+		browser.allow();
+		const accepted = await connect({ ...EVERYDAY_ACCEPTED, appId: app.id });
+		expect(accepted.status).toBe(200);
+		await disconnectDevice();
+
+		browser.allow();
+		const again = await connect({
+			deviceId: "web-chrome-everyday",
+			platform: "web",
+			appId: app.id,
+		});
+		expect(again.status).toBe(200);
+		expect(await isEverydayWarningAccepted(app.id)).toBe(true);
+		await disconnectDevice();
+
+		const warned = await connect({
+			deviceId: "web-chrome-everyday",
+			platform: "web",
+			appId: other.id,
+		});
+		expect(warned.status).toBe(428);
+		expect(browser.socketRequests()).toBe(2);
+		browser.kill();
+	});
+
+	test("with no App, the warning is accepted for default", async () => {
+		const browser = everydayChrome();
+		browser.allow();
+		expect((await connect(EVERYDAY_ACCEPTED)).status).toBe(200);
+		expect(await isEverydayWarningAccepted("default")).toBe(true);
+		browser.kill();
+	});
+
+	test("a browser Yoqa launches never asks for the warning", async () => {
+		installedChrome();
+		const app = await createApp({ name: "Launched", webUrl: "https://shop.example.com" });
+		const response = await connect({ deviceId: "web-chrome", platform: "web", appId: app.id });
+		expect(response.status).toBe(200);
+	});
 
 	test("POST /devices/connect waits for Allow, and answers with the profile its window opened in", async () => {
 		const browser = everydayChrome();
-		const response = connect({ deviceId: "web-chrome-everyday", platform: "web" });
+		const response = connect(EVERYDAY_ACCEPTED);
 		await Bun.sleep(50);
 		browser.allow();
 		expect(await (await response).json()).toMatchObject({
@@ -632,7 +709,7 @@ describe("connecting the Everyday browser", () => {
 	test("the request going away cancels the wait for Allow", async () => {
 		const browser = everydayChrome();
 		const request = new AbortController();
-		const response = connect({ deviceId: "web-chrome-everyday", platform: "web" }, request.signal);
+		const response = connect(EVERYDAY_ACCEPTED, request.signal);
 		await Bun.sleep(50);
 		request.abort();
 		await Promise.resolve(response).catch(() => undefined);
@@ -648,7 +725,7 @@ describe("connecting the Everyday browser", () => {
 	test("a Deny is the connect's error, in the browser's words", async () => {
 		const browser = everydayChrome();
 		browser.deny();
-		const response = await connect({ deviceId: "web-chrome-everyday", platform: "web" });
+		const response = await connect(EVERYDAY_ACCEPTED);
 		expect(response.status).toBe(500);
 		expect(await response.json()).toMatchObject({
 			detail: "Remote debugging was denied in Google Chrome",

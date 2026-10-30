@@ -1,4 +1,5 @@
 import type {
+	AppStorage,
 	BrowserProfile,
 	DevicePlatform,
 	KeyModifier,
@@ -148,8 +149,9 @@ export type DeviceSession = {
 	/**
 	 * Start the app again from scratch, for a Lane whose restart is more than terminate then
 	 * activate (web clears the App origin's storage). Without it, restart-app is those two.
+	 * Says whether the App's storage was cleared, or kept (the Everyday browser's).
 	 */
-	restartApp?: (appId: string) => Promise<void>;
+	restartApp?: (appId: string) => Promise<{ storage: AppStorage }>;
 	backgroundApp: (seconds?: number) => Promise<void>;
 	openUrl: (url: string) => Promise<void>;
 	acceptAlert: () => Promise<void>;

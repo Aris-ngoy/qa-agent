@@ -61,7 +61,10 @@ export type RunReportDocument = {
 	screenMode?: string | null;
 	lane?: string | null;
 	laneWarning?: string | null;
-	/** The browser a web run drove, with its version. */
+	/**
+	 * The browser a web run drove, with its version; for the Everyday browser, `Everyday …`
+	 * and the profile its window opened in, so a real session is not taken for a clean one.
+	 */
 	browser?: string | null;
 	/** The Viewport preset a web run's session emulated. */
 	viewport?: ViewportPresetName | null;
@@ -382,6 +385,14 @@ function mapCatalogStep(step: RunStep, screenshotsByStepId: Record<string, strin
 	};
 }
 
+/** A Run's browser, with the Everyday browser's profile name when the Run read one. */
+function reportedBrowser(run: Pick<Run, "browser" | "browserProfileName">): string | null {
+	if (!run.browser) return null;
+	return run.browserProfileName
+		? `${run.browser} · profile ${run.browserProfileName}`
+		: run.browser;
+}
+
 export function buildRunReportFromCatalogRun(
 	run: Run,
 	meta: CatalogRunReportMeta = {},
@@ -418,7 +429,7 @@ export function buildRunReportFromCatalogRun(
 		screenMode: run.screenMode ?? null,
 		lane: run.lane ?? null,
 		laneWarning: run.laneWarning ?? null,
-		browser: run.browser ?? null,
+		browser: reportedBrowser(run),
 		viewport: run.viewport ?? null,
 		profile: run.profile ?? null,
 		error: run.error,

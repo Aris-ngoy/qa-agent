@@ -16,6 +16,10 @@ import {
 	screenshotResponseSchema,
 } from "@yoqa/runner-client";
 import { Hono } from "hono";
+import {
+	acceptEverydayWarning,
+	isEverydayWarningAccepted,
+} from "../../domains/catalog/application";
 import { performActionWithScreenshot } from "../../domains/devices/action-result";
 import {
 	SessionBusyError,
@@ -35,6 +39,11 @@ import {
 	installedBrowserIdOf,
 } from "../../domains/devices/chromium-browsers";
 import { errorChain } from "../../domains/devices/error-chain";
+import {
+	type EverydayWarningAcceptances,
+	EverydayWarningRequiredError,
+	passEverydayWarning,
+} from "../../domains/devices/everyday-warning";
 import {
 	ActionNotFoundError,
 	ActionValidationError,
@@ -75,6 +84,18 @@ export function sessionErrorResponse(error: unknown) {
 			},
 		};
 	}
+	if (error instanceof EverydayWarningRequiredError) {
+		// Only the user can accept it: show the warning, then connect again accepting it.
+		return {
+			status: 428 as const,
+			body: {
+				error: "Everyday browser warning not accepted",
+				code: "EVERYDAY_WARNING_REQUIRED" as const,
+				appId: error.appId,
+				warning: error.warning,
+			},
+		};
+	}
 	if (error instanceof SessionBusyError) {
 		return {
 			status: 409 as const,
@@ -107,6 +128,12 @@ export function sessionErrorResponse(error: unknown) {
 	return null;
 }
 
+/** The Everyday browser's first-use warning, accepted per App in the catalog. */
+const catalogEverydayAcceptances: EverydayWarningAcceptances = {
+	isAccepted: isEverydayWarningAccepted,
+	accept: acceptEverydayWarning,
+};
+
 export function createSessionRoutes(profiles: { home?: string } = {}) {
 	const app = new Hono();
 
@@ -125,6 +152,7 @@ export function createSessionRoutes(profiles: { home?: string } = {}) {
 			return c.json({ error: "Body must include deviceId and platform" }, 400);
 		}
 		try {
+			await passEverydayWarning(parsed.data, catalogEverydayAcceptances);
 			const info = await connectDevice({
 				...parsed.data,
 				requestedLane: parsed.data.lane,

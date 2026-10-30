@@ -21,10 +21,18 @@ import {
 } from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
-import { getApp, getCase, getCaseScriptJson, saveCaseScript } from "../catalog/application";
+import {
+	getApp,
+	getCase,
+	getCaseScriptJson,
+	isEverydayWarningAccepted,
+	saveCaseScript,
+} from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
 import { acquireSessionForRun, releaseSessionFromRun } from "../devices/active-session";
+import { everydayBrowserIdOf } from "../devices/chromium-everyday";
+import { EVERYDAY_WARNING } from "../devices/everyday-warning";
 import { pruneOldRunScreenshots } from "../devices/screenshot-retention";
 import type { DeviceSession } from "../devices/session";
 import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
@@ -152,6 +160,24 @@ async function resolveRunProfile(
 	return "kept";
 }
 
+/**
+ * A Run on the Everyday browser needs its App to have accepted the first-use warning, at a
+ * connect, and cannot be clean: Yoqa never wipes the user's own profile.
+ */
+async function assertEverydayRunAllowed(input: CreateRunRequest, caseIds: string[]): Promise<void> {
+	if (!(await isEverydayWarningAccepted(input.appId))) {
+		throw new RunValidationError(
+			`${EVERYDAY_WARNING} Connect to ${input.deviceId} for this App once and accept the warning before a Run uses it.`,
+		);
+	}
+	if ((await resolveRunProfile(input.profile, caseIds)) === "clean") {
+		const launched = input.deviceId.replace(/-everyday$/, "");
+		throw new RunValidationError(
+			`${input.deviceId} is your Everyday browser, which Yoqa never wipes, so a Run there cannot use a clean profile. For a clean start, run on ${launched}, which Yoqa launches on the App's Kept profile, with profile clean or after resetting the Kept profile (yoqa devices web reset-profile).`,
+		);
+	}
+}
+
 function resolveCaseExecutionMode(
 	runMode: RunExecutionMode,
 	hasScript: boolean,
@@ -221,6 +247,7 @@ async function loadRun(runId: string): Promise<Run | null> {
 		lane: reportedLane(runRow.lane),
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
 		...(runRow.browser ? { browser: runRow.browser } : {}),
+		...(runRow.browserProfileName ? { browserProfileName: runRow.browserProfileName } : {}),
 		...viewportOf(runRow.viewport),
 		...profileOf(runRow.profile),
 		error: runRow.error,
@@ -568,8 +595,10 @@ export async function executeRun(runId: string): Promise<void> {
 
 		const runRow = (await db.select().from(runs).where(eq(runs.id, runId)))[0];
 		const requestedLane = runRow?.requestedLane;
+		// The Everyday browser runs on the user's own profile: neither a Kept one nor clean.
+		const everyday = everydayBrowserIdOf(run.deviceId) !== null;
 		const profile =
-			run.platform === "web"
+			run.platform === "web" && !everyday
 				? await resolveRunProfile(
 						runRow?.requestedProfile,
 						run.tests.map((test) => test.caseId),
@@ -594,7 +623,9 @@ export async function executeRun(runId: string): Promise<void> {
 			.set({
 				lane: session.lane,
 				laneWarning: session.laneWarning ?? null,
-				browser: session.browser ?? null,
+				browser:
+					session.browser && everyday ? `Everyday ${session.browser}` : (session.browser ?? null),
+				browserProfileName: session.browserProfileName ?? null,
 				viewport: session.viewport ?? null,
 				profile: profile ?? null,
 			})
@@ -752,6 +783,10 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		catalogCases.push(catalogCase);
 	}
 
+	if (everydayBrowserIdOf(input.deviceId) !== null) {
+		await assertEverydayRunAllowed(input, uniqueCaseIds);
+	}
+
 	const needsAgent = catalogCases.some(
 		(catalogCase) => resolveCaseExecutionMode(executionMode, catalogCase.hasScript) === "agent",
 	);
@@ -883,6 +918,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		lane: reportedLane(runRow.lane),
 		laneWarning: reportedLaneWarning(runRow.laneWarning),
 		...(runRow.browser ? { browser: runRow.browser } : {}),
+		...(runRow.browserProfileName ? { browserProfileName: runRow.browserProfileName } : {}),
 		...viewportOf(runRow.viewport),
 		...profileOf(runRow.profile),
 		error: runRow.error,

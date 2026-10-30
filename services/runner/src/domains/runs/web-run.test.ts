@@ -1,17 +1,36 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CaseScript, Run } from "@yoqa/runner-client";
-import { createApp, createCase, saveCaseScript } from "../catalog/application";
-import { closeCatalogDb, openCatalogDb } from "../catalog/db";
 import {
-	connectDevice,
-	disconnectDevice,
-	getActiveSession,
-	getActiveSessionInfo,
-} from "../devices/active-session";
+	acceptEverydayWarning,
+	createApp,
+	createCase,
+	saveCaseScript,
+} from "../catalog/application";
+import { closeCatalogDb, openCatalogDb } from "../catalog/db";
+import * as actualEveryday from "../devices/chromium-everyday";
+import { EVERYDAY_WARNING } from "../devices/everyday-warning";
 import { type FakeCdp, startFakeCdp } from "../devices/fake-cdp";
-import { createRun, getRun } from "./application";
+
+/**
+ * The Everyday browsers found here: a faked one while a test sets it, else the real search.
+ * Bun keeps a module mock for the rest of the process, so it must fall back.
+ */
+let everydayBrowsers: actualEveryday.EverydayBrowser[] | null = null;
+const realFindEverydayBrowsers = actualEveryday.findEverydayBrowsers;
+mock.module("../devices/chromium-everyday", () => ({
+	...actualEveryday,
+	findEverydayBrowsers: (...args: Parameters<typeof realFindEverydayBrowsers>) =>
+		everydayBrowsers ? Promise.resolve(everydayBrowsers) : realFindEverydayBrowsers(...args),
+}));
+
+const { connectDevice, disconnectDevice, getActiveSession, getActiveSessionInfo } = await import(
+	"../devices/active-session"
+);
+const { RunValidationError, createRun, getRun } = await import("./application");
 
 const WEB_URL = "https://shop.example.com/";
 
@@ -243,3 +262,145 @@ describe("a Run on web", () => {
 		expect(browser.clicks).toEqual([]);
 	});
 });
+
+describe("a Run on the Everyday browser", () => {
+	let browser: FakeCdp;
+
+	beforeAll(async () => {
+		closeCatalogDb();
+		openCatalogDb(`${await mkdtemp(`${tmpdir()}/web-run-everyday-`)}/catalog.db`);
+	});
+	afterAll(() => {
+		closeCatalogDb();
+		everydayBrowsers = null;
+	});
+
+	afterEach(async () => {
+		await disconnectDevice();
+		browser?.kill();
+	});
+
+	/** The user's Chrome with the remote-debugging toggle on, its profile named Work. */
+	function startEverydayChrome() {
+		browser = startFakeCdp({ viewport: { width: 1280, height: 800 }, consent: true });
+		const userDataDir = mkdtempSync(join(tmpdir(), "yoqa-chrome-"));
+		writeFileSync(
+			join(userDataDir, "DevToolsActivePort"),
+			`${browser.port}\n/devtools/browser/fake\n`,
+		);
+		writeFileSync(
+			join(userDataDir, "Local State"),
+			JSON.stringify({ profile: { info_cache: { Default: { name: "Work" } } } }),
+		);
+		everydayBrowsers = [{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir }];
+	}
+
+	/** An App whose user accepted the Everyday browser warning. */
+	async function acceptedApp(name: string) {
+		const app = await createApp({ name, webUrl: WEB_URL });
+		await acceptEverydayWarning(app.id);
+		return app;
+	}
+
+	test("names the Everyday browser and the profile its window opened in, and clears nothing", async () => {
+		startEverydayChrome();
+		const app = await acceptedApp("Everyday");
+		browser.allow();
+		const created = await createRun({
+			appId: app.id,
+			caseIds: [await scriptedCase(app.id, "Tap")],
+			deviceId: "web-chrome-everyday",
+			platform: "web",
+			executionMode: "script",
+		});
+		const run = await finished(created.id);
+
+		expect(run.error).toBeNull();
+		expect(run.status).toBe("passed");
+		expect(run).toMatchObject({
+			browser: "Everyday Google Chrome 140.0.0.0",
+			browserProfileName: "Work",
+		});
+		// Not a Kept profile, nor a clean one: the user's own.
+		expect(run.profile).toBeUndefined();
+		expect(
+			browser.methods.filter((method) => /^(Storage|Network)\.(clear|delete)/.test(method)),
+		).toEqual([]);
+		expect(browser.navigations).toEqual([WEB_URL]);
+	});
+
+	test("adopts the Everyday browser the user connected, whichever App it was connected for", async () => {
+		startEverydayChrome();
+		const app = await acceptedApp("Adopted");
+		browser.allow();
+		await connectDevice({ deviceId: "web-chrome-everyday", platform: "web" });
+		const run = await finished(
+			(
+				await createRun({
+					appId: app.id,
+					caseIds: [await scriptedCase(app.id, "Tap")],
+					deviceId: "web-chrome-everyday",
+					platform: "web",
+					executionMode: "script",
+				})
+			).id,
+		);
+
+		expect(run.status).toBe("passed");
+		// One Allow: the Run did not ask the user again.
+		expect(browser.socketRequests()).toBe(1);
+	});
+
+	test("profile: clean fails before the Run starts, naming the Kept profile as the way to a clean one", async () => {
+		startEverydayChrome();
+		const app = await acceptedApp("Clean asked");
+		const asked = await rejection(
+			createRun({
+				appId: app.id,
+				caseIds: [await scriptedCase(app.id, "Tap")],
+				deviceId: "web-chrome-everyday",
+				platform: "web",
+				executionMode: "script",
+				profile: "clean",
+			}),
+		);
+		expect(asked).toBeInstanceOf(RunValidationError);
+		expect((asked as Error).message).toContain("Kept profile");
+
+		const byCase = await rejection(
+			createRun({
+				appId: app.id,
+				caseIds: [await scriptedCase(app.id, "Signed out", false, "clean")],
+				deviceId: "web-chrome-everyday",
+				platform: "web",
+				executionMode: "script",
+			}),
+		);
+		expect((byCase as Error).message).toBe((asked as Error).message);
+		expect(browser.socketRequests()).toBe(0);
+	});
+
+	test("fails before it starts for an App that has not accepted the warning", async () => {
+		startEverydayChrome();
+		const app = await createApp({ name: "Not warned", webUrl: WEB_URL });
+		const error = await rejection(
+			createRun({
+				appId: app.id,
+				caseIds: [await scriptedCase(app.id, "Tap")],
+				deviceId: "web-chrome-everyday",
+				platform: "web",
+				executionMode: "script",
+			}),
+		);
+		expect(error).toBeInstanceOf(RunValidationError);
+		expect((error as Error).message).toContain(EVERYDAY_WARNING);
+		expect(browser.socketRequests()).toBe(0);
+	});
+});
+
+async function rejection(promise: Promise<unknown>): Promise<unknown> {
+	return promise.then(
+		() => null,
+		(error: unknown) => error,
+	);
+}
