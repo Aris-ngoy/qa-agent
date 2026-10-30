@@ -27,11 +27,13 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [adr/0007-web-direct-lane-over-cdp.md](./adr/0007-web-direct-lane-over-cdp.md) | Web is a Direct lane over CDP to a Chromium browser |
 | [adr/0008-case-script-branches.md](./adr/0008-case-script-branches.md) | A Case Script's action list is recursive: a Branch holds more steps |
 | [adr/0009-everyday-browser-consent-attach.md](./adr/0009-everyday-browser-consent-attach.md) | Attach to the everyday browser by consent; attach by port is CLI/CI only |
+| [adr/0010-no-firefox-or-safari-browser-device.md](./adr/0010-no-firefox-or-safari-browser-device.md) | No Firefox or Safari Browser device yet: no BiDi tree with boxes; Safari can't keep logins |
 | [devices/web-attach-by-port.md](./devices/web-attach-by-port.md) | Web tracer bullet: attach a user-started Chromium by port, screenshot/tap/input/open-url |
 | [devices/web-screen.md](./devices/web-screen.md) | Web Screen: cleaned accessibility tree with 0–1000 bounds, raw `--full` tree, Tree assist on web roles, iframe content |
 | [devices/web-gestures-alerts-lifecycle.md](./devices/web-gestures-alerts-lifecycle.md) | Web swipe (wheel), drag, JavaScript dialogs as alerts, and app lifecycle on the Web URL |
 | [devices/key-action.md](./devices/key-action.md) | `key` Action on every platform: named keys and modifiers, declared per Lane |
 | [devices/web-installed-browsers.md](./devices/web-installed-browsers.md) | Installed Chrome/Edge/Brave/Chromium as web devices, launched as Yoqa-owned instances |
+| [devices/web-supported-browsers.md](./devices/web-supported-browsers.md) | Which browsers are web devices (Chromium only), and the clear error for a Firefox or Safari device id |
 | [devices/web-kept-profile.md](./devices/web-kept-profile.md) | A launched browser keeps its profile per App and browser under `~/.yoqa/browser-profiles/`, or a clean one on request; lock rules |
 | [devices/web-everyday-browser.md](./devices/web-everyday-browser.md) | Connect to the user's Everyday browser by consent (one 60 s Allow wait), drive a page in Yoqa's own window; discovery, Deny/timeout, profile name |
 | [devices/web-popups.md](./devices/web-popups.md) | Web: the session follows a popup the page opens and returns to the opener when it closes |

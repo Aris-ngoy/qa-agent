@@ -99,10 +99,19 @@ describe("web Direct lane: attach by port", () => {
 
 	test("a web device id that names no browser and no port fails without probing anything", async () => {
 		const error = await rejection(
-			createDeviceSession({ platform: "web", deviceId: "web-firefox" }),
+			createDeviceSession({ platform: "web", deviceId: "web-opera-mini" }),
 		);
 		expect((error as Error).message).toContain("chromium-cdp-<port>");
 	});
+
+	test.each(["web-firefox", "web-safari", "web-firefox-everyday", "web-safari-everyday"])(
+		"%s fails saying Firefox and Safari are not supported, without probing anything",
+		async (deviceId) => {
+			const error = await rejection(createDeviceSession({ platform: "web", deviceId }));
+			expect((error as Error).message).toContain("Firefox and Safari are not supported");
+			expect((error as Error).message).toContain("chromium-cdp-<port>");
+		},
+	);
 });
 
 describe("web Direct lane: Actions reach the page", () => {

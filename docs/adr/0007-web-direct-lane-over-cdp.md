@@ -6,6 +6,8 @@ status: accepted
 
 > Superseded in part by [ADR-0009](./0009-everyday-browser-consent-attach.md): Yoqa attaches to the user's everyday browser by consent, and attach by port is CLI/CI only. This replaces the *Attach by port* bullet and the "attaching to a user's everyday browser" part of *Attach only* below.
 
+> Why Firefox and Safari are out of scope: [ADR-0010](./0010-no-firefox-or-safari-browser-device.md).
+
 Teams that ship an Expo or React Native Web build, or only an SPA, want the same Test Cases, CLI loop and Runs against a web page. [ADR-0005](./0005-direct-only-lane.md) says a Lane is Direct only: straight to the platform's own tooling, with no WebDriver server in between. For a browser, that tooling is the Chrome DevTools Protocol (CDP).
 
 We add a third platform, `web`, whose Direct lane speaks CDP to a Chromium-family browser (Chrome, Edge, Brave, Chromium). The Lane name stays `direct`. There is no second Lane, no WebDriver and no Playwright server, so ADR-0005 still holds.
@@ -26,4 +28,4 @@ We add a third platform, `web`, whose Direct lane speaks CDP to a Chromium-famil
 
 - `DevicePlatform` gains `web` and `DeviceKind` gains `browser`. Both changes are additive, so mobile clients and saved rows still parse.
 - Every per-platform branch needs a `web` case. The exhaustive switches from #302 make the typecheck enforce this.
-- Firefox, Safari and remote CDP endpoints are out of scope.
+- Remote CDP endpoints are out of scope. Firefox and Safari are too, for the reasons in [ADR-0010](./0010-no-firefox-or-safari-browser-device.md).
