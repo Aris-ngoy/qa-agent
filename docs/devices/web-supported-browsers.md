@@ -16,13 +16,13 @@ Say which browsers are web devices, and make a Firefox or Safari device id fail 
   - Installed browsers Yoqa launches: `web-chrome`, `web-edge`, `web-brave`, `web-chromium` ([web-installed-browsers.md](./web-installed-browsers.md)).
   - Everyday browsers attached by consent: `web-chrome-everyday`, `web-edge-everyday`, `web-brave-everyday`, `web-chromium-everyday`, `web-dia-everyday` ([web-everyday-browser.md](./web-everyday-browser.md)).
   - A Chromium started with a debug port, from the CLI and CI: `chromium-cdp-<port>` ([web-attach-by-port.md](./web-attach-by-port.md)).
-- **Not supported:** Firefox and Safari. `web-firefox`, `web-safari`, `web-firefox-everyday` and `web-safari-everyday` fail before anything is probed with "Firefox and Safari are not supported: the web lane drives Chromium browsers over CDP (ADR-0010)", followed by the list of web device ids. Any other unknown web id keeps the plain list.
+- **Not supported:** Firefox and Safari. `web-firefox`, `web-safari`, `web-firefox-everyday` and `web-safari-everyday` fail before anything is probed with "Firefox and Safari are not supported yet: the web lane drives Chromium browsers over CDP (ADR-0010)", followed by the list of web device ids. Any other unknown web id keeps the plain list. The CLI treats the four ids as web devices, so they need no `--platform`.
 - ADR-0007 now points to ADR-0010 for why Firefox and Safari are out of scope.
 
 ## How to verify
 
 - `bun test services/runner/src/domains/devices/web-direct-lane.test.ts`: the "fails saying Firefox and Safari are not supported" cases.
-- With a runner up, `yoqa devices connect web-firefox` should print the same message (not run when this shipped).
+- `bun test packages/cli/src/platform.test.ts`: the CLI treats a Firefox or Safari id as web, so `yoqa devices connect web-firefox` (and `--device web-firefox` on a Run) reaches the runner and prints that message instead of "--platform must be …".
 
 ## Follow-ups
 

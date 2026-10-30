@@ -44,9 +44,16 @@ export function isEverydayDeviceId(deviceId: string): boolean {
 	return everydayBrowserName(deviceId) !== null;
 }
 
+/** Firefox and Safari ids: web, so the runner refuses them with the reason (ADR-0010). */
+const UNSUPPORTED_BROWSER_ID = /^web-(firefox|safari)(-everyday)?$/;
+
 /** Whether a device id names a web device, whose platform needs no `--platform`. */
 export function isWebDeviceId(deviceId: string): boolean {
-	return WEB_DEVICE_ID.test(deviceId) || isEverydayDeviceId(deviceId);
+	return (
+		WEB_DEVICE_ID.test(deviceId) ||
+		isEverydayDeviceId(deviceId) ||
+		UNSUPPORTED_BROWSER_ID.test(deviceId)
+	);
 }
 
 /**
