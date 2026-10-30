@@ -126,7 +126,11 @@ export type CdpCommands = {
 		params: { discover: boolean };
 		result: Record<string, never>;
 	};
-	"Target.createTarget": { params: { url: string }; result: { targetId: string } };
+	"Target.createTarget": {
+		/** `newWindow` opens it in a window of its own, in the browser's default context. */
+		params: { url: string; newWindow?: boolean };
+		result: { targetId: string };
+	};
 	"Target.closeTarget": { params: { targetId: string }; result: { success?: boolean } };
 	"Target.attachToTarget": {
 		params: { targetId: string; flatten: true };
@@ -270,26 +274,64 @@ type Incoming = {
 	sessionId?: string;
 };
 
-/** Open a CDP socket to `url` (a browser's `webSocketDebuggerUrl`). */
-export async function connectCdp(
-	url: string,
-	options: { commandTimeoutMs?: number; connectTimeoutMs?: number } = {},
-): Promise<CdpClient> {
+/** Why a CDP socket did not open: it failed or closed, the time ran out, or the caller cancelled. */
+export type CdpOpenFailure = "refused" | "timeout" | "aborted";
+
+/** The socket to the browser never opened. */
+export class CdpOpenError extends Error {
+	constructor(
+		readonly reason: CdpOpenFailure,
+		message: string,
+	) {
+		super(message);
+		this.name = "CdpOpenError";
+	}
+}
+
+export type ConnectCdpOptions = {
+	commandTimeoutMs?: number;
+	/** How long the socket may take to open. */
+	connectTimeoutMs?: number;
+	/** Cancels a socket that has not opened yet. */
+	signal?: AbortSignal;
+};
+
+/**
+ * Open a CDP socket to `url` (a browser's `webSocketDebuggerUrl`), once. A socket that
+ * fails or closes before it opens, takes longer than `connectTimeoutMs`, or is cancelled
+ * fails with `CdpOpenError`.
+ */
+export async function connectCdp(url: string, options: ConnectCdpOptions = {}): Promise<CdpClient> {
 	const connectTimeoutMs = options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS;
+	const { signal } = options;
+	if (signal?.aborted)
+		throw new CdpOpenError("aborted", `The DevTools socket at ${url} was cancelled`);
 	const socket = new WebSocket(url);
 	await new Promise<void>((resolve, reject) => {
-		const timer = setTimeout(() => {
+		const settle = (error?: CdpOpenError) => {
+			clearTimeout(timer);
+			signal?.removeEventListener("abort", onAbort);
+			socket.removeEventListener("error", onRefused);
+			socket.removeEventListener("close", onRefused);
+			if (!error) return resolve();
 			socket.close();
-			reject(new Error(`No DevTools socket at ${url} within ${connectTimeoutMs} ms`));
-		}, connectTimeoutMs);
-		socket.addEventListener("open", () => {
-			clearTimeout(timer);
-			resolve();
-		});
-		socket.addEventListener("error", () => {
-			clearTimeout(timer);
-			reject(new Error(`Could not open the DevTools socket at ${url}`));
-		});
+			reject(error);
+		};
+		const timer = setTimeout(
+			() =>
+				settle(
+					new CdpOpenError("timeout", `No DevTools socket at ${url} within ${connectTimeoutMs} ms`),
+				),
+			connectTimeoutMs,
+		);
+		const onRefused = () =>
+			settle(new CdpOpenError("refused", `Could not open the DevTools socket at ${url}`));
+		const onAbort = () =>
+			settle(new CdpOpenError("aborted", `The DevTools socket at ${url} was cancelled`));
+		signal?.addEventListener("abort", onAbort);
+		socket.addEventListener("open", () => settle());
+		socket.addEventListener("error", onRefused);
+		socket.addEventListener("close", onRefused);
 	});
 
 	const commandTimeoutMs = options.commandTimeoutMs ?? COMMAND_TIMEOUT_MS;

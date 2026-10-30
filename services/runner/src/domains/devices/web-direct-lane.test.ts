@@ -801,3 +801,154 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 		expect(existsSync(profileDir())).toBe(true);
 	});
 });
+
+/**
+ * The user's Chrome with the remote-debugging toggle on and a tab of their own open, and a
+ * Device Session on its Everyday browser, which the user allows.
+ */
+async function everyday(options: { viewport?: "mobile"; nodes?: FakeAxNode[] } = {}) {
+	const browser = startFakeCdp({ viewport: VIEWPORT, consent: true, nodes: options.nodes });
+	const userTab = browser.openPage("https://mail.example.com/inbox");
+	const userDataDir = mkdtempSync(join(tmpdir(), "yoqa-chrome-"));
+	writeFileSync(
+		join(userDataDir, "DevToolsActivePort"),
+		`${browser.port}\n/devtools/browser/fake\n`,
+	);
+	writeFileSync(
+		join(userDataDir, "Local State"),
+		JSON.stringify({
+			profile: { last_used: "Default", info_cache: { Default: { name: "Work" } } },
+		}),
+	);
+	let deadCalls = 0;
+	browser.allow();
+	const session = await createWebDirectSession(
+		{
+			platform: "web",
+			deviceId: "web-chrome-everyday",
+			...(options.viewport ? { viewport: options.viewport } : {}),
+			onSessionDead: () => {
+				deadCalls += 1;
+			},
+		},
+		webDirectDeps({
+			everydayBrowsers: async () => [
+				{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir },
+			],
+		}),
+	);
+	const own = browser.attachedTargets[0] ?? "";
+	return { browser, session, userTab, own, deadCalls: () => deadCalls };
+}
+
+describe("web Direct lane: the Everyday browser", () => {
+	test("opens a target of its own in a new window, in the browser's default context", async () => {
+		const { browser, session, own } = await everyday();
+		expect(browser.createdTargets).toEqual([{ url: "about:blank", newWindow: true }]);
+		expect(browser.attachedTargets).toEqual([own]);
+		expect(browser.socketRequests()).toBe(1);
+		await session.quit();
+	});
+
+	test("its Actions, screenshots and Screen come from its own page, never the user's tabs", async () => {
+		const button = {
+			role: "button",
+			name: "Send",
+			box: { x: 100, y: 100, width: 100, height: 40 },
+		};
+		const { browser, session, userTab, own } = await everyday({ nodes: [button] });
+		// The user brings their own tab to the front.
+		browser.openPage("https://calendar.example.com");
+		await performAction(session, { kind: "tap", x: 500, y: 250 });
+		expect(browser.clicksOn(own)).toEqual([{ x: 640, y: 200 }]);
+		expect(browser.clicksOn(userTab)).toEqual([]);
+		expect(pngSize((await session.captureFrame()).base64)).toEqual(VIEWPORT);
+		const screen = await getScreen(session);
+		expect(screen.elements?.map((element) => element.label)).toContain("Send");
+		expect(browser.attachedTargets).toEqual([own]);
+		await session.quit();
+	});
+
+	test("names the browser and the profile its window opened in", async () => {
+		const { session } = await everyday();
+		expect(session.browser).toBe("Google Chrome 140.0.0.0");
+		expect(session.browserProfileName).toBe("Work");
+		await session.quit();
+	});
+
+	test("the Viewport preset applies to its own page", async () => {
+		const { browser, session, own } = await everyday({ viewport: "mobile" });
+		const mobile = VIEWPORT_PRESETS.mobile;
+		expect(browser.emulation(own)).toMatchObject({
+			viewport: { width: mobile.width, height: mobile.height },
+			mobile: true,
+			touch: true,
+		});
+		await session.quit();
+	});
+
+	test("the Stream is its own page's screencast", async () => {
+		const { browser, session, own } = await everyday();
+		const frames = await readMjpegFrames((await watch(session)).response, 2);
+		for (const frame of frames) expect(jpegSize(frame)).toEqual(VIEWPORT);
+		expect(browser.screencastStarts.map((start) => start.targetId)).toEqual([own]);
+		await session.quit();
+	});
+
+	test("a popup its own page opens is followed; a page the user opens is left alone", async () => {
+		const { browser, session, own } = await everyday();
+		const popup = browser.openPage("https://accounts.example.com", { fromFrontPage: true });
+		expect(await eventually(() => browser.attachedTargets.includes(popup))).toBe(true);
+		browser.openPage("https://news.example.com");
+		await Bun.sleep(50);
+		expect(browser.attachedTargets).toEqual([own, popup]);
+		await session.quit();
+	});
+
+	test("disconnecting closes only its own window, and leaves the browser and the user's tabs", async () => {
+		const { browser, session, deadCalls } = await everyday();
+		const before = browser.pages().length;
+		await session.quit();
+		expect(browser.pages()).toEqual(["about:blank", "https://mail.example.com/inbox"]);
+		expect(browser.pages()).toHaveLength(before - 1);
+		expect(deadCalls()).toBe(0);
+		// The browser is still up: a second connect asks again.
+		const status = await fetch(`http://127.0.0.1:${browser.port}/json/version`);
+		expect(status.status).toBe(404);
+		browser.kill();
+	});
+
+	test("a Deny fails the connect once, and nothing is opened in the browser", async () => {
+		const browser = startFakeCdp({ viewport: VIEWPORT, consent: true });
+		const userDataDir = mkdtempSync(join(tmpdir(), "yoqa-chrome-"));
+		writeFileSync(
+			join(userDataDir, "DevToolsActivePort"),
+			`${browser.port}\n/devtools/browser/fake\n`,
+		);
+		browser.deny();
+		const error = await rejection(
+			createWebDirectSession(
+				{ platform: "web", deviceId: "web-chrome-everyday" },
+				webDirectDeps({
+					everydayBrowsers: async () => [
+						{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir },
+					],
+				}),
+			),
+		);
+		expect((error as Error).message).toBe("Remote debugging was denied in Google Chrome");
+		expect(browser.socketRequests()).toBe(1);
+		expect(browser.createdTargets).toEqual([]);
+		browser.kill();
+	});
+
+	test("a browser that is not installed fails the connect", async () => {
+		const error = await rejection(
+			createWebDirectSession(
+				{ platform: "web", deviceId: "web-dia-everyday" },
+				webDirectDeps({ everydayBrowsers: async () => [] }),
+			),
+		);
+		expect((error as Error).message).toContain("web-dia-everyday is not installed");
+	});
+});

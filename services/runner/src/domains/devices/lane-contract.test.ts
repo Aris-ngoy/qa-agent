@@ -17,6 +17,7 @@ import {
 	iosYoqaAxLane,
 	iosYoqaSimLane,
 	webCdpLane,
+	webEverydayLane,
 	webLaunchedLane,
 	webMobileLane,
 } from "./lane-harnesses";
@@ -37,6 +38,7 @@ const LANES: Array<() => LaneHarness> = [
 	webCdpLane,
 	webLaunchedLane,
 	webMobileLane,
+	webEverydayLane,
 ];
 
 async function screenshotFiles(): Promise<string[]> {

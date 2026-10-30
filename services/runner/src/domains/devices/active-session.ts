@@ -35,6 +35,8 @@ export type ActiveSessionInfo = {
 	laneWarning?: string;
 	/** The Viewport preset a web session emulates. */
 	viewport?: ViewportPresetName;
+	/** An Everyday browser's profile the session's window opened in; null when unreadable. */
+	browserProfileName?: string | null;
 };
 
 type ActiveSession = {
@@ -95,6 +97,9 @@ function toInfo(current: ActiveSession): ActiveSessionInfo {
 		lane: current.session.lane,
 		...(current.session.laneWarning ? { laneWarning: current.session.laneWarning } : {}),
 		...(current.session.viewport ? { viewport: current.session.viewport } : {}),
+		...(current.session.browserProfileName !== undefined
+			? { browserProfileName: current.session.browserProfileName }
+			: {}),
 	};
 }
 
@@ -143,6 +148,7 @@ async function createAndRegister(options: {
 	viewport?: ViewportPresetName;
 	appId?: string;
 	profile?: BrowserProfile;
+	signal?: AbortSignal;
 	heldByRunId: string | null;
 }): Promise<DeviceSession> {
 	let opened: DeviceSession | null = null;
@@ -155,6 +161,7 @@ async function createAndRegister(options: {
 		viewport: options.viewport,
 		appId: options.appId,
 		profile: options.profile,
+		signal: options.signal,
 		onSessionDead: () => {
 			abandonActiveSession();
 		},
@@ -254,6 +261,8 @@ export async function connectDevice(options: {
 	viewport?: ViewportPresetName;
 	appId?: string;
 	profile?: BrowserProfile;
+	/** Cancels a connect still waiting, such as on an Everyday browser's Allow. */
+	signal?: AbortSignal;
 }): Promise<ActiveSessionInfo> {
 	if (isActiveSessionHeldByRun()) {
 		throw new SessionBusyError(

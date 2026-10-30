@@ -1116,6 +1116,11 @@ export const activeDeviceResponseSchema = z.object({
 	laneWarning: z.string().min(1).optional(),
 	/** The Viewport preset a web session emulates. Absent on other platforms. */
 	viewport: viewportPresetSchema.optional(),
+	/**
+	 * Everyday browser only: the browser profile Yoqa's window opened in, from its `Local
+	 * State`; null when it could not be read.
+	 */
+	browserProfileName: z.string().nullable().optional(),
 });
 export type ActiveDeviceResponse = z.infer<typeof activeDeviceResponseSchema>;
 

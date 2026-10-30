@@ -11,6 +11,7 @@ import {
 	parseAdbEmuAvdName,
 } from "./android-identity";
 import { listWebDevices } from "./chromium-browsers";
+import { listEverydayDevices } from "./chromium-everyday";
 import { idleWiredUdids, parseDevicectlDevices } from "./devicectl";
 import type { ListDevicesOptions } from "./models";
 
@@ -501,9 +502,15 @@ export async function listDevices(
 			return listIosDevices(options);
 		case "android":
 			return listAndroidDevices(options);
-		case "web":
-			// Installed browsers only. Nothing lists a user-started browser's debug port: it is
-			// attached by naming the port (`chromium-cdp-<port>`), never found by a scan.
-			return listWebDevices(options);
+		case "web": {
+			// Installed browsers, then their Everyday browsers. Nothing lists a user-started
+			// browser's debug port: it is attached by naming the port (`chromium-cdp-<port>`),
+			// never found by a scan.
+			const [launched, everyday] = await Promise.all([
+				listWebDevices(options),
+				listEverydayDevices(options),
+			]);
+			return [...launched, ...everyday];
+		}
 	}
 }

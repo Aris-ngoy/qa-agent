@@ -26,6 +26,8 @@ export type SessionOptions = {
 	appId?: string;
 	/** Web only: a launched browser's profile, its App's Kept one unless `clean`. */
 	profile?: BrowserProfile;
+	/** Cancels a connect that is still waiting, such as on an Everyday browser's Allow. */
+	signal?: AbortSignal;
 	/** Called once when the lane reports the session is gone. */
 	onSessionDead?: () => void;
 	/**
@@ -95,6 +97,11 @@ export type DeviceSession = {
 	stream: LiveStream | null;
 	/** The browser a web session drives, with its version (`Google Chrome 141.0`), for the Run report. */
 	browser?: string;
+	/**
+	 * An Everyday browser's profile the session's window opened in, from its `Local State`;
+	 * null when it could not be read. Absent on any other device.
+	 */
+	browserProfileName?: string | null;
 	/** The Viewport preset a web session emulates, for the Run report. */
 	viewport?: ViewportPresetName;
 	quit: () => Promise<void>;
