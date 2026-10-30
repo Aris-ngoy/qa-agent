@@ -7,6 +7,11 @@
  * (`chromium-cdp-9222`), and disconnecting closes only the DevTools socket. Either way the
  * session drives the browser's first page, or a blank one it opens.
  *
+ * The user's Everyday browser (`web-chrome-everyday`, ADR-0009) is attached by consent: one
+ * socket from its port file, which waits for the user's Allow. There the session opens a
+ * page in a new window of its own and never touches the user's tabs, and disconnecting
+ * closes that window and the socket, never the browser.
+ *
  * The session drives one page at a time. A page that page opens (`window.open`, a
  * `target=_blank` link, an OAuth popup) takes over, and when it closes the session goes back
  * to the page that opened it. Pages it did not open are left alone.
@@ -35,7 +40,7 @@
  * one. Single shots (Run step screenshots, `/screenshot/image`) still do.
  */
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	DEFAULT_VIEWPORT_PRESET,
@@ -52,6 +57,7 @@ import {
 	CdpCommandError,
 	type CdpCommands,
 	type CdpMethod,
+	type ConnectCdpOptions,
 	type DocumentSnapshot,
 	type KeyEvent,
 	type ScreencastFrame,
@@ -69,6 +75,13 @@ import {
 	installedBrowserIdOf,
 	launchChromium,
 } from "./chromium-browsers";
+import {
+	type EverydayBrowser,
+	everydayBrowserIdOf,
+	findEverydayBrowsers,
+	openEverydaySocket,
+	readEverydayProfileName,
+} from "./chromium-everyday";
 import {
 	ActionUnsupportedError,
 	type CapturedFrame,
@@ -88,11 +101,17 @@ export type WebDirectDeps = {
 	/** The CDP WebSocket URL of the browser on `port`. */
 	browserSocketUrl: (port: number) => Promise<string>;
 	/** Open a CDP client on that URL. */
-	connect: (url: string) => Promise<CdpClient>;
+	connect: (url: string, options?: ConnectCdpOptions) => Promise<CdpClient>;
 	/** The browsers installed on this machine. */
 	installedBrowsers: () => Promise<InstalledBrowser[]>;
 	/** Launch a Yoqa-owned instance of one, on the profile the connect asked for. */
 	launch: (browser: InstalledBrowser, profile: ProfileRequest) => Promise<ChromiumInstance>;
+	/** The installed browsers' Everyday browsers. */
+	everydayBrowsers: () => Promise<EverydayBrowser[]>;
+	/** Read a file in an Everyday browser's user-data folder. */
+	readText: (path: string) => Promise<string>;
+	/** How long an Everyday browser connect waits for Allow; 60 s by default. */
+	allowTimeoutMs?: number;
 };
 
 /** Typed text is cut at a newline, which presses Enter. */
@@ -176,33 +195,68 @@ export function webDirectDeps(
 		spawn?: (command: string[]) => BrowserProcess;
 		/** The home folder Kept profiles live under. */
 		home?: string;
+		everydayBrowsers?: () => Promise<EverydayBrowser[]>;
+		allowTimeoutMs?: number;
 	} = {},
 ): WebDirectDeps {
 	return {
 		browserSocketUrl: (port) => browserSocketUrl(port),
-		connect: (url) => connectCdp(url),
+		connect: (url, options) => connectCdp(url, options),
 		installedBrowsers: overrides.installedBrowsers ?? (() => findInstalledBrowsers()),
 		launch: (browser, profile) =>
 			launchChromium(browser, { spawn: overrides.spawn, home: overrides.home }, profile),
+		everydayBrowsers: overrides.everydayBrowsers ?? (() => findEverydayBrowsers()),
+		readText: (path) => readFile(path, "utf8"),
+		allowTimeoutMs: overrides.allowTimeoutMs,
 	};
 }
 
+/** A browser the session is connected to, and what it knows of it before asking. */
+type OpenedBrowser = {
+	client: CdpClient;
+	/** A browser Yoqa launched, quit with the session. */
+	owned: ChromiumInstance | null;
+	/** The name the browser is known by, when not from its own report. */
+	name: string | null;
+	/** The user's Everyday browser, where the session keeps to a window of its own. */
+	everyday: { name: string; profileName: string | null } | null;
+};
+
 /**
- * The browser a web device id names: a Yoqa-owned instance of an installed browser, which
- * this launches, or a user-started one attached by its port.
+ * Connect to the browser a web device id names: a Yoqa-owned instance of an installed
+ * browser, which this launches, the user's Everyday browser, by consent, or a user-started
+ * one attached by its port.
  */
 async function openBrowser(
-	{ deviceId, appId, profile }: SessionOptions,
+	{ deviceId, appId, profile, signal }: SessionOptions,
 	deps: WebDirectDeps,
-): Promise<{ socketUrl: string; owned: ChromiumInstance | null; name: string | null }> {
+): Promise<OpenedBrowser> {
 	const port = attachPortOf(deviceId);
 	if (port !== null) {
-		return { socketUrl: await deps.browserSocketUrl(port), owned: null, name: null };
+		const client = await deps.connect(await deps.browserSocketUrl(port));
+		return { client, owned: null, name: null, everyday: null };
+	}
+	const everydayId = everydayBrowserIdOf(deviceId);
+	if (everydayId !== null) {
+		const browser = (await deps.everydayBrowsers()).find((found) => found.id === everydayId);
+		if (!browser) {
+			throw new Error(
+				`${everydayId} is not installed. Run yoqa devices web to list the browsers here`,
+			);
+		}
+		const client = await openEverydaySocket(browser, {
+			readText: deps.readText,
+			connect: deps.connect,
+			allowTimeoutMs: deps.allowTimeoutMs,
+			signal,
+		});
+		const profileName = await readEverydayProfileName(browser.userDataDir, deps.readText);
+		return { client, owned: null, name: null, everyday: { name: browser.name, profileName } };
 	}
 	const browserId = installedBrowserIdOf(deviceId);
 	if (browserId === null) {
 		throw new Error(
-			"A web device is an installed browser (web-chrome, web-edge, web-brave, web-chromium) or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>",
+			"A web device is an installed browser (web-chrome, web-edge, web-brave, web-chromium), its Everyday browser (web-chrome-everyday), or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>",
 		);
 	}
 	const browser = (await deps.installedBrowsers()).find((installed) => installed.id === browserId);
@@ -213,11 +267,22 @@ async function openBrowser(
 	}
 	const owned = await deps.launch(browser, { appId, profile });
 	const name = browser.version ? `${browser.name} ${browser.version}` : browser.name;
-	return { socketUrl: owned.socketUrl, owned, name };
+	const client = await deps.connect(owned.socketUrl).catch(async (error: unknown) => {
+		await owned.stop();
+		throw error;
+	});
+	return { client, owned, name, everyday: null };
 }
 
-/** The page the session drives: the browser's first page, or a blank one it opens. */
-async function pickPage(client: CdpClient): Promise<string> {
+/**
+ * The page the session drives: the browser's first page, or a blank one it opens. In the
+ * Everyday browser it is always a blank page in a new window of its own.
+ */
+async function pickPage(client: CdpClient, everyday: boolean): Promise<string> {
+	if (everyday) {
+		return (await client.send("Target.createTarget", { url: "about:blank", newWindow: true }))
+			.targetId;
+	}
 	const { targetInfos } = await client.send("Target.getTargets", {});
 	const page = targetInfos.find(
 		(target) => target.type === "page" && !target.url.startsWith("devtools://"),
@@ -450,11 +515,7 @@ export async function createWebDirectSession(
 	}
 
 	const preset = VIEWPORT_PRESETS[options.viewport ?? DEFAULT_VIEWPORT_PRESET];
-	const { socketUrl, owned, name } = await openBrowser(options, deps);
-	const client = await deps.connect(socketUrl).catch(async (error: unknown) => {
-		await owned?.stop();
-		throw error;
-	});
+	const { client, owned, name, everyday } = await openBrowser(options, deps);
 	/**
 	 * The out-of-process iframes attached under each session (a page's, or another iframe's),
 	 * listening from before the first page is attached, which announces its iframes at once.
@@ -485,13 +546,26 @@ export async function createWebDirectSession(
 	});
 	/** The page the session drives. terminate-app swaps it for a blank one. */
 	let page: DrivenPage;
-	/** An attached browser names itself (`Chrome/140.0.0.0`); a launched one is known. */
+	/**
+	 * An attached browser names itself (`Chrome/140.0.0.0`); a launched one is known. An
+	 * Everyday browser is known by name, and reports its version.
+	 */
 	let browser: string;
+	/** The window it opened in an Everyday browser, closed again when setup fails. */
+	let ownTarget: string | null = null;
 	try {
-		page = await attachPage(client, await pickPage(client), preset);
+		const targetId = await pickPage(client, everyday !== null);
+		if (everyday) ownTarget = targetId;
+		page = await attachPage(client, targetId, preset);
 		await client.send("Target.setDiscoverTargets", { discover: true });
-		browser = name ?? (await client.send("Browser.getVersion", {})).product.replace("/", " ");
+		const product = name ?? (await client.send("Browser.getVersion", {})).product;
+		browser = everyday
+			? `${everyday.name} ${product.split("/")[1] ?? ""}`.trim()
+			: product.replace("/", " ");
 	} catch (error) {
+		if (ownTarget) {
+			await client.send("Target.closeTarget", { targetId: ownTarget }).catch(() => undefined);
+		}
 		await client.close().catch(() => undefined);
 		await owned?.stop();
 		throw error;
@@ -826,10 +900,16 @@ export async function createWebDirectSession(
 		}
 	};
 
-	/** Closing the browser's last tab can quit it, so a blank page takes over first. */
+	/**
+	 * Closing the browser's last tab can quit it, so a blank page takes over first: in the
+	 * Everyday browser, in a window of its own again.
+	 */
 	const closeAppPage = async () => {
 		const appPage = page;
-		const { targetId } = await callBrowser("Target.createTarget", { url: "about:blank" });
+		const { targetId } = await callBrowser("Target.createTarget", {
+			url: "about:blank",
+			...(everyday ? { newWindow: true } : {}),
+		});
 		page = await guarded(() => attachPage(client, targetId, preset));
 		openDialog = null;
 		followPage();
@@ -990,12 +1070,20 @@ export async function createWebDirectSession(
 		return JSON.stringify({ axTree } satisfies WebAxSource);
 	};
 
+	/** The Everyday browser stays open: only the pages the session opened or followed close. */
+	const closeOwnPages = async () => {
+		for (const own of [page, ...openers]) {
+			await client.send("Target.closeTarget", { targetId: own.targetId }).catch(() => undefined);
+		}
+	};
+
 	let pointerDown = false;
 
 	return {
 		lane: "direct",
 		stream: { ...feed.stream, survivesTreeRead: true },
 		browser,
+		...(everyday ? { browserProfileName: everyday.profileName } : {}),
 		viewport: preset.name,
 		noRecordingReason: "Run recording is not available on web",
 		quit: async () => {
@@ -1003,6 +1091,7 @@ export async function createWebDirectSession(
 			screenChanges.stop();
 			feed.stop();
 			await stopScreencast().catch(() => undefined);
+			if (everyday) await closeOwnPages();
 			await client.close();
 			await owned?.stop();
 		},

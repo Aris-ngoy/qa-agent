@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -582,6 +582,85 @@ describe("connecting a web device at a Viewport preset", () => {
 		expect(await response.json()).not.toHaveProperty("viewport");
 	});
 });
+
+/** The user's Everyday Chrome with the remote-debugging toggle on, its profile named Work. */
+function everydayChrome() {
+	const browser = startFakeCdp({ viewport: { width: 900, height: 700 }, consent: true });
+	const userDataDir = mkdtempSync(join(tmpdir(), "yoqa-chrome-"));
+	writeFileSync(
+		join(userDataDir, "DevToolsActivePort"),
+		`${browser.port}\n/devtools/browser/fake\n`,
+	);
+	writeFileSync(
+		join(userDataDir, "Local State"),
+		JSON.stringify({ profile: { info_cache: { Default: { name: "Work" } } } }),
+	);
+	directLane = (options) =>
+		createWebDirectSession(
+			options,
+			webDirectDeps({
+				everydayBrowsers: async () => [
+					{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir },
+				],
+			}),
+		);
+	return browser;
+}
+
+describe("connecting the Everyday browser", () => {
+	const connect = (body: unknown, signal?: AbortSignal) =>
+		createSessionRoutes().request("/devices/connect", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+			signal,
+		});
+
+	test("POST /devices/connect waits for Allow, and answers with the profile its window opened in", async () => {
+		const browser = everydayChrome();
+		const response = connect({ deviceId: "web-chrome-everyday", platform: "web" });
+		await Bun.sleep(50);
+		browser.allow();
+		expect(await (await response).json()).toMatchObject({
+			deviceId: "web-chrome-everyday",
+			browserProfileName: "Work",
+		});
+		expect(browser.createdTargets).toEqual([{ url: "about:blank", newWindow: true }]);
+		browser.kill();
+	});
+
+	test("the request going away cancels the wait for Allow", async () => {
+		const browser = everydayChrome();
+		const request = new AbortController();
+		const response = connect({ deviceId: "web-chrome-everyday", platform: "web" }, request.signal);
+		await Bun.sleep(50);
+		request.abort();
+		await Promise.resolve(response).catch(() => undefined);
+		expect(await eventuallyTrue(() => browser.socketRequests() === 1)).toBe(true);
+		expect(await eventuallyTrue(() => getActiveSession() === null)).toBe(true);
+		// Allowing afterwards opens nothing: the connect is not retried.
+		browser.allow();
+		await Bun.sleep(50);
+		expect(browser.createdTargets).toEqual([]);
+		browser.kill();
+	});
+
+	test("a Deny is the connect's error, in the browser's words", async () => {
+		const browser = everydayChrome();
+		browser.deny();
+		const response = await connect({ deviceId: "web-chrome-everyday", platform: "web" });
+		expect(response.status).toBe(500);
+		expect(await response.json()).toMatchObject({
+			detail: "Remote debugging was denied in Google Chrome",
+		});
+		browser.kill();
+	});
+});
+
+async function eventuallyTrue(check: () => boolean): Promise<boolean> {
+	for (let tries = 0; tries < 50 && !check(); tries++) await Bun.sleep(20);
+	return check();
+}
 
 /** An installed Chrome whose launches are faked, its Kept profiles under a temporary home. */
 function installedChrome() {

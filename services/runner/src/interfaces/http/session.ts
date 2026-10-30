@@ -128,6 +128,8 @@ export function createSessionRoutes(profiles: { home?: string } = {}) {
 			const info = await connectDevice({
 				...parsed.data,
 				requestedLane: parsed.data.lane,
+				// A client that goes away cancels a connect still waiting on the user's Allow.
+				signal: c.req.raw.signal,
 			});
 			return c.json(activeDeviceResponseSchema.parse(info));
 		} catch (error) {

@@ -2,7 +2,7 @@
  * Lane harnesses for the Lane contract suite (`lane-contract.test.ts`). Each one opens
  * a real Lane with its device tool faked, and reads back what reached the device.
  */
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -524,5 +524,40 @@ export function webLaunchedLane(): LaneHarness {
 		keys: () => cdpKeys(browser()),
 		frame: (count) => browser().frame(count),
 		killTool: () => browser().kill(),
+	};
+}
+
+/**
+ * Web Direct: the user's Everyday Chrome, with the remote-debugging toggle on and a tab of
+ * the user's own, faked as a CDP endpoint that asks before each socket. The user clicks
+ * Allow on every connect; the session drives a page in a window of its own.
+ */
+export function webEverydayLane(): LaneHarness & { browser: FakeCdp } {
+	const preset = VIEWPORT_PRESETS.desktop;
+	const browser = startFakeCdp({ ...webPage(preset), consent: true });
+	browser.openPage("https://mail.example.com/inbox");
+	const userDataDir = mkdtempSync(join(tmpdir(), "yoqa-chrome-"));
+	writeFileSync(
+		join(userDataDir, "DevToolsActivePort"),
+		`${browser.port}\n/devtools/browser/fake\n`,
+	);
+	return {
+		name: "Web Direct: the Everyday Chrome, by consent (faked CDP endpoint)",
+		open: ({ onSessionDead }) => {
+			browser.allow();
+			return createWebDirectSession(
+				{ platform: "web", deviceId: "web-chrome-everyday", onSessionDead },
+				webDirectDeps({
+					everydayBrowsers: async () => [
+						{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir },
+					],
+				}),
+			);
+		},
+		taps: () => webTaps(browser, preset),
+		keys: () => cdpKeys(browser),
+		frame: (count) => browser.frame(count),
+		killTool: () => browser.kill(),
+		browser,
 	};
 }

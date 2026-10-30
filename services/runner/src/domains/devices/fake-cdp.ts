@@ -20,6 +20,9 @@
  * its `frameId`. An out-of-process one is a target of its own, attached through
  * `Target.setAutoAttach` as Chromium does with site isolation, with node ids that start
  * over. Either way its boxes are in its own document, which can scroll on its own.
+ *
+ * With `consent`, it is an everyday browser with the remote-debugging toggle on: `/json/*`
+ * answers 404, and each WebSocket waits until the user allows or denies it.
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -86,6 +89,11 @@ export type FakeCdpOptions = {
 	 * follows every ack, as on a page that keeps animating.
 	 */
 	still?: boolean;
+	/**
+	 * Remote debugging by consent (`chrome://inspect/#remote-debugging`): `/json/*` is 404,
+	 * and each WebSocket opens only once `allow()` is called, or fails on `deny()`.
+	 */
+	consent?: boolean;
 };
 
 export type FakeMouseEvent = {
@@ -173,6 +181,16 @@ export type FakeCdp = {
 	closePage: (targetId?: string) => void;
 	/** The browser quits: every socket closes and the port stops answering. */
 	kill: () => void;
+	/** How many WebSockets were asked for, allowed or not. */
+	socketRequests: () => number;
+	/** The user clicks Allow on the waiting WebSocket, or the next one (`consent` only). */
+	allow: () => void;
+	/** The user clicks Deny: the waiting WebSocket, or the next one, fails (`consent` only). */
+	deny: () => void;
+	/** The params of every `Target.createTarget`, in order. */
+	createdTargets: Array<Record<string, unknown>>;
+	/** Every target a DevTools session attached to, in order. */
+	attachedTargets: string[];
 };
 
 type Message = { id: number; method: string; params?: Record<string, unknown>; sessionId?: string };
@@ -292,6 +310,18 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const screencastStarts: FakeCdp["screencastStarts"] = [];
 	const screencastFrames: FakeScreencastFrame[] = [];
 	let nextScreencastFrame = 1;
+	const createdTargets: Array<Record<string, unknown>> = [];
+	const attachedTargets: string[] = [];
+	let socketRequests = 0;
+	/** The WebSockets waiting on the user's Allow or Deny, oldest first. */
+	const prompts: Array<(allowed: boolean) => void> = [];
+	/** Answers given before their WebSocket was asked for. */
+	const answers: boolean[] = [];
+	const answerPrompt = (allowed: boolean) => {
+		const prompt = prompts.shift();
+		if (prompt) prompt(allowed);
+		else answers.push(allowed);
+	};
 	const sockets = new Set<ServerWebSocket<unknown>>();
 	const pages: Page[] = [];
 	let nextPage = 1;
@@ -623,9 +653,11 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				}
 				return {};
 			case "Target.createTarget":
+				createdTargets.push(params);
 				return { targetId: createPage(String(params.url)).targetId };
 			case "Target.attachToTarget": {
 				const target = targetOf(params.targetId);
+				attachedTargets.push(target.targetId);
 				target.sessionId = `session-${target.targetId}`;
 				return { sessionId: target.sessionId };
 			}
@@ -807,15 +839,26 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
 		port: 0,
-		fetch(request, srv) {
+		async fetch(request, srv) {
 			const url = new URL(request.url);
+			if (options.consent && url.pathname.startsWith("/devtools/browser/")) {
+				socketRequests += 1;
+				const allowed =
+					answers.shift() ?? (await new Promise<boolean>((resolve) => prompts.push(resolve)));
+				if (allowed && srv.upgrade(request)) return;
+				return new Response("denied", { status: 403 });
+			}
+			if (options.consent) return new Response("not found", { status: 404 });
 			if (url.pathname === "/json/version") {
 				return Response.json({
 					Browser: "Chrome/140.0.0.0",
 					webSocketDebuggerUrl: `ws://127.0.0.1:${srv.port}/devtools/browser/fake`,
 				});
 			}
-			if (url.pathname.startsWith("/devtools/browser/") && srv.upgrade(request)) return;
+			if (url.pathname.startsWith("/devtools/browser/")) {
+				socketRequests += 1;
+				if (srv.upgrade(request)) return;
+			}
 			return new Response("not found", { status: 404 });
 		},
 		websocket: {
@@ -899,8 +942,14 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		kill: () => {
 			for (const page of pages) stopScreencast(page);
 			for (const ws of sockets) ws.close();
+			for (const answer of prompts.splice(0)) answer(false);
 			server.stop(true);
 		},
+		socketRequests: () => socketRequests,
+		allow: () => answerPrompt(true),
+		deny: () => answerPrompt(false),
+		createdTargets,
+		attachedTargets,
 	};
 }
 
