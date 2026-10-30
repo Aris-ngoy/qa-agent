@@ -1,11 +1,24 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { RunnerRequestError } from "@yoqa/runner-client";
 
+const settingsOpened: { browserId: string }[] = [];
+let settingResult: { ok: true } | { ok: false; error: string } = { ok: true };
+
 mock.module("@/app/desktop-rpc", () => ({
-	getDesktopRpc: () => ({ request: { getRunnerBaseUrl: async () => "http://runner.test" } }),
+	getDesktopRpc: () => ({
+		request: {
+			getRunnerBaseUrl: async () => "http://runner.test",
+			openRemoteDebuggingSetting: async (params: { browserId: string }) => {
+				settingsOpened.push(params);
+				return settingResult;
+			},
+		},
+	}),
 }));
 
-const { resetBrowserProfile } = await import("@/features/devices/data/api/devices");
+const { connectDevice, openRemoteDebuggingSetting, resetBrowserProfile } = await import(
+	"@/features/devices/data/api/devices"
+);
 
 const realFetch = globalThis.fetch;
 const requests: { url: string; method: string }[] = [];
@@ -23,6 +36,8 @@ function answer(status: number, body: unknown) {
 afterEach(() => {
 	globalThis.fetch = realFetch;
 	requests.length = 0;
+	settingsOpened.length = 0;
+	settingResult = { ok: true };
 });
 
 describe("resetBrowserProfile", () => {
@@ -54,5 +69,42 @@ describe("resetBrowserProfile", () => {
 		expect(error).toBeInstanceOf(RunnerRequestError);
 		expect((error as RunnerRequestError).status).toBe(409);
 		expect((error as Error).message).toContain(refusal);
+	});
+});
+
+describe("connectDevice", () => {
+	test("Cancel while the runner waits for Allow aborts the connect request", async () => {
+		let seen: AbortSignal | undefined;
+		globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+			seen = init?.signal ?? undefined;
+			return new Promise<Response>((_resolve, reject) => {
+				if (seen?.aborted) reject(seen.reason);
+				seen?.addEventListener("abort", () => reject(seen?.reason));
+			});
+		}) as typeof fetch;
+		const controller = new AbortController();
+		const connecting = connectDevice(
+			{ deviceId: "web-dia-everyday", platform: "web", acceptEverydayWarning: true },
+			{ signal: controller.signal },
+		).catch((caught: unknown) => caught);
+		controller.abort();
+		const error = await connecting;
+		expect(seen?.aborted).toBe(true);
+		expect((error as Error).name).toBe("AbortError");
+	});
+});
+
+describe("openRemoteDebuggingSetting", () => {
+	test("asks the desktop host to open the setting in that browser", async () => {
+		await openRemoteDebuggingSetting("web-dia-everyday");
+		expect(settingsOpened).toEqual([{ browserId: "web-dia-everyday" }]);
+	});
+
+	test("rejects with the host's reason when the browser could not open it", async () => {
+		settingResult = { ok: false, error: "open exited with code 1" };
+		const error = await openRemoteDebuggingSetting("web-dia-everyday").catch(
+			(caught: unknown) => caught,
+		);
+		expect((error as Error).message).toBe("open exited with code 1");
 	});
 });

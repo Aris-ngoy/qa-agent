@@ -1,19 +1,20 @@
-import { RhfTextField } from "@/app/forms";
 import { useApps } from "@/features/apps/hooks/use-apps";
-import { useResetBrowserProfile } from "@/features/devices/hooks/usequery/use-devices";
 import {
-	attachDeviceId,
+	useOpenRemoteDebuggingSetting,
+	useResetBrowserProfile,
+} from "@/features/devices/hooks/usequery/use-devices";
+import type { EverydayEntry } from "@/features/devices/utils/everyday-browser";
+import {
 	resetProfileConfirmation,
 	resetProfileDone,
 	resetProfileRequest,
 } from "@/features/devices/utils/web-device";
-import { AlertDialog, Button, Form, toast } from "@heroui/react";
+import { AlertDialog, Button, toast } from "@heroui/react";
 import {
 	VIEWPORT_PRESETS,
 	VIEWPORT_PRESET_NAMES,
 	type ViewportPresetName,
 } from "@yoqa/runner-client";
-import { useForm } from "react-hook-form";
 
 const PRESET_LABELS: Record<ViewportPresetName, string> = {
 	desktop: "Desktop",
@@ -64,66 +65,86 @@ export function ViewportChoice({
 	);
 }
 
-type AttachForm = { port: string };
+/** The short line an Everyday browser with remote debugging off shows under its name. */
+const TURN_ON_HINT =
+	"Turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect.";
 
-const inputClass =
-	"w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3.5 py-2.5 font-mono text-body-md text-on-surface shadow-none placeholder:text-on-surface-variant/65 focus:border-primary/35 focus:outline-none focus:ring-2 focus:ring-primary/10";
-
-/** Attach to a Chromium the user started, named by its debug port. Ports are never scanned. */
-export function AttachByPortForm({
-	checklist,
-	onAttach,
+/**
+ * The user's own browsers, by consent (ADR-0009): a ready one is picked to connect; one with
+ * remote debugging off offers "Open the setting", which opens the toggle in that browser.
+ */
+export function EverydayBrowserList({
+	browsers,
+	loading,
+	error,
+	onSelect,
 }: {
-	checklist: string[];
-	onAttach: (deviceId: string) => void;
+	browsers: EverydayEntry[];
+	loading: boolean;
+	error: string | null;
+	onSelect: (browser: EverydayEntry) => void;
 }) {
-	const {
-		control,
-		handleSubmit,
-		formState: { isValid },
-	} = useForm<AttachForm>({ defaultValues: { port: "9222" }, mode: "onChange" });
+	const openSetting = useOpenRemoteDebuggingSetting();
 
-	const onSubmit = (values: AttachForm) => {
-		const deviceId = attachDeviceId(values.port);
-		if (deviceId) onAttach(deviceId);
-	};
+	if (loading && browsers.length === 0) {
+		return (
+			<p className="px-1 py-6 text-center text-body-md text-on-surface-variant">
+				Looking for browsers…
+			</p>
+		);
+	}
+	if (error) {
+		return <p className="px-1 py-6 text-center text-body-md text-danger">{error}</p>;
+	}
+	if (browsers.length === 0) {
+		return (
+			<p className="px-1 py-6 text-center text-body-md text-on-surface-variant">
+				No Chrome, Edge, Brave, Chromium or Dia found in Applications.
+			</p>
+		);
+	}
 
 	return (
-		<div className="flex flex-col gap-4">
-			<div className="rounded-xl border border-outline-variant bg-surface-container-low/60 px-4 py-3.5">
-				<p className="mb-2 text-body-md font-semibold text-on-surface">
-					Start the browser yourself, with:
-				</p>
-				<ul className="list-disc space-y-1 pl-5 text-body-sm text-on-surface">
-					{checklist.map((item) => (
-						<li key={item}>{item}</li>
-					))}
-				</ul>
-			</div>
-			<Form className="flex items-start gap-2" onSubmit={handleSubmit(onSubmit)}>
-				<RhfTextField
-					aria-label="Debug port"
-					className="w-full"
-					control={control}
-					description="Yoqa attaches on localhost and never closes this browser."
-					inputClassName={inputClass}
-					name="port"
-					placeholder="9222"
-					rules={{
-						validate: (value) =>
-							(typeof value === "string" && attachDeviceId(value) != null) ||
-							"Enter a port from 1 to 65535",
-					}}
-				/>
-				<Button
-					className="h-[42px] shrink-0 rounded-xl bg-primary px-4 text-on-primary data-[disabled=true]:bg-surface-container-highest data-[disabled=true]:text-on-surface-variant"
-					isDisabled={!isValid}
-					type="submit"
-				>
-					Attach
-				</Button>
-			</Form>
-		</div>
+		<ul className="divide-y divide-outline-variant/60">
+			{browsers.map((browser) => (
+				<li className="flex items-center gap-2" key={browser.id}>
+					<button
+						className="flex min-w-0 flex-1 items-center justify-between gap-4 px-1 py-3.5 text-left transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:hover:bg-transparent"
+						disabled={!browser.ready}
+						onClick={() => onSelect(browser)}
+						type="button"
+					>
+						<span className="min-w-0 text-body-md font-semibold text-on-surface">
+							{browser.browserName}
+							{browser.ready ? null : (
+								<span className="block text-body-sm font-normal text-on-surface-variant">
+									{TURN_ON_HINT}
+								</span>
+							)}
+						</span>
+						<span
+							className={[
+								"shrink-0 text-helper capitalize",
+								browser.ready ? "text-success" : "text-on-surface-variant/80",
+							].join(" ")}
+						>
+							{browser.ready ? "ready" : "remote debugging off"}
+						</span>
+					</button>
+					{browser.ready ? null : (
+						<Button
+							className="shrink-0 rounded-lg text-body-sm"
+							isDisabled={openSetting.isPending}
+							onPress={() => openSetting.mutate(browser.id)}
+							size="sm"
+							variant="tertiary"
+						>
+							Open the setting
+						</Button>
+					)}
+				</li>
+			))}
+		</ul>
 	);
 }
 

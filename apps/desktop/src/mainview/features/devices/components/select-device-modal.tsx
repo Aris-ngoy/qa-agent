@@ -1,12 +1,13 @@
 import {
-	AttachByPortForm,
+	EverydayBrowserList,
 	ResetProfileDialog,
 	type ResetProfileTarget,
 	ViewportChoice,
 } from "@/features/devices/components/web-device-panels";
 import type { DevicePlatform, SelectedDevice } from "@/features/devices/data/state/session-bar";
 import { usePickerDevices } from "@/features/devices/hooks/usequery/use-devices";
-import { attachedBrowser, browserDevices } from "@/features/devices/utils/web-device";
+import { everydayEntries } from "@/features/devices/utils/everyday-browser";
+import { browserDevices } from "@/features/devices/utils/web-device";
 import { Button, Modal, Tabs } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
 import {
@@ -17,8 +18,11 @@ import {
 } from "@yoqa/runner-client";
 import { type ReactNode, type SVGProps, useEffect, useMemo } from "react";
 
-/** Phones: cabled devices and simulators/emulators. Web: installed browsers and attach by port. */
-type DeviceTab = "local" | "simulators" | "browsers" | "attach";
+/**
+ * Phones: cabled devices and simulators/emulators. Web: the browsers Yoqa launches, and the
+ * user's own by consent. Attach by port is CLI/CI only (ADR-0009).
+ */
+type DeviceTab = "local" | "simulators" | "browsers" | "everyday";
 
 type DeviceRow = {
 	id: string;
@@ -45,7 +49,7 @@ const PLATFORM_COPY: Record<
 	{
 		title: string;
 		simulatorLabel: string;
-		/** Phones: what a cabled device needs. Web: how to start a browser to attach to. */
+		/** What a cabled device needs. */
 		localChecklist: string[];
 	}
 > = {
@@ -74,10 +78,7 @@ const PLATFORM_COPY: Record<
 	web: {
 		title: "Select Device — Web",
 		simulatorLabel: "Browsers",
-		localChecklist: [
-			"Chrome, Edge or Brave started with --remote-debugging-port=<port>",
-			"A non-default profile (--user-data-dir): Chrome 136 and later refuse the default one",
-		],
+		localChecklist: [],
 	},
 };
 
@@ -132,7 +133,7 @@ function GlobeIcon(props: SVGProps<SVGSVGElement>) {
 	);
 }
 
-function PlugIcon(props: SVGProps<SVGSVGElement>) {
+function UserIcon(props: SVGProps<SVGSVGElement>) {
 	return (
 		<svg
 			aria-hidden="true"
@@ -145,7 +146,8 @@ function PlugIcon(props: SVGProps<SVGSVGElement>) {
 			viewBox="0 0 24 24"
 			{...props}
 		>
-			<path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0V8ZM12 16v5" />
+			<circle cx="12" cy="8" r="4" />
+			<path d="M4 21a8 8 0 0 1 16 0" />
 		</svg>
 	);
 }
@@ -264,7 +266,7 @@ export function SelectDeviceModal({
 		}
 	}, [open, firstTab, viewport, tab$, preset$]);
 
-	const { local, virtual, browsers } = useMemo(() => {
+	const { local, virtual, browsers, everyday } = useMemo(() => {
 		const devices = devicesQuery.data ?? [];
 		return {
 			local: devices.filter((device) => device.kind === "physical").map(toDeviceRow),
@@ -272,6 +274,7 @@ export function SelectDeviceModal({
 				.filter((device) => device.kind === "simulator" || device.kind === "emulator")
 				.map(toDeviceRow),
 			browsers: browserDevices(devices).map(toDeviceRow),
+			everyday: everydayEntries(devices),
 		};
 	}, [devicesQuery.data]);
 
@@ -288,13 +291,6 @@ export function SelectDeviceModal({
 		onClose();
 	};
 
-	const handleAttach = (deviceId: string) => {
-		const attached = attachedBrowser(deviceId, preset);
-		if (!attached) return;
-		onSelect(attached);
-		onClose();
-	};
-
 	const loading = devicesQuery.isLoading || devicesQuery.isFetching;
 	const error =
 		devicesQuery.error instanceof Error
@@ -306,7 +302,7 @@ export function SelectDeviceModal({
 	const tabs: { id: DeviceTab; label: string; count?: number; icon: typeof PhoneIcon }[] = isWeb
 		? [
 				{ id: "browsers", label: copy.simulatorLabel, count: browsers.length, icon: GlobeIcon },
-				{ id: "attach", label: "Attach by port", icon: PlugIcon },
+				{ id: "everyday", label: "Your browser", count: everyday.length, icon: UserIcon },
 			]
 		: [
 				{ id: "local", label: "Local Devices", count: local.length, icon: PhoneIcon },
@@ -385,7 +381,7 @@ export function SelectDeviceModal({
 													</Button>
 												)}
 												devices={browsers}
-												emptyMessage="No Chrome, Edge, Brave or Chromium found in Applications. Attach by port instead."
+												emptyMessage="No Chrome, Edge, Brave or Chromium found in Applications."
 												error={error}
 												loading={loading}
 												onSelect={handleSelect}
@@ -396,8 +392,18 @@ export function SelectDeviceModal({
 											/>
 										</Tabs.Panel>
 
-										<Tabs.Panel className="pt-5" id="attach">
-											<AttachByPortForm checklist={copy.localChecklist} onAttach={handleAttach} />
+										<Tabs.Panel className="pt-5" id="everyday">
+											<p className="mb-2 text-body-sm text-on-surface-variant">
+												Test in your own browser, signed in as you. Yoqa opens a window of its own
+												there and never reads your other tabs; you click Allow in the browser on
+												each connect.
+											</p>
+											<EverydayBrowserList
+												browsers={everyday}
+												error={error}
+												loading={loading}
+												onSelect={handleSelect}
+											/>
 										</Tabs.Panel>
 									</>
 								) : (

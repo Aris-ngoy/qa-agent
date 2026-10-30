@@ -30,8 +30,19 @@ export type SessionBarState = {
 	connecting: boolean;
 	/** A Personal Team's runner is installed but not trusted on the iPhone: the trust steps. */
 	untrusted: { info: DeveloperNotTrusted; target: ConnectTarget } | null;
+	/** The Everyday browser's first-use warning, asked before an App's first connect to it. */
+	everydayWarning: { browserName: string; warning: string } | null;
+	/** The Everyday browser a connect is waiting on for the user's Allow. */
+	waitingForAllow: string | null;
 };
 
 export function initialSessionBarState(platform: DevicePlatform): SessionBarState {
-	return { platform, device: null, connecting: false, untrusted: null };
+	return {
+		platform,
+		device: null,
+		connecting: false,
+		untrusted: null,
+		everydayWarning: null,
+		waitingForAllow: null,
+	};
 }

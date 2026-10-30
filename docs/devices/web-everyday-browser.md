@@ -61,7 +61,6 @@ Click Deny instead, or wait 60 s, and the connect fails with its own message. Tu
 ## Follow-ups
 
 - The hand check above, and the profile question, on Dia or Chrome 144+.
-- The desktop and CLI showing the warning and connecting with `acceptEverydayWarning` (#372, #373): until then `yoqa devices connect web-chrome-everyday` only reports the 428.
-- Desktop: the picker, "Click Allow in <Browser>" while waiting, and cancel ([#372](https://github.com/Aris-ngoy/qa-agent/issues/372)).
+- The CLI showing the warning and connecting with `acceptEverydayWarning` (#373): until then `yoqa devices connect web-chrome-everyday` only reports the 428. The desktop does both ([#372](https://github.com/Aris-ngoy/qa-agent/issues/372), [desktop/web-devices.md](../desktop/web-devices.md#the-everyday-browser)).
 - CLI: connect with the warning and `--yes`, attach by port as CLI/CI only ([#373](https://github.com/Aris-ngoy/qa-agent/issues/373)).
 - Windows paths ([#354](https://github.com/Aris-ngoy/qa-agent/issues/354)) and picking a profile other than the default context are not decided.

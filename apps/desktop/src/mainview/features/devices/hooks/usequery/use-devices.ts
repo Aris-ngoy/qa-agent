@@ -1,6 +1,8 @@
+import { showErrorToast } from "@/app/show-error-toast";
 import {
 	listAllDevices,
 	listPlatformDevices,
+	openRemoteDebuggingSetting,
 	resetBrowserProfile,
 } from "@/features/devices/data/api/devices";
 import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
@@ -70,4 +72,12 @@ export function useCachedListedDevices(platform: DevicePlatform | "all" | null |
  */
 export function useResetBrowserProfile() {
 	return useMutation({ mutationFn: resetBrowserProfile });
+}
+
+/** Open an Everyday browser's remote-debugging setting; the picker rescans when the window regains focus. */
+export function useOpenRemoteDebuggingSetting() {
+	return useMutation({
+		mutationFn: openRemoteDebuggingSetting,
+		onError: (error) => showErrorToast(error, "Could not open the setting"),
+	});
 }

@@ -6,15 +6,15 @@ Bring web into the desktop app ([#301](https://github.com/Aris-ngoy/qa-agent/iss
 
 ## Plan summary
 
-- **Web is a third platform in the top bar.** The session bar's platform select offers Web. Its picker is shaped for browsers, not phones: a **Browsers** tab (installed Chrome, Edge, Brave and Chromium, from `GET /devices?platform=web`, running or not) and an **Attach by port** tab. Rejected: putting browsers under the phone tabs ("Local Devices" / "Simulators"), which fit neither.
+- **Web is a third platform in the top bar.** The session bar's platform select offers Web. Its picker is shaped for browsers, not phones: a **Browsers** tab (installed Chrome, Edge, Brave and Chromium, from `GET /devices?platform=web`, running or not) and an **Attach by port** tab (since replaced by **Your browser**, the [Everyday browser](#the-everyday-browser)). Rejected: putting browsers under the phone tabs ("Local Devices" / "Simulators"), which fit neither.
 - **The preset is picked with the device.** A Desktop / Mobile choice above the tabs (sizes from `VIEWPORT_PRESETS`) is stored on the picked device and sent as `viewport` on connect. It is fixed for the session's life, so changing it means reconnecting. Restart reconnects at the session's own preset, and the remembered device keeps its preset across launches. Rejected: a separate preset control in the top bar, which would suggest it can change while connected.
-- **Attach names a port, never a scan.** The port becomes `chromium-cdp-<port>`. Such a device is never listed, so the bar names it from its id ("Chromium on port 9222"). The tab repeats how to start the browser (`--remote-debugging-port`, a non-default `--user-data-dir`).
+- **Attach names a port, never a scan.** (The desktop form is gone since [#372](#the-everyday-browser); the CLI keeps attach by port.) The port becomes `chromium-cdp-<port>`. Such a device is never listed, so the bar names it from its id ("Chromium on port 9222"). The tab repeats how to start the browser (`--remote-debugging-port`, a non-default `--user-data-dir`).
 - **The Inspector already polled.** It chose the Frame Feed from `streamReady` and a stream URL, so a web session (`streamState: none`) was already Screenshot Poll with the plain "Connected — screenshot poll" toast. That choice is now one tested function, `feedModeFor`, which polls whenever the runner says there is no Stream. The frame is shaped by the preset (a page, not a rounded phone), and the empty state no longer says "stream".
 - **Runs read what the Run stored.** A web Run's details gain one line, `Browser Google Chrome 141.0 · Viewport mobile (390×844) · Lane Direct`, built from the Run's `browser`, `viewport` and `lane`. A phone's Run shows no such line, so its details are unchanged. The step screenshot frame takes the preset's shape on web.
 
 ## What shipped
 
-- Device picker (`select-device-modal.tsx`, `web-device-panels.tsx`): Web title, the Viewport choice, the Browsers list (with a note that Yoqa opens its own window on the App's Kept profile; see [below](#the-apps-kept-profile-and-its-reset)), and the Attach-by-port form (react-hook-form, port 1–65535).
+- Device picker (`select-device-modal.tsx`, `web-device-panels.tsx`): Web title, the Viewport choice, the Browsers list (with a note that Yoqa opens its own window on the App's Kept profile; see [below](#the-apps-kept-profile-and-its-reset)), and the Attach-by-port form (removed with #372).
 - `web-device.ts`: `attachDeviceId`, `attachedBrowser`, `browserDevices`, `viewportFor` (desktop by default, nothing on a phone), `withViewport` (`Google Chrome · mobile` in the bar) and `screenAspect`.
 - Session bar: `connectRequestFor` in `session-app.ts` builds every connect (Connect, Restart, Run, trust reconnect) and adds `viewport` on web only. `deviceForSession` keeps the session's preset and names an attached browser. `RememberedDevice` carries an optional `viewport`, and an unreadable one is dropped.
 - Inspector: `feedModeFor` in `inspect-session.ts`, used by the feed controller. The frame and its loading skeleton take the preset's aspect on web.
@@ -33,7 +33,7 @@ By hand, on a Mac with Chrome (not run here: this sandbox has no macOS browser o
 1. Top bar → platform **Web** → Select device. The Browsers tab lists Google Chrome even with Chrome closed. Pick **Mobile**, then Google Chrome. The bar reads `Google Chrome · mobile`. Press Connect: a new Chrome window opens, and the toast says "Connected — screenshot poll".
 2. Inspector → Connect Inspector. The page appears in a phone-shaped (390×844) frame without rounded phone corners. Hover shows the web Screen's boxes. Click an element for its actions, and "Use device" taps and swipes it as a finger.
 3. Disconnect, pick Desktop, connect again: the frame is 1280×800.
-4. Start Chrome with `--remote-debugging-port=9222 --user-data-dir="$(mktemp -d)"`. In the picker, Attach by port → 9222 → Attach → Connect. The bar reads `Chromium on port 9222`. Disconnect leaves that Chrome open.
+4. Start Chrome with `--remote-debugging-port=9222 --user-data-dir="$(mktemp -d)"` and `yoqa devices connect chromium-cdp-9222` from the CLI: the bar reads `Chromium on port 9222`. Disconnect leaves that Chrome open. (The picker no longer attaches by port.)
 5. Give the App a Web URL, select test cases, Run test. The Run opens the Web URL, and its details show `Browser … · Viewport … · Lane Direct` and step screenshots in the page's shape.
 6. Switch to iOS or Android: the picker, Inspector and Run details look as before.
 
@@ -122,3 +122,45 @@ By hand, on a Mac with Chrome (not run here: this sandbox has no macOS browser o
 
 - Switching App in the side menu while a web session is up retargets without reconnecting, so the browser stays on the previous App's profile until it reconnects; a Run reopens it on its own App's profile meanwhile.
 - No desktop control for a Run's `profile: clean` yet; a Case Script's `profile: clean` asks for one.
+
+## The Everyday browser
+
+### Goal
+
+Pick, enable and connect the user's own signed-in browser from the desktop app ([#372](https://github.com/Aris-ngoy/qa-agent/issues/372), under [#339](https://github.com/Aris-ngoy/qa-agent/issues/339), [ADR-0009](../adr/0009-everyday-browser-consent-attach.md)). The runner side (discovery, the 60 s Allow wait, the per-App warning) is [web-everyday-browser.md](../devices/web-everyday-browser.md). Vocabulary: **Everyday browser**, **Browser device** in [`CONTEXT.md`](../../CONTEXT.md).
+
+### Plan summary
+
+- **A tab of its own, in place of Attach by port.** The web picker's tabs are **Browsers** (the ones Yoqa launches on a Kept profile) and **Your browser** (one entry per installed browser's Everyday device, `web-<browser>-everyday`, from the same `GET /devices?platform=web`). Each shows **ready** or **remote debugging off**, as the runner lists it. Only a ready one can be picked; the Viewport choice applies to both tabs. Attach by port (`chromium-cdp-*`) leaves the desktop: the form is gone, and `browserDevices` drops such ids even if listed. The CLI keeps it. Rejected: mixing the Everyday entries into the Browsers list, where they would read as another launch.
+- **Open the setting, never the pref.** An entry that is off has **Open the setting** and a line on what to turn on. It is a desktop RPC, `openRemoteDebuggingSetting({ browserId })`, that runs `open -a <App> chrome://inspect/#remote-debugging` (the app named from the id on the host side, so the webview cannot open arbitrary apps). The user flips the toggle; the picker rescans when the window regains focus, so the entry turns ready on return. macOS only: elsewhere the RPC says to open the page by hand.
+- **The warning comes from the runner's 428.** Every connect (Connect, Restart, Run, the trust reconnect) goes through `connectAcceptingWarning`: on `EVERYDAY_WARNING_REQUIRED` it shows a dialog ("The agent will act in your signed-in <Browser>. It can read and change anything your accounts there can.", then the runner's own text), and Continue connects again with `acceptEverydayWarning: true`. The runner remembers it per App, so the desktop keeps no copy of its own. Cancel connects nothing and asks again next time. Rejected: a desktop-side "already warned" flag, which the CLI would not share.
+- **Waiting is visible and cancellable.** While a connect to an Everyday browser is in flight, the top bar shows **Click Allow in <Browser>** with **Cancel**. Cancel aborts the `POST /devices/connect` (the client's `connectDevice` takes a `signal`), and the runner stops its wait on the request's abort. A Cancel, on the warning or the wait, shows no error toast (`isConnectCancelled`), including from a Run's connect. A Deny or a timeout is the usual error toast with the runner's message.
+- **A one-time note after the first disconnect.** Yoqa never turns the toggle off, so the first disconnect from an Everyday browser adds a toast that remote debugging is still on and where to turn it off. Shown once per desktop install (`localStorage`), not per browser.
+
+### What shipped
+
+- `devices/utils/everyday-browser.ts`: `isEverydayDeviceId`, `everydayBrowserName`, `everydayEntries`, `allowPrompt`, `everydayWarningLine`, `connectAcceptingWarning`, `ConnectCancelledError` / `isConnectCancelled`, `takeDisconnectNote`. `browserDevices` (`web-device.ts`) leaves out Everyday and attach-by-port ids; `attachDeviceId` and `AttachByPortForm` are removed.
+- `EverydayBrowserList` in `web-device-panels.tsx`, the **Your browser** tab in `select-device-modal.tsx`, and `EverydayWarningDialog` (`everyday-warning-dialog.tsx`).
+- Session bar: `everydayWarning` and `waitingForAllow` in its state, the connect's `AbortController`, the Allow prompt with Cancel in `session-toolbar.tsx`, and the disconnect note. `useStartRun` stays quiet on a cancelled connect.
+- `openRemoteDebuggingSetting` in `devices/data/api/devices.ts` and `useOpenRemoteDebuggingSetting`; the host side in `bun/features/everyday-browser` and `shared/rpc.ts`. `RunnerClient.connectDevice(request, { signal })`.
+
+### How to verify
+
+```bash
+bun test apps/desktop/src/mainview/features/devices apps/desktop/src/bun/features/everyday-browser
+bun run lint:ci && bun run test && bun run check
+```
+
+The tests cover: ready and off entries from the runner's list, `chromium-cdp-*` left out of the picker, the RPC called with the browser's id and `open -a Dia chrome://inspect/#remote-debugging` on the host, the warning asked once per App against a fake runner that remembers acceptances, and Cancel aborting the connect request.
+
+By hand on a Mac with Dia (not run here: this sandbox has no macOS browser or desktop shell):
+
+1. Dia open, remote debugging off. Top bar → Web → Select device → **Your browser**: Dia reads **remote debugging off**. **Open the setting**: Dia opens `chrome://inspect/#remote-debugging`. Turn the toggle on and come back: Dia reads **ready**.
+2. Pick Dia, Connect: the warning names Dia. **Cancel** connects nothing and shows no error. Connect again → **Continue**: the bar reads **Click Allow in Dia**. Click Allow in Dia: a new Dia window opens and the bar is connected. Connect Inspector: the page shows and picks.
+3. Disconnect: Yoqa's window closes, and a note says remote debugging is still on in Dia. Connect again: no warning this time; **Cancel** while it waits stops it, and Deny shows "Remote debugging was denied in Dia".
+4. Switch to another App and Connect: the warning shows once for it.
+
+### Follow-ups
+
+- The by-hand check above on Dia.
+- Windows: no way to open the setting from the desktop ([#354](https://github.com/Aris-ngoy/qa-agent/issues/354)).

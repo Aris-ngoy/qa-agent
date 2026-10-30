@@ -70,7 +70,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [desktop/webview-e2e.md](./desktop/webview-e2e.md) | Playwright e2e of the desktop webview on Vite with a stubbed host RPC and a seeded runner; guards the top bar title |
 | [desktop/webview-yoqa-e2e.md](./desktop/webview-yoqa-e2e.md) | Yoqa tests its own desktop webview: CaseScripts on the web Direct lane against the same stubbed-host harness |
 | [desktop/session-bar.md](./desktop/session-bar.md) | Top bar manages the shared Active Session on every page: connect-first Run, Run chip, WDA rebuild on Restart, app switch retargets |
-| [desktop/web-devices.md](./desktop/web-devices.md) | Web in the desktop app: browsers and attach by port in the picker, a Viewport preset on connect, Inspector by Screenshot Poll, browser/viewport/Lane in run details |
+| [desktop/web-devices.md](./desktop/web-devices.md) | Web in the desktop app: launched browsers and the Everyday browser in the picker, a Viewport preset on connect, Inspector by Screenshot Poll, browser/viewport/Lane in run details |
 | [desktop/resizable-device-panels.md](./desktop/resizable-device-panels.md) | Drag-resizable Inspector Device and Run Screenshot panels; Run frame shaped to the screenshot; zoom/pan/rotate screenshot viewer |
 | [desktop/motion-system.md](./desktop/motion-system.md) | CSS View Transitions + shell/list motion polish |
 | [desktop/react-hook-form.md](./desktop/react-hook-form.md) | RHF + HeroUI form helpers for all data-entry forms |
