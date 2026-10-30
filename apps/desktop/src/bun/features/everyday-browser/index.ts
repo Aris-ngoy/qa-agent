@@ -1,7 +1,5 @@
 import type { OpenPathResult } from "../../../shared/cli-environment";
-
-/** Where Chrome 144+, Edge and Dia keep the remote-debugging toggle (ADR-0009). */
-export const REMOTE_DEBUGGING_SETTING_URL = "chrome://inspect/#remote-debugging";
+import { REMOTE_DEBUGGING_SETTING_URL } from "../../../shared/everyday-browser";
 
 /** Each Everyday browser's app, as `open -a` names it; the runner lists the same ids. */
 const EVERYDAY_APPS: Record<string, string> = {
