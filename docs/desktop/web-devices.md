@@ -164,3 +164,34 @@ By hand on a Mac with Dia (not run here: this sandbox has no macOS browser or de
 
 - The by-hand check above on Dia.
 - Windows: no way to open the setting from the desktop ([#354](https://github.com/Aris-ngoy/qa-agent/issues/354)).
+
+## The browser profile next to the preset
+
+### Goal
+
+Show which browser profile a web session or Run used, next to its Viewport preset ([#379](https://github.com/Aris-ngoy/qa-agent/issues/379), decided in [#349](https://github.com/Aris-ngoy/qa-agent/issues/349) under [#339](https://github.com/Aris-ngoy/qa-agent/issues/339)). The runner already sent the Everyday browser's profile name for a session and a Run, but the desktop showed it nowhere, so a session in the user's Work profile looked like one in Personal.
+
+### Plan summary
+
+- **The session bar names the profile the runner read.** An Everyday session reads `Dia · desktop · profile Work`, from the Active Session's `browserProfileName`. When the runner could not read it (null), the bar shows `Dia · desktop`. A launched browser adds nothing: its Kept profile follows the selected App, which the bar already names. Rejected: a separate chip for the profile, which would crowd a bar that already truncates.
+- **A Run's line says the same, in the report's words.** The web line under a Run's title gains `profile Work` from the Run's `browserProfileName` (lowercase, as the report's Browser row writes it), and `clean profile` when the Run's `profile` is `clean`. A Kept-profile Run's line is unchanged (`Profile kept`), and a phone's Run still shows no line.
+
+### What shipped
+
+- `withViewport` (`devices/utils/web-device.ts`) takes the session's profile name; `session-toolbar.tsx` passes `active.browserProfileName`.
+- `formatRunEnvironment` (`runs/utils/labels.ts`) words the profile through `formatRunProfile`: the Everyday profile's name first, then a clean profile, then the stored one.
+
+### How to verify
+
+```bash
+bun test apps/desktop/src/mainview/features/devices/utils/web-device.test.ts apps/desktop/src/mainview/features/runs/utils/labels.test.ts
+bun run lint:ci && bun run test && bun run check
+```
+
+The tests cover the bar label for an Everyday session with a profile name, with a null one, and a launched browser, and the Run line for an Everyday Run with a profile, a clean Run, a kept Run and a phone Run.
+
+By hand on a Mac with Dia (not run here): connect **Your browser** → Dia with Dia's Work profile in front of the default; the bar reads `Web · Dia · desktop · profile <the default profile's name>` (Yoqa's window opens in the default profile). Run a case there: its details read `Browser Everyday Dia … · Viewport desktop (1280×800) · profile <name> · Lane Direct`. Run with profile clean on Google Chrome: the line ends `· clean profile · Lane Direct`.
+
+### Follow-ups
+
+None.
