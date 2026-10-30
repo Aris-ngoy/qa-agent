@@ -26,6 +26,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [adr/0006-case-script-file-yaml.md](./adr/0006-case-script-file-yaml.md) | A Case Script file is YAML; no separate Flow model |
 | [adr/0007-web-direct-lane-over-cdp.md](./adr/0007-web-direct-lane-over-cdp.md) | Web is a Direct lane over CDP to a Chromium browser |
 | [adr/0008-case-script-branches.md](./adr/0008-case-script-branches.md) | A Case Script's action list is recursive: a Branch holds more steps |
+| [adr/0009-everyday-browser-consent-attach.md](./adr/0009-everyday-browser-consent-attach.md) | Attach to the everyday browser by consent; attach by port is CLI/CI only |
 | [devices/web-attach-by-port.md](./devices/web-attach-by-port.md) | Web tracer bullet: attach a user-started Chromium by port, screenshot/tap/input/open-url |
 | [devices/web-screen.md](./devices/web-screen.md) | Web Screen: cleaned accessibility tree with 0–1000 bounds, raw `--full` tree, Tree assist on web roles, iframe content |
 | [devices/web-gestures-alerts-lifecycle.md](./devices/web-gestures-alerts-lifecycle.md) | Web swipe (wheel), drag, JavaScript dialogs as alerts, and app lifecycle on the Web URL |

@@ -4,6 +4,8 @@ status: accepted
 
 # Web is a Direct lane over CDP to a Chromium browser
 
+> Superseded in part by [ADR-0009](./0009-everyday-browser-consent-attach.md): Yoqa attaches to the user's everyday browser by consent, and attach by port is CLI/CI only. This replaces the *Attach by port* bullet and the "attaching to a user's everyday browser" part of *Attach only* below.
+
 Teams that ship an Expo or React Native Web build, or only an SPA, want the same Test Cases, CLI loop and Runs against a web page. [ADR-0005](./0005-direct-only-lane.md) says a Lane is Direct only: straight to the platform's own tooling, with no WebDriver server in between. For a browser, that tooling is the Chrome DevTools Protocol (CDP).
 
 We add a third platform, `web`, whose Direct lane speaks CDP to a Chromium-family browser (Chrome, Edge, Brave, Chromium). The Lane name stays `direct`. There is no second Lane, no WebDriver and no Playwright server, so ADR-0005 still holds.
