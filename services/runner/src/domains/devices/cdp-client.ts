@@ -304,8 +304,9 @@ export type ConnectCdpOptions = {
 export async function connectCdp(url: string, options: ConnectCdpOptions = {}): Promise<CdpClient> {
 	const connectTimeoutMs = options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS;
 	const { signal } = options;
-	if (signal?.aborted)
-		throw new CdpOpenError("aborted", `The DevTools socket at ${url} was cancelled`);
+	const cancelled = () =>
+		new CdpOpenError("aborted", `The DevTools socket at ${url} was cancelled`);
+	if (signal?.aborted) throw cancelled();
 	const socket = new WebSocket(url);
 	await new Promise<void>((resolve, reject) => {
 		const settle = (error?: CdpOpenError) => {
@@ -326,8 +327,7 @@ export async function connectCdp(url: string, options: ConnectCdpOptions = {}): 
 		);
 		const onRefused = () =>
 			settle(new CdpOpenError("refused", `Could not open the DevTools socket at ${url}`));
-		const onAbort = () =>
-			settle(new CdpOpenError("aborted", `The DevTools socket at ${url} was cancelled`));
+		const onAbort = () => settle(cancelled());
 		signal?.addEventListener("abort", onAbort);
 		socket.addEventListener("open", () => settle());
 		socket.addEventListener("error", onRefused);
