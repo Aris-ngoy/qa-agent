@@ -30,21 +30,22 @@ export function stopRunner(deps: StopRunnerDeps): (signal: string) => void {
 		const capped = new Promise<"cap">((resolve) => {
 			timer = setTimeout(() => resolve("cap"), capMs);
 		});
-		const quit = deps.quit().then(
-			() => "quit" as const,
-			(error: unknown) => {
+		const quit = deps
+			.quit()
+			.catch((error: unknown) => {
 				log(
 					`[yoqa-runner] could not quit device sessions: ${error instanceof Error ? error.message : String(error)}`,
 				);
-				return "quit" as const;
-			},
-		);
+			})
+			.then(() => "quit" as const);
 		void Promise.race([quit, capped]).then((outcome) => {
 			clearTimeout(timer);
-			if (outcome === "cap") {
-				log(`[yoqa-runner] device sessions did not quit within ${capMs} ms — stopping anyway`);
+			if (outcome === "quit") {
+				deps.exit(0);
+				return;
 			}
-			deps.exit(outcome === "cap" ? 1 : 0);
+			log(`[yoqa-runner] device sessions did not quit within ${capMs} ms — stopping anyway`);
+			deps.exit(1);
 		});
 	};
 }
