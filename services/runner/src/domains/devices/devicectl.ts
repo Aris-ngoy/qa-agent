@@ -184,7 +184,7 @@ export function parseDevicectlApps(json: unknown): string[] {
 	const items = (json as { result?: { apps?: unknown } } | null)?.result?.apps;
 	if (!Array.isArray(items)) return [];
 	const apps = (items as DevicectlApp[]).filter(
-		(app) =>
+		(app): app is DevicectlApp & { bundleIdentifier: string } =>
 			typeof app.bundleIdentifier === "string" &&
 			!app.hidden &&
 			!app.appClip &&
@@ -192,5 +192,5 @@ export function parseDevicectlApps(json: unknown): string[] {
 	);
 	const developerBuilt = apps.filter((app) => app.builtByDeveloper);
 	const others = apps.filter((app) => !app.builtByDeveloper);
-	return [...developerBuilt, ...others].map((app) => app.bundleIdentifier as string);
+	return [...developerBuilt, ...others].map((app) => app.bundleIdentifier);
 }
