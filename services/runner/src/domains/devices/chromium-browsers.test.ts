@@ -74,6 +74,25 @@ describe("installed browser discovery", () => {
 		expect(browsers[4]?.executable).toBe("/Applications/Dia.app/Contents/MacOS/Dia");
 	});
 
+	test("Arc, Opera and Vivaldi are found from their bundles, after the other five", async () => {
+		const browsers = await findInstalledBrowsers(
+			mac({
+				"/Applications/Vivaldi.app": "7.6.3797.52",
+				"/Applications/Opera.app": "122.0.5643.17",
+				"/Applications/Arc.app": "1.106.0",
+				"/Applications/Dia.app": "1.55.1",
+			}),
+		);
+		expect(
+			browsers.map(({ id, name, version, executable }) => [id, name, version, executable]),
+		).toEqual([
+			["web-dia", "Dia", "1.55.1", "/Applications/Dia.app/Contents/MacOS/Dia"],
+			["web-arc", "Arc", "1.106.0", "/Applications/Arc.app/Contents/MacOS/Arc"],
+			["web-opera", "Opera", "122.0.5643.17", "/Applications/Opera.app/Contents/MacOS/Opera"],
+			["web-vivaldi", "Vivaldi", "7.6.3797.52", "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi"],
+		]);
+	});
+
 	test("a browser in /Applications wins over a copy in ~/Applications", async () => {
 		const browsers = await findInstalledBrowsers(
 			mac({
@@ -101,6 +120,9 @@ describe("installed browser discovery", () => {
 		expect(installedBrowserIdOf("web-chrome")).toBe("web-chrome");
 		expect(installedBrowserIdOf("web-edge")).toBe("web-edge");
 		expect(installedBrowserIdOf("web-dia")).toBe("web-dia");
+		expect(installedBrowserIdOf("web-arc")).toBe("web-arc");
+		expect(installedBrowserIdOf("web-opera")).toBe("web-opera");
+		expect(installedBrowserIdOf("web-vivaldi")).toBe("web-vivaldi");
 		expect(installedBrowserIdOf("web-firefox")).toBeNull();
 		expect(installedBrowserIdOf("chromium-cdp-9222")).toBeNull();
 	});
@@ -483,6 +505,7 @@ describe("web devices", () => {
 				platform: "web",
 				kind: "browser",
 				state: "not running",
+				verified: true,
 			},
 			{
 				id: "web-chromium",
@@ -491,7 +514,34 @@ describe("web devices", () => {
 				platform: "web",
 				kind: "browser",
 				state: "not running",
+				verified: true,
 			},
+		]);
+	});
+
+	test("Arc, Opera and Vivaldi are unverified; the other five are verified", async () => {
+		const devices = await listWebDevices(
+			{},
+			mac({
+				"/Applications/Google Chrome.app": "141.0",
+				"/Applications/Microsoft Edge.app": "141.0",
+				"/Applications/Brave Browser.app": "1.83",
+				"/Applications/Chromium.app": "141.0",
+				"/Applications/Dia.app": "1.55.1",
+				"/Applications/Arc.app": "1.106.0",
+				"/Applications/Opera.app": "122.0",
+				"/Applications/Vivaldi.app": "7.6",
+			}),
+		);
+		expect(devices.map((device) => [device.id, device.verified])).toEqual([
+			["web-chrome", true],
+			["web-edge", true],
+			["web-brave", true],
+			["web-chromium", true],
+			["web-dia", true],
+			["web-arc", false],
+			["web-opera", false],
+			["web-vivaldi", false],
 		]);
 	});
 

@@ -5,10 +5,12 @@ import {
 	connectAcceptingWarning,
 	everydayBrowserName,
 	everydayEntries,
+	everydayStateLine,
 	everydayWarningLine,
 	isConnectCancelled,
 	isEverydayDeviceId,
 	takeDisconnectNote,
+	turnOnHint,
 } from "@/features/devices/utils/everyday-browser";
 import {
 	type ActiveDeviceResponse,
@@ -68,6 +70,7 @@ describe("everydayEntries", () => {
 				kind: "browser",
 				state: "ready",
 				ready: true,
+				verified: true,
 			},
 			{
 				id: "web-chrome-everyday",
@@ -77,13 +80,41 @@ describe("everydayEntries", () => {
 				kind: "browser",
 				state: "remote debugging off",
 				ready: false,
+				verified: true,
 			},
 		]);
+	});
+
+	test("an unverified browser says so after its state", () => {
+		const opera: Device = {
+			...CHROME_OFF,
+			id: "web-opera-everyday",
+			name: "Opera (everyday)",
+			verified: false,
+		};
+		const [entry] = everydayEntries([opera]);
+		expect(entry?.verified).toBe(false);
+		expect(entry ? everydayStateLine(entry) : null).toBe("remote debugging off · unverified");
+		expect(everydayStateLine({ ...DIA_READY, verified: true })).toBe("ready");
 	});
 
 	test("leaves out an attached browser, which is CLI only", () => {
 		const attached: Device = { ...CHROME, id: "chromium-cdp-9222", name: "Chromium" };
 		expect(everydayEntries([attached])).toEqual([]);
+	});
+});
+
+describe("turnOnHint", () => {
+	test("says to turn on remote debugging in the page that opens", () => {
+		expect(turnOnHint({ browserName: "Dia", verified: true })).toBe(
+			"Turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect.",
+		);
+	});
+
+	test("an unverified browser also says to open the page by hand if it doesn't load", () => {
+		expect(turnOnHint({ browserName: "Opera", verified: false })).toBe(
+			"Turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect. If the page doesn't load, open chrome://inspect/#remote-debugging in Opera yourself.",
+		);
 	});
 });
 

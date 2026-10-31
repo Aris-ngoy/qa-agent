@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { listWebDevices } from "../../../services/runner/src/domains/devices/chromium-browsers";
+import { listEverydayDevices } from "../../../services/runner/src/domains/devices/chromium-everyday";
 import {
 	PLATFORM_DEVICES_DESCRIPTION,
 	connectPlatform,
@@ -43,6 +45,35 @@ describe("connectPlatform", () => {
 		}
 	});
 
+	test("Arc, Opera and Vivaldi are web in both forms, with no --platform", () => {
+		for (const browser of ["arc", "opera", "vivaldi"]) {
+			expect(connectPlatform(`web-${browser}`, undefined)).toBe("web");
+			expect(connectPlatform(`web-${browser}-everyday`, undefined)).toBe("web");
+		}
+	});
+
+	test("every id the runner lists is web, so the CLI never refuses a listed browser", async () => {
+		const everyBrowser = {
+			platform: "darwin" as const,
+			home: "/Users/qa",
+			isExecutable: async (path: string) => path.startsWith("/Applications/"),
+			readText: async () => "",
+			fetch: (async () => new Response(null, { status: 404 })) as unknown as typeof fetch,
+		};
+		const devices = [
+			...(await listWebDevices({}, everyBrowser)),
+			...(await listEverydayDevices({}, everyBrowser)),
+		];
+		expect(devices).toHaveLength(16);
+		for (const device of devices) {
+			expect(connectPlatform(device.id, undefined)).toBe("web");
+		}
+		const everyday = devices.filter((device) => device.id.endsWith("-everyday"));
+		expect(everyday.map((device) => everydayBrowserName(device.id))).toEqual(
+			everyday.map((device) => device.name.replace(" (everyday)", "")),
+		);
+	});
+
 	test("an explicit --platform wins", () => {
 		expect(connectPlatform("emulator-5554", "android")).toBe("android");
 		expect(connectPlatform("chromium-cdp-9222", "web")).toBe("web");
@@ -59,6 +90,7 @@ describe("everydayBrowserName", () => {
 	test("names the browser an Everyday id's Allow prompt appears in", () => {
 		expect(everydayBrowserName("web-chrome-everyday")).toBe("Google Chrome");
 		expect(everydayBrowserName("web-dia-everyday")).toBe("Dia");
+		expect(everydayBrowserName("web-opera-everyday")).toBe("Opera");
 	});
 
 	test("is null for any other device", () => {

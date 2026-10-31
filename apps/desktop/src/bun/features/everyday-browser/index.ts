@@ -1,14 +1,11 @@
+import { WEB_BROWSERS, everydayBrowserId } from "@yoqa/runner-client";
 import type { OpenPathResult } from "../../../shared/cli-environment";
 import { REMOTE_DEBUGGING_SETTING_URL } from "../../../shared/everyday-browser";
 
-/** Each Everyday browser's app, as `open -a` names it; the runner lists the same ids. */
-const EVERYDAY_APPS: Record<string, string> = {
-	"web-chrome-everyday": "Google Chrome",
-	"web-edge-everyday": "Microsoft Edge",
-	"web-brave-everyday": "Brave Browser",
-	"web-chromium-everyday": "Chromium",
-	"web-dia-everyday": "Dia",
-};
+/** Each Everyday browser's app, as `open -a` names it, from the runner's list. */
+const EVERYDAY_APPS: ReadonlyMap<string, string> = new Map(
+	WEB_BROWSERS.map(({ browser, name }) => [everydayBrowserId(browser), name]),
+);
 
 export type OpenSettingDeps = {
 	platform?: NodeJS.Platform;
@@ -30,7 +27,7 @@ export async function openRemoteDebuggingSetting(
 	browserId: string,
 	deps: OpenSettingDeps = {},
 ): Promise<OpenPathResult> {
-	const app = EVERYDAY_APPS[browserId];
+	const app = EVERYDAY_APPS.get(browserId);
 	if (!app) return { ok: false, error: `${browserId} is not an Everyday browser` };
 	if ((deps.platform ?? process.platform) !== "darwin") {
 		return {

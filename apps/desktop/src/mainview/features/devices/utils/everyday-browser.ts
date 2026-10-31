@@ -5,6 +5,7 @@ import {
 	type Device,
 	type EverydayWarningRequired,
 	everydayWarningRequired,
+	formatDeviceState,
 } from "@yoqa/runner-client";
 
 const EVERYDAY_ID = /^web-[a-z]+-everyday$/;
@@ -27,6 +28,8 @@ export function everydayBrowserName(name: string | undefined): string {
 export type EverydayEntry = Pick<Device, "id" | "name" | "osVersion" | "kind" | "state"> & {
 	browserName: string;
 	ready: boolean;
+	/** False until a hands-on check has cleared the browser (Arc, Opera, Vivaldi). */
+	verified: boolean;
 };
 
 /** The Everyday browsers in the runner's web device list, as the picker shows them. */
@@ -41,7 +44,25 @@ export function everydayEntries(devices: readonly Device[]): EverydayEntry[] {
 			kind: device.kind,
 			state: device.state,
 			ready: device.state === "ready",
+			verified: device.verified !== false,
 		}));
+}
+
+/** `remote debugging off · unverified`: an entry's state, and whether it is unverified. */
+export function everydayStateLine(entry: Pick<EverydayEntry, "state" | "verified">): string {
+	return formatDeviceState(entry) ?? "";
+}
+
+/**
+ * The line under an entry with remote debugging off. An unverified browser may not take the
+ * setting's `chrome://` page (Opera may name it `opera://`), so it also says how by hand.
+ */
+export function turnOnHint(entry: Pick<EverydayEntry, "browserName" | "verified">): string {
+	const hint =
+		"Turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect.";
+	return entry.verified
+		? hint
+		: `${hint} If the page doesn't load, open ${REMOTE_DEBUGGING_SETTING_URL} in ${entry.browserName} yourself.`;
 }
 
 /** What the bar says while the runner waits for the user's Allow. */

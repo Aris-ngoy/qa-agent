@@ -24,6 +24,11 @@ yoqa devices web --json
 | Brave Browser | `web-brave` |
 | Chromium | `web-chromium` |
 | Dia | `web-dia` |
+| Arc (unverified) | `web-arc` |
+| Opera (unverified) | `web-opera` |
+| Vivaldi (unverified) | `web-vivaldi` |
+
+Arc, Opera and Vivaldi are listed when installed and marked **unverified**: nobody has checked them by hand yet. They are Chromium browsers and should work the same way; if a launch or connect fails, the error is the browser's own. `--json` carries `verified: false` on those rows.
 
 Connecting launches a **new window that Yoqa owns**, on a profile Yoqa keeps for each App and browser under `~/.yoqa/browser-profiles/`. It never touches your own tabs, cookies or logins. Disconnecting, or connecting another device, closes the window and keeps the profile, so you sign in to your app once and stay signed in on the next connect.
 
@@ -62,7 +67,7 @@ Use `mobile` for a React Native Web or Expo web build, so it lays out and respon
 
 ## Connect your Everyday browser
 
-To test in your own, signed-in session, connect your **Everyday browser**: the Chrome, Edge, Brave, Chromium or Dia you already have open, on its default profile. `yoqa devices web` lists one for each installed browser, after the ones Yoqa launches:
+To test in your own, signed-in session, connect your **Everyday browser**: the Chrome, Edge, Brave, Chromium, Dia, Arc, Opera or Vivaldi you already have open, on its default profile. `yoqa devices web` lists one for each installed browser, after the ones Yoqa launches:
 
 | Browser | Device id |
 | ------- | --------- |
@@ -71,6 +76,9 @@ To test in your own, signed-in session, connect your **Everyday browser**: the C
 | Brave Browser | `web-brave-everyday` |
 | Chromium | `web-chromium-everyday` |
 | Dia | `web-dia-everyday` |
+| Arc (unverified) | `web-arc-everyday` |
+| Opera (unverified) | `web-opera-everyday` |
+| Vivaldi (unverified) | `web-vivaldi-everyday` |
 
 ```
 browser    Google Chrome (everyday) — everyday browser [remote debugging off]
@@ -133,7 +141,7 @@ yoqa runs create APP --cases 3 --device web-chrome --profile clean --wait
 
 ## Runs on your Everyday browser
 
-Your **Everyday browser** (`web-chrome-everyday`, `web-edge-everyday`, `web-brave-everyday`, `web-chromium-everyday`, `web-dia-everyday`) is your own running browser, on your default profile, connected through the toggle at `chrome://inspect/#remote-debugging` and your **Allow** in the browser. Yoqa drives a page in a window of its own and never your tabs.
+Your **Everyday browser** (`web-chrome-everyday`, `web-edge-everyday`, `web-brave-everyday`, `web-chromium-everyday`, `web-dia-everyday`, and the unverified `web-arc-everyday`, `web-opera-everyday`, `web-vivaldi-everyday`) is your own running browser, on your default profile, connected through the toggle at `chrome://inspect/#remote-debugging` and your **Allow** in the browser. Yoqa drives a page in a window of its own and never your tabs.
 
 There the agent acts in your real, signed-in accounts, so it comes with limits:
 

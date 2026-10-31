@@ -36,6 +36,15 @@ Dia is launched on a Kept profile like the others (#339, decided in #349), so a 
 - **CLI and desktop:** `yoqa devices connect web-dia` needs no `--platform`. The desktop's Browsers tab lists Dia with Reset browser profile, since it filters by id pattern, not by browser.
 - **Tests:** `fakeChromium` takes `portFileDir`, and `chromium-browsers.test.ts` checks that Dia's port is read, and a stale one deleted, under `User Data/`, while Chrome's stays in the profile folder.
 
+### Arc, Opera and Vivaldi (`web-arc`, `web-opera`, `web-vivaldi`, #378)
+
+Listed after Dia when installed, and **unverified** (`verified: false`, see [web-supported-browsers.md](./web-supported-browsers.md#unverified-arc-opera-and-vivaldi)).
+
+- **Discovery:** `Arc.app`, `Opera.app`, `Vivaldi.app`, with the binary named as the bundle (`Contents/MacOS/Arc`, `…/Opera`, `…/Vivaldi`), which is the `CFBundleExecutable` the Chromium family uses. Unverified: not checked on an installed bundle.
+- **Port file:** kept at `<user-data-dir>/DevToolsActivePort`, as for Chrome. Unverified: none of the three could be launched here. Arc may write it under `User Data/` like Dia.
+- **The list:** `KNOWN_BROWSERS` is now built from `WEB_BROWSERS` in `@yoqa/runner-client`, with only the port-file folders (`PORT_FILE_DIRS`, Dia's `User Data`) kept in the runner. `InstalledBrowserId` is `web-${WebBrowserKey}`.
+- **Tests:** `chromium-browsers.test.ts` finds the three from faked bundles and lists them `verified: false`, the other five `verified: true`.
+
 ## How to verify
 
 ```bash
@@ -62,5 +71,6 @@ For Dia: `yoqa devices connect web-dia --app <app>` opens Dia on the App's Kept 
 ## Follow-ups
 
 - The hand check on Dia above (`web-dia`).
+- Hand checks on Arc, Opera and Vivaldi: `yoqa devices connect web-arc --app <app>` opens a window on the Kept profile, and a reconnect keeps the login.
 - The runner exits without quitting the active session, so a Yoqa-owned browser outlives a runner that is stopped while connected. Quitting sessions on shutdown would fix this for every platform.
 - [#310](https://github.com/Aris-ngoy/qa-agent/issues/310): viewport presets on connect (a launched browser still opens at its default window size). [#311](https://github.com/Aris-ngoy/qa-agent/issues/311): browsers in the desktop picker.
