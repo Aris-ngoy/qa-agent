@@ -12,8 +12,8 @@
  * past the grace window.
  *
  * The tree is the runner's `snapshot` of the app in front, shown as the same JSON the
- * simulator's `yoqa-ax` tree uses. A snapshot never brings an app forward: an app that is
- * not in front is `APP_BACKGROUNDED`. A stuck main thread on the phone is `RUNNER_WEDGED`.
+ * simulator's `yoqa-ax` tree uses, with the `ScreenSource` it was read from. A snapshot
+ * never brings an app forward: an app that is not in front is `APP_BACKGROUNDED`. A stuck main thread on the phone is `RUNNER_WEDGED`.
  * Both reach the caller as `YoqaRunnerCommandError`s with a plain message.
  *
  * The Inspector's mirror is half-size JPEGs the phone captures in the background, served as
@@ -28,7 +28,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
-import type { KeyName } from "@yoqa/runner-client";
+import { type KeyName, type ScreenSource, screenSourceSchema } from "@yoqa/runner-client";
 import { errorChain } from "./error-chain";
 import {
 	type FrameRecorderDeps,
@@ -137,6 +137,17 @@ function explainRunnerError(error: YoqaRunnerCommandError, app: string | undefin
 		);
 	}
 	return error;
+}
+
+/**
+ * The app a snapshot was read from, as the runner names it. A runner built before it named
+ * one read the app it was asked for, or SpringBoard when asked for none.
+ */
+function snapshotSource(named: unknown, asked: string | undefined): ScreenSource {
+	const parsed = screenSourceSchema.safeParse(named);
+	if (parsed.success) return parsed.data;
+	if (asked) return { kind: "target", bundleId: asked };
+	return { kind: "system" };
 }
 
 function notYet(what: string): () => Promise<never> {
@@ -310,13 +321,16 @@ export async function createIosDeviceSession(
 
 	/** The runner's snapshot as the JSON the Screen reads, in the window's points. */
 	const readPageSource = async () => {
-		const reply = (await inspect("snapshot", appId ? { bundleId: appId } : {})) as {
+		const asked = appId;
+		const reply = (await inspect("snapshot", asked ? { bundleId: asked } : {})) as {
 			nodes?: unknown;
+			source?: unknown;
 		};
 		if (!Array.isArray(reply?.nodes)) throw new Error("YoqaRunner snapshot omitted its nodes");
 		return yoqaAxTreeToSource(
 			{ nodes: reply.nodes as YoqaAxNode[], degraded: reply.nodes.length === 0 },
 			await readWindowSize(),
+			snapshotSource(reply.source, asked),
 		);
 	};
 

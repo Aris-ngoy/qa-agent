@@ -62,6 +62,12 @@ Elements with no accessible label show an empty label — those are only reachab
 **`--id` needs `yoqa screen --json`.** The default output does not print identifiers; the JSON does
 (`id`, plus `type`, `enabled`, `visible`). Read ids from there when you want deterministic targeting.
 
+**On a cabled iPhone the output leads with the app the tree was read from**, also `source` in
+`--json` and `--full`: `Read from com.example.app (target app)`, or `Read from the system
+(SpringBoard), not an app` when no app is targeted. A system tree holds SpringBoard's elements (such as
+`SBSwitcherWindow:Main`), not your app's: activate the app (`yoqa action activate-app --app-id …`) before reading again.
+Other devices print no such line.
+
 Layout-only containers, zero-size nodes, offscreen nodes, and elements marked invisible are dropped
 from the cleaned list. If an element you expect is missing, it is one of those — check
 `yoqa screen --full` before concluding it isn't rendered.

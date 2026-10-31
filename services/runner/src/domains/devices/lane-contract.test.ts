@@ -142,6 +142,15 @@ for (const makeHarness of LANES) {
 			expect(screen.elements).toEqual([expect.objectContaining(BUTTON)]);
 		});
 
+		test("a tree read says which app it came from, or leaves it unset", async () => {
+			const harness = makeHarness();
+			const { session } = await open(harness);
+			const cleaned = await getScreen(session, { pauseMjpeg: false });
+			const full = await getScreen(session, { full: true, pauseMjpeg: false });
+			expect(cleaned.source).toEqual(harness.screenSource);
+			expect(full.source).toEqual(harness.screenSource);
+		});
+
 		test("every key the Lane declares reaches the device, with modifiers where it holds them", async () => {
 			const harness = makeHarness();
 			const { session } = await open(harness);

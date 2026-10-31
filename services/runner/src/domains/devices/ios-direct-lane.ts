@@ -1,7 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { KEY_NAMES, type KeyName } from "@yoqa/runner-client";
+import { KEY_NAMES, type KeyName, type ScreenSource } from "@yoqa/runner-client";
 import { type PointerSize, toPx } from "./android-gestures";
 import { requireIdbBins } from "./idb-companion";
 import { looksLikePhysicalIosUdid } from "./ios-udid";
@@ -630,11 +630,13 @@ function preferredButton(
 /**
  * `yoqa-ax`'s tree as idb's `describe-all` JSON, with frames converted from 0.0–1.0 to the
  * window's points, so the Screen, alerts and locators read it as they read idb's. An empty
- * read stays empty and says it is degraded.
+ * read stays empty and says it is degraded. `source` is the app it was read from, when the
+ * Lane knows it.
  */
 export function yoqaAxTreeToSource(
 	tree: YoqaAxTree,
 	window: { width: number; height: number },
+	source?: ScreenSource,
 ): string {
 	const elements = tree.nodes.map((node) => ({
 		type: node.role,
@@ -651,7 +653,11 @@ export function yoqaAxTreeToSource(
 		},
 		enabled: node.enabled,
 	}));
-	return JSON.stringify(tree.degraded ? { elements, degraded: true } : { elements });
+	return JSON.stringify({
+		elements,
+		...(tree.degraded ? { degraded: true } : {}),
+		...(source ? { source } : {}),
+	});
 }
 
 /** `yoqa-sim`'s MJPEG preview as the session's live stream; null when it printed none. */

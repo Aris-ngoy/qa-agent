@@ -33,6 +33,18 @@ final class ObservationTests: XCTestCase {
         XCTAssertEqual(device.calls, ["snapshot -"])
     }
 
+    func testASnapshotOfTheTargetAppSaysSo() throws {
+        let data = try ok(["command": "snapshot", "commandId": "n5", "bundleId": "com.example.app"])
+        let source = try XCTUnwrap(data["source"] as? [String: String])
+        XCTAssertEqual(source, ["kind": "target", "bundleId": "com.example.app"])
+    }
+
+    func testASnapshotOfSpringBoardSaysItIsTheSystems() throws {
+        let data = try ok(["command": "snapshot", "commandId": "n6"])
+        let source = try XCTUnwrap(data["source"] as? [String: String])
+        XCTAssertEqual(source, ["kind": "system"])
+    }
+
     func testASnapshotOfABackgroundedAppIsAppBackgrounded() {
         device.snapshotError = AppBackgrounded("com.example.app is not in the foreground")
         let (status, body) = reply(["command": "snapshot", "commandId": "n3", "bundleId": "com.example.app"])

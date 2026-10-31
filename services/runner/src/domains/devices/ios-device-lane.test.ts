@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { errorChain } from "./error-chain";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
 import { DeadSessionError, DeviceUnreachableError, type SessionOptions } from "./lane";
-import { cleanPageSource } from "./screen";
+import { cleanPageSource, screenSourceOf } from "./screen";
 import { UsbmuxError } from "./usbmuxd";
 import { YoqaRunnerCommandError } from "./yoqa-runner-link";
 
@@ -375,6 +375,44 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 			expect.objectContaining({ label: "Allow", x: 100, y: 200, width: 500, height: 100 }),
 		]);
 		await session.quit();
+	});
+
+	test("the Screen says which app the runner read it from", async () => {
+		const phone = fakePhone({
+			replies: {
+				snapshot: {
+					ok: true,
+					data: { nodes: [], source: { kind: "target", bundleId: "com.demo" } },
+				},
+			},
+		});
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, { bundleId: "com.demo" }),
+			phone.deps,
+		);
+		const raw = await session.pageSource();
+		expect(cleanPageSource(raw, await session.getWindowSize()).source).toEqual({
+			kind: "target",
+			bundleId: "com.demo",
+		});
+		expect(screenSourceOf(raw)).toEqual({ kind: "target", bundleId: "com.demo" });
+		await session.quit();
+	});
+
+	test("a snapshot with no source is the target app's when one was asked for, else the system's", async () => {
+		const phone = fakePhone({ replies: { snapshot: { ok: true, data: { nodes: [] } } } });
+		const targeted = await createIosDeviceSession(
+			options(PHONE_UDID, { bundleId: "com.demo" }),
+			phone.deps,
+		);
+		expect(screenSourceOf(await targeted.pageSource())).toEqual({
+			kind: "target",
+			bundleId: "com.demo",
+		});
+		await targeted.quit();
+		const untargeted = await createIosDeviceSession(options(), phone.deps);
+		expect(screenSourceOf(await untargeted.pageSource())).toEqual({ kind: "system" });
+		await untargeted.quit();
 	});
 
 	test("the snapshot follows the app that was last activated", async () => {

@@ -10,6 +10,7 @@ import {
 	KEY_MODIFIERS,
 	type KeyModifier,
 	type KeyName,
+	type ScreenSource,
 	VIEWPORT_PRESETS,
 	type ViewportPreset,
 	type ViewportPresetName,
@@ -47,6 +48,8 @@ export type LaneHarness = {
 	frame: (taps: number) => string;
 	/** The device tool dies: every later call fails the way that tool reports it. */
 	killTool: () => void;
+	/** Which app the Lane's Screen says it was read from; unset when the Lane does not report it. */
+	screenSource?: ScreenSource;
 };
 
 /**
@@ -379,6 +382,8 @@ export function iosDeviceLane(): LaneHarness {
 	});
 	return {
 		name: "Physical iOS Direct: device-ios (faked YoqaRunner)",
+		// No target app, and a runner that names no source: the system's tree.
+		screenSource: { kind: "system" },
 		open: ({ onSessionDead }) =>
 			createIosDeviceSession(
 				{

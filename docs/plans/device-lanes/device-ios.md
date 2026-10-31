@@ -67,6 +67,8 @@ As built (#249): `viewport`, `screenshot`, `tap`, `longPress`, `drag` and the jo
 
 As built (#250): `snapshot`, `type`, `keyboardReturn`, `keyboardDelete`, `button`, `APP_BACKGROUNDED`, and `RUNNER_WEDGED` through `MainThreadGate`. See [ios-device-observation.md](../../devices/ios-device-observation.md).
 
+As built (#391): the `snapshot` reply's `source` (`target` or `system`). See [screen-source.md](../../devices/screen-source.md).
+
 ## Done
 
 Connect, snapshot, tap, and screenshot work on a phone with Developer Mode on, and a retried tap does not fire twice.
