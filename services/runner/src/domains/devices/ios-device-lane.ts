@@ -13,7 +13,8 @@
  *
  * The tree is the runner's `snapshot` of the app in front, shown as the same JSON the
  * simulator's `yoqa-ax` tree uses, with the `ScreenSource` it was read from. A snapshot
- * never brings an app forward: an app that is not in front is `APP_BACKGROUNDED`. A stuck main thread on the phone is `RUNNER_WEDGED`.
+ * never brings an app forward: an app that is not in front is `APP_BACKGROUNDED`. A stuck
+ * main thread on the phone is `RUNNER_WEDGED`.
  * Both reach the caller as `YoqaRunnerCommandError`s with a plain message.
  *
  * The Inspector's mirror is half-size JPEGs the phone captures in the background, served as
