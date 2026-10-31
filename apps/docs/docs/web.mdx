@@ -171,7 +171,7 @@ Coordinates are 0–1000 relative to the page viewport, never the browser window
 | `input` | Types into the focused element. A newline presses Enter. |
 | `key` | Presses a named key, with modifiers. See below. |
 | `open-url` | Navigates the page. |
-| `alert` | Accepts or dismisses the page's JavaScript dialog (`alert`, `confirm`, `prompt`, "Leave site?"). |
+| `alert` | Accepts or dismisses the page's JavaScript dialog (`alert`, `confirm`, `prompt`, "Leave site?"). An open dialog is also on the Screen as a `modal` with its message and OK and Cancel buttons; tapping one by label answers it. |
 | `activate-app` | Brings a page already on the Web URL's origin to the front, or navigates to the Web URL. |
 | `terminate-app` | Closes the App's page. The session moves to a blank page. |
 | `restart-app` | Closes the page, clears storage and cookies for its origin, and loads the Web URL fresh. On your Everyday browser it clears nothing and only reopens the Web URL. |

@@ -26,7 +26,11 @@
  * Shared cases keep their meaning in the browser. On desktop a swipe scrolls the content
  * under its start point with the wheel, as a finger would, and a drag is a mouse press,
  * move and release.
- * An alert is the page's JavaScript dialog. On web, an app id is the App's Web URL:
+ * An alert is the page's JavaScript dialog. While one is open it leads the Screen as a
+ * `modal` with its buttons, where a tap answers it; Chromium paints nothing and answers no
+ * input, screenshot or tree read for the page until then, so the session asks it none of
+ * these. A capture returns the last screenshot it took, and an Action that opens a dialog
+ * ends there. On web, an app id is the App's Web URL:
  * terminate-app closes the App's page, activate-app opens it again, and restart-app does
  * both with the origin's storage cleared in between, except in the Everyday browser, where
  * nothing is ever cleared. A page has no background, so background-app fails.
@@ -95,7 +99,7 @@ import {
 	assertKeySupported,
 } from "./lane";
 import { startMjpegServer } from "./mjpeg-server";
-import type { WebAxSource, WebAxSourceNode } from "./screen";
+import type { WebAxSource, WebAxSourceNode, WebDialogSource } from "./screen";
 import { debounceScreenChanges } from "./screen-changes";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 
@@ -174,7 +178,47 @@ export const CDP_MODIFIERS: Record<KeyModifier, CdpKey & { bit: number }> = {
 /** A page takes every key, with any modifiers. */
 const WEB_KEY_SUPPORT: KeySupport = { keys: KEY_NAMES, modifiers: true };
 
-type JavaScriptDialog = { type: string; defaultPrompt?: string };
+/** `Page.javascriptDialogOpening`, as the browser sent it. */
+type JavaScriptDialog = { type: string; message: string; defaultPrompt?: string };
+
+/** What a JavaScript dialog's buttons do: every type but `alert` can also be cancelled. */
+function dialogButtons(type: string): Array<{ label: string; accept: boolean }> {
+	const ok = { label: "OK", accept: true };
+	return type === "alert" ? [ok] : [{ label: "Cancel", accept: false }, ok];
+}
+
+/**
+ * Where a dialog reads on the Screen. The browser draws it outside the page, so the box is
+ * the lane's: a panel across the middle of the viewport, its buttons along the bottom,
+ * OK last as Chrome lays them out.
+ */
+function dialogOnScreen(event: JavaScriptDialog, preset: ViewportPreset): WebDialogSource {
+	const bounds = {
+		x: preset.width * 0.1,
+		y: preset.height * 0.3,
+		width: preset.width * 0.8,
+		height: preset.height * 0.3,
+	};
+	const gap = bounds.height * 0.1;
+	const size = { width: bounds.width * 0.25, height: bounds.height * 0.2 };
+	const buttons = dialogButtons(event.type);
+	return {
+		event,
+		bounds,
+		buttons: buttons.map((button, index) => ({
+			...button,
+			bounds: {
+				x: bounds.x + bounds.width - (buttons.length - index) * (size.width + gap),
+				y: bounds.y + bounds.height - size.height - gap,
+				...size,
+			},
+		})),
+	};
+}
+
+function dialogOpenError({ message }: JavaScriptDialog): Error {
+	return new Error(`A JavaScript dialog is open: ${message}. Accept or dismiss it first.`);
+}
 
 type DrivenPage = { targetId: string; sessionId: string };
 
@@ -754,6 +798,37 @@ export async function createWebDirectSession(
 			return client.send(method, params, page.sessionId);
 		});
 
+	/**
+	 * `read`, unless the page opens a JavaScript dialog first: Chromium answers nothing the
+	 * page has to render until the dialog is answered. Null then, at once.
+	 */
+	const beforeDialog = async <T>(read: () => Promise<T>): Promise<T | null> => {
+		if (openDialog) return null;
+		let stopListening = () => {};
+		const opened = new Promise<null>((resolve) => {
+			stopListening = client.on("Page.javascriptDialogOpening", (_params, eventSession) => {
+				if (eventSession === page.sessionId) resolve(null);
+			});
+		});
+		try {
+			return await Promise.race([read(), opened]);
+		} finally {
+			stopListening();
+		}
+	};
+
+	/**
+	 * Input to the page. Once the input before it opened a dialog, the page takes no more, so
+	 * the rest of the Action is dropped: the Action ends at the dialog.
+	 */
+	const input = <M extends CdpMethod>(method: M, params: CdpCommands[M]["params"]) =>
+		beforeDialog(() => call(method, params));
+
+	/** An Action that would reach the page fails while a dialog holds it. */
+	const assertNoDialog = () => {
+		if (openDialog) throw dialogOpenError(openDialog);
+	};
+
 	/** One command to the browser itself (targets, storage). */
 	const callBrowser = <M extends CdpMethod>(method: M, params: CdpCommands[M]["params"]) =>
 		guarded(() => client.send(method, params));
@@ -790,14 +865,14 @@ export async function createWebDirectSession(
 		held = false,
 	) => {
 		if (type === "mouseMoved") {
-			return call("Input.dispatchMouseEvent", {
+			return input("Input.dispatchMouseEvent", {
 				type,
 				...point,
 				button: held ? "left" : "none",
 				buttons: held ? 1 : 0,
 			});
 		}
-		return call("Input.dispatchMouseEvent", {
+		return input("Input.dispatchMouseEvent", {
 			type,
 			...point,
 			button: "left",
@@ -808,7 +883,7 @@ export async function createWebDirectSession(
 
 	/** One finger: down, moved while down, or lifted (no fingers are left on the page). */
 	const touch = (type: "touchStart" | "touchMove" | "touchEnd", point: PagePoint) =>
-		call("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [point] });
+		input("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [point] });
 
 	/** The left mouse button on desktop, a finger under a mobile preset. */
 	const pointer: Pointer = preset.mobile
@@ -861,7 +936,7 @@ export async function createWebDirectSession(
 			await stroke(from, to, durationMs);
 			return;
 		}
-		await call("Input.dispatchMouseEvent", {
+		await input("Input.dispatchMouseEvent", {
 			type: "mouseWheel",
 			...from,
 			deltaX: from.x - to.x,
@@ -898,6 +973,23 @@ export async function createWebDirectSession(
 	};
 
 	/**
+	 * A tap while a dialog is open is on the dialog: on one of its buttons it answers the
+	 * dialog as that button does, and anywhere else it fails, as the page under it takes none.
+	 */
+	const tapDialog = async (dialog: JavaScriptDialog, xNorm: number, yNorm: number) => {
+		const point = await toPage(xNorm, yNorm);
+		const button = dialogOnScreen(dialog, preset).buttons.find(
+			({ bounds }) =>
+				point.x >= bounds.x &&
+				point.x <= bounds.x + bounds.width &&
+				point.y >= bounds.y &&
+				point.y <= bounds.y + bounds.height,
+		);
+		if (!button) throw dialogOpenError(dialog);
+		await answerDialog(button.accept);
+	};
+
+	/**
 	 * `Page.navigate` answers as the navigation starts. Until the new document has loaded,
 	 * Chrome may still be swapping it in, and a screenshot fails ("Not attached to an
 	 * active page"), so wait for the load event. A page that never finishes loading is
@@ -912,9 +1004,12 @@ export async function createWebDirectSession(
 			if (eventSession === page.sessionId) loaded();
 		});
 		try {
-			const { errorText, loaderId } = await call("Page.navigate", { url });
-			if (errorText) throw new Error(`Could not open ${url}: ${errorText}`);
-			if (loaderId) await Promise.race([load, client.closed, Bun.sleep(NAVIGATE_LOAD_MS)]);
+			// The page's `beforeunload` dialog holds the navigation until it is answered.
+			await beforeDialog(async () => {
+				const { errorText, loaderId } = await call("Page.navigate", { url });
+				if (errorText) throw new Error(`Could not open ${url}: ${errorText}`);
+				if (loaderId) await Promise.race([load, client.closed, Bun.sleep(NAVIGATE_LOAD_MS)]);
+			});
 		} finally {
 			stopListening();
 		}
@@ -952,21 +1047,21 @@ export async function createWebDirectSession(
 		for (const modifier of modifiers) {
 			const { bit, ...key } = CDP_MODIFIERS[modifier];
 			held |= bit;
-			await call("Input.dispatchKeyEvent", { type: "rawKeyDown", ...key, modifiers: held });
+			await input("Input.dispatchKeyEvent", { type: "rawKeyDown", ...key, modifiers: held });
 		}
 		const { text, ...key } = CDP_KEYS[name];
 		const shortcut = modifiers.some((modifier) => modifier !== "Shift");
-		await call(
+		await input(
 			"Input.dispatchKeyEvent",
 			text && !shortcut
 				? { type: "keyDown", ...key, text, modifiers: held }
 				: { type: "rawKeyDown", ...key, modifiers: held },
 		);
-		await call("Input.dispatchKeyEvent", { type: "keyUp", ...key, modifiers: held });
+		await input("Input.dispatchKeyEvent", { type: "keyUp", ...key, modifiers: held });
 		for (const modifier of [...modifiers].reverse()) {
 			const { bit, ...key } = CDP_MODIFIERS[modifier];
 			held &= ~bit;
-			await call("Input.dispatchKeyEvent", { type: "keyUp", ...key, modifiers: held });
+			await input("Input.dispatchKeyEvent", { type: "keyUp", ...key, modifiers: held });
 		}
 	};
 
@@ -975,14 +1070,28 @@ export async function createWebDirectSession(
 		for (const part of text.split(NEWLINE)) {
 			if (part === "") continue;
 			if (part === "\n" || part === "\r\n") await pressKey("Enter");
-			else await call("Input.insertText", { text: part });
+			else await input("Input.insertText", { text: part });
 		}
 	};
 
+	/** The last screenshot of the page the session drives, which a dialog leaves on show. */
+	let lastShot: { sessionId: string; base64: string } | null = null;
+
+	/**
+	 * The page's viewport. Under an open dialog the page paints nothing until it is answered,
+	 * so the capture is the last screenshot of the page, frozen, or fails at once without one.
+	 */
 	const captureFrame = async (): Promise<CapturedFrame> => {
-		const { data } = await call("Page.captureScreenshot", { format: "png" });
-		if (!data) throw new Error("The browser returned an empty screenshot");
-		return { base64: data, mime: "image/png" };
+		const shot = await beforeDialog(() => call("Page.captureScreenshot", { format: "png" }));
+		if (!shot) {
+			// The dialog opened and was answered while the capture waited: the page paints again.
+			if (!openDialog) return captureFrame();
+			if (lastShot?.sessionId !== page.sessionId) throw dialogOpenError(openDialog);
+			return { base64: lastShot.base64, mime: "image/png", frozen: true };
+		}
+		if (!shot.data) throw new Error("The browser returned an empty screenshot");
+		lastShot = { sessionId: page.sessionId, base64: shot.data };
+		return { base64: shot.data, mime: "image/png" };
 	};
 
 	const screenshot = async () => {
@@ -1076,18 +1185,25 @@ export async function createWebDirectSession(
 			await switching;
 			return page.sessionId;
 		});
-		const [{ nodes }, snapshot, metrics] = await Promise.all([
-			callOn(sessionId, "Accessibility.getFullAXTree", {}),
-			callOn(sessionId, "DOMSnapshot.captureSnapshot", SNAPSHOT_PARAMS),
-			callOn(sessionId, "Page.getLayoutMetrics", {}),
-		]);
-		const scale = devicePixelsPerCss(metrics, snapshot.documents[0]);
-		const axTree = await frameTree(
-			sessionId,
-			{ nodes, snapshot },
-			{ scale, origin: { x: 0, y: 0 }, idPrefix: "" },
-		);
-		return JSON.stringify({ axTree } satisfies WebAxSource);
+		const axTree = await beforeDialog(async () => {
+			const [{ nodes }, snapshot, metrics] = await Promise.all([
+				callOn(sessionId, "Accessibility.getFullAXTree", {}),
+				callOn(sessionId, "DOMSnapshot.captureSnapshot", SNAPSHOT_PARAMS),
+				callOn(sessionId, "Page.getLayoutMetrics", {}),
+			]);
+			const scale = devicePixelsPerCss(metrics, snapshot.documents[0]);
+			return frameTree(
+				sessionId,
+				{ nodes, snapshot },
+				{ scale, origin: { x: 0, y: 0 }, idPrefix: "" },
+			);
+		});
+		// The page under a dialog cannot be read, nor tapped, until it is answered.
+		const dialog = openDialog ? dialogOnScreen(openDialog, preset) : undefined;
+		return JSON.stringify({
+			axTree: axTree ?? [],
+			...(dialog ? { dialog } : {}),
+		} satisfies WebAxSource);
 	};
 
 	/** The Everyday browser stays open: only the pages the session opened or followed close. */
@@ -1119,14 +1235,32 @@ export async function createWebDirectSession(
 		screenshot,
 		pageSource,
 		getWindowSize,
-		tap: (x, y, tapOptions) => withActionLock(() => click(x, y, tapOptions?.durationMs)),
-		swipe: (x1, y1, x2, y2, durationMs) => withActionLock(() => scroll(x1, y1, x2, y2, durationMs)),
-		drag: (x1, y1, x2, y2, durationMs) => withActionLock(() => drag(x1, y1, x2, y2, durationMs)),
-		type: (text) => withActionLock(() => typeText(text)),
+		tap: (x, y, tapOptions) =>
+			withActionLock(() =>
+				openDialog ? tapDialog(openDialog, x, y) : click(x, y, tapOptions?.durationMs),
+			),
+		swipe: (x1, y1, x2, y2, durationMs) =>
+			withActionLock(async () => {
+				assertNoDialog();
+				await scroll(x1, y1, x2, y2, durationMs);
+			}),
+		drag: (x1, y1, x2, y2, durationMs) =>
+			withActionLock(async () => {
+				assertNoDialog();
+				await drag(x1, y1, x2, y2, durationMs);
+			}),
+		type: (text) =>
+			withActionLock(async () => {
+				assertNoDialog();
+				await typeText(text);
+			}),
 		keySupport: WEB_KEY_SUPPORT,
 		key: async (name, modifiers = []) => {
 			assertKeySupported(WEB_KEY_SUPPORT, "on the web", name, modifiers);
-			await withActionLock(() => pressKey(name, modifiers));
+			await withActionLock(async () => {
+				assertNoDialog();
+				await pressKey(name, modifiers);
+			});
 		},
 		activateApp: (appId) => withActionLock(() => openApp(webUrlOf(appId))),
 		// Every lifecycle Action names its Web URL, and a Run opens it itself, so none is kept.

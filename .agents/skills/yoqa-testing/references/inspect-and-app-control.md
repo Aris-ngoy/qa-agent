@@ -116,6 +116,9 @@ yoqa action alert --dismiss    # dismiss
 
 On web, `alert` answers the page's JavaScript dialog (`alert`, `confirm`, `prompt`, or a "Leave
 site?" prompt). It fails with "No JavaScript dialog is open on the page" when there is none.
+While a dialog is open, `yoqa screen` leads with a `modal` whose label is its message, then its
+`OK` (and `Cancel`) buttons: `yoqa action tap --label OK` answers it too. Nothing else on the page
+can be read or tapped until it is answered, and a screenshot shows the page from before the dialog.
 
 ## Keys
 

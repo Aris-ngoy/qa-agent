@@ -21,6 +21,10 @@
  * `Target.setAutoAttach` as Chromium does with site isolation, with node ids that start
  * over. Either way its boxes are in its own document, which can scroll on its own.
  *
+ * A JavaScript dialog holds the page's renderer, as in Chromium: until it is answered, a
+ * screenshot, a tree read or an input event to that page gets no answer. Answering it
+ * sends `Page.javascriptDialogClosed`, then the held answers.
+ *
  * With `consent`, it is an everyday browser with the remote-debugging toggle on: `/json/*`
  * answers 404, and each WebSocket waits until the user allows or denies it.
  */
@@ -44,6 +48,8 @@ export type FakeAxNode = {
 	testId?: string;
 	/** Hidden from assistive technology: an ignored node with no layout box. */
 	hidden?: boolean;
+	/** A click on it opens this JavaScript dialog, as an `onclick` that calls `confirm()` does. */
+	opensDialog?: { type: FakeDialogType; message: string; defaultPrompt?: string };
 };
 
 type FakeBox = { x: number; y: number; width: number; height: number };
@@ -236,6 +242,9 @@ type Page = FakeEmulation & {
 	lifecycleEvents?: boolean;
 };
 
+/** What a page's renderer answers, which an open JavaScript dialog holds until it is answered. */
+const HELD_BY_DIALOG = /^(Input\.|Accessibility\.|DOMSnapshot\.|Page\.captureScreenshot$)/;
+
 /** How long a navigation takes to load, as Chrome swaps in the new document. */
 const FAKE_LOAD_MS = 20;
 /** How long after an ack the next screencast frame comes. */
@@ -332,6 +341,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	let front: Page | undefined;
 	let discovering = false;
 	let dialogOpen: { sessionId: string } | null = null;
+	/** Answers to commands the open dialog holds, sent once it is answered. */
+	const heldByDialog: Array<() => void> = [];
 	/** How far the page is scrolled now; `options.scroll` is where its boxes were given. */
 	let scrolled = options.scroll ?? { x: 0, y: 0 };
 
@@ -426,6 +437,27 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		if (!screencast) return;
 		if (screencast.unacked === null) sendScreencastFrame(page, FAKE_FRAME_MS);
 		else screencast.dirty = true;
+	};
+	const openDialogOn = (page: Page, dialog: NonNullable<FakeAxNode["opensDialog"]>) => {
+		if (!page.sessionId) return;
+		dialogOpen = { sessionId: page.sessionId };
+		broadcast(
+			"Page.javascriptDialogOpening",
+			{ url: page.url, hasBrowserHandler: false, defaultPrompt: "", ...dialog },
+			page.sessionId,
+		);
+	};
+	/** A click on the page: an element whose click opens a dialog opens it. */
+	const clickAt = (page: Page | undefined, point: { x: number; y: number }) => {
+		const node = nodes.find(
+			({ box, opensDialog }) =>
+				opensDialog &&
+				point.x >= box.x &&
+				point.x <= box.x + box.width &&
+				point.y >= box.y &&
+				point.y <= box.y + box.height,
+		);
+		if (page && node?.opensDialog) openDialogOn(page, node.opensDialog);
 	};
 	/** A page's document starts loading `url`: navigated, then each lifecycle step, then load. */
 	const load = (page: Page, url: string) => {
@@ -739,6 +771,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 					if (!moved) {
 						clicks.push({ x, y });
 						page.clicks.push({ x, y });
+						clickAt(page, { x, y });
 					}
 					page.touchStart = undefined;
 				}
@@ -762,6 +795,14 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 					accept: Boolean(params.accept),
 					...(params.promptText !== undefined ? { promptText: String(params.promptText) } : {}),
 				});
+				broadcast(
+					"Page.javascriptDialogClosed",
+					{ result: Boolean(params.accept), userInput: String(params.promptText ?? "") },
+					message.sessionId,
+				);
+				queueMicrotask(() => {
+					for (const send of heldByDialog.splice(0)) send();
+				});
 				return {};
 			case "Storage.clearDataForOrigin":
 				clearedOrigins.push(String(params.origin));
@@ -776,6 +817,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 					clicks.push(point);
 					page?.clicks.push(point);
 				}
+				// The page's click handler runs as the button comes up.
+				if (params.type === "mouseReleased") clickAt(page, point);
 				mouse.push({
 					type: params.type as FakeMouseEvent["type"],
 					...point,
@@ -878,14 +921,23 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				const message = JSON.parse(String(raw)) as Message;
 				methods.push(message.method);
 				const session = message.sessionId ? { sessionId: message.sessionId } : {};
+				let reply: string;
 				try {
-					ws.send(JSON.stringify({ id: message.id, result: answer(message), ...session }));
+					reply = JSON.stringify({ id: message.id, result: answer(message), ...session });
 				} catch (error) {
 					const text = error instanceof Error ? error.message : String(error);
-					ws.send(
-						JSON.stringify({ id: message.id, error: { code: -32000, message: text }, ...session }),
-					);
+					reply = JSON.stringify({
+						id: message.id,
+						error: { code: -32000, message: text },
+						...session,
+					});
 				}
+				const held =
+					dialogOpen !== null &&
+					dialogOpen.sessionId === message.sessionId &&
+					HELD_BY_DIALOG.test(message.method);
+				if (held) heldByDialog.push(() => ws.send(reply));
+				else ws.send(reply);
 			},
 		},
 	});
@@ -922,14 +974,8 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		openPage: (url, { fromFrontPage = false, viewport } = {}) =>
 			createPage(url, viewport, fromFrontPage ? front?.targetId : undefined).targetId,
 		openDialog: (type, message = "", defaultPrompt = "") => {
-			const driven = front;
-			if (!driven?.sessionId) throw new Error("No page is attached");
-			dialogOpen = { sessionId: driven.sessionId };
-			broadcast(
-				"Page.javascriptDialogOpening",
-				{ url: driven.url, message, type, hasBrowserHandler: false, defaultPrompt },
-				driven.sessionId,
-			);
+			if (!front?.sessionId) throw new Error("No page is attached");
+			openDialogOn(front, { type, message, defaultPrompt });
 		},
 		frame: (count) => frame(count, front),
 		navigate: (url) => {

@@ -274,8 +274,23 @@ type Rect = { x: number; y: number; width: number; height: number };
  */
 export type WebAxSourceNode = AxNode & { bounds?: Rect; testId?: string; domId?: string };
 
-/** The web Direct lane's page source: the page's full accessibility tree. */
-export type WebAxSource = { axTree: WebAxSourceNode[] };
+/**
+ * A JavaScript dialog open on a web page (`alert`, `confirm`, `prompt`, `beforeunload`):
+ * the browser's `Page.javascriptDialogOpening` event, and where the lane places the dialog
+ * and its buttons in the viewport's CSS pixels. The browser draws it outside the page, so
+ * those boxes are the lane's, and a tap on a button answers the dialog.
+ */
+export type WebDialogSource = {
+	event: { type: string; message: string; defaultPrompt?: string };
+	bounds: Rect;
+	buttons: Array<{ label: string; accept: boolean; bounds: Rect }>;
+};
+
+/**
+ * The web Direct lane's page source: the page's full accessibility tree, and the page's
+ * open JavaScript dialog, if any.
+ */
+export type WebAxSource = { axTree: WebAxSourceNode[]; dialog?: WebDialogSource };
 
 /** Roles that only hold the page together, even when the browser names them. */
 const WEB_STRUCTURAL_ROLES = new Set(["RootWebArea", "InlineTextBox", "LineBreak"]);
@@ -324,6 +339,8 @@ function webIdOf(node: WebAxSourceNode): string {
  * control, and each image with an id, with its role as the type. Hidden (ignored, which
  * covers `aria-hidden`), unnamed structural, zero-size and offscreen nodes are dropped, and
  * so is a text run its named parent already says or that sits inside a control on the Screen.
+ * An open JavaScript dialog leads, as an iOS system alert does: one `modal` with its message
+ * as the label and its type as the id, then its buttons.
  */
 export function cleanWebAxSource(
 	source: WebAxSource,
@@ -359,6 +376,24 @@ export function cleanWebAxSource(
 	};
 
 	const elements: ScreenElement[] = [];
+	if (source.dialog) {
+		const { event, bounds, buttons } = source.dialog;
+		pushNormalized(elements, window, {
+			type: "modal",
+			label: event.message,
+			id: event.type,
+			rect: bounds,
+			enabled: true,
+		});
+		for (const button of buttons) {
+			pushNormalized(elements, window, {
+				type: "button",
+				label: button.label,
+				rect: button.bounds,
+				enabled: true,
+			});
+		}
+	}
 	for (const node of source.axTree) {
 		if (!isLaidOut(node)) continue;
 		const type = axText(node.role);
