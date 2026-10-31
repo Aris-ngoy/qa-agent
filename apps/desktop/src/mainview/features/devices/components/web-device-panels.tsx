@@ -3,7 +3,11 @@ import {
 	useOpenRemoteDebuggingSetting,
 	useResetBrowserProfile,
 } from "@/features/devices/hooks/usequery/use-devices";
-import type { EverydayEntry } from "@/features/devices/utils/everyday-browser";
+import {
+	type EverydayEntry,
+	everydayStateLine,
+	turnOnHint,
+} from "@/features/devices/utils/everyday-browser";
 import {
 	resetProfileConfirmation,
 	resetProfileDone,
@@ -65,10 +69,6 @@ export function ViewportChoice({
 	);
 }
 
-/** The short line an Everyday browser with remote debugging off shows under its name. */
-const TURN_ON_HINT =
-	"Turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect.";
-
 /**
  * The user's own browsers, by consent (ADR-0009): a ready one is picked to connect; one with
  * remote debugging off offers "Open the setting", which opens the toggle in that browser.
@@ -99,7 +99,7 @@ export function EverydayBrowserList({
 	if (browsers.length === 0) {
 		return (
 			<p className="px-1 py-6 text-center text-body-md text-on-surface-variant">
-				No Chrome, Edge, Brave, Chromium or Dia found in Applications.
+				No Chrome, Edge, Brave, Chromium, Dia, Arc, Opera or Vivaldi found in Applications.
 			</p>
 		);
 	}
@@ -118,7 +118,7 @@ export function EverydayBrowserList({
 							{browser.browserName}
 							{browser.ready ? null : (
 								<span className="block text-body-sm font-normal text-on-surface-variant">
-									{TURN_ON_HINT}
+									{turnOnHint(browser)}
 								</span>
 							)}
 						</span>
@@ -128,7 +128,7 @@ export function EverydayBrowserList({
 								browser.ready ? "text-success" : "text-on-surface-variant/80",
 							].join(" ")}
 						>
-							{browser.ready ? "ready" : "remote debugging off"}
+							{everydayStateLine(browser)}
 						</span>
 					</button>
 					{browser.ready ? null : (

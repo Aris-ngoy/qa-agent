@@ -15,6 +15,7 @@ import {
 	type Device,
 	type DeviceKind,
 	type ViewportPresetName,
+	formatDeviceState,
 } from "@yoqa/runner-client";
 import { type ReactNode, type SVGProps, useEffect, useMemo } from "react";
 
@@ -29,6 +30,7 @@ type DeviceRow = {
 	name: string;
 	owner?: string;
 	osVersion: string;
+	/** The device's state, with `unverified` on a browser not yet checked by hand. */
 	state?: string;
 	kind: DeviceKind;
 	/** Listed but not a target (e.g. an iPhone paired over Wi-Fi only); shown instead of picking it. */
@@ -162,7 +164,7 @@ function toDeviceRow(device: Device): DeviceRow {
 		name: device.name,
 		owner: device.owner,
 		osVersion: device.osVersion,
-		state: device.state,
+		state: formatDeviceState(device) ?? undefined,
 		kind: device.kind,
 		unavailableReason: device.unavailableReason,
 	};
@@ -381,7 +383,7 @@ export function SelectDeviceModal({
 													</Button>
 												)}
 												devices={browsers}
-												emptyMessage="No Chrome, Edge, Brave or Chromium found in Applications."
+												emptyMessage="No Chrome, Edge, Brave, Chromium, Dia, Arc, Opera or Vivaldi found in Applications."
 												error={error}
 												loading={loading}
 												onSelect={handleSelect}

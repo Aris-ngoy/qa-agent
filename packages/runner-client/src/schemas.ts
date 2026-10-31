@@ -58,6 +58,8 @@ export const deviceSchema = z.object({
 	model: z.string().optional(),
 	/** Why this device is listed but cannot be a target (e.g. an iPhone paired over Wi-Fi only). */
 	unavailableReason: z.string().optional(),
+	/** A web browser: false until a hands-on check has cleared it (Arc, Opera, Vivaldi). */
+	verified: z.boolean().optional(),
 });
 
 export type Device = z.infer<typeof deviceSchema>;

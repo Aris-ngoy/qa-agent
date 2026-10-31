@@ -21,6 +21,7 @@ import {
 	formatCaseScriptReplayStep,
 	formatCaseScriptShell,
 	formatCaseScriptStepPath,
+	formatDeviceState,
 	formatViewportPreset,
 	parseCaseScriptFile,
 	parseKeyModifiers,
@@ -291,6 +292,7 @@ function printDevicesTable(
 		kind: string;
 		state?: string;
 		unavailableReason?: string;
+		verified?: boolean;
 	}>,
 ) {
 	if (devicesList.length === 0) {
@@ -299,7 +301,8 @@ function printDevicesTable(
 	}
 	for (const device of devicesList) {
 		const label = device.owner ? `${device.name} (${device.owner})` : device.name;
-		const state = device.state ? ` [${device.state}]` : "";
+		const stateLine = formatDeviceState(device);
+		const state = stateLine ? ` [${stateLine}]` : "";
 		console.log(`${device.kind.padEnd(10)} ${label} — ${device.osVersion}${state}`);
 		console.log(`           ${device.id}`);
 		if (device.unavailableReason) {

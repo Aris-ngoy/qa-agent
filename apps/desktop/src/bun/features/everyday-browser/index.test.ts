@@ -32,6 +32,9 @@ describe("openRemoteDebuggingSetting", () => {
 			"web-edge-everyday",
 			"web-brave-everyday",
 			"web-chromium-everyday",
+			"web-arc-everyday",
+			"web-opera-everyday",
+			"web-vivaldi-everyday",
 		]) {
 			await openRemoteDebuggingSetting(id, { platform: "darwin", run: host.run });
 		}
@@ -40,6 +43,9 @@ describe("openRemoteDebuggingSetting", () => {
 			"Microsoft Edge",
 			"Brave Browser",
 			"Chromium",
+			"Arc",
+			"Opera",
+			"Vivaldi",
 		]);
 	});
 

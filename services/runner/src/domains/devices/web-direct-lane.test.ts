@@ -102,6 +102,7 @@ describe("web Direct lane: attach by port", () => {
 			createDeviceSession({ platform: "web", deviceId: "web-opera-mini" }),
 		);
 		expect((error as Error).message).toContain("chromium-cdp-<port>");
+		expect((error as Error).message).toContain("web-dia, web-arc, web-opera, web-vivaldi)");
 	});
 
 	test.each(["web-firefox", "web-safari", "web-firefox-everyday", "web-safari-everyday"])(

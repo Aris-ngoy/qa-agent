@@ -49,6 +49,8 @@ import {
 	type KeyName,
 	VIEWPORT_PRESETS,
 	type ViewportPreset,
+	WEB_BROWSERS,
+	installedBrowserId,
 } from "@yoqa/runner-client";
 import {
 	type AxNode,
@@ -226,8 +228,7 @@ type OpenedBrowser = {
 const UNSUPPORTED_BROWSER_ID = /^web-(firefox|safari)(-everyday)?$/;
 
 /** The error for a web device id that names nothing: the kinds of web device id there are. */
-const WEB_DEVICE_ID_HINT =
-	"A web device is an installed browser (web-chrome, web-edge, web-brave, web-chromium, web-dia), its Everyday browser (web-chrome-everyday, web-dia-everyday, …), or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>";
+const WEB_DEVICE_ID_HINT = `A web device is an installed browser (${WEB_BROWSERS.map(({ browser }) => installedBrowserId(browser)).join(", ")}), its Everyday browser (web-chrome-everyday, web-dia-everyday, …), or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>`;
 
 /**
  * Connect to the browser a web device id names: a Yoqa-owned instance of an installed

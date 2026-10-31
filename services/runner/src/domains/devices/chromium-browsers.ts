@@ -1,9 +1,9 @@
 /**
- * Installed Chromium-family browsers (Chrome, Edge, Brave, Chromium, Dia) as web devices, and
- * the Yoqa-owned instance a connect launches (ADR-0007). Launching an installed browser is
- * to a web device what booting is to a simulator: its App's Kept profile, a debug port the
- * browser picks itself, and no first-run screens. The user's own profile is never used.
- * Discovery is macOS only.
+ * Installed Chromium-family browsers (`WEB_BROWSERS`: Chrome, Edge, Brave, Chromium, Dia, and
+ * Arc, Opera and Vivaldi, unverified) as web devices, and the Yoqa-owned instance a connect
+ * launches (ADR-0007). Launching an installed browser is to a web device what booting is to
+ * a simulator: its App's Kept profile, a debug port the browser picks itself, and no
+ * first-run screens. The user's own profile is never used. Discovery is macOS only.
  *
  * A Kept profile lives at `~/.yoqa/browser-profiles/<appId>/<browserId>/` (`default` when
  * the connect names no App) and outlives the browser, so logins survive disconnects and
@@ -15,16 +15,18 @@ import { constants } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, readdir, readlink, rm } from "node:fs/promises";
 import { homedir, hostname, tmpdir } from "node:os";
 import { join } from "node:path";
-import { type BrowserProfile, type Device, PROFILE_APP_ID_PATTERN } from "@yoqa/runner-client";
+import {
+	type BrowserProfile,
+	type Device,
+	type InstalledBrowserId,
+	PROFILE_APP_ID_PATTERN,
+	WEB_BROWSERS,
+	type WebBrowserKey,
+	installedBrowserId,
+} from "@yoqa/runner-client";
 import type { ListDevicesOptions } from "./models";
 
-/** The stable device id of each browser Yoqa can launch, one per installed browser. */
-export type InstalledBrowserId =
-	| "web-chrome"
-	| "web-edge"
-	| "web-brave"
-	| "web-chromium"
-	| "web-dia";
+export type { InstalledBrowserId };
 
 export type InstalledBrowser = {
 	id: InstalledBrowserId;
@@ -35,22 +37,25 @@ export type InstalledBrowser = {
 };
 
 /**
- * Each browser's app bundle and the binary inside it, in listing order, and the folder
- * under `--user-data-dir` it writes `DevToolsActivePort` to when not the folder itself.
+ * The folder under `--user-data-dir` each browser writes `DevToolsActivePort` to, when not
+ * the folder itself. Arc, Opera and Vivaldi are unchecked and kept on the folder itself.
  */
-const KNOWN_BROWSERS: ReadonlyArray<{
-	id: InstalledBrowserId;
-	name: string;
-	app: string;
-	portFileDir?: string;
-}> = [
-	{ id: "web-chrome", name: "Google Chrome", app: "Google Chrome" },
-	{ id: "web-edge", name: "Microsoft Edge", app: "Microsoft Edge" },
-	{ id: "web-brave", name: "Brave Browser", app: "Brave Browser" },
-	{ id: "web-chromium", name: "Chromium", app: "Chromium" },
+const PORT_FILE_DIRS: Partial<Record<WebBrowserKey, string>> = {
 	// Dia writes it one level down, under `User Data/` (#343).
-	{ id: "web-dia", name: "Dia", app: "Dia", portFileDir: "User Data" },
-];
+	dia: "User Data",
+};
+
+/**
+ * Each browser's app bundle (`<name>.app`, its binary named the same) and port file folder,
+ * in listing order.
+ */
+const KNOWN_BROWSERS = WEB_BROWSERS.map(({ browser, name, verified }) => ({
+	id: installedBrowserId(browser),
+	name,
+	app: name,
+	verified,
+	portFileDir: PORT_FILE_DIRS[browser],
+}));
 
 /** The installed-browser id a device id names, or null when it is not one. */
 export function installedBrowserIdOf(deviceId: string): InstalledBrowserId | null {
@@ -138,6 +143,7 @@ export async function listWebDevices(
 			platform: "web",
 			kind: "browser",
 			state: isRunning ? "running" : "not running",
+			verified: KNOWN_BROWSERS.some(({ id, verified }) => id === browser.id && verified),
 		});
 	}
 	return devices;

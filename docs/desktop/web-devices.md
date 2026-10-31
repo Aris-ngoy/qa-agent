@@ -195,3 +195,32 @@ By hand on a Mac with Dia (not run here): connect **Your browser** → Dia with 
 ### Follow-ups
 
 None.
+
+## Unverified browsers in the picker
+
+### Goal
+
+Show which browser rows nobody has checked by hand yet: Arc, Opera and Vivaldi, in both tabs (#378). The runner side is in [web-supported-browsers.md](../devices/web-supported-browsers.md#unverified-arc-opera-and-vivaldi).
+
+### Plan summary
+
+- **One state line per row**, as #349 decided: the state, then `unverified` (`not running · unverified`, `remote debugging off · unverified`), from the Device's `verified: false`. `formatDeviceState` in `@yoqa/runner-client` words it, so the CLI's `yoqa devices web` reads the same. Rejected: an icon or badge per browser.
+- **Open the setting for an unverified browser** still opens `chrome://inspect/#remote-debugging` in that app, but its line adds how to open the page by hand if it doesn't load (Opera may want `opera://inspect`).
+
+### What shipped
+
+- `toDeviceRow` sets the Browsers row's state from `formatDeviceState`; `EverydayEntry` carries `verified`, and the Your browser list uses `everydayStateLine` and `turnOnHint`.
+- The host's Open the setting names the app from `WEB_BROWSERS`, so Arc, Opera and Vivaldi open too, and the webview still cannot name an app outside the list.
+- The empty-list messages name all eight browsers.
+
+### How to verify
+
+```bash
+bun test apps/desktop/src/mainview/features/devices/utils/everyday-browser.test.ts apps/desktop/src/bun/features/everyday-browser/index.test.ts packages/runner-client/src/web-browsers.test.ts
+```
+
+By hand on a Mac with Arc, Opera or Vivaldi (not run here): Web → Select device. The Browsers row reads `Not Running · Unverified` and the Your browser row `Remote Debugging Off · Unverified`, with the line about opening the page by hand.
+
+### Follow-ups
+
+- Drop `unverified` per browser once its hand check passes (`verified: true` in `WEB_BROWSERS`).

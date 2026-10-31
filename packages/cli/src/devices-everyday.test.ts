@@ -44,6 +44,15 @@ const EVERYDAY_DEVICES: Device[] = [
 		kind: "browser",
 		state: "remote debugging off",
 	},
+	{
+		id: "web-arc",
+		name: "Arc",
+		osVersion: "1.106.0",
+		platform: "web",
+		kind: "browser",
+		state: "not running",
+		verified: false,
+	},
 ];
 
 /**
@@ -171,6 +180,14 @@ describe("yoqa devices on the Everyday browser", () => {
 		expect(lines.indexOf(hints[0] ?? "")).toBeGreaterThan(
 			lines.findIndex((line) => line.includes("web-edge-everyday")),
 		);
+	});
+
+	test("devices web says unverified in the state of a browser not yet checked", async () => {
+		const out = await yoqa("devices", "web");
+		expect(out).toContain("Arc — 1.106.0 [not running · unverified]");
+		expect(out).toContain("Google Chrome (everyday) — everyday browser [ready]");
+		const json = JSON.parse(await yoqa("devices", "web", "--json")) as { devices: Device[] };
+		expect(json.devices.find((device) => device.id === "web-arc")?.verified).toBe(false);
 	});
 
 	test("a connect says to click Allow while it waits, then names the profile", async () => {

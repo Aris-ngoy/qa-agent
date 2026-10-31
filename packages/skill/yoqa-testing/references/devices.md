@@ -43,7 +43,10 @@ yoqa devices connect <device_id> --platform android --app-package com.example.ap
 ## Web browsers
 
 A web device is a Chromium browser installed on this Mac. Its id is stable per browser: `web-chrome`,
-`web-edge`, `web-brave`, `web-chromium`, `web-dia`. It is listed even when the browser is not running.
+`web-edge`, `web-brave`, `web-chromium`, `web-dia`, and `web-arc`, `web-opera`, `web-vivaldi`. It is
+listed even when the browser is not running. Arc, Opera and Vivaldi say `unverified` in their state
+(`verified: false` in `--json`): not yet checked by hand, so a failed launch or connect may be the
+browser's, not your Case's.
 
 ```
 browser    Google Chrome — 131.0.6778.86 [not running]
@@ -85,8 +88,9 @@ The new window opens on a blank page. Open the app with
 `yoqa action open-url --url <Web URL>` (see [Inspect & App Control](inspect-and-app-control.md)).
 
 **The user's Everyday browser.** Only when the user asks to test in their own, signed-in browser.
-`web-chrome-everyday`, `web-edge-everyday`, `web-brave-everyday`, `web-chromium-everyday` and
-`web-dia-everyday` are the user's running browser on its default profile. Yoqa drives a page in a
+`web-chrome-everyday`, `web-edge-everyday`, `web-brave-everyday`, `web-chromium-everyday`,
+`web-dia-everyday`, and the unverified `web-arc-everyday`, `web-opera-everyday` and
+`web-vivaldi-everyday` are the user's running browser on its default profile. Yoqa drives a page in a
 window of its own, never the user's tabs, and nothing there is wiped: you act in the user's real
 accounts.
 

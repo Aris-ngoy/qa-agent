@@ -84,6 +84,40 @@ describe("Everyday browser discovery", () => {
 		);
 	});
 
+	test("Arc, Opera and Vivaldi have everyday devices, unverified, in their own folders", async () => {
+		const deps = mac(["Vivaldi", "Opera", "Arc", "Google Chrome"]);
+		const found = await findEverydayBrowsers(deps);
+		const support = join(deps.home, "Library/Application Support");
+		expect(found.map(({ id, name, userDataDir }) => [id, name, userDataDir])).toEqual([
+			["web-chrome-everyday", "Google Chrome", join(support, "Google/Chrome")],
+			["web-arc-everyday", "Arc", join(support, "Arc/User Data")],
+			["web-opera-everyday", "Opera", join(support, "com.operasoftware.Opera")],
+			["web-vivaldi-everyday", "Vivaldi", join(support, "Vivaldi")],
+		]);
+		const devices = await listEverydayDevices({}, deps);
+		expect(devices.map((device) => [device.id, device.verified])).toEqual([
+			["web-chrome-everyday", true],
+			["web-arc-everyday", false],
+			["web-opera-everyday", false],
+			["web-vivaldi-everyday", false],
+		]);
+	});
+
+	test("Arc, Opera and Vivaldi are off without a port file, and ready with one in their folder", async () => {
+		const deps = mac(["Arc", "Opera", "Vivaldi"]);
+		const off = await listEverydayDevices({}, deps);
+		expect(off.map((device) => device.state)).toEqual([
+			"remote debugging off",
+			"remote debugging off",
+			"remote debugging off",
+		]);
+		for (const userData of ["Arc/User Data", "com.operasoftware.Opera", "Vivaldi"]) {
+			writePort(deps.home, userData, consentBrowser().port);
+		}
+		const ready = await listEverydayDevices({}, deps);
+		expect(ready.map((device) => device.state)).toEqual(["ready", "ready", "ready"]);
+	});
+
 	test("a folder with a port file and a port that answers is ready", async () => {
 		const deps = mac(["Google Chrome"]);
 		const browser = consentBrowser();
@@ -96,6 +130,7 @@ describe("Everyday browser discovery", () => {
 				platform: "web",
 				kind: "browser",
 				state: "ready",
+				verified: true,
 			},
 		]);
 	});

@@ -11,18 +11,18 @@
  */
 
 import { join } from "node:path";
-import type { Device } from "@yoqa/runner-client";
+import {
+	type Device,
+	type EverydayBrowserId,
+	WEB_BROWSERS,
+	type WebBrowserKey,
+	everydayBrowserId,
+} from "@yoqa/runner-client";
 import { type CdpClient, CdpOpenError, type ConnectCdpOptions, connectCdp } from "./cdp-client";
 import { type DiscoveryDeps, discoveryDeps } from "./chromium-browsers";
 import type { ListDevicesOptions } from "./models";
 
-/** The device id of each browser's Everyday browser. */
-export type EverydayBrowserId =
-	| "web-chrome-everyday"
-	| "web-edge-everyday"
-	| "web-brave-everyday"
-	| "web-chromium-everyday"
-	| "web-dia-everyday";
+export type { EverydayBrowserId };
 
 export type EverydayBrowser = {
 	id: EverydayBrowserId;
@@ -32,36 +32,29 @@ export type EverydayBrowser = {
 };
 
 /**
- * Each browser's app bundle and default user-data folder under `~/Library/Application
- * Support`, in listing order. Dia keeps its profiles one level down, under `User Data`.
+ * Each browser's default user-data folder under `~/Library/Application Support`. Dia and
+ * Arc keep their profiles one level down, under `User Data`. Arc's, Opera's and Vivaldi's
+ * are from #349 and the vendors' layouts, not yet checked on an install.
  */
-const EVERYDAY_BROWSERS: ReadonlyArray<{
-	id: EverydayBrowserId;
-	name: string;
-	app: string;
-	userData: string;
-}> = [
-	{
-		id: "web-chrome-everyday",
-		name: "Google Chrome",
-		app: "Google Chrome",
-		userData: "Google/Chrome",
-	},
-	{
-		id: "web-edge-everyday",
-		name: "Microsoft Edge",
-		app: "Microsoft Edge",
-		userData: "Microsoft Edge",
-	},
-	{
-		id: "web-brave-everyday",
-		name: "Brave Browser",
-		app: "Brave Browser",
-		userData: "BraveSoftware/Brave-Browser",
-	},
-	{ id: "web-chromium-everyday", name: "Chromium", app: "Chromium", userData: "Chromium" },
-	{ id: "web-dia-everyday", name: "Dia", app: "Dia", userData: "Dia/User Data" },
-];
+const USER_DATA_DIRS: Record<WebBrowserKey, string> = {
+	chrome: "Google/Chrome",
+	edge: "Microsoft Edge",
+	brave: "BraveSoftware/Brave-Browser",
+	chromium: "Chromium",
+	dia: "Dia/User Data",
+	arc: "Arc/User Data",
+	opera: "com.operasoftware.Opera",
+	vivaldi: "Vivaldi",
+};
+
+/** Each browser's app bundle (`<name>.app`) and user-data folder, in listing order. */
+const EVERYDAY_BROWSERS = WEB_BROWSERS.map(({ browser, name, verified }) => ({
+	id: everydayBrowserId(browser),
+	name,
+	app: name,
+	verified,
+	userData: USER_DATA_DIRS[browser],
+}));
 
 /** The Everyday browser id a device id names, or null when it is not one. */
 export function everydayBrowserIdOf(deviceId: string): EverydayBrowserId | null {
@@ -138,6 +131,7 @@ export async function listEverydayDevices(
 				platform: "web",
 				kind: "browser",
 				state,
+				verified: EVERYDAY_BROWSERS.some(({ id, verified }) => id === browser.id && verified),
 			};
 		}),
 	);
