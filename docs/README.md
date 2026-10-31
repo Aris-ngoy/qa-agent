@@ -37,6 +37,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/web-supported-browsers.md](./devices/web-supported-browsers.md) | Which browsers are web devices (Chromium only), and the clear error for a Firefox or Safari device id |
 | [devices/web-kept-profile.md](./devices/web-kept-profile.md) | A launched browser keeps its profile per App and browser under `~/.yoqa/browser-profiles/`, or a clean one on request; lock rules |
 | [devices/web-everyday-browser.md](./devices/web-everyday-browser.md) | Connect to the user's Everyday browser by consent (one 60 s Allow wait), drive a page in Yoqa's own window; discovery, Deny/timeout, profile name |
+| [devices/web-restored-session.md](./devices/web-restored-session.md) | Web: a command to a page that closes fails at once, and a connect picks again when Dia's restored session closes the page it was attaching |
 | [devices/web-popups.md](./devices/web-popups.md) | Web: the session follows a popup the page opens and returns to the opener when it closes |
 | [devices/web-viewport-presets.md](./devices/web-viewport-presets.md) | Web Viewport presets: desktop or mobile (touch, mobile user agent) at connect, stored on the Run |
 | [devices/web-screencast-feed.md](./devices/web-screencast-feed.md) | Web Frame Feed: a `Page.startScreencast` Stream on `/stream.mjpeg` while the Inspector watches, sized to the Viewport preset |

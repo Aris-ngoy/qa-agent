@@ -101,6 +101,12 @@ export type FakeCdpOptions = {
 	 * and each WebSocket opens only once `allow()` is called, or fails on `deny()`.
 	 */
 	consent?: boolean;
+	/**
+	 * Dia after an unclean exit: it restores the last session's tabs, at these URLs, while
+	 * the first page is being attached, and closes that page before `Page.enable` is
+	 * answered, which never is.
+	 */
+	restoresSession?: string[];
 };
 
 export type FakeMouseEvent = {
@@ -341,6 +347,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	let front: Page | undefined;
 	let discovering = false;
 	let dialogOpen: { sessionId: string } | null = null;
+	let restoring = options.restoresSession;
 	/** Answers to commands the open dialog holds, sent once it is answered. */
 	const heldByDialog: Array<() => void> = [];
 	/** How far the page is scrolled now; `options.scroll` is where its boxes were given. */
@@ -920,6 +927,14 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			message(ws, raw) {
 				const message = JSON.parse(String(raw)) as Message;
 				methods.push(message.method);
+				const replaced = restoring && message.method === "Page.enable" && pageOf(message.sessionId);
+				if (restoring && replaced) {
+					const urls = restoring;
+					restoring = undefined;
+					closeTarget(replaced);
+					for (const url of urls) createPage(url);
+					return;
+				}
 				const session = message.sessionId ? { sessionId: message.sessionId } : {};
 				let reply: string;
 				try {

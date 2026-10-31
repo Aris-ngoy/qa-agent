@@ -808,6 +808,16 @@ describe("web Direct lane: iframes", () => {
 	});
 });
 
+describe("web Direct lane: a page closed while it is attached", () => {
+	test("the session drives a page that stays, without waiting for the closed one", async () => {
+		const { browser, session } = await attach({ restoresSession: ["https://example.com/"] });
+		expect(browser.attachedTargets).toHaveLength(2);
+		expect(browser.frontPage()).toBe(browser.attachedTargets[1]);
+		expect(browser.pages()).toEqual(["https://example.com/"]);
+		await session.quit();
+	});
+});
+
 describe("web Direct lane: Dead Session", () => {
 	test("closing the page the session drives ends the session", async () => {
 		const { browser, session, deadCalls } = await attach();
