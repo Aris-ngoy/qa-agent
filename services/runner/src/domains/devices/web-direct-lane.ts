@@ -227,8 +227,12 @@ type OpenedBrowser = {
 /** Firefox and Safari device ids, refused with the reason (ADR-0010) rather than as unknown. */
 const UNSUPPORTED_BROWSER_ID = /^web-(firefox|safari)(-everyday)?$/;
 
+const INSTALLED_BROWSER_IDS = WEB_BROWSERS.map(({ browser }) => installedBrowserId(browser)).join(
+	", ",
+);
+
 /** The error for a web device id that names nothing: the kinds of web device id there are. */
-const WEB_DEVICE_ID_HINT = `A web device is an installed browser (${WEB_BROWSERS.map(({ browser }) => installedBrowserId(browser)).join(", ")}), its Everyday browser (web-chrome-everyday, web-dia-everyday, …), or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>`;
+const WEB_DEVICE_ID_HINT = `A web device is an installed browser (${INSTALLED_BROWSER_IDS}), its Everyday browser (web-chrome-everyday, web-dia-everyday, …), or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>`;
 
 /**
  * Connect to the browser a web device id names: a Yoqa-owned instance of an installed

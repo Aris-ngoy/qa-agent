@@ -17,6 +17,7 @@ import {
 	WEB_BROWSERS,
 	type WebBrowserKey,
 	everydayBrowserId,
+	webBrowserOf,
 } from "@yoqa/runner-client";
 import { type CdpClient, CdpOpenError, type ConnectCdpOptions, connectCdp } from "./cdp-client";
 import { type DiscoveryDeps, discoveryDeps } from "./chromium-browsers";
@@ -48,11 +49,10 @@ const USER_DATA_DIRS: Record<WebBrowserKey, string> = {
 };
 
 /** Each browser's app bundle (`<name>.app`) and user-data folder, in listing order. */
-const EVERYDAY_BROWSERS = WEB_BROWSERS.map(({ browser, name, verified }) => ({
+const EVERYDAY_BROWSERS = WEB_BROWSERS.map(({ browser, name }) => ({
 	id: everydayBrowserId(browser),
 	name,
 	app: name,
-	verified,
 	userData: USER_DATA_DIRS[browser],
 }));
 
@@ -131,7 +131,7 @@ export async function listEverydayDevices(
 				platform: "web",
 				kind: "browser",
 				state,
-				verified: EVERYDAY_BROWSERS.some(({ id, verified }) => id === browser.id && verified),
+				verified: webBrowserOf(browser.id)?.verified ?? false,
 			};
 		}),
 	);
