@@ -3,6 +3,7 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { errorChain } from "./error-chain";
+import { ActionValidationError, performAction } from "./interaction";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
 import { DeadSessionError, DeviceUnreachableError, type SessionOptions } from "./lane";
 import { cleanPageSource, screenSourceOf } from "./screen";
@@ -654,6 +655,90 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		expect(phone.bodies.at(-1)).toMatchObject({ command: "button", name: "home" });
 		expect(phone.devicectl).toEqual([
 			["device", "process", "launch", "--device", PHONE_UDID, "com.demo"],
+		]);
+		await session.quit();
+	});
+});
+
+describe("a tap by id on a cabled iPhone (the Action the CLI performs)", () => {
+	const SWITCHER = {
+		role: "Window",
+		id: "SBSwitcherWindow:Main",
+		frame: { x: 0, y: 0, width: 1, height: 1 },
+		enabled: true,
+	};
+	const BUY = {
+		role: "Button",
+		label: "Buy",
+		id: "buy",
+		frame: { x: 0.2, y: 0.4, width: 0.2, height: 0.2 },
+		enabled: true,
+	};
+	const snapshotOf = (node: unknown, source: unknown) => ({
+		snapshot: { ok: true, data: { nodes: [node], source } },
+	});
+	const taps = (phone: ReturnType<typeof fakePhone>) =>
+		phone.bodies.filter((body) => body.command === "tap" || body.command === "longPress");
+
+	test("an id found only in the system tree, with no target app, fails naming the id and reaches nothing", async () => {
+		const phone = fakePhone({ replies: snapshotOf(SWITCHER, { kind: "system" }) });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		const error = await performAction(session, {
+			kind: "tap",
+			id: "SBSwitcherWindow:Main",
+			x: 500,
+			y: 500,
+		}).catch((caught: unknown) => caught);
+		expect(error).toBeInstanceOf(ActionValidationError);
+		expect((error as Error).message).toMatch(/SBSwitcherWindow:Main/);
+		expect((error as Error).message).toMatch(/no app is targeted/i);
+		expect((error as Error).message).toMatch(/target app/);
+		expect(taps(phone)).toEqual([]);
+		await session.quit();
+	});
+
+	test("a runner that does not say where it read, with no target app, is the system's too", async () => {
+		const phone = fakePhone({ replies: snapshotOf(SWITCHER, undefined) });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		const error = await performAction(session, { kind: "tap", id: "SBSwitcherWindow:Main" }).catch(
+			(caught: unknown) => caught,
+		);
+		expect(error).toBeInstanceOf(ActionValidationError);
+		expect(taps(phone)).toEqual([]);
+		await session.quit();
+	});
+
+	test("with a target app, a tap by id lands on the element as before", async () => {
+		const phone = fakePhone({
+			replies: snapshotOf(SWITCHER, { kind: "target", bundleId: "com.demo" }),
+		});
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, { bundleId: "com.demo" }),
+			phone.deps,
+		);
+		await performAction(session, { kind: "tap", id: "SBSwitcherWindow:Main" });
+		expect(taps(phone)).toEqual([expect.objectContaining({ command: "tap", x: 0.5, y: 0.5 })]);
+		await session.quit();
+	});
+
+	test("an id in the foreground app's tree lands on the element", async () => {
+		const phone = fakePhone({
+			replies: snapshotOf(BUY, { kind: "foreground", bundleId: "com.example.testemall" }),
+		});
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await performAction(session, { kind: "tap", id: "buy" });
+		expect(taps(phone)).toEqual([expect.objectContaining({ command: "tap", x: 0.3, y: 0.5 })]);
+		await session.quit();
+	});
+
+	test("a tap by label or by x,y on the system, with no target app, is unchanged", async () => {
+		const phone = fakePhone({ replies: snapshotOf(BUY, { kind: "system" }) });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await performAction(session, { kind: "tap", label: "Buy" });
+		await performAction(session, { kind: "tap", x: 250, y: 750 });
+		expect(taps(phone)).toEqual([
+			expect.objectContaining({ command: "tap", x: 0.3, y: 0.5 }),
+			expect.objectContaining({ command: "tap", x: 0.25, y: 0.75 }),
 		]);
 		await session.quit();
 	});

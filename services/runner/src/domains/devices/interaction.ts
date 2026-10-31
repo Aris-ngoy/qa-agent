@@ -4,6 +4,7 @@ import {
 	type AppStorage,
 	type ScreenElement,
 	type ScreenResponse,
+	type ScreenSource,
 	elementCenterNorm,
 	findElementById,
 	findElementByLabel,
@@ -76,6 +77,15 @@ export class ActionNotFoundError extends Error {
 }
 
 /**
+ * A tree the Lane read from the system (SpringBoard) because the Device Session has no
+ * target app. Its ids are SpringBoard's (`SBSwitcherWindow:Main`), so a tap by one of them
+ * is a mistake, not the app's element.
+ */
+function isUntargetedSystemTree(session: DeviceSession, source: ScreenSource | undefined) {
+	return source?.kind === "system" && !session.targetApp?.();
+}
+
+/**
  * Perform one Action on a Device Session. Resolves id/label against the cleaned
  * tree, or Grounding from description, then runs the gesture / lifecycle command.
  * `options.screenElements` reuses an already-read Screen (agent steps) instead of
@@ -93,14 +103,21 @@ export async function performAction(
 	let y = body.y;
 
 	if (locatorTap) {
-		const elements =
-			options?.screenElements ?? (await getScreen(session, { full: false })).elements ?? [];
+		const screen: Pick<ScreenResponse, "elements" | "source"> = options?.screenElements
+			? { elements: options.screenElements }
+			: await getScreen(session, { full: false });
+		const elements = screen.elements ?? [];
 		const match = body.id
 			? findElementById(elements, body.id)
 			: findElementByLabel(elements, body.label ?? "");
 		if (!match) {
 			throw new ActionNotFoundError(
 				body.id ? `No element matching id: ${body.id}` : `No element matching label: ${body.label}`,
+			);
+		}
+		if (body.id && isUntargetedSystemTree(session, screen.source)) {
+			throw new ActionValidationError(
+				`No app is targeted, and ${body.id} is a system (SpringBoard) element, not an app's. Set a target app (yoqa action activate-app --app-id <bundle id>, or pick the app in the Inspector) and tap again.`,
 			);
 		}
 		const center = elementCenterNorm(match);
