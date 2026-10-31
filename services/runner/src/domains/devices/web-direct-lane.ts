@@ -197,6 +197,8 @@ export function webDirectDeps(
 		spawn?: (command: string[]) => BrowserProcess;
 		/** The home folder Kept profiles live under. */
 		home?: string;
+		/** Whether a pid holding a Kept profile's lock still runs. */
+		isProcessAlive?: (pid: number) => boolean;
 		everydayBrowsers?: () => Promise<EverydayBrowser[]>;
 		allowTimeoutMs?: number;
 	} = {},
@@ -206,7 +208,11 @@ export function webDirectDeps(
 		connect: (url, options) => connectCdp(url, options),
 		installedBrowsers: overrides.installedBrowsers ?? (() => findInstalledBrowsers()),
 		launch: (browser, profile) =>
-			launchChromium(browser, { spawn: overrides.spawn, home: overrides.home }, profile),
+			launchChromium(
+				browser,
+				{ spawn: overrides.spawn, home: overrides.home, isProcessAlive: overrides.isProcessAlive },
+				profile,
+			),
 		everydayBrowsers: overrides.everydayBrowsers ?? (() => findEverydayBrowsers()),
 		readText: (path) => readFile(path, "utf8"),
 		allowTimeoutMs: overrides.allowTimeoutMs,

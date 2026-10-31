@@ -14,6 +14,7 @@ import {
 } from "./chromium-browsers";
 import { everydayBrowserIdOf } from "./chromium-everyday";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
+import { quitOpenDeviceSessions } from "./open-session";
 import { type DeviceSession, createDeviceSession } from "./session";
 
 export type ActiveSessionInfo = {
@@ -303,6 +304,20 @@ export async function disconnectDevice(): Promise<ActiveSessionInfo | null> {
 		// ignore — timed out or already dead
 	}
 	return info;
+}
+
+/**
+ * The runner is stopping: quit the Active Session, even one a Run holds, and every detached
+ * session a Run opened, so nothing Yoqa launched outlives the runner. Each quits as on
+ * disconnect: a launched browser keeps its Kept profile (a clean one is deleted), the
+ * Everyday browser and attach by port close only Yoqa's window or socket.
+ */
+export async function quitEverySession(): Promise<void> {
+	const session = active?.session;
+	active = null;
+	abortAllMjpegProxies();
+	// The Active Session is in the open sessions too; quit it here in case it is not.
+	await Promise.all([session?.quit().catch(() => undefined), quitOpenDeviceSessions()]);
 }
 
 /**

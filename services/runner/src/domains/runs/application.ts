@@ -306,7 +306,7 @@ async function updateCaseLastRun(
 		.where(eq(cases.id, caseId));
 }
 
-async function persistCancelled(runId: string): Promise<void> {
+async function persistCancelled(runId: string, reason = "Cancelled by user"): Promise<void> {
 	const db = getCatalogDb();
 	const finishedAt = Date.now();
 	await db
@@ -325,7 +325,7 @@ async function persistCancelled(runId: string): Promise<void> {
 				.update(runTests)
 				.set({
 					status: "cancelled",
-					error: "Cancelled by user",
+					error: reason,
 					finishedAt,
 					currentCommand: null,
 				})
@@ -971,6 +971,17 @@ export async function cancelRun(runId: string): Promise<Run> {
 
 	await persistCancelled(runId);
 	return getRun(runId);
+}
+
+/**
+ * The runner is stopping: cancel every Run in progress, so a restart does not find one
+ * left `running`. Its cases still queued or running say the runner stopped.
+ */
+export async function cancelRunsInProgress(): Promise<void> {
+	for (const [runId, control] of runControls) {
+		control.aborted = true;
+		await persistCancelled(runId, "The runner stopped");
+	}
 }
 
 export async function getRunStepScreenshotPath(runId: string, stepId: string): Promise<string> {

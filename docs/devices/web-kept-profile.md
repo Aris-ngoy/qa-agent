@@ -7,7 +7,7 @@ Never sign in twice. A browser Yoqa launches used to start on a throwaway profil
 ## Plan summary
 
 - **One Kept profile per App and browser**, at `~/.yoqa/browser-profiles/<appId>/<browserId>/`, the same `~/.yoqa` root as the catalog. Per App because apps under test often need different accounts; per browser because Chromium profiles are not safe to share across browsers or versions. A connect with no App uses `default`. Rejected: profiles the user names.
-- **Disconnect keeps the folder.** The browser is killed as before; only a clean profile is deleted.
+- **Disconnect keeps the folder.** The browser is killed as before; only a clean profile is deleted. Stopping the runner (SIGINT or SIGTERM) does the same, so it never leaves a browser holding the Kept profile's lock ([runner-stop-quits-sessions.md](./runner-stop-quits-sessions.md)).
 - **A clean profile on request.** `profile: "clean"` is the old `mkdtemp` profile, deleted on disconnect. `kept` is the default.
 - **Launch flags are unchanged.** `--use-mock-keychain` and `--password-store=basic` stay, or macOS asks for the keychain on every launch. Trade-off: the profile's cookies are protected by the user's account files, not the keychain.
 - **Already open:**

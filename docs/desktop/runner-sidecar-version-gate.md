@@ -13,6 +13,7 @@ Stop packaged desktop upgrades from keeping a stale `yoqa-runner` on port 7420, 
 ## What shipped
 
 - `apps/desktop/src/bun/features/runner-sidecar/index.ts` — fetch full health, compare versions, `lsof`+SIGTERM stale local listeners, wait for a matching runner before boot continues.
+- On SIGTERM the runner frees its port at once, then quits its Device Sessions (up to 5 s) before it exits, so a replaced runner closes the browsers it launched ([runner-stop-quits-sessions.md](../devices/runner-stop-quits-sessions.md)).
 - Unit coverage for compatibility + local URL helpers.
 - WDA icon branding writes materialized bytes (not a bunfs path copy).
 

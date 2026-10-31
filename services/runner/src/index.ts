@@ -1,7 +1,8 @@
 import { ensureAndroidSdkEnv } from "./domains/android-toolchain/android-sdk";
 import { ensureHostToolPath } from "./domains/android-toolchain/host-path";
 import { getCatalogDbPath, openCatalogDb } from "./domains/catalog/db";
-import { recoverInterruptedRecordings } from "./domains/runs/application";
+import { quitEverySession } from "./domains/devices/active-session";
+import { cancelRunsInProgress, recoverInterruptedRecordings } from "./domains/runs/application";
 import { createApp } from "./interfaces/http/app";
 import {
 	type ControlWsData,
@@ -9,6 +10,7 @@ import {
 	isControlUpgrade,
 } from "./interfaces/http/control-ws";
 import { loadSettings } from "./settings";
+import { stopRunner } from "./stop-runner";
 
 // Finder/Dock launches get a stripped PATH — include Homebrew + agent CLIs before probes.
 ensureHostToolPath();
@@ -65,10 +67,16 @@ const server = Bun.serve<ControlWsData>({
 
 console.log(`[yoqa-runner] listening on http://${server.hostname}:${server.port}`);
 
-function shutdown(signal: string): void {
-	console.log(`[yoqa-runner] ${signal} — stopping`);
-	process.exit(0);
-}
+// Quit what Yoqa launched before exiting: a browser left open keeps its Kept profile locked.
+const shutdown = stopRunner({
+	quit: async () => {
+		// Free the port and take no new connect while the sessions quit.
+		void server.stop(true);
+		await cancelRunsInProgress();
+		await quitEverySession();
+	},
+	exit: (code) => process.exit(code),
+});
 
-process.once("SIGINT", () => shutdown("SIGINT"));
-process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

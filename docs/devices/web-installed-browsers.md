@@ -9,7 +9,7 @@ Make an installed browser the main way to get a web device ([#301](https://githu
 - **Stable ids, one per browser:** `web-chrome`, `web-edge`, `web-brave`, `web-chromium`, `web-dia`, so saved Runs and scripts keep working across launches.
 - **Discovery reads app bundles.** It looks in `/Applications`, then `~/Applications`, for each browser's executable, and reads its version from `Info.plist`. It is macOS only and empty elsewhere. Rejected: asking Spotlight (`mdfind`), which misses browsers on unindexed volumes.
 - **Launching is booting.** Connect starts the browser with a fresh `mkdtemp` `--user-data-dir`, `--remote-debugging-port=0`, and flags that suppress first-run, default-browser and search-engine screens, sync and keychain prompts. The port the browser picked is read back from the profile's `DevToolsActivePort`, so no port is guessed or scanned. The user's own profile is never used.
-- **The lane owns the instance.** Disconnecting, or connecting another device (which quits the current session), kills the browser and deletes its profile. When the session dies (the browser quits, or its page is closed), nobody quits the dead session, so the lane stops its own instance there too.
+- **The lane owns the instance.** Disconnecting, or connecting another device (which quits the current session), kills the browser and deletes its profile. When the session dies (the browser quits, or its page is closed), nobody quits the dead session, so the lane stops its own instance there too. Stopping the runner quits it as well ([runner-stop-quits-sessions.md](./runner-stop-quits-sessions.md)).
 - **One lane, two ways in.** The web Direct lane's `cdp` implementation opens either kind of id. Attach keeps its behaviour: disconnecting closes only the DevTools socket.
 - **State.** A browser is listed `running` while Yoqa's instance of it is up, else `not running`. `--booted-only` lists just the running ones.
 
@@ -72,5 +72,4 @@ For Dia: `yoqa devices connect web-dia --app <app>` opens Dia on the App's Kept 
 
 - The hand check on Dia above (`web-dia`).
 - Hand checks on Arc, Opera and Vivaldi: `yoqa devices connect web-arc --app <app>` opens a window on the Kept profile, and a reconnect keeps the login.
-- The runner exits without quitting the active session, so a Yoqa-owned browser outlives a runner that is stopped while connected. Quitting sessions on shutdown would fix this for every platform.
 - [#310](https://github.com/Aris-ngoy/qa-agent/issues/310): viewport presets on connect (a launched browser still opens at its default window size). [#311](https://github.com/Aris-ngoy/qa-agent/issues/311): browsers in the desktop picker.
