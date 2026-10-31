@@ -121,7 +121,7 @@ By hand, on a Mac with Chrome (not run here: this sandbox has no macOS browser o
 ### Follow-ups
 
 - Switching App in the side menu while a web session is up retargets without reconnecting, so the browser stays on the previous App's profile until it reconnects; a Run reopens it on its own App's profile meanwhile.
-- No desktop control for a Run's `profile: clean` yet; a Case Script's `profile: clean` asks for one.
+- A Run's Viewport preset and profile are picked in the start-a-Run dialog: [Picking a web Run's preset and profile](#picking-a-web-runs-preset-and-profile).
 
 ## The Everyday browser
 
@@ -195,6 +195,40 @@ By hand on a Mac with Dia (not run here): connect **Your browser** → Dia with 
 ### Follow-ups
 
 None.
+
+## Picking a web Run's preset and profile
+
+### Goal
+
+Let the desktop ask for a web Run's **Viewport preset** and browser profile, as `yoqa runs create --viewport` and `--profile` do ([#383](https://github.com/Aris-ngoy/qa-agent/issues/383), under [#339](https://github.com/Aris-ngoy/qa-agent/issues/339); the runner side is [#382](https://github.com/Aris-ngoy/qa-agent/issues/382) and [web-kept-profile.md](../devices/web-kept-profile.md)). Before, the preset came only from the connected session, and a Case Script's `profile: clean` was the only way to a clean profile from the desktop.
+
+### Plan summary
+
+- **The start-a-Run dialog asks on web.** **Run test** on a web device always opens the dialog (it opened only for cases with saved scripts); with no scripts it says **Start the run** and has one **Run** button, the AI agent. iOS and Android open it only for saved scripts, as before.
+- **Preset:** Desktop / Mobile, defaulting to the Active Session's preset when it is on the Run's device, else Desktop, and sent as `viewport`. With no session, the bar's connect opens the device at that preset, so the Run adopts it instead of reopening. On the Everyday browser, a preset other than the session's fails the Run with the runner's reconnect message, since reopening there asks for Allow again.
+- **Profile:** Kept (default) / Clean, hidden on the Everyday browser, where `profile: clean` is an error (ADR-0009). Clean sends `profile: clean`; Kept sends no `profile`, so a case asking for `profile: clean` still makes the Run clean, as `yoqa runs create` does without `--profile`. The help text says so. Rejected: sending `profile: kept`, which would override such a case and make the help text untrue.
+- **State:** the dialog's choice is one `useObservable(initialWebRunForm)` in `RunControls`, reset each time it opens; a preset of null means "not picked", so the session's applies.
+
+### What shipped
+
+- `runs/data/state/web-run-form.ts` (`WebRunForm`, `initialWebRunForm`) and `runs/utils/web-run.ts`: `runViewport`, `showsProfileChoice` and `webRunRequest`, which builds the `viewport`/`profile` part of the `CreateRunRequest` from the form, the Run's device and the Active Session.
+- `RunControls` (`test-cases/components/run-controls.tsx`) shows `ViewportChoice` and the new `ProfileChoice` (`devices/components/web-device-panels.tsx`, both on one segmented control) for a web Run, connects at the picked preset, and adds the web part to the request.
+- The Run's details line (`Viewport … · Profile …`) already reads what the runner stored, so it shows the pick once the Run opens its session.
+
+### How to verify
+
+```bash
+bun test apps/desktop/src/mainview/features/runs/utils/web-run.test.ts
+bun run lint:ci && bun run test && bun run check
+```
+
+The tests cover the default preset (a session on the device, none, a session on another device), a picked preset, Kept versus Clean, no `profile` on an Everyday browser, and nothing for a phone.
+
+By hand on a Mac (not run here): connect Google Chrome at mobile, select a case, **Run test**: the dialog shows Mobile and Kept. Pick Desktop and Clean, **Run**: the Run's line reads `… · Viewport desktop (1280×800) · clean profile · Lane Direct`. On **Your browser**, the dialog shows only the preset. On iOS, a case with no script starts at once.
+
+### Follow-ups
+
+- A launched browser's connect from the dialog opens the Kept profile; a Clean Run then reopens on a clean one. Connecting clean from the dialog would need the connect to take the Run's profile.
 
 ## Unverified browsers in the picker
 

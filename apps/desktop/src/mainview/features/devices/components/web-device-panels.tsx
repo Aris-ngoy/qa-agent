@@ -15,6 +15,7 @@ import {
 } from "@/features/devices/utils/web-device";
 import { AlertDialog, Button, toast } from "@heroui/react";
 import {
+	type BrowserProfile,
 	VIEWPORT_PRESETS,
 	VIEWPORT_PRESET_NAMES,
 	type ViewportPresetName,
@@ -25,20 +26,30 @@ const PRESET_LABELS: Record<ViewportPresetName, string> = {
 	mobile: "Mobile",
 };
 
-/** The Viewport preset a browser connects at, fixed for the Device Session's life. */
-export function ViewportChoice({
+const PROFILE_OPTIONS: Array<{ name: BrowserProfile; label: string; detail: string }> = [
+	{ name: "kept", label: "Kept", detail: "the App's logins" },
+	{ name: "clean", label: "Clean", detail: "signed out" },
+];
+
+/** Two or more options side by side, one picked, each with a line of detail under it. */
+function SegmentedChoice<T extends string>({
+	legend,
+	hint,
+	options,
 	value,
 	onChange,
 }: {
-	value: ViewportPresetName;
-	onChange: (preset: ViewportPresetName) => void;
+	legend: string;
+	hint: string;
+	options: ReadonlyArray<{ name: T; label: string; detail: string }>;
+	value: T;
+	onChange: (name: T) => void;
 }) {
 	return (
 		<fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-			<legend className="mb-2 text-body-md font-semibold text-on-surface">Viewport</legend>
+			<legend className="mb-2 text-body-md font-semibold text-on-surface">{legend}</legend>
 			<div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-container p-1">
-				{VIEWPORT_PRESET_NAMES.map((name) => {
-					const { width, height, mobile } = VIEWPORT_PRESETS[name];
+				{options.map(({ name, label, detail }) => {
 					const selected = name === value;
 					return (
 						<button
@@ -53,19 +64,65 @@ export function ViewportChoice({
 							onClick={() => onChange(name)}
 							type="button"
 						>
-							<span>{PRESET_LABELS[name]}</span>
-							<span className="text-helper text-on-surface-variant">
-								{width}×{height}
-								{mobile ? " · touch" : ""}
-							</span>
+							<span>{label}</span>
+							<span className="text-helper text-on-surface-variant">{detail}</span>
 						</button>
 					);
 				})}
 			</div>
-			<p className="m-0 text-helper text-on-surface-variant">
-				The page keeps this size for the whole session, so runs stay comparable.
-			</p>
+			<p className="m-0 text-helper text-on-surface-variant">{hint}</p>
 		</fieldset>
+	);
+}
+
+/** The Viewport preset a browser connects at, fixed for the Device Session's life. */
+export function ViewportChoice({
+	value,
+	onChange,
+	hint = "The page keeps this size for the whole session, so runs stay comparable.",
+}: {
+	value: ViewportPresetName;
+	onChange: (preset: ViewportPresetName) => void;
+	hint?: string;
+}) {
+	const options = VIEWPORT_PRESET_NAMES.map((name) => {
+		const { width, height, mobile } = VIEWPORT_PRESETS[name];
+		return {
+			name,
+			label: PRESET_LABELS[name],
+			detail: `${width}×${height}${mobile ? " · touch" : ""}`,
+		};
+	});
+	return (
+		<SegmentedChoice
+			hint={hint}
+			legend="Viewport"
+			onChange={onChange}
+			options={options}
+			value={value}
+		/>
+	);
+}
+
+/**
+ * A web Run's browser profile: its App's Kept one or a clean one. A case asking for
+ * `profile: clean` still runs clean on Kept, as `yoqa runs create` does without `--profile`.
+ */
+export function ProfileChoice({
+	value,
+	onChange,
+}: {
+	value: BrowserProfile;
+	onChange: (profile: BrowserProfile) => void;
+}) {
+	return (
+		<SegmentedChoice
+			hint="Clean runs on a throwaway profile. On Kept, a case that asks for profile: clean still runs clean."
+			legend="Profile"
+			onChange={onChange}
+			options={PROFILE_OPTIONS}
+			value={value}
+		/>
 	);
 }
 

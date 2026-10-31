@@ -1,9 +1,12 @@
 import { useApps } from "@/features/apps/hooks/use-apps";
+import { ProfileChoice, ViewportChoice } from "@/features/devices/components/web-device-panels";
 import type { SelectedDevice } from "@/features/devices/data/state/session-bar";
 import { useActiveDeviceSession } from "@/features/devices/hooks/usequery/use-active-device-session";
 import { hasRunTarget } from "@/features/devices/utils/session-status";
+import { initialWebRunForm } from "@/features/runs/data/state/web-run-form";
 import { useActiveRun } from "@/features/runs/hooks/use-active-run";
 import { useCancelRun, useStartRun } from "@/features/runs/hooks/usequery/use-run";
+import { runViewport, showsProfileChoice, webRunRequest } from "@/features/runs/utils/web-run";
 import { useTestCaseSelection } from "@/features/test-cases/hooks/use-test-case-selection";
 import { useCasesQuery } from "@/features/test-cases/hooks/usequery/use-cases";
 import { AlertDialog, Button } from "@heroui/react";
@@ -23,6 +26,7 @@ type RunControlsProps = {
 /**
  * Starts (or cancels) a run of the selected test cases on the Active Session, or on the
  * device picked in the top bar, which is connected first. A failed connect creates no Run.
+ * A web Run first asks for its Viewport preset and, on a browser Yoqa launches, its profile.
  */
 export function RunControls({ device, connectDevice, connecting }: RunControlsProps) {
 	const navigate = useNavigate();
@@ -32,7 +36,14 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 	const { activeSession } = useActiveDeviceSession();
 	const promptOpen$ = useObservable(false);
 	const executionPromptOpen = useValue(promptOpen$);
+	const webForm$ = useObservable(initialWebRunForm);
+	const webForm = useValue(webForm$);
 	const hasTarget = hasRunTarget(activeSession, device);
+	// The device the Run starts on: the Active Session's, else the one picked in the bar.
+	const runDevice = activeSession
+		? { id: activeSession.deviceId, platform: activeSession.platform }
+		: device;
+	const isWebRun = runDevice?.platform === "web";
 
 	const casesQuery = useCasesQuery(selectedApp?.id);
 
@@ -42,6 +53,7 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 		return cases.filter((item) => selected.has(item.id) && item.hasScript);
 	}, [casesQuery.data, selectedCaseIds]);
 
+	const hasScripts = selectedCasesWithScript.length > 0;
 	const runMutation = useStartRun();
 	const cancelMutation = useCancelRun();
 
@@ -52,12 +64,18 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 				if (!selectedApp) throw new Error("Select an app first");
 				if (selectedCaseIds.length === 0) throw new Error("Select at least one test case");
 
+				if (!runDevice) throw new Error("Pick a device in the top bar first");
+				const web = webRunRequest(webForm$.peek(), runDevice, activeSession);
+
 				// No Active Session yet: connect the picked device through the bar's Connect path
-				// first. A connect error rejects here, so no Run is created for it.
+				// first, at the preset the Run asks for so it adopts that session. A connect error
+				// rejects here, so no Run is created for it.
 				let session = activeSession;
 				if (!session) {
 					if (!device) throw new Error("Pick a device in the top bar first");
-					session = await connectDevice(device);
+					session = await connectDevice(
+						web.viewport ? { ...device, viewport: web.viewport } : device,
+					);
 				}
 
 				return {
@@ -66,6 +84,7 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 					deviceId: session.deviceId,
 					platform: session.platform,
 					executionMode,
+					...web,
 				};
 			},
 			{
@@ -104,7 +123,9 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 			if (activeRunId) cancelMutation.mutate(activeRunId);
 			return;
 		}
-		if (selectedCasesWithScript.length > 0) {
+		if (hasScripts || isWebRun) {
+			// Each Run starts from the defaults: the session's preset and the Kept profile.
+			webForm$.set(initialWebRunForm());
 			promptOpen$.set(true);
 			return;
 		}
@@ -146,34 +167,65 @@ export function RunControls({ device, connectDevice, connecting }: RunControlsPr
 						<AlertDialog.Dialog className="sm:max-w-[420px]">
 							<AlertDialog.CloseTrigger />
 							<AlertDialog.Header>
-								<AlertDialog.Heading>How should we run?</AlertDialog.Heading>
+								<AlertDialog.Heading>
+									{hasScripts ? "How should we run?" : "Start the run"}
+								</AlertDialog.Heading>
 							</AlertDialog.Header>
-							<AlertDialog.Body>
-								<p>
-									{selectedCasesWithScript.length === 1
-										? "This test case has a saved script from a previous successful run."
-										: `${selectedCasesWithScript.length} selected test cases have saved scripts.`}{" "}
-									Use the script for a fast replay without AI, or run with the AI agent instead.
-								</p>
+							<AlertDialog.Body className="flex flex-col gap-5">
+								{hasScripts ? (
+									<p>
+										{selectedCasesWithScript.length === 1
+											? "This test case has a saved script from a previous successful run."
+											: `${selectedCasesWithScript.length} selected test cases have saved scripts.`}{" "}
+										Use the script for a fast replay without AI, or run with the AI agent instead.
+									</p>
+								) : null}
+								{runDevice && isWebRun ? (
+									<>
+										<ViewportChoice
+											hint="A session at the other preset reopens at this one for the Run."
+											onChange={(viewport) => webForm$.set((prev) => ({ ...prev, viewport }))}
+											value={runViewport(webForm, runDevice, activeSession)}
+										/>
+										{showsProfileChoice(runDevice) ? (
+											<ProfileChoice
+												onChange={(profile) => webForm$.set((prev) => ({ ...prev, profile }))}
+												value={webForm.profile}
+											/>
+										) : null}
+									</>
+								) : null}
 							</AlertDialog.Body>
 							<AlertDialog.Footer className="flex flex-wrap gap-2">
 								<Button onPress={() => promptOpen$.set(false)} slot="close" variant="tertiary">
 									Cancel
 								</Button>
-								<Button
-									isDisabled={runMutation.isPending}
-									onPress={() => startRun("agent")}
-									variant="secondary"
-								>
-									Use AI agent
-								</Button>
-								<Button
-									isDisabled={runMutation.isPending}
-									onPress={() => startRun("script")}
-									variant="primary"
-								>
-									Use saved scripts
-								</Button>
+								{hasScripts ? (
+									<>
+										<Button
+											isDisabled={runMutation.isPending}
+											onPress={() => startRun("agent")}
+											variant="secondary"
+										>
+											Use AI agent
+										</Button>
+										<Button
+											isDisabled={runMutation.isPending}
+											onPress={() => startRun("script")}
+											variant="primary"
+										>
+											Use saved scripts
+										</Button>
+									</>
+								) : (
+									<Button
+										isDisabled={runMutation.isPending}
+										onPress={() => startRun("agent")}
+										variant="primary"
+									>
+										Run
+									</Button>
+								)}
 							</AlertDialog.Footer>
 						</AlertDialog.Dialog>
 					</AlertDialog.Container>
