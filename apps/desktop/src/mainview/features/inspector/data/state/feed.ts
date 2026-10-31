@@ -20,7 +20,7 @@ import {
 import { isTreeStale, treeReadOnScreenChange } from "@/features/inspector/utils/tree-freshness";
 import { toast } from "@heroui/react";
 import { type Observable, observable } from "@legendapp/state";
-import type { ActiveDeviceResponse, ScreenElement } from "@yoqa/runner-client";
+import type { ActiveDeviceResponse, ScreenElement, ScreenSource } from "@yoqa/runner-client";
 
 /** Log a stuck poll about every 5 s (20 ticks of the 250 ms poll). */
 const POLL_SKIP_LOG_EVERY = 20;
@@ -46,6 +46,10 @@ export type InspectorFeed = {
 	/** An Unreachable Session: the runner keeps it while it waits for the device to answer. */
 	unreachable: boolean;
 	elements: ScreenElement[];
+	/** Which app `elements` were read from; null on a Lane that does not say. */
+	source: ScreenSource | null;
+	/** With no target app, show SpringBoard's elements instead of the app selector. */
+	showSystemTree: boolean;
 	selection: InspectorSelection | null;
 	liveControl: boolean;
 };
@@ -61,6 +65,8 @@ function detachedFeed(): InspectorFeed {
 		treeRefreshing: false,
 		unreachable: false,
 		elements: [],
+		source: null,
+		showSystemTree: false,
 		selection: null,
 		liveControl: false,
 	};
@@ -157,6 +163,13 @@ export class InspectorFeedController {
 		if (!enabled && this.feed$.active.peek()) void this.refreshTree({ silent: true });
 	}
 
+	/** Show SpringBoard's elements, or hide them again, while no app is targeted. */
+	setShowSystemTree(show: boolean): void {
+		this.feed$.showSystemTree.set(show);
+		// A SpringBoard element picked while they showed is not on screen once hidden.
+		if (!show && this.feed$.selection.peek()?.element) this.feed$.selection.set(null);
+	}
+
 	select(next: InspectorSelection | null): void {
 		this.feed$.selection.set(next);
 	}
@@ -214,6 +227,7 @@ export class InspectorFeedController {
 			if (this.epoch !== epoch || !this.feed$.active.peek()) return null;
 			const next = screen.elements ?? [];
 			this.feed$.elements.set(next);
+			this.feed$.source.set(screen.source ?? null);
 			this.treeReadStartedAt = startedAt;
 			this.treeUpdatedAt = Date.now();
 			return next;
@@ -281,6 +295,7 @@ export class InspectorFeedController {
 			this.setFrame(URL.createObjectURL(bytesToImageBlob(bytes)), true);
 			if (screen) {
 				this.feed$.elements.set(screen.elements ?? []);
+				this.feed$.source.set(screen.source ?? null);
 				this.treeReadStartedAt = startedAt;
 				this.treeUpdatedAt = Date.now();
 			}

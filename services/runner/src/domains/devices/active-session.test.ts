@@ -516,6 +516,22 @@ describe("retargeting the Active Session to another app", () => {
 		expect(phone.snapshots).toEqual(["com.app-b"]);
 		expect(phone.launched).toEqual([]);
 	});
+
+	test("GET /devices/active names a cabled iPhone's target app, and none once it is forgotten", async () => {
+		const phone = fakePhone();
+		directLane = (options) => createIosDeviceSession(options, phone.deps);
+		const routes = createSessionRoutes();
+		const activeInfo = async () => (await routes.request("/devices/active")).json();
+
+		await connectDevice({ deviceId: PHONE_UDID, platform: "ios" });
+		expect(await activeInfo()).not.toHaveProperty("targetApp");
+
+		retargetActiveSession({ bundleId: "com.app-b" });
+		expect(await activeInfo()).toMatchObject({ targetApp: "com.app-b" });
+
+		retargetActiveSession({});
+		expect(await activeInfo()).not.toHaveProperty("targetApp");
+	});
 });
 
 describe("an Action the Lane cannot do", () => {

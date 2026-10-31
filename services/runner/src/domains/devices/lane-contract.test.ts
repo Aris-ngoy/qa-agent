@@ -151,6 +151,16 @@ for (const makeHarness of LANES) {
 			expect(full.source).toEqual(harness.screenSource);
 		});
 
+		test("a Lane that names its target app names the one it was last pointed at", async () => {
+			const { session } = await open(makeHarness());
+			if (!session.targetApp) return;
+			session.setTargetApp("com.example.other");
+			expect(session.targetApp()).toBe("com.example.other");
+			session.setTargetApp(undefined);
+			expect(session.targetApp()).toBeUndefined();
+			await session.quit();
+		});
+
 		test("every key the Lane declares reaches the device, with modifiers where it holds them", async () => {
 			const harness = makeHarness();
 			const { session } = await open(harness);

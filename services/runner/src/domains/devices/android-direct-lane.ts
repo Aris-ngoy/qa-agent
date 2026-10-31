@@ -481,6 +481,7 @@ export async function createAndroidDirectSession(
 		setTargetApp: (appId) => {
 			lastAppId = appId;
 		},
+		targetApp: () => lastAppId,
 		terminateApp,
 		backgroundApp,
 		openUrl,

@@ -52,14 +52,19 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 	/** Disconnect hides the feed for this Device Session only. A new session attaches again. */
 	const suppressedKey = useRef<string | null>(null);
 
-	// The Active Session lives in useQuery. Copy the two fields these observers read so a
+	// The Active Session lives in useQuery. Copy the fields these observers read so a
 	// query update restarts them after render, then attach the feed when a session is up.
 	const heldByRun = Boolean(activeSession?.heldByRun);
-	const session$ = useObservable({ deviceId: null as string | null, heldByRun: false });
+	const session$ = useObservable({
+		deviceId: null as string | null,
+		heldByRun: false,
+		targetApp: null as string | null,
+	});
 	useEffect(() => {
 		session$.set({
 			deviceId: activeSession?.deviceId ?? null,
 			heldByRun,
+			targetApp: activeSession?.targetApp ?? null,
 		});
 		if (!activeSession) {
 			suppressedKey.current = null;
@@ -106,6 +111,18 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 		if (!selectedAppId) return;
 		controller.markTreeStale();
 	}, [controller, selectedAppId]);
+
+	// The session now reads another app (or none): read its tree now, so a "No target app"
+	// panel shows the chosen app without waiting for the next refresh.
+	useObserveEffect(
+		() => session$.targetApp.get(),
+		(event) => {
+			if (event.num === 0) return;
+			if (feed$.active.peek()?.deviceId !== session$.deviceId.peek()) return;
+			controller.markTreeStale();
+			void controller.refreshTree({ silent: true });
+		},
+	);
 
 	// Leaving the page detaches; the device session stays connected in the top bar.
 	useEffect(() => {
@@ -283,6 +300,11 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 
 	const handleChangeSelector = useCallback(() => controller.cycleSelector(), [controller]);
 
+	const handleShowSystemTreeChange = useCallback(
+		(show: boolean) => controller.setShowSystemTree(show),
+		[controller],
+	);
+
 	const handleRefreshTree = useCallback(() => {
 		void controller.refreshTree({ silent: false });
 	}, [controller]);
@@ -301,6 +323,7 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 		handleSelect,
 		handleSelectWithPoint,
 		handleChangeSelector,
+		handleShowSystemTreeChange,
 		handleRefreshTree,
 	};
 }

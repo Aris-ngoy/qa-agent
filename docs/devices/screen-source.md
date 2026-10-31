@@ -36,6 +36,6 @@ Builds on [ios-device-observation.md](./ios-device-observation.md) (the `snapsho
 
 ## Follow-ups
 
-- The rest of [#390](https://github.com/Aris-ngoy/qa-agent/issues/390): with no target app, send the installed user apps as `candidates` and read the foreground one (`foreground`), done in [foreground-app.md](./foreground-app.md); the Inspector's "No target app" state.
+- The rest of [#390](https://github.com/Aris-ngoy/qa-agent/issues/390): with no target app, send the installed user apps as `candidates` and read the foreground one (`foreground`), done in [foreground-app.md](./foreground-app.md); the Inspector's "No target app" state, done in [inspector/tree-source.md](../inspector/tree-source.md).
 - The iOS Simulator Lane (`yoqa-ax`) reports no source yet.
 - `ObservationTests.swift` was not run here (no Swift toolchain on Linux).

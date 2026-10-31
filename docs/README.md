@@ -70,6 +70,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [runs/branch.md](./runs/branch.md) | Branch: `- if:` in a Case Script checks the Screen for a text and runs `then` or `else`; Run timeline shows which side ran |
 | [desktop/inspector-manual-connect.md](./desktop/inspector-manual-connect.md) | Inspector attaches only on Connect; flicker-free frames; React Compiler + Legend State feed store |
 | [inspector/legend-state.md](./inspector/legend-state.md) | Inspector folder layout: components, runner API, Legend-State atoms, query hooks, utils |
+| [inspector/tree-source.md](./inspector/tree-source.md) | Inspector Device panel says which app the tree came from; "No target app" state with the app selector, SpringBoard's elements behind a toggle |
 | [architecture/desktop-feature-layout.md](./architecture/desktop-feature-layout.md) | Every desktop feature in the Inspector's layout; Legend-State in place of `useState` and contexts |
 | [desktop/webview-e2e.md](./desktop/webview-e2e.md) | Playwright e2e of the desktop webview on Vite with a stubbed host RPC and a seeded runner; guards the top bar title |
 | [desktop/webview-yoqa-e2e.md](./desktop/webview-yoqa-e2e.md) | Yoqa tests its own desktop webview: CaseScripts on the web Direct lane against the same stubbed-host harness |
