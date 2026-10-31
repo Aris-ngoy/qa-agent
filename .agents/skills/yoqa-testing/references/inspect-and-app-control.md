@@ -67,6 +67,7 @@ Elements with no accessible label show an empty label — those are only reachab
 `Read from com.example.app (foreground app)` for the app in front, or `Read from the system
 (SpringBoard), not an app` on the home screen or app switcher. A system tree holds SpringBoard's elements (such as
 `SBSwitcherWindow:Main`), not your app's: activate the app (`yoqa action activate-app --app-id …`) before reading again.
+A tap by `--id` on one of them fails until an app is targeted, rather than tapping SpringBoard.
 Other devices print no such line.
 
 Layout-only containers, zero-size nodes, offscreen nodes, and elements marked invisible are dropped
