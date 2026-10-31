@@ -23,6 +23,7 @@ import {
 	WEB_BROWSERS,
 	type WebBrowserKey,
 	installedBrowserId,
+	webBrowserOf,
 } from "@yoqa/runner-client";
 import type { ListDevicesOptions } from "./models";
 
@@ -49,11 +50,10 @@ const PORT_FILE_DIRS: Partial<Record<WebBrowserKey, string>> = {
  * Each browser's app bundle (`<name>.app`, its binary named the same) and port file folder,
  * in listing order.
  */
-const KNOWN_BROWSERS = WEB_BROWSERS.map(({ browser, name, verified }) => ({
+const KNOWN_BROWSERS = WEB_BROWSERS.map(({ browser, name }) => ({
 	id: installedBrowserId(browser),
 	name,
 	app: name,
-	verified,
 	portFileDir: PORT_FILE_DIRS[browser],
 }));
 
@@ -143,7 +143,7 @@ export async function listWebDevices(
 			platform: "web",
 			kind: "browser",
 			state: isRunning ? "running" : "not running",
-			verified: KNOWN_BROWSERS.some(({ id, verified }) => id === browser.id && verified),
+			verified: webBrowserOf(browser.id)?.verified ?? false,
 		});
 	}
 	return devices;
