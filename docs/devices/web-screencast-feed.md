@@ -46,5 +46,5 @@ Stop the web Inspector flickering on Retina Macs under a Viewport preset ([#359]
 
 - **Check by hand on a Mac** that the mobile preset no longer flickers (acceptance criterion of #359).
 - **Pinch zoom.** Frames are matched on size and `offsetTop` only. A page pinch-zoomed by the user (`pageScaleFactor` above 1) is still served, and its 0–1000 then covers the zoomed view.
-- **ADR-0007** still says the web Frame Feed is Screenshot Poll. The ADR that closes map #339 should record the screencast.
+- Done: [ADR-0011](../adr/0011-web-testing-on-macos.md) records the screencast and supersedes ADR-0007's Screenshot Poll.
 - A fresher hover tree is [#362](https://github.com/Aris-ngoy/qa-agent/issues/362).
