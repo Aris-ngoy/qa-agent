@@ -32,9 +32,11 @@ const INSTALLED_APPS = {
 	},
 };
 
+/** Whether a `devicectl` command lists the phone's apps. */
+const isAppListing = (args: string[]) => args.slice(0, 3).join(" ") === "device info apps";
+
 /** The `devicectl` commands that listed the phone's apps. */
-const appListings = (devicectl: string[][]) =>
-	devicectl.filter((args) => args.slice(0, 3).join(" ") === "device info apps");
+const appListings = (devicectl: string[][]) => devicectl.filter(isAppListing);
 
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
 afterEach(() => {
@@ -100,7 +102,7 @@ function fakePhone(
 		},
 		devicectl: async (args) => {
 			devicectl.push(args);
-			if (args.slice(0, 3).join(" ") === "device info apps") {
+			if (isAppListing(args)) {
 				if (mode.apps === null) return { stdout: "", stderr: "no apps for you", exitCode: 1 };
 				const path = args[args.indexOf("--json-output") + 1] ?? "";
 				await Bun.write(path, JSON.stringify(mode.apps ?? INSTALLED_APPS));
