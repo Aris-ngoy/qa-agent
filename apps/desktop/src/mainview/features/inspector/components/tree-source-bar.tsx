@@ -24,7 +24,7 @@ export function TreeSourceBar({
 	onChooseApp,
 }: TreeSourceBarProps) {
 	if (panel.label == null) return null;
-	const systemToggle = panel.kind !== "tree";
+	const showsSystemToggle = panel.kind !== "tree";
 
 	return (
 		<div className="-mt-1 flex flex-col gap-2.5">
@@ -35,7 +35,7 @@ export function TreeSourceBar({
 				>
 					{panel.label}
 				</p>
-				{systemToggle ? (
+				{showsSystemToggle ? (
 					<Switch
 						size="sm"
 						isSelected={panel.kind === "system"}

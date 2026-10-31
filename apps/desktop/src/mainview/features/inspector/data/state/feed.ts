@@ -225,12 +225,7 @@ export class InspectorFeedController {
 			// (the stream is paused while the tree is read).
 			const screen = await readScreen({ pauseMjpeg });
 			if (this.epoch !== epoch || !this.feed$.active.peek()) return null;
-			const next = screen.elements ?? [];
-			this.feed$.elements.set(next);
-			this.feed$.source.set(screen.source ?? null);
-			this.treeReadStartedAt = startedAt;
-			this.treeUpdatedAt = Date.now();
-			return next;
+			return this.applyTree(screen, startedAt);
 		} catch (error) {
 			if (this.epoch !== epoch) return null;
 			if (isDeviceUnreachable(error) || isStaleSessionReply(error)) {
@@ -256,6 +251,19 @@ export class InspectorFeedController {
 			}
 			this.readQueuedTree();
 		}
+	}
+
+	/** Keep a tree read that started at `startedAt`, with where it came from. */
+	private applyTree(
+		screen: { elements?: ScreenElement[]; source?: ScreenSource },
+		startedAt: number,
+	): ScreenElement[] {
+		const elements = screen.elements ?? [];
+		this.feed$.elements.set(elements);
+		this.feed$.source.set(screen.source ?? null);
+		this.treeReadStartedAt = startedAt;
+		this.treeUpdatedAt = Date.now();
+		return elements;
 	}
 
 	/** One tick of the fallback screenshot poll; about once a second while the device is unreachable. */
@@ -293,12 +301,7 @@ export class InspectorFeedController {
 				devLog("Screenshot poll: the device answers again");
 			}
 			this.setFrame(URL.createObjectURL(bytesToImageBlob(bytes)), true);
-			if (screen) {
-				this.feed$.elements.set(screen.elements ?? []);
-				this.feed$.source.set(screen.source ?? null);
-				this.treeReadStartedAt = startedAt;
-				this.treeUpdatedAt = Date.now();
-			}
+			if (screen) this.applyTree(screen, startedAt);
 		} catch (error) {
 			if (this.epoch !== epoch) return;
 			// The runner owns the grace window: a 503 keeps the last frame, a 410 is final.
