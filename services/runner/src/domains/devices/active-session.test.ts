@@ -1,9 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { everydayWarningRequiredSchema } from "@yoqa/runner-client";
+import { stopRunner } from "../../stop-runner";
 import { createApp, isEverydayWarningAccepted } from "../catalog/application";
 import { closeCatalogDb, openCatalogDb } from "../catalog/db";
 import { EVERYDAY_WARNING } from "./everyday-warning";
@@ -98,6 +99,7 @@ const {
 	getActiveSession,
 	getActiveSessionInfo,
 	isActiveSessionHeldByRun,
+	quitEverySession,
 	releaseSessionFromRun,
 	retargetActiveSession,
 } = await import("./active-session");
@@ -741,7 +743,7 @@ async function eventuallyTrue(check: () => boolean): Promise<boolean> {
 
 /** An installed Chrome whose launches are faked, its Kept profiles under a temporary home. */
 function installedChrome() {
-	const chromium = fakeChromium({ viewport: { width: 900, height: 700 } });
+	const chromium = fakeChromium({ viewport: { width: 900, height: 700 } }, { locksProfile: true });
 	const home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
 	directLane = (options) =>
 		createWebDirectSession(
@@ -757,6 +759,7 @@ function installedChrome() {
 				],
 				spawn: chromium.spawn,
 				home,
+				isProcessAlive: chromium.isProcessAlive,
 			}),
 		);
 	const profiles = () => chromium.launched.map((command) => profileDirOf(command));
@@ -877,6 +880,63 @@ describe("connecting a browser Yoqa launches", () => {
 	test("an App id that is not a folder name is a 400", async () => {
 		const response = await connect({ deviceId: "web-chrome", platform: "web", appId: "../x" });
 		expect(response.status).toBe(400);
+	});
+});
+
+describe("stopping the runner", () => {
+	/** Whether a browser's `SingletonLock` is in `profileDir` (a link to its host and pid). */
+	const holdsLock = (profileDir: string) =>
+		lstatSync(join(profileDir, "SingletonLock"), { throwIfNoEntry: false }) !== undefined;
+
+	/** Signal the runner to stop, quitting sessions for real, and wait until it would exit. */
+	async function stop(): Promise<number> {
+		const { promise, resolve } = Promise.withResolvers<number>();
+		stopRunner({ quit: quitEverySession, exit: resolve, capMs: 2_000, log: () => undefined })(
+			"SIGTERM",
+		);
+		return promise;
+	}
+
+	test("quits the Active Session before it exits", async () => {
+		await connectDevice({ deviceId: "dev-1", platform: "android" });
+		expect(await stop()).toBe(0);
+		expect(createdFakeSessions[0]?.quitCalls).toBe(1);
+		expect(getActiveSession()).toBeNull();
+	});
+
+	test("quits a session a Run holds, and the detached session of another Run", async () => {
+		await acquireSessionForRun({ runId: "run_a", deviceId: "dev-1", platform: "android" });
+		await acquireSessionForRun({ runId: "run_b", deviceId: "dev-2", platform: "ios" });
+		expect(await stop()).toBe(0);
+		expect(createdFakeSessions.map((session) => session.quitCalls)).toEqual([1, 1]);
+		expect(getActiveSession()).toBeNull();
+	});
+
+	test("a launched browser quits and lets go of its Kept profile, which stays", async () => {
+		const { chromium, home } = installedChrome();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		const kept = join(home, ".yoqa", "browser-profiles", "app_1", "web-chrome");
+		expect(holdsLock(kept)).toBe(true);
+
+		expect(await stop()).toBe(0);
+		expect(chromium.kills).toBe(1);
+		expect(chromium.isProcessAlive(90_001)).toBe(false);
+		expect(holdsLock(kept)).toBe(false);
+		expect(existsSync(kept)).toBe(true);
+
+		// The next runner's connect on the same App and browser opens the profile again.
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		expect(chromium.launched).toHaveLength(2);
+	});
+
+	test("a clean-profile browser's folder is deleted", async () => {
+		const { profiles } = installedChrome();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", profile: "clean" });
+		const [clean] = profiles();
+		expect(existsSync(clean ?? "")).toBe(true);
+
+		expect(await stop()).toBe(0);
+		expect(existsSync(clean ?? "")).toBe(false);
 	});
 });
 

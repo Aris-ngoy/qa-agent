@@ -27,10 +27,16 @@ mock.module("../devices/chromium-everyday", () => ({
 		everydayBrowsers ? Promise.resolve(everydayBrowsers) : realFindEverydayBrowsers(...args),
 }));
 
-const { connectDevice, disconnectDevice, getActiveSession, getActiveSessionInfo } = await import(
-	"../devices/active-session"
+const {
+	connectDevice,
+	disconnectDevice,
+	getActiveSession,
+	getActiveSessionInfo,
+	quitEverySession,
+} = await import("../devices/active-session");
+const { RunValidationError, cancelRunsInProgress, createRun, getRun } = await import(
+	"./application"
 );
-const { RunValidationError, createRun, getRun } = await import("./application");
 
 const WEB_URL = "https://shop.example.com/";
 
@@ -238,6 +244,33 @@ describe("a Run on web", () => {
 			status: "unavailable",
 			note: "Run recording is not available on web",
 		});
+	});
+
+	test("a Run in progress when the runner stops is cancelled, not left running", async () => {
+		startBrowser();
+		const app = await createApp({ name: "Stopped", webUrl: WEB_URL });
+		const created = await createCase(app.id, { name: "Waits" });
+		const script: CaseScript = { version: 1, savedAt: 1, actions: [{ type: "wait", ms: 1_000 }] };
+		await saveCaseScript(created.id, JSON.stringify(script), script.savedAt);
+		const run = await createRun({
+			appId: app.id,
+			caseIds: [created.id],
+			deviceId,
+			platform: "web",
+			executionMode: "script",
+		});
+		for (let attempt = 0; attempt < 200 && !getActiveSessionInfo()?.heldByRun; attempt++) {
+			await Bun.sleep(10);
+		}
+
+		await cancelRunsInProgress();
+		await quitEverySession();
+
+		const stopped = await getRun(run.id);
+		expect(stopped.status).toBe("cancelled");
+		expect(stopped.tests[0]).toMatchObject({ status: "cancelled", error: "The runner stopped" });
+		expect(getActiveSession()).toBeNull();
+		expect((await finished(run.id)).status).toBe("cancelled");
 	});
 
 	test("fails fast, naming the fix, when the App has no Web URL", async () => {

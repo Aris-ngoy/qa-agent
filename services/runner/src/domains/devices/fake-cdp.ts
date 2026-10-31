@@ -24,7 +24,8 @@
  * With `consent`, it is an everyday browser with the remote-debugging toggle on: `/json/*`
  * answers 404, and each WebSocket waits until the user allows or denies it.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { encodeRgbaPng } from "../runs/coord-grid";
@@ -973,28 +974,40 @@ export type FakeChromium = {
 	browsers: FakeCdp[];
 	/** How many times a launched browser was killed. */
 	kills: number;
+	/** Whether the launch with this pid is still running; pids count up from 90001. */
+	isProcessAlive: (pid: number) => boolean;
 };
 
 /**
  * An installed Chromium at its launch protocol: each spawn starts a faked CDP endpoint and
  * writes its port to `DevToolsActivePort` in the `--user-data-dir` it was given, as Chrome
  * does for `--remote-debugging-port=0`, or in `portFileDir` under it, as Dia does. Killing
- * it quits that browser.
+ * it quits that browser. With `locksProfile`, a running browser holds the profile's
+ * `SingletonLock` as Chromium does, and lets it go when it quits.
  */
 export function fakeChromium(
 	options: FakeCdpOptions,
-	{ portFileDir = "" }: { portFileDir?: string } = {},
+	{ portFileDir = "", locksProfile = false }: { portFileDir?: string; locksProfile?: boolean } = {},
 ): FakeChromium {
+	const running = new Set<number>();
 	const fake: FakeChromium = {
 		launched: [],
 		browsers: [],
 		kills: 0,
+		isProcessAlive: (pid) => running.has(pid),
 		spawn: (command) => {
 			fake.launched.push(command);
 			const profile = profileDirOf(command);
 			if (!profile) throw new Error("fakeChromium: no --user-data-dir");
 			const browser = startFakeCdp(options);
 			fake.browsers.push(browser);
+			const pid = 90_000 + fake.launched.length;
+			running.add(pid);
+			const lock = join(profile, "SingletonLock");
+			if (locksProfile) {
+				mkdirSync(profile, { recursive: true });
+				symlinkSync(`${hostname()}-${pid}`, lock);
+			}
 			mkdirSync(join(profile, portFileDir), { recursive: true });
 			writeFileSync(
 				join(profile, portFileDir, "DevToolsActivePort"),
@@ -1010,6 +1023,8 @@ export function fakeChromium(
 				kill: () => {
 					fake.kills += 1;
 					browser.kill();
+					running.delete(pid);
+					if (locksProfile) rmSync(lock, { force: true });
 					exit(143);
 				},
 			};

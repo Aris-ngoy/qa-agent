@@ -49,6 +49,25 @@ async function releaseExistingSession(deviceId: string): Promise<void> {
 	}
 }
 
+/**
+ * Quit every open Device Session, the Active Session and any a Run holds, each as its Lane
+ * quits on disconnect. A session that fails to quit does not stop the others.
+ */
+export async function quitOpenDeviceSessions(): Promise<void> {
+	const sessions = [...openByDeviceId.values()];
+	openByDeviceId.clear();
+	await Promise.all(
+		sessions.map((session) =>
+			session.quit().catch((error: unknown) => {
+				console.warn(
+					"[yoqa-runner] quit Device Session on stop:",
+					error instanceof Error ? error.message : error,
+				);
+			}),
+		),
+	);
+}
+
 async function openOnLane(
 	laneName: LaneName,
 	options: SessionOptions,
