@@ -69,6 +69,5 @@ yoqa runs create <app> --cases 1 --device web-chrome --profile clean --wait  # s
 ## Follow-ups
 
 - `yoqa devices connect` has no `--app` or `--clean` yet; the route takes both.
-- The desktop app has no control for a Run's profile yet; a Case Script that says `profile: clean` is the way to ask from there.
 - Windows Chromium locks the profile with a `lockfile` held open, not `SingletonLock`; the lock rules here are POSIX only, which is where discovery runs today.
 - A live pid that has been reused by another program reads as a held profile; the error names the pid so the user can check.
