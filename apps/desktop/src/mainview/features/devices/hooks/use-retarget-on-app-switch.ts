@@ -1,16 +1,11 @@
-import { showErrorToast } from "@/app/show-error-toast";
-import type { Application } from "@/features/apps/data/api/apps";
 import { useApps } from "@/features/apps/hooks/use-apps";
-import { retargetDevice } from "@/features/devices/data/api/devices";
-import {
-	activeDeviceSessionQueryKey,
-	useActiveDeviceSession,
-} from "@/features/devices/hooks/usequery/use-active-device-session";
-import { appTargetFor, retargetsAfterRun } from "@/features/devices/utils/session-app";
+import { useActiveDeviceSession } from "@/features/devices/hooks/usequery/use-active-device-session";
+import { useRetargetSession } from "@/features/devices/hooks/usequery/use-retarget-session";
+import { retargetsAfterRun } from "@/features/devices/utils/session-app";
 import { runQueryKey } from "@/features/runs/hooks/usequery/use-run";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ActiveDeviceResponse, Run } from "@yoqa/runner-client";
-import { useCallback, useEffect, useRef } from "react";
+import type { Run } from "@yoqa/runner-client";
+import { useEffect, useRef } from "react";
 
 /**
  * Keep the Active Session pointed at the app selected in the sidebar, with no reconnect and
@@ -30,17 +25,7 @@ export function useRetargetOnAppSwitch() {
 	/** The session as last seen, to notice the moment a Run lets it go. */
 	const previousSessionRef = useRef(activeSession);
 
-	const retarget = useCallback(
-		async (session: ActiveDeviceResponse, app: Application) => {
-			try {
-				const info = await retargetDevice(appTargetFor(session.platform, app));
-				queryClient.setQueryData(activeDeviceSessionQueryKey, info);
-			} catch (error) {
-				showErrorToast(error, `Failed to switch the device session to ${app.name}`);
-			}
-		},
-		[queryClient],
-	);
+	const retarget = useRetargetSession();
 
 	useEffect(() => {
 		if (!selectedApp) return;

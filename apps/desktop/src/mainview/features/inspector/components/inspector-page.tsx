@@ -6,8 +6,10 @@ import { ElementActionDialog } from "@/features/inspector/components/element-act
 import { SaveAsTestCaseDialog } from "@/features/inspector/components/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/components/screenshot-panel";
 import { ScriptPanel } from "@/features/inspector/components/script-panel";
+import { TreeSourceBar } from "@/features/inspector/components/tree-source-bar";
 import { useInspectorFeed } from "@/features/inspector/hooks/use-inspector-feed";
 import { useScriptSession } from "@/features/inspector/hooks/use-script-session";
+import { useTreePanel } from "@/features/inspector/hooks/use-tree-panel";
 import { defaultCaseNameFromScript, scriptHasBody } from "@/features/inspector/utils/script-text";
 import { useValue } from "@legendapp/state/react";
 import {
@@ -45,7 +47,7 @@ export function InspectorPage() {
 		selectedApp,
 	});
 
-	const elements = useValue(feed.feed$.elements);
+	const tree = useTreePanel(feed.feed$, feed.activeSession);
 	const selection = useValue(feed.feed$.selection);
 	const liveControl = useValue(feed.feed$.liveControl);
 	const scriptText = useValue(script.script$.text);
@@ -83,6 +85,16 @@ export function InspectorPage() {
 					<ScreenshotPanel
 						feed$={feed.feed$}
 						visible$={feed.page$.visible}
+						elements={tree.elements}
+						treeSource={
+							<TreeSourceBar
+								panel={tree.panel}
+								apps={tree.targetableApps}
+								disabled={running || feed.viewOnly}
+								onShowSystemChange={feed.handleShowSystemTreeChange}
+								onChooseApp={tree.chooseApp}
+							/>
+						}
 						session={feed.activeSession}
 						onConnect={feed.handleConnect}
 						onDisconnect={feed.handleDisconnect}
@@ -126,7 +138,7 @@ export function InspectorPage() {
 
 			<ElementActionDialog
 				selection={liveControl ? null : selection}
-				elements={elements}
+				elements={tree.elements}
 				disabled={!connected || running || feed.viewOnly}
 				snippetContext={snippetContext}
 				canChangeSelector={Boolean(selection?.element)}

@@ -150,6 +150,8 @@ export type DeviceSession = {
 	 * on. Undefined forgets the app.
 	 */
 	setTargetApp: (appId: string | undefined) => void;
+	/** The app a Lane that remembers one reads now; undefined when it has none. */
+	targetApp?: () => string | undefined;
 	terminateApp: (appId: string) => Promise<void>;
 	/**
 	 * Start the app again from scratch, for a Lane whose restart is more than terminate then

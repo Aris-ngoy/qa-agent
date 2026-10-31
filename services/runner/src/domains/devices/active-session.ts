@@ -39,6 +39,8 @@ export type ActiveSessionInfo = {
 	viewport?: ViewportPresetName;
 	/** An Everyday browser's profile the session's window opened in; null when unreadable. */
 	browserProfileName?: string | null;
+	/** The app the session reads now, on a Lane that remembers one. */
+	targetApp?: string;
 };
 
 type ActiveSession = {
@@ -86,6 +88,7 @@ function streamStateOf(stream: DeviceSession["stream"]): StreamState {
 
 function toInfo(current: ActiveSession): ActiveSessionInfo {
 	const streamState = streamStateOf(current.session.stream);
+	const targetApp = current.session.targetApp?.();
 	return {
 		deviceId: current.deviceId,
 		platform: current.platform,
@@ -102,6 +105,7 @@ function toInfo(current: ActiveSession): ActiveSessionInfo {
 		...(current.session.browserProfileName !== undefined
 			? { browserProfileName: current.session.browserProfileName }
 			: {}),
+		...(targetApp ? { targetApp } : {}),
 	};
 }
 

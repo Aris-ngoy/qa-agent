@@ -15,7 +15,14 @@ import {
 import type { Observable } from "@legendapp/state";
 import { useObservable, useObserveEffect, useValue } from "@legendapp/state/react";
 import type { ActiveDeviceResponse, ScreenElement } from "@yoqa/runner-client";
-import { type MouseEvent, type PointerEvent, useCallback, useEffect, useRef } from "react";
+import {
+	type MouseEvent,
+	type PointerEvent,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+} from "react";
 
 function isSameSelection(a: InspectorSelection, b: InspectorSelection): boolean {
 	if (a.preferredLocator !== b.preferredLocator) return false;
@@ -54,6 +61,10 @@ type PointerUi = {
 type ScreenshotPanelProps = {
 	feed$: InspectorFeed$;
 	visible$: Observable<boolean>;
+	/** The elements to hit-test: the tree's, or none while SpringBoard's are hidden. */
+	elements: ScreenElement[];
+	/** Where the tree came from, above the screen (`TreeSourceBar`). */
+	treeSource?: ReactNode;
 	/** The top bar's Active Session; the Inspector attaches to it only on Connect. */
 	session: ActiveDeviceResponse | null;
 	onConnect: () => void;
@@ -76,6 +87,8 @@ const HEADER_BUTTON_CLASS =
 export function ScreenshotPanel({
 	feed$,
 	visible$,
+	elements,
+	treeSource,
 	session,
 	onConnect,
 	onDisconnect,
@@ -90,7 +103,6 @@ export function ScreenshotPanel({
 }: ScreenshotPanelProps) {
 	const attached = useValue(() => feed$.active.get() != null);
 	const hasFrame = useValue(() => feed$.imageUrl.get() != null);
-	const elements = useValue(feed$.elements);
 	const selection = useValue(feed$.selection);
 	const treeRefreshing = useValue(feed$.treeRefreshing);
 	const feedMode = useValue(feed$.feedMode);
@@ -460,6 +472,7 @@ export function ScreenshotPanel({
 								? `${caption ? `${caption} · ` : ""}${selection.x},${selection.y}`
 								: inspectHint}
 			</p>
+			{attached ? treeSource : null}
 
 			<div
 				className="rounded-xl bg-surface-container transition-[height] duration-300 ease-out motion-reduce:transition-none"

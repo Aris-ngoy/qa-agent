@@ -1154,6 +1154,11 @@ export const activeDeviceResponseSchema = z.object({
 	 * State`; null when it could not be read.
 	 */
 	browserProfileName: z.string().nullable().optional(),
+	/**
+	 * The session's target app (iOS bundle id, Android package), on a Lane that remembers
+	 * one. Absent when it has none: a cabled iPhone then reads the foreground app or SpringBoard.
+	 */
+	targetApp: z.string().min(1).optional(),
 });
 export type ActiveDeviceResponse = z.infer<typeof activeDeviceResponseSchema>;
 

@@ -543,6 +543,7 @@ export async function createIosDeviceSession(
 		setTargetApp: (id) => {
 			appId = id;
 		},
+		targetApp: () => appId,
 		terminateApp: notYet("Terminating an app"),
 		backgroundApp: (seconds = 3) =>
 			withActionLock(async () => {
