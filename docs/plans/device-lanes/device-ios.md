@@ -69,6 +69,8 @@ As built (#250): `snapshot`, `type`, `keyboardReturn`, `keyboardDelete`, `button
 
 As built (#391): the `snapshot` reply's `source` (`target` or `system`). See [screen-source.md](../../devices/screen-source.md).
 
+As built (#392): `snapshot` takes `candidates` with no target app and reads the first one in the foreground (`foreground`). See [foreground-app.md](../../devices/foreground-app.md).
+
 ## Done
 
 Connect, snapshot, tap, and screenshot work on a phone with Developer Mode on, and a retried tap does not fire twice.

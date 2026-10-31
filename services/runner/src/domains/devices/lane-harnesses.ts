@@ -398,7 +398,12 @@ export function iosDeviceLane(): LaneHarness {
 						stop: async () => undefined,
 					}),
 					connect: async () => createConnection(runner.port ?? 0, "127.0.0.1"),
-					devicectl: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+					// A phone with no user apps, so a tree read with no target app is SpringBoard's.
+					devicectl: async (args) => {
+						const json = args.indexOf("--json-output");
+						if (json >= 0) await Bun.write(args[json + 1] ?? "", '{"result":{"apps":[]}}');
+						return { stdout: "", stderr: "", exitCode: 0 };
+					},
 				},
 			),
 		taps: () => taps,

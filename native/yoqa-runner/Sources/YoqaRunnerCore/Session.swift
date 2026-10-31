@@ -44,7 +44,9 @@ public final class Session {
             recorder.stop()
             return .json(200, ["ok": true, "data": [String: Any]()])
         case "snapshot":
-            return run { try self.snapshot(bundleId: body["bundleId"] as? String) }
+            return run {
+                try self.snapshot(bundleId: body["bundleId"] as? String, candidates: body["candidates"] as? [String] ?? [])
+            }
         case "tap", "longPress", "drag", "type", "keyboardReturn", "keyboardDelete", "button":
             return journaled(body) { try self.gesture(command, body) }
         default:
@@ -52,17 +54,27 @@ public final class Session {
         }
     }
 
-    /// The tree of `bundleId` (the target app), or of SpringBoard without one, and which of
-    /// the two it is: `source` is `{ kind: "target", bundleId }` or `{ kind: "system" }`.
-    private func snapshot(bundleId: String?) throws -> [String: Any] {
-        let nodes = try device.snapshot(bundleId: bundleId).map(Self.json)
-        let source: [String: Any]
+    /// The tree of `bundleId` (the target app), else of the first of `candidates` in the
+    /// foreground, else of SpringBoard, and which it is: `source` is `{ kind: "target",
+    /// bundleId }`, `{ kind: "foreground", bundleId }` or `{ kind: "system" }`. Candidates
+    /// are only checked, never launched or activated; one that leaves the foreground before
+    /// its tree is read gives SpringBoard.
+    private func snapshot(bundleId: String?, candidates: [String]) throws -> [String: Any] {
         if let bundleId = bundleId {
-            source = ["kind": "target", "bundleId": bundleId]
-        } else {
-            source = ["kind": "system"]
+            let nodes = try device.snapshot(bundleId: bundleId).map(Self.json)
+            return ["nodes": nodes, "source": ["kind": "target", "bundleId": bundleId]]
         }
-        return ["nodes": nodes, "source": source]
+        for candidate in candidates {
+            guard try device.isInForeground(candidate) else { continue }
+            do {
+                let nodes = try device.snapshot(bundleId: candidate).map(Self.json)
+                return ["nodes": nodes, "source": ["kind": "foreground", "bundleId": candidate]]
+            } catch is AppBackgrounded {
+                break
+            }
+        }
+        let nodes = try device.snapshot(bundleId: nil).map(Self.json)
+        return ["nodes": nodes, "source": ["kind": "system"]]
     }
 
     /// `fps`, `scale` and `quality` are optional: 8 frames a second at 0.5 size and 0.6 quality.

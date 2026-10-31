@@ -164,3 +164,33 @@ export function parseDevicectlDevices(json: unknown): Device[] {
 	}
 	return devices.sort((a, b) => a.name.localeCompare(b.name));
 }
+
+type DevicectlApp = {
+	bundleIdentifier?: string;
+	builtByDeveloper?: boolean;
+	hidden?: boolean;
+	appClip?: boolean;
+};
+
+/** `YoqaRunner`'s own test host, which is installed on the phone but never the app under test. */
+const YOQA_RUNNER_BUNDLE_PREFIX = "dev.yoqa.runner.";
+
+/**
+ * The user apps from `xcrun devicectl device info apps --json-output`, as bundle ids: the
+ * ones a developer built first, since the app under test is usually one of them. Hidden
+ * apps, app clips and `YoqaRunner` itself are left out.
+ */
+export function parseDevicectlApps(json: unknown): string[] {
+	const items = (json as { result?: { apps?: unknown } } | null)?.result?.apps;
+	if (!Array.isArray(items)) return [];
+	const apps = (items as DevicectlApp[]).filter(
+		(app) =>
+			typeof app.bundleIdentifier === "string" &&
+			!app.hidden &&
+			!app.appClip &&
+			!app.bundleIdentifier.startsWith(YOQA_RUNNER_BUNDLE_PREFIX),
+	);
+	const developerBuilt = apps.filter((app) => app.builtByDeveloper);
+	const others = apps.filter((app) => !app.builtByDeveloper);
+	return [...developerBuilt, ...others].map((app) => app.bundleIdentifier as string);
+}

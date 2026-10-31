@@ -82,6 +82,9 @@ public protocol Device {
     /// The accessibility tree of `bundleId`, or of SpringBoard when nil. Throws `AppBackgrounded`
     /// when that app is not in the foreground; it never activates it.
     func snapshot(bundleId: String?) throws -> [SnapshotNode]
+    /// Whether `bundleId` is running in the foreground. Only its state is read: the app is
+    /// never launched or activated.
+    func isInForeground(_ bundleId: String) throws -> Bool
     /// Type into whatever has keyboard focus.
     func typeText(_ text: String) throws
     func keyboardReturn() throws
