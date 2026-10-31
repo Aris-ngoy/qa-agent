@@ -828,7 +828,7 @@ describe("connecting a browser Yoqa launches", () => {
 			viewport: "mobile",
 		});
 		expect(chromium.launched).toHaveLength(4);
-		expect(chromium.kills).toBe(3);
+		expect(chromium.closes).toBe(3);
 		expect(profiles()[1]).toContain(join("app_2", "web-chrome"));
 	});
 
@@ -871,7 +871,7 @@ describe("connecting a browser Yoqa launches", () => {
 			profile: "kept",
 		});
 		expect(chromium.launched).toHaveLength(2);
-		expect(chromium.kills).toBe(1);
+		expect(chromium.closes).toBe(1);
 		expect(profiles()[1]).toContain(join("app_1", "web-chrome"));
 		expect(acquired.session.viewport).toBe("mobile");
 		expect(getActiveSession()).toMatchObject({ appId: "app_1", profile: "kept" });
@@ -887,7 +887,7 @@ describe("connecting a browser Yoqa launches", () => {
 
 		const mobile = await acquireSessionForRun({ ...run, runId: "run_2", viewport: "mobile" });
 		expect(chromium.launched).toHaveLength(2);
-		expect(chromium.kills).toBe(1);
+		expect(chromium.closes).toBe(1);
 		expect(mobile.session.viewport).toBe("mobile");
 		expect(getActiveSession()).toMatchObject({ appId: "app_1", heldByRunId: "run_2" });
 	});
@@ -947,7 +947,7 @@ describe("stopping the runner", () => {
 		expect(holdsLock(kept)).toBe(true);
 
 		expect(await stop()).toBe(0);
-		expect(chromium.kills).toBe(1);
+		expect(chromium.closes).toBe(1);
 		expect(chromium.isProcessAlive(90_001)).toBe(false);
 		expect(holdsLock(kept)).toBe(false);
 		expect(existsSync(kept)).toBe(true);

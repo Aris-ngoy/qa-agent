@@ -816,6 +816,16 @@ describe("web Direct lane: a page closed while it is attached", () => {
 		expect(browser.pages()).toEqual(["https://example.com/"]);
 		await session.quit();
 	});
+
+	test("a page closed before the attach reaches it is picked again", async () => {
+		const { browser, session } = await attach({
+			restoresSessionBeforeAttach: ["https://example.com/"],
+		});
+		expect(browser.attachedTargets).toHaveLength(1);
+		expect(browser.frontPage()).toBe(browser.attachedTargets[0]);
+		expect(browser.pages()).toEqual(["https://example.com/"]);
+		await session.quit();
+	});
 });
 
 describe("web Direct lane: Dead Session", () => {
@@ -850,15 +860,32 @@ const CHROME: InstalledBrowser = {
 	executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 };
 
+const DIA: InstalledBrowser = {
+	id: "web-dia",
+	name: "Dia",
+	version: "1.55.1",
+	executable: "/Applications/Dia.app/Contents/MacOS/Dia",
+};
+
 /**
  * A Mac with Chrome installed, and a Device Session on `deviceId` that launches it, its
  * Kept profile under a temporary home unless the connect asks for a clean one.
  */
 async function launch(
 	deviceId = "web-chrome",
-	options: { appId?: string; profile?: BrowserProfile; home?: string } = {},
+	options: {
+		appId?: string;
+		profile?: BrowserProfile;
+		home?: string;
+		ignoresBrowserClose?: boolean;
+		browserCloseGraceMs?: number;
+	} = {},
 ) {
-	const chromium = fakeChromium({ viewport: VIEWPORT });
+	const chromium = fakeChromium(
+		{ viewport: VIEWPORT, ignoresBrowserClose: options.ignoresBrowserClose },
+		// Dia writes its port file under `User Data/`.
+		{ portFileDir: deviceId === "web-dia" ? "User Data" : "" },
+	);
 	const home = options.home ?? mkdtempSync(join(tmpdir(), "yoqa-home-"));
 	let deadCalls = 0;
 	const session = await createWebDirectSession(
@@ -871,7 +898,12 @@ async function launch(
 				deadCalls += 1;
 			},
 		},
-		webDirectDeps({ installedBrowsers: async () => [CHROME], spawn: chromium.spawn, home }),
+		webDirectDeps({
+			installedBrowsers: async () => [CHROME, DIA],
+			spawn: chromium.spawn,
+			home,
+			browserCloseGraceMs: options.browserCloseGraceMs,
+		}),
 	);
 	const profileDir = () => profileDirOf(chromium.launched[0] ?? []) ?? "";
 	return { chromium, session, home, profileDir, deadCalls: () => deadCalls };
@@ -904,11 +936,13 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 		await session.quit();
 	});
 
-	test("disconnecting kills the browser and keeps its profile for the next connect, and is not a Dead Session", async () => {
+	test("disconnecting closes the browser over CDP and keeps its profile for the next connect, and is not a Dead Session", async () => {
 		const { chromium, session, home, profileDir, deadCalls } = await launch();
 		writeFileSync(join(profileDir(), "Cookies"), "signed in");
 		await session.quit();
-		expect(chromium.kills).toBe(1);
+		// Chrome, Edge and Opera save their cookies only when they shut down on their own.
+		expect(chromium.closes).toBe(1);
+		expect(chromium.kills).toBe(0);
 		expect(existsSync(join(profileDir(), "Cookies"))).toBe(true);
 		expect(deadCalls()).toBe(0);
 
@@ -916,6 +950,23 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 		expect(again.profileDir()).toBe(profileDir());
 		expect(existsSync(join(again.profileDir(), "Cookies"))).toBe(true);
 		await again.session.quit();
+	});
+
+	test("Dia is quit by signal: its Browser.close leaves the app running on another profile", async () => {
+		const { chromium, session } = await launch("web-dia");
+		await session.quit();
+		expect(chromium.browsers[0]?.methods).not.toContain("Browser.close");
+		expect(chromium.kills).toBe(1);
+	});
+
+	test("a browser that stays open after Browser.close is killed once the grace runs out", async () => {
+		const { chromium, session } = await launch("web-chrome", {
+			ignoresBrowserClose: true,
+			browserCloseGraceMs: 50,
+		});
+		await session.quit();
+		expect(chromium.closes).toBe(0);
+		expect(chromium.kills).toBe(1);
 	});
 
 	test("a connect that asks for a clean profile gets a temporary one, deleted on disconnect", async () => {

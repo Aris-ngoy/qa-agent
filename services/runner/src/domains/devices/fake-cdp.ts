@@ -107,6 +107,13 @@ export type FakeCdpOptions = {
 	 * answered, which never is.
 	 */
 	restoresSession?: string[];
+	/**
+	 * Dia restoring its last session sooner: it closes the page the session picked before
+	 * `Target.attachToTarget` reaches it, so the attach fails, and opens these tabs instead.
+	 */
+	restoresSessionBeforeAttach?: string[];
+	/** A browser that answers `Browser.close` but stays open, so only a signal quits it. */
+	ignoresBrowserClose?: boolean;
 };
 
 export type FakeMouseEvent = {
@@ -206,6 +213,11 @@ export type FakeCdp = {
 	createdTargets: Array<Record<string, unknown>>;
 	/** Every target a DevTools session attached to, in order. */
 	attachedTargets: string[];
+	/**
+	 * What `Browser.close` does: the browser shuts down on its own, saving its profile.
+	 * `kill` by default; `fakeChromium` makes it the launched process's clean exit.
+	 */
+	onBrowserClose: () => void;
 };
 
 type Message = { id: number; method: string; params?: Record<string, unknown>; sessionId?: string };
@@ -348,6 +360,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	let discovering = false;
 	let dialogOpen: { sessionId: string } | null = null;
 	let restoring = options.restoresSession;
+	let restoringBeforeAttach = options.restoresSessionBeforeAttach;
 	/** Answers to commands the open dialog holds, sent once it is answered. */
 	const heldByDialog: Array<() => void> = [];
 	/** How far the page is scrolled now; `options.scroll` is where its boxes were given. */
@@ -684,6 +697,10 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		switch (message.method) {
 			case "Browser.getVersion":
 				return { product: "Chrome/140.0.0.0" };
+			case "Browser.close":
+				// It answers, then shuts down.
+				if (!options.ignoresBrowserClose) setTimeout(() => fake.onBrowserClose(), 0);
+				return {};
 			case "Target.getTargets":
 				return { targetInfos: pages.map(infoOf) };
 			case "Target.getTargetInfo":
@@ -927,6 +944,12 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 			message(ws, raw) {
 				const message = JSON.parse(String(raw)) as Message;
 				methods.push(message.method);
+				if (restoringBeforeAttach && message.method === "Target.attachToTarget") {
+					const picked = pages.find((page) => page.targetId === message.params?.targetId);
+					if (picked) closeTarget(picked);
+					for (const url of restoringBeforeAttach) createPage(url);
+					restoringBeforeAttach = undefined;
+				}
 				const replaced = restoring && message.method === "Page.enable" && pageOf(message.sessionId);
 				if (restoring && replaced) {
 					const urls = restoring;
@@ -958,7 +981,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	});
 	server.unref();
 
-	return {
+	const fake: FakeCdp = {
 		port: server.port ?? 0,
 		clicks,
 		mouse,
@@ -1017,7 +1040,9 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		deny: () => answerPrompt(false),
 		createdTargets,
 		attachedTargets,
+		onBrowserClose: () => fake.kill(),
 	};
+	return fake;
 }
 
 /** The `--user-data-dir` a browser command line names, or null when it names none. */
@@ -1035,6 +1060,8 @@ export type FakeChromium = {
 	browsers: FakeCdp[];
 	/** How many times a launched browser was killed. */
 	kills: number;
+	/** How many times a launched browser shut down on `Browser.close`, saving its profile. */
+	closes: number;
 	/** Whether the launch with this pid is still running; pids count up from 90001. */
 	isProcessAlive: (pid: number) => boolean;
 };
@@ -1055,6 +1082,7 @@ export function fakeChromium(
 		launched: [],
 		browsers: [],
 		kills: 0,
+		closes: 0,
 		isProcessAlive: (pid) => running.has(pid),
 		spawn: (command) => {
 			fake.launched.push(command);
@@ -1078,15 +1106,25 @@ export function fakeChromium(
 			const exited = new Promise<number>((resolve) => {
 				exit = resolve;
 			});
+			let quit = false;
+			const quitWith = (code: number) => {
+				if (quit) return;
+				quit = true;
+				browser.kill();
+				running.delete(pid);
+				if (locksProfile) rmSync(lock, { force: true });
+				exit(code);
+			};
+			browser.onBrowserClose = () => {
+				fake.closes += 1;
+				quitWith(0);
+			};
 			return {
 				exited,
 				stderr: null,
 				kill: () => {
 					fake.kills += 1;
-					browser.kill();
-					running.delete(pid);
-					if (locksProfile) rmSync(lock, { force: true });
-					exit(143);
+					quitWith(143);
 				},
 			};
 		},

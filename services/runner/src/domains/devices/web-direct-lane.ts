@@ -119,6 +119,8 @@ export type WebDirectDeps = {
 	readText: (path: string) => Promise<string>;
 	/** How long an Everyday browser connect waits for Allow; 60 s by default. */
 	allowTimeoutMs?: number;
+	/** How long a launched browser may take to shut down on `Browser.close`; 5 s by default. */
+	browserCloseGraceMs?: number;
 };
 
 /** Typed text is cut at a newline, which presses Enter. */
@@ -246,6 +248,7 @@ export function webDirectDeps(
 		isProcessAlive?: (pid: number) => boolean;
 		everydayBrowsers?: () => Promise<EverydayBrowser[]>;
 		allowTimeoutMs?: number;
+		browserCloseGraceMs?: number;
 	} = {},
 ): WebDirectDeps {
 	return {
@@ -261,7 +264,26 @@ export function webDirectDeps(
 		everydayBrowsers: overrides.everydayBrowsers ?? (() => findEverydayBrowsers()),
 		readText: (path) => readFile(path, "utf8"),
 		allowTimeoutMs: overrides.allowTimeoutMs,
+		browserCloseGraceMs: overrides.browserCloseGraceMs,
 	};
+}
+
+const BROWSER_CLOSE_GRACE_MS = 5_000;
+
+/**
+ * Quit a browser Yoqa launched the way a user does, with `Browser.close`, so it writes its
+ * profile out. Chrome, Edge and Opera save cookies only then: stopped by a signal, they
+ * lose the sign-ins a Kept profile is for. One that has not quit within the grace is
+ * stopped by signal. Dia is quit by signal only (`closesOverCdp`).
+ */
+async function closeOwnedBrowser(
+	client: CdpClient,
+	owned: ChromiumInstance,
+	graceMs: number,
+): Promise<void> {
+	// It may close the socket before it answers.
+	await client.send("Browser.close", {}).catch(() => undefined);
+	await Promise.race([owned.exited, Bun.sleep(graceMs)]);
 }
 
 /** A browser the session is connected to, and what it knows of it before asking. */
@@ -359,10 +381,20 @@ async function pickPage(client: CdpClient, everyday: boolean): Promise<string> {
 /** How many pages may close under the session while it attaches, before the connect fails. */
 const ATTACH_ATTEMPTS = 3;
 
+/** The page closed before the session could attach to it, or while it was attaching. */
+function isPageGone(error: unknown): boolean {
+	return (
+		error instanceof CdpSessionGoneError ||
+		(error instanceof CdpCommandError &&
+			error.method === "Target.attachToTarget" &&
+			/no target with given id/i.test(error.message))
+	);
+}
+
 /**
- * Pick a page and attach to it. A page that closes while it is being attached is picked
- * again: Dia restoring its last session after an unclean exit closes the page it opened at
- * launch, or the one the session opened, and puts the restored tabs in its place.
+ * Pick a page and attach to it. A page that closes before or while it is being attached is
+ * picked again: Dia restoring its last session closes the page it opened at launch, or the
+ * one the session opened, and puts the restored tabs in its place.
  */
 async function pickAndAttachPage(
 	client: CdpClient,
@@ -376,7 +408,7 @@ async function pickAndAttachPage(
 		try {
 			return await attachPage(client, targetId, preset);
 		} catch (error) {
-			if (!(error instanceof CdpSessionGoneError) || attempt >= ATTACH_ATTEMPTS) throw error;
+			if (!isPageGone(error) || attempt >= ATTACH_ATTEMPTS) throw error;
 		}
 	}
 }
@@ -1256,6 +1288,9 @@ export async function createWebDirectSession(
 			feed.stop();
 			await stopScreencast().catch(() => undefined);
 			if (everyday) await closeOwnPages();
+			if (owned?.closesOverCdp) {
+				await closeOwnedBrowser(client, owned, deps.browserCloseGraceMs ?? BROWSER_CLOSE_GRACE_MS);
+			}
 			await client.close();
 			await owned?.stop();
 		},
