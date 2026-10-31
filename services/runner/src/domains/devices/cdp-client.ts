@@ -242,6 +242,17 @@ export class CdpClosedError extends Error {
 	}
 }
 
+/**
+ * The page or frame a command was sent to went away before it answered: its DevTools
+ * session detached, as when the page closes. The socket stays open.
+ */
+export class CdpSessionGoneError extends Error {
+	constructor(readonly method: string) {
+		super(`${method}: the page closed before it answered`);
+		this.name = "CdpSessionGoneError";
+	}
+}
+
 /** The browser answered a command with an error. */
 export class CdpCommandError extends Error {
 	constructor(
@@ -260,6 +271,7 @@ const CONNECT_TIMEOUT_MS = 5_000;
 
 type Pending = {
 	method: string;
+	sessionId?: string;
 	resolve: (result: unknown) => void;
 	reject: (error: Error) => void;
 	timer: ReturnType<typeof setTimeout>;
@@ -378,6 +390,16 @@ export async function connectCdp(url: string, options: ConnectCdpOptions = {}): 
 			}
 			return;
 		}
+		if (message.method === "Target.detachedFromTarget") {
+			// A session that detaches never answers what it was sent.
+			const { sessionId } = (message.params ?? {}) as { sessionId?: string };
+			for (const [id, entry] of pending) {
+				if (!sessionId || entry.sessionId !== sessionId) continue;
+				pending.delete(id);
+				clearTimeout(entry.timer);
+				entry.reject(new CdpSessionGoneError(entry.method));
+			}
+		}
 		if (message.method) {
 			for (const listener of listeners.get(message.method) ?? []) {
 				listener(message.params, message.sessionId);
@@ -396,6 +418,7 @@ export async function connectCdp(url: string, options: ConnectCdpOptions = {}): 
 				}, commandTimeoutMs);
 				pending.set(id, {
 					method,
+					sessionId,
 					resolve: resolve as (result: unknown) => void,
 					reject,
 					timer,

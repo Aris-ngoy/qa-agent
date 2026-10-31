@@ -63,6 +63,7 @@ import {
 	CdpCommandError,
 	type CdpCommands,
 	type CdpMethod,
+	CdpSessionGoneError,
 	type ConnectCdpOptions,
 	type DocumentSnapshot,
 	type KeyEvent,
@@ -355,6 +356,31 @@ async function pickPage(client: CdpClient, everyday: boolean): Promise<string> {
 	return (await client.send("Target.createTarget", { url: "about:blank" })).targetId;
 }
 
+/** How many pages may close under the session while it attaches, before the connect fails. */
+const ATTACH_ATTEMPTS = 3;
+
+/**
+ * Pick a page and attach to it. A page that closes while it is being attached is picked
+ * again: Dia restoring its last session after an unclean exit closes the page it opened at
+ * launch, or the one the session opened, and puts the restored tabs in its place.
+ */
+async function pickAndAttachPage(
+	client: CdpClient,
+	everyday: boolean,
+	preset: ViewportPreset,
+	onPicked: (targetId: string) => void,
+): Promise<DrivenPage> {
+	for (let attempt = 1; ; attempt++) {
+		const targetId = await pickPage(client, everyday);
+		onPicked(targetId);
+		try {
+			return await attachPage(client, targetId, preset);
+		} catch (error) {
+			if (!(error instanceof CdpSessionGoneError) || attempt >= ATTACH_ATTEMPTS) throw error;
+		}
+	}
+}
+
 type ElementLayout = Pick<WebAxSourceNode, "bounds" | "testId" | "domId">;
 
 /**
@@ -618,9 +644,9 @@ export async function createWebDirectSession(
 	/** The window it opened in an Everyday browser, closed again when setup fails. */
 	let ownTarget: string | null = null;
 	try {
-		const targetId = await pickPage(client, everyday !== null);
-		if (everyday) ownTarget = targetId;
-		page = await attachPage(client, targetId, preset);
+		page = await pickAndAttachPage(client, everyday !== null, preset, (targetId) => {
+			if (everyday) ownTarget = targetId;
+		});
 		await client.send("Target.setDiscoverTargets", { discover: true });
 		const product = name ?? (await client.send("Browser.getVersion", {})).product;
 		browser = everyday
