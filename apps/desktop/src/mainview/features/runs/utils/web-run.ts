@@ -21,8 +21,10 @@ export function runViewport(
 	session: ActiveDeviceResponse | null,
 ): ViewportPresetName {
 	if (form.viewport) return form.viewport;
-	const onDevice = session?.platform === "web" && session.deviceId === device.id;
-	return (onDevice ? session.viewport : undefined) ?? DEFAULT_VIEWPORT_PRESET;
+	if (session?.platform === "web" && session.deviceId === device.id && session.viewport) {
+		return session.viewport;
+	}
+	return DEFAULT_VIEWPORT_PRESET;
 }
 
 /**
