@@ -8,6 +8,8 @@ status: accepted
 
 > Why Firefox and Safari are out of scope: [ADR-0010](./0010-no-firefox-or-safari-browser-device.md).
 
+> Superseded in part by [ADR-0011](./0011-web-testing-on-macos.md): a launched browser opens on its App's Kept profile (not a throwaway one), the web Frame Feed is a screencast Stream (not Screenshot Poll), and eight Chromium browsers are supported. This replaces the *Yoqa-owned instances come next* bullet, the Frame Feed part of *Same session rules*, and the browser list below.
+
 Teams that ship an Expo or React Native Web build, or only an SPA, want the same Test Cases, CLI loop and Runs against a web page. [ADR-0005](./0005-direct-only-lane.md) says a Lane is Direct only: straight to the platform's own tooling, with no WebDriver server in between. For a browser, that tooling is the Chrome DevTools Protocol (CDP).
 
 We add a third platform, `web`, whose Direct lane speaks CDP to a Chromium-family browser (Chrome, Edge, Brave, Chromium). The Lane name stays `direct`. There is no second Lane, no WebDriver and no Playwright server, so ADR-0005 still holds.

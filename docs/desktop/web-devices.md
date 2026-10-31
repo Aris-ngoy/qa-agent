@@ -40,7 +40,7 @@ By hand, on a Mac with Chrome (not run here: this sandbox has no macOS browser o
 ## Follow-ups
 
 - The Inspector's command bar has no key picker yet ([key-action.md](../devices/key-action.md)).
-- A CDP screencast Stream for the Inspector, and Run recording on web, stay out of scope (#301).
+- Done: the Inspector's web Frame Feed is a CDP screencast Stream ([web-screencast-feed.md](../devices/web-screencast-feed.md), ADR-0011). Run recording on web stays out of scope (#301).
 - The skill and public docs are [#312](https://github.com/Aris-ngoy/qa-agent/issues/312).
 
 ## Keeping the hover tree fresh
