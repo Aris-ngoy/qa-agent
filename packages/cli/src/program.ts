@@ -8,7 +8,7 @@ import {
 	type DevicePlatform,
 	KEY_MODIFIERS,
 	KEY_NAMES,
-	RunnerRequestError,
+	RunnerUnreachableError,
 	WaitForRunTimeoutError,
 	caseScriptActionCommand,
 	checkScreen,
@@ -112,12 +112,9 @@ function describeSession(body: ActiveDeviceResponse): string {
 function fail(command: string, error: unknown): void {
 	const message = error instanceof Error ? error.message : String(error);
 	console.error(`yoqa ${command} failed: ${message}`);
-	// A runner that answered with an error is up; the hint is for one that did not answer.
-	if (
-		!(error instanceof RunnerRequestError) &&
-		!message.includes("yoqa serve") &&
-		!message.includes("Bun")
-	) {
+	// Only a request that got no answer means the runner may be down: an error the runner
+	// answered with, or one the CLI raised itself, says nothing about it.
+	if (error instanceof RunnerUnreachableError) {
 		console.error("Is the runner up? Try: yoqa serve");
 	}
 	process.exitCode = 1;
