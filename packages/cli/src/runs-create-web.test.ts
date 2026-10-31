@@ -164,6 +164,55 @@ describe("yoqa runs create on a web device", () => {
 		expect(runner.runs.at(-1)).toMatchObject({ deviceId: "web-chrome", profile: "clean" });
 	});
 
+	test("asks for a Viewport preset with --viewport, in any case", async () => {
+		await yoqa(
+			"runs",
+			"create",
+			"shop",
+			"--cases",
+			"1",
+			"--device",
+			"web-chrome",
+			"--viewport",
+			"Mobile",
+			"--no-github-output",
+			"--base-url",
+			runner.url,
+		);
+		expect(runner.runs.at(-1)).toMatchObject({ deviceId: "web-chrome", viewport: "mobile" });
+	});
+
+	test("--viewport on a phone fails before any Run is asked for", async () => {
+		const error = console.error;
+		const errors: string[] = [];
+		console.error = (message: string) => errors.push(message);
+		const before = runner.runs.length;
+		try {
+			await yoqa(
+				"runs",
+				"create",
+				"shop",
+				"--cases",
+				"1",
+				"--device",
+				"phone-1",
+				"--platform",
+				"ios",
+				"--viewport",
+				"mobile",
+				"--no-github-output",
+				"--base-url",
+				runner.url,
+			);
+		} finally {
+			console.error = error;
+		}
+		expect(runner.runs).toHaveLength(before);
+		expect(process.exitCode).toBe(1);
+		expect(errors[0]).toContain("--viewport is for web devices");
+		process.exitCode = 0;
+	});
+
 	test("runs on the Everyday browser when --device names it", async () => {
 		await yoqa(
 			"runs",

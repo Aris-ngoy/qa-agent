@@ -131,12 +131,13 @@ yoqa runs create APP --cases 1,2 --device web-chrome --wait
 
 The Web URL must be `http` or `https`. A Run on web for an App with no Web URL fails before it connects, naming the fix. In the desktop app, the App editor has a **Web URL** field.
 
-A Run that connects the browser itself uses the `desktop` preset. To run at `mobile`, connect first with `--viewport mobile` and start the Run on that session. Run recording is not available on web: a case that asks for a video runs and is marked "no video". Reports name the browser, viewport and profile next to the platform and Lane.
+A Run can name its preset with `--viewport desktop|mobile`. It adopts the session only when that session is at the preset, and otherwise reopens the browser at it. A Run that names none keeps the session's preset, or opens at `desktop`. Run recording is not available on web: a case that asks for a video runs and is marked "no video". Reports name the browser, viewport and profile next to the platform and Lane.
 
 A Run launches the browser on its App's kept profile, so it starts signed in wherever you signed in before. For a signed-out start, give the Case Script `profile: clean`, or start the Run with `--profile clean`: the browser opens on a throwaway profile that is deleted on disconnect. The Run's own `--profile` wins over its cases', and when it has none, one case asking for `clean` makes the whole Run clean. The Run stores the profile it used, and its report names it next to the viewport.
 
 ```bash
 yoqa runs create APP --cases 3 --device web-chrome --profile clean --wait
+yoqa runs create APP --cases 3 --device web-chrome --viewport mobile --wait
 ```
 
 ## Runs on your Everyday browser
@@ -148,6 +149,7 @@ There the agent acts in your real, signed-in accounts, so it comes with limits:
 - **A warning, once per App.** The first connect for an App fails with a warning about acting in your own session, until you accept it. It is remembered for that App, in the desktop app and the CLI alike.
 - **Named only.** A Run uses your Everyday browser only when you name it, as `--device web-chrome-everyday`. `yoqa runs create` without `--device` never picks it, even when the session is on it. A Run for an App that has not accepted the warning fails before it starts.
 - **Nothing is wiped.** No Action clears your cookies, storage or cache. `restart-app` reopens the Web URL with your storage kept, and says so in its result.
+- **No reopening.** A Run with a `--viewport` other than the session's fails before it connects, since reopening asks for Allow again. Reconnect at that preset first: `yoqa devices connect web-chrome-everyday --viewport mobile`.
 - **No clean profile.** A Run with `--profile clean`, or a case with `profile: clean`, fails before it starts. For a clean start, run on the browser Yoqa launches (`web-chrome`) on its kept profile, with `--profile clean` or after `yoqa devices web reset-profile`.
 - **Reports say so.** The report's Browser row reads `Everyday Google Chrome 144.0 · profile Work`, so a result from your real session is not taken for a clean one.
 

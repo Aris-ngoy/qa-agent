@@ -604,8 +604,10 @@ export async function executeRun(runId: string): Promise<void> {
 						run.tests.map((test) => test.caseId),
 					)
 				: undefined;
+		const viewport = viewportPresetSchema.safeParse(runRow?.requestedViewport);
 		// Adopt the shared Active Session when it already targets this device (on web, on
-		// this App's profile); otherwise connect (replacing any unheld session) and keep it live after.
+		// this App's profile and the preset asked for); otherwise connect (replacing any unheld
+		// session) and keep it live after.
 		const acquired = await acquireSessionForRun({
 			runId,
 			deviceId: run.deviceId,
@@ -614,6 +616,7 @@ export async function executeRun(runId: string): Promise<void> {
 			requestedLane:
 				requestedLane === "direct" || requestedLane === "auto" ? requestedLane : undefined,
 			...(profile ? { appId: run.appId, profile } : {}),
+			...(viewport.success ? { viewport: viewport.data } : {}),
 		});
 		const activeSession = acquired.session;
 		session = activeSession;
@@ -783,6 +786,10 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		catalogCases.push(catalogCase);
 	}
 
+	if (input.viewport && input.platform !== "web") {
+		throw new RunValidationError("viewport is for web Runs: a phone's screen is its own size");
+	}
+
 	if (everydayBrowserIdOf(input.deviceId) !== null) {
 		await assertEverydayRunAllowed(input, uniqueCaseIds);
 	}
@@ -826,6 +833,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		screenMode,
 		requestedLane: input.lane ?? null,
 		requestedProfile: input.profile ?? null,
+		requestedViewport: input.viewport ?? null,
 		recordVideo: input.recordVideo ? 1 : 0,
 		error: null,
 		createdAt: now,

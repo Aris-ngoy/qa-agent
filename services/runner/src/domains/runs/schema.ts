@@ -30,6 +30,8 @@ export const runs = sqliteTable("runs", {
 	viewport: text("viewport"),
 	/** kept | clean — the browser profile the create-run request asked for. Null when it did not. */
 	requestedProfile: text("requested_profile"),
+	/** desktop | mobile — the Viewport preset the create-run request asked for. Null when it did not. */
+	requestedViewport: text("requested_viewport"),
 	/** kept | clean — the browser profile a web Run used. Null on other platforms and the Everyday browser. */
 	profile: text("profile"),
 	/** 1 when the Run was started asking to record every case, whatever the cases say. */

@@ -344,9 +344,12 @@ export function retargetActiveSession(app: {
  *
  * - Adopts the Active Session when it already targets the requested device
  *   (no reconnect, no relaunch) and marks it held by this run. On web it must also be
- *   on the Run's App and profile (`appId`, `profile`).
+ *   on the Run's App and profile (`appId`, `profile`), and at its Viewport preset when the
+ *   Run names one (`viewport`).
  * - Replaces an unheld Active Session pointing at another device (device change), or a
- *   web one on another App or profile, which reopens at the session's Viewport preset.
+ *   web one on another App, profile or preset, which reopens at the Run's preset, else the
+ *   session's. The Everyday browser at another preset fails instead: reopening it would ask
+ *   for Allow again.
  * - Opens a fresh Direct session when there is none to adopt. A failed
  *   Direct start fails it with that error.
  * - When another run owns the shared session, creates a detached session that
@@ -363,6 +366,8 @@ export async function acquireSessionForRun(options: {
 	/** Web only: the App whose Kept profile a launched browser uses, and whether it is clean. */
 	appId?: string;
 	profile?: BrowserProfile;
+	/** Web only: the Viewport preset the Run asks for. Omitted, the session's own. */
+	viewport?: ViewportPresetName;
 }): Promise<{ session: DeviceSession; shared: boolean }> {
 	const current = active;
 
@@ -378,6 +383,7 @@ export async function acquireSessionForRun(options: {
 			bundleId: options.bundleId,
 			appPackage: options.appPackage,
 			requestedLane: options.requestedLane,
+			viewport: options.viewport,
 			appId: options.appId,
 			profile: options.profile,
 			onSessionDead: () => undefined,
@@ -386,16 +392,25 @@ export async function acquireSessionForRun(options: {
 	}
 
 	const onDevice = current?.deviceId === options.deviceId ? current : undefined;
-	// A replacement reopens at the preset the user connected at.
-	const viewport = onDevice?.session.viewport;
+	// A replacement reopens at the preset the Run names, else the one the user connected at.
+	const viewport = options.viewport ?? onDevice?.session.viewport;
+	const atPreset =
+		!options.viewport ||
+		(onDevice?.session.viewport ?? DEFAULT_VIEWPORT_PRESET) === options.viewport;
+	const everyday = onDevice ? everydayBrowserIdOf(onDevice.deviceId) !== null : false;
 
-	// On web the session must also be on the Run's App and profile, or the browser reopens on
-	// them. The Everyday browser has only the user's profile, and reopening asks for Allow again.
+	// The Everyday browser reopens only by asking for Allow again, which a Run never does.
+	if (onDevice && everyday && !atPreset) {
+		throw new Error(
+			`${options.deviceId} is connected at ${onDevice.session.viewport ?? DEFAULT_VIEWPORT_PRESET}, and reopening your Everyday browser asks for Allow again. Reconnect it at ${options.viewport} first: yoqa devices connect ${options.deviceId} --viewport ${options.viewport}`,
+		);
+	}
+
+	// On web the session must also be on the Run's App, profile and preset, or the browser
+	// reopens on them. The Everyday browser has only the user's profile.
 	if (
 		onDevice &&
-		(onDevice.platform !== "web" ||
-			everydayBrowserIdOf(onDevice.deviceId) !== null ||
-			isOnProfile(onDevice, options))
+		(onDevice.platform !== "web" || (atPreset && (everyday || isOnProfile(onDevice, options))))
 	) {
 		// Health-check before adopting: a stale session (device restarted,
 		// its Lane dropped it) must not fail the whole run.
