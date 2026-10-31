@@ -116,6 +116,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/ios-device-actions.md](./devices/ios-device-actions.md) | `device-ios`: tap, long-press, drag and screenshot over `YoqaRunner`; gestures journaled (64), a lost reply resolved by `status`, never resent |
 | [devices/ios-device-observation.md](./devices/ios-device-observation.md) | `device-ios`: the Screen tree, typing and hardware buttons; `APP_BACKGROUNDED` and `RUNNER_WEDGED` (the main-thread gate) |
 | [devices/screen-source.md](./devices/screen-source.md) | The Screen's `source`: which app a tree was read from (target app, foreground app, or SpringBoard); `device-ios` reports it, `yoqa screen` leads with it |
+| [devices/foreground-app.md](./devices/foreground-app.md) | `device-ios` with no target app reads the app in the foreground: the phone's user apps, listed once per Device Session, go to `snapshot` as `candidates` |
 | [devices/ios-device-benchmark.md](./devices/ios-device-benchmark.md) | `device-ios` vs Appium on a cabled iPhone: about 2.4x faster per tap once the snapshot is one read; promoted: `auto` picks it |
 | [devices/ios-device-default.md](./devices/ios-device-default.md) | `device-ios` becomes the `auto` lane on a cabled iPhone; the `directIsAutomatic` gate is removed |
 | [devices/yoqa-ax-describe.md](./devices/yoqa-ax-describe.md) | `yoqa-ax` reads the accessibility tree inside the simulator; the Screen comes from it, cached by frame hash (default since #245) |

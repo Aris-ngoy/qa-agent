@@ -12,9 +12,11 @@
  * past the grace window.
  *
  * The tree is the runner's `snapshot` of the app in front, shown as the same JSON the
- * simulator's `yoqa-ax` tree uses, with the `ScreenSource` it was read from. A snapshot
- * never brings an app forward: an app that is not in front is `APP_BACKGROUNDED`. A stuck
- * main thread on the phone is `RUNNER_WEDGED`.
+ * simulator's `yoqa-ax` tree uses, with the `ScreenSource` it was read from. With a target
+ * app the runner reads that app; without one it reads the first of the phone's user apps
+ * (listed once per Device Session through `devicectl`) that is in the foreground, else
+ * SpringBoard. A snapshot never brings an app forward: a target app that is not in front is
+ * `APP_BACKGROUNDED`. A stuck main thread on the phone is `RUNNER_WEDGED`.
  * Both reach the caller as `YoqaRunnerCommandError`s with a plain message.
  *
  * The Inspector's mirror is half-size JPEGs the phone captures in the background, served as
@@ -26,10 +28,12 @@
  * a clear message.
  */
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { type KeyName, type ScreenSource, screenSourceSchema } from "@yoqa/runner-client";
+import { parseDevicectlApps } from "./devicectl";
 import { errorChain } from "./error-chain";
 import {
 	type FrameRecorderDeps,
@@ -320,10 +324,43 @@ export async function createIosDeviceSession(
 		return { width: size.width, height: size.height };
 	});
 
+	/**
+	 * The phone's user apps, the runner's candidates for the foreground app when there is no
+	 * target app. Listed once per Device Session; a list that fails is empty for the rest of
+	 * it, so the tree reads SpringBoard, rather than paying for `devicectl` on every read.
+	 */
+	const installedApps = remember(async () => {
+		const dir = await mkdtemp(join(tmpdir(), "yoqa-apps-"));
+		const jsonPath = join(dir, "apps.json");
+		try {
+			const result = await deps.devicectl([
+				"device",
+				"info",
+				"apps",
+				"--device",
+				udid,
+				"--json-output",
+				jsonPath,
+			]);
+			if (result.exitCode !== 0) {
+				throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`);
+			}
+			return parseDevicectlApps(JSON.parse(await readFile(jsonPath, "utf8")));
+		} catch (error) {
+			console.warn(
+				`[yoqa-runner] devicectl could not list the apps on iPhone ${udid} (${errorMessage(error)}); with no target app, the tree is SpringBoard's`,
+			);
+			return [];
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
 	/** The runner's snapshot as the JSON the Screen reads, in the window's points. */
 	const readPageSource = async () => {
 		const asked = appId;
-		const reply = (await inspect("snapshot", asked ? { bundleId: asked } : {})) as {
+		const fields = asked ? { bundleId: asked } : { candidates: await installedApps() };
+		const reply = (await inspect("snapshot", fields)) as {
 			nodes?: unknown;
 			source?: unknown;
 		};

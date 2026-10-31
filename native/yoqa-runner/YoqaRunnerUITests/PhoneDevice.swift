@@ -98,6 +98,11 @@ final class PhoneDevice: Device {
         }
     }
 
+    /// Reads the app's state only. `XCUIApplication(bundleIdentifier:)` does not launch it.
+    func isInForeground(_ bundleId: String) throws -> Bool {
+        try onMain { XCUIApplication(bundleIdentifier: bundleId).state == .runningForeground }
+    }
+
     /// The names `yoqa-ax` reports on the simulator, so the Screen reads a phone the same way.
     private static func roleName(_ type: XCUIElement.ElementType) -> String {
         switch type {

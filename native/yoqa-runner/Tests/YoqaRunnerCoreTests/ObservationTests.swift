@@ -45,6 +45,55 @@ final class ObservationTests: XCTestCase {
         XCTAssertEqual(source, ["kind": "system"])
     }
 
+    func testWithoutATargetTheFirstCandidateInTheForegroundIsReadAsForeground() throws {
+        device.foreground = ["com.example.b", "com.example.c"]
+        let data = try ok([
+            "command": "snapshot", "commandId": "f1",
+            "candidates": ["com.example.a", "com.example.b", "com.example.c"],
+        ])
+        let source = try XCTUnwrap(data["source"] as? [String: String])
+        XCTAssertEqual(source, ["kind": "foreground", "bundleId": "com.example.b"])
+        XCTAssertEqual(device.calls, ["foreground? com.example.a", "foreground? com.example.b", "snapshot com.example.b"])
+    }
+
+    func testNoCandidateInTheForegroundReadsSpringBoardAsTheSystems() throws {
+        let data = try ok(["command": "snapshot", "commandId": "f2", "candidates": ["com.example.a", "com.example.b"]])
+        let source = try XCTUnwrap(data["source"] as? [String: String])
+        XCTAssertEqual(source, ["kind": "system"])
+        XCTAssertEqual(device.calls, ["foreground? com.example.a", "foreground? com.example.b", "snapshot -"])
+    }
+
+    func testABundleIdWinsOverCandidates() throws {
+        device.foreground = ["com.example.other"]
+        let data = try ok([
+            "command": "snapshot", "commandId": "f3", "bundleId": "com.example.app", "candidates": ["com.example.other"],
+        ])
+        let source = try XCTUnwrap(data["source"] as? [String: String])
+        XCTAssertEqual(source, ["kind": "target", "bundleId": "com.example.app"])
+        XCTAssertEqual(device.calls, ["snapshot com.example.app"])
+    }
+
+    func testACandidateThatLeavesTheForegroundBeforeItIsReadGivesSpringBoard() throws {
+        device.foreground = ["com.example.a"]
+        device.backgroundedBundleIds = ["com.example.a"]
+        let data = try ok(["command": "snapshot", "commandId": "f4", "candidates": ["com.example.a"]])
+        let source = try XCTUnwrap(data["source"] as? [String: String])
+        XCTAssertEqual(source, ["kind": "system"])
+        XCTAssertEqual(device.calls, ["foreground? com.example.a", "snapshot -"])
+    }
+
+    func testASnapshotNeverLaunchesOrActivatesAnApp() throws {
+        // The fake records every call that reaches the phone: a read only asks for states and
+        // reads one tree. No gesture, button or launch goes out, with or without a match.
+        _ = try ok(["command": "snapshot", "commandId": "f5", "candidates": ["com.example.a"]])
+        device.foreground = ["com.example.a"]
+        _ = try ok(["command": "snapshot", "commandId": "f6", "candidates": ["com.example.a"]])
+        XCTAssertEqual(device.calls, [
+            "foreground? com.example.a", "snapshot -",
+            "foreground? com.example.a", "snapshot com.example.a",
+        ])
+    }
+
     func testASnapshotOfABackgroundedAppIsAppBackgrounded() {
         device.snapshotError = AppBackgrounded("com.example.app is not in the foreground")
         let (status, body) = reply(["command": "snapshot", "commandId": "n3", "bundleId": "com.example.app"])

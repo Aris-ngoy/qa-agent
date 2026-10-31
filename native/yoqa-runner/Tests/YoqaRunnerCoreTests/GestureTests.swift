@@ -239,11 +239,23 @@ final class FakeDevice: Device {
 
     var nodes: [SnapshotNode] = []
     var snapshotError: Error?
+    /// The apps whose state is running in the foreground.
+    var foreground: Set<String> = []
+    /// Apps that are `AppBackgrounded` when their tree is read, as if they left the foreground.
+    var backgroundedBundleIds: Set<String> = []
 
     func snapshot(bundleId: String?) throws -> [SnapshotNode] {
         if let snapshotError { throw snapshotError }
+        if let bundleId, backgroundedBundleIds.contains(bundleId) {
+            throw AppBackgrounded("\(bundleId) is not in the foreground")
+        }
         try record("snapshot \(bundleId ?? "-")")
         return nodes
+    }
+
+    func isInForeground(_ bundleId: String) throws -> Bool {
+        try record("foreground? \(bundleId)")
+        return foreground.contains(bundleId)
     }
 
     func typeText(_ text: String) throws { try record("type \(text)") }

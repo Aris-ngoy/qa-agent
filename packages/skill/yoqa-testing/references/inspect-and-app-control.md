@@ -63,8 +63,9 @@ Elements with no accessible label show an empty label — those are only reachab
 (`id`, plus `type`, `enabled`, `visible`). Read ids from there when you want deterministic targeting.
 
 **On a cabled iPhone the output leads with the app the tree was read from**, also `source` in
-`--json` and `--full`: `Read from com.example.app (target app)`, or `Read from the system
-(SpringBoard), not an app` when no app is targeted. A system tree holds SpringBoard's elements (such as
+`--json` and `--full`: `Read from com.example.app (target app)`; with no app targeted,
+`Read from com.example.app (foreground app)` for the app in front, or `Read from the system
+(SpringBoard), not an app` on the home screen or app switcher. A system tree holds SpringBoard's elements (such as
 `SBSwitcherWindow:Main`), not your app's: activate the app (`yoqa action activate-app --app-id …`) before reading again.
 Other devices print no such line.
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { idleWiredUdids, parseDevicectlDevices } from "./devicectl";
+import { idleWiredUdids, parseDevicectlApps, parseDevicectlDevices } from "./devicectl";
+import apps from "./fixtures/devicectl-apps.json";
 import wifi from "./fixtures/devicectl-wifi.json";
 import devModeOff from "./fixtures/devicectl-wired-devmode-off.json";
 import wiredLegacy from "./fixtures/devicectl-wired-legacy.json";
@@ -8,6 +9,7 @@ import wired from "./fixtures/devicectl-wired.json";
 // `devicectl-wifi.json` is captured from `xcrun devicectl list devices --json-output` (Xcode 27)
 // with serials and hostnames removed: a watch, two Wi-Fi-paired iPhones (one with its tunnel
 // up) and a booted simulator. The `wired` fixtures are its iPhone 15 on a cable.
+// `devicectl-apps.json` is the shape of `xcrun devicectl device info apps --json-output`.
 
 describe("parseDevicectlDevices", () => {
 	test("a cabled phone with Developer Mode on is a target", () => {
@@ -71,5 +73,16 @@ describe("idleWiredUdids", () => {
 		expect(idleWiredUdids(idle).length).toBeGreaterThan(0);
 		expect(idleWiredUdids(wired)).toEqual([]);
 		expect(idleWiredUdids(wifi)).toEqual([]);
+	});
+});
+
+describe("parseDevicectlApps", () => {
+	test("lists the user apps, the ones built by a developer first, without YoqaRunner or app clips", () => {
+		expect(parseDevicectlApps(apps)).toEqual(["com.example.testemall", "com.example.shop"]);
+	});
+
+	test("unreadable output lists nothing", () => {
+		expect(parseDevicectlApps(null)).toEqual([]);
+		expect(parseDevicectlApps({ result: {} })).toEqual([]);
 	});
 });

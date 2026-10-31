@@ -8,7 +8,7 @@ Builds on [ios-device-observation.md](./ios-device-observation.md) (the `snapsho
 
 ## Plan summary
 
-- **Screen contract.** A Screen, cleaned or full, has an optional `source: { kind: "target" | "foreground" | "system", bundleId?: string }` (`screenSourceSchema` in `@yoqa/runner-client`). `target` is the Device Session's target app, `foreground` the app found in front without one (a later slice of #390), `system` SpringBoard. A Lane that does not report a source leaves it unset; today only `device-ios` reports it. The Screen itself is in [`CONTEXT.md`](../../CONTEXT.md).
+- **Screen contract.** A Screen, cleaned or full, has an optional `source: { kind: "target" | "foreground" | "system", bundleId?: string }` (`screenSourceSchema` in `@yoqa/runner-client`). `target` is the Device Session's target app, `foreground` the app found in front without one ([foreground-app.md](./foreground-app.md)), `system` SpringBoard. A Lane that does not report a source leaves it unset; today only `device-ios` reports it. The Screen itself is in [`CONTEXT.md`](../../CONTEXT.md).
 - **Wire.** The runner's `snapshot` reply adds `source`: `{ kind: "target", bundleId }` when asked with a `bundleId`, `{ kind: "system" }` without one.
 - **Older runners.** A reply without a valid `source` is `target` (with the bundle id sent) when the Lane sent one, and `system` otherwise, so a runner built before this keeps working.
 - **How it travels.** The Lane writes `source` into the raw tree's JSON, next to `elements` and `degraded`, so `pageSource()` keeps its one string and the full Screen carries it as is. The Screen read takes it back out (`screenSourceOf` for a full read, `cleanIdbCompleteSource` for the cleaned one).
@@ -36,6 +36,6 @@ Builds on [ios-device-observation.md](./ios-device-observation.md) (the `snapsho
 
 ## Follow-ups
 
-- The rest of [#390](https://github.com/Aris-ngoy/qa-agent/issues/390): with no target app, send the installed user apps as `candidates` and read the foreground one (`foreground`); the Inspector's "No target app" state.
+- The rest of [#390](https://github.com/Aris-ngoy/qa-agent/issues/390): with no target app, send the installed user apps as `candidates` and read the foreground one (`foreground`), done in [foreground-app.md](./foreground-app.md); the Inspector's "No target app" state.
 - The iOS Simulator Lane (`yoqa-ax`) reports no source yet.
 - `ObservationTests.swift` was not run here (no Swift toolchain on Linux).

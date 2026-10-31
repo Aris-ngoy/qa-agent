@@ -22,6 +22,20 @@ function options(deviceId = PHONE_UDID, extra: Partial<SessionOptions> = {}): Se
 	};
 }
 
+/** `devicectl device info apps` on the fake phone: one app built by a developer, one from the App Store. */
+const INSTALLED_APPS = {
+	result: {
+		apps: [
+			{ bundleIdentifier: "com.example.shop", builtByDeveloper: false },
+			{ bundleIdentifier: "com.example.testemall", builtByDeveloper: true },
+		],
+	},
+};
+
+/** The `devicectl` commands that listed the phone's apps. */
+const appListings = (devicectl: string[][]) =>
+	devicectl.filter((args) => args.slice(0, 3).join(" ") === "device info apps");
+
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
 afterEach(() => {
 	for (const server of servers.splice(0)) server.stop(true);
@@ -38,6 +52,8 @@ function fakePhone(
 		tunnelFails?: boolean;
 		/** Answers a command with this reply instead of the default. */
 		replies?: Record<string, unknown>;
+		/** What `devicectl device info apps` writes; `INSTALLED_APPS` when omitted, and a failure when null. */
+		apps?: unknown;
 	} = {},
 ) {
 	const commands: string[] = [];
@@ -84,6 +100,11 @@ function fakePhone(
 		},
 		devicectl: async (args) => {
 			devicectl.push(args);
+			if (args.slice(0, 3).join(" ") === "device info apps") {
+				if (mode.apps === null) return { stdout: "", stderr: "no apps for you", exitCode: 1 };
+				const path = args[args.indexOf("--json-output") + 1] ?? "";
+				await Bun.write(path, JSON.stringify(mode.apps ?? INSTALLED_APPS));
+			}
 			return { stdout: "", stderr: "", exitCode: 0 };
 		},
 	};
@@ -368,9 +389,11 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 			phone.deps,
 		);
 		const screen = cleanPageSource(await session.pageSource(), await session.getWindowSize());
-		expect(phone.bodies.find((body) => body.command === "snapshot")).toMatchObject({
-			bundleId: "com.demo",
-		});
+		const snapshot = phone.bodies.find((body) => body.command === "snapshot");
+		// A target app is read alone: no candidates, and the phone's apps are not listed.
+		expect(snapshot).toMatchObject({ bundleId: "com.demo" });
+		expect(snapshot).not.toHaveProperty("candidates");
+		expect(appListings(phone.devicectl)).toEqual([]);
 		expect(screen.elements).toEqual([
 			expect.objectContaining({ label: "Allow", x: 100, y: 200, width: 500, height: 100 }),
 		]);
@@ -413,6 +436,91 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		const untargeted = await createIosDeviceSession(options(), phone.deps);
 		expect(screenSourceOf(await untargeted.pageSource())).toEqual({ kind: "system" });
 		await untargeted.quit();
+	});
+
+	test("with no target app, the snapshot asks for the phone's user apps as candidates", async () => {
+		const phone = fakePhone({ replies: { snapshot: { ok: true, data: { nodes: [] } } } });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.pageSource();
+		const snapshot = phone.bodies.find((body) => body.command === "snapshot");
+		expect(snapshot).toMatchObject({
+			candidates: ["com.example.testemall", "com.example.shop"],
+		});
+		expect(snapshot).not.toHaveProperty("bundleId");
+		expect(appListings(phone.devicectl)).toEqual([
+			["device", "info", "apps", "--device", PHONE_UDID, "--json-output", expect.any(String)],
+		]);
+		await session.quit();
+	});
+
+	test("the app found in the foreground reaches the Screen as its source", async () => {
+		const phone = fakePhone({
+			replies: {
+				snapshot: {
+					ok: true,
+					data: { nodes: [], source: { kind: "foreground", bundleId: "com.example.testemall" } },
+				},
+			},
+		});
+		const session = await createIosDeviceSession(options(), phone.deps);
+		const raw = await session.pageSource();
+		expect(screenSourceOf(raw)).toEqual({ kind: "foreground", bundleId: "com.example.testemall" });
+		expect(cleanPageSource(raw, await session.getWindowSize()).source).toEqual({
+			kind: "foreground",
+			bundleId: "com.example.testemall",
+		});
+		await session.quit();
+	});
+
+	test("the phone's apps are listed once per Device Session, not on every read", async () => {
+		const phone = fakePhone({ replies: { snapshot: { ok: true, data: { nodes: [] } } } });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.pageSource();
+		await session.pageSource();
+		await session.pageSource();
+		expect(appListings(phone.devicectl)).toHaveLength(1);
+		await session.quit();
+	});
+
+	test("an app found in the foreground does not become the target app", async () => {
+		const phone = fakePhone({
+			replies: {
+				snapshot: {
+					ok: true,
+					data: { nodes: [], source: { kind: "foreground", bundleId: "com.example.testemall" } },
+				},
+			},
+		});
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.pageSource();
+		await session.pageSource();
+		const snapshots = phone.bodies.filter((body) => body.command === "snapshot");
+		expect(snapshots).toHaveLength(2);
+		for (const snapshot of snapshots) expect(snapshot).not.toHaveProperty("bundleId");
+		// Backgrounding brings back only a target app, and there is none.
+		await session.backgroundApp(0);
+		expect(phone.devicectl.filter((args) => args.includes("launch"))).toEqual([]);
+		await session.quit();
+	});
+
+	test("apps that can't be listed leave the snapshot on the system, and are not asked again", async () => {
+		const phone = fakePhone({
+			apps: null,
+			replies: { snapshot: { ok: true, data: { nodes: [] } } },
+		});
+		const warn = spyOn(console, "warn").mockImplementation(() => {});
+		const session = await createIosDeviceSession(options(), phone.deps);
+		const raw = await session.pageSource();
+		await session.pageSource();
+		const warned = warn.mock.calls.map((args) => String(args[0]));
+		warn.mockRestore();
+		expect(screenSourceOf(raw)).toEqual({ kind: "system" });
+		expect(phone.bodies.find((body) => body.command === "snapshot")).toEqual(
+			expect.objectContaining({ candidates: [] }),
+		);
+		expect(appListings(phone.devicectl)).toHaveLength(1);
+		expect(warned.filter((line) => line.includes("no apps for you"))).toHaveLength(1);
+		await session.quit();
 	});
 
 	test("the snapshot follows the app that was last activated", async () => {
@@ -481,6 +589,9 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 			phone.deps,
 		);
 		const error = await session.pageSource().catch((caught: unknown) => caught);
+		expect(phone.bodies.find((body) => body.command === "snapshot")).not.toHaveProperty(
+			"candidates",
+		);
 		expect(error).toBeInstanceOf(YoqaRunnerCommandError);
 		expect((error as YoqaRunnerCommandError).code).toBe("APP_BACKGROUNDED");
 		expect((error as Error).message).toMatch(/com\.demo is not in the foreground/);
