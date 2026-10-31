@@ -167,14 +167,15 @@ type IdbComplete = {
 	} | null;
 	elements?: IdbNode[];
 	screen?: { width?: number; height?: number };
-	/** The physical-iOS Lane's `ScreenSource`; no other tree carries one. */
-	source?: unknown;
 };
 
-/** The `ScreenSource` a JSON tree carries, or undefined when it has none. */
+/**
+ * The `ScreenSource` a JSON tree carries, or undefined when it has none. Only the
+ * physical-iOS Lane's tree carries one.
+ */
 function sourceOf(doc: unknown): ScreenSource | undefined {
-	if (typeof doc !== "object" || doc === null || Array.isArray(doc)) return undefined;
-	const parsed = screenSourceSchema.safeParse((doc as IdbComplete).source);
+	if (typeof doc !== "object" || doc === null || !("source" in doc)) return undefined;
+	const parsed = screenSourceSchema.safeParse(doc.source);
 	return parsed.success ? parsed.data : undefined;
 }
 
