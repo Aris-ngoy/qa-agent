@@ -117,6 +117,7 @@ export type KeyEvent = {
 /** The commands this client sends, with their params and results. */
 export type CdpCommands = {
 	"Browser.getVersion": { params: Record<string, never>; result: { product: string } };
+	"Browser.close": { params: Record<string, never>; result: Record<string, never> };
 	"Target.getTargets": { params: Record<string, never>; result: { targetInfos: TargetInfo[] } };
 	"Target.getTargetInfo": {
 		params: { targetId: string };

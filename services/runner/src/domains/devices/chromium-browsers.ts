@@ -47,6 +47,13 @@ const PORT_FILE_DIRS: Partial<Record<WebBrowserKey, string>> = {
 };
 
 /**
+ * Browsers a session quits by signal, not `Browser.close`. Dia's `Browser.close` closes its
+ * windows but leaves the app running, and its next launch opens on another profile; on
+ * SIGTERM it saves its profile and quits.
+ */
+const QUITS_BY_SIGNAL: ReadonlySet<InstalledBrowserId> = new Set(["web-dia"]);
+
+/**
  * Each browser's app bundle (`<name>.app`, its binary named the same) and port file folder,
  * in listing order.
  */
@@ -165,6 +172,11 @@ export type ChromiumInstance = {
 	exited: Promise<number>;
 	/** Kill the browser, and delete its profile if it is a clean one. Safe to call twice. */
 	stop: () => Promise<void>;
+	/**
+	 * Whether a session quits it with `Browser.close` first: Chrome, Edge and Opera save
+	 * their cookies only when they shut down on their own, not on a signal.
+	 */
+	closesOverCdp: boolean;
 };
 
 export type LaunchDeps = {
@@ -384,7 +396,13 @@ export async function launchChromium(
 		const socketUrl = await readActivePort(portFile);
 		if (socketUrl) {
 			running.add(browser.id);
-			return { socketUrl, profileDir, exited, stop };
+			return {
+				socketUrl,
+				profileDir,
+				exited,
+				stop,
+				closesOverCdp: !QUITS_BY_SIGNAL.has(browser.id),
+			};
 		}
 		if (hasExited) {
 			await stop();
