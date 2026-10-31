@@ -940,6 +940,11 @@ export const createRunRequestSchema = z.object({
 	 * when any of its Case Scripts asks for it, and its App's Kept profile otherwise.
 	 */
 	profile: browserProfileSchema.optional(),
+	/**
+	 * Web only: the Viewport preset. The Run adopts the Active Session only at this preset and
+	 * otherwise reopens at it. Omitted, it adopts the session at its preset, or opens `desktop`.
+	 */
+	viewport: viewportPresetSchema.optional(),
 });
 export type CreateRunRequest = z.infer<typeof createRunRequestSchema>;
 

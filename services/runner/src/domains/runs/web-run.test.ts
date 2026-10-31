@@ -37,6 +37,7 @@ const {
 const { RunValidationError, cancelRunsInProgress, createRun, getRun } = await import(
 	"./application"
 );
+const { createRunsRoutes } = await import("../../interfaces/http/runs");
 
 const WEB_URL = "https://shop.example.com/";
 
@@ -152,6 +153,45 @@ describe("a Run on web", () => {
 		expect(run.viewport).toBe("mobile");
 		expect(browser.touches.map((touch) => touch.type)).toEqual(["touchStart", "touchEnd"]);
 		expect(browser.clicks).toEqual([{ x: 195, y: 422 }]);
+	});
+
+	test("asking for the mobile preset with no session opens a mobile one, and stores it", async () => {
+		startBrowser();
+		const app = await createApp({ name: "Asks mobile", webUrl: WEB_URL });
+		const created = await createRun({
+			appId: app.id,
+			caseIds: [await scriptedCase(app.id, "Tap")],
+			deviceId,
+			platform: "web",
+			executionMode: "script",
+			viewport: "mobile",
+		});
+		const run = await finished(created.id);
+
+		expect(run.status).toBe("passed");
+		expect(run.viewport).toBe("mobile");
+		expect(getActiveSessionInfo()?.viewport).toBe("mobile");
+		expect(browser.touches.map((touch) => touch.type)).toEqual(["touchStart", "touchEnd"]);
+	});
+
+	test("a viewport on an iOS or Android Run is a 400", async () => {
+		const app = await createApp({ name: "Phone", webUrl: WEB_URL });
+		const caseId = await scriptedCase(app.id, "Tap");
+		for (const platform of ["ios", "android"]) {
+			const response = await createRunsRoutes().request("/runs", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					appId: app.id,
+					caseIds: [caseId],
+					deviceId: "phone-1",
+					platform,
+					viewport: "mobile",
+				}),
+			});
+			expect(response.status).toBe(400);
+			expect(((await response.json()) as { error: string }).error).toContain("viewport is for web");
+		}
 	});
 
 	test("connects on its App's Kept profile by default, and stores it", async () => {
@@ -382,6 +422,35 @@ describe("a Run on the Everyday browser", () => {
 		expect(run.status).toBe("passed");
 		// One Allow: the Run did not ask the user again.
 		expect(browser.socketRequests()).toBe(1);
+	});
+
+	test("a preset other than the connected session's fails the Run, naming the reconnect, without asking again", async () => {
+		startEverydayChrome();
+		const app = await acceptedApp("Other preset");
+		browser.allow();
+		await connectDevice({ deviceId: "web-chrome-everyday", platform: "web" });
+		const run = await finished(
+			(
+				await createRun({
+					appId: app.id,
+					caseIds: [await scriptedCase(app.id, "Tap")],
+					deviceId: "web-chrome-everyday",
+					platform: "web",
+					executionMode: "script",
+					viewport: "mobile",
+				})
+			).id,
+		);
+
+		expect(run.status).toBe("errored");
+		expect(run.error).toContain("yoqa devices connect web-chrome-everyday --viewport mobile");
+		expect(browser.socketRequests()).toBe(1);
+		expect(getActiveSessionInfo()).toMatchObject({
+			deviceId: "web-chrome-everyday",
+			viewport: "desktop",
+			heldByRun: false,
+		});
+		expect(browser.navigations).toEqual([]);
 	});
 
 	test("profile: clean fails before the Run starts, naming the Kept profile as the way to a clean one", async () => {

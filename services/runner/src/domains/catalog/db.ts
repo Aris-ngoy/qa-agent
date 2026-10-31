@@ -224,6 +224,7 @@ function migrateRunLane(sqlite: Database): void {
 	addColumnIfMissing(sqlite, "runs", "browser", "browser TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "viewport", "viewport TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "requested_profile", "requested_profile TEXT", runCols);
+	addColumnIfMissing(sqlite, "runs", "requested_viewport", "requested_viewport TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "profile", "profile TEXT", runCols);
 	addColumnIfMissing(sqlite, "runs", "browser_profile_name", "browser_profile_name TEXT", runCols);
 }

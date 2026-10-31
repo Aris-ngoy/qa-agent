@@ -877,6 +877,34 @@ describe("connecting a browser Yoqa launches", () => {
 		expect(getActiveSession()).toMatchObject({ appId: "app_1", profile: "kept" });
 	});
 
+	test("a Run naming a preset adopts a session at it, and reopens one at another", async () => {
+		const { chromium } = installedChrome();
+		await connectDevice({ deviceId: "web-chrome", platform: "web", appId: "app_1" });
+		const run = { deviceId: "web-chrome", platform: "web" as const, appId: "app_1" };
+		const desktop = await acquireSessionForRun({ ...run, runId: "run_1", viewport: "desktop" });
+		await releaseSessionFromRun("run_1", desktop.session, desktop.shared);
+		expect(chromium.launched).toHaveLength(1);
+
+		const mobile = await acquireSessionForRun({ ...run, runId: "run_2", viewport: "mobile" });
+		expect(chromium.launched).toHaveLength(2);
+		expect(chromium.kills).toBe(1);
+		expect(mobile.session.viewport).toBe("mobile");
+		expect(getActiveSession()).toMatchObject({ appId: "app_1", heldByRunId: "run_2" });
+	});
+
+	test("a Run on another App's profile reopens at the preset it names", async () => {
+		installedChrome();
+		await connectDevice({ deviceId: "web-chrome", platform: "web" });
+		const acquired = await acquireSessionForRun({
+			runId: "run_1",
+			deviceId: "web-chrome",
+			platform: "web",
+			appId: "app_1",
+			viewport: "mobile",
+		});
+		expect(acquired.session.viewport).toBe("mobile");
+	});
+
 	test("an App id that is not a folder name is a 400", async () => {
 		const response = await connect({ deviceId: "web-chrome", platform: "web", appId: "../x" });
 		expect(response.status).toBe(400);

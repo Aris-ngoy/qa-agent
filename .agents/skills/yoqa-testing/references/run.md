@@ -13,6 +13,7 @@ yoqa runs create APP --cases 1,2,5 --build-path /abs/path/App.ipa
 yoqa runs create APP --cases 1 --wait                           # block until the run finishes
 yoqa runs create APP --cases 1 --wait --timeout 3600            # wait timeout in seconds (default 1800)
 yoqa runs create APP --cases 1 --device web-chrome --wait        # on web: opens the App's Web URL
+yoqa runs create APP --cases 1 --device web-chrome --viewport mobile   # at the mobile preset
 ```
 
 ```bash
@@ -37,9 +38,11 @@ yoqa runs delete <run-id>                   # delete a run and its results (irre
   with `--device <id>` and `--platform <ios|android|web>` (pass both; web ids imply `web`).
 - **On web** a Run opens the App's Web URL before the first case — set it with
   `yoqa apps update APP --web-url <url>` ([Apps, Cases & Flows](apps-cases-and-flows.md)). A Run on web
-  for an App with no Web URL fails before it connects. There are no builds on web. Connect first to
-  choose the viewport preset (`--viewport mobile`); a Run that connects the browser itself uses
-  `desktop`. Run recording is not available on web: the case runs and is marked "no video".
+  for an App with no Web URL fails before it connects. There are no builds on web. `--viewport desktop|mobile`
+  picks the viewport preset: the Run adopts the session only at that preset and otherwise reopens the
+  browser at it. Without it the Run keeps the session's preset, or opens at `desktop`. On an Everyday
+  browser (`web-<browser>-everyday`) connected at another preset the Run fails instead, since reopening
+  asks for Allow again: reconnect with `yoqa devices connect <id> --viewport <preset>`. Run recording is not available on web: the case runs and is marked "no video".
 - **A build is optional.** Omit both build flags when the app is already installed (e.g. a React Native
   debug build launched via Metro). Note that without a build there is **no clean reinstall** — the app
   keeps whatever state is on the device (login, onboarding, leftover data), which bleeds across cases.

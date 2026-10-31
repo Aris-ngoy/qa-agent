@@ -245,6 +245,7 @@ yoqa runs get <run-id>
 yoqa runs create APP --cases 1,2 --wait   # start cases; --wait blocks until finished
 yoqa runs create APP --cases 1 --lane auto
 yoqa runs create APP --cases 1 --device web-chrome --wait   # on web: opens the App's Web URL
+yoqa runs create APP --cases 1 --device web-chrome --viewport mobile   # web: reopens at mobile unless the session is
 yoqa runs wait <run-id>
 yoqa benchmark --device <id> --platform ios
 yoqa benchmark --device <id> --platform ios --suite docs/devices/benchmark-suite.json

@@ -1840,6 +1840,10 @@ runsCmd
 		"--profile <profile>",
 		"web: kept | clean — the App's Kept browser profile or a throwaway one, whatever the cases ask (default: clean if a case asks, else kept)",
 	)
+	.option(
+		"--viewport <preset>",
+		"web: desktop | mobile — reopens a session at another preset (default: the session's, else desktop)",
+	)
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.option("--wait", "Wait until the run finishes (passed / errored / cancelled)")
@@ -1865,6 +1869,7 @@ runsCmd
 				lane?: string;
 				recordVideo?: boolean;
 				profile?: string;
+				viewport?: string;
 				json?: boolean;
 				wait?: boolean;
 				timeout?: string;
@@ -1936,6 +1941,7 @@ runsCmd
 				if (options.profile && !profile) {
 					throw new Error("--profile must be kept or clean");
 				}
+				const viewport = parseViewportPreset(options.viewport, platform);
 
 				let run = await c.createRun({
 					appId: resolved.id,
@@ -1949,6 +1955,7 @@ runsCmd
 					lane,
 					recordVideo: options.recordVideo || undefined,
 					profile,
+					viewport,
 				});
 				if (options.wait) {
 					try {
