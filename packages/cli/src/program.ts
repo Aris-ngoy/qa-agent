@@ -9,6 +9,7 @@ import {
 	KEY_MODIFIERS,
 	KEY_NAMES,
 	RunnerUnreachableError,
+	type ScreenSource,
 	WaitForRunTimeoutError,
 	caseScriptActionCommand,
 	checkScreen,
@@ -560,6 +561,13 @@ devices
 
 // --- screen / screenshot / action ---
 
+/** The line `yoqa screen` leads with, so a SpringBoard tree is not taken for the app's. */
+function screenSourceLine(source: ScreenSource): string {
+	if (source.kind === "system") return "Read from the system (SpringBoard), not an app";
+	const app = source.bundleId ?? "an unnamed app";
+	return `Read from ${app} (${source.kind === "target" ? "target app" : "foreground app"})`;
+}
+
 program
 	.command("screen")
 	.description("Inspect the active device screen (cleaned tree by default)")
@@ -573,6 +581,7 @@ program
 				console.log(JSON.stringify(body, null, 2));
 				return;
 			}
+			if (body.source) console.log(screenSourceLine(body.source));
 			for (const el of body.elements ?? []) {
 				console.log(
 					`${String(el.x).padStart(4)},${String(el.y).padStart(4)}  ${el.width}x${el.height}  ${el.label}`,

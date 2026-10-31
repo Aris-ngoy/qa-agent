@@ -1202,11 +1202,22 @@ export const screenElementSchema = z.object({
 });
 export type ScreenElement = z.infer<typeof screenElementSchema>;
 
+/**
+ * Which app a Screen was read from: the target app, the app found in the foreground
+ * without one, or the system (SpringBoard). Unset on a Lane that does not report it.
+ */
+export const screenSourceSchema = z.object({
+	kind: z.enum(["target", "foreground", "system"]),
+	bundleId: z.string().optional(),
+});
+export type ScreenSource = z.infer<typeof screenSourceSchema>;
+
 export const screenResponseSchema = z.object({
 	full: z.boolean(),
 	window: z.object({ width: z.number(), height: z.number() }),
 	elements: z.array(screenElementSchema).optional(),
 	raw: z.string().optional(),
+	source: screenSourceSchema.optional(),
 });
 export type ScreenResponse = z.infer<typeof screenResponseSchema>;
 

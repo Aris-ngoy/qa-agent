@@ -3,7 +3,7 @@
  * Drops zero-size / offscreen / pure layout containers (ARCHITECTURE §4.2).
  */
 
-import { decodeXmlEntities } from "@yoqa/runner-client";
+import { type ScreenSource, decodeXmlEntities, screenSourceSchema } from "@yoqa/runner-client";
 import type { AxNode } from "./cdp-client";
 
 export type ScreenElement = {
@@ -22,6 +22,8 @@ export type ScreenElement = {
 export type CleanedScreen = {
 	elements: ScreenElement[];
 	window: { width: number; height: number };
+	/** Which app the tree was read from, when the Lane says so. */
+	source?: ScreenSource;
 };
 
 function parseBoundsAndroid(bounds: string | null): {
@@ -165,7 +167,30 @@ type IdbComplete = {
 	} | null;
 	elements?: IdbNode[];
 	screen?: { width?: number; height?: number };
+	/** The physical-iOS Lane's `ScreenSource`; no other tree carries one. */
+	source?: unknown;
 };
+
+/** The `ScreenSource` a JSON tree carries, or undefined when it has none. */
+function sourceOf(doc: unknown): ScreenSource | undefined {
+	if (typeof doc !== "object" || doc === null || Array.isArray(doc)) return undefined;
+	const parsed = screenSourceSchema.safeParse((doc as IdbComplete).source);
+	return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Which app a raw tree says it was read from, for a full Screen. Only the physical-iOS
+ * Lane's JSON tree says so; any other tree, or one that does not parse, has none.
+ */
+export function screenSourceOf(raw: string): ScreenSource | undefined {
+	const trimmed = raw.trim();
+	if (!trimmed.startsWith("{")) return undefined;
+	try {
+		return sourceOf(JSON.parse(trimmed));
+	} catch {
+		return undefined;
+	}
+}
 
 function idbFrame(frame: IdbFrame | undefined): {
 	x: number;
@@ -263,7 +288,8 @@ export function cleanIdbCompleteSource(
 		};
 		pushNormalized(elements, window, { type, label: modal.label, rect });
 	}
-	return { elements, window };
+	const source = sourceOf(parsed);
+	return source ? { elements, window, source } : { elements, window };
 }
 
 type Rect = { x: number; y: number; width: number; height: number };

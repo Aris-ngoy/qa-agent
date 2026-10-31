@@ -11,7 +11,7 @@ import {
 import { groundDescription } from "./grounding";
 import { UnsupportedKeyError } from "./lane";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
-import { cleanPageSource } from "./screen";
+import { cleanPageSource, screenSourceOf } from "./screen";
 import type { DeviceSession } from "./session";
 
 export type GetScreenOptions = {
@@ -34,13 +34,15 @@ async function readScreen(
 	const raw = await session.pageSource();
 	const window = await session.getWindowSize();
 	if (options.full) {
-		return { full: true, window, raw };
+		const source = screenSourceOf(raw);
+		return { full: true, window, raw, ...(source ? { source } : {}) };
 	}
 	const cleaned = cleanPageSource(raw, window);
 	return {
 		full: false,
 		window: cleaned.window,
 		elements: cleaned.elements,
+		...(cleaned.source ? { source: cleaned.source } : {}),
 	};
 }
 
