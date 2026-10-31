@@ -29,11 +29,11 @@ export function treePanelFor(input: {
 	hasTargetApp: boolean;
 	showSystem: boolean;
 }): TreePanel {
-	const { source } = input;
+	const { source, hasTargetApp, showSystem } = input;
 	if (!source) return { kind: "tree", label: null };
 	const label = treeSourceLabel(source);
-	if (source.kind !== "system" || input.hasTargetApp) return { kind: "tree", label };
-	return { kind: input.showSystem ? "system" : "no-target-app", label };
+	if (source.kind !== "system" || hasTargetApp) return { kind: "tree", label };
+	return { kind: showSystem ? "system" : "no-target-app", label };
 }
 
 /** The elements the panel hit-tests and selects: none while SpringBoard's are hidden. */
