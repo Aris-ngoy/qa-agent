@@ -618,6 +618,36 @@ export class RunnerRequestError extends Error {
 	}
 }
 
+/**
+ * A runner request that got no answer at all: nothing listens at the base URL, or the
+ * connection dropped. An answer with an error status is a `RunnerRequestError` instead.
+ */
+export class RunnerUnreachableError extends Error {
+	constructor(
+		readonly url: string,
+		options: { cause: unknown },
+	) {
+		const reason = options.cause instanceof Error ? options.cause.message : String(options.cause);
+		super(reason, options);
+		this.name = "RunnerUnreachableError";
+	}
+}
+
+/** Fetch, with a request that got no answer thrown as `RunnerUnreachableError`; an abort stays an abort. */
+function answeredFetch(fetchImpl: typeof fetch): typeof fetch {
+	const wrapped = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+		try {
+			return await fetchImpl(input, init);
+		} catch (error) {
+			if (error instanceof Error && error.name === "AbortError") throw error;
+			throw new RunnerUnreachableError(String(input instanceof Request ? input.url : input), {
+				cause: error,
+			});
+		}
+	};
+	return Object.assign(wrapped, fetchImpl) as typeof fetch;
+}
+
 /** The 428 a connect answers when the App has not accepted the Everyday browser's warning; else null. */
 export function everydayWarningRequired(error: unknown): EverydayWarningRequired | null {
 	if (!(error instanceof RunnerRequestError) || error.status !== 428) return null;
@@ -654,7 +684,7 @@ export class RunnerClient {
 		this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
 		// Bind fetch — WebKit throws "Can only call Window.fetch on instances of Window"
 		// when a detached fetch reference is invoked (e.g. Electrobun webview).
-		this.fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
+		this.fetchImpl = answeredFetch(options.fetchImpl ?? fetch.bind(globalThis));
 	}
 
 	private async requestJson(
