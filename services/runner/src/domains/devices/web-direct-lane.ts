@@ -824,11 +824,6 @@ export async function createWebDirectSession(
 	const input = <M extends CdpMethod>(method: M, params: CdpCommands[M]["params"]) =>
 		beforeDialog(() => call(method, params));
 
-	/** An Action that would reach the page fails while a dialog holds it. */
-	const assertNoDialog = () => {
-		if (openDialog) throw dialogOpenError(openDialog);
-	};
-
 	/** One command to the browser itself (targets, storage). */
 	const callBrowser = <M extends CdpMethod>(method: M, params: CdpCommands[M]["params"]) =>
 		guarded(() => client.send(method, params));
@@ -841,6 +836,13 @@ export async function createWebDirectSession(
 		chain = run.catch(() => undefined).finally(screenChanges.changed);
 		return run;
 	};
+
+	/** An Action that would reach the page: it fails while a dialog holds the page. */
+	const withPageActionLock = (fn: () => Promise<void>): Promise<void> =>
+		withActionLock(async () => {
+			if (openDialog) throw dialogOpenError(openDialog);
+			await fn();
+		});
 
 	/** The page viewport in CSS pixels: the preset's, on every page, however the window is sized. */
 	const getWindowSize = () =>
@@ -1240,27 +1242,14 @@ export async function createWebDirectSession(
 				openDialog ? tapDialog(openDialog, x, y) : click(x, y, tapOptions?.durationMs),
 			),
 		swipe: (x1, y1, x2, y2, durationMs) =>
-			withActionLock(async () => {
-				assertNoDialog();
-				await scroll(x1, y1, x2, y2, durationMs);
-			}),
+			withPageActionLock(() => scroll(x1, y1, x2, y2, durationMs)),
 		drag: (x1, y1, x2, y2, durationMs) =>
-			withActionLock(async () => {
-				assertNoDialog();
-				await drag(x1, y1, x2, y2, durationMs);
-			}),
-		type: (text) =>
-			withActionLock(async () => {
-				assertNoDialog();
-				await typeText(text);
-			}),
+			withPageActionLock(() => drag(x1, y1, x2, y2, durationMs)),
+		type: (text) => withPageActionLock(() => typeText(text)),
 		keySupport: WEB_KEY_SUPPORT,
 		key: async (name, modifiers = []) => {
 			assertKeySupported(WEB_KEY_SUPPORT, "on the web", name, modifiers);
-			await withActionLock(async () => {
-				assertNoDialog();
-				await pressKey(name, modifiers);
-			});
+			await withPageActionLock(() => pressKey(name, modifiers));
 		},
 		activateApp: (appId) => withActionLock(() => openApp(webUrlOf(appId))),
 		// Every lifecycle Action names its Web URL, and a Run opens it itself, so none is kept.
