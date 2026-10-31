@@ -394,15 +394,14 @@ export async function acquireSessionForRun(options: {
 	const onDevice = current?.deviceId === options.deviceId ? current : undefined;
 	// A replacement reopens at the preset the Run names, else the one the user connected at.
 	const viewport = options.viewport ?? onDevice?.session.viewport;
-	const atPreset =
-		!options.viewport ||
-		(onDevice?.session.viewport ?? DEFAULT_VIEWPORT_PRESET) === options.viewport;
+	const connectedViewport = onDevice?.session.viewport ?? DEFAULT_VIEWPORT_PRESET;
+	const atPreset = !options.viewport || connectedViewport === options.viewport;
 	const everyday = onDevice ? everydayBrowserIdOf(onDevice.deviceId) !== null : false;
 
 	// The Everyday browser reopens only by asking for Allow again, which a Run never does.
 	if (onDevice && everyday && !atPreset) {
 		throw new Error(
-			`${options.deviceId} is connected at ${onDevice.session.viewport ?? DEFAULT_VIEWPORT_PRESET}, and reopening your Everyday browser asks for Allow again. Reconnect it at ${options.viewport} first: yoqa devices connect ${options.deviceId} --viewport ${options.viewport}`,
+			`${options.deviceId} is connected at ${connectedViewport}, and reopening your Everyday browser asks for Allow again. Reconnect it at ${options.viewport} first: yoqa devices connect ${options.deviceId} --viewport ${options.viewport}`,
 		);
 	}
 

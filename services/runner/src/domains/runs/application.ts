@@ -604,7 +604,6 @@ export async function executeRun(runId: string): Promise<void> {
 						run.tests.map((test) => test.caseId),
 					)
 				: undefined;
-		const viewport = viewportPresetSchema.safeParse(runRow?.requestedViewport);
 		// Adopt the shared Active Session when it already targets this device (on web, on
 		// this App's profile and the preset asked for); otherwise connect (replacing any unheld
 		// session) and keep it live after.
@@ -616,7 +615,7 @@ export async function executeRun(runId: string): Promise<void> {
 			requestedLane:
 				requestedLane === "direct" || requestedLane === "auto" ? requestedLane : undefined,
 			...(profile ? { appId: run.appId, profile } : {}),
-			...(viewport.success ? { viewport: viewport.data } : {}),
+			...viewportOf(runRow?.requestedViewport ?? null),
 		});
 		const activeSession = acquired.session;
 		session = activeSession;
