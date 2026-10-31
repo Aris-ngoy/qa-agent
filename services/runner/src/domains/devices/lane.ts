@@ -57,6 +57,11 @@ export type CapturedFrame = {
 	 * Equal hashes mean an unchanged screen, so a reader can reuse what it derived from it.
 	 */
 	hash?: string;
+	/**
+	 * The screen cannot change until something on it is answered (a web page's JavaScript
+	 * dialog holds it), so this is the last frame from before, and Settle need not wait.
+	 */
+	frozen?: boolean;
 };
 
 export type PointerPhase = "begin" | "move" | "end";

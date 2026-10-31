@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type BrowserProfile, type CaseScript, VIEWPORT_PRESETS } from "@yoqa/runner-client";
 import { executeScriptCase } from "../runs/case-executor";
+import { performActionWithScreenshot } from "./action-result";
 import type { InstalledBrowser } from "./chromium-browsers";
 import {
 	type FakeAxNode,
@@ -567,6 +568,132 @@ describe("web Direct lane: Screen", () => {
 		});
 		expect(status).toBe("passed");
 		expect(browser.clicks).toEqual([{ x: 128, y: 260 }]);
+		await session.quit();
+	});
+});
+
+/** A list row whose Delete button asks first, with `confirm()`. */
+const DELETE_ROW: FakeAxNode[] = [
+	{
+		role: "button",
+		name: "Delete",
+		box: { x: 64, y: 240, width: 128, height: 40 },
+		opensDialog: { type: "confirm", message: "Delete this item?" },
+	},
+];
+
+/** How long a capture under an open dialog may take: far under the 30 s command timeout. */
+const DIALOG_BOUND_MS = 1000;
+
+/** Wait until the lane has seen the page's dialog open: the Screen leads with it. */
+async function dialogShown(session: DeviceSession) {
+	for (let attempt = 0; attempt < 50; attempt++) {
+		const screen = await getScreen(session, { pauseMjpeg: false });
+		if (screen.elements?.[0]?.type === "modal") return;
+		await Bun.sleep(10);
+	}
+	throw new Error("The dialog never reached the Screen");
+}
+
+describe("web Direct lane: a JavaScript dialog", () => {
+	test("a capture under an open dialog returns the last screenshot at once, held as settled", async () => {
+		const { browser, session } = await attach({ nodes: SIGN_IN });
+		const before = await session.captureFrame();
+		browser.openDialog("alert", "Saved");
+		await dialogShown(session);
+		const started = performance.now();
+		const frame = await session.captureFrame();
+		const shot = await session.screenshot();
+		expect(performance.now() - started).toBeLessThan(DIALOG_BOUND_MS);
+		expect(frame).toMatchObject({ base64: before.base64, mime: "image/png", frozen: true });
+		expect(shot.base64).toBe(before.base64);
+		await session.quit();
+	});
+
+	test("a capture under an open dialog with no earlier screenshot fails fast, naming it", async () => {
+		const { browser, session } = await attach({ nodes: SIGN_IN });
+		browser.openDialog("confirm", "Delete this item?");
+		await dialogShown(session);
+		const started = performance.now();
+		const error = await rejection(session.captureFrame());
+		expect(performance.now() - started).toBeLessThan(DIALOG_BOUND_MS);
+		expect((error as Error).message).toBe(
+			"A JavaScript dialog is open: Delete this item?. Accept or dismiss it first.",
+		);
+		await session.quit();
+	});
+
+	test("a capture in flight when the dialog opens comes back without waiting for it", async () => {
+		const { browser, session } = await attach({ nodes: SIGN_IN });
+		const before = await session.captureFrame();
+		const capture = session.captureFrame();
+		browser.openDialog("alert", "Saved");
+		const started = performance.now();
+		const frame = await capture;
+		expect(performance.now() - started).toBeLessThan(DIALOG_BOUND_MS);
+		expect(frame.base64).toBe(before.base64);
+		await session.quit();
+	});
+
+	test("a tap that opens a dialog returns at once, its Result settled on the last frame", async () => {
+		const { browser, session } = await attach({ nodes: DELETE_ROW });
+		await session.captureFrame();
+		const started = performance.now();
+		const result = await performActionWithScreenshot(
+			session,
+			{ kind: "tap", label: "Delete" },
+			{ prepareImage: async (png) => ({ base64: png, mediaType: "image/png", downscaled: false }) },
+		);
+		expect(performance.now() - started).toBeLessThan(DIALOG_BOUND_MS);
+		expect(browser.clicks).toEqual([{ x: 128, y: 260 }]);
+		expect(result.screenshot).toMatchObject({ settled: true, changed: null });
+		await dialogShown(session);
+		await session.quit();
+	});
+
+	test("--full carries the dialog's event next to the page's tree", async () => {
+		const { browser, session } = await attach({ nodes: SIGN_IN });
+		browser.openDialog("prompt", "Your name?", "Ada");
+		await dialogShown(session);
+		const screen = await getScreen(session, { full: true, pauseMjpeg: false });
+		const raw = JSON.parse(screen.raw ?? "") as { dialog?: { event: Record<string, unknown> } };
+		expect(raw.dialog?.event).toMatchObject({
+			type: "prompt",
+			message: "Your name?",
+			defaultPrompt: "Ada",
+		});
+		await session.quit();
+	});
+
+	test("a Case Script `if:` on the dialog's message takes `then`, and its OK answers it", async () => {
+		const { browser, session } = await attach({ nodes: DELETE_ROW });
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{ type: "tap", label: "Delete" },
+				{
+					type: "branch",
+					text: "Delete this item?",
+					assertion: "visible",
+					then: [{ type: "tap", label: "OK" }],
+					else: [],
+				},
+			],
+		};
+		const details: string[] = [];
+		const status = await executeScriptCase({
+			script,
+			session,
+			isAborted: () => false,
+			appendStep: async (step) => {
+				if (step.detail) details.push(step.detail);
+			},
+			settleMs: 0,
+		});
+		expect(status).toBe("passed");
+		expect(details).toContain("visible: Delete this item? → then");
+		expect(browser.dialogAnswers).toEqual([{ accept: true }]);
 		await session.quit();
 	});
 });

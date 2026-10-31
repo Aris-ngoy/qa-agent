@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readdir, unlink } from "node:fs/promises";
-import { KEY_MODIFIERS, KEY_NAMES, VIEWPORT_PRESETS } from "@yoqa/runner-client";
+import {
+	KEY_MODIFIERS,
+	KEY_NAMES,
+	type ScreenElement,
+	VIEWPORT_PRESETS,
+} from "@yoqa/runner-client";
 import { pngSizeFromBase64 } from "./android-gestures";
 import { jpegSize, readMjpegFrames } from "./fake-cdp";
 import { getScreen, performAction } from "./interaction";
@@ -53,6 +58,18 @@ async function open(harness: LaneHarness) {
 		},
 	});
 	return { session, deadCalls: () => deadCalls };
+}
+
+/** The cleaned Screen once `ready` holds: the page's dialog events arrive on their own. */
+async function waitForScreen(
+	session: Awaited<ReturnType<typeof open>>["session"],
+	ready: (elements: ScreenElement[]) => boolean,
+): Promise<ScreenElement[]> {
+	for (let attempt = 0; ; attempt++) {
+		const elements = (await getScreen(session, { pauseMjpeg: false })).elements ?? [];
+		if (ready(elements) || attempt >= 50) return elements;
+		await Bun.sleep(10);
+	}
 }
 
 for (const makeHarness of LANES) {
@@ -257,6 +274,77 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 			(caught: unknown) => caught,
 		);
 		expect((error as Error).message).toContain("No JavaScript dialog is open");
+		await session.quit();
+	});
+
+	for (const [type, buttons] of [
+		["alert", ["OK"]],
+		["confirm", ["Cancel", "OK"]],
+		["prompt", ["Cancel", "OK"]],
+		["beforeunload", ["Cancel", "OK"]],
+	] as const) {
+		test(`an open ${type} leads the Screen as a modal with its message and ${buttons.join(" and ")}`, async () => {
+			const harness = webCdpLane();
+			const { session } = await open(harness);
+			harness.browser.openDialog(type, "Leave this page?");
+			const screen = await waitForScreen(session, (elements) => elements[0]?.type === "modal");
+			expect(screen[0]).toMatchObject({ type: "modal", label: "Leave this page?", id: type });
+			const dialogButtons = screen.slice(1, 1 + buttons.length);
+			expect(dialogButtons.map((el) => [el.type, el.label])).toEqual(
+				buttons.map((label) => ["button", label]),
+			);
+			for (const button of dialogButtons) {
+				const modal = screen[0];
+				if (!modal) throw new Error("no modal");
+				expect(button.x).toBeGreaterThanOrEqual(modal.x);
+				expect(button.y + button.height).toBeLessThanOrEqual(modal.y + modal.height);
+			}
+			await performAction(session, { kind: "alert", alertAction: "accept" });
+			const after = await waitForScreen(session, (elements) => elements[0]?.type !== "modal");
+			expect(after.some((el) => el.type === "modal" || el.label === "OK")).toBe(false);
+			expect(after.some((el) => el.label === BUTTON.label)).toBe(true);
+			await session.quit();
+		});
+	}
+
+	test("a tap by label on OK accepts the dialog, and on Cancel dismisses it, clicking nothing", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		harness.browser.openDialog("confirm", "Delete this item?");
+		await waitForScreen(session, (elements) => elements[0]?.type === "modal");
+		await performAction(session, { kind: "tap", label: "OK" });
+		harness.browser.openDialog("confirm", "Delete this item?");
+		await waitForScreen(session, (elements) => elements[0]?.type === "modal");
+		await performAction(session, { kind: "tap", label: "Cancel" });
+		expect(harness.browser.dialogAnswers).toEqual([{ accept: true }, { accept: false }]);
+		expect(harness.browser.clicks).toEqual([]);
+		await session.quit();
+	});
+
+	test("a tap by label on a prompt's OK keeps its default answer", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		harness.browser.openDialog("prompt", "Your name?", "Ada");
+		await waitForScreen(session, (elements) => elements[0]?.type === "modal");
+		await performAction(session, { kind: "tap", label: "OK" });
+		expect(harness.browser.dialogAnswers).toEqual([{ accept: true, promptText: "Ada" }]);
+		await session.quit();
+	});
+
+	test("a tap off the dialog's buttons fails, naming the dialog, and reaches nothing", async () => {
+		const harness = webCdpLane();
+		const { session } = await open(harness);
+		harness.browser.openDialog("alert", "Saved");
+		await waitForScreen(session, (elements) => elements[0]?.type === "modal");
+		const error = await performAction(session, { kind: "tap", x: 10, y: 10 }).then(
+			() => null,
+			(caught: unknown) => caught,
+		);
+		expect((error as Error).message).toBe(
+			"A JavaScript dialog is open: Saved. Accept or dismiss it first.",
+		);
+		expect(harness.browser.clicks).toEqual([]);
+		expect(harness.browser.dialogAnswers).toEqual([]);
 		await session.quit();
 	});
 

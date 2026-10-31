@@ -25,6 +25,8 @@ export type SettleResult = {
 	base64: string;
 	settled: boolean;
 	waitedMs: number;
+	/** The frame is from before the screen froze (`CapturedFrame.frozen`), so it shows no change. */
+	frozen?: boolean;
 };
 
 function frameHash(base64: string): string {
@@ -37,10 +39,11 @@ function frameHash(base64: string): string {
  * the latest frame is returned with `settled: false`. A frame with `capturedAt` (from a
  * background capture) is timed by when it was captured, so the same capture read twice
  * proves nothing. A source gives `capturedAt` on every frame or on none: it is on the
- * source's clock, not the settle clock.
+ * source's clock, not the settle clock. A frozen frame is settled at once: nothing can
+ * move until whatever froze it is answered.
  */
 export async function settleScreen(
-	capture: () => Promise<{ base64: string; capturedAt?: number }>,
+	capture: () => Promise<{ base64: string; capturedAt?: number; frozen?: boolean }>,
 	options: { capMs?: number; pollMs?: number; stableWindowMs?: number; clock?: SettleClock } = {},
 ): Promise<SettleResult> {
 	const capMs = options.capMs ?? DEFAULT_SETTLE_CAP_MS;
@@ -50,6 +53,9 @@ export async function settleScreen(
 	const started = clock.now();
 
 	const first = await capture();
+	if (first.frozen) {
+		return { base64: first.base64, settled: true, waitedMs: clock.now() - started, frozen: true };
+	}
 	let latest = first.base64;
 	let lastHash = frameHash(latest);
 	let stableSince = first.capturedAt ?? started;
@@ -65,8 +71,10 @@ export async function settleScreen(
 		await clock.sleep(Math.max(0, Math.min(pollMs, capMs - elapsed)));
 		const frame = await capture();
 		latest = frame.base64;
-		const hash = frameHash(latest);
 		const now = clock.now();
+		if (frame.frozen)
+			return { base64: latest, settled: true, waitedMs: now - started, frozen: true };
+		const hash = frameHash(latest);
 		const seenAt = frame.capturedAt ?? now;
 		if (hash === lastHash) {
 			if (seenAt - stableSince >= stableWindowMs) {
@@ -169,7 +177,7 @@ export async function performActionWithScreenshot(
 		settled: settle.settled,
 		waitedMs: settle.waitedMs,
 		changed:
-			settle.settled && previousFrame !== undefined
+			settle.settled && !settle.frozen && previousFrame !== undefined
 				? frameHash(previousFrame) !== frameHash(settle.base64)
 				: null,
 	};

@@ -1279,7 +1279,10 @@ export const actionResultScreenshotSchema = z.object({
 	/** False when the screen was still changing at the cap (animation, games). */
 	settled: z.boolean(),
 	waitedMs: z.number(),
-	/** Whether the screen differs from before the Action. Null when it never settled. */
+	/**
+	 * Whether the screen differs from before the Action. Null when it never settled, or when
+	 * a web page's JavaScript dialog held it and the frame is from before the dialog.
+	 */
 	changed: z.boolean().nullable(),
 });
 export type ActionResultScreenshot = z.infer<typeof actionResultScreenshotSchema>;

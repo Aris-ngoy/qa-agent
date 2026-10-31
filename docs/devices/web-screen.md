@@ -72,11 +72,37 @@ A tester sees the controls inside an iframe (a card form, a "Sign in with" butto
   - Taps by label and id land on them.
   - `--full` is one tree with unique ids.
 
+## JavaScript dialogs
+
+### Goal
+
+An open `alert`, `confirm`, `prompt` or `beforeunload` dialog is on the web Screen, and nothing waits on it ([#384](https://github.com/Aris-ngoy/qa-agent/issues/384), part of [#339](https://github.com/Aris-ngoy/qa-agent/issues/339)). Before, the lane tracked the dialog only to keep a prompt's default answer. Chromium paints nothing and answers nothing the page has to render while a dialog is open, so a screenshot or a click that opened one could hang until it was answered, and the agent had to answer a dialog it could not see. Background: [web-gestures-alerts-lifecycle.md](./web-gestures-alerts-lifecycle.md).
+
+### Plan summary
+
+- **The dialog leads the Screen.** The page source gains `dialog`: the browser's `Page.javascriptDialogOpening` event as sent, and the boxes the lane gives the dialog and its buttons. The cleaner puts one `modal` first, labelled with the message and with the dialog's type as its id, then a `button` per answer: OK, with Cancel before it for `confirm`, `prompt` and `beforeunload`. This is the iOS system `modal` and the alert Actions' accept and dismiss, so a Branch on the message or a label tap on "OK" reads the same on every platform. `--full` carries the whole event under `dialog`.
+- **Synthetic boxes.** The browser draws the dialog outside the page, so the lane places it: a panel across the middle of the viewport (10–90 % across, 30–60 % down), buttons along its bottom, OK last as Chrome lays them out. On the desktop preset that is the modal at 100,300 (800×300) and OK at 681,510.
+- **Taps on it answer it.** While a dialog is open, a tap on one of its buttons goes to the existing `answerDialog` (accept or dismiss; a prompt keeps its default answer), never to the page. A tap anywhere else, and any swipe, drag, type or key, fails with "A JavaScript dialog is open: <message>. Accept or dismiss it first." and reaches nothing.
+- **The page under it is not read.** The tree, the snapshot and the screenshot are all the page's renderer, which the dialog holds, so under an open dialog the Screen is the dialog alone. A read that is in flight when one opens stops waiting at the `javascriptDialogOpening` event.
+- **Capture: the last screenshot, frozen.** A capture under an open dialog returns the last screenshot the session took of that page, marked `frozen`, and fails at once with the message above when there is none. A Run always has one, since it screenshots before each step.
+  - Rejected: the latest screencast frame. The page screencasts only while someone watches the Stream, so a Run or a CLI caller with no Inspector open would have none, and its JPEG is at the Stream's size, not the screenshot's.
+- **Settle takes a frozen frame as settled**, at once, and the Result's `changed` is null: the frame is from before the dialog, so it cannot say whether the Action changed anything. An Action whose input opens a dialog ends there: the input the page would only take once it is answered (the rest of a click, of a typed text) is dropped, so the tap returns at once instead of hanging on Chromium's input ack. A navigation held by a `beforeunload` dialog returns too.
+
+### What shipped
+
+- `screen.ts`: `WebDialogSource` on `WebAxSource`, and `cleanWebAxSource` leading with the `modal` and its buttons.
+- `web-direct-lane.ts`: `dialogOnScreen` places the dialog. `beforeDialog` stops waiting on a page command once a dialog opens; input, captures, tree reads and navigations go through it. Taps under a dialog answer it or fail; other input Actions fail. The session keeps its last screenshot per page.
+- `lane.ts` / `action-result.ts`: `CapturedFrame.frozen`, settled at once with `changed: null`.
+- `fake-cdp.ts`: a node can open a dialog when clicked, a dialog holds the page's screenshots, tree reads and input until it is answered, and answering sends `Page.javascriptDialogClosed`.
+- Tests: the Lane contract's web-only cases cover each dialog type's `modal` and buttons, the node going once answered, label taps on OK and Cancel, a prompt's default answer, and a tap off the buttons. `web-direct-lane.test.ts` covers captures under a dialog (with and without an earlier screenshot, and in flight as it opens), a tap that opens one, `--full`, and a Case Script `if:` on the message taking `then`.
+
 ## How to verify
 
 ```bash
 bun test services/runner/src/domains/devices/screen.test.ts services/runner/src/domains/devices/web-direct-lane.test.ts
 bun test services/runner/src/domains/devices/web-direct-lane.test.ts -t iframes
+bun test services/runner/src/domains/devices/web-direct-lane.test.ts -t "JavaScript dialog"
+bun test services/runner/src/domains/devices/lane-contract.test.ts -t "web-only"
 bun test services/runner/src/domains/devices/lane-contract.test.ts -t "Web Direct"
 bun test services/runner/src/domains/runs/agent.test.ts -t snapTapToElement
 bun run lint:ci && bun run test && bun run check
@@ -92,10 +118,20 @@ yoqa screen --full                # the raw AX tree with bounds
 yoqa action tap --label "More information..."
 ```
 
+For a dialog, open one and read it:
+
+```bash
+yoqa action open-url --url "javascript:setTimeout(()=>confirm('Delete this item?'),0)"
+yoqa screen                       # modal "Delete this item?" (id confirm), then buttons Cancel and OK
+yoqa screenshot                   # returns at once: the last screenshot, or the dialog's message
+yoqa action tap --label Cancel    # the confirm closes, answered with Cancel
+```
+
 For iframes, open a page that embeds both kinds, such as a local page with a same-origin `<iframe src="/form.html">` and a cross-site one, or [MDN `<iframe>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe). Then check that `yoqa screen` lists the frames' controls where they are drawn, that `yoqa action tap --label` reaches one, and that the Inspector picks them at a 2× display.
 
 ## Follow-ups
 
 - Iframes: a frame under a CSS transform or zoom gets an untransformed origin. It has not been checked by hand on a real page with both kinds of frame.
 - Text inside a control is dropped even when the control's name does not mention it, so a label tap on that text no longer finds anything; tap the control's name or id.
+- Dialogs: the Inspector's live pointer under an open dialog is dropped rather than answering it; a pick or tap there goes through `yoqa action`. Not checked by hand on Chrome yet: that a capture or a click really holds while a dialog is open, and that a tap opening one returns at once.
 - Labels are not truncated. A long paragraph is one long label, as on mobile.
