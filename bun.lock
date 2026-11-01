@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "qa-agent",
@@ -10,7 +11,7 @@
         "lint-staged": "^17.1.0",
         "turbo": "^2.10.11",
         "typescript": "^5.9.3",
-        "zod": "^3.25.67",
+        "zod": "^4.6.7",
       },
     },
     "apps/desktop": {
@@ -72,7 +73,7 @@
       "version": "0.0.0",
       "dependencies": {
         "yaml": "2.9.0",
-        "zod": "^3.25.67",
+        "zod": "^4.6.7",
       },
       "devDependencies": {
         "@yoqa/typescript-config": "workspace:*",
@@ -122,7 +123,7 @@
         "ai": "^7.0.37",
         "drizzle-orm": "^0.45.2",
         "hono": "^4.13.0",
-        "zod": "^3.25.67",
+        "zod": "^4.6.7",
       },
       "devDependencies": {
         "@types/bun": "^1.2.18",
@@ -915,7 +916,7 @@
 
     "yargs-parser": ["yargs-parser@21.1.1", "", {}, "sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw=="],
 
-    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+    "zod": ["zod@4.6.7", "", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
 
     "@ai-sdk/gateway/@ai-sdk/provider": ["@ai-sdk/provider@4.0.3", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-e0CpNWJUY7OxAFAnCZkw+ri9QOHWwTs1tXP42782KFGCU07qt8NiXCrCVowyCB5dP2r5/Uls+g2oPd8kOJn9dw=="],
 
