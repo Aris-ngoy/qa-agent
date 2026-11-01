@@ -148,7 +148,7 @@ export function InspectorPage() {
 				onCopyLines={script.handleCopyLines}
 				onClose={() => feed.handleSelect(null)}
 				gesturesDisabled={running || feed.viewOnly}
-				onAddSwipe={script.handleAddSwipe}
+				onAddScroll={script.handleAddScroll}
 				onAddWait={script.handleAddWait}
 			/>
 

@@ -20,7 +20,7 @@ import {
 	caseScriptLinesFromShell,
 	defaultCaseNameFromScript,
 	scriptHasBody,
-	swipeLines,
+	scrollLines,
 	waitLine,
 } from "@/features/inspector/utils/script-text";
 import type { InspectorSelection } from "@/features/inspector/utils/selection";
@@ -100,8 +100,8 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 		appendShellLines(tapLinesForSelection(next));
 	};
 
-	const handleAddSwipe = (direction: "up" | "down" | "left" | "right") => {
-		appendScript(script$, swipeLines(direction));
+	const handleAddScroll = (direction: "up" | "down" | "left" | "right") => {
+		appendScript(script$, scrollLines(direction));
 	};
 
 	const handleAddWait = (seconds: number) => {
@@ -407,7 +407,7 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 	return {
 		script$,
 		handleDoubleTap,
-		handleAddSwipe,
+		handleAddScroll,
 		handleAddWait,
 		handleInsertLines,
 		handleCopyLines,

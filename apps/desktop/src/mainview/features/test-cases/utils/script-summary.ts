@@ -44,14 +44,16 @@ export function scriptActionSummary(action: CaseScriptAction): string {
 		return action.alertAction === "dismiss" ? "Dismiss alert" : "Accept alert";
 	}
 	if (action.type === "swipe") {
+		// Named for where the content goes, as the Inspector's Scroll pad is: a finger swipe up
+		// scrolls down.
 		const dy = action.y2 - action.y;
 		const dx = action.x2 - action.x;
 		if (Math.abs(dy) >= Math.abs(dx)) {
-			if (dy < -50) return "Swipe up";
-			if (dy > 50) return "Swipe down";
+			if (dy < -50) return "Scroll down";
+			if (dy > 50) return "Scroll up";
 		} else {
-			if (dx < -50) return "Swipe left";
-			if (dx > 50) return "Swipe right";
+			if (dx < -50) return "Scroll right";
+			if (dx > 50) return "Scroll left";
 		}
 		return `Swipe (${Math.round(action.x)},${Math.round(action.y)})→(${Math.round(action.x2)},${Math.round(action.y2)})`;
 	}

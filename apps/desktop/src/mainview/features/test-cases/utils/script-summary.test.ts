@@ -57,6 +57,21 @@ describe("scriptActionSummary", () => {
 		).toBe("If #onboarding-skip not visible → 1 step");
 	});
 
+	test("names a swipe for the way it scrolls, so a finger swipe up reads Scroll down", () => {
+		expect(scriptActionSummary({ type: "swipe", x: 500, y: 800, x2: 500, y2: 200 })).toBe(
+			"Scroll down",
+		);
+		expect(scriptActionSummary({ type: "swipe", x: 500, y: 200, x2: 500, y2: 800 })).toBe(
+			"Scroll up",
+		);
+		expect(scriptActionSummary({ type: "swipe", x: 800, y: 500, x2: 200, y2: 500 })).toBe(
+			"Scroll right",
+		);
+		expect(scriptActionSummary({ type: "swipe", x: 200, y: 500, x2: 800, y2: 500 })).toBe(
+			"Scroll left",
+		);
+	});
+
 	test("keeps the other actions' wording", () => {
 		expect(scriptActionSummary({ type: "tap", label: "Home" })).toBe("Tap “Home”");
 		expect(scriptActionSummary({ type: "assert", text: "Home", assertion: "visible" })).toBe(
