@@ -42,7 +42,7 @@
 		"@ai-sdk/xai": "^4",
 		"ai": "^7.0.37",
 		"drizzle-orm": "^0.45.2",
-		"hono": "^4.13.0",
+		"hono": "^4.13.14",
 		"zod": "^3.25.67"
 	},
 	"devDependencies": {
