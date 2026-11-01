@@ -143,3 +143,4 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [sessions/2026-09-25-android-emulator-sdk-setup.md](./sessions/2026-09-25-android-emulator-sdk-setup.md) | Android E2E `tools` package fix; job was never green |
 | [sessions/2026-10-11-runner-tunnel-retry.md](./sessions/2026-10-11-runner-tunnel-retry.md) | iPhone tunnel retry, Unreachable Session (503) and Frame Feed (`streamState`) |
 | [sessions/2026-10-18-buy-me-a-coffee.md](./sessions/2026-10-18-buy-me-a-coffee.md) | Buy Me a Coffee badge/QR on README + Mintlify widget/footer |
+| [sessions/2026-11-01-ios-foreground-tree.md](./sessions/2026-11-01-ios-foreground-tree.md) | Cabled-iPhone Inspector reads the foreground app, labels the tree source (#390) |
