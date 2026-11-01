@@ -15,7 +15,7 @@
     },
     "apps/desktop": {
       "name": "@yoqa/desktop",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "dependencies": {
         "@codemirror/commands": "^6.11.1",
         "@codemirror/lint": "^6.9.7",
@@ -52,7 +52,7 @@
     },
     "packages/cli": {
       "name": "@yoqa/cli",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "bin": {
         "yoqa": "dist/main.js",
       },
@@ -108,7 +108,7 @@
     },
     "services/runner": {
       "name": "@yoqa/runner",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "bin": {
         "yoqa-runner": "bin/yoqa-runner.cjs",
       },
