@@ -24,7 +24,7 @@
 		"@heroui/styles": "^3.2.2",
 		"@legendapp/state": "3.0.0-beta.48",
 		"@tanstack/react-query": "^5.81.5",
-		"@tanstack/react-router": "^1.121.34",
+		"@tanstack/react-router": "^1.170.46",
 		"@yoqa/runner-client": "workspace:*",
 		"@yoqa/ui": "workspace:*",
 		"electrobun": "^1.16.0",
