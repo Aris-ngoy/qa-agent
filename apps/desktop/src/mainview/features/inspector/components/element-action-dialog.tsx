@@ -35,7 +35,7 @@ type ElementActionDialogProps = {
 	onCopyLines: (lines: string[]) => void;
 	onClose: () => void;
 	gesturesDisabled: boolean;
-	onAddSwipe: (direction: Direction) => void;
+	onAddScroll: (direction: Direction) => void;
 	onAddWait: (seconds: number) => void;
 };
 
@@ -168,7 +168,7 @@ function DialogBody({
 	onCopyLines,
 	onClose,
 	gesturesDisabled,
-	onAddSwipe,
+	onAddScroll,
 	onAddWait,
 }: ElementActionDialogProps & { selection: InspectorSelection }) {
 	const editable = isEditableElementType(selection.element?.type);
@@ -454,7 +454,7 @@ function DialogBody({
 					<div className="border-t border-outline-variant p-3">
 						<ScreenGestures
 							disabled={gesturesDisabled}
-							onAddSwipe={onAddSwipe}
+							onAddScroll={onAddScroll}
 							onAddWait={onAddWait}
 						/>
 					</div>

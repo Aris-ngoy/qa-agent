@@ -11,10 +11,14 @@ export function commentLine(text: string): string {
 	return `  # ${text}`;
 }
 
-export function swipeLines(direction: "up" | "down" | "left" | "right"): string[] {
+/**
+ * Lines for one press of the Inspector's Scroll pad. `direction` is where the content you want
+ * lies, so the finger swipes the other way: scrolling up is a swipe down.
+ */
+export function scrollLines(direction: "up" | "down" | "left" | "right"): string[] {
 	return [
-		commentLine(`swipe ${direction}`),
-		formatCaseScriptFileActionLine(swipeAction(direction)),
+		commentLine(`scroll ${direction}`),
+		formatCaseScriptFileActionLine(scrollAction(direction)),
 	];
 }
 
@@ -64,18 +68,18 @@ export function defaultCaseNameFromScript(script: string): string {
 	return `Inspector script · ${stamp}`;
 }
 
-function swipeAction(direction: "up" | "down" | "left" | "right"): CaseScriptAction {
+function scrollAction(direction: "up" | "down" | "left" | "right"): CaseScriptAction {
 	const mid = 500;
 	const near = 200;
 	const far = 800;
 	switch (direction) {
 		case "up":
-			return { type: "swipe", x: mid, y: far, x2: mid, y2: near };
-		case "down":
 			return { type: "swipe", x: mid, y: near, x2: mid, y2: far };
+		case "down":
+			return { type: "swipe", x: mid, y: far, x2: mid, y2: near };
 		case "left":
-			return { type: "swipe", x: far, y: mid, x2: near, y2: mid };
-		case "right":
 			return { type: "swipe", x: near, y: mid, x2: far, y2: mid };
+		case "right":
+			return { type: "swipe", x: far, y: mid, x2: near, y2: mid };
 	}
 }
