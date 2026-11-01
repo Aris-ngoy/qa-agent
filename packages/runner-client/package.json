@@ -11,7 +11,7 @@
 	},
 	"dependencies": {
 		"yaml": "2.9.0",
-		"zod": "^3.25.67"
+		"zod": "^4.6.7"
 	},
 	"devDependencies": {
 		"@yoqa/typescript-config": "workspace:*",

@@ -27,7 +27,7 @@
 		"lint-staged": "^17.1.0",
 		"turbo": "^2.10.11",
 		"typescript": "^5.9.3",
-		"zod": "^3.25.67"
+		"zod": "^4.6.7"
 	},
 	"packageManager": "bun@1.2.23",
 	"trustedDependencies": ["@biomejs/biome"]
