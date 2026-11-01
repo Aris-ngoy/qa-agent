@@ -27,7 +27,7 @@
 		"@tanstack/react-router": "^1.121.34",
 		"@yoqa/runner-client": "workspace:*",
 		"@yoqa/ui": "workspace:*",
-		"electrobun": "^1.16.0",
+		"electrobun": "^2.0.5",
 		"react": "19.2.8",
 		"react-dom": "19.2.8",
 		"react-hook-form": "^7.82.0"
