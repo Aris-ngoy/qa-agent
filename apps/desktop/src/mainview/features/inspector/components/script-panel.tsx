@@ -1,3 +1,4 @@
+import { CaseScriptEditor } from "@/features/inspector/components/case-script-editor";
 import type { InspectorScript$ } from "@/features/inspector/data/state/script";
 import { buildScriptStepsView, runProgress } from "@/features/inspector/utils/script-steps";
 import { useObservable, useValue } from "@legendapp/state/react";
@@ -266,17 +267,14 @@ export function ScriptPanel({
 					</ol>
 				)
 			) : (
-				<textarea
-					aria-label="Case Script file (YAML)"
-					className="mx-4 mt-3 mb-2 min-h-72 resize-y rounded-xl border-0 bg-code px-3.5 py-3 font-mono text-body-sm leading-[1.8] text-on-code outline-none focus-visible:ring-2 focus-visible:ring-violet disabled:opacity-60"
-					disabled={running}
-					rows={14}
-					spellCheck={false}
-					value={script}
-					onChange={(event) => script$.text.set(event.target.value)}
-					onPaste={(event) => {
-						if (onPasteText(event.clipboardData.getData("text"))) event.preventDefault();
-					}}
+				<CaseScriptEditor
+					ariaLabel="Case Script file (YAML)"
+					className="mx-4 mt-3 mb-2 h-96 min-h-72 resize-y"
+					errors={stepsView.errors}
+					readOnly={running}
+					text={script}
+					onChange={(text) => script$.text.set(text)}
+					onPasteText={onPasteText}
 				/>
 			)}
 

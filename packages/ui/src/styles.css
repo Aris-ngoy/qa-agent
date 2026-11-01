@@ -106,6 +106,18 @@
 	--color-on-scrim: #ffffff;
 	--color-code: #17161d;
 	--color-on-code: #e6e3f0;
+	/* Case Script editor syntax, on --color-code */
+	--color-code-comment: #8a8599;
+	--color-code-action: #c4b0ff;
+	--color-code-branch: #f2a7c9;
+	--color-code-key: #8ccbf2;
+	--color-code-file-key: #ebc97f;
+	--color-code-number: #f5b47e;
+	--color-code-string: #a9d8a2;
+	--color-code-punctuation: #8a8792;
+	--color-code-gutter: #5c5865;
+	--color-code-selection: #3b3552;
+	--color-code-error: #ff8f8f;
 	--color-splash: #14131c;
 	--color-on-splash: #ffffff;
 	--color-splash-track: #2a2836;
