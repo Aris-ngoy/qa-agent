@@ -51,6 +51,20 @@ export async function openRemoteDebuggingSetting(browserId: string): Promise<voi
 }
 
 /**
+ * Bring the Everyday browser `browserId` names to the front, so the user sees its Allow
+ * prompt. Never rejects: a browser left behind is no reason to fail the connect, so the
+ * host's reason only goes to the console.
+ */
+export async function bringEverydayBrowserToFront(browserId: string): Promise<void> {
+	try {
+		const result = await getDesktopRpc().request.bringEverydayBrowserToFront({ browserId });
+		if (!result.ok) console.warn(`Could not bring ${browserId} to the front: ${result.error}`);
+	} catch (error) {
+		console.warn(`Could not bring ${browserId} to the front:`, error);
+	}
+}
+
+/**
  * Delete a browser's Kept profile for an App, so its next connect starts signed out. The
  * runner refuses (409) while a browser has that profile open.
  */

@@ -82,10 +82,26 @@ export function turnOnHint(
 		: `${hint} If the page doesn't load, open ${REMOTE_DEBUGGING_SETTING_URL} in ${entry.browserName} yourself.`;
 }
 
-/** What the bar says while the runner waits for the user's Allow. */
-export function allowPrompt(browserName: string): string {
-	return `Click Allow in ${browserName}`;
+/**
+ * What the bar says while the runner waits for the user's Allow, with the seconds left
+ * until the runner gives up (`EVERYDAY_ALLOW_TIMEOUT_MS`), once any are known.
+ */
+export function allowPrompt(browserName: string, secondsLeft?: number): string {
+	const prompt = `Click Allow in ${browserName}`;
+	return secondsLeft ? `${prompt} · ${secondsLeft} s` : prompt;
 }
+
+/** Whole seconds from `now` until `deadline`, rounded up, and never below zero. */
+export function allowSecondsLeft(deadline: number, now: number): number {
+	return Math.max(0, Math.ceil((deadline - now) / 1000));
+}
+
+/**
+ * How long a connect runs before the bar says it waits on Allow. The runner refuses an App
+ * that has not accepted the warning at once, and a closed browser too, so neither is ever
+ * told to click Allow. The CLI waits as long before its Allow line.
+ */
+const WAITING_DELAY_MS = 250;
 
 /** The first line of the first-use warning, naming the browser. */
 export function everydayWarningLine(browserName: string): string {
@@ -112,21 +128,33 @@ export function isConnectCancelled(error: unknown): boolean {
  * Connect, and when the runner asks for the Everyday browser's first-use warning (428),
  * `confirm` it with the user and connect again with it accepted. The runner remembers the
  * acceptance per App, so each App asks once. A Cancel rejects with `ConnectCancelledError`.
+ *
+ * `onWaiting` says the runner now waits on the user's Allow: right away on the connect
+ * after the warning was accepted, and on the first connect only once it has run
+ * `waitingDelayMs` without an answer, so a refusal never flashes "Click Allow" first.
  */
 export async function connectAcceptingWarning(
 	request: ConnectDeviceRequest,
 	deps: {
 		connect: (request: ConnectDeviceRequest) => Promise<ActiveDeviceResponse>;
 		confirm: (warning: EverydayWarningRequired) => Promise<boolean>;
+		onWaiting?: () => void;
+		waitingDelayMs?: number;
 	},
 ): Promise<ActiveDeviceResponse> {
+	const onWaiting = deps.onWaiting ?? (() => undefined);
+	const waitingLater = setTimeout(onWaiting, deps.waitingDelayMs ?? WAITING_DELAY_MS);
 	try {
 		return await deps.connect(request);
 	} catch (error) {
 		const warning = everydayWarningRequired(error);
 		if (!warning) throw error;
+		clearTimeout(waitingLater);
 		if (!(await deps.confirm(warning))) throw new ConnectCancelledError();
+		onWaiting();
 		return deps.connect({ ...request, acceptEverydayWarning: true });
+	} finally {
+		clearTimeout(waitingLater);
 	}
 }
 

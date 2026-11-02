@@ -19,6 +19,9 @@ export type SelectedDevice = {
 	viewport?: ViewportPresetName;
 };
 
+/** A connect waiting on the user's Allow in `browserName`, which the runner ends at `deadline`. */
+export type AllowWait = { browserName: string; deadline: number };
+
 /** What a connect names: the device, and a browser's Viewport preset. */
 export type ConnectTarget = Pick<SelectedDevice, "id" | "platform" | "viewport">;
 
@@ -32,8 +35,8 @@ export type SessionBarState = {
 	untrusted: { info: DeveloperNotTrusted; target: ConnectTarget } | null;
 	/** The Everyday browser's first-use warning, asked before an App's first connect to it. */
 	everydayWarning: { browserName: string; warning: string } | null;
-	/** The Everyday browser a connect is waiting on for the user's Allow. */
-	waitingForAllow: string | null;
+	/** The Everyday browser a connect is waiting on for the user's Allow, until the runner gives up. */
+	waitingForAllow: AllowWait | null;
 };
 
 export function initialSessionBarState(platform: DevicePlatform): SessionBarState {

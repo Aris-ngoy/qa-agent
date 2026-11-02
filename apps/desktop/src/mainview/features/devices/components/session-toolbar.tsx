@@ -1,6 +1,10 @@
 import { SelectDeviceModal } from "@/features/devices/components/select-device-modal";
-import type { DevicePlatform, SelectedDevice } from "@/features/devices/data/state/session-bar";
-import { allowPrompt } from "@/features/devices/utils/everyday-browser";
+import type {
+	AllowWait,
+	DevicePlatform,
+	SelectedDevice,
+} from "@/features/devices/data/state/session-bar";
+import { allowPrompt, allowSecondsLeft } from "@/features/devices/utils/everyday-browser";
 import { sessionPillLabel } from "@/features/devices/utils/session-status";
 import { withViewport } from "@/features/devices/utils/web-device";
 import { ServersDoctorPanel } from "@/features/doctor/components/servers-doctor-panel";
@@ -9,7 +13,7 @@ import { useThemeMode } from "@/features/settings/hooks/use-theme-mode";
 import { Button, ListBox, Select } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
 import { type ActiveDeviceResponse, devicePlatformSchema } from "@yoqa/runner-client";
-import type { ReactNode, SVGProps } from "react";
+import { type ReactNode, type SVGProps, useEffect } from "react";
 
 const PLATFORM_LABELS: Record<DevicePlatform, string> = {
 	ios: "iOS",
@@ -147,6 +151,18 @@ function ThemeToggle() {
 	);
 }
 
+/** "Click Allow in Dia · 58 s": the seconds left until the runner stops waiting on Allow. */
+function AllowCountdown({ wait }: { wait: AllowWait }) {
+	const now$ = useObservable(Date.now());
+	const now = useValue(now$);
+	useEffect(() => {
+		now$.set(Date.now());
+		const tick = setInterval(() => now$.set(Date.now()), 1_000);
+		return () => clearInterval(tick);
+	}, [now$]);
+	return <>{allowPrompt(wait.browserName, allowSecondsLeft(wait.deadline, now))}</>;
+}
+
 type SessionToolbarProps = {
 	platform: DevicePlatform;
 	onPlatformChange: (platform: DevicePlatform) => void;
@@ -160,7 +176,7 @@ type SessionToolbarProps = {
 	/** A Run owns the shared session — watch-only until it finishes. */
 	viewOnly: boolean;
 	/** The Everyday browser a connect waits on for the user's Allow; Cancel aborts it. */
-	waitingForAllow: string | null;
+	waitingForAllow: AllowWait | null;
 	onCancelConnect: () => void;
 };
 
@@ -312,7 +328,7 @@ export function SessionToolbar({
 				<span className="motion-fade-in inline-flex h-8 items-center gap-2">
 					<output className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-secondary-container/70 px-3 text-[13px] font-medium text-on-secondary-container">
 						<RestartIcon spinning />
-						{allowPrompt(waitingForAllow)}
+						<AllowCountdown wait={waitingForAllow} />
 					</output>
 					<button
 						type="button"

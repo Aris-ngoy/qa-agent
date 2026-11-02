@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	ConnectCancelledError,
 	allowPrompt,
+	allowSecondsLeft,
 	connectAcceptingWarning,
 	everydayBrowserName,
 	everydayEntries,
@@ -158,6 +159,22 @@ describe("allowPrompt", () => {
 	test("tells the user where to click while the runner waits", () => {
 		expect(allowPrompt("Dia")).toBe("Click Allow in Dia");
 	});
+
+	test("counts down the seconds left, and drops them once none are", () => {
+		expect(allowPrompt("Dia", 58)).toBe("Click Allow in Dia · 58 s");
+		expect(allowPrompt("Dia", 0)).toBe("Click Allow in Dia");
+	});
+});
+
+describe("allowSecondsLeft", () => {
+	test("rounds up to the whole second and never goes below zero", () => {
+		const deadline = 60_000;
+		expect(allowSecondsLeft(deadline, 0)).toBe(60);
+		expect(allowSecondsLeft(deadline, 1_500)).toBe(59);
+		expect(allowSecondsLeft(deadline, 59_999)).toBe(1);
+		expect(allowSecondsLeft(deadline, 60_000)).toBe(0);
+		expect(allowSecondsLeft(deadline, 75_000)).toBe(0);
+	});
 });
 
 describe("everydayWarningLine", () => {
@@ -170,8 +187,11 @@ describe("everydayWarningLine", () => {
 
 const SESSION = { deviceId: "web-dia-everyday" } as ActiveDeviceResponse;
 
-/** A runner that asks for the warning until an App's connect accepts it, as the runner does. */
-function fakeRunner() {
+/**
+ * A runner that asks for the warning until an App's connect accepts it, as the runner does,
+ * and then waits `allowMs` on the user's Allow.
+ */
+function fakeRunner(allowMs = 0) {
 	const accepted = new Set<string>();
 	const requests: ConnectDeviceRequest[] = [];
 	const connect = async (request: ConnectDeviceRequest) => {
@@ -191,6 +211,7 @@ function fakeRunner() {
 				{ url: "http://runner.test/devices/connect", runnerPid: null, date: null },
 			);
 		}
+		await Bun.sleep(allowMs);
 		return SESSION;
 	};
 	return { connect, requests };
@@ -242,6 +263,55 @@ describe("connectAcceptingWarning", () => {
 				{ connect: runner.connect, confirm },
 			),
 		).toBe(SESSION);
+	});
+
+	test("says the runner waits on Allow only once past the warning, right after it is accepted", async () => {
+		const runner = fakeRunner(60);
+		const events: string[] = [];
+		await connectAcceptingWarning(
+			{ ...DIA, appId: "app_1" },
+			{
+				connect: runner.connect,
+				confirm: async () => {
+					events.push("warning");
+					return true;
+				},
+				onWaiting: () => events.push("waiting"),
+				waitingDelayMs: 20,
+			},
+		);
+		expect(events).toEqual(["warning", "waiting"]);
+	});
+
+	test("an App that accepted before waits once the runner has not answered in a moment", async () => {
+		const runner = fakeRunner(60);
+		const deps = { connect: runner.connect, confirm: async () => true, waitingDelayMs: 20 };
+		await connectAcceptingWarning({ ...DIA, appId: "app_1" }, deps);
+		const events: string[] = [];
+		await connectAcceptingWarning(
+			{ ...DIA, appId: "app_1" },
+			{ ...deps, onWaiting: () => events.push("waiting") },
+		);
+		expect(events).toEqual(["waiting"]);
+	});
+
+	test("a connect that fails at once, or a Cancel on the warning, never says it waits", async () => {
+		const events: string[] = [];
+		const onWaiting = () => events.push("waiting");
+		await connectAcceptingWarning(DIA, {
+			connect: async () => {
+				throw new Error("Dia is not running. Open it");
+			},
+			confirm: async () => true,
+			onWaiting,
+			waitingDelayMs: 20,
+		}).catch(() => undefined);
+		await connectAcceptingWarning(
+			{ ...DIA, appId: "app_1" },
+			{ connect: fakeRunner().connect, confirm: async () => false, onWaiting, waitingDelayMs: 20 },
+		).catch(() => undefined);
+		await Bun.sleep(40);
+		expect(events).toEqual([]);
 	});
 
 	test("passes any other connect error on as it is", async () => {

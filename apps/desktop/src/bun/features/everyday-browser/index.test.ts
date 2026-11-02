@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { REMOTE_DEBUGGING_SETTING_URL } from "../../../shared/everyday-browser";
-import { openRemoteDebuggingSetting } from "./index";
+import { bringEverydayBrowserToFront, openRemoteDebuggingSetting } from "./index";
 
 function recorder(code = 0) {
 	const commands: string[][] = [];
@@ -12,6 +12,43 @@ function recorder(code = 0) {
 		},
 	};
 }
+
+describe("bringEverydayBrowserToFront", () => {
+	test("activates that browser's app with no URL, so its tabs stay as they were", async () => {
+		const host = recorder();
+		const result = await bringEverydayBrowserToFront("web-dia-everyday", {
+			platform: "darwin",
+			run: host.run,
+		});
+		expect(result).toEqual({ ok: true });
+		expect(host.commands).toEqual([["open", "-a", "Dia"]]);
+	});
+
+	test("brings nothing forward for an id that is not an Everyday browser", async () => {
+		const host = recorder();
+		expect(
+			await bringEverydayBrowserToFront("web-chrome", { platform: "darwin", run: host.run }),
+		).toEqual({ ok: false, error: "web-chrome is not an Everyday browser" });
+		expect(host.commands).toEqual([]);
+	});
+
+	test("says why when open fails, and is macOS only", async () => {
+		expect(
+			await bringEverydayBrowserToFront("web-chrome-everyday", {
+				platform: "darwin",
+				run: recorder(1).run,
+			}),
+		).toEqual({ ok: false, error: "Could not open Google Chrome (open exited with code 1)" });
+		const host = recorder();
+		expect(
+			await bringEverydayBrowserToFront("web-dia-everyday", { platform: "linux", run: host.run }),
+		).toEqual({
+			ok: false,
+			error: "Switch to Dia yourself to click Allow: this works on macOS only",
+		});
+		expect(host.commands).toEqual([]);
+	});
+});
 
 describe("openRemoteDebuggingSetting", () => {
 	test("opens chrome://inspect/#remote-debugging in that browser's app", async () => {

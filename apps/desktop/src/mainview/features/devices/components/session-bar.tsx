@@ -6,6 +6,7 @@ import { SessionRunChip } from "@/features/devices/components/session-run-chip";
 import { SessionToolbar } from "@/features/devices/components/session-toolbar";
 import { TrustDeveloperDialog } from "@/features/devices/components/trust-developer-dialog";
 import {
+	bringEverydayBrowserToFront,
 	connectDevice as connectRunnerDevice,
 	disconnectDevice,
 } from "@/features/devices/data/api/devices";
@@ -41,7 +42,12 @@ import { batch } from "@legendapp/state";
 import { useObservable, useValue } from "@legendapp/state/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
-import { type ActiveDeviceResponse, type LaneName, developerNotTrusted } from "@yoqa/runner-client";
+import {
+	type ActiveDeviceResponse,
+	EVERYDAY_ALLOW_TIMEOUT_MS,
+	type LaneName,
+	developerNotTrusted,
+} from "@yoqa/runner-client";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 /**
@@ -126,25 +132,32 @@ export function SessionBar() {
 
 	/**
 	 * Connect `target` for the selected app; the one connect path for Connect, Restart and
-	 * Run. The bar shows "Connecting…" meanwhile, and "Click Allow in <Browser>" with Cancel
-	 * for an Everyday browser. An App's first connect to one asks the warning first. Errors
-	 * are the caller's to show; a Cancel rejects with one `isConnectCancelled` knows.
+	 * Run. The bar shows "Connecting…" meanwhile. For an Everyday browser, once the runner
+	 * waits on the user's Allow, it shows "Click Allow in <Browser>" counting down with Cancel,
+	 * and brings a listed-ready browser to the front so its prompt can be seen. An App's first
+	 * connect to one asks the warning first. Errors are the caller's to show; a Cancel rejects
+	 * with one `isConnectCancelled` knows.
 	 */
 	const connectDevice = useCallback(
 		async (target: ConnectTarget, lane?: LaneName): Promise<ActiveDeviceResponse> => {
 			const everyday = target.platform === "web" && isEverydayDeviceId(target.id);
-			const browserName = everydayBrowserName(
-				devices?.find((listed) => listed.id === target.id)?.name,
-			);
+			const listed = devices?.find((candidate) => candidate.id === target.id);
+			const browserName = everydayBrowserName(listed?.name);
 			const controller = new AbortController();
 			connectAbortRef.current = controller;
 			bar$.connecting.set(true);
 			try {
 				const info = await connectAcceptingWarning(connectRequestFor(target, selectedApp, lane), {
-					connect: (request) => {
-						if (everyday) bar$.waitingForAllow.set(browserName);
-						return connectRunnerDevice(request, { signal: controller.signal });
-					},
+					connect: (request) => connectRunnerDevice(request, { signal: controller.signal }),
+					onWaiting: everyday
+						? () => {
+								bar$.waitingForAllow.set({
+									browserName,
+									deadline: Date.now() + EVERYDAY_ALLOW_TIMEOUT_MS,
+								});
+								if (listed?.state === "ready") void bringEverydayBrowserToFront(target.id);
+							}
+						: undefined,
 					confirm: ({ warning }) => {
 						bar$.waitingForAllow.set(null);
 						return askEverydayWarning(browserName, warning);
