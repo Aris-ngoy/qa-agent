@@ -157,7 +157,7 @@ There the agent acts in your real, signed-in accounts, so it comes with limits:
 yoqa runs create APP --cases 1,2 --device web-chrome-everyday --wait   # click Allow in Chrome
 ```
 
-In the desktop app, platform **Web** → Select device → **Your browser** lists each installed browser as **ready**, **remote debugging off**, or **not running** when it is closed. **Open the setting** opens `chrome://inspect/#remote-debugging` in that browser, where you turn remote debugging on. Pick a ready one and press Connect: the App's first connect shows the warning (Continue or Cancel), then the top bar says **Click Allow in <Browser>** until you do, with **Cancel** to stop waiting. Disconnecting closes Yoqa's window only; remote debugging stays on until you turn it off at the same page. Attach by port is CLI only.
+In the desktop app, platform **Web** → Select device → **Your browser** lists each installed browser as **ready**, **remote debugging off**, or **not running** when it is closed. While one isn't ready, the list re-checks every 2 seconds, so it turns ready as soon as you turn the setting on. **Open the setting** opens `chrome://inspect/#remote-debugging` in that browser, where you turn remote debugging on. Pick a ready one and press Connect: the App's first connect shows the warning (Continue or Cancel), then the top bar says **Click Allow in <Browser>** until you do, with **Cancel** to stop waiting. Disconnecting closes Yoqa's window only; remote debugging stays on until you turn it off at the same page. Attach by port is CLI only.
 
 ## What each Action does on web
 

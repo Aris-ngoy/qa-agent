@@ -48,6 +48,18 @@ export function everydayEntries(devices: readonly Device[]): EverydayEntry[] {
 		}));
 }
 
+/** How often the picker re-checks while an Everyday browser is not ready. */
+const RECHECK_MS = 2_000;
+
+/**
+ * The picker's re-check: every 2 s while any Everyday browser in `devices` is not ready, so
+ * turning the setting on (or opening the browser) shows without reopening the picker. A
+ * re-check is discovery, which never opens a socket, so it never raises the Allow prompt.
+ */
+export function everydayRecheckInterval(devices: readonly Device[] | undefined): number | false {
+	return everydayEntries(devices ?? []).some((entry) => !entry.ready) ? RECHECK_MS : false;
+}
+
 /** `remote debugging off · unverified`: an entry's state, and whether it is unverified. */
 export function everydayStateLine(entry: Pick<EverydayEntry, "state" | "verified">): string {
 	return formatDeviceState(entry) ?? "";

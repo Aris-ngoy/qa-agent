@@ -97,7 +97,7 @@ On 2026-11-02, the desktop's **Your browser** tab got stuck twice, on desktop an
 - **Chrome stayed "Remote Debugging Off".** It was closed, but its leftover `DevToolsActivePort` made it look like an open Chrome with the setting off.
 - **Dia was Ready, and the connect seemed to hang.** The runner was waiting on an Allow prompt the user could not see.
 
-This work tells a closed browser apart from one with the setting off ([#416](https://github.com/Aris-ngoy/qa-agent/issues/416)).
+This work tells a closed browser apart from one with the setting off ([#416](https://github.com/Aris-ngoy/qa-agent/issues/416)), and makes the picker notice the setting turning on without being reopened ([#417](https://github.com/Aris-ngoy/qa-agent/issues/417)).
 
 ### Plan summary
 
@@ -109,6 +109,7 @@ This work tells a closed browser apart from one with the setting off ([#416](htt
   A stale port file now falls through to step 2 or 3. Rejected: deleting or ignoring the file by age, which says nothing about whether the browser is open.
 - **"The user's own instance runs" is a process check, never a socket.** It looks for a process of the app's binary with no `--user-data-dir`. A browser Yoqa launched on a Kept profile has that flag, so it doesn't count. A host whose processes can't be read counts the browser as running, which gives the wording from before.
 - **A connect probes before it opens a socket.** A port that doesn't answer HTTP fails at once with no socket. A closed browser says `<Browser> is not running. Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect again`. One with the setting off keeps its message. Before this, a stale file meant a socket attempt that failed as "Remote debugging was denied".
+- **The picker re-checks every 2 s while an Everyday browser is not ready** (#417), and stops once all are ready or it closes. The rescan on open and on window focus stays: focus alone missed a user who turned the setting on and came back. A re-check is discovery, so it never opens a socket or raises the Allow prompt. Rejected: a file watch on each `DevToolsActivePort`, which misses a browser that opens or closes without writing it.
 - **The desktop and CLI word it.** The desktop row's hint for `not running` says to open the browser first (Open the setting starts it). `yoqa devices web` prints `Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect` under a closed one.
 
 ### What shipped
@@ -119,7 +120,7 @@ This work tells a closed browser apart from one with the setting off ([#416](htt
   - `EverydayState` gains `not running`.
   - `listEverydayDevices` and `openEverydaySocket` share the port probe, and only the failure path reads processes.
 - **CLI:** the `not running` line in `yoqa devices web`.
-- **Desktop:** `turnOnHint` takes the entry's state.
+- **Desktop:** `turnOnHint` takes the entry's state. `everydayRecheckInterval` (2 s or off, from the listed devices) is the picker query's `refetchInterval`.
 - **Docs:** the glossary's **Everyday browser** names its three states, and the skill's devices reference says what to ask the user for each.
 
 ### How to verify
@@ -129,6 +130,8 @@ cd services/runner && bun test src/domains/devices/chromium-everyday.test.ts
 cd packages/cli && bun test src/devices-everyday.test.ts
 cd apps/desktop && bun test src/mainview/features/devices/utils/everyday-browser.test.ts
 ```
+
+By hand, with the picker open on Your browser and Chrome's setting off: turn it on in Chrome, and the row reads ready within about 2 s. Turn it off, and the row goes back.
 
 By hand, on a Mac with Chrome:
 

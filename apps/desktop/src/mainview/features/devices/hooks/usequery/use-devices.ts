@@ -5,6 +5,7 @@ import {
 	openRemoteDebuggingSetting,
 	resetBrowserProfile,
 } from "@/features/devices/data/api/devices";
+import { everydayRecheckInterval } from "@/features/devices/utils/everyday-browser";
 import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import type { Device, DevicePlatform } from "@yoqa/runner-client";
 
@@ -27,12 +28,16 @@ export function usePlatformDevices(platform: DevicePlatform) {
 	});
 }
 
-/** The picker's list: rescanned each time it opens and when the window regains focus. */
+/**
+ * The picker's list: rescanned each time it opens, when the window regains focus, and every
+ * 2 s while an Everyday browser in it is not ready.
+ */
 export function usePickerDevices(platform: DevicePlatform, open: boolean) {
 	return useQuery({
 		queryKey: platformDevicesQueryKey(platform),
 		queryFn: () => listPlatformDevices(platform),
 		enabled: open,
+		refetchInterval: (query) => everydayRecheckInterval(query.state.data),
 		refetchOnWindowFocus: true,
 		refetchOnMount: "always",
 		staleTime: 5_000,
