@@ -5,6 +5,7 @@ import {
 	connectAcceptingWarning,
 	everydayBrowserName,
 	everydayEntries,
+	everydayRecheckInterval,
 	everydayStateLine,
 	everydayWarningLine,
 	isConnectCancelled,
@@ -104,6 +105,26 @@ describe("everydayEntries", () => {
 	test("leaves out an attached browser, which is CLI only", () => {
 		const attached: Device = { ...CHROME, id: "chromium-cdp-9222", name: "Chromium" };
 		expect(everydayEntries([attached])).toEqual([]);
+	});
+});
+
+describe("everydayRecheckInterval", () => {
+	const chromeClosed: Device = { ...CHROME_OFF, state: "not running" };
+
+	test("re-checks every 2 s while an Everyday browser is not ready", () => {
+		expect(everydayRecheckInterval([DIA_READY, CHROME_OFF])).toBe(2_000);
+		expect(everydayRecheckInterval([chromeClosed])).toBe(2_000);
+	});
+
+	test("stops once every Everyday browser is ready, or there are none", () => {
+		expect(everydayRecheckInterval([DIA_READY])).toBe(false);
+		expect(everydayRecheckInterval([])).toBe(false);
+		expect(everydayRecheckInterval(undefined)).toBe(false);
+	});
+
+	test("launched and attached browsers don't keep it going", () => {
+		const attached: Device = { ...CHROME, id: "chromium-cdp-9222", name: "Chromium" };
+		expect(everydayRecheckInterval([CHROME, attached, DIA_READY])).toBe(false);
 	});
 });
 
