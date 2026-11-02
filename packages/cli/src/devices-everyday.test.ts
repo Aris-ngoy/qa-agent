@@ -45,6 +45,15 @@ const EVERYDAY_DEVICES: Device[] = [
 		state: "remote debugging off",
 	},
 	{
+		id: "web-opera-everyday",
+		name: "Opera (everyday)",
+		osVersion: "everyday browser",
+		platform: "web",
+		kind: "browser",
+		state: "not running",
+		verified: false,
+	},
+	{
 		id: "web-arc",
 		name: "Arc",
 		osVersion: "1.106.0",
@@ -90,6 +99,16 @@ function fakeRunner() {
 							warning: WARNING,
 						},
 						{ status: 428 },
+					);
+				}
+				if (body.deviceId === "web-opera-everyday") {
+					return Response.json(
+						{
+							error: "Failed to connect device",
+							detail:
+								"Opera is not running. Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect again",
+						},
+						{ status: 500 },
 					);
 				}
 				if (body.deviceId === "web-dia-everyday") {
@@ -175,11 +194,28 @@ describe("yoqa devices on the Everyday browser", () => {
 		expect(out).toContain("Google Chrome (everyday) — everyday browser [ready]");
 		expect(out).toContain("Microsoft Edge (everyday) — everyday browser [remote debugging off]");
 		const lines = out.split("\n");
-		const hints = lines.filter((line) => line.includes("chrome://inspect/#remote-debugging"));
-		expect(hints).toHaveLength(1);
-		expect(lines.indexOf(hints[0] ?? "")).toBeGreaterThan(
-			lines.findIndex((line) => line.includes("web-edge-everyday")),
+		const edge = lines.findIndex((line) => line.includes("web-edge-everyday"));
+		expect(lines[edge + 1]).toBe(
+			"           Turn it on at chrome://inspect/#remote-debugging, then connect",
 		);
+	});
+
+	test("devices web lists a closed one as not running, with opening it first", async () => {
+		const out = await yoqa("devices", "web");
+		expect(out).toContain("Opera (everyday) — everyday browser [not running · unverified]");
+		const lines = out.split("\n");
+		const opera = lines.findIndex((line) => line.includes("web-opera-everyday"));
+		expect(lines[opera + 1]).toBe(
+			"           Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect",
+		);
+		expect(lines.filter((line) => line.includes("chrome://inspect"))).toHaveLength(2);
+	});
+
+	test("a connect to a closed one fails at once, without asking to click Allow", async () => {
+		const out = await yoqa("devices", "connect", "web-opera-everyday");
+		expect(out).toContain("Opera is not running. Open it");
+		expect(out).not.toContain("Click Allow");
+		expect(process.exitCode).toBe(1);
 	});
 
 	test("devices web says unverified in the state of a browser not yet checked", async () => {

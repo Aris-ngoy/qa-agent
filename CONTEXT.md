@@ -19,7 +19,7 @@ A Chromium-family browser (Chrome, Edge, Brave, Chromium, Dia, and the unverifie
 _Avoid_: tab, page (one page of it is what a Device Session drives), web driver
 
 **Everyday browser**:
-The user's own running Chromium browser on its default profile, attached by consent: the user turns on the remote-debugging toggle at `chrome://inspect/#remote-debugging` and clicks Allow on each connect. Yoqa never launches, quits or reconfigures it. Yoqa drives only a page in its own window, never the user's tabs, and a Run uses it only when it names that device.
+The user's own running Chromium browser on its default profile, attached by consent: the user turns on the remote-debugging toggle at `chrome://inspect/#remote-debugging` and clicks Allow on each connect. Yoqa never launches, quits or reconfigures it. Yoqa drives only a page in its own window, never the user's tabs, and a Run uses it only when it names that device. It is **ready** when its remote debugging answers, **remote debugging off** while the browser runs without it, and **not running** while the browser is closed.
 _Avoid_: user profile, real browser, attach by port (that is the CLI path)
 
 **Kept profile**:

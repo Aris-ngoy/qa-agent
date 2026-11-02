@@ -6,11 +6,14 @@
  * Allow. Yoqa never launches, quits or reconfigures it. Discovery is macOS only.
  *
  * Discovery never opens a WebSocket, since that raises the Allow prompt: a browser is ready
- * when its port file names a port that gives any HTTP answer. A stale file, which Dia leaves
- * behind, names a port nothing answers on.
+ * when its port file names a port that gives any HTTP answer. A stale file, which Dia and
+ * Chrome leave behind, names a port nothing answers on. A browser that is not ready is
+ * `remote debugging off` while its app runs, and `not running` once it is closed.
  */
 
+import { execFile } from "node:child_process";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import {
 	type Device,
 	type EverydayBrowserId,
@@ -30,6 +33,8 @@ export type EverydayBrowser = {
 	name: string;
 	/** The browser's default user-data folder, where its port file and `Local State` are. */
 	userDataDir: string;
+	/** The app's binary, which tells whether the browser is running. */
+	executable: string;
 };
 
 /**
@@ -70,8 +75,14 @@ export async function findEverydayBrowsers(
 	const found = await Promise.all(
 		EVERYDAY_BROWSERS.map(async ({ id, name, app, userData }) => {
 			for (const root of roots) {
-				if (!(await deps.isExecutable(join(root, `${app}.app`, "Contents/MacOS", app)))) continue;
-				return { id, name, userDataDir: join(deps.home, "Library/Application Support", userData) };
+				const executable = join(root, `${app}.app`, "Contents/MacOS", app);
+				if (!(await deps.isExecutable(executable))) continue;
+				return {
+					id,
+					name,
+					userDataDir: join(deps.home, "Library/Application Support", userData),
+					executable,
+				};
 			}
 			return null;
 		}),
@@ -107,23 +118,58 @@ async function portAnswers(port: number, fetchFn: typeof fetch): Promise<boolean
 	);
 }
 
-export type EverydayState = "ready" | "remote debugging off";
+/** Whether the browser's port file names a port that answers: its remote debugging is on. */
+async function debuggingAnswers(
+	browser: EverydayBrowser,
+	deps: { readText: DiscoveryDeps["readText"]; fetch?: typeof fetch },
+): Promise<ActivePort | null> {
+	const active = await readActivePort(browser, deps.readText);
+	return active && (await portAnswers(active.port, deps.fetch ?? fetch)) ? active : null;
+}
+
+/** Reads the command line of every process on the host, so tests can fake it. */
+export type ProcessDeps = { processArgs?: () => Promise<string[]> };
+
+async function psArgs(): Promise<string[]> {
+	const { stdout } = await promisify(execFile)("ps", ["-axww", "-o", "args="]);
+	return stdout.split("\n");
+}
+
+/**
+ * Whether the user's own instance of the browser runs: a process of its binary with no
+ * `--user-data-dir`, which only a browser Yoqa launched on a Kept profile has. A host whose
+ * processes cannot be read counts it as running, the wording it had before `not running`.
+ */
+async function isEverydayRunning(executable: string, deps: ProcessDeps): Promise<boolean> {
+	const lines = await (deps.processArgs ?? psArgs)().catch(() => null);
+	if (lines === null) return true;
+	return lines.some(
+		(line) =>
+			(line === executable || line.startsWith(`${executable} `)) &&
+			!line.includes(" --user-data-dir"),
+	);
+}
+
+export type EverydayState = "ready" | "remote debugging off" | "not running";
 
 /**
  * The installed browsers' Everyday browsers as web devices: `ready` when remote debugging
- * answers, else `remote debugging off`, which listing booted devices only leaves out.
+ * answers, `remote debugging off` while the browser runs without it, else `not running`.
+ * Listing booted devices only leaves out all but the ready ones.
  */
 export async function listEverydayDevices(
 	options: ListDevicesOptions = {},
-	deps: DiscoveryDeps & { fetch?: typeof fetch } = discoveryDeps(),
+	deps: DiscoveryDeps & ProcessDeps & { fetch?: typeof fetch } = discoveryDeps(),
 ): Promise<Device[]> {
 	const includeUnavailable = options.includeUnavailable ?? true;
 	const browsers = await findEverydayBrowsers(deps);
 	const devices = await Promise.all(
 		browsers.map(async (browser): Promise<Device> => {
-			const active = await readActivePort(browser, deps.readText);
-			const ready = active !== null && (await portAnswers(active.port, deps.fetch ?? fetch));
-			const state: EverydayState = ready ? "ready" : "remote debugging off";
+			const state: EverydayState = (await debuggingAnswers(browser, deps))
+				? "ready"
+				: (await isEverydayRunning(browser.executable, deps))
+					? "remote debugging off"
+					: "not running";
 			return {
 				id: browser.id,
 				name: `${browser.name} (everyday)`,
@@ -138,10 +184,15 @@ export async function listEverydayDevices(
 	return devices.filter((device) => includeUnavailable || device.state === "ready");
 }
 
+const REMOTE_DEBUGGING_SETTING = "chrome://inspect/#remote-debugging";
+
 /** How long a connect waits for the user's Allow. */
 export const ALLOW_TIMEOUT_MS = 60_000;
 
-/** The Everyday browser's socket did not open: remote debugging off, Deny, no answer, or cancelled. */
+/**
+ * The Everyday browser's socket did not open: the browser closed, remote debugging off, Deny,
+ * no answer, or cancelled.
+ */
 export class EverydayConnectError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -149,8 +200,9 @@ export class EverydayConnectError extends Error {
 	}
 }
 
-export type EverydayConnectDeps = {
+export type EverydayConnectDeps = ProcessDeps & {
 	readText: DiscoveryDeps["readText"];
+	fetch?: typeof fetch;
 	/** Open a CDP client on the browser socket. */
 	connect?: (url: string, options: ConnectCdpOptions) => Promise<CdpClient>;
 	/** How long to wait for Allow; 60 s by default. */
@@ -166,15 +218,19 @@ function seconds(ms: number): string {
 /**
  * Open the browser socket from the Everyday browser's port file, once, waiting up to
  * `allowTimeoutMs` for the user's Allow. It is never retried: each attempt prompts again.
+ * A port that does not answer HTTP fails first, with no socket: a closed browser and one
+ * with remote debugging off each say what to do.
  */
 export async function openEverydaySocket(
 	browser: EverydayBrowser,
 	deps: EverydayConnectDeps,
 ): Promise<CdpClient> {
-	const active = await readActivePort(browser, deps.readText);
+	const active = await debuggingAnswers(browser, deps);
 	if (!active) {
 		throw new EverydayConnectError(
-			`Remote debugging is off in ${browser.name}. Turn it on at chrome://inspect/#remote-debugging, then connect again`,
+			(await isEverydayRunning(browser.executable, deps))
+				? `Remote debugging is off in ${browser.name}. Turn it on at ${REMOTE_DEBUGGING_SETTING}, then connect again`
+				: `${browser.name} is not running. Open it, turn on remote debugging at ${REMOTE_DEBUGGING_SETTING}, then connect again`,
 		);
 	}
 	const allowTimeoutMs = deps.allowTimeoutMs ?? ALLOW_TIMEOUT_MS;

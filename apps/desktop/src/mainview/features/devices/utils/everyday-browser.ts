@@ -24,7 +24,7 @@ export function everydayBrowserName(name: string | undefined): string {
 	return name?.replace(EVERYDAY_TAG, "") ?? "your browser";
 }
 
-/** An Everyday browser in the picker: ready to connect, or with remote debugging off. */
+/** An Everyday browser in the picker: ready to connect, with remote debugging off, or not running. */
 export type EverydayEntry = Pick<Device, "id" | "name" | "osVersion" | "kind" | "state"> & {
 	browserName: string;
 	ready: boolean;
@@ -54,12 +54,17 @@ export function everydayStateLine(entry: Pick<EverydayEntry, "state" | "verified
 }
 
 /**
- * The line under an entry with remote debugging off. An unverified browser may not take the
+ * The line under an entry that is not ready: open a closed browser first (Open the setting
+ * starts it), then turn remote debugging on. An unverified browser may not take the
  * setting's `chrome://` page (Opera may name it `opera://`), so it also says how by hand.
  */
-export function turnOnHint(entry: Pick<EverydayEntry, "browserName" | "verified">): string {
+export function turnOnHint(
+	entry: Pick<EverydayEntry, "browserName" | "state" | "verified">,
+): string {
 	const hint =
-		"Turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect.";
+		entry.state === "not running"
+			? `${entry.browserName} is not running. Open the setting to start it, turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect.`
+			: "Turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect.";
 	return entry.verified
 		? hint
 		: `${hint} If the page doesn't load, open ${REMOTE_DEBUGGING_SETTING_URL} in ${entry.browserName} yourself.`;

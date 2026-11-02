@@ -365,7 +365,14 @@ describe("a Run on the Everyday browser", () => {
 			join(userDataDir, "Local State"),
 			JSON.stringify({ profile: { info_cache: { Default: { name: "Work" } } } }),
 		);
-		everydayBrowsers = [{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir }];
+		everydayBrowsers = [
+			{
+				id: "web-chrome-everyday",
+				name: "Google Chrome",
+				userDataDir,
+				executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+			},
+		];
 	}
 
 	/** An App whose user accepted the Everyday browser warning. */

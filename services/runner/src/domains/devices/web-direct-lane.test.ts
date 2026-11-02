@@ -1045,7 +1045,12 @@ async function everyday(options: { viewport?: "mobile"; nodes?: FakeAxNode[] } =
 		},
 		webDirectDeps({
 			everydayBrowsers: async () => [
-				{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir },
+				{
+					id: "web-chrome-everyday",
+					name: "Google Chrome",
+					userDataDir,
+					executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+				},
 			],
 		}),
 	);
@@ -1181,7 +1186,12 @@ describe("web Direct lane: the Everyday browser", () => {
 				{ platform: "web", deviceId: "web-chrome-everyday" },
 				webDirectDeps({
 					everydayBrowsers: async () => [
-						{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir },
+						{
+							id: "web-chrome-everyday",
+							name: "Google Chrome",
+							userDataDir,
+							executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+						},
 					],
 				}),
 			),

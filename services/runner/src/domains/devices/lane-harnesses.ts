@@ -559,7 +559,12 @@ export function webEverydayLane(): LaneHarness & { browser: FakeCdp } {
 				{ platform: "web", deviceId: "web-chrome-everyday", onSessionDead },
 				webDirectDeps({
 					everydayBrowsers: async () => [
-						{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir },
+						{
+							id: "web-chrome-everyday",
+							name: "Google Chrome",
+							userDataDir,
+							executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+						},
 					],
 				}),
 			);
