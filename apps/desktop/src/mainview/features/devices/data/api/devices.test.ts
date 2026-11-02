@@ -3,6 +3,8 @@ import { RunnerRequestError } from "@yoqa/runner-client";
 
 const settingsOpened: { browserId: string }[] = [];
 let settingResult: { ok: true } | { ok: false; error: string } = { ok: true };
+const broughtForward: { browserId: string }[] = [];
+let frontResult: { ok: true } | { ok: false; error: string } = { ok: true };
 
 mock.module("@/app/desktop-rpc", () => ({
 	getDesktopRpc: () => ({
@@ -12,13 +14,20 @@ mock.module("@/app/desktop-rpc", () => ({
 				settingsOpened.push(params);
 				return settingResult;
 			},
+			bringEverydayBrowserToFront: async (params: { browserId: string }) => {
+				broughtForward.push(params);
+				return frontResult;
+			},
 		},
 	}),
 }));
 
-const { connectDevice, openRemoteDebuggingSetting, resetBrowserProfile } = await import(
-	"@/features/devices/data/api/devices"
-);
+const {
+	bringEverydayBrowserToFront,
+	connectDevice,
+	openRemoteDebuggingSetting,
+	resetBrowserProfile,
+} = await import("@/features/devices/data/api/devices");
 
 const realFetch = globalThis.fetch;
 const requests: { url: string; method: string }[] = [];
@@ -91,6 +100,25 @@ describe("connectDevice", () => {
 		const error = await connecting;
 		expect(seen?.aborted).toBe(true);
 		expect((error as Error).name).toBe("AbortError");
+	});
+});
+
+describe("bringEverydayBrowserToFront", () => {
+	test("asks the desktop host to bring that browser forward", async () => {
+		await bringEverydayBrowserToFront("web-dia-everyday");
+		expect(broughtForward).toEqual([{ browserId: "web-dia-everyday" }]);
+	});
+
+	test("never rejects when the host could not, since the wait for Allow goes on", async () => {
+		frontResult = { ok: false, error: "open exited with code 1" };
+		const warn = console.warn;
+		console.warn = () => undefined;
+		try {
+			expect(await bringEverydayBrowserToFront("web-dia-everyday")).toBeUndefined();
+		} finally {
+			console.warn = warn;
+			frontResult = { ok: true };
+		}
 	});
 });
 

@@ -35,6 +35,9 @@ export function everydayBrowserId(browser: WebBrowserKey): EverydayBrowserId {
 	return `web-${browser}-everyday`;
 }
 
+/** How long a connect to an Everyday browser waits for the user's Allow (ADR-0009). */
+export const EVERYDAY_ALLOW_TIMEOUT_MS = 60_000;
+
 /** The browser a launched or Everyday device id names, or undefined for any other id. */
 export function webBrowserOf(deviceId: string): (typeof WEB_BROWSERS)[number] | undefined {
 	return WEB_BROWSERS.find(

@@ -561,6 +561,7 @@ export {
 } from "./viewport";
 
 export {
+	EVERYDAY_ALLOW_TIMEOUT_MS,
 	WEB_BROWSERS,
 	everydayBrowserId,
 	formatDeviceState,

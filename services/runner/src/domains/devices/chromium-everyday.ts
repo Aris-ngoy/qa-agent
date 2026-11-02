@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import {
 	type Device,
+	EVERYDAY_ALLOW_TIMEOUT_MS,
 	type EverydayBrowserId,
 	WEB_BROWSERS,
 	type WebBrowserKey,
@@ -187,7 +188,7 @@ export async function listEverydayDevices(
 const REMOTE_DEBUGGING_SETTING = "chrome://inspect/#remote-debugging";
 
 /** How long a connect waits for the user's Allow. */
-export const ALLOW_TIMEOUT_MS = 60_000;
+export const ALLOW_TIMEOUT_MS = EVERYDAY_ALLOW_TIMEOUT_MS;
 
 /**
  * The Everyday browser's socket did not open: the browser closed, remote debugging off, Deny,

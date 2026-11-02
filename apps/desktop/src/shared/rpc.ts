@@ -94,6 +94,16 @@ export type DesktopRPC = {
 				};
 				response: OpenPathResult;
 			};
+			/**
+			 * Bring an Everyday browser to the front while a connect waits on its Allow prompt.
+			 * macOS only.
+			 */
+			bringEverydayBrowserToFront: {
+				params: {
+					browserId: string;
+				};
+				response: OpenPathResult;
+			};
 			/** Custom window controls (Windows has no inset native ones under `hiddenInset`). */
 			minimizeWindow: {
 				params: undefined;
