@@ -35,6 +35,9 @@ export function everydayBrowserId(browser: WebBrowserKey): EverydayBrowserId {
 	return `web-${browser}-everyday`;
 }
 
+/** Where Chrome 144+, Edge and Dia keep the remote-debugging toggle (ADR-0009). */
+export const REMOTE_DEBUGGING_SETTING_URL = "chrome://inspect/#remote-debugging";
+
 /** How long a connect to an Everyday browser waits for the user's Allow (ADR-0009). */
 export const EVERYDAY_ALLOW_TIMEOUT_MS = 60_000;
 

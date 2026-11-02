@@ -129,9 +129,10 @@ export function isConnectCancelled(error: unknown): boolean {
  * `confirm` it with the user and connect again with it accepted. The runner remembers the
  * acceptance per App, so each App asks once. A Cancel rejects with `ConnectCancelledError`.
  *
- * `onWaiting` says the runner now waits on the user's Allow: right away on the connect
- * after the warning was accepted, and on the first connect only once it has run
- * `waitingDelayMs` without an answer, so a refusal never flashes "Click Allow" first.
+ * `onWaiting` says the runner now waits on the user's Allow: once a try has run
+ * `waitingDelayMs` without an answer, so a refusal (the warning, a closed browser) never
+ * flashes "Click Allow" first. It is said at most once per connect, so a slow warning
+ * followed by the accepted retry brings the browser forward once.
  */
 export async function connectAcceptingWarning(
 	request: ConnectDeviceRequest,
@@ -142,19 +143,26 @@ export async function connectAcceptingWarning(
 		waitingDelayMs?: number;
 	},
 ): Promise<ActiveDeviceResponse> {
-	const onWaiting = deps.onWaiting ?? (() => undefined);
-	const waitingLater = setTimeout(onWaiting, deps.waitingDelayMs ?? WAITING_DELAY_MS);
+	let waited = false;
+	const attempt = async (attemptRequest: ConnectDeviceRequest) => {
+		const waiting = setTimeout(() => {
+			if (waited) return;
+			waited = true;
+			deps.onWaiting?.();
+		}, deps.waitingDelayMs ?? WAITING_DELAY_MS);
+		try {
+			return await deps.connect(attemptRequest);
+		} finally {
+			clearTimeout(waiting);
+		}
+	};
 	try {
-		return await deps.connect(request);
+		return await attempt(request);
 	} catch (error) {
 		const warning = everydayWarningRequired(error);
 		if (!warning) throw error;
-		clearTimeout(waitingLater);
 		if (!(await deps.confirm(warning))) throw new ConnectCancelledError();
-		onWaiting();
-		return deps.connect({ ...request, acceptEverydayWarning: true });
-	} finally {
-		clearTimeout(waitingLater);
+		return attempt({ ...request, acceptEverydayWarning: true });
 	}
 }
 

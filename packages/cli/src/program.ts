@@ -8,6 +8,7 @@ import {
 	type DevicePlatform,
 	KEY_MODIFIERS,
 	KEY_NAMES,
+	REMOTE_DEBUGGING_SETTING_URL,
 	RunnerUnreachableError,
 	type ScreenSource,
 	WaitForRunTimeoutError,
@@ -281,6 +282,12 @@ const devices = program
 	.command("devices")
 	.description("List local devices, simulators, and emulators");
 
+/** What to do about an Everyday browser that is not ready, by its state. */
+const EVERYDAY_HINTS: Record<string, string> = {
+	"remote debugging off": `Turn it on at ${REMOTE_DEBUGGING_SETTING_URL}, then connect`,
+	"not running": `Open it, turn on remote debugging at ${REMOTE_DEBUGGING_SETTING_URL}, then connect`,
+};
+
 function printDevicesTable(
 	devicesList: Array<{
 		id: string;
@@ -306,14 +313,8 @@ function printDevicesTable(
 		if (device.unavailableReason) {
 			console.log(`           Not a target: ${device.unavailableReason}`);
 		}
-		if (isEverydayDeviceId(device.id) && device.state === "remote debugging off") {
-			console.log("           Turn it on at chrome://inspect/#remote-debugging, then connect");
-		}
-		if (isEverydayDeviceId(device.id) && device.state === "not running") {
-			console.log(
-				"           Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect",
-			);
-		}
+		const hint = isEverydayDeviceId(device.id) ? EVERYDAY_HINTS[device.state ?? ""] : undefined;
+		if (hint) console.log(`           ${hint}`);
 	}
 }
 

@@ -191,7 +191,7 @@ const SESSION = { deviceId: "web-dia-everyday" } as ActiveDeviceResponse;
  * A runner that asks for the warning until an App's connect accepts it, as the runner does,
  * and then waits `allowMs` on the user's Allow.
  */
-function fakeRunner(allowMs = 0) {
+function fakeRunner(allowMs = 0, warningMs = 0) {
 	const accepted = new Set<string>();
 	const requests: ConnectDeviceRequest[] = [];
 	const connect = async (request: ConnectDeviceRequest) => {
@@ -199,6 +199,7 @@ function fakeRunner(allowMs = 0) {
 		const appId = request.appId ?? "default";
 		if (request.acceptEverydayWarning) accepted.add(appId);
 		if (!accepted.has(appId)) {
+			await Bun.sleep(warningMs);
 			throw new RunnerRequestError(
 				"needs the warning",
 				428,
@@ -265,7 +266,7 @@ describe("connectAcceptingWarning", () => {
 		).toBe(SESSION);
 	});
 
-	test("says the runner waits on Allow only once past the warning, right after it is accepted", async () => {
+	test("says the runner waits on Allow only once past the warning", async () => {
 		const runner = fakeRunner(60);
 		const events: string[] = [];
 		await connectAcceptingWarning(
@@ -293,6 +294,45 @@ describe("connectAcceptingWarning", () => {
 			{ ...deps, onWaiting: () => events.push("waiting") },
 		);
 		expect(events).toEqual(["waiting"]);
+	});
+
+	test("a slow warning says it waits once, however many tries the connect takes", async () => {
+		const runner = fakeRunner(60, 40);
+		const events: string[] = [];
+		await connectAcceptingWarning(
+			{ ...DIA, appId: "app_1" },
+			{
+				connect: runner.connect,
+				confirm: async () => {
+					events.push("warning");
+					return true;
+				},
+				onWaiting: () => events.push("waiting"),
+				waitingDelayMs: 20,
+			},
+		);
+		expect(events).toEqual(["waiting", "warning"]);
+	});
+
+	test("a retry that fails at once after the warning never says it waits", async () => {
+		const events: string[] = [];
+		let tries = 0;
+		const runner = fakeRunner();
+		await connectAcceptingWarning(
+			{ ...DIA, appId: "app_1" },
+			{
+				connect: async (request) => {
+					tries += 1;
+					if (tries === 1) return runner.connect(request);
+					throw new Error("Remote debugging is off in Dia");
+				},
+				confirm: async () => true,
+				onWaiting: () => events.push("waiting"),
+				waitingDelayMs: 20,
+			},
+		).catch(() => undefined);
+		await Bun.sleep(40);
+		expect(events).toEqual([]);
 	});
 
 	test("a connect that fails at once, or a Cancel on the warning, never says it waits", async () => {
