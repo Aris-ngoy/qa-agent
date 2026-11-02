@@ -622,7 +622,12 @@ function everydayChrome() {
 			options,
 			webDirectDeps({
 				everydayBrowsers: async () => [
-					{ id: "web-chrome-everyday", name: "Google Chrome", userDataDir },
+					{
+						id: "web-chrome-everyday",
+						name: "Google Chrome",
+						userDataDir,
+						executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+					},
 				],
 			}),
 		);

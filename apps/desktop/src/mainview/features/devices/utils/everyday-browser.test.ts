@@ -96,6 +96,9 @@ describe("everydayEntries", () => {
 		expect(entry?.verified).toBe(false);
 		expect(entry ? everydayStateLine(entry) : null).toBe("remote debugging off · unverified");
 		expect(everydayStateLine({ ...DIA_READY, verified: true })).toBe("ready");
+		expect(everydayStateLine({ state: "not running", verified: false })).toBe(
+			"not running · unverified",
+		);
 	});
 
 	test("leaves out an attached browser, which is CLI only", () => {
@@ -105,15 +108,27 @@ describe("everydayEntries", () => {
 });
 
 describe("turnOnHint", () => {
-	test("says to turn on remote debugging in the page that opens", () => {
-		expect(turnOnHint({ browserName: "Dia", verified: true })).toBe(
+	const off = { state: "remote debugging off" } as const;
+	const closed = { state: "not running" } as const;
+
+	test("with remote debugging off, says to turn it on in the page that opens", () => {
+		expect(turnOnHint({ ...off, browserName: "Dia", verified: true })).toBe(
 			"Turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect.",
 		);
 	});
 
+	test("with the browser closed, says to open it first", () => {
+		expect(turnOnHint({ ...closed, browserName: "Google Chrome", verified: true })).toBe(
+			"Google Chrome is not running. Open the setting to start it, turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect.",
+		);
+	});
+
 	test("an unverified browser also says to open the page by hand if it doesn't load", () => {
-		expect(turnOnHint({ browserName: "Opera", verified: false })).toBe(
+		expect(turnOnHint({ ...off, browserName: "Opera", verified: false })).toBe(
 			"Turn on remote debugging in the page that opens, then come back. Your browser asks you to Allow each connect. If the page doesn't load, open chrome://inspect/#remote-debugging in Opera yourself.",
+		);
+		expect(turnOnHint({ ...closed, browserName: "Opera", verified: false })).toEndWith(
+			"If the page doesn't load, open chrome://inspect/#remote-debugging in Opera yourself.",
 		);
 	});
 });

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +6,7 @@ import type { DiscoveryDeps } from "./chromium-browsers";
 import {
 	type EverydayBrowser,
 	EverydayConnectError,
+	type ProcessDeps,
 	everydayBrowserIdOf,
 	findEverydayBrowsers,
 	listEverydayDevices,
@@ -24,8 +25,19 @@ afterEach(() => {
 	for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
 });
 
-/** A Mac home with these app bundles installed, on the real filesystem. */
-function mac(apps: string[]): DiscoveryDeps & { home: string } {
+/** An app's binary in `/Applications`. */
+function binary(app: string): string {
+	return `/Applications/${app}.app/Contents/MacOS/${app}`;
+}
+
+/**
+ * A Mac home with these app bundles installed, on the real filesystem, and the user's own
+ * instance of each app in `running` up (all of them unless named).
+ */
+function mac(
+	apps: string[],
+	running: string[] = apps,
+): DiscoveryDeps & ProcessDeps & { home: string } {
 	const home = mkdtempSync(join(tmpdir(), "yoqa-everyday-"));
 	homes.push(home);
 	return {
@@ -33,6 +45,7 @@ function mac(apps: string[]): DiscoveryDeps & { home: string } {
 		home,
 		isExecutable: async (path) => apps.some((app) => path.startsWith(`/Applications/${app}.app/`)),
 		readText: (path) => Bun.file(path).text(),
+		processArgs: async () => running.map((app) => `${binary(app)} --flag-switches-begin`),
 	};
 }
 
@@ -135,21 +148,49 @@ describe("Everyday browser discovery", () => {
 		]);
 	});
 
-	test("no port file is remote debugging off", async () => {
+	test("no port file, with the browser running, is remote debugging off", async () => {
 		const deps = mac(["Google Chrome"]);
 		const [device] = await listEverydayDevices({}, deps);
 		expect(device?.state).toBe("remote debugging off");
 	});
 
-	test("a stale port file, with nothing on its port, is remote debugging off", async () => {
+	test("a stale port file, with the browser running and nothing on its port, is remote debugging off", async () => {
 		const deps = mac(["Dia"]);
 		writePort(deps.home, "Dia/User Data", closedPort());
 		const [device] = await listEverydayDevices({}, deps);
 		expect(device).toMatchObject({ id: "web-dia-everyday", state: "remote debugging off" });
 	});
 
-	test("listing booted devices only leaves out a browser with remote debugging off", async () => {
-		const deps = mac(["Google Chrome", "Dia"]);
+	test("a closed browser is not running, with or without a stale port file", async () => {
+		const deps = mac(["Google Chrome", "Dia"], []);
+		writePort(deps.home, "Google/Chrome", closedPort());
+		const devices = await listEverydayDevices({}, deps);
+		expect(devices.map((device) => [device.id, device.state])).toEqual([
+			["web-chrome-everyday", "not running"],
+			["web-dia-everyday", "not running"],
+		]);
+	});
+
+	test("a browser Yoqa launched on a Kept profile is not the user's own running", async () => {
+		const deps = {
+			...mac(["Dia"], []),
+			processArgs: async () => [`${binary("Dia")} --user-data-dir=/kept --remote-debugging-port=0`],
+		};
+		const [device] = await listEverydayDevices({}, deps);
+		expect(device?.state).toBe("not running");
+	});
+
+	test("a host whose processes cannot be read counts the browser as running", async () => {
+		const deps = {
+			...mac(["Dia"], []),
+			processArgs: () => Promise.reject(new Error("ps: not found")),
+		};
+		const [device] = await listEverydayDevices({}, deps);
+		expect(device?.state).toBe("remote debugging off");
+	});
+
+	test("listing booted devices only lists only the ready ones", async () => {
+		const deps = mac(["Google Chrome", "Dia", "Microsoft Edge"], ["Google Chrome", "Dia"]);
 		const browser = consentBrowser();
 		writePort(deps.home, "Dia/User Data", browser.port);
 		const devices = await listEverydayDevices({ includeUnavailable: false }, deps);
@@ -184,9 +225,25 @@ describe("Everyday browser connect", () => {
 			id: "web-chrome-everyday",
 			name: "Google Chrome",
 			userDataDir: writePort(deps.home, "Google/Chrome", port, "/devtools/browser/fake"),
+			executable: binary("Google Chrome"),
 			home: deps.home,
 		};
 	}
+
+	/** Chrome's port file names nothing, with Chrome itself running or not. */
+	function chromeWithoutPortFile(): EverydayBrowser {
+		const deps = mac([]);
+		return {
+			id: "web-chrome-everyday",
+			name: "Google Chrome",
+			userDataDir: join(deps.home, "Library/Application Support/Google/Chrome"),
+			executable: binary("Google Chrome"),
+		};
+	}
+
+	const read = (path: string) => Bun.file(path).text();
+	const chromeRunning: ProcessDeps = { processArgs: async () => [binary("Google Chrome")] };
+	const nothingRunning: ProcessDeps = { processArgs: async () => [] };
 
 	test("waits for a socket that opens late, when the user clicks Allow", async () => {
 		const browser = consentBrowser();
@@ -247,19 +304,34 @@ describe("Everyday browser connect", () => {
 		expect(browser.socketRequests()).toBe(1);
 	});
 
-	test("no port file fails, saying where to turn remote debugging on", async () => {
-		const deps = mac([]);
+	test("no port file, with the browser running, fails saying where to turn remote debugging on", async () => {
 		const error = await rejection(
-			openEverydaySocket(
-				{
-					id: "web-chrome-everyday",
-					name: "Google Chrome",
-					userDataDir: join(deps.home, "Library/Application Support/Google/Chrome"),
-				},
-				{ readText: (path) => Bun.file(path).text() },
-			),
+			openEverydaySocket(chromeWithoutPortFile(), { readText: read, ...chromeRunning }),
 		);
-		expect((error as Error).message).toContain("chrome://inspect/#remote-debugging");
+		expect((error as Error).message).toBe(
+			"Remote debugging is off in Google Chrome. Turn it on at chrome://inspect/#remote-debugging, then connect again",
+		);
+	});
+
+	test("a closed browser fails saying to open it, without a socket", async () => {
+		const connect = mock(() => Promise.reject(new Error("no socket expected")));
+		const error = await rejection(
+			openEverydaySocket(chrome(closedPort()), { readText: read, connect, ...nothingRunning }),
+		);
+		expect(error).toBeInstanceOf(EverydayConnectError);
+		expect((error as Error).message).toBe(
+			"Google Chrome is not running. Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect again",
+		);
+		expect(connect).not.toHaveBeenCalled();
+	});
+
+	test("a stale port file, with the browser running, is remote debugging off, without a socket", async () => {
+		const connect = mock(() => Promise.reject(new Error("no socket expected")));
+		const error = await rejection(
+			openEverydaySocket(chrome(closedPort()), { readText: read, connect, ...chromeRunning }),
+		);
+		expect((error as Error).message).toStartWith("Remote debugging is off in Google Chrome.");
+		expect(connect).not.toHaveBeenCalled();
 	});
 });
 

@@ -100,8 +100,10 @@ browser    Google Chrome (everyday) — everyday browser [remote debugging off]
            Turn it on at chrome://inspect/#remote-debugging, then connect
 ```
 
-It is `[ready]` once the user has turned remote debugging on. When it is off, **ask the user** to open
-`chrome://inspect/#remote-debugging` in that browser and turn the toggle on, then list again. Each
+It is `[ready]` once the user has turned remote debugging on. When it is `[remote debugging off]`,
+**ask the user** to open `chrome://inspect/#remote-debugging` in that browser and turn the toggle on,
+then list again. When it is `[not running]`, the browser is closed: **ask the user** to open it first,
+then turn the toggle on. A connect to a closed browser fails at once and says so. Each
 connect then waits up to 60 s on an Allow prompt in the browser: before you connect, **tell the user to
 click Allow** when it appears. A Deny or no answer fails the connect with its own message; ask before
 trying again, since each try prompts again.

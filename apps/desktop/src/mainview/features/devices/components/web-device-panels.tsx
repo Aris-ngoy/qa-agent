@@ -128,7 +128,8 @@ export function ProfileChoice({
 
 /**
  * The user's own browsers, by consent (ADR-0009): a ready one is picked to connect; one with
- * remote debugging off offers "Open the setting", which opens the toggle in that browser.
+ * remote debugging off, or not running, offers "Open the setting", which opens the toggle in
+ * that browser (starting it when closed).
  */
 export function EverydayBrowserList({
 	browsers,

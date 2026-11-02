@@ -87,3 +87,55 @@ Click Deny instead, or wait 60 s, and the connect fails with its own message and
 - The hand check on Arc, Opera and Vivaldi, which clears their `unverified`: the folder, the setting page (Opera's `opera://inspect`), Allow, disconnect.
 - Whether a cancelled connect also closes the browser's Allow prompt, not only the runner's wait, was not observed.
 - Windows paths ([#354](https://github.com/Aris-ngoy/qa-agent/issues/354)) and picking a profile other than the default context are not decided.
+
+## When the connect gets stuck: not running, the re-check and the Allow wait
+
+### Goal
+
+On 2026-11-02, the desktop's **Your browser** tab got stuck twice, on desktop and runner 1.0.6 ([#415](https://github.com/Aris-ngoy/qa-agent/issues/415)):
+
+- **Chrome stayed "Remote Debugging Off".** It was closed, but its leftover `DevToolsActivePort` made it look like an open Chrome with the setting off.
+- **Dia was Ready, and the connect seemed to hang.** The runner was waiting on an Allow prompt the user could not see.
+
+This work tells a closed browser apart from one with the setting off ([#416](https://github.com/Aris-ngoy/qa-agent/issues/416)).
+
+### Plan summary
+
+- **Three states, in order.**
+  1. `ready`: the port file names a port that gives any HTTP answer.
+  2. `remote debugging off`: otherwise, while the user's own instance of the browser runs.
+  3. `not running`: otherwise.
+
+  A stale port file now falls through to step 2 or 3. Rejected: deleting or ignoring the file by age, which says nothing about whether the browser is open.
+- **"The user's own instance runs" is a process check, never a socket.** It looks for a process of the app's binary with no `--user-data-dir`. A browser Yoqa launched on a Kept profile has that flag, so it doesn't count. A host whose processes can't be read counts the browser as running, which gives the wording from before.
+- **A connect probes before it opens a socket.** A port that doesn't answer HTTP fails at once with no socket. A closed browser says `<Browser> is not running. Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect again`. One with the setting off keeps its message. Before this, a stale file meant a socket attempt that failed as "Remote debugging was denied".
+- **The desktop and CLI word it.** The desktop row's hint for `not running` says to open the browser first (Open the setting starts it). `yoqa devices web` prints `Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect` under a closed one.
+
+### What shipped
+
+- **Runner:**
+  - `EverydayBrowser.executable`.
+  - `ProcessDeps.processArgs`, which reads `ps -axww -o args=` and is faked in tests.
+  - `EverydayState` gains `not running`.
+  - `listEverydayDevices` and `openEverydaySocket` share the port probe, and only the failure path reads processes.
+- **CLI:** the `not running` line in `yoqa devices web`.
+- **Desktop:** `turnOnHint` takes the entry's state.
+- **Docs:** the glossary's **Everyday browser** names its three states, and the skill's devices reference says what to ask the user for each.
+
+### How to verify
+
+```bash
+cd services/runner && bun test src/domains/devices/chromium-everyday.test.ts
+cd packages/cli && bun test src/devices-everyday.test.ts
+cd apps/desktop && bun test src/mainview/features/devices/utils/everyday-browser.test.ts
+```
+
+By hand, on a Mac with Chrome:
+
+1. Quit Chrome. `yoqa devices web` and the picker's Your browser tab read `not running`. A connect fails at once, without "Click Allow".
+2. Open Chrome with the setting off: `remote debugging off`.
+3. Turn the setting on: `ready`.
+
+### Follow-ups
+
+- The by-hand check above.

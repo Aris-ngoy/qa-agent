@@ -309,6 +309,11 @@ function printDevicesTable(
 		if (isEverydayDeviceId(device.id) && device.state === "remote debugging off") {
 			console.log("           Turn it on at chrome://inspect/#remote-debugging, then connect");
 		}
+		if (isEverydayDeviceId(device.id) && device.state === "not running") {
+			console.log(
+				"           Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect",
+			);
+		}
 	}
 }
 

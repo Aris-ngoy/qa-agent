@@ -86,7 +86,7 @@ browser    Google Chrome (everyday) — everyday browser [remote debugging off]
            Turn it on at chrome://inspect/#remote-debugging, then connect
 ```
 
-Open `chrome://inspect/#remote-debugging` in the browser and turn remote debugging on; the device is then `[ready]`. Each connect asks you in the browser: the CLI prints `Click Allow in Google Chrome…` and waits up to 60 seconds. Ctrl-C cancels the wait. A Deny or no answer fails the connect with its own message, and the CLI exits non-zero.
+Open `chrome://inspect/#remote-debugging` in the browser and turn remote debugging on; the device is then `[ready]`. A closed browser is listed `[not running]`: open it first, then turn the setting on. A connect to it fails at once. Each connect asks you in the browser: the CLI prints `Click Allow in Google Chrome…` and waits up to 60 seconds. Ctrl-C cancels the wait. A Deny or no answer fails the connect with its own message, and the CLI exits non-zero.
 
 The first connect for an App prints a warning instead, since the agent acts in your real accounts there, and connects only with `--yes`. Your answer is remembered for that App, in the desktop app too. Without `--app` it is for the default App.
 
@@ -157,7 +157,7 @@ There the agent acts in your real, signed-in accounts, so it comes with limits:
 yoqa runs create APP --cases 1,2 --device web-chrome-everyday --wait   # click Allow in Chrome
 ```
 
-In the desktop app, platform **Web** → Select device → **Your browser** lists each installed browser as **ready** or **remote debugging off**. **Open the setting** opens `chrome://inspect/#remote-debugging` in that browser, where you turn remote debugging on. Pick a ready one and press Connect: the App's first connect shows the warning (Continue or Cancel), then the top bar says **Click Allow in <Browser>** until you do, with **Cancel** to stop waiting. Disconnecting closes Yoqa's window only; remote debugging stays on until you turn it off at the same page. Attach by port is CLI only.
+In the desktop app, platform **Web** → Select device → **Your browser** lists each installed browser as **ready**, **remote debugging off**, or **not running** when it is closed. **Open the setting** opens `chrome://inspect/#remote-debugging` in that browser, where you turn remote debugging on. Pick a ready one and press Connect: the App's first connect shows the warning (Continue or Cancel), then the top bar says **Click Allow in <Browser>** until you do, with **Cancel** to stop waiting. Disconnecting closes Yoqa's window only; remote debugging stays on until you turn it off at the same page. Attach by port is CLI only.
 
 ## What each Action does on web
 
