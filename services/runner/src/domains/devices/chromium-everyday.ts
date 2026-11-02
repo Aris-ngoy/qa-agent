@@ -18,6 +18,7 @@ import {
 	type Device,
 	EVERYDAY_ALLOW_TIMEOUT_MS,
 	type EverydayBrowserId,
+	REMOTE_DEBUGGING_SETTING_URL,
 	WEB_BROWSERS,
 	type WebBrowserKey,
 	everydayBrowserId,
@@ -185,8 +186,6 @@ export async function listEverydayDevices(
 	return devices.filter((device) => includeUnavailable || device.state === "ready");
 }
 
-const REMOTE_DEBUGGING_SETTING = "chrome://inspect/#remote-debugging";
-
 /** How long a connect waits for the user's Allow. */
 export const ALLOW_TIMEOUT_MS = EVERYDAY_ALLOW_TIMEOUT_MS;
 
@@ -230,8 +229,8 @@ export async function openEverydaySocket(
 	if (!active) {
 		throw new EverydayConnectError(
 			(await isEverydayRunning(browser.executable, deps))
-				? `Remote debugging is off in ${browser.name}. Turn it on at ${REMOTE_DEBUGGING_SETTING}, then connect again`
-				: `${browser.name} is not running. Open it, turn on remote debugging at ${REMOTE_DEBUGGING_SETTING}, then connect again`,
+				? `Remote debugging is off in ${browser.name}. Turn it on at ${REMOTE_DEBUGGING_SETTING_URL}, then connect again`
+				: `${browser.name} is not running. Open it, turn on remote debugging at ${REMOTE_DEBUGGING_SETTING_URL}, then connect again`,
 		);
 	}
 	const allowTimeoutMs = deps.allowTimeoutMs ?? ALLOW_TIMEOUT_MS;

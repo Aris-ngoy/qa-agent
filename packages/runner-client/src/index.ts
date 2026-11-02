@@ -562,6 +562,7 @@ export {
 
 export {
 	EVERYDAY_ALLOW_TIMEOUT_MS,
+	REMOTE_DEBUGGING_SETTING_URL,
 	WEB_BROWSERS,
 	everydayBrowserId,
 	formatDeviceState,

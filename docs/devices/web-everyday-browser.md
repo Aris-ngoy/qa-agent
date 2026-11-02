@@ -111,7 +111,7 @@ This work tells a closed browser apart from one with the setting off ([#416](htt
 - **A connect probes before it opens a socket.** A port that doesn't answer HTTP fails at once with no socket. A closed browser says `<Browser> is not running. Open it, turn on remote debugging at chrome://inspect/#remote-debugging, then connect again`. One with the setting off keeps its message. Before this, a stale file meant a socket attempt that failed as "Remote debugging was denied".
 - **The picker re-checks every 2 s while an Everyday browser is not ready** (#417), and stops once all are ready or it closes. The rescan on open and on window focus stays: focus alone missed a user who turned the setting on and came back. A re-check is discovery, so it never opens a socket or raises the Allow prompt. Rejected: a file watch on each `DevToolsActivePort`, which misses a browser that opens or closes without writing it.
 - **The wait for Allow is visible** (#418).
-  - **"Click Allow" only once the runner is waiting.** The bar says it right after the user accepts the first-use warning, or once a connect has run 250 ms without an answer, as the CLI does. The runner refuses an unaccepted App and a closed browser at once, so neither one flashes "Click Allow".
+  - **"Click Allow" only once the runner is waiting.** The bar says it once a try (the first one, or the retry after the warning) has run 250 ms without an answer, as the CLI does, and at most once per connect. The runner refuses an unaccepted App and a closed browser at once, so neither one flashes "Click Allow", and a slow warning doesn't bring the browser forward twice.
   - **Bring to front.** At that moment the desktop brings the browser to the front with `open -a <app>` and no URL. It only does this for a browser listed ready, so it never starts one, and it never touches the user's tabs. If it fails, the console says so and the wait goes on.
   - **The countdown.** The bar counts down from the runner's 60 s (`EVERYDAY_ALLOW_TIMEOUT_MS` in `@yoqa/runner-client`, shared with the runner) and keeps Cancel. At zero it waits for the runner's own timeout message; the desktop never ends the connect itself.
   - Rejected: bringing the browser forward from the runner, which would do it for the CLI too, where the user is at the terminal.
@@ -126,7 +126,8 @@ This work tells a closed browser apart from one with the setting off ([#416](htt
   - `listEverydayDevices` and `openEverydaySocket` share the port probe, and only the failure path reads processes.
 - **CLI:** the `not running` line in `yoqa devices web`.
 - **Desktop (#418):**
-  - `connectAcceptingWarning` takes `onWaiting`.
+  - `connectAcceptingWarning` takes `onWaiting`, called at most once per connect.
+  - `REMOTE_DEBUGGING_SETTING_URL` moved to `@yoqa/runner-client`, so the runner, the CLI and the desktop share it.
   - `allowPrompt` takes the seconds left, and `allowSecondsLeft` works them out.
   - `bar$.waitingForAllow` is an `AllowWait` (the browser and the runner's deadline), and `AllowCountdown` in the toolbar ticks it.
   - `bringEverydayBrowserToFront` is in the main process (`open -a`), over RPC, and in `data/api` (never rejects).

@@ -1,10 +1,10 @@
+import { AllowCountdown } from "@/features/devices/components/allow-countdown";
 import { SelectDeviceModal } from "@/features/devices/components/select-device-modal";
 import type {
 	AllowWait,
 	DevicePlatform,
 	SelectedDevice,
 } from "@/features/devices/data/state/session-bar";
-import { allowPrompt, allowSecondsLeft } from "@/features/devices/utils/everyday-browser";
 import { sessionPillLabel } from "@/features/devices/utils/session-status";
 import { withViewport } from "@/features/devices/utils/web-device";
 import { ServersDoctorPanel } from "@/features/doctor/components/servers-doctor-panel";
@@ -13,7 +13,7 @@ import { useThemeMode } from "@/features/settings/hooks/use-theme-mode";
 import { Button, ListBox, Select } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
 import { type ActiveDeviceResponse, devicePlatformSchema } from "@yoqa/runner-client";
-import { type ReactNode, type SVGProps, useEffect } from "react";
+import type { ReactNode, SVGProps } from "react";
 
 const PLATFORM_LABELS: Record<DevicePlatform, string> = {
 	ios: "iOS",
@@ -149,18 +149,6 @@ function ThemeToggle() {
 			{button("dark", "Dark mode", <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />)}
 		</fieldset>
 	);
-}
-
-/** "Click Allow in Dia · 58 s": the seconds left until the runner stops waiting on Allow. */
-function AllowCountdown({ wait }: { wait: AllowWait }) {
-	const now$ = useObservable(Date.now());
-	const now = useValue(now$);
-	useEffect(() => {
-		now$.set(Date.now());
-		const tick = setInterval(() => now$.set(Date.now()), 1_000);
-		return () => clearInterval(tick);
-	}, [now$]);
-	return <>{allowPrompt(wait.browserName, allowSecondsLeft(wait.deadline, now))}</>;
 }
 
 type SessionToolbarProps = {
