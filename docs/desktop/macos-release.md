@@ -13,7 +13,7 @@ Ship a downloadable **unsigned** Apple Silicon DMG where Yoqa Desktop starts its
 - Electrobun `preBuild` + `copy` + `asarUnpack` for runner, CLI, and skill archive (zig-asar needs exact file paths — globs like `runner/**` do **not** unpack)
 - Sidecar prefers `Contents/Resources/app.asar.unpacked/runner/yoqa-runner`; falls back to monorepo `bun run` for `electrobun dev`
 - Settings → CLI & Agents resolves packaged `runner/yoqa` + skill archive (no monorepo checkout)
-- Tag `v*` triggers GitHub Actions on `macos-14` → stable Electrobun DMG → GitHub Release
+- Tag `v*` triggers GitHub Actions on `macos-15` → stable Electrobun DMG → GitHub Release
 
 Rejected for v0.1.0: shipping Appium/Node inside the DMG; Apple codesign/notarize; Intel x64.
 
