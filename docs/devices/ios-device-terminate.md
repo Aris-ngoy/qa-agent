@@ -11,7 +11,7 @@ Fills one of the gaps left by the [`device-ios` plan](../plans/device-lanes/devi
 - **devicectl, not the runner.** `YoqaRunner` is unchanged: no rebuild or re-sign, and a terminate does not need the runner's main thread. A runner `terminate` command (`XCUIApplication.terminate()`) was rejected for that reason.
 - **Bundle id to pid.** `devicectl device process terminate` takes a pid. The Lane asks `device info apps --bundle-id <id> --include-all-apps` where the app is installed (its `url`), then finds the process in `device info processes` whose executable is directly inside that bundle. The app's extensions run from `PlugIns/` and `Extensions/` inside the bundle and are left alone.
 - **The app is looked up for each terminate**, not taken from the list the Lane keeps per Device Session ([foreground-app.md](./foreground-app.md)). That list is read once, leaves out system apps, and a reinstall moves the bundle, which would make a running app look stopped. `--include-all-apps` also covers system apps such as Settings.
-- **SIGTERM, wait, SIGKILL.** After `process terminate --pid`, the process list is polled every 250 ms until the pid is gone, for up to 3 s. A pid still there gets `--kill` and one more check; if it survives that, the terminate fails naming the app.
+- **SIGTERM, wait, SIGKILL.** After `process terminate --pid`, the process list is polled every 250 ms until the pid is gone, for up to 3 s. A pid still there gets `--kill` and up to 1 s more to leave the list (a killed process can sit there while it is reaped); if it survives that, the terminate fails naming the app.
 - **Not running** is success with no terminate sent. **Not installed** is an error naming the app, so a wrong bundle id is not reported as terminated.
 - **A listing that fails** (cable, tunnel, unreadable JSON) is a `devicectl` error, never "not running".
 - **Restart** is the default path, terminate then `activateApp` (`devicectl device process launch`); the Lane has no `restartApp`. `launch --terminate-existing` was rejected: a second way to kill an app, and "not supported on all platforms". The Action's result now carries `storage: "kept"` on this path, on every Lane that uses it (simulator and Android too).
@@ -30,9 +30,11 @@ Fills one of the gaps left by the [`device-ios` plan](../plans/device-lanes/devi
 1. `bun test services/runner/src/domains/devices/devicectl.test.ts services/runner/src/domains/devices/ios-device-lane.test.ts`
 2. On a cabled iPhone with the App open: `yoqa action terminate-app --app-id <bundle id>` closes it; run it again and it still succeeds. `yoqa action restart-app --app-id <bundle id>` brings up a fresh launch, still signed in.
 
-Checked by hand on an iPhone 15 (iOS 27): `devicectl device process terminate --pid` on a running app sent SIGTERM and the pid was gone from the next process list.
+Checked by hand on an iPhone 15 (iOS 27) with `ios.playzone.appsandbox`: `device info apps --bundle-id` gave its `url` (`file:///private/var/containers/Bundle/Application/<uuid>/PzSandbox.app/`), `device info processes` listed its executable as that url plus `PzSandbox`, and `devicectl device process terminate --pid` sent SIGTERM; the pid was gone from the next process list. `--bundle-id com.apple.Preferences --include-all-apps` gave `file:///Applications/Preferences.app/`. The Actions themselves have not been run end to end on a phone yet.
 
 ## Follow-ups
+
+- A restart holds the action lock for its terminate, not across the terminate and the launch, so a gesture queued behind it can run between the two. Closing that needs a Lane `restartApp` or a lock around the pair in `performAction`.
 
 - A Screen read of a terminated target app still says `APP_BACKGROUNDED`; a "not running" message would be clearer.
 - Opening a URL, and accepting or dismissing an alert, are still "not available yet" on this Lane.
