@@ -167,6 +167,7 @@ export function parseDevicectlDevices(json: unknown): Device[] {
 
 type DevicectlApp = {
 	bundleIdentifier?: string;
+	url?: string;
 	builtByDeveloper?: boolean;
 	hidden?: boolean;
 	appClip?: boolean;
@@ -193,4 +194,61 @@ export function parseDevicectlApps(json: unknown): string[] {
 	const developerBuilt = apps.filter((app) => app.builtByDeveloper);
 	const others = apps.filter((app) => !app.builtByDeveloper);
 	return [...developerBuilt, ...others].map((app) => app.bundleIdentifier);
+}
+
+/**
+ * Where an app is installed, from `xcrun devicectl device info apps --json-output`: the
+ * `file://` url of its bundle on the phone. Undefined when the app is not listed.
+ */
+export function parseDevicectlAppUrl(json: unknown, bundleId: string): string | undefined {
+	const items = (json as { result?: { apps?: unknown } } | null)?.result?.apps;
+	if (!Array.isArray(items)) return undefined;
+	const app = (items as DevicectlApp[]).find((item) => item.bundleIdentifier === bundleId);
+	return typeof app?.url === "string" && app.url ? app.url : undefined;
+}
+
+export type DevicectlProcess = { pid: number; executable: string };
+
+/**
+ * The running processes from `xcrun devicectl device info processes --json-output`. Null
+ * when the output is unreadable, so a listing that failed is never read as "nothing runs".
+ */
+export function parseDevicectlProcesses(json: unknown): DevicectlProcess[] | null {
+	const items = (json as { result?: { runningProcesses?: unknown } } | null)?.result
+		?.runningProcesses;
+	if (!Array.isArray(items)) return null;
+	const processes: DevicectlProcess[] = [];
+	for (const item of items as Array<{ executable?: unknown; processIdentifier?: unknown }>) {
+		if (typeof item?.processIdentifier !== "number" || typeof item.executable !== "string")
+			continue;
+		processes.push({ pid: item.processIdentifier, executable: item.executable });
+	}
+	return processes;
+}
+
+/** A `file://` url as devicectl prints it, percent-escapes undone. */
+function decoded(url: string): string {
+	try {
+		return decodeURI(url);
+	} catch {
+		return url;
+	}
+}
+
+/**
+ * The app's own process: the executable directly inside its bundle (`appUrl`, from
+ * `parseDevicectlAppUrl`). Its extensions run from `PlugIns/` and `Extensions/` deeper in
+ * the bundle and are not the app.
+ */
+export function appMainProcess(
+	processes: DevicectlProcess[],
+	appUrl: string,
+): DevicectlProcess | undefined {
+	const bundle = decoded(appUrl.endsWith("/") ? appUrl : `${appUrl}/`);
+	return processes.find((process) => {
+		const executable = decoded(process.executable);
+		if (!executable.startsWith(bundle)) return false;
+		const inside = executable.slice(bundle.length);
+		return inside !== "" && !inside.includes("/");
+	});
 }

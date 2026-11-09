@@ -1,0 +1,56 @@
+{
+	"info": {
+		"arguments": [
+			"devicectl",
+			"device",
+			"info",
+			"processes",
+			"--device",
+			"00008120-000E6D813E2A601E",
+			"--json-output",
+			"processes.json"
+		],
+		"commandType": "devicectl.device.info.processes",
+		"environment": {},
+		"jsonVersion": 5,
+		"outcome": "success",
+		"version": "642.16"
+	},
+	"result": {
+		"deviceIdentifier": "A0FD1D4B-CED5-5EB5-907A-0A9B0997C802",
+		"runningProcesses": [
+			{
+				"executable": "file:///sbin/launchd",
+				"processIdentifier": 1
+			},
+			{
+				"executable": "file:///usr/libexec/UserEventAgent",
+				"processIdentifier": 33
+			},
+			{
+				"executable": "file:///Applications/Screen%20Time.app/PlugIns/ScreenTimeWidgetExtension.appex/ScreenTimeWidgetExtension",
+				"processIdentifier": 340
+			},
+			{
+				"executable": "file:///private/var/containers/Bundle/Application/2C1F8A4E-0C5E-4F43-9F7B-1D7C2B3E4A10/Shop.app/PlugIns/ShopWidget.appex/ShopWidget",
+				"processIdentifier": 342
+			},
+			{
+				"executable": "file:///Applications/Preferences.app/Preferences",
+				"processIdentifier": 401
+			},
+			{
+				"executable": "file:///private/var/containers/Bundle/Application/2C1F8A4E-0C5E-4F43-9F7B-1D7C2B3E4A10/Shop.app/Shop",
+				"processIdentifier": 528
+			},
+			{
+				"executable": "file:///private/var/containers/Bundle/Application/1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C50/ShopClip.app/PlugIns/ClipWidget.appex/ClipWidget",
+				"processIdentifier": 531
+			},
+			{
+				"executable": "file:///System/Library/PrivateFrameworks/SeymourServicesCore.framework/XPCServices/SeymourMetricsService.xpc/SeymourMetricsService",
+				"processIdentifier": 1134
+			}
+		]
+	}
+}

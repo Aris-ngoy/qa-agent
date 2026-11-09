@@ -187,6 +187,8 @@ export async function performAction(
 			} else {
 				await session.terminateApp(body.appId);
 				await session.activateApp(body.appId);
+				// Ending an App's process and launching it again leaves its data alone.
+				storage = "kept";
 			}
 			break;
 		}

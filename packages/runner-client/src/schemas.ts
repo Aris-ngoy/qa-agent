@@ -1327,8 +1327,8 @@ export const actionResponseSchema = z.object({
 	screenshot: actionResultScreenshotSchema.optional(),
 	phases: actionPhasesSchema.optional(),
 	/**
-	 * restart-app on web: whether the App origin's storage was cleared, or kept because the
-	 * session is the user's Everyday browser.
+	 * restart-app: whether the App's storage was cleared (a Browser device clears the App
+	 * origin's), or kept: on a simulator, an emulator, a phone, and the user's Everyday browser.
 	 */
 	storage: appStorageSchema.optional(),
 });

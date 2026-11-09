@@ -63,6 +63,8 @@ Response is `{ "ok": true, "data" }` or `{ "ok": false, "error": { "code", "mess
 
 Lifecycle stays `xcrun devicectl`.
 
+As built (#420): `terminateApp` finds the app's pid through `devicectl device info apps` and `device info processes`, then `devicectl device process terminate`. See [ios-device-terminate.md](../../devices/ios-device-terminate.md).
+
 As built (#249): `viewport`, `screenshot`, `tap`, `longPress`, `drag` and the journal. See [ios-device-actions.md](../../devices/ios-device-actions.md).
 
 As built (#250): `snapshot`, `type`, `keyboardReturn`, `keyboardDelete`, `button`, `APP_BACKGROUNDED`, and `RUNNER_WEDGED` through `MainThreadGate`. See [ios-device-observation.md](../../devices/ios-device-observation.md).
