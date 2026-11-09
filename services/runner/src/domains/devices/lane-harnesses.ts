@@ -150,14 +150,22 @@ export function androidAdbLane(): LaneHarness {
 	return androidLane("Android Direct: adb (faked adb)");
 }
 
+/**
+ * The faked adb answers at once, so the frame loop never yields while it runs: a short idle
+ * keeps it from holding the event loop for the default 2s after each read.
+ */
+const FAKED_CAPTURE = { idleMs: 50 };
+
 export function androidLatestFrameLane(): LaneHarness {
-	return androidLane("Android Direct: device-android (faked adb)", { backgroundCapture: {} });
+	return androidLane("Android Direct: device-android (faked adb)", {
+		backgroundCapture: FAKED_CAPTURE,
+	});
 }
 
 /** `device-android` with the instrumentation helper faked: the tree comes from it, not a dump. */
 export function androidDevtoolsLane(): LaneHarness {
 	return androidLane("Android Direct: device-android with the helper (faked adb and helper)", {
-		backgroundCapture: {},
+		backgroundCapture: FAKED_CAPTURE,
 		devtools: async () => ({
 			tree: async () => ({
 				nodes: [

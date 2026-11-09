@@ -71,6 +71,14 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** The wait after each Action for the screen to settle; unset uses the executor's default. */
+let caseSettleMs: number | undefined;
+
+/** Tests drive faked devices that settle at once, so they skip the real post-Action wait. */
+export function setCaseSettleMsForTests(ms: number | undefined): void {
+	caseSettleMs = ms;
+}
+
 export class RunValidationError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -359,6 +367,7 @@ async function executeScriptCase(input: {
 			await setCurrentCommand(input.runTestId, command);
 		},
 		clock: { sleep, now: () => Date.now() },
+		settleMs: caseSettleMs,
 	});
 }
 
@@ -401,6 +410,7 @@ async function executeAgentCase(input: {
 		decide: decideNextAction,
 		screenMode: input.screenMode,
 		clock: { sleep, now: () => Date.now() },
+		settleMs: caseSettleMs,
 		defaultAppId: input.defaultAppId,
 	});
 }
