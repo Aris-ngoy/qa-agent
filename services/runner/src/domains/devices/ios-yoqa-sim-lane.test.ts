@@ -578,7 +578,7 @@ describe("iOS-simulator Direct lane: device-sim with yoqa-ax", () => {
 	test("a tap never waits on a tree read", async () => {
 		const ax = fakeAx();
 		ax.setTree(GENERAL);
-		ax.slowDescribe(2_000);
+		ax.slowDescribe(1_000);
 		const session = await openWithAx(ax);
 		const reading = session.pageSource();
 		await Bun.sleep(20);
@@ -615,7 +615,7 @@ describe("iOS-simulator Direct lane: device-sim with yoqa-ax", () => {
 	});
 
 	test("a tap never waits for yoqa-ax to connect", async () => {
-		const ax = fakeAx({ connectMs: 2_000 });
+		const ax = fakeAx({ connectMs: 1_000 });
 		const session = await openWithAx(ax);
 		const started = performance.now();
 		await session.tap(500, 500);
