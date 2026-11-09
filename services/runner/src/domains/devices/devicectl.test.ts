@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { idleWiredUdids, parseDevicectlApps, parseDevicectlDevices } from "./devicectl";
+import {
+	appMainProcess,
+	idleWiredUdids,
+	parseDevicectlAppUrl,
+	parseDevicectlApps,
+	parseDevicectlDevices,
+	parseDevicectlProcesses,
+} from "./devicectl";
 import apps from "./fixtures/devicectl-apps.json";
+import processes from "./fixtures/devicectl-processes.json";
 import wifi from "./fixtures/devicectl-wifi.json";
 import devModeOff from "./fixtures/devicectl-wired-devmode-off.json";
 import wiredLegacy from "./fixtures/devicectl-wired-legacy.json";
@@ -10,6 +18,10 @@ import wired from "./fixtures/devicectl-wired.json";
 // with serials and hostnames removed: a watch, two Wi-Fi-paired iPhones (one with its tunnel
 // up) and a booted simulator. The `wired` fixtures are its iPhone 15 on a cable.
 // `devicectl-apps.json` is the shape of `xcrun devicectl device info apps --json-output`.
+// `devicectl-processes.json` is cut down from `xcrun devicectl device info processes
+// --json-output` on that iPhone 15 (Xcode 27), with its apps renamed to the ones in
+// `devicectl-apps.json`: Shop is running with a widget extension, testemall is not, and the
+// Shop app clip has only an extension running.
 
 describe("parseDevicectlDevices", () => {
 	test("a cabled phone with Developer Mode on is a target", () => {
@@ -84,5 +96,53 @@ describe("parseDevicectlApps", () => {
 	test("unreadable output lists nothing", () => {
 		expect(parseDevicectlApps(null)).toEqual([]);
 		expect(parseDevicectlApps({ result: {} })).toEqual([]);
+	});
+});
+
+describe("parseDevicectlAppUrl", () => {
+	test("finds where an app is installed by its bundle id", () => {
+		expect(parseDevicectlAppUrl(apps, "com.example.shop")).toBe(
+			"file:///private/var/containers/Bundle/Application/2C1F8A4E-0C5E-4F43-9F7B-1D7C2B3E4A10/Shop.app/",
+		);
+	});
+
+	test("an app that is not listed, or unreadable output, has no url", () => {
+		expect(parseDevicectlAppUrl(apps, "com.example.absent")).toBeUndefined();
+		expect(parseDevicectlAppUrl(null, "com.example.shop")).toBeUndefined();
+		expect(parseDevicectlAppUrl({ result: {} }, "com.example.shop")).toBeUndefined();
+	});
+});
+
+describe("parseDevicectlProcesses", () => {
+	test("lists each running process with its pid and executable", () => {
+		const running = parseDevicectlProcesses(processes);
+		expect(running).toHaveLength(8);
+		expect(running?.[0]).toEqual({ pid: 1, executable: "file:///sbin/launchd" });
+	});
+
+	test("unreadable output is null, not an empty phone", () => {
+		expect(parseDevicectlProcesses(null)).toBeNull();
+		expect(parseDevicectlProcesses({ result: {} })).toBeNull();
+	});
+});
+
+describe("appMainProcess", () => {
+	const running = parseDevicectlProcesses(processes) ?? [];
+	const urlOf = (bundleId: string) => parseDevicectlAppUrl(apps, bundleId) ?? "";
+
+	test("a running app is its own executable, not one of its extensions", () => {
+		expect(appMainProcess(running, urlOf("com.example.shop"))?.pid).toBe(528);
+	});
+
+	test("an app that is not running has no process", () => {
+		expect(appMainProcess(running, urlOf("com.example.testemall"))).toBeUndefined();
+	});
+
+	test("an app with only an extension running is not running", () => {
+		expect(appMainProcess(running, urlOf("com.example.shop.Clip"))).toBeUndefined();
+	});
+
+	test("a system app is found under /Applications", () => {
+		expect(appMainProcess(running, "file:///Applications/Preferences.app/")?.pid).toBe(401);
 	});
 });

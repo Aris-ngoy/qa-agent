@@ -27,14 +27,42 @@ function options(deviceId = PHONE_UDID, extra: Partial<SessionOptions> = {}): Se
 const INSTALLED_APPS = {
 	result: {
 		apps: [
-			{ bundleIdentifier: "com.example.shop", builtByDeveloper: false },
+			{
+				bundleIdentifier: "com.example.shop",
+				builtByDeveloper: false,
+				url: "file:///private/var/containers/Bundle/Application/2C1F8A4E-0C5E-4F43-9F7B-1D7C2B3E4A10/Shop.app/",
+			},
 			{ bundleIdentifier: "com.example.testemall", builtByDeveloper: true },
 		],
 	},
 };
 
+/** Shop's process on the fake phone, as `devicectl device info processes` lists it. */
+const SHOP_PID = 528;
+const SHOP_PROCESS = {
+	executable:
+		"file:///private/var/containers/Bundle/Application/2C1F8A4E-0C5E-4F43-9F7B-1D7C2B3E4A10/Shop.app/Shop",
+	processIdentifier: SHOP_PID,
+};
+
 /** Whether a `devicectl` command lists the phone's apps. */
 const isAppListing = (args: string[]) => args.slice(0, 3).join(" ") === "device info apps";
+const isProcessListing = (args: string[]) => args.slice(0, 3).join(" ") === "device info processes";
+
+/** The `devicectl` commands that changed something on the phone: launches and terminates. */
+const lifecycle = (devicectl: string[][]) =>
+	devicectl.filter((args) => args.slice(0, 2).join(" ") === "device process");
+const TERMINATE_SHOP = [
+	"device",
+	"process",
+	"terminate",
+	"--device",
+	PHONE_UDID,
+	"--pid",
+	String(SHOP_PID),
+];
+const KILL_SHOP = [...TERMINATE_SHOP, "--kill"];
+const LAUNCH_SHOP = ["device", "process", "launch", "--device", PHONE_UDID, "com.example.shop"];
 
 /** The `devicectl` commands that listed the phone's apps. */
 const appListings = (devicectl: string[][]) => devicectl.filter(isAppListing);
@@ -57,6 +85,13 @@ function fakePhone(
 		replies?: Record<string, unknown>;
 		/** What `devicectl device info apps` writes; `INSTALLED_APPS` when omitted, and a failure when null. */
 		apps?: unknown;
+		/**
+		 * Shop (`com.example.shop`) on the phone: running, and whether its process ignores
+		 * SIGTERM, or SIGKILL too. Not running when omitted.
+		 */
+		shop?: "running" | "ignores SIGTERM" | "ignores SIGKILL";
+		/** `devicectl device info processes` fails. */
+		processesFail?: boolean;
 	} = {},
 ) {
 	const commands: string[] = [];
@@ -65,6 +100,7 @@ function fakePhone(
 	const tunnels: Array<{ udid: string; port: number }> = [];
 	let stops = 0;
 	let cableDown = false;
+	let shopRunning = mode.shop !== undefined;
 	let exit: (code: number) => void = () => undefined;
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
@@ -103,11 +139,34 @@ function fakePhone(
 		},
 		devicectl: async (args) => {
 			devicectl.push(args);
+			const jsonPath = args[args.indexOf("--json-output") + 1] ?? "";
 			if (isAppListing(args)) {
 				if (mode.apps === null) return { stdout: "", stderr: "no apps for you", exitCode: 1 };
-				const path = args[args.indexOf("--json-output") + 1] ?? "";
-				await Bun.write(path, JSON.stringify(mode.apps ?? INSTALLED_APPS));
+				const listed = (mode.apps ?? INSTALLED_APPS) as typeof INSTALLED_APPS;
+				// `--bundle-id` narrows the listing to that one app, as on a real phone.
+				const only = args.includes("--bundle-id") ? args[args.indexOf("--bundle-id") + 1] : null;
+				const apps = only
+					? listed.result.apps.filter((app) => app.bundleIdentifier === only)
+					: listed.result.apps;
+				await Bun.write(jsonPath, JSON.stringify({ result: { apps } }));
 			}
+			if (isProcessListing(args)) {
+				if (mode.processesFail) {
+					return { stdout: "", stderr: "the tunnel is down", exitCode: 1 };
+				}
+				const runningProcesses = [
+					{ executable: "file:///sbin/launchd", processIdentifier: 1 },
+					...(shopRunning ? [SHOP_PROCESS] : []),
+				];
+				await Bun.write(jsonPath, JSON.stringify({ result: { runningProcesses } }));
+			}
+			if (args[2] === "terminate" && args.includes(String(SHOP_PID))) {
+				const survives = args.includes("--kill")
+					? mode.shop === "ignores SIGKILL"
+					: mode.shop === "ignores SIGTERM" || mode.shop === "ignores SIGKILL";
+				if (!survives) shopRunning = false;
+			}
+			if (args[2] === "launch" && args.at(-1) === "com.example.shop") shopRunning = true;
 			return { stdout: "", stderr: "", exitCode: 0 };
 		},
 	};
@@ -312,6 +371,95 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		expect(phone.devicectl).toEqual([
 			["device", "process", "launch", "--device", PHONE_UDID, "com.demo"],
 		]);
+		await session.quit();
+	});
+
+	test("terminating a running app sends it SIGTERM and nothing more", async () => {
+		const phone = fakePhone({ shop: "running" });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.terminateApp("com.example.shop");
+		expect(lifecycle(phone.devicectl)).toEqual([TERMINATE_SHOP]);
+		await session.quit();
+	});
+
+	test("terminating an app that is not running succeeds and sends no terminate", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.terminateApp("com.example.shop");
+		expect(lifecycle(phone.devicectl)).toEqual([]);
+		await session.quit();
+	});
+
+	test("an app that ignores SIGTERM is force-killed", async () => {
+		const phone = fakePhone({ shop: "ignores SIGTERM" });
+		const session = await createIosDeviceSession(options(), {
+			...phone.deps,
+			terminateGraceMs: 20,
+		});
+		await session.terminateApp("com.example.shop");
+		expect(lifecycle(phone.devicectl)).toEqual([TERMINATE_SHOP, KILL_SHOP]);
+		await session.quit();
+	});
+
+	test("an app that survives a force-kill is an error that names it", async () => {
+		const phone = fakePhone({ shop: "ignores SIGKILL" });
+		const session = await createIosDeviceSession(options(), {
+			...phone.deps,
+			terminateGraceMs: 20,
+		});
+		await expect(session.terminateApp("com.example.shop")).rejects.toThrow(
+			/com\.example\.shop is still running/,
+		);
+		expect(lifecycle(phone.devicectl)).toEqual([TERMINATE_SHOP, KILL_SHOP]);
+		await session.quit();
+	});
+
+	test("a process list that can't be read is a devicectl error, not a terminated app", async () => {
+		const phone = fakePhone({ shop: "running", processesFail: true });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await expect(session.terminateApp("com.example.shop")).rejects.toThrow(
+			/devicectl processes: the tunnel is down/,
+		);
+		expect(lifecycle(phone.devicectl)).toEqual([]);
+		await session.quit();
+	});
+
+	test("terminating an app that is not installed is an error that names it", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await expect(session.terminateApp("com.example.absent")).rejects.toThrow(
+			/com\.example\.absent is not installed/,
+		);
+		await session.quit();
+	});
+
+	test("after a terminate the session is still live and its target app is unchanged", async () => {
+		const phone = fakePhone({ shop: "running" });
+		const session = await createIosDeviceSession(
+			options(PHONE_UDID, { bundleId: "com.example.shop" }),
+			phone.deps,
+		);
+		await session.terminateApp("com.example.shop");
+		expect(session.targetApp?.()).toBe("com.example.shop");
+		await session.tap(500, 500);
+		expect(phone.commands.at(-1)).toBe("tap");
+		expect(phone.stops()).toBe(0);
+		await session.quit();
+	});
+
+	test("a terminate waits for a gesture in flight, and a gesture waits for it", async () => {
+		const phone = fakePhone({ shop: "running" });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		const order: string[] = [];
+		const held = session.withActionLock(async () => {
+			await Bun.sleep(30);
+			order.push("gesture");
+		});
+		const terminated = session.terminateApp("com.example.shop").then(() => order.push("terminate"));
+		const tapped = session.tap(500, 500).then(() => order.push("tap"));
+		expect(lifecycle(phone.devicectl)).toEqual([]);
+		await Promise.all([held, terminated, tapped]);
+		expect(order).toEqual(["gesture", "terminate", "tap"]);
 		await session.quit();
 	});
 
@@ -740,6 +888,47 @@ describe("a tap by id on a cabled iPhone (the Action the CLI performs)", () => {
 			expect.objectContaining({ command: "tap", x: 0.3, y: 0.5 }),
 			expect.objectContaining({ command: "tap", x: 0.25, y: 0.75 }),
 		]);
+		await session.quit();
+	});
+});
+
+describe("terminating and restarting an App on a cabled iPhone (the Actions the CLI performs)", () => {
+	test("terminate-app ends the App", async () => {
+		const phone = fakePhone({ shop: "running" });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		const result = await performAction(session, {
+			kind: "terminate-app",
+			appId: "com.example.shop",
+		});
+		expect(result).toMatchObject({ ok: true, kind: "terminate-app" });
+		expect(lifecycle(phone.devicectl)).toEqual([TERMINATE_SHOP]);
+		await session.quit();
+	});
+
+	test("restart-app terminates the App before it launches it", async () => {
+		const phone = fakePhone({ shop: "running" });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await performAction(session, { kind: "restart-app", appId: "com.example.shop" });
+		expect(lifecycle(phone.devicectl)).toEqual([TERMINATE_SHOP, LAUNCH_SHOP]);
+		await session.quit();
+	});
+
+	test("restart-app on an App that is not running only launches it", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await performAction(session, { kind: "restart-app", appId: "com.example.shop" });
+		expect(lifecycle(phone.devicectl)).toEqual([LAUNCH_SHOP]);
+		await session.quit();
+	});
+
+	test("restart-app says the App's storage was kept", async () => {
+		const phone = fakePhone({ shop: "running" });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		const result = await performAction(session, {
+			kind: "restart-app",
+			appId: "com.example.shop",
+		});
+		expect(result.storage).toBe("kept");
 		await session.quit();
 	});
 });

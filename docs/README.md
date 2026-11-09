@@ -120,6 +120,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/ios-device-observation.md](./devices/ios-device-observation.md) | `device-ios`: the Screen tree, typing and hardware buttons; `APP_BACKGROUNDED` and `RUNNER_WEDGED` (the main-thread gate) |
 | [devices/screen-source.md](./devices/screen-source.md) | The Screen's `source`: which app a tree was read from (target app, foreground app, or SpringBoard); `device-ios` reports it, `yoqa screen` leads with it |
 | [devices/foreground-app.md](./devices/foreground-app.md) | `device-ios` with no target app reads the app in the foreground: the phone's user apps, listed once per Device Session, go to `snapshot` as `candidates` |
+| [devices/ios-device-terminate.md](./devices/ios-device-terminate.md) | `device-ios` terminates and restarts an App through `devicectl`: bundle id to pid, SIGTERM, SIGKILL after a wait; a restart keeps the App's data |
 | [devices/system-element-tap.md](./devices/system-element-tap.md) | `device-ios` with no target app: a tap by id on a SpringBoard element fails clearly, naming the id, instead of tapping the system |
 | [devices/ios-device-benchmark.md](./devices/ios-device-benchmark.md) | `device-ios` vs Appium on a cabled iPhone: about 2.4x faster per tap once the snapshot is one read; promoted: `auto` picks it |
 | [devices/ios-device-default.md](./devices/ios-device-default.md) | `device-ios` becomes the `auto` lane on a cabled iPhone; the `directIsAutomatic` gate is removed |

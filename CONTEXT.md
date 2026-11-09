@@ -79,6 +79,10 @@ _Avoid_: locator, find element (when meaning description→coords)
 A single device gesture or app-lifecycle command (tap, swipe, type, key, open URL, etc.), optionally grounded from a description. `key` presses one named key (Enter, Tab, Escape, arrows, …) with optional modifiers; each Lane declares the keys it can press, and any other key fails the Action. A swipe's direction is the way the finger moves, so `swipe up` scrolls the content down and reveals what is below; to **scroll** up is to swipe down.
 _Avoid_: step (Run timeline), command (CLI)
 
+**Restart (an App)**:
+The Action that ends an App and launches it again, for a cold start: terminate, then launch. The App's data (login, preferences, onboarding progress) is kept on a simulator, an emulator, a phone and the Everyday browser. Only a Browser device Yoqa launched clears it: there a restart clears the App origin's storage. The Action's result says which: `kept` or `cleared`.
+_Avoid_: reset, reinstall, relaunch (a launch alone does not end the old process)
+
 **Settle**:
 Waiting after an Action until the screenshot stops changing, bounded by a cap. An animating screen (typically a game) may never settle; the result then says it did not, and the latest frame is returned anyway.
 _Avoid_: idle wait, sleep (a fixed delay is not a Settle)

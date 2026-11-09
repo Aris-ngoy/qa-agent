@@ -24,8 +24,11 @@
  * capture and is encoded by `ffmpeg` (`frame-recorder.ts`); screenshots are the fallback
  * when the phone has no recorder.
  *
- * Alerts, URLs and terminating an app arrive in later slices; until then they reject with
- * a clear message.
+ * Terminating an app is `devicectl` too: the app's process is found by where its bundle is
+ * installed, sent SIGTERM, and force-killed if it is still there after a short wait. An app
+ * that is not running is already terminated. The target app stays set.
+ *
+ * Alerts and URLs arrive in later slices; until then they reject with a clear message.
  */
 
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
@@ -33,7 +36,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { type KeyName, type ScreenSource, screenSourceSchema } from "@yoqa/runner-client";
-import { parseDevicectlApps } from "./devicectl";
+import {
+	appMainProcess,
+	parseDevicectlAppUrl,
+	parseDevicectlApps,
+	parseDevicectlProcesses,
+} from "./devicectl";
 import { errorChain } from "./error-chain";
 import {
 	type FrameRecorderDeps,
@@ -107,6 +115,8 @@ export type IosDeviceDeps = {
 	recorder?: FrameRecorderDeps;
 	/** How long the runner may stay unreachable before the session is dead; `UNREACHABLE_GRACE_MS` when omitted. */
 	unreachableGraceMs?: number;
+	/** How long a terminated app gets to exit before it is force-killed; `TERMINATE_GRACE_MS` when omitted. */
+	terminateGraceMs?: number;
 };
 
 /**
@@ -117,6 +127,11 @@ export type IosDeviceDeps = {
  * tree reads use the Inspector Session and never end the Device Session.
  */
 const UNREACHABLE_GRACE_MS = 20_000;
+
+/** How long an app gets to exit after SIGTERM before SIGKILL. */
+const TERMINATE_GRACE_MS = 3_000;
+/** How often the phone's process list is read while a terminated app exits. */
+const TERMINATE_POLL_MS = 250;
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -324,35 +339,42 @@ export async function createIosDeviceSession(
 		return { width: size.width, height: size.height };
 	});
 
+	const devicectl = async (args: string[], label: string) => {
+		const result = await deps.devicectl(args);
+		if (result.exitCode !== 0) {
+			throw new Error(
+				`${label}: ${result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`}`,
+			);
+		}
+	};
+
+	/** What a `devicectl` command reports through `--json-output`. */
+	const devicectlJson = async (args: string[], label: string): Promise<unknown> => {
+		const dir = await mkdtemp(join(tmpdir(), "yoqa-devicectl-"));
+		const jsonPath = join(dir, "out.json");
+		try {
+			await devicectl([...args, "--json-output", jsonPath], label);
+			return JSON.parse(await readFile(jsonPath, "utf8"));
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	};
+
 	/**
 	 * The phone's user apps, the runner's candidates for the foreground app when there is no
 	 * target app. Listed once per Device Session; a list that fails is empty for the rest of
 	 * it, so the tree reads SpringBoard, rather than paying for `devicectl` on every read.
 	 */
 	const installedApps = remember(async () => {
-		const dir = await mkdtemp(join(tmpdir(), "yoqa-apps-"));
-		const jsonPath = join(dir, "apps.json");
 		try {
-			const result = await deps.devicectl([
-				"device",
-				"info",
-				"apps",
-				"--device",
-				udid,
-				"--json-output",
-				jsonPath,
-			]);
-			if (result.exitCode !== 0) {
-				throw new Error(result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`);
-			}
-			return parseDevicectlApps(JSON.parse(await readFile(jsonPath, "utf8")));
+			return parseDevicectlApps(
+				await devicectlJson(["device", "info", "apps", "--device", udid], "devicectl apps"),
+			);
 		} catch (error) {
 			console.warn(
 				`[yoqa-runner] devicectl could not list the apps on iPhone ${udid} (${errorMessage(error)}); with no target app, the tree is SpringBoard's`,
 			);
 			return [];
-		} finally {
-			await rm(dir, { recursive: true, force: true });
 		}
 	});
 
@@ -494,11 +516,57 @@ export async function createIosDeviceSession(
 	let pointerStart: { x: number; y: number } | null = null;
 	let pointerActive = false;
 
-	const devicectl = async (args: string[], label: string) => {
-		const result = await deps.devicectl(args);
-		if (result.exitCode !== 0) {
+	/**
+	 * Where the app is installed on the phone. `devicectl` terminates by pid, so the bundle id
+	 * is mapped to its bundle, then to the process running from there. Looked up for each
+	 * terminate: a reinstall moves the bundle.
+	 */
+	const installedAt = async (id: string) => {
+		const appUrl = parseDevicectlAppUrl(
+			await devicectlJson(
+				["device", "info", "apps", "--device", udid, "--bundle-id", id, "--include-all-apps"],
+				"devicectl apps",
+			),
+			id,
+		);
+		if (!appUrl) throw new Error(`${id} is not installed on the iPhone`);
+		return appUrl;
+	};
+
+	/** The process of the app installed at `appUrl`, or undefined when it is not running. */
+	const appProcess = async (appUrl: string) => {
+		const processes = parseDevicectlProcesses(
+			await devicectlJson(["device", "info", "processes", "--device", udid], "devicectl processes"),
+		);
+		if (!processes) throw new Error("devicectl processes: the process list was unreadable");
+		return appMainProcess(processes, appUrl);
+	};
+
+	const terminateGraceMs = deps.terminateGraceMs ?? TERMINATE_GRACE_MS;
+	/** SIGTERM, then SIGKILL for an app still there after the grace. Returns once the process is gone. */
+	const terminate = async (id: string) => {
+		const appUrl = await installedAt(id);
+		const running = await appProcess(appUrl);
+		if (!running) return;
+		const signal = (...kill: string[]) =>
+			devicectl(
+				["device", "process", "terminate", "--device", udid, "--pid", String(running.pid), ...kill],
+				"devicectl terminate",
+			);
+		const alive = async () => (await appProcess(appUrl))?.pid === running.pid;
+
+		await signal();
+		const deadline = performance.now() + terminateGraceMs;
+		for (;;) {
+			if (!(await alive())) return;
+			const left = deadline - performance.now();
+			if (left <= 0) break;
+			await Bun.sleep(Math.min(TERMINATE_POLL_MS, left));
+		}
+		await signal("--kill");
+		if (await alive()) {
 			throw new Error(
-				`${label}: ${result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`}`,
+				`${id} is still running on the iPhone after a force-kill (pid ${running.pid}); close it on the phone`,
 			);
 		}
 	};
@@ -544,7 +612,7 @@ export async function createIosDeviceSession(
 			appId = id;
 		},
 		targetApp: () => appId,
-		terminateApp: notYet("Terminating an app"),
+		terminateApp: (id) => withActionLock(() => terminate(id)),
 		backgroundApp: (seconds = 3) =>
 			withActionLock(async () => {
 				await call("button", { name: "home" }, true);
