@@ -132,6 +132,8 @@ const UNREACHABLE_GRACE_MS = 20_000;
 const TERMINATE_GRACE_MS = 3_000;
 /** How often the phone's process list is read while a terminated app exits. */
 const TERMINATE_POLL_MS = 250;
+/** How long a force-killed app gets to leave the process list. */
+const KILL_REAP_MS = 1_000;
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -548,27 +550,39 @@ export async function createIosDeviceSession(
 		const appUrl = await installedAt(id);
 		const running = await appProcess(appUrl);
 		if (!running) return;
-		const signal = (...kill: string[]) =>
+		const signal = (force: boolean) =>
 			devicectl(
-				["device", "process", "terminate", "--device", udid, "--pid", String(running.pid), ...kill],
+				[
+					"device",
+					"process",
+					"terminate",
+					"--device",
+					udid,
+					"--pid",
+					String(running.pid),
+					...(force ? ["--kill"] : []),
+				],
 				"devicectl terminate",
 			);
-		const alive = async () => (await appProcess(appUrl))?.pid === running.pid;
+		/** Whether the process left the phone's process list within `waitMs`. */
+		const exited = async (waitMs: number) => {
+			const deadline = performance.now() + waitMs;
+			for (;;) {
+				if ((await appProcess(appUrl))?.pid !== running.pid) return true;
+				const left = deadline - performance.now();
+				if (left <= 0) return false;
+				await Bun.sleep(Math.min(TERMINATE_POLL_MS, left));
+			}
+		};
 
-		await signal();
-		const deadline = performance.now() + terminateGraceMs;
-		for (;;) {
-			if (!(await alive())) return;
-			const left = deadline - performance.now();
-			if (left <= 0) break;
-			await Bun.sleep(Math.min(TERMINATE_POLL_MS, left));
-		}
-		await signal("--kill");
-		if (await alive()) {
-			throw new Error(
-				`${id} is still running on the iPhone after a force-kill (pid ${running.pid}); close it on the phone`,
-			);
-		}
+		await signal(false);
+		if (await exited(terminateGraceMs)) return;
+		await signal(true);
+		// A killed process can sit in the list for a moment while it is reaped.
+		if (await exited(Math.min(KILL_REAP_MS, terminateGraceMs))) return;
+		throw new Error(
+			`${id} is still running on the iPhone after a force-kill (pid ${running.pid}); close it on the phone`,
+		);
 	};
 
 	return {

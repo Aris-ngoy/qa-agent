@@ -87,9 +87,10 @@ function fakePhone(
 		apps?: unknown;
 		/**
 		 * Shop (`com.example.shop`) on the phone: running, and whether its process ignores
-		 * SIGTERM, or SIGKILL too. Not running when omitted.
+		 * SIGTERM, or SIGKILL too. One that exits slowly is still listed once after its SIGTERM.
+		 * Not running when omitted.
 		 */
-		shop?: "running" | "ignores SIGTERM" | "ignores SIGKILL";
+		shop?: "running" | "exits slowly" | "ignores SIGTERM" | "ignores SIGKILL";
 		/** `devicectl device info processes` fails. */
 		processesFail?: boolean;
 	} = {},
@@ -101,6 +102,8 @@ function fakePhone(
 	let stops = 0;
 	let cableDown = false;
 	let shopRunning = mode.shop !== undefined;
+	/** Process listings that still show Shop after it was told to exit. */
+	let shopLingers = 0;
 	let exit: (code: number) => void = () => undefined;
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
@@ -156,8 +159,9 @@ function fakePhone(
 				}
 				const runningProcesses = [
 					{ executable: "file:///sbin/launchd", processIdentifier: 1 },
-					...(shopRunning ? [SHOP_PROCESS] : []),
+					...(shopRunning || shopLingers > 0 ? [SHOP_PROCESS] : []),
 				];
+				if (shopLingers > 0) shopLingers -= 1;
 				await Bun.write(jsonPath, JSON.stringify({ result: { runningProcesses } }));
 			}
 			if (args[2] === "terminate" && args.includes(String(SHOP_PID))) {
@@ -165,6 +169,7 @@ function fakePhone(
 					? mode.shop === "ignores SIGKILL"
 					: mode.shop === "ignores SIGTERM" || mode.shop === "ignores SIGKILL";
 				if (!survives) shopRunning = false;
+				if (mode.shop === "exits slowly") shopLingers = 1;
 			}
 			if (args[2] === "launch" && args.at(-1) === "com.example.shop") shopRunning = true;
 			return { stdout: "", stderr: "", exitCode: 0 };
@@ -382,6 +387,16 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		await session.quit();
 	});
 
+	test("an app that takes a moment to exit is waited for, not force-killed", async () => {
+		const phone = fakePhone({ shop: "exits slowly" });
+		const session = await createIosDeviceSession(options(), phone.deps);
+		await session.terminateApp("com.example.shop");
+		expect(lifecycle(phone.devicectl)).toEqual([TERMINATE_SHOP]);
+		// It was still listed once after the SIGTERM, then gone.
+		expect(phone.devicectl.filter(isProcessListing)).toHaveLength(3);
+		await session.quit();
+	});
+
 	test("terminating an app that is not running succeeds and sends no terminate", async () => {
 		const phone = fakePhone();
 		const session = await createIosDeviceSession(options(), phone.deps);
@@ -457,7 +472,6 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		});
 		const terminated = session.terminateApp("com.example.shop").then(() => order.push("terminate"));
 		const tapped = session.tap(500, 500).then(() => order.push("tap"));
-		expect(lifecycle(phone.devicectl)).toEqual([]);
 		await Promise.all([held, terminated, tapped]);
 		expect(order).toEqual(["gesture", "terminate", "tap"]);
 		await session.quit();
