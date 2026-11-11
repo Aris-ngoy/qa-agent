@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { errorChain } from "./error-chain";
 import { ActionValidationError, performAction } from "./interaction";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
-import { DeadSessionError, DeviceUnreachableError, type SessionOptions } from "./lane";
+import {
+	ActionUnsupportedError,
+	DeadSessionError,
+	DeviceUnreachableError,
+	type SessionOptions,
+} from "./lane";
 import { cleanPageSource, screenSourceOf } from "./screen";
 import { UsbmuxError } from "./usbmuxd";
 import { YoqaRunnerCommandError } from "./yoqa-runner-link";
@@ -818,6 +823,23 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		expect(phone.devicectl).toEqual([
 			["device", "process", "launch", "--device", PHONE_UDID, "com.demo"],
 		]);
+		await session.quit();
+	});
+});
+
+describe("Actions a cabled iPhone does not do yet", () => {
+	test("open-url and alerts fail as unsupported (422), not as a broken runner (500)", async () => {
+		const phone = fakePhone();
+		const session = await createIosDeviceSession(options(), phone.deps);
+		for (const attempt of [
+			() => session.openUrl("https://example.com"),
+			() => session.acceptAlert(),
+			() => session.dismissAlert(),
+		]) {
+			const error = await attempt().catch((caught: unknown) => caught);
+			expect(error).toBeInstanceOf(ActionUnsupportedError);
+			expect((error as Error).message).toContain("not available on the physical-iOS Direct lane");
+		}
 		await session.quit();
 	});
 });
