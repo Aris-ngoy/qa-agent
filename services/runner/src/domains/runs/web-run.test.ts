@@ -34,13 +34,10 @@ const {
 	getActiveSessionInfo,
 	quitEverySession,
 } = await import("../devices/active-session");
-const { RunValidationError, cancelRunsInProgress, createRun, getRun, setCaseSettleMsForTests } =
-	await import("./application");
+const { RunValidationError, cancelRunsInProgress, createRun, getRun } = await import(
+	"./application"
+);
 const { createRunsRoutes } = await import("../../interfaces/http/runs");
-
-// The faked browser paints at once; nothing here needs the real post-Action settle.
-setCaseSettleMsForTests(0);
-afterAll(() => setCaseSettleMsForTests(undefined));
 
 const WEB_URL = "https://shop.example.com/";
 

@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
 	ActionRequest,
 	CaseScript,
@@ -8,11 +11,14 @@ import type {
 } from "@yoqa/runner-client";
 import { startFakeCdp } from "../devices/fake-cdp";
 import { DeadSessionError } from "../devices/lane";
+import { encodeRgbaPng } from "../devices/png";
 import { type DeviceSession, createDeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import type { AgentDecision } from "./agent";
 import { executeAgentCase, executeScriptCase } from "./case-executor";
-import { encodeRgbaPng } from "./coord-grid";
+
+/** Where the agent loop stores Result screenshots in these tests. */
+const SHOT_DIR = mkdtempSync(join(tmpdir(), "yoqa-case-executor-"));
 
 function fakeSession(shotCount = { n: 0 }): DeviceSession {
 	return {
@@ -20,7 +26,19 @@ function fakeSession(shotCount = { n: 0 }): DeviceSession {
 			shotCount.n += 1;
 			return { path: `/tmp/shot-${shotCount.n}.png`, base64: "aaa" };
 		},
+		captureFrame: async () => ({ base64: "aaa", mime: "image/png" as const }),
 	} as unknown as DeviceSession;
+}
+
+/** A clock that moves only when slept on, so a Settle runs at once on its own timeline. */
+function fakeClock() {
+	let now = 0;
+	return {
+		now: () => now,
+		sleep: async (ms: number) => {
+			now += ms;
+		},
+	};
 }
 
 function fakeAuth(): ActiveProviderAuth {
@@ -59,20 +77,27 @@ function emptyCase(overrides?: Partial<CatalogCase>): CatalogCase {
 }
 
 describe("executeScriptCase", () => {
-	it("replays one tap via performAction and settles", async () => {
+	it("replays one tap via performAction and Settles until the screen holds still", async () => {
 		const actions: ActionRequest[] = [];
 		const steps: Array<{ idx: number; action: unknown }> = [];
-		const sleeps: number[] = [];
+		const clock = fakeClock();
 		const script: CaseScript = {
 			version: 1,
 			sourceRunId: "run_1",
 			savedAt: 1,
 			actions: [{ type: "tap", x: 100, y: 200, reason: "tap login" }],
 		};
+		// The tap starts a transition that is over by the second frame.
+		const frames = ["moving", "done", "done", "done"];
+		let captures = 0;
+		const session = {
+			...fakeSession(),
+			captureFrame: async () => ({ base64: frames[captures++] ?? "done", mime: "image/png" }),
+		} as unknown as DeviceSession;
 
 		const status = await executeScriptCase({
 			script,
-			session: fakeSession(),
+			session,
 			isAborted: () => false,
 			appendStep: async (step) => {
 				steps.push({ idx: step.idx, action: step.action });
@@ -81,18 +106,15 @@ describe("executeScriptCase", () => {
 				actions.push(body);
 				return { ok: true, kind: body.kind };
 			},
-			clock: {
-				sleep: async (ms) => {
-					sleeps.push(ms);
-				},
-				now: () => 1000,
-			},
-			settleMs: 10,
+			clock,
+			settle: { capMs: 1500, pollMs: 80, stableWindowMs: 160 },
 		});
 
 		expect(status).toBe("passed");
 		expect(actions).toEqual([{ kind: "tap", x: 100, y: 200 }]);
-		expect(sleeps).toEqual([10]);
+		// Settled once "done" held for the stable window: well under the old fixed 800 ms.
+		expect(captures).toBe(4);
+		expect(clock.now()).toBe(240);
 		expect(steps).toHaveLength(2);
 		expect(steps[0]?.action).toMatchObject({ type: "tap", x: 100, y: 200 });
 		expect(steps[1]?.action).toMatchObject({ type: "done" });
@@ -117,7 +139,7 @@ describe("executeScriptCase", () => {
 				return { ok: true, kind: body.kind };
 			},
 			clock: { sleep: async () => {}, now: () => 1000 },
-			settleMs: 0,
+			settle: { capMs: 0 },
 		});
 
 		expect(status).toBe("passed");
@@ -153,11 +175,11 @@ describe("executeScriptCase", () => {
 				},
 				now: () => 0,
 			},
-			settleMs: 10,
+			settle: { capMs: 0 },
 		});
 
 		expect(status).toBe("passed");
-		expect(sleeps).toEqual([5_000, 100, 10]);
+		expect(sleeps).toEqual([5_000, 100]);
 		expect(steps[0]).toMatchObject({
 			action: { type: "wait", ms: 5_000, reason: "wait 5000ms" },
 			command: "sleep 5",
@@ -193,7 +215,7 @@ describe("executeScriptCase", () => {
 				sleep: async () => {},
 				now: () => 1000,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
 		});
 
 		expect(status).toBe("passed");
@@ -225,7 +247,7 @@ describe("executeScriptCase", () => {
 					},
 					now: () => now,
 				},
-				settleMs: 0,
+				settle: { capMs: 0 },
 			});
 			return { status, steps };
 		}
@@ -275,7 +297,7 @@ describe("executeScriptCase", () => {
 				sleep: async () => {},
 				now: () => 1000,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
 		});
 
 		expect(status).toBe("passed");
@@ -303,7 +325,7 @@ describe("executeScriptCase", () => {
 				sleep: async () => {},
 				now: () => 1000,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
 		});
 
 		expect(status).toBe("passed");
@@ -335,7 +357,7 @@ describe("executeScriptCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
 		});
 
 		expect(status).toBe("cancelled");
@@ -367,7 +389,7 @@ describe("executeScriptCase", () => {
 				sleep: async () => {},
 				now: () => 1000,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
 		});
 
 		expect(status).toBe("passed");
@@ -440,7 +462,7 @@ describe("executeScriptCase with a Branch", () => {
 				},
 				now: () => now,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
 		});
 		return { status, performed, steps, now: () => now, reads: () => reads };
 	}
@@ -623,7 +645,8 @@ describe("executeAgentCase", () => {
 					return { type: "done", reason: "done", thoughts: "looks fine" };
 				},
 				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				settle: { capMs: 0 },
+				screenshotDir: SHOT_DIR,
 			});
 
 			expect(result.status).toBe("errored");
@@ -654,7 +677,8 @@ describe("executeAgentCase", () => {
 					return { type: "done", reason: "done", thoughts: "home again" };
 				},
 				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				settle: { capMs: 0 },
+				screenshotDir: SHOT_DIR,
 				defaultAppId: "https://shop.example.com/",
 			});
 
@@ -704,7 +728,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -754,7 +779,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -815,7 +841,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -862,7 +889,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -904,7 +932,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -922,6 +951,8 @@ describe("executeAgentCase", () => {
 				const base64 = shot === 1 ? "moving-1" : "stable";
 				return { path: `/tmp/shot-${shot}.png`, base64 };
 			},
+			// Every swipe's Result screenshot: the first one moved the list, the second did not.
+			captureFrame: async () => ({ base64: "stable", mime: "image/png" }),
 		} as unknown as DeviceSession;
 
 		const result = await executeAgentCase({
@@ -965,11 +996,8 @@ describe("executeAgentCase", () => {
 				performed.push(body);
 				return { ok: true, kind: body.kind };
 			},
-			clock: {
-				sleep: async () => {},
-				now: () => 1,
-			},
-			settleMs: 0,
+			clock: fakeClock(),
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1005,7 +1033,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("cancelled");
@@ -1072,7 +1101,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1119,7 +1149,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1160,7 +1191,8 @@ describe("executeAgentCase", () => {
 			},
 			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
 			clock,
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1223,7 +1255,8 @@ describe("executeAgentCase", () => {
 			},
 			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1249,6 +1282,7 @@ describe("executeAgentCase", () => {
 			auth: fakeAuth(),
 			session: {
 				screenshot: async () => ({ path: "/tmp/game.png", base64: png }),
+				captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 			} as unknown as DeviceSession,
 			isAborted: () => false,
 			appendStep: async (step) => {
@@ -1290,7 +1324,8 @@ describe("executeAgentCase", () => {
 			},
 			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1346,7 +1381,8 @@ describe("executeAgentCase", () => {
 			},
 			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1376,7 +1412,8 @@ describe("executeAgentCase", () => {
 			verify: async () => ({ type: "verify", reason: "Done", thoughts: "ok" }),
 			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1390,6 +1427,7 @@ describe("executeAgentCase", () => {
 		let calls = 0;
 		const session = {
 			screenshot: async () => ({ path: "/tmp/shot-reuse.png", base64: "aaa" }),
+			captureFrame: async () => ({ base64: "aaa", mime: "image/png" as const }),
 			pageSource: async () => {
 				pageSourceCalls += 1;
 				return `<XCUIElementTypeApplication name="App" x="0" y="0" width="390" height="844">
@@ -1421,7 +1459,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1455,7 +1494,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1499,7 +1539,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1548,7 +1589,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1616,7 +1658,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1690,7 +1733,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1790,7 +1834,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1839,7 +1884,8 @@ describe("executeAgentCase", () => {
 				sleep: async () => {},
 				now: () => 1,
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1889,7 +1935,8 @@ describe("executeAgentCase", () => {
 				return { ok: true, kind: body.kind };
 			},
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1946,7 +1993,8 @@ describe("executeAgentCase", () => {
 				return { ok: true, kind: body.kind };
 			},
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -1987,7 +2035,8 @@ describe("executeAgentCase", () => {
 				return { ok: true, kind: "tap" };
 			},
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -2026,7 +2075,8 @@ describe("executeAgentCase", () => {
 				return { ok: true, kind: "tap" };
 			},
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(result.status).toBe("passed");
@@ -2050,6 +2100,7 @@ describe("executeAgentCase", () => {
 			screenMode: "tree",
 			session: {
 				screenshot: async () => ({ path: "/tmp/game.png", base64: png }),
+				captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 			} as unknown as DeviceSession,
 			isAborted: () => false,
 			appendStep: async () => {},
@@ -2061,7 +2112,8 @@ describe("executeAgentCase", () => {
 				return { type: "done", reason: "done", thoughts: "nothing to tap" };
 			},
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(calls).toBe(1);
@@ -2084,6 +2136,7 @@ describe("executeAgentCase", () => {
 			auth: fakeAuth(),
 			session: {
 				screenshot: async () => ({ path: "/tmp/game.png", base64: png }),
+				captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 			} as unknown as DeviceSession,
 			isAborted: () => false,
 			appendStep: async () => {},
@@ -2121,7 +2174,8 @@ describe("executeAgentCase", () => {
 				return { ok: true, kind: body.kind };
 			},
 			clock: { sleep: async () => {}, now: () => 1 },
-			settleMs: 0,
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
 		});
 
 		expect(performed[0]).toMatchObject({ kind: "tap", x: 105, y: 295 });
@@ -2197,7 +2251,8 @@ describe("executeAgentCase", () => {
 					return { ok: true, kind: body.kind };
 				},
 				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				settle: { capMs: 0 },
+				screenshotDir: SHOT_DIR,
 			});
 
 			expect(result.status).toBe("passed");
@@ -2274,7 +2329,8 @@ describe("executeAgentCase", () => {
 					return { ok: true, kind: body.kind };
 				},
 				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				settle: { capMs: 0 },
+				screenshotDir: SHOT_DIR,
 			});
 
 			expect(screenReads).toBeGreaterThan(0);
@@ -2313,7 +2369,8 @@ describe("executeAgentCase", () => {
 					return { ok: true, kind: body.kind };
 				},
 				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				settle: { capMs: 0 },
+				screenshotDir: SHOT_DIR,
 			});
 
 			expect(errors[1]).toContain("Send x and y");
@@ -2331,6 +2388,7 @@ describe("executeAgentCase", () => {
 				auth: fakeAuth(),
 				session: {
 					screenshot: async () => ({ path: "/tmp/game.png", base64: png }),
+					captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 				} as unknown as DeviceSession,
 				isAborted: () => false,
 				appendStep: async (step) => {
@@ -2341,7 +2399,8 @@ describe("executeAgentCase", () => {
 					return { type: "done", reason: "done", thoughts: "Nothing to do" };
 				},
 				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				settle: { capMs: 0 },
+				screenshotDir: SHOT_DIR,
 			});
 
 			expect(coordGrid).toBe(true);
@@ -2360,6 +2419,7 @@ describe("executeAgentCase", () => {
 				auth: fakeAuth(),
 				session: {
 					screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+					captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 				} as unknown as DeviceSession,
 				isAborted: () => false,
 				appendStep: async (step) => {
@@ -2377,8 +2437,8 @@ describe("executeAgentCase", () => {
 					thoughts: "Still on the same screen",
 				}),
 				performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				clock: fakeClock(),
+				screenshotDir: SHOT_DIR,
 			});
 
 			expect(result.status).toBe("passed");
@@ -2393,19 +2453,20 @@ describe("executeAgentCase", () => {
 		it("does not escalate when taps change the screenshot", async () => {
 			const grids: boolean[] = [];
 			const shots = [plainPng(255), plainPng(200), plainPng(150), plainPng(100), plainPng(50)];
-			let shotIndex = 0;
+			let taps = 0;
 			let calls = 0;
 
 			await executeAgentCase({
 				catalogCase: emptyCase(),
 				appContext: "Rewards app",
 				auth: fakeAuth(),
+				// Each tap moves the screen on to the next frame.
 				session: {
-					screenshot: async () => {
-						const base64 = shots[Math.min(shotIndex, shots.length - 1)] ?? shots[0] ?? "";
-						shotIndex += 1;
-						return { path: "/tmp/changing.png", base64 };
-					},
+					screenshot: async () => ({ path: "/tmp/changing.png", base64: shots[0] ?? "" }),
+					captureFrame: async () => ({
+						base64: shots[Math.min(taps, shots.length - 1)] ?? "",
+						mime: "image/png",
+					}),
 				} as unknown as DeviceSession,
 				isAborted: () => false,
 				appendStep: async () => {},
@@ -2420,9 +2481,12 @@ describe("executeAgentCase", () => {
 					reason: "Not done",
 					thoughts: "Progressing",
 				}),
-				performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				performAction: async (_session, body) => {
+					taps += 1;
+					return { ok: true, kind: body.kind };
+				},
+				clock: fakeClock(),
+				screenshotDir: SHOT_DIR,
 			});
 
 			expect(grids.every((grid) => grid === false)).toBe(true);
@@ -2444,6 +2508,7 @@ describe("executeAgentCase", () => {
 				auth: fakeAuth(),
 				session: {
 					screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+					captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 				} as unknown as DeviceSession,
 				isAborted: () => false,
 				appendStep: async () => {},
@@ -2455,8 +2520,8 @@ describe("executeAgentCase", () => {
 				},
 				verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
 				performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				clock: fakeClock(),
+				screenshotDir: SHOT_DIR,
 			});
 
 			expect(grids.every((grid) => grid === false)).toBe(true);
@@ -2497,8 +2562,8 @@ describe("executeAgentCase", () => {
 					},
 					verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Waiting" }),
 					performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-					clock: { sleep: async () => {}, now: () => 1 },
-					settleMs: 0,
+					clock: fakeClock(),
+					screenshotDir: SHOT_DIR,
 				});
 				return errors;
 			};
@@ -2528,18 +2593,17 @@ describe("executeAgentCase", () => {
 			const run = async (opts: { shots: string[]; appContext?: string; plan: AgentDecision[] }) => {
 				const seen: Array<{ tree: boolean; snapshot: string; error?: string }> = [];
 				const steps: Array<{ action: unknown }> = [];
-				let shotIndex = 0;
+				// The screen shows `shots[n]` after the n-th Action (the last one stays).
+				let actions = 0;
+				const frame = () => opts.shots[Math.min(actions, opts.shots.length - 1)] ?? "";
 				let calls = 0;
 				await executeAgentCase({
 					catalogCase: emptyCase(),
 					appContext: opts.appContext ?? "Rewards app",
 					auth: fakeAuth(),
 					session: {
-						screenshot: async () => {
-							const base64 = opts.shots[Math.min(shotIndex, opts.shots.length - 1)] ?? "";
-							shotIndex += 1;
-							return { path: "/tmp/assist.png", base64 };
-						},
+						screenshot: async () => ({ path: "/tmp/assist.png", base64: frame() }),
+						captureFrame: async () => ({ base64: frame(), mime: "image/png" }),
 					} as unknown as DeviceSession,
 					isAborted: () => false,
 					appendStep: async (step) => {
@@ -2557,9 +2621,12 @@ describe("executeAgentCase", () => {
 						return next ?? { type: "done", reason: "done", thoughts: "Finished" };
 					},
 					verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
-					performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-					clock: { sleep: async () => {}, now: () => 1 },
-					settleMs: 0,
+					performAction: async (_session, body) => {
+						actions += 1;
+						return { ok: true, kind: body.kind };
+					},
+					clock: fakeClock(),
+					screenshotDir: SHOT_DIR,
 				});
 				return { seen, steps };
 			};
@@ -2614,6 +2681,7 @@ describe("executeAgentCase", () => {
 				auth: fakeAuth(),
 				session: {
 					screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+					captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 				} as unknown as DeviceSession,
 				isAborted: () => false,
 				appendStep: async (step) => {
@@ -2636,8 +2704,8 @@ describe("executeAgentCase", () => {
 					performed.push(body);
 					return { ok: true, kind: body.kind };
 				},
-				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				clock: fakeClock(),
+				screenshotDir: SHOT_DIR,
 			});
 
 			// Taps 1 and 2 go where the model aimed. After two misses the tree is read and tap 3 is
@@ -2661,6 +2729,7 @@ describe("executeAgentCase", () => {
 					auth: fakeAuth(),
 					session: {
 						screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+						captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 					} as unknown as DeviceSession,
 					isAborted: () => false,
 					appendStep: async () => {},
@@ -2693,8 +2762,8 @@ describe("executeAgentCase", () => {
 						seen.push(options?.screenElements);
 						return { ok: true, kind: body.kind };
 					},
-					clock: { sleep: async () => {}, now: () => 1 },
-					settleMs: 0,
+					clock: fakeClock(),
+					screenshotDir: SHOT_DIR,
 				});
 				return seen;
 			};
@@ -2718,6 +2787,7 @@ describe("executeAgentCase", () => {
 					auth: fakeAuth(),
 					session: {
 						screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+						captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 					} as unknown as DeviceSession,
 					isAborted: () => false,
 					appendStep: async () => {},
@@ -2729,8 +2799,8 @@ describe("executeAgentCase", () => {
 					},
 					verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
 					performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-					clock: { sleep: async () => {}, now: () => 1 },
-					settleMs: 0,
+					clock: fakeClock(),
+					screenshotDir: SHOT_DIR,
 				});
 				return errors;
 			};
@@ -2757,6 +2827,7 @@ describe("executeAgentCase", () => {
 				screenMode: "tree",
 				session: {
 					screenshot: async () => ({ path: "/tmp/same.png", base64: png }),
+					captureFrame: async () => ({ base64: png, mime: "image/png" as const }),
 				} as unknown as DeviceSession,
 				isAborted: () => false,
 				appendStep: async () => {},
@@ -2775,8 +2846,8 @@ describe("executeAgentCase", () => {
 				},
 				verify: async () => ({ type: "continue", reason: "Not done", thoughts: "Still here" }),
 				performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
-				clock: { sleep: async () => {}, now: () => 1 },
-				settleMs: 0,
+				clock: fakeClock(),
+				screenshotDir: SHOT_DIR,
 			});
 
 			expect(grids.every((grid) => grid === false)).toBe(true);

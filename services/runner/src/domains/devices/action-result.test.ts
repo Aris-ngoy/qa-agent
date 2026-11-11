@@ -3,8 +3,8 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ActionRequest, ActionResponse } from "@yoqa/runner-client";
-import { decodePng, encodeRgbaPng } from "../runs/coord-grid";
-import { actionMarks, performActionWithScreenshot, settleScreen } from "./action-result";
+import { actAndSettle, actionMarks, performActionWithScreenshot } from "./action-result";
+import { decodePng, encodeRgbaPng } from "./png";
 import type { DeviceSession } from "./session";
 
 function fakeClock() {
@@ -28,68 +28,120 @@ function solidPng(width: number, height: number, shade: number): string {
 	return encodeRgbaPng({ width, height, rgba }).toString("base64");
 }
 
-describe("settleScreen", () => {
-	test("settles once the same frame holds for the stable window", async () => {
-		const frames = ["a", "b", "b", "b", "never"];
-		let call = 0;
-		const result = await settleScreen(async () => ({ base64: frames[call++] ?? "end" }), {
+describe("actAndSettle", () => {
+	/** A device whose `captureFrame` serves `frames` in order (the last one stays). */
+	function device(frames: Array<{ base64: string; capturedAt?: number; frozen?: boolean }>) {
+		let captures = 0;
+		const session = {
+			captureFrame: async () => ({
+				mime: "image/png" as const,
+				...(frames[Math.min(captures++, frames.length - 1)] ?? { base64: "" }),
+			}),
+		} as unknown as DeviceSession;
+		return { session, captures: () => captures };
+	}
+	const performed: ActionRequest[] = [];
+	const perform = async (_s: DeviceSession, body: ActionRequest): Promise<ActionResponse> => {
+		performed.push(body);
+		return { ok: true, kind: body.kind };
+	};
+	const tap: ActionRequest = { kind: "tap", x: 500, y: 500 };
+	const policy = { capMs: 1500, pollMs: 80, stableWindowMs: 160 };
+
+	test("performs the Action, then settles once the same frame holds for the stable window", async () => {
+		const { session, captures } = device(
+			["a", "b", "b", "b", "never"].map((base64) => ({ base64 })),
+		);
+		const clock = fakeClock();
+		const { response, result } = await actAndSettle(session, tap, {
+			perform,
+			clock,
+			policy,
+			previousFrame: "a",
+		});
+		expect(response).toEqual({ ok: true, kind: "tap" });
+		expect(performed.at(-1)).toEqual(tap);
+		expect(result).toMatchObject({ base64: "b", settled: true, waitedMs: 240, changed: true });
+		expect(captures()).toBe(4);
+	});
+
+	test("a static screen settles in the stable window, well under the old fixed 800 ms", async () => {
+		const { session } = device([{ base64: "same" }]);
+		const { result } = await actAndSettle(session, tap, {
+			perform,
 			clock: fakeClock(),
-			pollMs: 80,
-			stableWindowMs: 160,
+			policy,
+			previousFrame: "same",
 		});
 		expect(result.settled).toBe(true);
-		expect(result.base64).toBe("b");
-		expect(result.waitedMs).toBe(240);
-		expect(call).toBe(4);
+		expect(result.waitedMs).toBeLessThan(800);
+		expect(result.changed).toBe(false);
 	});
 
 	test("a changing frame resets the stable window", async () => {
-		const frames = ["a", "a", "b", "b", "b"];
-		let call = 0;
-		const result = await settleScreen(async () => ({ base64: frames[call++] ?? "end" }), {
-			clock: fakeClock(),
-			pollMs: 80,
-			stableWindowMs: 160,
-		});
-		expect(result.settled).toBe(true);
-		expect(result.base64).toBe("b");
-		expect(call).toBe(5);
+		const { session, captures } = device(["a", "a", "b", "b", "b"].map((base64) => ({ base64 })));
+		const { result } = await actAndSettle(session, tap, { perform, clock: fakeClock(), policy });
+		expect(result).toMatchObject({ base64: "b", settled: true });
+		expect(captures()).toBe(5);
 	});
 
-	test("an animating screen hits the cap and returns the latest frame", async () => {
-		let call = 0;
-		const result = await settleScreen(async () => ({ base64: `frame-${call++}` }), {
-			capMs: 1000,
-			pollMs: 80,
-			stableWindowMs: 160,
+	test("a screen that never settles stops at the cap with its latest frame, and claims no change", async () => {
+		let n = 0;
+		const session = {
+			captureFrame: async () => ({ base64: `frame-${n++}`, mime: "image/png" as const }),
+		} as unknown as DeviceSession;
+		const { result } = await actAndSettle(session, tap, {
+			perform,
 			clock: fakeClock(),
+			policy: { ...policy, capMs: 1000 },
+			previousFrame: "before",
 		});
 		expect(result.settled).toBe(false);
-		expect(result.waitedMs).toBeGreaterThanOrEqual(1000);
-		expect(result.base64).toBe(`frame-${call - 1}`);
+		expect(result.waitedMs).toBe(1000);
+		expect(result.base64).toBe(`frame-${n - 1}`);
+		expect(result.changed).toBeNull();
 	});
 
 	test("a frame served again from the same background capture is not evidence of stability", async () => {
 		// One slow capture is read four times; only the next capture of the same image proves it held.
-		const frames = [0, 0, 0, 0, 170].map((capturedAt) => ({ base64: "a", capturedAt }));
-		let call = 0;
-		const result = await settleScreen(async () => frames[call++] ?? { base64: "end" }, {
-			clock: fakeClock(),
-			pollMs: 80,
-			stableWindowMs: 160,
-		});
+		const { session, captures } = device(
+			[0, 0, 0, 0, 170].map((capturedAt) => ({ base64: "a", capturedAt })),
+		);
+		const { result } = await actAndSettle(session, tap, { perform, clock: fakeClock(), policy });
 		expect(result.settled).toBe(true);
-		expect(call).toBe(5);
+		expect(captures()).toBe(5);
 	});
 
 	test("a zero cap takes one frame and does not claim it settled", async () => {
-		let call = 0;
-		const result = await settleScreen(async () => ({ base64: `f${call++}` }), {
-			capMs: 0,
+		const { session, captures } = device([{ base64: "f0" }, { base64: "f1" }]);
+		const { result } = await actAndSettle(session, tap, {
+			perform,
 			clock: fakeClock(),
+			policy: { capMs: 0 },
+			previousFrame: "f0",
 		});
-		expect(result.settled).toBe(false);
-		expect(call).toBe(1);
+		expect(result).toMatchObject({ settled: false, changed: null });
+		expect(captures()).toBe(1);
+	});
+
+	test("a frozen frame settles at once and claims no change", async () => {
+		const { session, captures } = device([{ base64: "dialog", frozen: true }]);
+		const { result } = await actAndSettle(session, tap, {
+			perform,
+			clock: fakeClock(),
+			policy,
+			previousFrame: "before",
+		});
+		expect(result).toMatchObject({ settled: true, frozen: true, changed: null });
+		expect(captures()).toBe(1);
+	});
+
+	test("judges change against this session's last Result screenshot when no previous frame is given", async () => {
+		const { session } = device([{ base64: "same" }]);
+		const first = await actAndSettle(session, tap, { perform, clock: fakeClock(), policy });
+		const second = await actAndSettle(session, tap, { perform, clock: fakeClock(), policy });
+		expect(first.result.changed).toBeNull();
+		expect(second.result.changed).toBe(false);
 	});
 });
 

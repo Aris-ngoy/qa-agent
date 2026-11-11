@@ -1,20 +1,30 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { ActionRequest, ActionResponse, ActionResultScreenshot } from "@yoqa/runner-client";
-import { type ActionMark, overlayActionMarks } from "../runs/coord-grid";
+import { type ActionMark, overlayActionMarks } from "./action-marks";
 import { type AgentImage, prepareAgentImage } from "./agent-image";
 import { performAction } from "./interaction";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
 import type { DeviceSession } from "./session";
 
-/** Default cap on how long to wait for the screen to settle. */
-export const DEFAULT_SETTLE_CAP_MS = 1500;
-/** Gap between frames while settling. No fixed lead-in — the first frame is taken immediately. */
-export const SETTLE_POLL_MS = 80;
-/** Identical frames must hold at least this long before the screen is settled. */
-export const SETTLE_STABLE_WINDOW_MS = 160;
+/** How long to wait for the screen to Settle, and how closely to watch it. */
+export type SettlePolicy = {
+	/** Cap on the whole Settle. An animating screen returns its latest frame at the cap. */
+	capMs: number;
+	/** Gap between frames. No fixed lead-in: the first frame is taken right after the Action. */
+	pollMs: number;
+	/** Identical frames must hold at least this long before the screen is settled. */
+	stableWindowMs: number;
+};
 
-type SettleClock = {
+/** The one Settle policy for the connector and for Runs. */
+export const DEFAULT_SETTLE_POLICY: SettlePolicy = {
+	capMs: 1500,
+	pollMs: 80,
+	stableWindowMs: 160,
+};
+
+export type SettleClock = {
 	now: () => number;
 	sleep: (ms: number) => Promise<void>;
 };
@@ -29,8 +39,22 @@ export type SettleResult = {
 	frozen?: boolean;
 };
 
-function frameHash(base64: string): string {
+/** Identifies a screenshot's bytes. Equal fingerprints mean an unchanged screen. */
+export function screenFingerprint(base64: string): string {
 	return String(Bun.hash(base64));
+}
+
+/**
+ * Whether `frame` differs from the screenshot before it: the one notion of "screen unchanged"
+ * that Settle, the connector's `changed`, Tree assist and Escalation share. Null means it cannot
+ * be told: nothing came before, the screen never settled, or the frame is frozen.
+ */
+export function screenChanged(
+	previous: string | null | undefined,
+	frame: { base64: string; settled: boolean; frozen?: boolean },
+): boolean | null {
+	if (previous == null || !frame.settled || frame.frozen) return null;
+	return screenFingerprint(previous) !== screenFingerprint(frame.base64);
 }
 
 /**
@@ -44,11 +68,11 @@ function frameHash(base64: string): string {
  */
 export async function settleScreen(
 	capture: () => Promise<{ base64: string; capturedAt?: number; frozen?: boolean }>,
-	options: { capMs?: number; pollMs?: number; stableWindowMs?: number; clock?: SettleClock } = {},
+	options: Partial<SettlePolicy> & { clock?: SettleClock } = {},
 ): Promise<SettleResult> {
-	const capMs = options.capMs ?? DEFAULT_SETTLE_CAP_MS;
-	const pollMs = options.pollMs ?? SETTLE_POLL_MS;
-	const stableWindowMs = options.stableWindowMs ?? SETTLE_STABLE_WINDOW_MS;
+	const capMs = options.capMs ?? DEFAULT_SETTLE_POLICY.capMs;
+	const pollMs = options.pollMs ?? DEFAULT_SETTLE_POLICY.pollMs;
+	const stableWindowMs = options.stableWindowMs ?? DEFAULT_SETTLE_POLICY.stableWindowMs;
 	const clock = options.clock ?? realClock;
 	const started = clock.now();
 
@@ -57,7 +81,7 @@ export async function settleScreen(
 		return { base64: first.base64, settled: true, waitedMs: clock.now() - started, frozen: true };
 	}
 	let latest = first.base64;
-	let lastHash = frameHash(latest);
+	let lastHash = screenFingerprint(latest);
 	let stableSince = first.capturedAt ?? started;
 	if (capMs <= 0) {
 		return { base64: latest, settled: false, waitedMs: clock.now() - started };
@@ -74,7 +98,7 @@ export async function settleScreen(
 		const now = clock.now();
 		if (frame.frozen)
 			return { base64: latest, settled: true, waitedMs: now - started, frozen: true };
-		const hash = frameHash(latest);
+		const hash = screenFingerprint(latest);
 		const seenAt = frame.capturedAt ?? now;
 		if (hash === lastHash) {
 			if (seenAt - stableSince >= stableWindowMs) {
@@ -85,6 +109,61 @@ export async function settleScreen(
 			stableSince = seenAt;
 		}
 	}
+}
+
+/** The Result screenshot of one Action: the raw frame Settle ended on, not yet stored. */
+export type ResultFrame = SettleResult & {
+	/** Whether the Action changed the screen (`screenChanged` against the frame before it). */
+	changed: boolean | null;
+};
+
+export type ActAndSettleOptions = {
+	/** Performs the Action itself (default: the domain `performAction`). */
+	perform?: (session: DeviceSession, body: ActionRequest) => Promise<ActionResponse>;
+	clock?: SettleClock;
+	policy?: Partial<SettlePolicy>;
+	/**
+	 * The screenshot before the Action, which `changed` is judged against. Omitted: this
+	 * session's last Result screenshot.
+	 */
+	previousFrame?: string | null;
+};
+
+export type ActAndSettleResult = {
+	response: ActionResponse;
+	result: ResultFrame;
+	actionMs: number;
+};
+
+const lastFrameBySession = new WeakMap<DeviceSession, string>();
+
+/**
+ * Perform one Action, Settle, and return the Result screenshot: the frame the screen settled
+ * on, or its latest frame at the cap with `settled: false`. Whether the Action changed the
+ * screen is only claimed when it settled.
+ */
+export async function actAndSettle(
+	session: DeviceSession,
+	body: ActionRequest,
+	options: ActAndSettleOptions = {},
+): Promise<ActAndSettleResult> {
+	const perform = options.perform ?? performAction;
+	const clock = options.clock ?? realClock;
+	const previousFrame =
+		options.previousFrame !== undefined ? options.previousFrame : lastFrameBySession.get(session);
+	const tAction = clock.now();
+	const response = await perform(session, body);
+	const actionMs = clock.now() - tAction;
+	const settle = await settleScreen(() => session.captureFrame(), {
+		...options.policy,
+		clock,
+	});
+	lastFrameBySession.set(session, settle.base64);
+	return {
+		response,
+		result: { ...settle, changed: screenChanged(previousFrame, settle) },
+		actionMs,
+	};
 }
 
 /** Where the Action landed, in 0–1000 screenshot space. Actions with no point have no mark. */
@@ -114,54 +193,45 @@ async function writeImage(
 	return path;
 }
 
-async function writePng(dir: string, base64: string, label: string): Promise<string> {
-	return writeImage(dir, base64, label, "png");
+/** Store a Result screenshot (PNG) as the ground truth; returns its path. */
+export async function saveResultScreenshot(
+	base64: string,
+	dir: string = SCREENSHOT_DIR,
+): Promise<string> {
+	return writeImage(dir, base64, "result", "png");
 }
 
-const lastFrameBySession = new WeakMap<DeviceSession, string>();
-
-type ResultDeps = {
-	perform?: typeof performAction;
-	clock?: SettleClock;
+type ResultDeps = Omit<ActAndSettleOptions, "policy"> & {
 	pollMs?: number;
 	stableWindowMs?: number;
 	/** Where the images are written (default: the shared screenshot folder). */
 	dir?: string;
 	prepareImage?: (png: string, options?: { full?: boolean; scale?: number }) => Promise<AgentImage>;
-	/** Previous Result frame (base64). Tests inject this; live callers reuse the last Result. */
-	previousFrame?: string;
 };
 
 /**
- * Perform one Action, Settle, and return the Result screenshot with it. The frame before the
- * Action tells us whether it changed anything; that is only claimed when the screen settled.
+ * The connector's adapter over `actAndSettle`: store the Result screenshot, a copy marked
+ * where the Action landed, and the Agent image the caller is handed.
  */
 export async function performActionWithScreenshot(
 	session: DeviceSession,
 	body: ActionRequest,
 	deps: ResultDeps = {},
 ): Promise<ActionResponse> {
-	const perform = deps.perform ?? performAction;
-	const clock = deps.clock ?? realClock;
-	const previousFrame = deps.previousFrame ?? lastFrameBySession.get(session);
-	const tAction = clock.now();
-	const response = await perform(session, body);
-	const actionMs = clock.now() - tAction;
-	const settle = await settleScreen(() => session.captureFrame(), {
-		capMs: body.settleMs,
-		pollMs: deps.pollMs,
-		stableWindowMs: deps.stableWindowMs,
-		clock,
+	const { response, result, actionMs } = await actAndSettle(session, body, {
+		perform: deps.perform,
+		clock: deps.clock,
+		previousFrame: deps.previousFrame,
+		policy: { capMs: body.settleMs, pollMs: deps.pollMs, stableWindowMs: deps.stableWindowMs },
 	});
-	lastFrameBySession.set(session, settle.base64);
 
 	const dir = deps.dir ?? SCREENSHOT_DIR;
-	const rawPath = await writePng(dir, settle.base64, "result");
+	const rawPath = await saveResultScreenshot(result.base64, dir);
 	const marks = actionMarks(body, response.resolved);
-	const marked = overlayActionMarks(settle.base64, marks);
-	const annotatedPath = marked ? await writePng(dir, marked, "result_marked") : undefined;
+	const marked = overlayActionMarks(result.base64, marks);
+	const annotatedPath = marked ? await writeImage(dir, marked, "result_marked", "png") : undefined;
 	const prepare = deps.prepareImage ?? prepareAgentImage;
-	const agent = await prepare(marked ?? settle.base64, {
+	const agent = await prepare(marked ?? result.base64, {
 		full: body.fullImage,
 		scale: body.imageScale,
 	});
@@ -174,12 +244,9 @@ export async function performActionWithScreenshot(
 		path: agentPath,
 		...(agent.downscaled ? { rawPath } : {}),
 		...(annotatedPath ? { annotatedPath } : {}),
-		settled: settle.settled,
-		waitedMs: settle.waitedMs,
-		changed:
-			settle.settled && !settle.frozen && previousFrame !== undefined
-				? frameHash(previousFrame) !== frameHash(settle.base64)
-				: null,
+		settled: result.settled,
+		waitedMs: result.waitedMs,
+		changed: result.changed,
 	};
 	return {
 		...response,
@@ -187,7 +254,7 @@ export async function performActionWithScreenshot(
 		phases: {
 			captureMs: 0,
 			actionMs,
-			settleMs: settle.waitedMs,
+			settleMs: result.waitedMs,
 		},
 	};
 }

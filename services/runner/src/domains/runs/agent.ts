@@ -595,10 +595,6 @@ export function continueScrollingInsteadOfComplete(input: {
 	return input.decision;
 }
 
-export function screenshotFingerprint(base64: string): string {
-	return String(Bun.hash(base64));
-}
-
 const SYSTEM_PERMISSION_LABELS = new Set([
 	"allow",
 	"don't allow",
