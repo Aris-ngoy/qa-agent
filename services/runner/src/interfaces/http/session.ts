@@ -154,8 +154,9 @@ export function createSessionRoutes(profiles: { home?: string } = {}) {
 		try {
 			await passEverydayWarning(parsed.data, catalogEverydayAcceptances);
 			const info = await connectDevice({
+				// The body may still name `lane` (`auto` or `direct`); a Lane is Direct only, so
+				// the connect opens Direct either way (ADR-0005).
 				...parsed.data,
-				requestedLane: parsed.data.lane,
 				// A client that goes away cancels a connect still waiting on the user's Allow.
 				signal: c.req.raw.signal,
 			});

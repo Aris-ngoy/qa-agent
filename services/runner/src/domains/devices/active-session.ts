@@ -13,8 +13,25 @@ import {
 	resetKeptProfiles,
 } from "./chromium-browsers";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
-import { quitOpenDeviceSessions } from "./open-session";
-import { type DeviceSession, createDeviceSession } from "./session";
+import { openDeviceSession, quitOpenDeviceSessions } from "./open-session";
+import type { DeviceSession, SessionOptions } from "./session";
+
+/** How the Active Session opens a Device Session: `openDeviceSession` on the Direct lane. */
+export type OpenSession = (options: SessionOptions) => Promise<DeviceSession>;
+
+let openSession: OpenSession = (options) => openDeviceSession(options);
+
+/**
+ * Open the Active Session's Device Sessions with `open` instead (tests open them on a
+ * faked Lane through the real `openDeviceSession`). Returns the restore.
+ */
+export function setSessionOpener(open: OpenSession): () => void {
+	const previous = openSession;
+	openSession = open;
+	return () => {
+		openSession = previous;
+	};
+}
 
 export type ActiveSessionInfo = {
 	deviceId: string;
@@ -149,7 +166,6 @@ async function createAndRegister(options: {
 	platform: DevicePlatform;
 	bundleId?: string;
 	appPackage?: string;
-	requestedLane?: import("./lane").LaneName | "auto";
 	viewport?: ViewportPresetName;
 	appId?: string;
 	profile?: BrowserProfile;
@@ -157,12 +173,11 @@ async function createAndRegister(options: {
 	heldByRunId: string | null;
 }): Promise<DeviceSession> {
 	let opened: DeviceSession | null = null;
-	const session = await createDeviceSession({
+	const session = await openSession({
 		platform: options.platform,
 		deviceId: options.deviceId,
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
-		requestedLane: options.requestedLane,
 		viewport: options.viewport,
 		appId: options.appId,
 		profile: options.profile,
@@ -262,7 +277,6 @@ export async function connectDevice(options: {
 	platform: DevicePlatform;
 	bundleId?: string;
 	appPackage?: string;
-	requestedLane?: import("./lane").LaneName | "auto";
 	viewport?: ViewportPresetName;
 	appId?: string;
 	profile?: BrowserProfile;
@@ -365,7 +379,6 @@ export async function acquireSessionForRun(options: {
 	platform: DevicePlatform;
 	bundleId?: string;
 	appPackage?: string;
-	requestedLane?: import("./lane").LaneName | "auto";
 	/** Web only: the App whose Kept profile a launched browser uses, and whether it is clean. */
 	appId?: string;
 	profile?: BrowserProfile;
@@ -380,12 +393,11 @@ export async function acquireSessionForRun(options: {
 				`Another run is using ${options.deviceId}. Wait for it to finish or cancel it first.`,
 			);
 		}
-		const session = await createDeviceSession({
+		const session = await openSession({
 			platform: options.platform,
 			deviceId: options.deviceId,
 			bundleId: options.bundleId,
 			appPackage: options.appPackage,
-			requestedLane: options.requestedLane,
 			viewport: options.viewport,
 			appId: options.appId,
 			profile: options.profile,
@@ -441,7 +453,6 @@ export async function acquireSessionForRun(options: {
 		platform: options.platform,
 		bundleId: options.bundleId,
 		appPackage: options.appPackage,
-		requestedLane: options.requestedLane,
 		viewport,
 		appId: options.appId,
 		profile: options.profile,

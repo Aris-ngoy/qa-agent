@@ -1,27 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DIRECT_IMPLEMENTATIONS, deviceClassFor } from "./direct-lane";
-import { directImplementationOrder, directOptIn, selectLane } from "./select-lane";
-
-describe("selectLane", () => {
-	test("fails the connect when Direct is not available", () => {
-		expect(() => selectLane({ requested: "auto", available: [] })).toThrow(
-			"Direct lane is not available",
-		);
-	});
-
-	test("auto picks Direct when that lane is available", () => {
-		expect(selectLane({ requested: "auto", available: ["direct"] })).toEqual({
-			lane: "direct",
-			fallback: false,
-		});
-	});
-
-	test("an explicit Direct request fails when that lane is not available", () => {
-		expect(() => selectLane({ requested: "direct", available: [] })).toThrow(
-			"Direct lane is not available",
-		);
-	});
-});
+import { directImplementationOrder, directOptIn } from "./select-lane";
 
 describe("directImplementationOrder", () => {
 	const existing = { name: "adb", promoted: true };
@@ -104,13 +83,6 @@ describe("physical-iOS Direct lane", () => {
 		expect(deviceClassFor("ios", PHONE)).toBe("ios-device");
 		expect(deviceClassFor("ios", SIMULATOR)).toBe("ios-simulator");
 		expect(DIRECT_IMPLEMENTATIONS["ios-device"].map((i) => i.name)).toEqual(["device-ios"]);
-	});
-
-	test("auto picks Direct for a phone", () => {
-		expect(selectLane({ available: ["direct"], requested: "auto" })).toEqual({
-			lane: "direct",
-			fallback: false,
-		});
 	});
 });
 

@@ -12,7 +12,7 @@ import { fakeChromium, jpegSize, profileDirOf, readMjpegFrames, startFakeCdp } f
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
 import { type IdbExec, createIosDirectSession } from "./ios-direct-lane";
 import type { LaneFactory, LaneName } from "./lane";
-import * as actualSession from "./session";
+import { openDeviceSession } from "./open-session";
 import { createWebDirectSession, webDirectDeps } from "./web-direct-lane";
 
 type FakeSession = {
@@ -64,30 +64,6 @@ function fakeLane(lane: LaneName): LaneFactory {
 /** The Direct lane sessions open on; a test may swap in a real Lane with a faked device. */
 let directLane: LaneFactory = fakeLane("direct");
 
-/**
- * Bun keeps a module mock for the rest of the process, so later test files (a web Run
- * on a fake Chromium) would get these fake sessions too. Only fake Lanes while this
- * file runs; afterwards the mock opens sessions exactly like the real module.
- */
-let fakeLanes = true;
-afterAll(() => {
-	fakeLanes = false;
-});
-
-// Keep every real export (session.test.ts relies on them) and open sessions through
-// the real Lane selection with fake Lane factories, so no device is needed.
-const realCreateDeviceSession = actualSession.createDeviceSession;
-mock.module("./session", () => ({
-	...actualSession,
-	createDeviceSession: (
-		options: actualSession.SessionOptions,
-		lanes?: Partial<Record<LaneName, LaneFactory>>,
-	) =>
-		fakeLanes
-			? realCreateDeviceSession(options, { direct: (laneOptions) => directLane(laneOptions) })
-			: realCreateDeviceSession(options, lanes),
-}));
-
 mock.module("./mjpeg-proxy", () => ({
 	trackMjpegProxy: () => new AbortController(),
 	abortAllMjpegProxies: () => false,
@@ -104,8 +80,19 @@ const {
 	quitEverySession,
 	releaseSessionFromRun,
 	retargetActiveSession,
+	setSessionOpener,
 } = await import("./active-session");
 const { createSessionRoutes } = await import("../../interfaces/http/session");
+
+// Open every session through the real `openDeviceSession` (one per device), on the Lane a
+// test picks, so no device is needed. Restored after this file, so later files open
+// sessions on the real Direct lane.
+const restoreSessionOpener = setSessionOpener((options) =>
+	openDeviceSession(options, (laneOptions) => directLane(laneOptions)),
+);
+afterAll(() => {
+	restoreSessionOpener();
+});
 
 beforeEach(() => {
 	// Tests always start from an explicit connect; connectDevice replaces any
@@ -383,22 +370,21 @@ describe("shared device session", () => {
 		expect(info?.deviceId).toBe("dev-1");
 	});
 
-	test("auto and an explicit Direct request open a Direct Device Session", async () => {
-		const auto = await connectDevice({
-			deviceId: "dev-1",
-			platform: "android",
-			requestedLane: "auto",
-		});
-		expect(auto.lane).toBe("direct");
-		expect(auto.laneWarning).toBeUndefined();
-		await disconnectDevice();
-
-		const direct = await connectDevice({
-			deviceId: "dev-1",
-			platform: "android",
-			requestedLane: "direct",
-		});
-		expect(direct.lane).toBe("direct");
+	test("a connect that names auto, Direct, or no Lane opens a Direct Device Session", async () => {
+		const connect = (body: Record<string, unknown>) =>
+			createSessionRoutes().request("/devices/connect", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ deviceId: "dev-1", platform: "android", ...body }),
+			});
+		for (const body of [{ lane: "auto" }, { lane: "direct" }, {}]) {
+			const response = await connect(body);
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ deviceId: "dev-1", lane: "direct" });
+			expect(getActiveSessionInfo()?.laneWarning).toBeUndefined();
+			await disconnectDevice();
+		}
+		expect(createdCount).toBe(3);
 		expect(createdFakeSessions.every((session) => session.lane === "direct")).toBe(true);
 	});
 
@@ -407,19 +393,14 @@ describe("shared device session", () => {
 			throw new Error("idb companion refused");
 		};
 
-		await expect(
-			connectDevice({ deviceId: "dev-1", platform: "android", requestedLane: "auto" }),
-		).rejects.toThrow("idb companion refused");
+		await expect(connectDevice({ deviceId: "dev-1", platform: "android" })).rejects.toThrow(
+			"idb companion refused",
+		);
 		expect(getActiveSessionInfo()).toBeNull();
 		expect(createdCount).toBe(0);
 
 		await expect(
-			acquireSessionForRun({
-				runId: "run_a",
-				deviceId: "dev-1",
-				platform: "android",
-				requestedLane: "direct",
-			}),
+			acquireSessionForRun({ runId: "run_a", deviceId: "dev-1", platform: "android" }),
 		).rejects.toThrow("idb companion refused");
 		expect(createdCount).toBe(0);
 	});
