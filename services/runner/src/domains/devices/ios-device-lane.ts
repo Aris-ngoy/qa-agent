@@ -53,6 +53,7 @@ import { IOS_PREVIEW_CAPTURE, type PhonePreview, startPhonePreview } from "./ios
 import { yoqaAxTreeToSource } from "./ios-direct-lane";
 import { looksLikePhysicalIosUdid } from "./ios-udid";
 import {
+	ActionUnsupportedError,
 	type CapturedFrame,
 	DeadSessionError,
 	type DeviceSession,
@@ -172,9 +173,15 @@ function snapshotSource(named: unknown, asked: string | undefined): ScreenSource
 	return { kind: "system" };
 }
 
+/**
+ * An Action this Lane does not do yet. It is `ActionUnsupportedError`, so the runner answers
+ * 422 (the Action cannot run here), not 500 (something broke), as the web lane does.
+ */
 function notYet(what: string): () => Promise<never> {
 	return () =>
-		Promise.reject(new Error(`${what} is not available on the physical-iOS Direct lane yet`));
+		Promise.reject(
+			new ActionUnsupportedError(`${what} is not available on the physical-iOS Direct lane yet`),
+		);
 }
 
 /** The real Mac: `YoqaRunner` through xcodebuild, usbmuxd, and `xcrun devicectl`. */
