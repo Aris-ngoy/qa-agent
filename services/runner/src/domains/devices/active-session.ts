@@ -4,15 +4,14 @@ import {
 	type DevicePlatform,
 	type StreamState,
 	type ViewportPresetName,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 import {
 	DEFAULT_PROFILE_APP,
 	type InstalledBrowserId,
 	type LaunchDeps,
-	installedBrowserIdOf,
 	resetKeptProfiles,
 } from "./chromium-browsers";
-import { everydayBrowserIdOf } from "./chromium-everyday";
 import { abortAllMjpegProxies } from "./mjpeg-proxy";
 import { quitOpenDeviceSessions } from "./open-session";
 import { type DeviceSession, createDeviceSession } from "./session";
@@ -240,7 +239,7 @@ export async function resetKeptProfile(
 	const appId = request.appId ?? DEFAULT_PROFILE_APP;
 	if (
 		active?.platform === "web" &&
-		installedBrowserIdOf(active.deviceId) &&
+		webDeviceOf(active.deviceId)?.kind === "launched" &&
 		(active.profile ?? "kept") === "kept" &&
 		(active.appId ?? DEFAULT_PROFILE_APP) === appId &&
 		(!request.browserId || request.browserId === active.deviceId)
@@ -400,7 +399,7 @@ export async function acquireSessionForRun(options: {
 	const viewport = options.viewport ?? onDevice?.session.viewport;
 	const connectedViewport = onDevice?.session.viewport ?? DEFAULT_VIEWPORT_PRESET;
 	const atPreset = !options.viewport || connectedViewport === options.viewport;
-	const everyday = onDevice ? everydayBrowserIdOf(onDevice.deviceId) !== null : false;
+	const everyday = onDevice ? webDeviceOf(onDevice.deviceId)?.kind === "everyday" : false;
 
 	// The Everyday browser reopens only by asking for Allow again, which a Run never does.
 	if (onDevice && everyday && !atPreset) {

@@ -55,6 +55,7 @@ import {
 	type ViewportPreset,
 	WEB_BROWSERS,
 	installedBrowserId,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 import {
 	type AxNode,
@@ -72,19 +73,17 @@ import {
 	type TargetInfo,
 	connectCdp,
 } from "./cdp-client";
-import { attachPortOf, browserSocketUrl } from "./chromium-attach";
+import { browserSocketUrl } from "./chromium-attach";
 import {
 	type BrowserProcess,
 	type ChromiumInstance,
 	type InstalledBrowser,
 	type ProfileRequest,
 	findInstalledBrowsers,
-	installedBrowserIdOf,
 	launchChromium,
 } from "./chromium-browsers";
 import {
 	type EverydayBrowser,
-	everydayBrowserIdOf,
 	findEverydayBrowsers,
 	openEverydaySocket,
 	readEverydayProfileName,
@@ -297,9 +296,6 @@ type OpenedBrowser = {
 	everyday: { name: string; profileName: string | null } | null;
 };
 
-/** Firefox and Safari device ids, refused with the reason (ADR-0010) rather than as unknown. */
-const UNSUPPORTED_BROWSER_ID = /^web-(firefox|safari)(-everyday)?$/;
-
 const INSTALLED_BROWSER_IDS = WEB_BROWSERS.map(({ browser }) => installedBrowserId(browser)).join(
 	", ",
 );
@@ -316,13 +312,13 @@ async function openBrowser(
 	{ deviceId, appId, profile, signal }: SessionOptions,
 	deps: WebDirectDeps,
 ): Promise<OpenedBrowser> {
-	const port = attachPortOf(deviceId);
-	if (port !== null) {
-		const client = await deps.connect(await deps.browserSocketUrl(port));
+	const device = webDeviceOf(deviceId);
+	if (device?.kind === "port") {
+		const client = await deps.connect(await deps.browserSocketUrl(device.port));
 		return { client, owned: null, name: null, everyday: null };
 	}
-	const everydayId = everydayBrowserIdOf(deviceId);
-	if (everydayId !== null) {
+	if (device?.kind === "everyday") {
+		const everydayId = device.id;
 		const browser = (await deps.everydayBrowsers()).find((found) => found.id === everydayId);
 		if (!browser) {
 			throw new Error(
@@ -338,14 +334,14 @@ async function openBrowser(
 		const profileName = await readEverydayProfileName(browser.userDataDir, deps.readText);
 		return { client, owned: null, name: null, everyday: { name: browser.name, profileName } };
 	}
-	const browserId = installedBrowserIdOf(deviceId);
-	if (browserId === null) {
+	if (device?.kind !== "launched") {
 		throw new Error(
-			UNSUPPORTED_BROWSER_ID.test(deviceId)
+			device?.kind === "unsupported"
 				? `Firefox and Safari are not supported yet: the web lane drives Chromium browsers over CDP (ADR-0010). ${WEB_DEVICE_ID_HINT}`
 				: WEB_DEVICE_ID_HINT,
 		);
 	}
+	const browserId = device.id;
 	const browser = (await deps.installedBrowsers()).find((installed) => installed.id === browserId);
 	if (!browser) {
 		throw new Error(

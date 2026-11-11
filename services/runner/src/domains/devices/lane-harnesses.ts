@@ -14,6 +14,7 @@ import {
 	VIEWPORT_PRESETS,
 	type ViewportPreset,
 	type ViewportPresetName,
+	attachDeviceId,
 } from "@yoqa/runner-client";
 import { encodeRgbaPng } from "../runs/coord-grid";
 import { ANDROID_KEYCODES, ANDROID_MODIFIER_KEYCODES } from "./adb-input";
@@ -489,7 +490,7 @@ export function webCdpLane(
 		open: ({ onSessionDead }) =>
 			createWebDirectSession({
 				platform: "web",
-				deviceId: `chromium-cdp-${browser.port}`,
+				deviceId: attachDeviceId(browser.port),
 				onSessionDead,
 				...(options.viewport ? { viewport: options.viewport } : {}),
 			}),

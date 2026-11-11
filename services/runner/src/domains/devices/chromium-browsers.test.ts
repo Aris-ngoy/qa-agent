@@ -15,7 +15,6 @@ import {
 	type DiscoveryDeps,
 	ProfileInUseError,
 	findInstalledBrowsers,
-	installedBrowserIdOf,
 	launchChromium,
 	listWebDevices,
 	resetKeptProfiles,
@@ -114,17 +113,6 @@ describe("installed browser discovery", () => {
 			platform: "linux",
 		};
 		expect(await findInstalledBrowsers(linux)).toEqual([]);
-	});
-
-	test("the device id names the browser", () => {
-		expect(installedBrowserIdOf("web-chrome")).toBe("web-chrome");
-		expect(installedBrowserIdOf("web-edge")).toBe("web-edge");
-		expect(installedBrowserIdOf("web-dia")).toBe("web-dia");
-		expect(installedBrowserIdOf("web-arc")).toBe("web-arc");
-		expect(installedBrowserIdOf("web-opera")).toBe("web-opera");
-		expect(installedBrowserIdOf("web-vivaldi")).toBe("web-vivaldi");
-		expect(installedBrowserIdOf("web-firefox")).toBeNull();
-		expect(installedBrowserIdOf("chromium-cdp-9222")).toBeNull();
 	});
 });
 

@@ -23,7 +23,7 @@ import {
 	WEB_BROWSERS,
 	type WebBrowserKey,
 	installedBrowserId,
-	webBrowserOf,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 import type { ListDevicesOptions } from "./models";
 
@@ -64,9 +64,13 @@ const KNOWN_BROWSERS = WEB_BROWSERS.map(({ browser, name }) => ({
 	portFileDir: PORT_FILE_DIRS[browser],
 }));
 
-/** The installed-browser id a device id names, or null when it is not one. */
+/**
+ * The launched-browser id a device id names, or null when it is not one. Kept for the
+ * profile-reset route in `interfaces/http/session.ts`; new code asks `webDeviceOf`.
+ */
 export function installedBrowserIdOf(deviceId: string): InstalledBrowserId | null {
-	return KNOWN_BROWSERS.find((browser) => browser.id === deviceId)?.id ?? null;
+	const device = webDeviceOf(deviceId);
+	return device?.kind === "launched" ? device.id : null;
 }
 
 /** Where `browserId` writes `DevToolsActivePort` when launched on `profileDir`. */
@@ -150,7 +154,7 @@ export async function listWebDevices(
 			platform: "web",
 			kind: "browser",
 			state: isRunning ? "running" : "not running",
-			verified: webBrowserOf(browser.id)?.verified ?? false,
+			verified: webDeviceOf(browser.id)?.browser?.verified ?? false,
 		});
 	}
 	return devices;
