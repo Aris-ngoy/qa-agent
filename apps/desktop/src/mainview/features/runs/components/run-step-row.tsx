@@ -10,7 +10,7 @@ import {
 export const STEP_ROW =
 	"grid grid-cols-[24px_minmax(0,1fr)] gap-3.5 border-t border-outline-variant py-3.5 first:border-t-transparent";
 
-function actionSummary(action: unknown): string {
+function actionSummary(action: RunStep["action"] | null): string {
 	return reportActionSummary(action);
 }
 
@@ -40,14 +40,11 @@ function verifyLabel(type: string): string {
 	return "Not yet";
 }
 
-function StepCycle({ action }: { action: unknown }) {
+function StepCycle({ action }: { action: RunStep["action"] }) {
 	const cycle = readStepCycle(action);
 	if (!cycle) return null;
 	const decision = cycle.decision ? actionSummary(cycle.decision) : "—";
-	const decisionReason =
-		typeof cycle.decision?.reason === "string" && cycle.decision.reason.trim()
-			? cycle.decision.reason.trim()
-			: null;
+	const decisionReason = cycle.decision?.reason?.trim() || null;
 	const verifyTone =
 		cycle.verify.type === "verify" ? "passed" : cycle.verify.type === "fail" ? "failed" : "pending";
 	const verifyText = cycle.verify.reason
