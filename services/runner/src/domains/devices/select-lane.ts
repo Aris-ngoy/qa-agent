@@ -1,30 +1,3 @@
-import type { LaneName } from "./lane";
-
-export type LaneRequest = LaneName | "auto";
-
-export type LaneChoice = {
-	lane: LaneName;
-	fallback: boolean;
-	warning?: string;
-};
-
-/** Pick the Lane for a Device Session. A Lane is Direct only, so a connect opens Direct or fails. */
-export function selectLane(input: {
-	requested: LaneRequest;
-	available: readonly LaneName[];
-}): LaneChoice {
-	if (!input.available.includes("direct")) {
-		throw new Error("Direct lane is not available");
-	}
-	return { lane: "direct", fallback: false };
-}
-
-export function availableLanes(factories: Partial<Record<LaneName, unknown>>): LaneName[] {
-	const names: LaneName[] = [];
-	if (factories.direct) names.push("direct");
-	return names;
-}
-
 /**
  * A class of device the Direct lane serves. Each class has its own implementations,
  * newest first (`device-android` before adb, `device-sim` before idb_companion). A cabled

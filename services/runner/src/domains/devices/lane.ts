@@ -19,8 +19,6 @@ export type SessionOptions = {
 	deviceId: string;
 	bundleId?: string;
 	appPackage?: string;
-	/** User-requested Lane. `auto` (default) is Direct. */
-	requestedLane?: LaneName | "auto";
 	/** Web only: the Viewport preset the session emulates for its whole life. Desktop by default. */
 	viewport?: ViewportPresetName;
 	/** Web only: the App whose Kept profile a launched browser uses; `default` when omitted. */
@@ -200,7 +198,7 @@ export type DeviceSession = {
 
 /**
  * Opens a Device Session on one Lane. It does not enforce per-device exclusivity;
- * `createDeviceSession` does, so every lane shares the same rule (ADR-0001).
+ * `openDeviceSession` does, so every lane shares the same rule (ADR-0001).
  */
 export type LaneFactory = (options: SessionOptions) => Promise<DeviceSession>;
 
@@ -253,9 +251,6 @@ export function assertKeySupported(
 	}
 }
 
-const DEAD_SESSION_RE =
-	/session does not exist|invalid session id|no such session|terminated or not started|session is either terminated/i;
-
 /** Stable error for a Device Session the lane has already dropped. */
 export class DeadSessionError extends Error {
 	constructor(message = "Device session ended", options?: ErrorOptions) {
@@ -293,11 +288,15 @@ export class DeviceUnreachableError extends Error {
 	}
 }
 
-/** True when the lane reports the session is gone (Dead Session). */
+/**
+ * True when the lane reports the session is gone (Dead Session). Every Direct lane says so
+ * with a `DeadSessionError` (a device tool's loss through `guardToolLoss`, a cabled
+ * iPhone's lost `YoqaRunner`, a closed browser socket or page, a stopped frame loop).
+ * This reads the type, never the message: a device tool's own words about a missing
+ * element or a refused command are not a Dead Session.
+ */
 export function isDeadSessionError(error: unknown): boolean {
-	if (error instanceof DeadSessionError) return true;
-	const message = error instanceof Error ? error.message : String(error);
-	return DEAD_SESSION_RE.test(message);
+	return error instanceof DeadSessionError;
 }
 
 type ToolResult = { stdout: string; stderr: string; exitCode: number };

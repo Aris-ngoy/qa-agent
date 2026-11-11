@@ -19,7 +19,7 @@ import {
 import { getScreen, performAction } from "./interaction";
 import { ActionUnsupportedError, type DeviceSession, isDeadSessionError } from "./lane";
 import { trackMjpegProxy } from "./mjpeg-proxy";
-import { createDeviceSession } from "./session";
+import { openDeviceSession } from "./open-session";
 import { createWebDirectSession, showsPreset, webDirectDeps } from "./web-direct-lane";
 
 /** The desktop Viewport preset's page, which every session here is on. */
@@ -29,7 +29,7 @@ const VIEWPORT = { width: 1280, height: 800 };
 async function attach(options: Partial<FakeCdpOptions> = {}) {
 	const browser = startFakeCdp({ viewport: VIEWPORT, deviceScaleFactor: 2, ...options });
 	let deadCalls = 0;
-	const session = await createDeviceSession({
+	const session = await openDeviceSession({
 		platform: "web",
 		deviceId: `chromium-cdp-${browser.port}`,
 		onSessionDead: () => {
@@ -241,7 +241,7 @@ describe("web Direct lane: screencast Frame Feed", () => {
 async function attachCountingChanges(options: Partial<FakeCdpOptions> = {}) {
 	const browser = startFakeCdp({ viewport: VIEWPORT, deviceScaleFactor: 2, ...options });
 	let changes = 0;
-	const session = await createDeviceSession({
+	const session = await openDeviceSession({
 		platform: "web",
 		deviceId: `chromium-cdp-${browser.port}`,
 		onScreenChanged: () => {
@@ -792,7 +792,7 @@ describe("web Direct lane: Dead Session", () => {
 		await session.quit();
 		expect(deadCalls()).toBe(0);
 		// The browser is still there: another session attaches to it.
-		const again = await createDeviceSession({
+		const again = await openDeviceSession({
 			platform: "web",
 			deviceId: `chromium-cdp-${browser.port}`,
 		});

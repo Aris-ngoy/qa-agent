@@ -484,7 +484,6 @@ export async function executeRun(runId: string): Promise<void> {
 		const { app, startTarget, cases: planned, auth } = await prepareRun(run);
 
 		const runRow = (await db.select().from(runs).where(eq(runs.id, runId)))[0];
-		const requestedLane = runRow?.requestedLane;
 		// The Everyday browser runs on the user's own profile: neither a Kept one nor clean.
 		const everyday = webDeviceOf(run.deviceId)?.kind === "everyday";
 		const profile =
@@ -502,8 +501,6 @@ export async function executeRun(runId: string): Promise<void> {
 			deviceId: run.deviceId,
 			platform: run.platform,
 			...startTargetRequest(run.platform, startTarget),
-			requestedLane:
-				requestedLane === "direct" || requestedLane === "auto" ? requestedLane : undefined,
 			...(profile ? { appId: run.appId, profile } : {}),
 			...viewportOf(runRow?.requestedViewport ?? null),
 		});

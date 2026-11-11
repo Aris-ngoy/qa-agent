@@ -11,8 +11,9 @@ import type {
 } from "@yoqa/runner-client";
 import { startFakeCdp } from "../devices/fake-cdp";
 import { DeadSessionError } from "../devices/lane";
+import { openDeviceSession } from "../devices/open-session";
 import { encodeRgbaPng } from "../devices/png";
-import { type DeviceSession, createDeviceSession } from "../devices/session";
+import type { DeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import type { AgentDecision } from "./agent";
 import {
@@ -630,7 +631,7 @@ describe("executeScriptCase with a Branch", () => {
 describe("executeAgentCase", () => {
 	it("errors the case when the agent backgrounds the app on web, which a page cannot do", async () => {
 		const browser = startFakeCdp({ viewport: { width: 1280, height: 800 } });
-		const session = await createDeviceSession({
+		const session = await openDeviceSession({
 			platform: "web",
 			deviceId: `chromium-cdp-${browser.port}`,
 		});
@@ -664,7 +665,7 @@ describe("executeAgentCase", () => {
 
 	it("on web, an app Action with no app id acts on the App's Web URL", async () => {
 		const browser = startFakeCdp({ viewport: { width: 1280, height: 800 } });
-		const session = await createDeviceSession({
+		const session = await openDeviceSession({
 			platform: "web",
 			deviceId: `chromium-cdp-${browser.port}`,
 		});
