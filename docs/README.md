@@ -21,6 +21,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [architecture/deepening.md](./architecture/deepening.md) | Device Session / Provider / Case executor deepen |
 | [architecture/deepen-phases-3-5.md](./architecture/deepen-phases-3-5.md) | Provider catalog, case executor, script parse unify |
 | [architecture/classify-browser-device.md](./architecture/classify-browser-device.md) | One `webDeviceOf` classifier for launched / Everyday / port / unsupported web ids |
+| [architecture/web-browser-connection.md](./architecture/web-browser-connection.md) | Web Direct lane: a browser connection with launched / Everyday / port adapters, and the Screen reader as its own module |
 | [architecture/unit-test-speed.md](./architecture/unit-test-speed.md) | Unit suite 63s → 38s: faked Android capture idle, Run-service settle override, shorter yoqa-sim fakes |
 | [adr/0001-device-session-ownership.md](./adr/0001-device-session-ownership.md) | Device Session under `devices/`, exclusive per device |
 | [adr/0002-provider-vision-capability.md](./adr/0002-provider-vision-capability.md) | Provider adapters + runner catalog |
