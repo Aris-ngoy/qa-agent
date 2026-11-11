@@ -22,7 +22,7 @@ import {
 	WEB_BROWSERS,
 	type WebBrowserKey,
 	everydayBrowserId,
-	webBrowserOf,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 import { type CdpClient, CdpOpenError, type ConnectCdpOptions, connectCdp } from "./cdp-client";
 import { type DiscoveryDeps, discoveryDeps } from "./chromium-browsers";
@@ -62,11 +62,6 @@ const EVERYDAY_BROWSERS = WEB_BROWSERS.map(({ browser, name }) => ({
 	app: name,
 	userData: USER_DATA_DIRS[browser],
 }));
-
-/** The Everyday browser id a device id names, or null when it is not one. */
-export function everydayBrowserIdOf(deviceId: string): EverydayBrowserId | null {
-	return EVERYDAY_BROWSERS.find((browser) => browser.id === deviceId)?.id ?? null;
-}
 
 /** The browsers installed on this Mac, each as its Everyday browser. Empty off macOS. */
 export async function findEverydayBrowsers(
@@ -179,7 +174,7 @@ export async function listEverydayDevices(
 				platform: "web",
 				kind: "browser",
 				state,
-				verified: webBrowserOf(browser.id)?.verified ?? false,
+				verified: webDeviceOf(browser.id)?.browser?.verified ?? false,
 			};
 		}),
 	);

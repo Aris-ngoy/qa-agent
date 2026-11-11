@@ -15,9 +15,11 @@ import type {
 import {
 	appStartTarget,
 	browserProfileSchema,
+	installedBrowserId,
 	startTargetRequest,
 	stepPhasesSchema,
 	viewportPresetSchema,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
@@ -31,7 +33,6 @@ import {
 import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
 import { acquireSessionForRun, releaseSessionFromRun } from "../devices/active-session";
-import { everydayBrowserIdOf } from "../devices/chromium-everyday";
 import { EVERYDAY_WARNING } from "../devices/everyday-warning";
 import { pruneOldRunScreenshots } from "../devices/screenshot-retention";
 import type { DeviceSession } from "../devices/session";
@@ -179,7 +180,8 @@ async function assertEverydayRunAllowed(input: CreateRunRequest, caseIds: string
 		);
 	}
 	if ((await resolveRunProfile(input.profile, caseIds)) === "clean") {
-		const launched = input.deviceId.replace(/-everyday$/, "");
+		const browser = webDeviceOf(input.deviceId)?.browser;
+		const launched = browser ? installedBrowserId(browser.browser) : input.deviceId;
 		throw new RunValidationError(
 			`${input.deviceId} is your Everyday browser, which Yoqa never wipes, so a Run there cannot use a clean profile. For a clean start, run on ${launched}, which Yoqa launches on the App's Kept profile, with profile clean or after resetting the Kept profile (yoqa devices web reset-profile).`,
 		);
@@ -606,7 +608,7 @@ export async function executeRun(runId: string): Promise<void> {
 		const runRow = (await db.select().from(runs).where(eq(runs.id, runId)))[0];
 		const requestedLane = runRow?.requestedLane;
 		// The Everyday browser runs on the user's own profile: neither a Kept one nor clean.
-		const everyday = everydayBrowserIdOf(run.deviceId) !== null;
+		const everyday = webDeviceOf(run.deviceId)?.kind === "everyday";
 		const profile =
 			run.platform === "web" && !everyday
 				? await resolveRunProfile(
@@ -799,7 +801,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		throw new RunValidationError("viewport is for web Runs: a phone's screen is its own size");
 	}
 
-	if (everydayBrowserIdOf(input.deviceId) !== null) {
+	if (webDeviceOf(input.deviceId)?.kind === "everyday") {
 		await assertEverydayRunAllowed(input, uniqueCaseIds);
 	}
 

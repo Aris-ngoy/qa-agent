@@ -1,11 +1,6 @@
-import { WEB_BROWSERS, everydayBrowserId } from "@yoqa/runner-client";
+import { webDeviceOf } from "@yoqa/runner-client";
 import type { OpenPathResult } from "../../../shared/cli-environment";
 import { REMOTE_DEBUGGING_SETTING_URL } from "../../../shared/everyday-browser";
-
-/** Each Everyday browser's app, as `open -a` names it, from the runner's list. */
-const EVERYDAY_APPS: ReadonlyMap<string, string> = new Map(
-	WEB_BROWSERS.map(({ browser, name }) => [everydayBrowserId(browser), name]),
-);
 
 export type OpenSettingDeps = {
 	platform?: NodeJS.Platform;
@@ -28,7 +23,9 @@ async function openEverydayApp(
 	offMac: (app: string) => string,
 	deps: OpenSettingDeps,
 ): Promise<OpenPathResult> {
-	const app = EVERYDAY_APPS.get(browserId);
+	// The Everyday browser's app, as `open -a` names it.
+	const device = webDeviceOf(browserId);
+	const app = device?.kind === "everyday" ? device.browser.name : null;
 	if (!app) return { ok: false, error: `${browserId} is not an Everyday browser` };
 	if ((deps.platform ?? process.platform) !== "darwin") return { ok: false, error: offMac(app) };
 	try {

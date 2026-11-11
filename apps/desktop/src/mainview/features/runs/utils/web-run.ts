@@ -1,4 +1,3 @@
-import { isEverydayDeviceId } from "@/features/devices/utils/everyday-browser";
 import type { WebRunForm } from "@/features/runs/data/state/web-run-form";
 import {
 	type ActiveDeviceResponse,
@@ -6,6 +5,7 @@ import {
 	DEFAULT_VIEWPORT_PRESET,
 	type DevicePlatform,
 	type ViewportPresetName,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 
 /** The device a Run starts on: the Active Session's, or the one picked in the top bar. */
@@ -32,7 +32,7 @@ export function runViewport(
  * browser runs on the user's own profile (ADR-0009), and a phone has none.
  */
 export function showsProfileChoice(device: RunDevice): boolean {
-	return device.platform === "web" && !isEverydayDeviceId(device.id);
+	return device.platform === "web" && webDeviceOf(device.id)?.kind !== "everyday";
 }
 
 /**

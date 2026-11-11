@@ -32,6 +32,7 @@ import {
 	screenCheckMissMessage,
 	updateCaseFlowsSchema,
 	waitForRun,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 import { Command } from "commander";
 import { yoqaBenchmarkDriver } from "../../../services/runner/src/domains/benchmark/drivers";
@@ -61,8 +62,6 @@ import {
 import {
 	PLATFORM_DEVICES_DESCRIPTION,
 	connectPlatform,
-	everydayBrowserName,
-	isEverydayDeviceId,
 	isWebDeviceId,
 	parsePlatform,
 	parseViewportPreset,
@@ -315,7 +314,8 @@ function printDevicesTable(
 		if (device.unavailableReason) {
 			console.log(`           Not a target: ${device.unavailableReason}`);
 		}
-		const hint = isEverydayDeviceId(device.id) ? EVERYDAY_HINTS[device.state ?? ""] : undefined;
+		const hint =
+			webDeviceOf(device.id)?.kind === "everyday" ? EVERYDAY_HINTS[device.state ?? ""] : undefined;
 		if (hint) console.log(`           ${hint}`);
 	}
 }
@@ -462,7 +462,9 @@ devices
 				json?: boolean;
 			},
 		) => {
-			const everyday = everydayBrowserName(deviceId);
+			const web = webDeviceOf(deviceId);
+			// The browser the Allow prompt appears in (`Google Chrome`), for an Everyday browser.
+			const everyday = web?.kind === "everyday" ? web.browser.name : null;
 			try {
 				const platform = connectPlatform(deviceId, options.platform);
 				const lane = options.lane;
@@ -1918,7 +1920,7 @@ runsCmd
 						);
 					}
 					// The user's own browser is never a Run's by default: only when --device names it.
-					if (!deviceId && isEverydayDeviceId(active.deviceId)) {
+					if (!deviceId && webDeviceOf(active.deviceId)?.kind === "everyday") {
 						throw new Error(
 							`The session is on your Everyday browser, which a Run uses only when named. Pass --device ${active.deviceId} to run there.`,
 						);

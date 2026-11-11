@@ -10,7 +10,6 @@ import {
 	everydayStateLine,
 	everydayWarningLine,
 	isConnectCancelled,
-	isEverydayDeviceId,
 	takeDisconnectNote,
 	turnOnHint,
 } from "@/features/devices/utils/everyday-browser";
@@ -43,15 +42,6 @@ const CHROME: Device = {
 	kind: "browser",
 	state: "not running",
 };
-
-describe("isEverydayDeviceId", () => {
-	test("is a user's own browser by consent, not a launched or attached one", () => {
-		expect(isEverydayDeviceId("web-dia-everyday")).toBe(true);
-		expect(isEverydayDeviceId("web-chrome-everyday")).toBe(true);
-		expect(isEverydayDeviceId("web-chrome")).toBe(false);
-		expect(isEverydayDeviceId("chromium-cdp-9222")).toBe(false);
-	});
-});
 
 describe("everydayBrowserName", () => {
 	test("is the browser as the user knows it, without the list's tag", () => {

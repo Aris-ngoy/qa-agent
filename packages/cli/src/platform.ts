@@ -2,10 +2,8 @@ import {
 	type DevicePlatform,
 	VIEWPORT_PRESET_NAMES,
 	type ViewportPresetName,
-	WEB_BROWSERS,
 	devicePlatformSchema,
-	everydayBrowserId,
-	installedBrowserId,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 
 /** What `yoqa devices <platform>` lists, per platform. */
@@ -25,40 +23,12 @@ export function parsePlatform(value: string | undefined): DevicePlatform {
 	return parsed.data;
 }
 
-/** The installed browsers' ids (`web-chrome`), from the runner's list. */
-const INSTALLED_BROWSER_IDS = new Set<string>(
-	WEB_BROWSERS.map(({ browser }) => installedBrowserId(browser)),
-);
-
-/** A user-started Chromium named by its debug port. */
-const ATTACH_DEVICE_ID = /^chromium-cdp-\d+$/;
-
-/** Each Everyday browser's device id, and the browser its Allow prompt appears in. */
-const EVERYDAY_BROWSER_NAMES = new Map<string, string>(
-	WEB_BROWSERS.map(({ browser, name }) => [everydayBrowserId(browser), name]),
-);
-
-/** The browser an Everyday browser's device id names (`Google Chrome`), or null. */
-export function everydayBrowserName(deviceId: string): string | null {
-	return EVERYDAY_BROWSER_NAMES.get(deviceId) ?? null;
-}
-
-/** An Everyday browser's device id: the user's own browser, used only when named. */
-export function isEverydayDeviceId(deviceId: string): boolean {
-	return everydayBrowserName(deviceId) !== null;
-}
-
-/** Firefox and Safari ids: web, so the runner refuses them with the reason (ADR-0010). */
-const UNSUPPORTED_BROWSER_ID = /^web-(firefox|safari)(-everyday)?$/;
-
-/** Whether a device id names a web device, whose platform needs no `--platform`. */
+/**
+ * Whether a device id names a web device, whose platform needs no `--platform`. Firefox and
+ * Safari ids count, so the runner refuses them with the reason (ADR-0010).
+ */
 export function isWebDeviceId(deviceId: string): boolean {
-	return (
-		INSTALLED_BROWSER_IDS.has(deviceId) ||
-		ATTACH_DEVICE_ID.test(deviceId) ||
-		isEverydayDeviceId(deviceId) ||
-		UNSUPPORTED_BROWSER_ID.test(deviceId)
-	);
+	return webDeviceOf(deviceId) !== null;
 }
 
 /**

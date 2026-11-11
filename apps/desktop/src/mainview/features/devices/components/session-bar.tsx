@@ -24,7 +24,6 @@ import {
 	connectAcceptingWarning,
 	everydayBrowserName,
 	isConnectCancelled,
-	isEverydayDeviceId,
 	takeDisconnectNote,
 } from "@/features/devices/utils/everyday-browser";
 import { connectRequestFor } from "@/features/devices/utils/session-app";
@@ -47,6 +46,7 @@ import {
 	EVERYDAY_ALLOW_TIMEOUT_MS,
 	type LaneName,
 	developerNotTrusted,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
@@ -140,7 +140,7 @@ export function SessionBar() {
 	 */
 	const connectDevice = useCallback(
 		async (target: ConnectTarget, lane?: LaneName): Promise<ActiveDeviceResponse> => {
-			const everyday = target.platform === "web" && isEverydayDeviceId(target.id);
+			const everyday = target.platform === "web" && webDeviceOf(target.id)?.kind === "everyday";
 			const listed = devices?.find((candidate) => candidate.id === target.id);
 			const browserName = everydayBrowserName(listed?.name);
 			const controller = new AbortController();

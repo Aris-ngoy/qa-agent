@@ -7,7 +7,6 @@ import {
 	type EverydayBrowser,
 	EverydayConnectError,
 	type ProcessDeps,
-	everydayBrowserIdOf,
 	findEverydayBrowsers,
 	listEverydayDevices,
 	openEverydaySocket,
@@ -209,12 +208,6 @@ describe("Everyday browser discovery", () => {
 		expect(await findEverydayBrowsers({ ...mac(["Google Chrome"]), platform: "linux" })).toEqual(
 			[],
 		);
-	});
-
-	test("an everyday device id names its browser", () => {
-		expect(everydayBrowserIdOf("web-dia-everyday")).toBe("web-dia-everyday");
-		expect(everydayBrowserIdOf("web-chrome")).toBeNull();
-		expect(everydayBrowserIdOf("web-firefox-everyday")).toBeNull();
 	});
 });
 

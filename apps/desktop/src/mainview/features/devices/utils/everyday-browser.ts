@@ -6,15 +6,10 @@ import {
 	type EverydayWarningRequired,
 	everydayWarningRequired,
 	formatDeviceState,
+	webDeviceOf,
 } from "@yoqa/runner-client";
 
-const EVERYDAY_ID = /^web-[a-z]+-everyday$/;
 const EVERYDAY_TAG = / \(everyday\)$/;
-
-/** The user's own browser, reached by consent (`web-dia-everyday`). */
-export function isEverydayDeviceId(deviceId: string): boolean {
-	return EVERYDAY_ID.test(deviceId);
-}
 
 /**
  * `Dia` for the runner's `Dia (everyday)`: the browser as the user knows it, and "your
@@ -35,7 +30,7 @@ export type EverydayEntry = Pick<Device, "id" | "name" | "osVersion" | "kind" | 
 /** The Everyday browsers in the runner's web device list, as the picker shows them. */
 export function everydayEntries(devices: readonly Device[]): EverydayEntry[] {
 	return devices
-		.filter((device) => device.kind === "browser" && isEverydayDeviceId(device.id))
+		.filter((device) => device.kind === "browser" && webDeviceOf(device.id)?.kind === "everyday")
 		.map((device) => ({
 			id: device.id,
 			name: device.name,
@@ -187,7 +182,7 @@ export function takeDisconnectNote(
 	browserName: string,
 	storage: NoteStorage | null = defaultStorage(),
 ): string | null {
-	if (!isEverydayDeviceId(deviceId)) return null;
+	if (webDeviceOf(deviceId)?.kind !== "everyday") return null;
 	try {
 		if (storage?.getItem(DISCONNECT_NOTE_KEY)) return null;
 		storage?.setItem(DISCONNECT_NOTE_KEY, "1");
