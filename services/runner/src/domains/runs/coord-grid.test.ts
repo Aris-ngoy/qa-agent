@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { decodePng, encodeRgbaPng, overlayCoordGrid, pointFromGridCell } from "./coord-grid";
+import { decodePng, encodeRgbaPng } from "../devices/png";
+import { overlayCoordGrid, pointFromGridCell } from "./coord-grid";
 
 describe("overlayCoordGrid", () => {
 	test("draws the 500-line in magenta and leaves a cell interior alone", () => {

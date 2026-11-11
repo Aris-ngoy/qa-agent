@@ -19,7 +19,9 @@ suite, and its tests share module mocks and globals, so removing the waits pays 
   idle after every read. The harness now uses a 50ms idle. `lane-contract.test.ts`: 13.2s → 1.7s.
 - **Runs through the Run service** (`runs/application.ts`): `setCaseSettleMsForTests` passes a
   `settleMs` to the case executor, which otherwise sleeps the real 800ms `POST_ACTION_SETTLE_MS` after
-  each Action. `web-run.test.ts` sets it to 0. 11.3s → about 2s.
+  each Action. `web-run.test.ts` sets it to 0. 11.3s → about 2s. *Superseded by
+  [one-act-and-settle.md](./one-act-and-settle.md): Runs now Settle for real, so the faked browser's
+  still screen settles in ~160ms and the global is gone (`web-run.test.ts` ≈ 3s).*
 - **yoqa-sim lane** (`ios-yoqa-sim-lane.test.ts`): "a tap never waits…" faked a 2s tree read and a 2s
   connect, then waited for them. 1s still sits well clear of the 500ms bound the tests assert.
 
@@ -39,5 +41,5 @@ the `testcase` elements by `time`.
 - `web-direct-lane.test.ts` (~9.6s): the screen-changed tests take 0.6–2.2s each against the fake CDP
   server, so a real settle or poll timer is running in the lane.
 - `ios-device-lane.test.ts` (~8.5s): "a cable miss…" takes 3.6s even with `unreachableGraceMs: 0`.
-- Other Run-service tests (`catalog/*`, `run-video-delete.test.ts`) could set
-  `setCaseSettleMsForTests(0)` too if they grow slow.
+- Other Run-service tests (`catalog/*`, `run-video-delete.test.ts`): Settle is now adaptive, so a
+  still fake screen costs one stable window per Action rather than 800ms.

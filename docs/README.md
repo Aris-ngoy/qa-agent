@@ -24,6 +24,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [architecture/web-browser-connection.md](./architecture/web-browser-connection.md) | Web Direct lane: a browser connection with launched / Everyday / port adapters, and the Screen reader as its own module |
 | [architecture/narrow-device-session.md](./architecture/narrow-device-session.md) | One shared Device Session above a per-Lane driver, with a declared capabilities record instead of optional members |
 | [architecture/one-case-script-replay.md](./architecture/one-case-script-replay.md) | One Case Script walker (`replayCaseScript`) with a port; the Case executor and `runCaseScript` are its adapters; typed Run step `action` |
+| [architecture/one-act-and-settle.md](./architecture/one-act-and-settle.md) | One act-and-Settle module (`actAndSettle`) for the connector, the agent loop and Case Script replay; one "screen unchanged" (`screenChanged`); no 800ms sleep |
 | [architecture/unit-test-speed.md](./architecture/unit-test-speed.md) | Unit suite 63s → 38s: faked Android capture idle, Run-service settle override, shorter yoqa-sim fakes |
 | [adr/0001-device-session-ownership.md](./adr/0001-device-session-ownership.md) | Device Session under `devices/`, exclusive per device |
 | [adr/0002-provider-vision-capability.md](./adr/0002-provider-vision-capability.md) | Provider adapters + runner catalog |

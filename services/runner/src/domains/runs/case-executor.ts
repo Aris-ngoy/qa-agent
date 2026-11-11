@@ -21,6 +21,13 @@ import {
 	screenCheckMissMessage,
 } from "@yoqa/runner-client";
 import {
+	type ActAndSettleResult,
+	type SettlePolicy,
+	actAndSettle,
+	saveResultScreenshot,
+	screenChanged,
+} from "../devices/action-result";
+import {
 	ActionNotFoundError,
 	ActionValidationError,
 	performAction as defaultPerformAction,
@@ -51,7 +58,6 @@ import {
 	isSystemPermissionLabel,
 	releaseCanvasPoint,
 	repeatTapHint,
-	screenshotFingerprint,
 	screenshotPointMissing,
 	snapTapToElement,
 	stuckWaitHint,
@@ -61,9 +67,6 @@ import { overlayCoordGrid } from "./coord-grid";
 
 /** Max vision/action iterations for the current instruction (not the whole case). */
 export const MAX_STEPS_PER_CASE = 25;
-/** Let splash / nav transitions settle before the next screenshot. */
-export const POST_ACTION_SETTLE_MS = 800;
-/** Consecutive x,y taps that leave the screenshot unchanged before a case escalates to Grid mode. */
 /**
  * Unchanged x,y taps in a row before Grid mode is switched on for good. Grid is the last
  * resort: it comes after the tree assist below has had its two steps.
@@ -146,7 +149,8 @@ export type ScriptCaseDeps = {
 	performAction?: PerformActionFn;
 	readScreen?: (session: DeviceSession) => Promise<{ elements?: ScreenElement[] }>;
 	clock?: CaseExecutorClock;
-	settleMs?: number;
+	/** How each Action Settles (default: the connector's `DEFAULT_SETTLE_POLICY`). */
+	settle?: Partial<SettlePolicy>;
 };
 
 export type AgentCaseDeps = {
@@ -170,7 +174,10 @@ export type AgentCaseDeps = {
 	performAction?: PerformActionFn;
 	readScreen?: (session: DeviceSession) => Promise<{ elements?: ScreenElement[] }>;
 	clock?: CaseExecutorClock;
-	settleMs?: number;
+	/** How each Action Settles (default: the connector's `DEFAULT_SETTLE_POLICY`). */
+	settle?: Partial<SettlePolicy>;
+	/** Where Result screenshots are stored (default: the shared screenshot folder). */
+	screenshotDir?: string;
 	maxStepsPerCase?: number;
 	defaultAppId?: string;
 };
@@ -364,7 +371,6 @@ export async function executeScriptCase(
 			return { elements: screen.elements };
 		});
 	const clock = deps.clock ?? defaultClock;
-	const settleMs = deps.settleMs ?? POST_ACTION_SETTLE_MS;
 	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
 
 	let stepIdx = 0;
@@ -416,9 +422,12 @@ export async function executeScriptCase(
 	try {
 		const result = await replayCaseScript(deps.script, {
 			performAction: async (request) => {
-				const response = await perform(deps.session, request);
-				await clock.sleep(settleMs);
-				return response;
+				const settled = await actAndSettle(deps.session, request, {
+					perform,
+					clock,
+					policy: deps.settle,
+				});
+				return settled.response;
 			},
 			readScreen: () => readScreen(deps.session),
 			clock,
@@ -502,7 +511,6 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 			return { elements: screen.elements };
 		});
 	const clock = deps.clock ?? defaultClock;
-	const settleMs = deps.settleMs ?? POST_ACTION_SETTLE_MS;
 	const maxSteps = deps.maxStepsPerCase ?? MAX_STEPS_PER_CASE;
 	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
 
@@ -605,23 +613,25 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		return decision;
 	};
 
+	/**
+	 * Carry out a device decision. An Action is performed and Settled, and its Result screenshot
+	 * returned; a wait or an assert returns null (the next step captures its own screenshot).
+	 */
 	const applyDecision = async (
 		decision: AgentDecision,
 		phases: StepPhases,
 		screenElements: ScreenElement[],
-	): Promise<"continue" | "done" | "fail"> => {
+		previousFrame: string | null,
+	): Promise<ActAndSettleResult | null> => {
 		if (decision.type === "wait") {
 			const waitMs = Math.min(3000, Math.max(500, decision.ms ?? 1500));
 			const waitStarted = clock.now();
 			await clock.sleep(waitMs);
 			phases.actionMs += clock.now() - waitStarted;
-			return "continue";
+			return null;
 		}
-		if (decision.type === "verify" || decision.type === "done") {
-			return "done";
-		}
-		if (decision.type === "fail") {
-			return "fail";
+		if (decision.type === "verify" || decision.type === "done" || decision.type === "fail") {
+			return null;
 		}
 		if (decision.type === "assert") {
 			const assertion = decision.assertion === "not-visible" ? "not-visible" : "visible";
@@ -637,44 +647,54 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				timeoutMs,
 			});
 			phases.actionMs += clock.now() - assertStarted;
-			return "continue";
+			return null;
 		}
 		const body = decisionToActionRequest(decision, { defaultAppId: deps.defaultAppId });
 		if (!body) {
 			throw new Error(`${decision.type} is missing required fields`);
 		}
-		const actionStarted = clock.now();
-		try {
-			// An empty list means the tree was not read this step (vision / Grid mode), not that the
-			// screen has no elements. Passing it would make every label tap fail as "not found".
-			await perform(deps.session, body, {
-				screenElements: screenElements.length > 0 ? screenElements : undefined,
-			});
-		} catch (error) {
-			if (
-				error instanceof ActionNotFoundError &&
-				(body.id || body.label) &&
-				decision.x != null &&
-				decision.y != null
-			) {
-				await perform(deps.session, {
-					kind: body.kind === "input" ? "input" : "tap",
-					x: decision.x,
-					y: decision.y,
-					text: body.text,
-					double: body.double,
-					durationMs: body.durationMs,
+		// An empty list means the tree was not read this step (vision / Grid mode), not that the
+		// screen has no elements. Passing it would make every label tap fail as "not found".
+		const performWithFallback = async (session: DeviceSession, request: ActionRequest) => {
+			try {
+				return await perform(session, request, {
+					screenElements: screenElements.length > 0 ? screenElements : undefined,
 				});
-			} else {
+			} catch (error) {
+				if (
+					error instanceof ActionNotFoundError &&
+					(request.id || request.label) &&
+					decision.x != null &&
+					decision.y != null
+				) {
+					return perform(session, {
+						kind: request.kind === "input" ? "input" : "tap",
+						x: decision.x,
+						y: decision.y,
+						text: request.text,
+						double: request.double,
+						durationMs: request.durationMs,
+					});
+				}
 				throw error;
 			}
-		} finally {
+		};
+		const actionStarted = clock.now();
+		let settled: ActAndSettleResult;
+		try {
+			settled = await actAndSettle(deps.session, body, {
+				perform: performWithFallback,
+				clock,
+				policy: deps.settle,
+				previousFrame,
+			});
+		} catch (error) {
 			phases.actionMs += clock.now() - actionStarted;
+			throw error;
 		}
-		const settleStarted = clock.now();
-		await clock.sleep(settleMs);
-		phases.settleMs += clock.now() - settleStarted;
-		return "continue";
+		phases.actionMs += settled.actionMs;
+		phases.settleMs += settled.result.waitedMs;
+		return settled;
 	};
 
 	try {
@@ -686,7 +706,8 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 
 		const recentActions: AgentDecision[] = [];
 		const completedInstructions: string[] = [];
-		let prevFingerprint: string | null = null;
+		/** The screenshot the previous decide saw: what "unchanged" is judged against. */
+		let prevFrame: string | null = null;
 		let lastVision: {
 			imageBase64: string;
 			image: VisionImage;
@@ -793,12 +814,13 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				// Each step is action → screenshot → decision → verify.
 				// The action is the previous decision; the first step only looks.
 				let performed: AgentDecision | null = null;
+				let settled: ActAndSettleResult | null = null;
 				if (pending && isDeviceDecision(pending)) {
 					const command = commandForDecision(pending, deps.defaultAppId);
 					try {
-						await withCurrentCommand(setCurrentCommand, command, async () => {
-							await applyDecision(pending as AgentDecision, phases, pendingElements);
-						});
+						settled = await withCurrentCommand(setCurrentCommand, command, () =>
+							applyDecision(pending as AgentDecision, phases, pendingElements, prevFrame),
+						);
 						performed = pending;
 					} catch (error) {
 						if (!isRetriableActionError(error) || deps.isAborted()) throw error;
@@ -863,9 +885,9 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 							break;
 						}
 						const retryCommand = commandForDecision(pending, deps.defaultAppId);
-						await withCurrentCommand(setCurrentCommand, retryCommand, async () => {
-							await applyDecision(pending as AgentDecision, phases, pendingElements);
-						});
+						settled = await withCurrentCommand(setCurrentCommand, retryCommand, () =>
+							applyDecision(pending as AgentDecision, phases, pendingElements, prevFrame),
+						);
 						recentActions.push(pending);
 						performed = pending;
 					}
@@ -874,7 +896,13 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				let phaseStartedAt = clock.now();
 				const shotStarted = phaseStartedAt;
 				inFlightPhases = phases;
-				const shot = await deps.session.screenshot();
+				// After an Action the step looks at its Result screenshot; otherwise it captures one.
+				const shot = settled
+					? {
+							path: await saveResultScreenshot(settled.result.base64, deps.screenshotDir),
+							base64: settled.result.base64,
+						}
+					: await deps.session.screenshot();
 				lastScreenshotUri = shot.path;
 				const advance = (phase: "captureMs" | "screenMs" | "prepareMs" | "decideMs") => {
 					const now = clock.now();
@@ -882,12 +910,17 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 					phaseStartedAt = now;
 				};
 				advance("captureMs");
-				const fingerprint = screenshotFingerprint(shot.base64);
+				// One notion of "unchanged" for Escalation, Tree assist and the stall hints: the same
+				// as Settle's and the connector's (`screenChanged`). A wait's capture is a still frame.
+				const changed = settled
+					? settled.result.changed
+					: screenChanged(prevFrame, { base64: shot.base64, settled: true });
+				const unchanged = changed === false;
 				// Escalation: taps that keep leaving the screenshot unchanged are landing
 				// nowhere. Switch this case to Grid mode for good. Tree mode has ids instead.
 				let escalatedToGrid = false;
 				if (screenMode === "vision" && !gridMode && performed) {
-					if (isPointTap(performed) && prevFingerprint != null && fingerprint === prevFingerprint) {
+					if (isPointTap(performed) && unchanged) {
 						unchangedPointTaps += 1;
 					} else {
 						unchangedPointTaps = 0;
@@ -900,8 +933,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				// Any action that leaves the screenshot unchanged counts, whatever it was. A wait is
 				// neither: it is expected not to change the screen, and has its own hint below.
 				if (performed && performed.type !== "wait") {
-					unchangedActions =
-						prevFingerprint != null && fingerprint === prevFingerprint ? unchangedActions + 1 : 0;
+					unchangedActions = unchanged ? unchangedActions + 1 : 0;
 				}
 				// Second opinion: the tree can name a control the screenshot guess keeps missing. A known
 				// game has no useful tree, so it keeps the grid instead.
@@ -910,15 +942,13 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				// Waiting on a screen that never changes is a stall, not progress. The model
 				// must be told, because a sheet the tree cannot see may be waiting for a tap.
 				if (performed?.type === "wait") {
-					unchangedWaits =
-						prevFingerprint != null && fingerprint === prevFingerprint ? unchangedWaits + 1 : 0;
+					unchangedWaits = unchanged ? unchangedWaits + 1 : 0;
 				} else if (performed) {
 					unchangedWaits = 0;
 				}
 				// Tapping the same spot over and over while nothing changes: that spot is wrong.
 				if (performed && isPointTap(performed)) {
 					const point = { x: performed.x as number, y: performed.y as number };
-					const unchanged = prevFingerprint != null && fingerprint === prevFingerprint;
 					const sameSpot =
 						lastTapPoint != null &&
 						Math.hypot(point.x - lastTapPoint.x, point.y - lastTapPoint.y) <= REPEAT_TAP_RADIUS;
@@ -957,10 +987,9 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				const image = await prepareVisionImage(visionBase64);
 				advance("prepareMs");
 				const lastAction = recentActions.at(-1);
+				// Not knowing (a screen that never settled) counts as moved: keep scrolling.
 				const lastSwipeMovedScreen =
-					lastAction?.type === "swipe" &&
-					prevFingerprint != null &&
-					fingerprint !== prevFingerprint;
+					lastAction?.type === "swipe" && prevFrame != null && changed !== false;
 
 				if (deps.isAborted()) {
 					caseStatus = "cancelled";
@@ -996,7 +1025,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				};
 
 				let decision = await decideOnce(decideInput);
-				prevFingerprint = fingerprint;
+				prevFrame = shot.base64;
 				// The model's point missed twice. The tree is already here: move the tap onto the nearest control.
 				let snappedTo: ScreenElement | null = null;
 				if (assisted) {
