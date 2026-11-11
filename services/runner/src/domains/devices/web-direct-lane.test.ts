@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type BrowserProfile, type CaseScript, VIEWPORT_PRESETS } from "@yoqa/runner-client";
+import { type CaseScript, VIEWPORT_PRESETS } from "@yoqa/runner-client";
 import { executeScriptCase } from "../runs/case-executor";
 import { performActionWithScreenshot } from "./action-result";
 import type { InstalledBrowser } from "./chromium-browsers";
@@ -39,14 +39,6 @@ async function attach(options: Partial<FakeCdpOptions> = {}) {
 	return { browser, session, deadCalls: () => deadCalls };
 }
 
-/** A port nothing listens on. */
-function closedPort(): number {
-	const server = Bun.serve({ port: 0, fetch: () => new Response("") });
-	const port = server.port ?? 0;
-	server.stop(true);
-	return port;
-}
-
 function pngSize(base64: string): { width: number; height: number } {
 	const png = Buffer.from(base64, "base64");
 	return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
@@ -67,53 +59,6 @@ describe("web Direct lane: attach by port", () => {
 		expect(session.startRecording).toBeUndefined();
 		await session.quit();
 	});
-
-	test("names the browser it attached to, as the browser reports itself", async () => {
-		const { session } = await attach();
-		expect(session.browser).toBe("Chrome 140.0.0.0");
-		await session.quit();
-	});
-
-	test("a port with no CDP endpoint fails, saying how to start the browser", async () => {
-		const port = closedPort();
-		const error = await rejection(
-			createDeviceSession({ platform: "web", deviceId: `chromium-cdp-${port}` }),
-		);
-		expect(error).toBeInstanceOf(Error);
-		const message = (error as Error).message;
-		expect(message).toContain(`No Chromium DevTools endpoint on port ${port}`);
-		expect(message).toContain(`--remote-debugging-port=${port}`);
-		expect(message).toContain("non-default --user-data-dir");
-	});
-
-	test("a port that answers but is not CDP fails the same way", async () => {
-		const server = Bun.serve({ port: 0, fetch: () => new Response("hello", { status: 404 }) });
-		try {
-			const error = await rejection(
-				createDeviceSession({ platform: "web", deviceId: `chromium-cdp-${server.port}` }),
-			);
-			expect((error as Error).message).toContain("--remote-debugging-port");
-		} finally {
-			server.stop(true);
-		}
-	});
-
-	test("a web device id that names no browser and no port fails without probing anything", async () => {
-		const error = await rejection(
-			createDeviceSession({ platform: "web", deviceId: "web-opera-mini" }),
-		);
-		expect((error as Error).message).toContain("chromium-cdp-<port>");
-		expect((error as Error).message).toContain("web-dia, web-arc, web-opera, web-vivaldi)");
-	});
-
-	test.each(["web-firefox", "web-safari", "web-firefox-everyday", "web-safari-everyday"])(
-		"%s fails saying Firefox and Safari are not supported, without probing anything",
-		async (deviceId) => {
-			const error = await rejection(createDeviceSession({ platform: "web", deviceId }));
-			expect((error as Error).message).toContain("Firefox and Safari are not supported");
-			expect((error as Error).message).toContain("chromium-cdp-<port>");
-		},
-	);
 });
 
 describe("web Direct lane: Actions reach the page", () => {
@@ -860,50 +805,25 @@ const CHROME: InstalledBrowser = {
 	executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 };
 
-const DIA: InstalledBrowser = {
-	id: "web-dia",
-	name: "Dia",
-	version: "1.55.1",
-	executable: "/Applications/Dia.app/Contents/MacOS/Dia",
-};
-
 /**
- * A Mac with Chrome installed, and a Device Session on `deviceId` that launches it, its
- * Kept profile under a temporary home unless the connect asks for a clean one.
+ * A Mac with Chrome installed, and a Device Session that launches it on its App's Kept
+ * profile, under a temporary home. How a launched browser is quit, and a clean profile, are
+ * the browser connection's (`browser-connection.test.ts`).
  */
-async function launch(
-	deviceId = "web-chrome",
-	options: {
-		appId?: string;
-		profile?: BrowserProfile;
-		home?: string;
-		ignoresBrowserClose?: boolean;
-		browserCloseGraceMs?: number;
-	} = {},
-) {
-	const chromium = fakeChromium(
-		{ viewport: VIEWPORT, ignoresBrowserClose: options.ignoresBrowserClose },
-		// Dia writes its port file under `User Data/`.
-		{ portFileDir: deviceId === "web-dia" ? "User Data" : "" },
-	);
-	const home = options.home ?? mkdtempSync(join(tmpdir(), "yoqa-home-"));
+async function launch(options: { appId?: string } = {}) {
+	const chromium = fakeChromium({ viewport: VIEWPORT });
+	const home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
 	let deadCalls = 0;
 	const session = await createWebDirectSession(
 		{
 			platform: "web",
-			deviceId,
+			deviceId: "web-chrome",
 			appId: options.appId,
-			profile: options.profile,
 			onSessionDead: () => {
 				deadCalls += 1;
 			},
 		},
-		webDirectDeps({
-			installedBrowsers: async () => [CHROME, DIA],
-			spawn: chromium.spawn,
-			home,
-			browserCloseGraceMs: options.browserCloseGraceMs,
-		}),
+		webDirectDeps({ installedBrowsers: async () => [CHROME], spawn: chromium.spawn, home }),
 	);
 	const profileDir = () => profileDirOf(chromium.launched[0] ?? []) ?? "";
 	return { chromium, session, home, profileDir, deadCalls: () => deadCalls };
@@ -911,7 +831,7 @@ async function launch(
 
 describe("web Direct lane: a Yoqa-owned instance of an installed browser", () => {
 	test("connecting launches the browser on its App's Kept profile and drives its page", async () => {
-		const { chromium, session, home, profileDir } = await launch("web-chrome", { appId: "app_1" });
+		const { chromium, session, home, profileDir } = await launch({ appId: "app_1" });
 		expect(chromium.launched).toHaveLength(1);
 		expect(chromium.launched[0]?.[0]).toBe(CHROME.executable);
 		expect(profileDir()).toBe(join(home, ".yoqa", "browser-profiles", "app_1", "web-chrome"));
@@ -930,63 +850,11 @@ describe("web Direct lane: a Yoqa-owned instance of an installed browser", () =>
 		await session.quit();
 	});
 
-	test("names the installed browser it launched, with its version", async () => {
-		const { session } = await launch();
-		expect(session.browser).toBe("Google Chrome 141.0");
+	test("disconnecting quits it and is not a Dead Session", async () => {
+		const { chromium, session, deadCalls } = await launch();
 		await session.quit();
-	});
-
-	test("disconnecting closes the browser over CDP and keeps its profile for the next connect, and is not a Dead Session", async () => {
-		const { chromium, session, home, profileDir, deadCalls } = await launch();
-		writeFileSync(join(profileDir(), "Cookies"), "signed in");
-		await session.quit();
-		// Chrome, Edge and Opera save their cookies only when they shut down on their own.
 		expect(chromium.closes).toBe(1);
-		expect(chromium.kills).toBe(0);
-		expect(existsSync(join(profileDir(), "Cookies"))).toBe(true);
 		expect(deadCalls()).toBe(0);
-
-		const again = await launch("web-chrome", { home });
-		expect(again.profileDir()).toBe(profileDir());
-		expect(existsSync(join(again.profileDir(), "Cookies"))).toBe(true);
-		await again.session.quit();
-	});
-
-	test("Dia is quit by signal: its Browser.close leaves the app running on another profile", async () => {
-		const { chromium, session } = await launch("web-dia");
-		await session.quit();
-		expect(chromium.browsers[0]?.methods).not.toContain("Browser.close");
-		expect(chromium.kills).toBe(1);
-	});
-
-	test("a browser that stays open after Browser.close is killed once the grace runs out", async () => {
-		const { chromium, session } = await launch("web-chrome", {
-			ignoresBrowserClose: true,
-			browserCloseGraceMs: 50,
-		});
-		await session.quit();
-		expect(chromium.closes).toBe(0);
-		expect(chromium.kills).toBe(1);
-	});
-
-	test("a connect that asks for a clean profile gets a temporary one, deleted on disconnect", async () => {
-		const { session, home, profileDir } = await launch("web-chrome", { profile: "clean" });
-		expect(profileDir()).not.toContain(home);
-		expect(existsSync(profileDir())).toBe(true);
-		await session.quit();
-		expect(existsSync(profileDir())).toBe(false);
-	});
-
-	test("a browser that is not installed fails the connect and launches nothing", async () => {
-		const chromium = fakeChromium({ viewport: VIEWPORT });
-		const error = await rejection(
-			createWebDirectSession(
-				{ platform: "web", deviceId: "web-edge" },
-				webDirectDeps({ installedBrowsers: async () => [CHROME], spawn: chromium.spawn }),
-			),
-		);
-		expect((error as Error).message).toContain("web-edge is not installed");
-		expect(chromium.launched).toEqual([]);
 	});
 
 	test("the browser quitting on its own is a Dead Session, and its Kept profile stays", async () => {
@@ -1086,13 +954,6 @@ describe("web Direct lane: the Everyday browser", () => {
 		await session.quit();
 	});
 
-	test("names the browser and the profile its window opened in", async () => {
-		const { session } = await everyday();
-		expect(session.browser).toBe("Google Chrome 140.0.0.0");
-		expect(session.browserProfileName).toBe("Work");
-		await session.quit();
-	});
-
 	test("the Viewport preset applies to its own page", async () => {
 		const { browser, session, own } = await everyday({ viewport: "mobile" });
 		const mobile = VIEWPORT_PRESETS.mobile;
@@ -1122,16 +983,13 @@ describe("web Direct lane: the Everyday browser", () => {
 		await session.quit();
 	});
 
-	test("disconnecting closes only its own window, and leaves the browser and the user's tabs", async () => {
+	test("disconnecting closes its own window and the popups it followed, and leaves the user's tabs", async () => {
 		const { browser, session, deadCalls } = await everyday();
-		const before = browser.pages().length;
+		const popup = browser.openPage("https://accounts.example.com", { fromFrontPage: true });
+		expect(await eventually(() => browser.attachedTargets.includes(popup))).toBe(true);
 		await session.quit();
 		expect(browser.pages()).toEqual(["about:blank", "https://mail.example.com/inbox"]);
-		expect(browser.pages()).toHaveLength(before - 1);
 		expect(deadCalls()).toBe(0);
-		// The browser is still up: a second connect asks again.
-		const status = await fetch(`http://127.0.0.1:${browser.port}/json/version`);
-		expect(status.status).toBe(404);
 		browser.kill();
 	});
 
@@ -1171,44 +1029,5 @@ describe("web Direct lane: the Everyday browser", () => {
 		await session.captureFrame();
 		await session.quit();
 		expect(browser.methods.filter((method) => WIPES.test(method))).toEqual([]);
-	});
-
-	test("a Deny fails the connect once, and nothing is opened in the browser", async () => {
-		const browser = startFakeCdp({ viewport: VIEWPORT, consent: true });
-		const userDataDir = mkdtempSync(join(tmpdir(), "yoqa-chrome-"));
-		writeFileSync(
-			join(userDataDir, "DevToolsActivePort"),
-			`${browser.port}\n/devtools/browser/fake\n`,
-		);
-		browser.deny();
-		const error = await rejection(
-			createWebDirectSession(
-				{ platform: "web", deviceId: "web-chrome-everyday" },
-				webDirectDeps({
-					everydayBrowsers: async () => [
-						{
-							id: "web-chrome-everyday",
-							name: "Google Chrome",
-							userDataDir,
-							executable: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-						},
-					],
-				}),
-			),
-		);
-		expect((error as Error).message).toBe("Remote debugging was denied in Google Chrome");
-		expect(browser.socketRequests()).toBe(1);
-		expect(browser.createdTargets).toEqual([]);
-		browser.kill();
-	});
-
-	test("a browser that is not installed fails the connect", async () => {
-		const error = await rejection(
-			createWebDirectSession(
-				{ platform: "web", deviceId: "web-dia-everyday" },
-				webDirectDeps({ everydayBrowsers: async () => [] }),
-			),
-		);
-		expect((error as Error).message).toContain("web-dia-everyday is not installed");
 	});
 });

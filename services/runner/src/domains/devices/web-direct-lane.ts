@@ -1,16 +1,9 @@
 /**
  * The web Direct lane: CDP straight to a Chromium-family browser, with no driver in
- * between (ADR-0007). An installed browser (`web-chrome`) is launched as a Yoqa-owned
- * instance on its App's Kept profile, and disconnecting kills it and keeps the profile, so
- * logins survive. A connect may ask for a clean profile instead, deleted on disconnect. A
- * browser the user started with `--remote-debugging-port` is attached by its port
- * (`chromium-cdp-9222`), and disconnecting closes only the DevTools socket. Either way the
- * session drives the browser's first page, or a blank one it opens.
- *
- * The user's Everyday browser (`web-chrome-everyday`, ADR-0009) is attached by consent: one
- * socket from its port file, which waits for the user's Allow. There the session opens a
- * page in a new window of its own and never touches the user's tabs, and disconnecting
- * closes that window and the socket, never the browser.
+ * between (ADR-0007). How the lane reaches the browser and lets it go is the browser
+ * connection's (`browser-connection.ts`): a launched browser on its Kept profile, the
+ * user's Everyday browser by consent (ADR-0009), or one attached by its port. The session
+ * here drives pages over it the same way, whichever way in it is.
  *
  * The session drives one page at a time. A page that page opens (`window.open`, a
  * `target=_blank` link, an OAuth popup) takes over, and when it closes the session goes back
@@ -32,11 +25,12 @@
  * these. A capture returns the last screenshot it took, and an Action that opens a dialog
  * ends there. On web, an app id is the App's Web URL:
  * terminate-app closes the App's page, activate-app opens it again, and restart-app does
- * both with the origin's storage cleared in between, except in the Everyday browser, where
- * nothing is ever cleared. A page has no background, so background-app fails.
+ * both, with the origin's storage cleared in between when the connection says so. A page
+ * has no background, so background-app fails.
  *
  * The browser closing its socket, or the page going away with no opener to go back to, is
- * a Dead Session; a Yoqa-owned instance is then quit too. The lane does not record.
+ * a Dead Session; the connection then lets go of a browser Yoqa launched. The lane does
+ * not record. The Screen source is read by `web-screen-reader.ts`.
  *
  * The Frame Feed is a Stream: while someone watches it, the page screencasts JPEG frames at
  * the preset's size, served as MJPEG. A screenshot under device emulation re-emulates and
@@ -44,7 +38,7 @@
  * one. Single shots (Run step screenshots, `/screenshot/image`) still do.
  */
 
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
 	DEFAULT_VIEWPORT_PRESET,
@@ -53,41 +47,26 @@ import {
 	type KeyName,
 	VIEWPORT_PRESETS,
 	type ViewportPreset,
-	WEB_BROWSERS,
-	installedBrowserId,
-	webDeviceOf,
 } from "@yoqa/runner-client";
 import {
-	type AxNode,
+	type BrowserConnection,
+	type BrowserConnectionDeps,
+	type BrowserLabel,
+	browserConnectionDeps,
+	openBrowserConnection,
+} from "./browser-connection";
+import {
 	type CdpClient,
 	CdpClosedError,
 	CdpCommandError,
 	type CdpCommands,
 	type CdpMethod,
 	CdpSessionGoneError,
-	type ConnectCdpOptions,
-	type DocumentSnapshot,
 	type KeyEvent,
 	type ScreencastFrame,
 	type ScreencastFrameMetadata,
 	type TargetInfo,
-	connectCdp,
 } from "./cdp-client";
-import { browserSocketUrl } from "./chromium-attach";
-import {
-	type BrowserProcess,
-	type ChromiumInstance,
-	type InstalledBrowser,
-	type ProfileRequest,
-	findInstalledBrowsers,
-	launchChromium,
-} from "./chromium-browsers";
-import {
-	type EverydayBrowser,
-	findEverydayBrowsers,
-	openEverydaySocket,
-	readEverydayProfileName,
-} from "./chromium-everyday";
 import {
 	ActionUnsupportedError,
 	type CapturedFrame,
@@ -99,28 +78,14 @@ import {
 	assertKeySupported,
 } from "./lane";
 import { startMjpegServer } from "./mjpeg-server";
-import type { WebAxSource, WebAxSourceNode, WebDialogSource } from "./screen";
+import type { WebAxSource, WebDialogSource } from "./screen";
 import { debounceScreenChanges } from "./screen-changes";
 import { SCREENSHOT_DIR } from "./screenshot-retention";
+import { AUTO_ATTACH, createWebScreenReader } from "./web-screen-reader";
 
-export type WebDirectDeps = {
-	/** The CDP WebSocket URL of the browser on `port`. */
-	browserSocketUrl: (port: number) => Promise<string>;
-	/** Open a CDP client on that URL. */
-	connect: (url: string, options?: ConnectCdpOptions) => Promise<CdpClient>;
-	/** The browsers installed on this machine. */
-	installedBrowsers: () => Promise<InstalledBrowser[]>;
-	/** Launch a Yoqa-owned instance of one, on the profile the connect asked for. */
-	launch: (browser: InstalledBrowser, profile: ProfileRequest) => Promise<ChromiumInstance>;
-	/** The installed browsers' Everyday browsers. */
-	everydayBrowsers: () => Promise<EverydayBrowser[]>;
-	/** Read a file in an Everyday browser's user-data folder. */
-	readText: (path: string) => Promise<string>;
-	/** How long an Everyday browser connect waits for Allow; 60 s by default. */
-	allowTimeoutMs?: number;
-	/** How long a launched browser may take to shut down on `Browser.close`; 5 s by default. */
-	browserCloseGraceMs?: number;
-};
+/** What the lane needs to reach a browser: the browser connection's. */
+export type WebDirectDeps = BrowserConnectionDeps;
+export const webDirectDeps = browserConnectionDeps;
 
 /** Typed text is cut at a newline, which presses Enter. */
 const NEWLINE = /(\r?\n)/;
@@ -224,9 +189,6 @@ function dialogOpenError({ message }: JavaScriptDialog): Error {
 
 type DrivenPage = { targetId: string; sessionId: string };
 
-/** An out-of-process iframe's own session; its target id is its frame id. */
-type OutOfProcessFrame = { sessionId: string; frameId: string };
-
 /** A point on the page, in its CSS pixels. */
 type PagePoint = { x: number; y: number };
 
@@ -236,143 +198,6 @@ type Pointer = {
 	move: (point: PagePoint) => Promise<unknown>;
 	release: (point: PagePoint) => Promise<unknown>;
 };
-
-export function webDirectDeps(
-	overrides: {
-		installedBrowsers?: () => Promise<InstalledBrowser[]>;
-		spawn?: (command: string[]) => BrowserProcess;
-		/** The home folder Kept profiles live under. */
-		home?: string;
-		/** Whether a pid holding a Kept profile's lock still runs. */
-		isProcessAlive?: (pid: number) => boolean;
-		everydayBrowsers?: () => Promise<EverydayBrowser[]>;
-		allowTimeoutMs?: number;
-		browserCloseGraceMs?: number;
-	} = {},
-): WebDirectDeps {
-	return {
-		browserSocketUrl: (port) => browserSocketUrl(port),
-		connect: (url, options) => connectCdp(url, options),
-		installedBrowsers: overrides.installedBrowsers ?? (() => findInstalledBrowsers()),
-		launch: (browser, profile) =>
-			launchChromium(
-				browser,
-				{ spawn: overrides.spawn, home: overrides.home, isProcessAlive: overrides.isProcessAlive },
-				profile,
-			),
-		everydayBrowsers: overrides.everydayBrowsers ?? (() => findEverydayBrowsers()),
-		readText: (path) => readFile(path, "utf8"),
-		allowTimeoutMs: overrides.allowTimeoutMs,
-		browserCloseGraceMs: overrides.browserCloseGraceMs,
-	};
-}
-
-const BROWSER_CLOSE_GRACE_MS = 5_000;
-
-/**
- * Quit a browser Yoqa launched the way a user does, with `Browser.close`, so it writes its
- * profile out. Chrome, Edge and Opera save cookies only then: stopped by a signal, they
- * lose the sign-ins a Kept profile is for. One that has not quit within the grace is
- * stopped by signal. Dia is quit by signal only (`closesOverCdp`).
- */
-async function closeOwnedBrowser(
-	client: CdpClient,
-	owned: ChromiumInstance,
-	graceMs: number,
-): Promise<void> {
-	// It may close the socket before it answers.
-	await client.send("Browser.close", {}).catch(() => undefined);
-	await Promise.race([owned.exited, Bun.sleep(graceMs)]);
-}
-
-/** A browser the session is connected to, and what it knows of it before asking. */
-type OpenedBrowser = {
-	client: CdpClient;
-	/** A browser Yoqa launched, quit with the session. */
-	owned: ChromiumInstance | null;
-	/** The name the browser is known by, when not from its own report. */
-	name: string | null;
-	/** The user's Everyday browser, where the session keeps to a window of its own. */
-	everyday: { name: string; profileName: string | null } | null;
-};
-
-const INSTALLED_BROWSER_IDS = WEB_BROWSERS.map(({ browser }) => installedBrowserId(browser)).join(
-	", ",
-);
-
-/** The error for a web device id that names nothing: the kinds of web device id there are. */
-const WEB_DEVICE_ID_HINT = `A web device is an installed browser (${INSTALLED_BROWSER_IDS}), its Everyday browser (web-chrome-everyday, web-dia-everyday, …), or a Chromium started with --remote-debugging-port, named chromium-cdp-<port>`;
-
-/**
- * Connect to the browser a web device id names: a Yoqa-owned instance of an installed
- * browser, which this launches, the user's Everyday browser, by consent, or a user-started
- * one attached by its port.
- */
-async function openBrowser(
-	{ deviceId, appId, profile, signal }: SessionOptions,
-	deps: WebDirectDeps,
-): Promise<OpenedBrowser> {
-	const device = webDeviceOf(deviceId);
-	if (device?.kind === "port") {
-		const client = await deps.connect(await deps.browserSocketUrl(device.port));
-		return { client, owned: null, name: null, everyday: null };
-	}
-	if (device?.kind === "everyday") {
-		const everydayId = device.id;
-		const browser = (await deps.everydayBrowsers()).find((found) => found.id === everydayId);
-		if (!browser) {
-			throw new Error(
-				`${everydayId} is not installed. Run yoqa devices web to list the browsers here`,
-			);
-		}
-		const client = await openEverydaySocket(browser, {
-			readText: deps.readText,
-			connect: deps.connect,
-			allowTimeoutMs: deps.allowTimeoutMs,
-			signal,
-		});
-		const profileName = await readEverydayProfileName(browser.userDataDir, deps.readText);
-		return { client, owned: null, name: null, everyday: { name: browser.name, profileName } };
-	}
-	if (device?.kind !== "launched") {
-		throw new Error(
-			device?.kind === "unsupported"
-				? `Firefox and Safari are not supported yet: the web lane drives Chromium browsers over CDP (ADR-0010). ${WEB_DEVICE_ID_HINT}`
-				: WEB_DEVICE_ID_HINT,
-		);
-	}
-	const browserId = device.id;
-	const browser = (await deps.installedBrowsers()).find((installed) => installed.id === browserId);
-	if (!browser) {
-		throw new Error(
-			`${browserId} is not installed. Run yoqa devices web to list the browsers here`,
-		);
-	}
-	const owned = await deps.launch(browser, { appId, profile });
-	const name = browser.version ? `${browser.name} ${browser.version}` : browser.name;
-	const client = await deps.connect(owned.socketUrl).catch(async (error: unknown) => {
-		await owned.stop();
-		throw error;
-	});
-	return { client, owned, name, everyday: null };
-}
-
-/**
- * The page the session drives: the browser's first page, or a blank one it opens. In the
- * Everyday browser it is always a blank page in a new window of its own.
- */
-async function pickPage(client: CdpClient, everyday: boolean): Promise<string> {
-	if (everyday) {
-		return (await client.send("Target.createTarget", { url: "about:blank", newWindow: true }))
-			.targetId;
-	}
-	const { targetInfos } = await client.send("Target.getTargets", {});
-	const page = targetInfos.find(
-		(target) => target.type === "page" && !target.url.startsWith("devtools://"),
-	);
-	if (page) return page.targetId;
-	return (await client.send("Target.createTarget", { url: "about:blank" })).targetId;
-}
 
 /** How many pages may close under the session while it attaches, before the connect fails. */
 const ATTACH_ATTEMPTS = 3;
@@ -393,167 +218,17 @@ function isPageGone(error: unknown): boolean {
  * one the session opened, and puts the restored tabs in its place.
  */
 async function pickAndAttachPage(
-	client: CdpClient,
-	everyday: boolean,
+	connection: BrowserConnection,
 	preset: ViewportPreset,
-	onPicked: (targetId: string) => void,
 ): Promise<DrivenPage> {
 	for (let attempt = 1; ; attempt++) {
-		const targetId = await pickPage(client, everyday);
-		onPicked(targetId);
+		const targetId = await connection.firstPage();
 		try {
-			return await attachPage(client, targetId, preset);
+			return await attachPage(connection.client, targetId, preset);
 		} catch (error) {
 			if (!isPageGone(error) || attempt >= ATTACH_ATTEMPTS) throw error;
 		}
 	}
-}
-
-type ElementLayout = Pick<WebAxSourceNode, "bounds" | "testId" | "domId">;
-
-/**
- * Device pixels per CSS pixel in a DOM snapshot: the display's scale (2 on a Retina Mac),
- * which Chromium lays snapshots out in whatever the page emulates. The layout viewport's
- * two widths give it. A tab that has never painted reports 0 for both, and then a box
- * against its element's CSS offset box in the same snapshot does.
- */
-function devicePixelsPerCss(
-	metrics: CdpCommands["Page.getLayoutMetrics"]["result"],
-	doc: DocumentSnapshot | undefined,
-): number {
-	const device = metrics.layoutViewport?.clientWidth ?? 0;
-	const css = metrics.cssLayoutViewport?.clientWidth ?? 0;
-	if (device > 0 && css > 0) return device / css;
-	const offsets = doc?.layout.offsetRects ?? [];
-	for (const [index, offset] of offsets.entries()) {
-		const cssWidth = offset[2] ?? 0;
-		const deviceWidth = doc?.layout.bounds[index]?.[2] ?? 0;
-		if (cssWidth > 0 && deviceWidth > 0) return deviceWidth / cssWidth;
-	}
-	return 1;
-}
-
-/** An element's box, and where its content box starts: for an iframe, its document's origin. */
-type ElementBox = { layout: ElementLayout; content: PagePoint };
-
-/** A frame in a snapshot, by its iframe element's backend node id. */
-type FrameOwner = { frameId: string; owner: number };
-
-/**
- * A snapshot with each box's CSS offset and client boxes, and the padding that, past the
- * border, puts an iframe's content box where its document starts.
- */
-const SNAPSHOT_PARAMS = {
-	computedStyles: ["padding-left", "padding-top"],
-	includeDOMRects: true,
-};
-
-/**
- * The laid-out elements of one process's frames, from its snapshot, by backend node id: each
- * box in the page viewport's CSS pixels and its `data-testid` and `id` attributes. A
- * snapshot's boxes are in their own document's device pixels, so each document's scrolling
- * is taken off, the result scaled by `scale`, and moved to where the document sits in the
- * viewport: `origin` for the first, the content box of its iframe element for the others.
- * Also lists the other documents' frames, each by its owner's backend node id.
- */
-function layoutFrames(
-	{ documents, strings }: { documents: DocumentSnapshot[]; strings: string[] },
-	scale: number,
-	origin: PagePoint,
-): { boxes: Map<number, ElementBox>; frames: FrameOwner[] } {
-	const boxes = new Map<number, ElementBox>();
-	const frames: FrameOwner[] = [];
-	const origins: Array<PagePoint | undefined> = [origin];
-	const cssPixels = (index: number | undefined) =>
-		Number.parseFloat(strings[index ?? -1] ?? "") || 0;
-	documents.forEach((doc, docIndex) => {
-		const docOrigin = origins[docIndex];
-		// A frame whose iframe is not laid out is not on the Screen.
-		if (!docOrigin) return;
-		const scrollX = doc.scrollOffsetX ?? 0;
-		const scrollY = doc.scrollOffsetY ?? 0;
-		const contentDocuments = new Map<number, number>();
-		const { index = [], value = [] } = doc.nodes.contentDocumentIndex ?? {};
-		index.forEach((nodeIndex, at) => contentDocuments.set(nodeIndex, value[at] ?? -1));
-		doc.layout.nodeIndex.forEach((nodeIndex, layoutIndex) => {
-			const backendId = doc.nodes.backendNodeId?.[nodeIndex];
-			const [x = 0, y = 0, width = 0, height = 0] = doc.layout.bounds[layoutIndex] ?? [];
-			if (backendId === undefined || boxes.has(backendId)) return;
-			const bounds = {
-				x: docOrigin.x + (x - scrollX) / scale,
-				y: docOrigin.y + (y - scrollY) / scale,
-				width: width / scale,
-				height: height / scale,
-			};
-			const layout: ElementLayout = { bounds };
-			const attributes = doc.nodes.attributes?.[nodeIndex] ?? [];
-			for (let at = 0; at + 1 < attributes.length; at += 2) {
-				const name = strings[attributes[at] ?? -1];
-				const value = strings[attributes[at + 1] ?? -1];
-				if (name === "data-testid" && value) layout.testId = value;
-				if (name === "id" && value) layout.domId = value;
-			}
-			// The client box starts past the border; the content box past the padding too.
-			const [borderLeft = 0, borderTop = 0] = doc.layout.clientRects?.[layoutIndex] ?? [];
-			const [paddingLeft, paddingTop] = doc.layout.styles?.[layoutIndex] ?? [];
-			const content = {
-				x: bounds.x + borderLeft + cssPixels(paddingLeft),
-				y: bounds.y + borderTop + cssPixels(paddingTop),
-			};
-			boxes.set(backendId, { layout, content });
-			const childIndex = contentDocuments.get(nodeIndex) ?? -1;
-			const frameId = strings[documents[childIndex]?.frameId ?? -1];
-			if (frameId) {
-				origins[childIndex] = content;
-				frames.push({ frameId, owner: backendId });
-			}
-		});
-	});
-	return { boxes, frames };
-}
-
-/**
- * A frame's nodes, with ids that cannot clash with another process's: an out-of-process
- * frame numbers its nodes from 1 again. Ids are prefixed with the frame's target id.
- */
-function withIdPrefix(node: AxNode, prefix: string): AxNode {
-	if (!prefix) return node;
-	return {
-		...node,
-		nodeId: prefix + node.nodeId,
-		...(node.parentId === undefined ? {} : { parentId: prefix + node.parentId }),
-		...(node.childIds ? { childIds: node.childIds.map((id) => prefix + id) } : {}),
-	};
-}
-
-/**
- * Splice a frame's tree under its owner, the iframe element's node, right after it, so the
- * page and its frames read as one tree. Nodes the tree already holds are left out. A tree
- * without the owner (an iframe that is not in the accessibility tree) gets the frame at its
- * end, unattached.
- */
-function spliceFrame(
-	tree: WebAxSourceNode[],
-	ownerId: string | undefined,
-	frame: WebAxSourceNode[],
-): WebAxSourceNode[] {
-	const present = new Set(tree.map((node) => node.nodeId));
-	const added = frame.filter((node) => !present.has(node.nodeId));
-	const at = tree.findIndex((node) => node.nodeId === ownerId);
-	const owner = tree[at];
-	if (!owner) return [...tree, ...added];
-	const inFrame = new Set(added.map((node) => node.nodeId));
-	const rootIds = new Set(
-		added
-			.filter((node) => node.parentId === undefined || !inFrame.has(node.parentId))
-			.map((node) => node.nodeId),
-	);
-	const linked = added.map((node) =>
-		rootIds.has(node.nodeId) ? { ...node, parentId: owner.nodeId } : node,
-	);
-	const childIds = [...(owner.childIds ?? [])];
-	for (const id of rootIds) if (!childIds.includes(id)) childIds.push(id);
-	return [...tree.slice(0, at), { ...owner, childIds }, ...linked, ...tree.slice(at + 1)];
 }
 
 /** On web an app id is the App's Web URL, the page the App starts on. */
@@ -586,12 +261,6 @@ export function showsPreset(metadata: ScreencastFrameMetadata, preset: ViewportP
 function deviceMetrics({ width, height, deviceScaleFactor, mobile }: ViewportPreset) {
 	return { width, height, deviceScaleFactor, mobile };
 }
-
-/**
- * Each out-of-process iframe in a session's page attaches as a session of its own, so the
- * Screen can read inside it. It runs on at once; nothing waits for a debugger.
- */
-const AUTO_ATTACH = { autoAttach: true, waitForDebuggerOnStart: false, flatten: true } as const;
 
 /**
  * Attach to a page so the session can drive it, at the session's Viewport preset. Enabling
@@ -633,59 +302,25 @@ export async function createWebDirectSession(
 	}
 
 	const preset = VIEWPORT_PRESETS[options.viewport ?? DEFAULT_VIEWPORT_PRESET];
-	const { client, owned, name, everyday } = await openBrowser(options, deps);
-	/**
-	 * The out-of-process iframes attached under each session (a page's, or another iframe's),
-	 * listening from before the first page is attached, which announces its iframes at once.
-	 */
-	const outOfProcessFrames = new Map<string, OutOfProcessFrame[]>();
-	client.on("Target.attachedToTarget", (params, parentSession) => {
-		const { sessionId, targetInfo } = params as { sessionId: string; targetInfo: TargetInfo };
-		if (!parentSession || targetInfo.type !== "iframe") return;
-		const siblings = outOfProcessFrames.get(parentSession) ?? [];
-		outOfProcessFrames.set(parentSession, [
-			...siblings,
-			{ sessionId, frameId: targetInfo.targetId },
-		]);
-		// An iframe inside it may be out of its process too.
-		void client.send("Target.setAutoAttach", AUTO_ATTACH, sessionId).catch(() => undefined);
-	});
-	client.on("Target.detachedFromTarget", (params, parentSession) => {
-		const { sessionId } = (params ?? {}) as { sessionId?: string };
-		if (!sessionId) return;
-		outOfProcessFrames.delete(sessionId);
-		if (!parentSession) return;
-		const siblings = outOfProcessFrames.get(parentSession);
-		if (!siblings) return;
-		outOfProcessFrames.set(
-			parentSession,
-			siblings.filter((frame) => frame.sessionId !== sessionId),
-		);
-	});
+	const connection = await openBrowserConnection(options, deps);
+	const { client } = connection;
+	/** The session's commands to a session other than the page's, such as an iframe's. */
+	const callOn = <M extends CdpMethod>(
+		sessionId: string,
+		method: M,
+		params: CdpCommands[M]["params"],
+	) => guarded(() => client.send(method, params, sessionId));
+	// Made before the first page is attached, which announces its iframes at once.
+	const screenReader = createWebScreenReader(client, callOn);
 	/** The page the session drives. terminate-app swaps it for a blank one. */
 	let page: DrivenPage;
-	/**
-	 * An attached browser names itself (`Chrome/140.0.0.0`); a launched one is known. An
-	 * Everyday browser is known by name, and reports its version.
-	 */
-	let browser: string;
-	/** The window it opened in an Everyday browser, closed again when setup fails. */
-	let ownTarget: string | null = null;
+	let label: BrowserLabel;
 	try {
-		page = await pickAndAttachPage(client, everyday !== null, preset, (targetId) => {
-			if (everyday) ownTarget = targetId;
-		});
+		page = await pickAndAttachPage(connection, preset);
 		await client.send("Target.setDiscoverTargets", { discover: true });
-		const product = name ?? (await client.send("Browser.getVersion", {})).product;
-		browser = everyday
-			? `${everyday.name} ${product.split("/")[1] ?? ""}`.trim()
-			: product.replace("/", " ");
+		label = await connection.label();
 	} catch (error) {
-		if (ownTarget) {
-			await client.send("Target.closeTarget", { targetId: ownTarget }).catch(() => undefined);
-		}
-		await client.close().catch(() => undefined);
-		await owned?.stop();
+		await connection.abort();
 		throw error;
 	}
 
@@ -700,9 +335,9 @@ export async function createWebDirectSession(
 			sessionEnded = new DeadSessionError(`Device session ended: ${reason}`);
 			screenChanges.stop();
 			if (!quitting) {
-				// Nobody quits a dead session, so a browser Yoqa launched is quit here.
+				// Nobody quits a dead session, so the connection lets go of the browser here.
 				feed.stop();
-				void owned?.stop();
+				connection.abandon();
 				options.onSessionDead?.();
 			}
 		}
@@ -711,7 +346,7 @@ export async function createWebDirectSession(
 	void client.closed.then(() => {
 		if (!quitting) dead("the browser closed its DevTools connection");
 	});
-	void owned?.exited.then(() => {
+	void connection.exited.then(() => {
 		if (!quitting) dead("the browser quit");
 	});
 
@@ -1071,16 +706,10 @@ export async function createWebDirectSession(
 		}
 	};
 
-	/**
-	 * Closing the browser's last tab can quit it, so a blank page takes over first: in the
-	 * Everyday browser, in a window of its own again.
-	 */
+	/** Closing the browser's last tab can quit it, so a blank page takes over first. */
 	const closeAppPage = async () => {
 		const appPage = page;
-		const { targetId } = await callBrowser("Target.createTarget", {
-			url: "about:blank",
-			...(everyday ? { newWindow: true } : {}),
-		});
+		const targetId = await guarded(() => connection.blankPage());
 		page = await guarded(() => attachPage(client, targetId, preset));
 		openDialog = null;
 		followPage();
@@ -1158,78 +787,6 @@ export async function createWebDirectSession(
 		return { path, base64: frame.base64 };
 	};
 
-	/** One command to a session other than the page's, such as an iframe's. */
-	const callOn = <M extends CdpMethod>(
-		sessionId: string,
-		method: M,
-		params: CdpCommands[M]["params"],
-	) => guarded(() => client.send(method, params, sessionId));
-
-	/** A frame that went away while being read is left off the Screen. */
-	const unlessGone = <T>(promise: Promise<T>): Promise<T | null> =>
-		promise.catch((error: unknown) => {
-			if (error instanceof CdpCommandError) return null;
-			throw error;
-		});
-
-	/**
-	 * One process's frames as one tree: `nodes`, its first frame's tree, with each other
-	 * frame in `snapshot` and each out-of-process iframe attached under `sessionId` spliced
-	 * under its iframe element's node. Each node of a laid-out element carries its box in
-	 * the page viewport and its ids.
-	 */
-	const frameTree = async (
-		sessionId: string,
-		read: { nodes: AxNode[]; snapshot: CdpCommands["DOMSnapshot.captureSnapshot"]["result"] },
-		place: { scale: number; origin: PagePoint; idPrefix: string },
-	): Promise<WebAxSourceNode[]> => {
-		const { boxes, frames } = layoutFrames(read.snapshot, place.scale, place.origin);
-		const withLayout = (nodes: AxNode[]) =>
-			nodes.map((node): WebAxSourceNode => {
-				const box =
-					node.backendDOMNodeId === undefined ? undefined : boxes.get(node.backendDOMNodeId);
-				const prefixed = withIdPrefix(node, place.idPrefix);
-				return box ? { ...prefixed, ...box.layout } : prefixed;
-			});
-		const inProcess = frames.map(async ({ frameId, owner }) => {
-			const tree = await unlessGone(callOn(sessionId, "Accessibility.getFullAXTree", { frameId }));
-			return tree && { owner, nodes: withLayout(tree.nodes) };
-		});
-		const outOfProcess = (outOfProcessFrames.get(sessionId) ?? []).map(async (frame) => {
-			const owner = await unlessGone(
-				callOn(sessionId, "DOM.getFrameOwner", { frameId: frame.frameId }),
-			);
-			const ownerBox = owner ? boxes.get(owner.backendNodeId) : undefined;
-			if (!owner || !ownerBox) return null;
-			const [tree, snapshot] = await Promise.all([
-				unlessGone(callOn(frame.sessionId, "Accessibility.getFullAXTree", {})),
-				unlessGone(callOn(frame.sessionId, "DOMSnapshot.captureSnapshot", SNAPSHOT_PARAMS)),
-			]);
-			if (!tree || !snapshot) return null;
-			const nodes = await frameTree(
-				frame.sessionId,
-				{ nodes: tree.nodes, snapshot },
-				{ scale: place.scale, origin: ownerBox.content, idPrefix: `${frame.frameId}:` },
-			);
-			return { owner: owner.backendNodeId, nodes };
-		});
-		const sameProcess = (await Promise.all(inProcess)).filter((frame) => frame !== null);
-		const ownProcess = withLayout(read.nodes);
-		// Backend node ids are only unique in one process, so owners are found among its nodes.
-		const ownerIds = new Map<number, string>();
-		for (const node of [ownProcess, ...sameProcess.map((frame) => frame.nodes)].flat()) {
-			if (node.backendDOMNodeId !== undefined && !ownerIds.has(node.backendDOMNodeId)) {
-				ownerIds.set(node.backendDOMNodeId, node.nodeId);
-			}
-		}
-		const otherProcesses = (await Promise.all(outOfProcess)).filter((frame) => frame !== null);
-		let tree = ownProcess;
-		for (const frame of [...sameProcess, ...otherProcesses]) {
-			tree = spliceFrame(tree, ownerIds.get(frame.owner), frame.nodes);
-		}
-		return tree;
-	};
-
 	/**
 	 * The page's full accessibility tree, as the JSON the Screen reads, with each iframe's
 	 * under its iframe element. Each node of an element that is laid out carries its box and
@@ -1241,19 +798,7 @@ export async function createWebDirectSession(
 			await switching;
 			return page.sessionId;
 		});
-		const axTree = await beforeDialog(async () => {
-			const [{ nodes }, snapshot, metrics] = await Promise.all([
-				callOn(sessionId, "Accessibility.getFullAXTree", {}),
-				callOn(sessionId, "DOMSnapshot.captureSnapshot", SNAPSHOT_PARAMS),
-				callOn(sessionId, "Page.getLayoutMetrics", {}),
-			]);
-			const scale = devicePixelsPerCss(metrics, snapshot.documents[0]);
-			return frameTree(
-				sessionId,
-				{ nodes, snapshot },
-				{ scale, origin: { x: 0, y: 0 }, idPrefix: "" },
-			);
-		});
+		const axTree = await beforeDialog(() => screenReader.read(sessionId));
 		// The page under a dialog cannot be read, nor tapped, until it is answered.
 		const dialog = openDialog ? dialogOnScreen(openDialog, preset) : undefined;
 		return JSON.stringify({
@@ -1262,20 +807,12 @@ export async function createWebDirectSession(
 		} satisfies WebAxSource);
 	};
 
-	/** The Everyday browser stays open: only the pages the session opened or followed close. */
-	const closeOwnPages = async () => {
-		for (const own of [page, ...openers]) {
-			await client.send("Target.closeTarget", { targetId: own.targetId }).catch(() => undefined);
-		}
-	};
-
 	let pointerDown = false;
 
 	return {
 		lane: "direct",
 		stream: { ...feed.stream, survivesTreeRead: true },
-		browser,
-		...(everyday ? { browserProfileName: everyday.profileName } : {}),
+		...label,
 		viewport: preset.name,
 		noRecordingReason: "Run recording is not available on web",
 		quit: async () => {
@@ -1283,12 +820,7 @@ export async function createWebDirectSession(
 			screenChanges.stop();
 			feed.stop();
 			await stopScreencast().catch(() => undefined);
-			if (everyday) await closeOwnPages();
-			if (owned?.closesOverCdp) {
-				await closeOwnedBrowser(client, owned, deps.browserCloseGraceMs ?? BROWSER_CLOSE_GRACE_MS);
-			}
-			await client.close();
-			await owned?.stop();
+			await connection.disconnect([page, ...openers].map((own) => own.targetId));
 		},
 		captureFrame,
 		screenshot,
@@ -1320,8 +852,7 @@ export async function createWebDirectSession(
 			withActionLock(async () => {
 				const url = webUrlOf(appId);
 				await closeAppPage();
-				// Clearing the origin in the Everyday browser would sign the user out of their real account.
-				const storage = everyday ? "kept" : "cleared";
+				const storage = connection.restartStorage;
 				if (storage === "cleared") {
 					await callBrowser("Storage.clearDataForOrigin", {
 						origin: url.origin,
