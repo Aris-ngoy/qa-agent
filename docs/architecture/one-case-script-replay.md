@@ -50,5 +50,5 @@ Replay a Case Script the same way wherever it runs. Before this change the Branc
 
 ## Follow-ups
 
-- Settle and post-action timing: a separate PR that changes the Case executor's `performAction` adapter only.
+- Settle and post-action timing: done in [one-act-and-settle.md](./one-act-and-settle.md) (the adapter's `performAction` now calls `actAndSettle`).
 - Type `AppendCaseStep.action` as `RunStepAction` on the write side as well. Agent steps still write untyped objects.

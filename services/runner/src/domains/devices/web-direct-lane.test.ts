@@ -564,7 +564,7 @@ describe("web Direct lane: Screen", () => {
 			session,
 			isAborted: () => false,
 			appendStep: async () => undefined,
-			settleMs: 0,
+			settle: { capMs: 0 },
 		});
 		expect(status).toBe("passed");
 		expect(browser.clicks).toEqual([{ x: 128, y: 260 }]);
@@ -689,7 +689,7 @@ describe("web Direct lane: a JavaScript dialog", () => {
 			appendStep: async (step) => {
 				if (step.detail) details.push(step.detail);
 			},
-			settleMs: 0,
+			settle: { capMs: 0 },
 		});
 		expect(status).toBe("passed");
 		expect(details).toContain("visible: Delete this item? → then");
