@@ -110,6 +110,32 @@ describe("runStepSchema", () => {
 		expect(runStepSchema.parse(baseStep).command).toBeUndefined();
 	});
 
+	test("reads any stored action: wrong-typed fields are absent, unknown fields are kept", () => {
+		const read = (action: unknown) => runStepSchema.parse({ ...baseStep, action }).action;
+		expect(read(null)).toEqual({});
+		expect(read("tap")).toEqual({});
+		expect(read([1, 2])).toEqual({});
+		const odd = read({ type: "tap", x: "100", label: 7, assertion: "maybe", extra: { a: 1 } });
+		expect(odd.type).toBe("tap");
+		expect(odd.x).toBeUndefined();
+		expect(odd.label).toBeUndefined();
+		expect(odd.assertion).toBeUndefined();
+		expect(odd.extra).toEqual({ a: 1 });
+		// A cycle without a verify type is not a cycle; the step still parses.
+		expect(read({ type: "done", cycle: { verify: {} } }).cycle).toBeUndefined();
+		const cycle = read({
+			type: "done",
+			cycle: {
+				action: { type: "tap", x: 10 },
+				decision: "not a record",
+				verify: { type: "verify", reason: 3 },
+			},
+		}).cycle;
+		expect(cycle?.action?.x).toBe(10);
+		expect(cycle?.decision).toBeUndefined();
+		expect(cycle?.verify).toMatchObject({ type: "verify", reason: undefined });
+	});
+
 	test("parses null and string command", () => {
 		expect(runStepSchema.parse({ ...baseStep, command: null }).command).toBeNull();
 		expect(

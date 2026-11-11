@@ -5,17 +5,39 @@ import {
 	BRANCH_DEFAULT_TIMEOUT_MS,
 	type CaseScript,
 	type CaseScriptAction,
+	type ScreenElement,
 	type ScreenResponse,
 } from "./schemas";
-import {
-	SCREEN_CHECK_POLL_MS,
-	checkScreen,
-	describeScreenCheck,
-	screenCheckMissMessage,
-} from "./screen-check";
+import { checkScreen, describeScreenCheck, screenCheckMissMessage } from "./screen-check";
 import { assertTargetFlags, formatActionShellLine } from "./shell-script";
 
-/** The runner calls a Case Script replay needs (a `RunnerClient` satisfies it). */
+/**
+ * What a Case Script replay runs against: one adapter per place it runs (the Case executor in
+ * a Run, `runCaseScript` for the CLI and the Inspector). The walker owns the order of steps,
+ * Branches, waits, asserts and abort; everything around a step (a Settle after an Action, a
+ * screenshot, a Run step) belongs to the adapter.
+ */
+export type CaseScriptReplayPort = {
+	/** Perform one device Action. Whatever follows it (a Settle, a pause) belongs in here. */
+	performAction: (request: ActionRequest) => Promise<ActionResponse | undefined>;
+	/** One read of the cleaned Screen, for an assert or a Branch. */
+	readScreen: () => Promise<{ elements?: ScreenElement[] }>;
+	clock: {
+		/** A `wait` step, and the gap between Screen reads. May reject on abort. */
+		sleep: (ms: number) => Promise<void>;
+		now: () => number;
+	};
+	isAborted: () => boolean;
+	/** A Screen read error that ends the replay at once instead of meaning "not there yet". */
+	isDeadSession?: (error: unknown) => boolean;
+	/**
+	 * The step sink: `running` before a step, then `ok` or `error`; after a failure, every step
+	 * not reached is `skipped`. A throw from the sink on `running` or `ok` fails that step.
+	 */
+	onStep?: (event: CaseScriptReplayEvent) => void | Promise<void>;
+};
+
+/** The runner calls a client-side Case Script replay needs (a `RunnerClient` satisfies it). */
 export type CaseScriptReplayClient = {
 	performAction: (request: ActionRequest) => Promise<ActionResponse>;
 	getScreen: (options?: { full?: boolean; pauseMjpeg?: boolean }) => Promise<ScreenResponse>;
@@ -49,23 +71,7 @@ export type CaseScriptReplayEvent = {
 	outcome?: CaseScriptBranchOutcome;
 };
 
-export type RunCaseScriptOptions = {
-	signal?: AbortSignal;
-	onStep?: (event: CaseScriptReplayEvent) => void | Promise<void>;
-	/** Pause after each device Action before the next one (ms). Default 0. */
-	pauseAfterActionMs?: number;
-	/** How long an `assert` waits when the action has no `timeoutMs`. Default 5000. */
-	defaultAssertTimeoutMs?: number;
-	/** How long a Branch waits when it has no `timeoutMs`. Default 2000. */
-	defaultBranchTimeoutMs?: number;
-	/** Delay between `assert` and Branch screen reads. Default 400. */
-	assertPollMs?: number;
-	/** Injected for tests; defaults to real time. */
-	sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
-	now?: () => number;
-};
-
-export type RunCaseScriptResult = {
+export type CaseScriptReplayResult = {
 	ok: boolean;
 	/** Steps (Actions and Branches) that finished ok. */
 	completed: number;
@@ -75,10 +81,34 @@ export type RunCaseScriptResult = {
 	failedIndex?: number;
 	/** The full path of that step, inside Branches. */
 	failedPath?: CaseScriptStepPath;
+	/** The failure, or `Aborted`. */
 	error?: string;
 };
 
+export type RunCaseScriptOptions = {
+	signal?: AbortSignal;
+	onStep?: (event: CaseScriptReplayEvent) => void | Promise<void>;
+	/** Pause after each device Action before the next one (ms). Default 0. */
+	pauseAfterActionMs?: number;
+	/** Injected for tests; defaults to real time. */
+	sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+	now?: () => number;
+};
+
+export type RunCaseScriptResult = CaseScriptReplayResult;
+
+/** How long an `assert` with no `timeoutMs` waits. */
 export const DEFAULT_ASSERT_TIMEOUT_MS = 5_000;
+
+/** How long an `assert` or a Branch checks the Screen: its own `timeoutMs`, or the default. */
+export function caseScriptCheckTimeoutMs(
+	action: Extract<CaseScriptAction, { type: "assert" | "branch" }>,
+): number {
+	return (
+		action.timeoutMs ??
+		(action.type === "branch" ? BRANCH_DEFAULT_TIMEOUT_MS : DEFAULT_ASSERT_TIMEOUT_MS)
+	);
+}
 
 function abortError(): Error {
 	return Object.assign(new Error("Aborted"), { name: "AbortError" });
@@ -165,7 +195,7 @@ export function caseScriptActionRequest(action: CaseScriptAction): ActionRequest
 function screenCheckTimeoutSeconds(
 	action: Extract<CaseScriptAction, { type: "assert" | "branch" }>,
 ): number | undefined {
-	if (action.type === "branch") return (action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS) / 1000;
+	if (action.type === "branch") return caseScriptCheckTimeoutMs(action) / 1000;
 	if (action.timeoutMs == null) return undefined;
 	return Math.max(1, Math.round(action.timeoutMs / 1000));
 }
@@ -209,50 +239,70 @@ export function formatCaseScriptReplayStep(
 	return `${"  ".repeat(event.path.nested.length)}${line}`;
 }
 
-function replayErrorMessage(error: unknown, signal?: AbortSignal): string {
-	if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) return "Aborted";
-	if (error instanceof Error) return error.message;
-	return String(error);
-}
+type BranchSide = { outcome: CaseScriptBranchOutcome; actions: CaseScriptAction[] };
 
 /**
- * Replay a Case Script on the Active Session, step by step, without any decide.
+ * Replay a Case Script step by step, without any decide, against one adapter's port.
  * A Branch checks the Screen and replays its chosen side in place; the other side is never
- * reported. Stops at the first failing step and reports every later step as skipped.
+ * reported. A `wait` sleeps exactly its `ms`. Stops at the first failing step (or on abort)
+ * and reports every later step as skipped.
  */
-export async function runCaseScript(
-	client: CaseScriptReplayClient,
+export async function replayCaseScript(
 	script: CaseScript,
-	options: RunCaseScriptOptions = {},
-): Promise<RunCaseScriptResult> {
-	const sleep = options.sleep ?? realSleep;
-	const now = options.now ?? Date.now;
-	const pollMs = options.assertPollMs ?? SCREEN_CHECK_POLL_MS;
+	port: CaseScriptReplayPort,
+): Promise<CaseScriptReplayResult> {
+	const { clock } = port;
 	let total = script.actions.length;
 	let completed = 0;
 	let position = 0;
 
-	const check = async (
-		action: { text?: string; id?: string; assertion: "visible" | "not-visible" },
-		timeoutMs: number,
-	) =>
+	const errorMessage = (error: unknown): string => {
+		if (port.isAborted() || (error instanceof Error && error.name === "AbortError")) {
+			return "Aborted";
+		}
+		return error instanceof Error ? error.message : String(error);
+	};
+
+	const check = (action: Extract<CaseScriptAction, { type: "assert" | "branch" }>) =>
 		checkScreen({
-			readScreen: () => client.getScreen(),
+			readScreen: port.readScreen,
 			text: action.text,
-			id: action.id,
+			id: action.type === "branch" ? action.id : undefined,
 			assertion: action.assertion,
-			timeoutMs,
-			pollMs,
-			sleep: (ms) => sleep(ms, options.signal),
-			now,
-			isAborted: () => options.signal?.aborted ?? false,
+			timeoutMs: caseScriptCheckTimeoutMs(action),
+			sleep: clock.sleep,
+			now: clock.now,
+			isAborted: port.isAborted,
+			isDeadSession: port.isDeadSession,
 		});
 
-	const assertText = async (action: Extract<CaseScriptAction, { type: "assert" }>) => {
-		const timeoutMs =
-			action.timeoutMs ?? options.defaultAssertTimeoutMs ?? DEFAULT_ASSERT_TIMEOUT_MS;
-		const { met } = await check(action, timeoutMs);
-		if (!met) throw new Error(screenCheckMissMessage({ ...action, timeoutMs }));
+	/** Run one step. A Branch returns the side it picked. */
+	const runStep = async (
+		action: CaseScriptAction,
+	): Promise<{ response?: ActionResponse; side?: BranchSide }> => {
+		switch (action.type) {
+			case "wait":
+				await clock.sleep(action.ms);
+				return {};
+			case "assert": {
+				const { met } = await check(action);
+				if (!met) {
+					const timeoutMs = caseScriptCheckTimeoutMs(action);
+					throw new Error(screenCheckMissMessage({ ...action, timeoutMs }));
+				}
+				return {};
+			}
+			case "branch": {
+				const { met } = await check(action);
+				const outcome = met ? "then" : "else";
+				return { side: { outcome, actions: (met ? action.then : action.else) ?? [] } };
+			}
+			default: {
+				const request = caseScriptActionRequest(action);
+				const response = request ? await port.performAction(request) : undefined;
+				return response ? { response } : {};
+			}
+		}
 	};
 
 	type At = (index: number) => CaseScriptStepPath;
@@ -265,7 +315,7 @@ export async function runCaseScript(
 		status: CaseScriptReplayStatus,
 		extra: Pick<CaseScriptReplayEvent, "error" | "response" | "outcome"> = {},
 	) =>
-		options.onStep?.({
+		port.onStep?.({
 			index: path.index,
 			path,
 			position: stepPosition,
@@ -288,38 +338,26 @@ export async function runCaseScript(
 			const action = actions[index];
 			if (!action) continue;
 			const path = at(index);
-			if (options.signal?.aborted) {
+			if (port.isAborted()) {
 				await skipFrom(actions, index, at);
 				return { path, error: "Aborted" };
 			}
 			const step = position++;
-			await emit(path, step, action, "running");
-			let side: { outcome: CaseScriptBranchOutcome; actions: CaseScriptAction[] } | null = null;
+			let side: BranchSide | undefined;
 			try {
-				let response: ActionResponse | undefined;
-				if (action.type === "wait") {
-					await sleep(action.ms, options.signal);
-				} else if (action.type === "assert") {
-					await assertText(action);
-				} else if (action.type === "branch") {
-					const timeoutMs =
-						action.timeoutMs ?? options.defaultBranchTimeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS;
-					const { met } = await check(action, timeoutMs);
-					const outcome = met ? "then" : "else";
-					side = { outcome, actions: (met ? action.then : action.else) ?? [] };
-					total += side.actions.length;
-				} else {
-					const request = caseScriptActionRequest(action);
-					if (request) response = await client.performAction(request);
-					if (options.pauseAfterActionMs) await sleep(options.pauseAfterActionMs, options.signal);
-				}
+				await emit(path, step, action, "running");
+				// The sink may take its time (a Run takes a screenshot): never start a step after an abort.
+				if (port.isAborted()) throw abortError();
+				const done = await runStep(action);
+				side = done.side;
+				if (side) total += side.actions.length;
 				completed += 1;
 				await emit(path, step, action, "ok", {
-					...(response ? { response } : {}),
+					...(done.response ? { response: done.response } : {}),
 					...(side ? { outcome: side.outcome } : {}),
 				});
 			} catch (error) {
-				const message = replayErrorMessage(error, options.signal);
+				const message = errorMessage(error);
 				await emit(path, step, action, "error", { error: message });
 				await skipFrom(actions, index + 1, at);
 				return { path, error: message };
@@ -351,4 +389,28 @@ export async function runCaseScript(
 		};
 	}
 	return { ok: true, completed, total };
+}
+
+/**
+ * Replay a Case Script on the Active Session through the runner's API (the CLI's `script run`
+ * and the Inspector): `replayCaseScript` with a `RunnerClient` as its port.
+ */
+export function runCaseScript(
+	client: CaseScriptReplayClient,
+	script: CaseScript,
+	options: RunCaseScriptOptions = {},
+): Promise<RunCaseScriptResult> {
+	const sleep = options.sleep ?? realSleep;
+	const { signal, pauseAfterActionMs } = options;
+	return replayCaseScript(script, {
+		performAction: async (request) => {
+			const response = await client.performAction(request);
+			if (pauseAfterActionMs) await sleep(pauseAfterActionMs, signal);
+			return response;
+		},
+		readScreen: () => client.getScreen(),
+		clock: { sleep: (ms) => sleep(ms, signal), now: options.now ?? Date.now },
+		isAborted: () => signal?.aborted ?? false,
+		onStep: options.onStep,
+	});
 }

@@ -16,6 +16,7 @@ import {
 	appStartTarget,
 	browserProfileSchema,
 	installedBrowserId,
+	runStepActionSchema,
 	startTargetRequest,
 	stepPhasesSchema,
 	viewportPresetSchema,
@@ -98,9 +99,9 @@ function newId(prefix: string): string {
 	return `${prefix}_${crypto.randomUUID()}`;
 }
 
-function parseAction(raw: string): unknown {
+function parseAction(raw: string): RunStep["action"] {
 	try {
-		return JSON.parse(raw) as unknown;
+		return runStepActionSchema.parse(JSON.parse(raw));
 	} catch {
 		return {};
 	}
