@@ -980,11 +980,75 @@ export const stepPhasesSchema = z.object({
 });
 export type StepPhases = z.infer<typeof stepPhasesSchema>;
 
+/**
+ * A field of a stored Run step action. Rows written by older runners may lack it or hold
+ * another type; either reads as absent, so a stored Run always parses.
+ */
+function storedStepField<T extends z.ZodTypeAny>(schema: T) {
+	return schema.optional().catch(undefined);
+}
+
+/**
+ * The fields a Run step action may carry: a replayed Case Script step (with its `reason`),
+ * an agent decision, a Branch's check and `outcome`, or `done` / `fail`. Fields not named here
+ * are kept as they are.
+ */
+const runStepActionFieldsSchema = z
+	.object({
+		type: storedStepField(z.string()),
+		reason: storedStepField(z.string()),
+		thoughts: storedStepField(z.string()),
+		label: storedStepField(z.string()),
+		id: storedStepField(z.string()),
+		text: storedStepField(z.string()),
+		direction: storedStepField(z.string()),
+		appId: storedStepField(z.string()),
+		url: storedStepField(z.string()),
+		key: storedStepField(z.string()),
+		modifiers: storedStepField(z.array(z.string())),
+		x: storedStepField(z.number()),
+		y: storedStepField(z.number()),
+		x2: storedStepField(z.number()),
+		y2: storedStepField(z.number()),
+		durationMs: storedStepField(z.number()),
+		double: storedStepField(z.boolean()),
+		ms: storedStepField(z.number()),
+		seconds: storedStepField(z.number()),
+		timeoutMs: storedStepField(z.number()),
+		assertion: storedStepField(z.enum(["visible", "not-visible"])),
+		alertAction: storedStepField(z.enum(["accept", "dismiss"])),
+		outcome: storedStepField(z.enum(["then", "else"])),
+	})
+	.passthrough();
+export type RunStepActionFields = z.infer<typeof runStepActionFieldsSchema>;
+
+/** An agent step's cycle: the Action it performed, its decision, and the verify after it. */
+const runStepCycleSchema = z
+	.object({
+		action: storedStepField(runStepActionFieldsSchema),
+		decision: storedStepField(runStepActionFieldsSchema),
+		verify: z
+			.object({
+				type: z.string().min(1),
+				reason: storedStepField(z.string()),
+				thoughts: storedStepField(z.string()),
+			})
+			.passthrough(),
+	})
+	.passthrough();
+
+/** What one Run step did. A stored action that is not an object reads as `{}`. */
+export const runStepActionSchema = z.preprocess(
+	(value) => (value && typeof value === "object" && !Array.isArray(value) ? value : {}),
+	runStepActionFieldsSchema.extend({ cycle: storedStepField(runStepCycleSchema) }).passthrough(),
+);
+export type RunStepAction = z.infer<typeof runStepActionSchema>;
+
 export const runStepSchema = z.object({
 	id: z.string().min(1),
 	runTestId: z.string().min(1),
 	idx: z.number().int().nonnegative(),
-	action: z.unknown(),
+	action: runStepActionSchema,
 	screenshotUri: z.string().nullable(),
 	ok: z.boolean(),
 	latencyMs: z.number().nonnegative(),

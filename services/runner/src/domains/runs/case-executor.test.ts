@@ -128,6 +128,44 @@ describe("executeScriptCase", () => {
 		});
 	});
 
+	it("waits exactly a wait's ms, with no Settle after it, and records that wait", async () => {
+		const sleeps: number[] = [];
+		const steps: Array<{ action: unknown; command?: string | null; detail: string | null }> = [];
+		const status = await executeScriptCase({
+			script: {
+				version: 1,
+				savedAt: 1,
+				actions: [
+					{ type: "wait", ms: 5_000 },
+					{ type: "wait", ms: 100 },
+					{ type: "tap", label: "Home" },
+				],
+			},
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push({ action: step.action, command: step.command, detail: step.detail });
+			},
+			performAction: async (_session, body) => ({ ok: true, kind: body.kind }),
+			clock: {
+				sleep: async (ms) => {
+					sleeps.push(ms);
+				},
+				now: () => 0,
+			},
+			settleMs: 10,
+		});
+
+		expect(status).toBe("passed");
+		expect(sleeps).toEqual([5_000, 100, 10]);
+		expect(steps[0]).toMatchObject({
+			action: { type: "wait", ms: 5_000, reason: "wait 5000ms" },
+			command: "sleep 5",
+			detail: "wait 5000ms",
+		});
+		expect(steps[1]).toMatchObject({ action: { ms: 100 }, command: "sleep 0.1" });
+	});
+
 	it("replays label taps and visible asserts", async () => {
 		const actions: ActionRequest[] = [];
 		const script: CaseScript = {
@@ -191,23 +229,6 @@ describe("executeScriptCase", () => {
 			});
 			return { status, steps };
 		}
-
-		it("keeps polling until the app is frontmost, then passes", async () => {
-			let reads = 0;
-			const { status } = run(async () => {
-				reads += 1;
-				if (reads < 3) {
-					throw new Error(
-						"idb describe-all: axbridge could not resolve the frontmost application using the window-server strategy",
-					);
-				}
-				return {
-					elements: [{ label: "Yoqa Demo", type: "Text", x: 0, y: 0, width: 10, height: 10 }],
-				};
-			});
-			expect(await status).toBe("passed");
-			expect(reads).toBe(3);
-		});
 
 		it("fails at the deadline with the read error", async () => {
 			const { status, steps } = run(async () => {
@@ -463,17 +484,6 @@ describe("executeScriptCase with a Branch", () => {
 		expect(run.steps[0]?.screenshotUri).toBeString();
 	});
 
-	it("takes `then` when the text appears after a few polls", async () => {
-		const run = runBranch({
-			actions: [allowBranch],
-			screens: (now) => (now >= 800 ? [text("Allow notifications")] : []),
-		});
-		expect(await run.status).toBe("passed");
-		expect(run.performed).toEqual([{ kind: "tap", label: "Allow" }]);
-		expect(run.steps[0]?.action.outcome).toBe("then");
-		expect(run.reads()).toBe(3);
-	});
-
 	it("takes `else` at the 2s default deadline, and leaves `then` out of the timeline", async () => {
 		const run = runBranch({ actions: [allowBranch], screens: () => [] });
 		expect(await run.status).toBe("passed");
@@ -490,36 +500,7 @@ describe("executeScriptCase with a Branch", () => {
 		});
 	});
 
-	it("waits the Branch's own timeoutMs", async () => {
-		const run = runBranch({
-			actions: [{ ...allowBranch, timeoutMs: 400 }],
-			screens: () => [],
-		});
-		expect(await run.status).toBe("passed");
-		expect(run.now()).toBe(400);
-	});
-
-	it("checks not-visible", async () => {
-		const run = runBranch({
-			actions: [
-				{
-					type: "branch",
-					text: "Loading",
-					assertion: "not-visible",
-					then: [{ type: "tap", label: "Start" }],
-				},
-			],
-			screens: (now) => (now < 400 ? [text("Loading…")] : [text("Start")]),
-		});
-		expect(await run.status).toBe("passed");
-		expect(run.performed).toEqual([{ kind: "tap", label: "Start" }]);
-		expect(run.steps[0]).toMatchObject({
-			action: { assertion: "not-visible", outcome: "then" },
-			command: "yoqa assert not-visible --text 'Loading' --timeout 2",
-		});
-	});
-
-	it("checks an id, matched like a tap by id, and names it in the step", async () => {
+	it("names an id Branch by its id in the step", async () => {
 		const skip = (assertion: "visible" | "not-visible"): CaseScript["actions"][number] => ({
 			type: "branch",
 			id: "onboarding-skip",
@@ -538,48 +519,7 @@ describe("executeScriptCase with a Branch", () => {
 			command: "yoqa assert visible --id 'onboarding-skip' --timeout 2",
 		});
 		expect(seen.steps[0]?.action.text).toBeUndefined();
-
-		// A label that reads like the id is not the id.
-		const labelOnly = runBranch({
-			actions: [skip("visible")],
-			screens: () => [text("onboarding-skip")],
-		});
-		expect(await labelOnly.status).toBe("passed");
-		expect(labelOnly.performed).toEqual([{ kind: "tap", label: "Next" }]);
-
-		const gone = runBranch({
-			actions: [skip("not-visible")],
-			screens: (now) => (now < 400 ? [withId] : []),
-		});
-		expect(await gone.status).toBe("passed");
-		expect(gone.performed).toEqual([{ kind: "tap", id: "onboarding-skip" }]);
-		expect(gone.steps[0]).toMatchObject({
-			action: { assertion: "not-visible", outcome: "then" },
-			detail: "not-visible id: onboarding-skip → then",
-		});
-
-		const stays = runBranch({ actions: [skip("not-visible")], screens: () => [withId] });
-		expect(await stays.status).toBe("passed");
-		expect(stays.performed).toEqual([{ kind: "tap", label: "Next" }]);
-		expect(stays.steps[0]?.action.outcome).toBe("else");
-	});
-
-	it("goes on to the next action when the check misses and there is no `else`", async () => {
-		const run = runBranch({
-			actions: [
-				{
-					type: "branch",
-					text: "Rate this app",
-					assertion: "visible",
-					then: [{ type: "tap", label: "Not now" }],
-				},
-				{ type: "tap", label: "Home" },
-			],
-			screens: () => [],
-		});
-		expect(await run.status).toBe("passed");
-		expect(run.performed).toEqual([{ kind: "tap", label: "Home" }]);
-		expect(run.steps.map((step) => step.action.type)).toEqual(["branch", "tap", "done"]);
+		expect(seen.steps[0]?.action.then).toBeUndefined();
 	});
 
 	it("runs nested Branches with one continuous step index", async () => {
@@ -633,21 +573,6 @@ describe("executeScriptCase with a Branch", () => {
 		expect(run.steps[1]?.detail).toBe('No element matches label "Allow"');
 	});
 
-	it("fails the case with the read error when the Screen is unreadable at the deadline", async () => {
-		const run = runBranch({
-			actions: [allowBranch],
-			screens: () => {
-				throw new Error("axbridge could not resolve the frontmost application");
-			},
-		});
-		expect(await run.status).toBe("errored");
-		expect(run.performed).toEqual([]);
-		expect(run.steps.map((step) => step.action.type)).toEqual(["fail"]);
-		expect(run.steps[0]?.detail).toBe(
-			"Could not read the screen within 2s: axbridge could not resolve the frontmost application",
-		);
-	});
-
 	it("ends at once on a Dead Session", async () => {
 		const run = runBranch({
 			actions: [allowBranch],
@@ -671,30 +596,6 @@ describe("executeScriptCase with a Branch", () => {
 		expect(run.now()).toBe(800);
 		expect(run.performed).toEqual([]);
 		expect(run.steps).toEqual([]);
-	});
-
-	it("cancels between actions inside a side", async () => {
-		let taps = 0;
-		const run = runBranch({
-			actions: [
-				{
-					type: "branch",
-					text: "Welcome",
-					assertion: "visible",
-					then: [
-						{ type: "tap", label: "One" },
-						{ type: "tap", label: "Two" },
-					],
-				},
-			],
-			screens: () => [text("Welcome")],
-			perform: () => {
-				taps += 1;
-			},
-			isAborted: () => taps >= 1,
-		});
-		expect(await run.status).toBe("cancelled");
-		expect(run.performed.map((body) => body.label)).toEqual(["One"]);
 	});
 });
 

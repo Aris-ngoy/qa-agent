@@ -12,6 +12,7 @@ import {
 	stepReasoning,
 	suggestedRunReportBasename,
 } from "./run-report";
+import type { RunStepAction } from "./schemas";
 
 describe("readStepCycle", () => {
 	test("reads action, decision, and verify off a step", () => {
@@ -583,7 +584,7 @@ describe("formatRunReportHtml and Markdown", () => {
 });
 
 describe("a branched Run in the report", () => {
-	const step = (idx: number, action: unknown, detail: string | null, command: string) => ({
+	const step = (idx: number, action: RunStepAction, detail: string | null, command: string) => ({
 		id: `s${idx}`,
 		runTestId: "t1",
 		idx,

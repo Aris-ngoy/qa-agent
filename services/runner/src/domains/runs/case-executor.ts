@@ -1,19 +1,23 @@
 import {
 	type ActionRequest,
 	type ActionResponse,
-	BRANCH_DEFAULT_TIMEOUT_MS,
 	type CallUsage,
 	type CaseScript,
 	type CaseScriptAction,
+	type CaseScriptBranchOutcome,
+	type CaseScriptReplayEvent,
 	type CatalogCase,
 	type RunScreenMode,
 	type ScreenElement,
 	type StepPhases,
+	caseScriptActionCommand,
+	caseScriptCheckTimeoutMs,
 	checkScreen,
 	describeScreenCheck,
 	formatActionShellLine,
 	formatAssertShellLine,
 	formatSleepShellLine,
+	replayCaseScript,
 	screenCheckMissMessage,
 } from "@yoqa/runner-client";
 import {
@@ -267,9 +271,87 @@ function commandForDecision(decision: AgentDecision, defaultAppId?: string): str
 	return body ? formatActionShellLine(body) : null;
 }
 
+const REPLAY_THOUGHTS = "Replaying the saved script without calling the AI agent.";
+
+/** The Run step command for a replayed step: an assert and a Branch name their exact wait. */
+function replayStepCommand(action: CaseScriptAction): string {
+	if (action.type === "assert" || action.type === "branch") {
+		const target =
+			action.type === "branch" && action.id != null ? { id: action.id } : { text: action.text };
+		return formatAssertShellLine({
+			assertion: action.assertion,
+			...target,
+			timeoutSeconds: caseScriptCheckTimeoutMs(action) / 1000,
+		});
+	}
+	return caseScriptActionCommand(action);
+}
+
+/** What a Run step stores for a replayed step: the step itself, with its reason filled in. */
+function replayStepAction(
+	action: CaseScriptAction,
+	outcome: CaseScriptBranchOutcome | undefined,
+): Record<string, unknown> {
+	if (action.type === "branch") {
+		const { then: _then, else: _else, ...check } = action;
+		return {
+			...check,
+			timeoutMs: caseScriptCheckTimeoutMs(action),
+			outcome,
+			reason: action.reason ?? `If ${describeScreenCheck(action)}`,
+			thoughts: REPLAY_THOUGHTS,
+		};
+	}
+	if (action.type === "assert") {
+		return {
+			...action,
+			timeoutMs: caseScriptCheckTimeoutMs(action),
+			reason: action.reason ?? `Assert ${action.assertion}: ${action.text}`,
+			thoughts: REPLAY_THOUGHTS,
+		};
+	}
+	if (action.type === "wait") {
+		return { ...action, reason: action.reason ?? `wait ${action.ms}ms`, thoughts: REPLAY_THOUGHTS };
+	}
+	return {
+		...action,
+		reason: action.reason ?? `Replayed saved script ${action.type}`,
+		thoughts: REPLAY_THOUGHTS,
+	};
+}
+
+/** The Run step detail for a replayed step. */
+function replayStepDetail(
+	action: CaseScriptAction,
+	outcome: CaseScriptBranchOutcome | undefined,
+): string | null {
+	switch (action.type) {
+		case "branch":
+			return `${describeScreenCheck(action)} → ${outcome}`;
+		case "tap":
+			return action.reason ?? action.label ?? action.id ?? null;
+		case "activate-app":
+		case "terminate-app":
+		case "restart-app":
+			return action.reason ?? action.appId;
+		case "open-url":
+			return action.reason ?? action.url;
+		case "alert":
+			return action.reason ?? action.alertAction;
+		case "assert":
+			return action.reason ?? `${action.assertion}: ${action.text}`;
+		case "wait":
+			return action.reason ?? `wait ${action.ms}ms`;
+		default:
+			return action.reason ?? null;
+	}
+}
+
 /**
- * Replay a saved Case Script against an injected Device Session.
- * Taps/types go through `performAction` (same path as the connector).
+ * Replay a saved Case Script against an injected Device Session: the Case executor's adapter
+ * for `replayCaseScript`. Actions go through `performAction` (same path as the connector) and
+ * then Settle; each step that finishes is one Run step, with the screenshot taken before it
+ * (a Branch: the Screen it decided on).
  */
 export async function executeScriptCase(
 	deps: ScriptCaseDeps,
@@ -287,391 +369,69 @@ export async function executeScriptCase(
 
 	let stepIdx = 0;
 	let lastScreenshotUri: string | null = null;
+	/** The step in flight: when it started, and its screenshot (taken before an Action). */
+	let current = { startedAt: 0, screenshotUri: null as string | null, latencyMs: 0 };
 
-	/** Replay a list of steps in place, recursing into a Branch's chosen side. */
-	const replay = async (actions: CaseScriptAction[]): Promise<"cancelled" | null> => {
-		for (const action of actions) {
-			if (deps.isAborted()) {
-				return "cancelled";
-			}
-
-			if (action.type === "branch") {
-				const timeoutMs = action.timeoutMs ?? BRANCH_DEFAULT_TIMEOUT_MS;
-				const { assertion } = action;
-				// Exactly one of the two is set; the step records only that one.
-				const target = action.id != null ? { id: action.id } : { text: action.text };
-				const command = formatAssertShellLine({
-					assertion,
-					...target,
-					timeoutSeconds: timeoutMs / 1000,
-				});
-				const check = describeScreenCheck({ assertion, ...target });
-				const checkStarted = clock.now();
-				const { met } = await withCurrentCommand(setCurrentCommand, command, () =>
-					checkScreen({
-						readScreen: () => readScreen(deps.session),
-						...target,
-						assertion,
-						timeoutMs,
-						sleep: (ms) => clock.sleep(ms),
-						now: () => clock.now(),
-						isAborted: deps.isAborted,
-						isDeadSession: isDeadSessionError,
-					}),
-				);
-				// The Screen the Branch decided on.
-				const shot = await deps.session.screenshot();
-				lastScreenshotUri = shot.path;
-				if (deps.isAborted()) {
-					return "cancelled";
-				}
-				const outcome = met ? "then" : "else";
-				await deps.appendStep({
-					idx: stepIdx,
-					action: {
-						type: "branch",
-						...target,
-						assertion,
-						timeoutMs,
-						outcome,
-						reason: action.reason ?? `If ${check}`,
-						thoughts: "Replaying the saved script without calling the AI agent.",
-					},
-					screenshotUri: shot.path,
-					ok: true,
-					latencyMs: clock.now() - checkStarted,
-					detail: `${check} → ${outcome}`,
-					command,
-				});
-				stepIdx += 1;
-				const stopped = await replay((met ? action.then : action.else) ?? []);
-				if (stopped) return stopped;
-				continue;
-			}
-
-			const shotStarted = clock.now();
-			const shot = await deps.session.screenshot();
-			lastScreenshotUri = shot.path;
-			const latencyMs = clock.now() - shotStarted;
-
-			if (deps.isAborted()) {
-				return "cancelled";
-			}
-
-			if (action.type === "tap") {
-				const tapBody: ActionRequest = { kind: "tap" };
-				if (action.label) tapBody.label = action.label;
-				if (action.id) tapBody.id = action.id;
-				if (action.x != null) tapBody.x = action.x;
-				if (action.y != null) tapBody.y = action.y;
-				if (action.double) tapBody.double = true;
-				if (action.durationMs != null) tapBody.durationMs = action.durationMs;
-				const command = formatActionShellLine(tapBody);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await perform(deps.session, tapBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "tap",
-							x: action.x,
-							y: action.y,
-							label: action.label,
-							id: action.id,
-							reason: action.reason ?? "Replayed saved script tap",
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? action.label ?? action.id ?? null,
-						command,
-					});
-				});
-			} else if (action.type === "swipe") {
-				const swipeBody: ActionRequest = {
-					kind: "swipe",
-					x: action.x,
-					y: action.y,
-					x2: action.x2,
-					y2: action.y2,
-					...(action.durationMs != null ? { durationMs: action.durationMs } : {}),
-				};
-				const command = formatActionShellLine(swipeBody);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await perform(deps.session, swipeBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "swipe",
-							x: action.x,
-							y: action.y,
-							x2: action.x2,
-							y2: action.y2,
-							durationMs: action.durationMs,
-							reason: action.reason ?? "Replayed saved script swipe",
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? null,
-						command,
-					});
-				});
-			} else if (action.type === "drag") {
-				const dragBody: ActionRequest = {
-					kind: "drag",
-					x: action.x,
-					y: action.y,
-					x2: action.x2,
-					y2: action.y2,
-					...(action.durationMs != null ? { durationMs: action.durationMs } : {}),
-				};
-				const command = formatActionShellLine(dragBody);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await perform(deps.session, dragBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "drag",
-							x: action.x,
-							y: action.y,
-							x2: action.x2,
-							y2: action.y2,
-							durationMs: action.durationMs,
-							reason: action.reason ?? "Replayed saved script drag",
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? null,
-						command,
-					});
-				});
-			} else if (
-				action.type === "activate-app" ||
-				action.type === "terminate-app" ||
-				action.type === "restart-app"
-			) {
-				const appBody: ActionRequest = { kind: action.type, appId: action.appId };
-				const command = formatActionShellLine(appBody);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await perform(deps.session, appBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: action.type,
-							appId: action.appId,
-							reason: action.reason ?? `Replayed saved script ${action.type}`,
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? action.appId,
-						command,
-					});
-				});
-			} else if (action.type === "background-app") {
-				const backgroundBody: ActionRequest = {
-					kind: "background-app",
-					...(action.seconds != null ? { seconds: action.seconds } : {}),
-				};
-				const command = formatActionShellLine(backgroundBody);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await perform(deps.session, backgroundBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "background-app",
-							seconds: action.seconds,
-							reason: action.reason ?? "Replayed saved script background-app",
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? null,
-						command,
-					});
-				});
-			} else if (action.type === "open-url") {
-				const urlBody: ActionRequest = { kind: "open-url", url: action.url };
-				const command = formatActionShellLine(urlBody);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await perform(deps.session, urlBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "open-url",
-							url: action.url,
-							reason: action.reason ?? "Replayed saved script open-url",
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? action.url,
-						command,
-					});
-				});
-			} else if (action.type === "key") {
-				const keyBody: ActionRequest = {
-					kind: "key",
-					key: action.key,
-					...(action.modifiers?.length ? { modifiers: action.modifiers } : {}),
-				};
-				const command = formatActionShellLine(keyBody);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await perform(deps.session, keyBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "key",
-							key: action.key,
-							modifiers: action.modifiers,
-							reason: action.reason ?? "Replayed saved script key",
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? null,
-						command,
-					});
-				});
-			} else if (action.type === "type") {
-				const typeBody: ActionRequest = { kind: "input", text: action.text };
-				const command = formatActionShellLine(typeBody);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await perform(deps.session, typeBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "type",
-							text: action.text,
-							reason: action.reason ?? "Replayed saved script type",
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? null,
-						command,
-					});
-				});
-			} else if (action.type === "assert") {
-				const timeoutMs = action.timeoutMs ?? 5_000;
-				const assertion = action.assertion;
-				const command = formatAssertShellLine({
-					assertion,
-					text: action.text,
-					timeoutSeconds: timeoutMs / 1000,
-				});
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					try {
-						await runTextAssert({
-							session: deps.session,
-							readScreen,
-							clock,
-							isAborted: deps.isAborted,
-							assertion,
-							text: action.text,
-							timeoutMs,
-						});
-					} catch (error) {
-						if (deps.isAborted()) return;
-						throw error;
-					}
-					if (deps.isAborted()) {
-						return;
-					}
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "assert",
-							assertion,
-							text: action.text,
-							timeoutMs,
-							reason: action.reason ?? `Assert ${assertion}: ${action.text}`,
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? `${assertion}: ${action.text}`,
-						command,
-					});
-				});
-				if (deps.isAborted()) {
-					return "cancelled";
-				}
-			} else if (action.type === "alert") {
-				const alertBody: ActionRequest = {
-					kind: "alert",
-					alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
-				};
-				const command = formatActionShellLine(alertBody);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await perform(deps.session, alertBody);
-					await clock.sleep(settleMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "alert",
-							alertAction: action.alertAction === "dismiss" ? "dismiss" : "accept",
-							reason: action.reason ?? "Replayed saved script alert",
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? action.alertAction ?? "accept",
-						command,
-					});
-				});
-			} else {
-				const waitMs = Math.min(3000, Math.max(500, action.ms));
-				const command = formatSleepShellLine(waitMs / 1000);
-				await withCurrentCommand(setCurrentCommand, command, async () => {
-					await clock.sleep(waitMs);
-					await deps.appendStep({
-						idx: stepIdx,
-						action: {
-							type: "wait",
-							ms: waitMs,
-							reason: action.reason ?? `wait ${waitMs}ms`,
-							thoughts: "Replaying the saved script without calling the AI agent.",
-						},
-						screenshotUri: shot.path,
-						ok: true,
-						latencyMs,
-						detail: action.reason ?? `wait ${waitMs}ms`,
-						command,
-					});
-				});
-			}
-
-			stepIdx += 1;
-		}
-		return null;
+	const screenshot = async () => {
+		const shot = await deps.session.screenshot();
+		lastScreenshotUri = shot.path;
+		return shot.path;
 	};
 
-	try {
-		const stopped = await replay(deps.script.actions);
-		if (stopped) {
-			return stopped;
+	const onStep = async (event: CaseScriptReplayEvent) => {
+		const { action } = event;
+		if (event.status === "running") {
+			const startedAt = clock.now();
+			current = { startedAt, screenshotUri: null, latencyMs: 0 };
+			if (action.type !== "branch") {
+				current.screenshotUri = await screenshot();
+				current.latencyMs = clock.now() - startedAt;
+			}
+			await setCurrentCommand(replayStepCommand(action));
+			return;
 		}
+		if (event.status === "ok") {
+			if (action.type === "branch") {
+				// The Screen the Branch decided on.
+				current.latencyMs = clock.now() - current.startedAt;
+				current.screenshotUri = await screenshot();
+			}
+			await deps.appendStep({
+				idx: stepIdx,
+				action: replayStepAction(action, event.outcome),
+				screenshotUri: current.screenshotUri,
+				ok: true,
+				latencyMs: current.latencyMs,
+				detail: replayStepDetail(action, event.outcome),
+				command: replayStepCommand(action),
+			});
+			stepIdx += 1;
+			await setCurrentCommand(null);
+			return;
+		}
+		if (event.status === "error") await setCurrentCommand(null);
+	};
 
+	let error: string | undefined;
+	try {
+		const result = await replayCaseScript(deps.script, {
+			performAction: async (request) => {
+				const response = await perform(deps.session, request);
+				await clock.sleep(settleMs);
+				return response;
+			},
+			readScreen: () => readScreen(deps.session),
+			clock,
+			isAborted: deps.isAborted,
+			isDeadSession: isDeadSessionError,
+			onStep,
+		});
+		error = result.ok ? undefined : (result.error ?? "Script replay failed");
+	} catch (thrown) {
+		error = thrown instanceof Error ? thrown.message : String(thrown);
+	}
+
+	if (error == null) {
 		await deps.appendStep({
 			idx: stepIdx,
 			action: {
@@ -685,28 +445,25 @@ export async function executeScriptCase(
 			detail: "Saved script completed",
 			command: null,
 		});
-
 		return "passed";
-	} catch (error) {
-		if (deps.isAborted()) {
-			return "cancelled";
-		}
-		const message = error instanceof Error ? error.message : String(error);
-		await deps.appendStep({
-			idx: stepIdx,
-			action: {
-				type: "fail",
-				reason: message,
-				thoughts: `Script replay stopped because of an error: ${message}`,
-			},
-			screenshotUri: lastScreenshotUri,
-			ok: false,
-			latencyMs: 0,
-			detail: message,
-			command: null,
-		});
-		return "errored";
 	}
+	if (deps.isAborted()) {
+		return "cancelled";
+	}
+	await deps.appendStep({
+		idx: stepIdx,
+		action: {
+			type: "fail",
+			reason: error,
+			thoughts: `Script replay stopped because of an error: ${error}`,
+		},
+		screenshotUri: lastScreenshotUri,
+		ok: false,
+		latencyMs: 0,
+		detail: error,
+		command: null,
+	});
+	return "errored";
 }
 
 function sumTokens(total: number | null, more: number | null): number | null {

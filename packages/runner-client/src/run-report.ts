@@ -7,6 +7,8 @@ import {
 	type Run,
 	type RunStatus,
 	type RunStep,
+	type RunStepAction,
+	type RunStepActionFields,
 	type RunTestStatus,
 	type StepPhases,
 	type ViewportPresetName,
@@ -108,67 +110,56 @@ export type InspectorRunReportInput = {
 };
 
 export type StepCycleView = {
-	action: Record<string, unknown> | null;
-	decision: Record<string, unknown> | null;
+	action: RunStepActionFields | null;
+	decision: RunStepActionFields | null;
 	verify: { type: string; reason: string | null; thoughts: string | null };
 };
 
+/** A Run step's action as `RunStep.action` holds it, or nothing. */
+type StepAction = RunStepAction | null | undefined;
+
 /** Action, decision, and verify stored on one agent step. */
-export function readStepCycle(action: unknown): StepCycleView | null {
-	if (!action || typeof action !== "object" || !("cycle" in action)) return null;
-	const cycle = (action as { cycle?: unknown }).cycle;
-	if (!cycle || typeof cycle !== "object") return null;
-	const record = cycle as Record<string, unknown>;
-	const asRecord = (value: unknown): Record<string, unknown> | null =>
-		value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-	const verify = asRecord(record.verify);
-	if (!verify || typeof verify.type !== "string" || !verify.type) return null;
+export function readStepCycle(action: StepAction): StepCycleView | null {
+	const cycle = action?.cycle;
+	if (!cycle) return null;
 	return {
-		action: asRecord(record.action),
-		decision: asRecord(record.decision),
+		action: cycle.action ?? null,
+		decision: cycle.decision ?? null,
 		verify: {
-			type: verify.type,
-			reason: typeof verify.reason === "string" ? verify.reason : null,
-			thoughts: typeof verify.thoughts === "string" ? verify.thoughts : null,
+			type: cycle.verify.type,
+			reason: cycle.verify.reason ?? null,
+			thoughts: cycle.verify.thoughts ?? null,
 		},
 	};
 }
 
-function summarizeActionRecord(record: Record<string, unknown>): string {
-	const type = typeof record.type === "string" ? record.type : "step";
+function summarizeActionRecord(record: RunStepActionFields): string {
+	const type = record.type ?? "step";
 	if (type === "tap") {
-		if (typeof record.label === "string" && record.label.trim()) return `Tap: ${record.label}`;
-		if (typeof record.id === "string" && record.id.trim()) return `Tap #${record.id}`;
+		if (record.label?.trim()) return `Tap: ${record.label}`;
+		if (record.id?.trim()) return `Tap #${record.id}`;
 		return "Tap";
 	}
-	if (type === "type") return `Type${typeof record.text === "string" ? `: ${record.text}` : ""}`;
+	if (type === "type") return `Type${record.text != null ? `: ${record.text}` : ""}`;
 	if (type === "wait") return "Wait";
 	if (type === "alert") {
 		return record.alertAction === "dismiss" ? "Dismiss alert" : "Accept alert";
 	}
 	if (type === "assert") {
-		const assertion = typeof record.assertion === "string" ? record.assertion : "visible";
-		const text = typeof record.text === "string" ? record.text : "";
-		return text ? `Assert ${assertion}: ${text}` : `Assert ${assertion}`;
+		const assertion = record.assertion ?? "visible";
+		return record.text ? `Assert ${assertion}: ${record.text}` : `Assert ${assertion}`;
 	}
 	if (type === "branch") {
-		const assertion = record.assertion === "not-visible" ? "not-visible" : "visible";
-		const id = typeof record.id === "string" ? record.id : undefined;
-		const text = typeof record.text === "string" ? record.text : "";
-		const outcome = typeof record.outcome === "string" ? ` → ${record.outcome}` : "";
-		return `If ${describeScreenCheck({ assertion, text, id })}${outcome}`;
+		const assertion = record.assertion ?? "visible";
+		const outcome = record.outcome ? ` → ${record.outcome}` : "";
+		return `If ${describeScreenCheck({ assertion, text: record.text ?? "", id: record.id })}${outcome}`;
 	}
 	if (type === "verify") return "Verify";
 	if (type === "done") return "Done";
 	if (type === "fail") return "Failed";
 	if (type === "swipe") {
-		if (typeof record.direction === "string" && record.direction.trim()) {
-			return `Swipe ${record.direction}`;
-		}
-		const x = typeof record.x === "number" ? record.x : null;
-		const y = typeof record.y === "number" ? record.y : null;
-		const x2 = typeof record.x2 === "number" ? record.x2 : null;
-		const y2 = typeof record.y2 === "number" ? record.y2 : null;
+		if (record.direction?.trim()) return `Swipe ${record.direction}`;
+		const { x, y, x2, y2 } = record;
 		if (y != null && y2 != null && x != null && x2 != null) {
 			const dy = y2 - y;
 			const dx = x2 - x;
@@ -182,119 +173,94 @@ function summarizeActionRecord(record: Record<string, unknown>): string {
 		}
 		return "Swipe";
 	}
-	if (type === "input") {
-		return `Input${typeof record.text === "string" ? `: ${record.text}` : ""}`;
-	}
+	if (type === "input") return `Input${record.text != null ? `: ${record.text}` : ""}`;
 	if (type === "drag") return "Drag";
 	if (type === "activate-app") return "Activate app";
 	if (type === "terminate-app") return "Terminate app";
 	if (type === "restart-app") return "Restart app";
 	if (type === "background-app") return "Background app";
 	if (type === "key") {
-		const modifiers = Array.isArray(record.modifiers)
-			? record.modifiers.filter((value): value is string => typeof value === "string")
-			: [];
-		return typeof record.key === "string"
-			? `Press ${formatKeyChord(record.key, modifiers)}`
-			: "Press key";
+		return record.key ? `Press ${formatKeyChord(record.key, record.modifiers ?? [])}` : "Press key";
 	}
 	if (type === "open-url") {
-		return typeof record.url === "string" && record.url.trim()
-			? `Open URL: ${record.url}`
-			: "Open URL";
+		return record.url?.trim() ? `Open URL: ${record.url}` : "Open URL";
 	}
 	return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
-export function actionSummary(action: unknown): string {
-	if (!action || typeof action !== "object") return "Step";
+export function actionSummary(action: StepAction): string {
+	if (!action) return "Step";
 	const cycle = readStepCycle(action);
 	if (cycle?.action) return summarizeActionRecord(cycle.action);
 	if (cycle?.decision) return summarizeActionRecord(cycle.decision);
-	return summarizeActionRecord(action as Record<string, unknown>);
+	return summarizeActionRecord(action);
 }
 
-function optionalTrimmedString(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function optionalFiniteNumber(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function trimmed(value: string | undefined): string | undefined {
+	return value?.trim() ? value.trim() : undefined;
 }
 
 /**
  * Derive the yoqa shell command for a persisted step action (fallback for rows saved before `command`).
  */
-export function formatStepCommand(action: unknown): string | null {
-	if (!action || typeof action !== "object") return null;
-	const record = action as Record<string, unknown>;
-	const type = typeof record.type === "string" ? record.type : null;
-	if (type == null || type === "verify" || type === "done" || type === "fail") return null;
-
-	if (type === "wait") {
-		const ms = optionalFiniteNumber(record.ms) ?? 0;
-		return formatSleepShellLine(ms / 1000);
+export function formatStepCommand(action: StepAction): string | null {
+	const type = action?.type;
+	if (!action || type == null || type === "verify" || type === "done" || type === "fail") {
+		return null;
 	}
 
+	if (type === "wait") return formatSleepShellLine((action.ms ?? 0) / 1000);
+
 	if (type === "assert" || type === "branch") {
-		const text = optionalTrimmedString(record.text);
-		const id = type === "branch" ? optionalTrimmedString(record.id) : undefined;
+		const text = trimmed(action.text);
+		const id = type === "branch" ? trimmed(action.id) : undefined;
 		if (!text && !id) return null;
-		const assertion = record.assertion === "not-visible" ? "not-visible" : "visible";
-		const timeoutMs = optionalFiniteNumber(record.timeoutMs);
 		return formatAssertShellLine({
-			assertion,
+			assertion: action.assertion ?? "visible",
 			...(id ? { id } : { text }),
-			...(timeoutMs != null ? { timeoutSeconds: timeoutMs / 1000 } : {}),
+			...(action.timeoutMs != null ? { timeoutSeconds: action.timeoutMs / 1000 } : {}),
 		});
 	}
 
+	const durationMs = action.durationMs != null ? { durationMs: action.durationMs } : {};
 	let request: ActionRequest | null = null;
 	if (type === "tap") {
-		request = { kind: "tap" };
-		const label = optionalTrimmedString(record.label);
-		const id = optionalTrimmedString(record.id);
-		const x = optionalFiniteNumber(record.x);
-		const y = optionalFiniteNumber(record.y);
-		const durationMs = optionalFiniteNumber(record.durationMs);
-		if (label) request.label = label;
-		if (id) request.id = id;
-		if (x != null) request.x = x;
-		if (y != null) request.y = y;
-		if (record.double === true) request.double = true;
-		if (durationMs != null) request.durationMs = durationMs;
-	} else if (type === "swipe" || type === "drag") {
-		request = { kind: type };
-		const x = optionalFiniteNumber(record.x);
-		const y = optionalFiniteNumber(record.y);
-		const x2 = optionalFiniteNumber(record.x2);
-		const y2 = optionalFiniteNumber(record.y2);
-		const durationMs = optionalFiniteNumber(record.durationMs);
-		if (x != null) request.x = x;
-		if (y != null) request.y = y;
-		if (x2 != null) request.x2 = x2;
-		if (y2 != null) request.y2 = y2;
-		if (durationMs != null) request.durationMs = durationMs;
-	} else if (type === "type" || type === "input") {
-		request = { kind: "input" };
-		const text = optionalTrimmedString(record.text);
-		if (text) request.text = text;
-	} else if (type === "alert") {
+		const label = trimmed(action.label);
+		const id = trimmed(action.id);
 		request = {
-			kind: "alert",
-			alertAction: record.alertAction === "dismiss" ? "dismiss" : "accept",
+			kind: "tap",
+			...(label ? { label } : {}),
+			...(id ? { id } : {}),
+			...(action.x != null ? { x: action.x } : {}),
+			...(action.y != null ? { y: action.y } : {}),
+			...(action.double === true ? { double: true } : {}),
+			...durationMs,
 		};
+	} else if (type === "swipe" || type === "drag") {
+		request = {
+			kind: type,
+			...(action.x != null ? { x: action.x } : {}),
+			...(action.y != null ? { y: action.y } : {}),
+			...(action.x2 != null ? { x2: action.x2 } : {}),
+			...(action.y2 != null ? { y2: action.y2 } : {}),
+			...durationMs,
+		};
+	} else if (type === "type" || type === "input") {
+		const text = trimmed(action.text);
+		request = { kind: "input", ...(text ? { text } : {}) };
+	} else if (type === "alert") {
+		request = { kind: "alert", alertAction: action.alertAction ?? "accept" };
 	} else if (type === "activate-app" || type === "terminate-app" || type === "restart-app") {
-		request = { kind: type };
-		const appId = optionalTrimmedString(record.appId);
-		if (appId) request.appId = appId;
+		const appId = trimmed(action.appId);
+		request = { kind: type, ...(appId ? { appId } : {}) };
 	} else if (type === "background-app") {
-		request = { kind: "background-app" };
-		const seconds = optionalFiniteNumber(record.seconds);
-		if (seconds != null) request.seconds = seconds;
+		request = {
+			kind: "background-app",
+			...(action.seconds != null ? { seconds: action.seconds } : {}),
+		};
 	} else if (type === "key") {
-		const key = keyNameSchema.safeParse(record.key);
-		const modifiers = z.array(keyModifierSchema).safeParse(record.modifiers);
+		const key = keyNameSchema.safeParse(action.key);
+		const modifiers = z.array(keyModifierSchema).safeParse(action.modifiers);
 		if (!key.success) return null;
 		request = {
 			kind: "key",
@@ -302,27 +268,20 @@ export function formatStepCommand(action: unknown): string | null {
 			...(modifiers.success && modifiers.data.length > 0 ? { modifiers: modifiers.data } : {}),
 		};
 	} else if (type === "open-url") {
-		request = { kind: "open-url" };
-		const url = optionalTrimmedString(record.url);
-		if (url) request.url = url;
+		const url = trimmed(action.url);
+		request = { kind: "open-url", ...(url ? { url } : {}) };
 	}
 
 	return request ? formatActionShellLine(request) : null;
 }
 
 export function stepReasoning(step: {
-	action?: unknown;
+	action?: StepAction;
 	detail: string | null;
 }): { reason: string | null; thoughts: string | null } {
-	const action =
-		step.action && typeof step.action === "object"
-			? (step.action as Record<string, unknown>)
-			: null;
-	const reasonFromAction =
-		typeof action?.reason === "string" && action.reason.trim() ? action.reason.trim() : null;
-	const thoughtsFromAction =
-		typeof action?.thoughts === "string" && action.thoughts.trim() ? action.thoughts.trim() : null;
-	const reason = reasonFromAction ?? (step.detail?.trim() ? step.detail.trim() : null);
+	const reasonFromAction = trimmed(step.action?.reason) ?? null;
+	const thoughtsFromAction = trimmed(step.action?.thoughts) ?? null;
+	const reason = reasonFromAction ?? trimmed(step.detail ?? undefined) ?? null;
 	const thoughts = thoughtsFromAction && thoughtsFromAction !== reason ? thoughtsFromAction : null;
 	return { reason, thoughts };
 }
