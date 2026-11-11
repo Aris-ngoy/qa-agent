@@ -1,6 +1,5 @@
 import type { Application } from "@/features/apps/data/api/apps";
 import type { SelectedDevice } from "@/features/devices/data/state/session-bar";
-import { isEverydayDeviceId } from "@/features/devices/utils/everyday-browser";
 import {
 	DEFAULT_VIEWPORT_PRESET,
 	type Device,
@@ -9,15 +8,8 @@ import {
 	type ResetWebProfileResponse,
 	VIEWPORT_PRESETS,
 	type ViewportPresetName,
+	webDeviceOf,
 } from "@yoqa/runner-client";
-
-const ATTACH_ID = /^chromium-cdp-(\d{1,5})$/;
-
-function portOf(value: string): number | null {
-	if (!/^\d{1,5}$/.test(value)) return null;
-	const port = Number(value);
-	return port >= 1 && port <= 65_535 ? port : null;
-}
 
 /**
  * A browser attached by port (`chromium-cdp-9222`, from the CLI) as the bar shows it. It is
@@ -28,8 +20,9 @@ export function attachedBrowser(
 	deviceId: string,
 	viewport: ViewportPresetName,
 ): SelectedDevice | null {
-	const port = portOf(ATTACH_ID.exec(deviceId)?.[1] ?? "");
-	if (port == null) return null;
+	const device = webDeviceOf(deviceId);
+	if (device?.kind !== "port") return null;
+	const { port } = device;
 	const name = `Chromium on port ${port}`;
 	return {
 		id: deviceId,
@@ -48,8 +41,7 @@ export function attachedBrowser(
  */
 export function browserDevices(devices: readonly Device[]): Device[] {
 	return devices.filter(
-		(device) =>
-			device.kind === "browser" && !isEverydayDeviceId(device.id) && !ATTACH_ID.test(device.id),
+		(device) => device.kind === "browser" && webDeviceOf(device.id)?.kind === "launched",
 	);
 }
 

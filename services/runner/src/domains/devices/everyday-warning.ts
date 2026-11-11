@@ -5,8 +5,8 @@
  * both read it: in the catalog.
  */
 
+import { webDeviceOf } from "@yoqa/runner-client";
 import { DEFAULT_PROFILE_APP } from "./chromium-browsers";
-import { everydayBrowserIdOf } from "./chromium-everyday";
 
 export const EVERYDAY_WARNING =
 	"Yoqa will drive your Everyday browser, signed in as you. The agent acts in your real accounts there: what it sends, buys or deletes is real. It works in a window of its own, never reads your other tabs, and never clears your cookies, storage or cache.";
@@ -38,7 +38,7 @@ export async function passEverydayWarning(
 	request: { deviceId: string; appId?: string; acceptEverydayWarning?: boolean },
 	acceptances: EverydayWarningAcceptances,
 ): Promise<void> {
-	if (everydayBrowserIdOf(request.deviceId) === null) return;
+	if (webDeviceOf(request.deviceId)?.kind !== "everyday") return;
 	const appId = request.appId ?? DEFAULT_PROFILE_APP;
 	if (request.acceptEverydayWarning) {
 		await acceptances.accept(appId);

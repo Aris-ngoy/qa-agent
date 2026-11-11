@@ -566,11 +566,15 @@ export {
 	WEB_BROWSERS,
 	everydayBrowserId,
 	formatDeviceState,
+	attachDeviceId,
 	installedBrowserId,
-	webBrowserOf,
+	webDeviceOf,
+	type AttachDeviceId,
 	type EverydayBrowserId,
 	type InstalledBrowserId,
+	type WebBrowser,
 	type WebBrowserKey,
+	type WebDevice,
 } from "./web-browsers";
 
 export type RunnerClientOptions = {

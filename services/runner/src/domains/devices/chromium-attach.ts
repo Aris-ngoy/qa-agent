@@ -4,15 +4,7 @@
  * (`chromium-cdp-9222`); ports are never scanned. Attach is localhost only.
  */
 
-const ATTACH_ID = /^chromium-cdp-(\d{1,5})$/;
 const PROBE_TIMEOUT_MS = 2_000;
-
-/** The debug port an attach device id names, or null when it is not one. */
-export function attachPortOf(deviceId: string): number | null {
-	const match = ATTACH_ID.exec(deviceId);
-	const port = Number(match?.[1]);
-	return match && port >= 1 && port <= 65_535 ? port : null;
-}
 
 /** Nothing on the port answered as a Chromium DevTools endpoint. */
 export class NoCdpEndpointError extends Error {
