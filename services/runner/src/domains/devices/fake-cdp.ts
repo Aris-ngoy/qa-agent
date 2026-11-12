@@ -162,6 +162,8 @@ export type FakeCdp = {
 	/** Every key event, down and up, as it reached the page. */
 	keyEvents: KeyEvent[];
 	navigations: string[];
+	/** How many times a page was reloaded (`Page.reload`). */
+	readonly reloads: number;
 	/** How each JavaScript dialog was answered. */
 	dialogAnswers: Array<{ accept: boolean; promptText?: string }>;
 	/** Origins whose storage was cleared. */
@@ -335,6 +337,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	const keys: string[] = [];
 	const keyEvents: KeyEvent[] = [];
 	const navigations: string[] = [];
+	let reloads = 0;
 	const dialogAnswers: FakeCdp["dialogAnswers"] = [];
 	const clearedOrigins: string[] = [];
 	const methods: string[] = [];
@@ -810,6 +813,10 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 						? { errorText: options.navigateError }
 						: { loaderId: `loader-${navigations.length}` }),
 				};
+			case "Page.reload":
+				reloads += 1;
+				if (page) load(page, page.url);
+				return {};
 			case "Page.handleJavaScriptDialog":
 				if (!dialogOpen || dialogOpen.sessionId !== message.sessionId) {
 					throw new Error("No dialog is showing");
@@ -991,6 +998,9 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		keys,
 		keyEvents,
 		navigations,
+		get reloads() {
+			return reloads;
+		},
 		dialogAnswers,
 		clearedOrigins,
 		methods,

@@ -26,7 +26,8 @@
  * ends there. On web, an app id is the App's Web URL:
  * terminate-app closes the App's page, activate-app opens it again, and restart-app does
  * both, with the origin's storage cleared in between when the connection says so. A page
- * has no background, so background-app fails.
+ * has no background, so background-app fails. reload-page reloads the page at its current
+ * URL, keeping its storage, and waits for it to load as open-url does.
  *
  * The browser closing its socket, or the page going away with no opener to go back to, is
  * a Dead Session; the connection then lets go of a browser Yoqa launched. The lane does
@@ -666,12 +667,12 @@ export async function createWebDirectSession(
 	};
 
 	/**
-	 * `Page.navigate` answers as the navigation starts. Until the new document has loaded,
-	 * Chrome may still be swapping it in, and a screenshot fails ("Not attached to an
-	 * active page"), so wait for the load event. A page that never finishes loading is
-	 * left to carry on after `NAVIGATE_LOAD_MS`.
+	 * `Page.navigate` and `Page.reload` answer as the load starts. Until the new document has
+	 * loaded, Chrome may still be swapping it in, and a screenshot fails ("Not attached to an
+	 * active page"), so wait for the load event. A page that never finishes loading is left
+	 * to carry on after `NAVIGATE_LOAD_MS`. `start` says whether it started a load at all.
 	 */
-	const navigate = async (url: string) => {
+	const untilLoaded = async (start: () => Promise<boolean>) => {
 		let loaded = () => {};
 		const load = new Promise<void>((resolve) => {
 			loaded = resolve;
@@ -680,16 +681,29 @@ export async function createWebDirectSession(
 			if (eventSession === page.sessionId) loaded();
 		});
 		try {
-			// The page's `beforeunload` dialog holds the navigation until it is answered.
+			// The page's `beforeunload` dialog holds the load until it is answered.
 			await beforeDialog(async () => {
-				const { errorText, loaderId } = await call("Page.navigate", { url });
-				if (errorText) throw new Error(`Could not open ${url}: ${errorText}`);
-				if (loaderId) await Promise.race([load, client.closed, Bun.sleep(NAVIGATE_LOAD_MS)]);
+				if (await start()) await Promise.race([load, client.closed, Bun.sleep(NAVIGATE_LOAD_MS)]);
 			});
 		} finally {
 			stopListening();
 		}
 	};
+
+	const navigate = (url: string) =>
+		untilLoaded(async () => {
+			const { errorText, loaderId } = await call("Page.navigate", { url });
+			if (errorText) throw new Error(`Could not open ${url}: ${errorText}`);
+			// No `loaderId` for a same-document navigation, which loads nothing.
+			return loaderId !== undefined;
+		});
+
+	/** Reload (a page): the same URL again, keeping cookies and storage and using the cache. */
+	const reloadPage = () =>
+		untilLoaded(async () => {
+			await call("Page.reload", {});
+			return true;
+		});
 
 	/** Closing the browser's last tab can quit it, so a blank page takes over first. */
 	const closeAppPage = async () => {
@@ -853,6 +867,7 @@ export async function createWebDirectSession(
 			return { storage };
 		},
 		openUrl: (url) => navigate(url),
+		reloadPage,
 		acceptAlert: () => answerDialog(true),
 		dismissAlert: () => answerDialog(false),
 		pointer: livePointer,

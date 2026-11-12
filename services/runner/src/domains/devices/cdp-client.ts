@@ -188,6 +188,8 @@ export type CdpCommands = {
 		params: { url: string };
 		result: { frameId: string; loaderId?: string; errorText?: string };
 	};
+	/** Answers as the reload starts, like `Page.navigate`; `ignoreCache` is left off. */
+	"Page.reload": { params: Record<string, never>; result: Record<string, never> };
 	"Input.dispatchMouseEvent": { params: MouseEvent; result: Record<string, never> };
 	"Input.dispatchTouchEvent": { params: TouchEvent; result: Record<string, never> };
 	"Input.dispatchKeyEvent": { params: KeyEvent; result: Record<string, never> };

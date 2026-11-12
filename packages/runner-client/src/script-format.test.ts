@@ -165,6 +165,7 @@ describe("formatCaseScriptShell", () => {
 				{ type: "restart-app", appId: "com.example.app" },
 				{ type: "background-app", seconds: 2 },
 				{ type: "open-url", url: "https://example.com" },
+				{ type: "reload-page" },
 				{ type: "key", key: "Escape", modifiers: ["Meta"] },
 			],
 		});
@@ -173,6 +174,7 @@ describe("formatCaseScriptShell", () => {
 		expect(out).toContain("yoqa action restart-app --app-id 'com.example.app'");
 		expect(out).toContain("yoqa action background-app --seconds 2");
 		expect(out).toContain("yoqa action open-url --url 'https://example.com'");
+		expect(out).toContain("yoqa action reload-page");
 		expect(out).toContain("yoqa action key Escape --modifiers Meta");
 	});
 

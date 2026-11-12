@@ -83,6 +83,10 @@ _Avoid_: step (Run timeline), command (CLI)
 The Action that ends an App and launches it again, for a cold start: terminate, then launch. The App's data (login, preferences, onboarding progress) is kept on a simulator, an emulator, a phone and the Everyday browser. Only a Browser device Yoqa launched clears it: there a restart clears the App origin's storage. The Action's result says which: `kept` or `cleared`.
 _Avoid_: reset, reinstall, relaunch (a launch alone does not end the old process)
 
+**Reload (a page)**:
+The Action that loads the page a Browser device's Device Session drives again, at the URL it is on now, like a browser's reload button. Cookies, storage and logins are kept, and the cache is used. It is a web Action only: on a phone, a simulator or an emulator it fails and says why. It is not a Restart (which ends the App and, on a browser Yoqa launched, clears its storage) and not an open URL (which goes to a URL the Action names).
+_Avoid_: refresh, F5 (a key the page never sees as a reload), hard reload (the cache is not bypassed)
+
 **Settle**:
 Waiting after an Action until the screenshot stops changing, bounded by a cap. An animating screen (typically a game) may never settle; the result then says it did not, and the latest frame is returned anyway.
 _Avoid_: idle wait, sleep (a fixed delay is not a Settle)

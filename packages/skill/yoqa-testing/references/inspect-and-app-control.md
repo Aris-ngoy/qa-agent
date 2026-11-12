@@ -82,6 +82,7 @@ yoqa action restart-app --app-id com.example.app     # terminate, then activate
 yoqa action background-app                            # background for 3s (default)
 yoqa action background-app --seconds 10
 yoqa action open-url --url "https://example.com"
+yoqa action reload-page                               # web only: reload the current page
 ```
 
 On web an app is its **Web URL** (`http` or `https`), and each lifecycle Action acts on the page:
@@ -93,6 +94,7 @@ On web an app is its **Web URL** (`http` or `https`), and each lifecycle Action 
 | `terminate-app` | closes the app's page; the session moves to a blank page |
 | `restart-app` | closes the page, clears all storage and cookies for the origin, then loads the URL fresh |
 | `background-app` | **not supported** — fails with "background-app is not supported on web" |
+| `reload-page` | reloads the current page at its URL, keeping cookies and storage, and waits for it to load. Web only: on a phone or simulator it fails |
 
 ```bash
 yoqa action open-url --url "http://localhost:8081/settings"

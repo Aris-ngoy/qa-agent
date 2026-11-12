@@ -73,6 +73,7 @@ export function scriptActionSummary(action: CaseScriptAction): string {
 	if (action.type === "open-url") {
 		return `Open ${action.url}`;
 	}
+	if (action.type === "reload-page") return "Reload page";
 	if (action.type === "key") {
 		return `Press ${formatKeyChord(action.key, action.modifiers)}`;
 	}

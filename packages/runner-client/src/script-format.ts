@@ -95,6 +95,7 @@ function actionToShellLine(action: CaseScriptAction): string {
 			? `yoqa action background-app --seconds ${action.seconds}`
 			: "yoqa action background-app";
 	}
+	if (action.type === "reload-page") return "yoqa action reload-page";
 	if (action.type === "open-url") {
 		return `yoqa action open-url --url ${shellSingleQuote(action.url)}`;
 	}

@@ -101,6 +101,7 @@ export type ScreenRecording = {
 export type OptionalLaneMember =
 	| "startRecording"
 	| "backgroundApp"
+	| "reloadPage"
 	| "openUrl"
 	| "acceptAlert"
 	| "dismissAlert";
@@ -188,6 +189,8 @@ export type DeviceSession = {
 	 */
 	restartApp: (appId: string) => Promise<{ storage: AppStorage }>;
 	backgroundApp: (seconds?: number) => Promise<void>;
+	/** Load the page it drives again at its current URL, keeping cookies and storage (web only). */
+	reloadPage: () => Promise<void>;
 	openUrl: (url: string) => Promise<void>;
 	acceptAlert: () => Promise<void>;
 	dismissAlert: () => Promise<void>;

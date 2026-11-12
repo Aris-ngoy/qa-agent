@@ -802,6 +802,11 @@ export function shellToCaseScript(
 			continue;
 		}
 
+		if (action.kind === "reload-page") {
+			actions.push({ type: "reload-page" });
+			continue;
+		}
+
 		if (action.kind === "open-url") {
 			if (!action.url) {
 				warnings.push(`L${step.lineNumber}: open-url needs --url — skipped`);

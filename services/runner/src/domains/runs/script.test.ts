@@ -126,6 +126,7 @@ describe("buildScriptFromDecisions", () => {
 					reason: "Deeplink",
 					thoughts: "Skip onboarding",
 				},
+				{ type: "reload-page", reason: "Stale page", thoughts: "List did not refresh" },
 				{
 					type: "assert",
 					assertion: "visible",
@@ -150,6 +151,7 @@ describe("buildScriptFromDecisions", () => {
 			{ type: "type", text: "hello", reason: "Fill email" },
 			{ type: "restart-app", appId: "com.example.app", reason: "Cold start" },
 			{ type: "open-url", url: "myapp://home", reason: "Deeplink" },
+			{ type: "reload-page", reason: "Stale page" },
 			{
 				type: "assert",
 				assertion: "visible",
