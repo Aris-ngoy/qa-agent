@@ -6,6 +6,18 @@ Local-first agentic mobile QA. Bun + Turborepo monorepo with an Electrobun deskt
 
 **Docs:** [Quickstart](https://yoqa.arisn.dev/docs/quickstart)
 
+## Agent skill
+
+[![skills.sh](https://skills.sh/b/Aris-ngoy/qa-agent)](https://skills.sh/Aris-ngoy/qa-agent)
+
+The `yoqa-testing` skill teaches Claude Code, Cursor, Codex and other coding agents to drive Yoqa. Install it with the [`skills`](https://skills.sh) installer:
+
+```bash
+npx skills add Aris-ngoy/qa-agent --skill yoqa-testing
+```
+
+or from the Yoqa CLI, which carries the skill: `yoqa skill install`. The desktop app installs it too, under **Settings → CLI & Agents**.
+
 ## Support Yoqa
 
 If this project helps you, you can [buy me a coffee](https://www.buymeacoffee.com/arisn).
