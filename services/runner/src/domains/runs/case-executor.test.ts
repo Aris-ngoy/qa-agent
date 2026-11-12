@@ -15,7 +15,13 @@ import { encodeRgbaPng } from "../devices/png";
 import { type DeviceSession, createDeviceSession } from "../devices/session";
 import type { ActiveProviderAuth } from "../providers/application";
 import type { AgentDecision } from "./agent";
-import { executeAgentCase, executeScriptCase } from "./case-executor";
+import {
+	type CaseDeps,
+	caseModeFor,
+	executeAgentCase,
+	executeCase,
+	executeScriptCase,
+} from "./case-executor";
 
 /** Where the agent loop stores Result screenshots in these tests. */
 const SHOT_DIR = mkdtempSync(join(tmpdir(), "yoqa-case-executor-"));
@@ -2851,5 +2857,137 @@ describe("executeAgentCase", () => {
 
 			expect(grids.every((grid) => grid === false)).toBe(true);
 		});
+	});
+});
+
+describe("caseModeFor", () => {
+	it("replays a Case Script unless the Run asks for the agent", () => {
+		expect(caseModeFor("auto", true)).toBe("script");
+		expect(caseModeFor("script", true)).toBe("script");
+		expect(caseModeFor("agent", true)).toBe("agent");
+		expect(caseModeFor("auto", false)).toBe("agent");
+		expect(caseModeFor("script", false)).toBe("agent");
+	});
+});
+
+describe("executeCase", () => {
+	const tapScript: CaseScript = {
+		version: 1,
+		savedAt: 1,
+		profile: "clean",
+		actions: [{ type: "tap", x: 100, y: 200, reason: "tap login" }],
+	};
+
+	/** The agent taps Allow once, then says it is done. */
+	function tapThenDone() {
+		let calls = 0;
+		return async (): Promise<AgentDecision> => {
+			calls += 1;
+			return calls === 1
+				? { type: "tap", label: "Allow", reason: "Grant", thoughts: "dialog" }
+				: { type: "done", reason: "done", thoughts: "home visible" };
+		};
+	}
+
+	function deps(overrides: Partial<CaseDeps>): CaseDeps {
+		const base: CaseDeps = {
+			catalogCase: emptyCase(),
+			mode: "agent",
+			runId: "run_7",
+			auth: fakeAuth(),
+			appContext: "demo",
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async () => {},
+			performAction: async (_session: DeviceSession, body: ActionRequest) => ({
+				ok: true,
+				kind: body.kind,
+			}),
+			clock: { sleep: async () => {}, now: () => 1 },
+			settle: { capMs: 0 },
+			screenshotDir: SHOT_DIR,
+		};
+		return { ...base, ...overrides };
+	}
+
+	it("replays the case's own Case Script, with no Provider", async () => {
+		const actions: ActionRequest[] = [];
+		const outcome = await executeCase(
+			deps({
+				mode: "script",
+				auth: null,
+				catalogCase: emptyCase({ hasScript: true, script: tapScript }),
+				performAction: async (_session, body) => {
+					actions.push(body);
+					return { ok: true, kind: body.kind };
+				},
+			}),
+		);
+
+		expect(outcome).toEqual({ status: "passed", error: null, learnedScript: null });
+		expect(actions).toEqual([{ kind: "tap", x: 100, y: 200 }]);
+	});
+
+	it("names a failed replay", async () => {
+		const outcome = await executeCase(
+			deps({
+				mode: "script",
+				catalogCase: emptyCase({ hasScript: true, script: tapScript }),
+				performAction: async () => {
+					throw new Error("tap failed");
+				},
+			}),
+		);
+
+		expect(outcome).toMatchObject({ status: "errored", error: "Saved script replay failed" });
+	});
+
+	it("errors a script case that has no Case Script", async () => {
+		const outcome = await executeCase(deps({ mode: "script" }));
+		expect(outcome).toMatchObject({
+			status: "errored",
+			error: "Saved script is missing or invalid",
+		});
+	});
+
+	it("errors an agent case without a Provider, before any step", async () => {
+		const steps: unknown[] = [];
+		const outcome = await executeCase(
+			deps({
+				auth: null,
+				appendStep: async (step) => {
+					steps.push(step);
+				},
+			}),
+		);
+
+		expect(outcome).toEqual({
+			status: "errored",
+			error: "No vision-capable provider configured for AI agent runs",
+			learnedScript: null,
+		});
+		expect(steps).toEqual([]);
+	});
+
+	it("a passed agent case learns a Case Script from this Run, on the profile its old one asked for", async () => {
+		const outcome = await executeCase(
+			deps({
+				catalogCase: emptyCase({ hasScript: true, script: tapScript }),
+				decide: tapThenDone(),
+			}),
+		);
+
+		expect(outcome.status).toBe("passed");
+		expect(outcome.learnedScript).toMatchObject({
+			sourceRunId: "run_7",
+			profile: "clean",
+			actions: [{ type: "tap", label: "Allow" }],
+		});
+	});
+
+	it("a passed agent case with no old Case Script learns one on no profile", async () => {
+		const outcome = await executeCase(deps({ decide: tapThenDone() }));
+		expect(outcome.learnedScript?.profile).toBeUndefined();
+		expect(outcome.learnedScript?.actions).toHaveLength(1);
 	});
 });
