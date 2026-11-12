@@ -758,7 +758,8 @@ describe("executeAgentCase", () => {
 			});
 
 			expect(result.status).toBe("passed");
-			expect(browser.clearedOrigins).toEqual(["https://shop.example.com"]);
+			// An attached browser keeps its storage on restart.
+			expect(browser.clearedOrigins).toEqual([]);
 			expect(browser.navigations).toEqual(["https://shop.example.com/"]);
 		} finally {
 			await session.quit();
