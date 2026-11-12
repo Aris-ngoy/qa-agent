@@ -356,12 +356,12 @@ describe("web Direct lane: app lifecycle", () => {
 		await session.quit();
 	});
 
-	test("restart-app clears the App origin's storage, then loads the App again", async () => {
+	test("restart-app keeps an attached browser's storage, then loads the App again", async () => {
 		const { browser, session } = await attach();
 		await performAction(session, { kind: "open-url", url: "https://app.example.com/cart" });
 		const result = await performAction(session, { kind: "restart-app", appId: APP_URL });
-		expect(result.storage).toBe("cleared");
-		expect(browser.clearedOrigins).toEqual(["https://app.example.com"]);
+		expect(result.storage).toBe("kept");
+		expect(browser.clearedOrigins).toEqual([]);
 		expect(browser.navigations).toEqual(["https://app.example.com/cart", APP_URL]);
 		expect(browser.pages()).toEqual([APP_URL]);
 		await session.quit();
