@@ -197,7 +197,8 @@ export function portConnection(client: CdpClient): BrowserConnection {
 		label: async () => ({
 			browser: (await client.send("Browser.getVersion", {})).product.replace("/", " "),
 		}),
-		restartStorage: "cleared",
+		// Not Yoqa's profile: a restart never wipes it (CONTEXT.md, Restart).
+		restartStorage: "kept",
 		exited: never(),
 		abort: async () => {
 			await client.close().catch(() => undefined);

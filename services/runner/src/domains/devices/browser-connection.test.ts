@@ -69,7 +69,7 @@ describe("browser connection: the device id picks the way in", () => {
 });
 
 describe("browser connection: attached by port", () => {
-	test("drives the browser's first page, names it as it reports itself, and clears on restart", async () => {
+	test("drives the browser's first page, names it as it reports itself, and keeps storage on restart", async () => {
 		const browser = startFakeCdp({ viewport: VIEWPORT });
 		const connection = await openBrowserConnection(
 			{ deviceId: `chromium-cdp-${browser.port}` },
@@ -79,7 +79,7 @@ describe("browser connection: attached by port", () => {
 		expect(tab).toBe(browser.frontPage() ?? "");
 		expect(browser.createdTargets).toEqual([]);
 		expect(await connection.label()).toEqual({ browser: "Chrome 140.0.0.0" });
-		expect(connection.restartStorage).toBe("cleared");
+		expect(connection.restartStorage).toBe("kept");
 		await connection.disconnect([tab]);
 		browser.kill();
 	});

@@ -21,7 +21,7 @@ A Browser device ([CONTEXT.md](../../CONTEXT.md)) has three ways in: a browser Y
 
 ### Behaviour
 
-Unchanged. One mismatch is kept as it was: a browser attached by port clears the App origin's storage on restart-app (`cleared`), which an existing lane test asserts. CONTEXT.md's **Restart** entry says only a browser Yoqa launched clears it. Following the glossary is now a one-line change in `portConnection`.
+Unchanged, with one fix: a browser attached by port used to clear the App origin's storage on restart-app (`cleared`). CONTEXT.md's **Restart** entry says only a browser Yoqa launched clears it, and that is the intended behaviour, so `portConnection.restartStorage` is now `kept` and restart-app clears nothing there.
 
 ## How to verify
 
@@ -31,4 +31,4 @@ Unchanged. One mismatch is kept as it was: a browser attached by port clears the
 
 ## Follow-ups
 
-- Settle whether attach by port should keep storage on restart (CONTEXT.md) or clear it (the code and test today), then change `portConnection.restartStorage` or the glossary to match.
+None.
