@@ -75,6 +75,8 @@ type ScreenshotPanelProps = {
 	onSelectWithPoint?: (selection: InspectorSelection) => void;
 	onSelect: (selection: InspectorSelection) => void;
 	onRefreshTree: () => void;
+	/** Reload (a page), only while a Browser device's page can be reloaded (also F5 / ⌘R). */
+	onReloadPage?: () => void;
 	/** Double-click records a tap for the hit element/point. */
 	onDoubleTap: (selection: InspectorSelection) => void;
 	onPointer: (phase: "begin" | "move" | "end", x: number, y: number) => void;
@@ -97,6 +99,7 @@ export function ScreenshotPanel({
 	onSelectWithPoint,
 	onSelect,
 	onRefreshTree,
+	onReloadPage,
 	onDoubleTap,
 	onPointer,
 	onClearSelection,
@@ -400,6 +403,17 @@ export function ScreenshotPanel({
 								<path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
 								<path d="M21 3v5h-5" />
 							</svg>
+						</button>
+					) : null}
+					{attached && onReloadPage ? (
+						<button
+							type="button"
+							title="Reload page (F5 or ⌘R)"
+							aria-keyshortcuts="F5 Meta+R"
+							className={HEADER_BUTTON_CLASS}
+							onClick={onReloadPage}
+						>
+							Reload
 						</button>
 					) : null}
 					{attached ? (

@@ -98,6 +98,8 @@ export function buildScriptFromDecisions(
 				...(decision.seconds != null ? { seconds: decision.seconds } : {}),
 				reason: decision.reason,
 			});
+		} else if (decision.type === "reload-page") {
+			actions.push({ type: "reload-page", reason: decision.reason });
 		} else if (decision.type === "open-url") {
 			if (!decision.url) continue;
 			actions.push({

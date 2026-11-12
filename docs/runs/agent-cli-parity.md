@@ -29,6 +29,7 @@ Rejected: nested `yoqa` CLI from inside the runner (same Device Session); treati
 | `yoqa action activate-app` / `terminate-app` / `restart-app` | same; omit `appId` to use the catalog bundle / application id |
 | `yoqa action background-app` | `background-app` |
 | `yoqa action open-url` | `open-url` |
+| `yoqa action reload-page` | `reload-page` (web only) |
 | `yoqa assert visible\|not-visible` | `assert` |
 
 **Executor**

@@ -569,6 +569,7 @@ export async function createIosDeviceSession(
 			targetApp: true,
 			unsupported: {
 				openUrl: notYet("Opening a URL"),
+				reloadPage: "reload-page is web only: an iOS app has no page to reload",
 				acceptAlert: notYet("Accepting an alert"),
 				dismissAlert: notYet("Dismissing an alert"),
 			},

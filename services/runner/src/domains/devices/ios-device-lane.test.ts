@@ -808,13 +808,14 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 
 describe("Actions a cabled iPhone does not do yet", () => {
 	// That each one rejects as `ActionUnsupportedError` (422) is the Lane contract's test.
-	test("open-url and the alerts are declared unsupported", async () => {
+	test("open-url, the alerts, and the web-only reload-page are declared unsupported", async () => {
 		const phone = fakePhone();
 		const session = await createIosDeviceSession(options(), phone.deps);
 		expect(Object.keys(session.capabilities.unsupported).sort()).toEqual([
 			"acceptAlert",
 			"dismissAlert",
 			"openUrl",
+			"reloadPage",
 		]);
 		await session.quit();
 	});

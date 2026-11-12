@@ -937,6 +937,14 @@ describe("decisionToActionRequest", () => {
 
 		expect(
 			decisionToActionRequest({
+				type: "reload-page",
+				reason: "Page is stale",
+				thoughts: "The list did not refresh",
+			}),
+		).toEqual({ kind: "reload-page" });
+
+		expect(
+			decisionToActionRequest({
 				type: "key",
 				key: "Escape",
 				modifiers: ["Control"],

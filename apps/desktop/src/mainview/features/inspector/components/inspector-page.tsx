@@ -8,6 +8,7 @@ import { ScreenshotPanel } from "@/features/inspector/components/screenshot-pane
 import { ScriptPanel } from "@/features/inspector/components/script-panel";
 import { TreeSourceBar } from "@/features/inspector/components/tree-source-bar";
 import { useInspectorFeed } from "@/features/inspector/hooks/use-inspector-feed";
+import { useReloadShortcut } from "@/features/inspector/hooks/use-reload-shortcut";
 import { useScriptSession } from "@/features/inspector/hooks/use-script-session";
 import { useTreePanel } from "@/features/inspector/hooks/use-tree-panel";
 import { defaultCaseNameFromScript, scriptHasBody } from "@/features/inspector/utils/script-text";
@@ -58,6 +59,9 @@ export function InspectorPage() {
 	const casePreview = useMemo(() => parseCaseScriptFile(scriptText), [scriptText]);
 
 	const connected = feed.active != null;
+	// Reload (a page) is web only, and waits like the other helpers while a script or Run holds the page.
+	const canReloadPage = connected && feed.active?.platform === "web" && !running && !feed.viewOnly;
+	useReloadShortcut(canReloadPage, script.handleReloadPage);
 	const canSaveAsCase = Boolean(selectedApp) && scriptHasBody(scriptText);
 	const snippetContext = useMemo(
 		() => ({
@@ -103,6 +107,7 @@ export function InspectorPage() {
 						onSelect={feed.handleSelect}
 						onSelectWithPoint={feed.handleSelectWithPoint}
 						onRefreshTree={feed.handleRefreshTree}
+						onReloadPage={canReloadPage ? script.handleReloadPage : undefined}
 						onDoubleTap={script.handleDoubleTap}
 						onPointer={feed.sendPointer}
 						onClearSelection={() => feed.handleSelect(null)}

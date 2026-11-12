@@ -40,6 +40,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [devices/web-attach-by-port.md](./devices/web-attach-by-port.md) | Web tracer bullet: attach a user-started Chromium by port, screenshot/tap/input/open-url |
 | [devices/web-screen.md](./devices/web-screen.md) | Web Screen: cleaned accessibility tree with 0–1000 bounds, raw `--full` tree, Tree assist on web roles, iframe content, an open JavaScript dialog as a `modal` |
 | [devices/web-gestures-alerts-lifecycle.md](./devices/web-gestures-alerts-lifecycle.md) | Web swipe (wheel), drag, JavaScript dialogs as alerts, and app lifecycle on the Web URL |
+| [devices/web-reload-page.md](./devices/web-reload-page.md) | Reload (a page) on a Browser device: `reload-page` over `Page.reload`, web only, Inspector button with F5 / ⌘R |
 | [devices/key-action.md](./devices/key-action.md) | `key` Action on every platform: named keys and modifiers, declared per Lane |
 | [devices/web-installed-browsers.md](./devices/web-installed-browsers.md) | Installed Chrome/Edge/Brave/Chromium as web devices, launched as Yoqa-owned instances |
 | [devices/web-supported-browsers.md](./devices/web-supported-browsers.md) | Which browsers are web devices (Chromium only), and the clear error for a Firefox or Safari device id |

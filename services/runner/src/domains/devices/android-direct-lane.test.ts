@@ -110,6 +110,18 @@ describe("createAndroidDirectSession", () => {
 		await session.quit();
 	});
 
+	test("reload-page fails and says it is web only", async () => {
+		const { adb } = recordingAdb();
+		const session = await createAndroidDirectSession(options(), {
+			adb,
+			resolveSerial: async () => "emulator-5554",
+		});
+		await expect(session.reloadPage()).rejects.toThrow(
+			"reload-page is web only: an Android app has no page to reload",
+		);
+		await session.quit();
+	});
+
 	test("acceptAlert taps the Allow node from the dump", async () => {
 		const { adb, calls } = recordingAdb();
 		const session = await createAndroidDirectSession(options(), {

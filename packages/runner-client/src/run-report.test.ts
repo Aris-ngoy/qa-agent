@@ -75,6 +75,7 @@ describe("actionSummary", () => {
 			"Open URL: https://example.com",
 		);
 		expect(actionSummary({ type: "restart-app" })).toBe("Restart app");
+		expect(actionSummary({ type: "reload-page" })).toBe("Reload page");
 		expect(actionSummary({ type: "key", key: "Tab", modifiers: ["Shift"] })).toBe(
 			"Press Shift+Tab",
 		);
@@ -127,6 +128,7 @@ describe("formatStepCommand", () => {
 		expect(formatStepCommand({ type: "open-url", url: "https://example.com" })).toBe(
 			"yoqa action open-url --url 'https://example.com'",
 		);
+		expect(formatStepCommand({ type: "reload-page" })).toBe("yoqa action reload-page");
 		expect(formatStepCommand({ type: "key", key: "Enter" })).toBe("yoqa action key Enter");
 		expect(formatStepCommand({ type: "tap", x: 10, y: 20, double: true })).toBe(
 			"yoqa action tap --x 10 --y 20 --double",

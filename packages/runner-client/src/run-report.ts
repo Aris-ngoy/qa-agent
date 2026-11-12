@@ -179,6 +179,7 @@ function summarizeActionRecord(record: RunStepActionFields): string {
 	if (type === "terminate-app") return "Terminate app";
 	if (type === "restart-app") return "Restart app";
 	if (type === "background-app") return "Background app";
+	if (type === "reload-page") return "Reload page";
 	if (type === "key") {
 		return record.key ? `Press ${formatKeyChord(record.key, record.modifiers ?? [])}` : "Press key";
 	}
@@ -253,6 +254,8 @@ export function formatStepCommand(action: StepAction): string | null {
 	} else if (type === "activate-app" || type === "terminate-app" || type === "restart-app") {
 		const appId = trimmed(action.appId);
 		request = { kind: type, ...(appId ? { appId } : {}) };
+	} else if (type === "reload-page") {
+		request = { kind: "reload-page" };
 	} else if (type === "background-app") {
 		request = {
 			kind: "background-app",

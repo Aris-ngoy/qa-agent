@@ -86,6 +86,7 @@ export type LaneDriver = Pick<DeviceSession, DriverReads | DriverActions> &
 const OPTIONAL_MEMBERS: readonly OptionalLaneMember[] = [
 	"startRecording",
 	"backgroundApp",
+	"reloadPage",
 	"openUrl",
 	"acceptAlert",
 	"dismissAlert",
@@ -227,6 +228,7 @@ export function composeDeviceSession(driver: LaneDriver): DeviceSession {
 					return { storage: "kept" };
 				},
 		backgroundApp: optional("backgroundApp", true),
+		reloadPage: optional("reloadPage", true),
 		openUrl: optional("openUrl", true),
 		acceptAlert: optional("acceptAlert", true),
 		dismissAlert: optional("dismissAlert", true),

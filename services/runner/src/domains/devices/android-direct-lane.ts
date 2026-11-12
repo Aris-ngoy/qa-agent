@@ -350,7 +350,11 @@ export async function createAndroidDirectSession(
 	const session = composeDeviceSession({
 		stream: null,
 		...(laneWarning ? { laneWarning } : {}),
-		capabilities: { keys: ANDROID_KEY_SUPPORT, targetApp: true, unsupported: {} },
+		capabilities: {
+			keys: ANDROID_KEY_SUPPORT,
+			targetApp: true,
+			unsupported: { reloadPage: "reload-page is web only: an Android app has no page to reload" },
+		},
 		where: "on Android",
 		quit: async () => {
 			await frameLoop?.stop();

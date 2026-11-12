@@ -172,6 +172,7 @@ for (const makeHarness of LANES) {
 			const attempts: Record<OptionalLaneMember, () => Promise<unknown>> = {
 				startRecording: () => session.startRecording("/tmp/yoqa-contract.mp4"),
 				backgroundApp: () => session.backgroundApp(0),
+				reloadPage: () => session.reloadPage(),
 				openUrl: () => session.openUrl("https://example.com/"),
 				acceptAlert: () => session.acceptAlert(),
 				dismissAlert: () => session.dismissAlert(),

@@ -23,7 +23,7 @@ Rejected for this slice: structured per-step visual editor, invalidating scripts
 ## What shipped
 
 **Client (`@yoqa/runner-client`)**
-- `caseScriptSchema` / `CaseScript` — tap (x/y, `label`, or `id`, optional `double` / `durationMs`), swipe/drag (x/y/x2/y2), type, wait, assert, alert, activate/terminate/restart-app, background-app, open-url
+- `caseScriptSchema` / `CaseScript` — tap (x/y, `label`, or `id`, optional `double` / `durationMs`), swipe/drag (x/y/x2/y2), type, wait, assert, alert, activate/terminate/restart-app, background-app, open-url, reload-page (web only)
 - `CatalogCase.hasScript`, `scriptSavedAt`, `script`
 - `UpdateCaseRequest.script` (`null` clears)
 - `formatCaseScriptJson` / `formatCaseScriptShell` / `suggestedScriptBasename`

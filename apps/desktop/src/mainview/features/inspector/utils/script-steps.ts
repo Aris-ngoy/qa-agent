@@ -38,6 +38,7 @@ const VERBS: Record<CaseScriptAction["type"], string> = {
 	"restart-app": "Restart app",
 	"background-app": "Background app",
 	"open-url": "Open URL",
+	"reload-page": "Reload page",
 	key: "Press",
 	branch: "If",
 };
@@ -77,6 +78,8 @@ function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | 
 			return { verb, text: action.seconds != null ? `${action.seconds} s` : "", meta: "" };
 		case "open-url":
 			return { verb, text: action.url, meta: "" };
+		case "reload-page":
+			return { verb, text: "", meta: "" };
 		case "key":
 			return { verb, text: formatKeyChord(action.key, action.modifiers), meta: "" };
 		case "branch": {

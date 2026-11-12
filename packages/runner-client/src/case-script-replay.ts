@@ -174,6 +174,8 @@ export function caseScriptActionRequest(action: CaseScriptAction): ActionRequest
 			};
 		case "open-url":
 			return { kind: "open-url", url: action.url };
+		case "reload-page":
+			return { kind: "reload-page" };
 		case "key":
 			return {
 				kind: "key",

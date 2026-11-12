@@ -443,7 +443,11 @@ export async function createIosDirectSession(
 
 	const session: DeviceSession = composeDeviceSession({
 		stream: null,
-		capabilities: { keys: IOS_SIMULATOR_KEY_SUPPORT, targetApp: true, unsupported: {} },
+		capabilities: {
+			keys: IOS_SIMULATOR_KEY_SUPPORT,
+			targetApp: true,
+			unsupported: { reloadPage: "reload-page is web only: an iOS app has no page to reload" },
+		},
 		where: "on an iOS simulator",
 		// The first Action also starts `yoqa-ax`; `yoqa-sim` is already up from connect.
 		lock: { queued: () => void startHelpers() },

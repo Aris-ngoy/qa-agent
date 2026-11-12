@@ -110,6 +110,22 @@ describe("web Direct lane: Actions reach the page", () => {
 		expect((error as Error).message).toContain("net::ERR_NAME_NOT_RESOLVED");
 		await session.quit();
 	});
+
+	test("reload-page reloads the page at its URL, without navigating anywhere", async () => {
+		const { browser, session } = await attach();
+		await session.openUrl("https://example.com/cart");
+		await performAction(session, { kind: "reload-page" });
+		expect(browser.reloads).toBe(1);
+		expect(browser.navigations).toEqual(["https://example.com/cart"]);
+		await session.quit();
+	});
+
+	test("reload-page waits for the page to load, so the next screenshot captures it", async () => {
+		const { session } = await attach();
+		await session.reloadPage();
+		expect((await session.screenshot()).base64).not.toBe("");
+		await session.quit();
+	});
 });
 
 /**
