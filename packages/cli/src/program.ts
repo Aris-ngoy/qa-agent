@@ -85,6 +85,7 @@ import {
 	formatSigningStatus,
 	pickCheckDevice,
 } from "./signing";
+import { SKILL_NAME, formatSkillInstall, installSkill } from "./skill-install";
 
 function runnerBaseUrl(): string {
 	return runnerBaseUrlFromEnv();
@@ -151,6 +152,7 @@ program.hook("preAction", async (_thisCommand, actionCommand) => {
 	if (commandChainIncludes(actionCommand, "serve")) return;
 	// Checking a Case Script file is offline: no runner, no device.
 	if (commandChainIncludes(actionCommand, "script") && actionCommand.name() === "validate") return;
+	if (commandChainIncludes(actionCommand, "skill")) return;
 	if (shouldSkipAutostart()) return;
 	try {
 		await ensureRunner({ mode: "detached" });
@@ -2238,6 +2240,30 @@ program
 			}
 		},
 	);
+
+// --- skill (the agent skill this CLI carries) ---
+
+program
+	.command("skill")
+	.description(`The ${SKILL_NAME} agent skill bundled in this CLI`)
+	.command("install")
+	.description(
+		`Install the ${SKILL_NAME} skill for Claude Code, Cursor, Codex and other agents (no desktop app needed)`,
+	)
+	.option(
+		"--dir <path>",
+		`Write a plain copy to <path>/${SKILL_NAME} only, e.g. a project's .claude/skills`,
+	)
+	.option("--force", `Replace a ${SKILL_NAME} that yoqa did not install`)
+	.option("--json", "Print raw JSON")
+	.action(async (options: { dir?: string; force?: boolean; json?: boolean }) => {
+		try {
+			const result = await installSkill({ dir: options.dir, force: options.force });
+			console.log(options.json ? JSON.stringify(result, null, 2) : formatSkillInstall(result));
+		} catch (error) {
+			fail("skill install", error);
+		}
+	});
 
 /** The fully built command tree. Exported so tests can introspect it without running the CLI. */
 export function buildProgram(): Command {
