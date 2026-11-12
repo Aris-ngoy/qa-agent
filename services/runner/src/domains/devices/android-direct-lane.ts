@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { KEY_NAMES } from "@yoqa/runner-client";
 import { ensureAndroidSdkEnv } from "../android-toolchain/android-sdk";
 import {
@@ -23,29 +23,23 @@ import {
 } from "./android-devtools";
 import { type PointerSize, pngSizeFromBase64, toPx } from "./android-gestures";
 import { resolveAndroidIdentity } from "./application";
+import { composeDeviceSession } from "./device-session";
+import { type ToolExec, type ToolResult, requireOk, spawnTool, toolFailure } from "./device-tool";
 import { createFrameLoop } from "./frame-loop";
 import {
 	type DeviceSession,
 	type KeySupport,
-	type PointerPhase,
 	type ScreenRecording,
 	type SessionOptions,
-	assertKeySupported,
 	guardToolLoss,
 	reportLaneFallback,
 } from "./lane";
 import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
-import { SCREENSHOT_DIR } from "./screenshot-retention";
 
-export type AdbResult = {
-	stdout: string;
-	stderr: string;
-	exitCode: number;
-	stdoutBytes?: Uint8Array;
-};
+export type AdbResult = ToolResult;
 
-export type AdbExec = (args: string[]) => Promise<AdbResult>;
+export type AdbExec = ToolExec<AdbResult>;
 
 /** `screenrecord` refuses to run longer than this per file. */
 const SCREENRECORD_LIMIT_SECONDS = 180;
@@ -90,40 +84,8 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-function fail(result: AdbResult, label: string): never {
-	throw new Error(
-		`${label}: ${result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`}`,
-	);
-}
-
-async function requireOk(result: AdbResult, label: string): Promise<AdbResult> {
-	if (result.exitCode !== 0) fail(result, label);
-	return result;
-}
-
 export function createAdbExec(adbBin: string): AdbExec {
-	return async (args) => {
-		try {
-			const proc = Bun.spawn([adbBin, ...args], {
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			const [stdoutBuf, stderr, exitCode] = await Promise.all([
-				new Response(proc.stdout).arrayBuffer(),
-				new Response(proc.stderr).text(),
-				proc.exited,
-			]);
-			const stdoutBytes = new Uint8Array(stdoutBuf);
-			return {
-				stdout: new TextDecoder().decode(stdoutBytes),
-				stderr,
-				exitCode,
-				stdoutBytes,
-			};
-		} catch (error) {
-			return { stdout: "", stderr: errorMessage(error), exitCode: 127 };
-		}
-	};
+	return (args) => spawnTool([adbBin, ...args]);
 }
 
 function resolveAdbBin(): string {
@@ -139,25 +101,6 @@ async function defaultResolveSerial(deviceId: string): Promise<string> {
 		throw new Error(`Android device ${deviceId} is not connected`);
 	}
 	return identity.udid;
-}
-
-function createLock() {
-	let chain = Promise.resolve();
-	let pointerActive = false;
-	return {
-		isPointerActive: () => pointerActive,
-		setPointerActive: (value: boolean) => {
-			pointerActive = value;
-		},
-		withLock: <T>(fn: () => Promise<T>): Promise<T> => {
-			const run = chain.then(fn, fn);
-			chain = run.then(
-				() => undefined,
-				() => undefined,
-			);
-			return run;
-		},
-	};
 }
 
 /**
@@ -189,7 +132,6 @@ export async function createAndroidDirectSession(
 
 	let lastShotSize: PointerSize | null = null;
 	let lastAppId = options.appPackage;
-	let pointerStart: { x: number; y: number } | null = null;
 
 	const grabFrame = async () => {
 		const result = await requireOk(
@@ -221,14 +163,6 @@ export async function createAndroidDirectSession(
 	};
 
 	const captureFrame = frameLoop ? () => frameLoop.read(lastInputAt) : grabFrame;
-
-	const screenshot = async () => {
-		await mkdir(SCREENSHOT_DIR, { recursive: true });
-		const frame = await captureFrame();
-		const path = join(SCREENSHOT_DIR, `shot_${Date.now()}_${crypto.randomUUID()}.png`);
-		await Bun.write(path, Uint8Array.from(Buffer.from(frame.base64, "base64")));
-		return { path, base64: frame.base64 };
-	};
 
 	let devtools: AndroidDevtools | null = null;
 	let laneWarning: string | undefined;
@@ -293,8 +227,6 @@ export async function createAndroidDirectSession(
 		return window;
 	};
 
-	const lock = createLock();
-
 	const tapPx = async (x: number, y: number, durationMs: number) => {
 		if (durationMs > 80) {
 			await shell(
@@ -306,15 +238,9 @@ export async function createAndroidDirectSession(
 		await shell(["input", "tap", String(x), String(y)], "input tap");
 	};
 
-	const tap = async (
-		xNorm: number,
-		yNorm: number,
-		tapOptions?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
-	) => {
-		await lock.withLock(async () => {
-			const size = await pointerSize(tapOptions?.coordSpace);
-			await tapPx(toPx(xNorm, size.width), toPx(yNorm, size.height), tapOptions?.durationMs ?? 50);
-		});
+	const tap: DeviceSession["tap"] = async (xNorm, yNorm, tapOptions) => {
+		const size = await pointerSize(tapOptions?.coordSpace);
+		await tapPx(toPx(xNorm, size.width), toPx(yNorm, size.height), tapOptions?.durationMs ?? 50);
 	};
 
 	const swipe = async (
@@ -325,77 +251,40 @@ export async function createAndroidDirectSession(
 		durationMs = 400,
 		swipeOptions?: { coordSpace?: "window" | "screenshot" },
 	) => {
-		await lock.withLock(async () => {
-			const size = await pointerSize(swipeOptions?.coordSpace);
-			await shell(
-				[
-					"input",
-					"swipe",
-					String(toPx(x1, size.width)),
-					String(toPx(y1, size.height)),
-					String(toPx(x2, size.width)),
-					String(toPx(y2, size.height)),
-					String(Math.max(50, durationMs)),
-				],
-				"input swipe",
-			);
-		});
+		const size = await pointerSize(swipeOptions?.coordSpace);
+		await shell(
+			[
+				"input",
+				"swipe",
+				String(toPx(x1, size.width)),
+				String(toPx(y1, size.height)),
+				String(toPx(x2, size.width)),
+				String(toPx(y2, size.height)),
+				String(Math.max(50, durationMs)),
+			],
+			"input swipe",
+		);
 	};
 
 	const type = async (text: string) => {
-		await lock.withLock(async () => {
-			const lines = text.split(/\r?\n/);
-			for (const [i, line] of lines.entries()) {
-				if (line.length > 0) {
-					await shell(["input", "text", encodeAdbInputText(line)], "input text");
-				}
-				if (i < lines.length - 1) {
-					await shell(["input", "keyevent", "66"], "input keyevent");
-				}
+		const lines = text.split(/\r?\n/);
+		for (const [i, line] of lines.entries()) {
+			if (line.length > 0) {
+				await shell(["input", "text", encodeAdbInputText(line)], "input text");
 			}
-		});
+			if (i < lines.length - 1) {
+				await shell(["input", "keyevent", "66"], "input keyevent");
+			}
+		}
 	};
 
-	const key: DeviceSession["key"] = async (name, modifiers = []) => {
-		assertKeySupported(ANDROID_KEY_SUPPORT, "on Android", name, modifiers);
-		await lock.withLock(async () => {
-			await shell(adbKeyArgs(name, modifiers), "input key");
-		});
-	};
-
-	const activateApp = async (appId: string) => {
-		await lock.withLock(async () => {
-			lastAppId = appId;
-			await shell(
-				["monkey", "-p", appId, "-c", "android.intent.category.LAUNCHER", "1"],
-				"monkey launch",
-			);
-		});
-	};
-
-	const terminateApp = async (appId: string) => {
-		await lock.withLock(async () => {
-			await shell(["am", "force-stop", appId], "am force-stop");
-		});
-	};
+	const launch = (appId: string, label: string) =>
+		shell(["monkey", "-p", appId, "-c", "android.intent.category.LAUNCHER", "1"], label);
 
 	const backgroundApp = async (seconds = 3) => {
-		await lock.withLock(async () => {
-			await shell(["input", "keyevent", "3"], "KEYCODE_HOME");
-			await Bun.sleep(Math.max(0, seconds) * 1000);
-			if (lastAppId) {
-				await shell(
-					["monkey", "-p", lastAppId, "-c", "android.intent.category.LAUNCHER", "1"],
-					"monkey resume",
-				);
-			}
-		});
-	};
-
-	const openUrl = async (url: string) => {
-		await lock.withLock(async () => {
-			await shell(["am", "start", "-a", "android.intent.action.VIEW", "-d", url], "am start VIEW");
-		});
+		await shell(["input", "keyevent", "3"], "KEYCODE_HOME");
+		await Bun.sleep(Math.max(0, seconds) * 1000);
+		if (lastAppId) await launch(lastAppId, "monkey resume");
 	};
 
 	const resolveAlert = async (action: "accept" | "dismiss") => {
@@ -453,67 +342,63 @@ export async function createAndroidDirectSession(
 				const pulled = finalized ? await adb(["-s", serial, "pull", remote, path]) : null;
 				await adb(["-s", serial, "shell", "rm", "-f", remote]);
 				if (!pulled) throw new Error("screenrecord did not finish writing the video");
-				if (pulled.exitCode !== 0) fail(pulled, "adb pull recording");
+				if (pulled.exitCode !== 0) throw toolFailure(pulled, "adb pull recording");
 			},
 		};
 	};
 
-	const session: DeviceSession = {
-		lane: "direct",
+	const session = composeDeviceSession({
 		stream: null,
 		...(laneWarning ? { laneWarning } : {}),
+		capabilities: { keys: ANDROID_KEY_SUPPORT, targetApp: true, unsupported: {} },
+		where: "on Android",
 		quit: async () => {
 			await frameLoop?.stop();
 			await stopDevtools();
 		},
 		startRecording,
 		captureFrame,
-		screenshot,
 		pageSource,
 		getWindowSize,
 		tap,
 		swipe,
 		drag: (x1, y1, x2, y2, durationMs = 800) => swipe(x1, y1, x2, y2, durationMs),
 		type,
-		keySupport: ANDROID_KEY_SUPPORT,
-		key,
-		activateApp,
+		key: async (name, modifiers = []) => {
+			await shell(adbKeyArgs(name, modifiers), "input key");
+		},
+		activateApp: async (appId) => {
+			lastAppId = appId;
+			await launch(appId, "monkey launch");
+		},
 		setTargetApp: (appId) => {
 			lastAppId = appId;
 		},
 		targetApp: () => lastAppId,
-		terminateApp,
+		terminateApp: async (appId) => {
+			await shell(["am", "force-stop", appId], "am force-stop");
+		},
 		backgroundApp,
-		openUrl,
-		acceptAlert: () => lock.withLock(() => resolveAlert("accept")),
-		dismissAlert: () => lock.withLock(() => resolveAlert("dismiss")),
-		withActionLock: (fn) => lock.withLock(fn),
-		pointerEvent: async (phase: PointerPhase, xNorm: number, yNorm: number) => {
-			const size = await pointerSize("screenshot");
-			const x = toPx(xNorm, size.width);
-			const y = toPx(yNorm, size.height);
-			if (phase === "begin") {
-				pointerStart = { x, y };
-				lock.setPointerActive(true);
-				return;
-			}
-			if (phase === "move") {
-				pointerStart = pointerStart ?? { x, y };
-				return;
-			}
-			const start = pointerStart ?? { x, y };
-			pointerStart = null;
-			lock.setPointerActive(false);
-			if (start.x === x && start.y === y) {
-				await tapPx(x, y, 50);
-			} else {
+		openUrl: async (url) => {
+			await shell(["am", "start", "-a", "android.intent.action.VIEW", "-d", url], "am start VIEW");
+		},
+		acceptAlert: () => resolveAlert("accept"),
+		dismissAlert: () => resolveAlert("dismiss"),
+		// The Inspector's pointer is in screenshot pixels; a press and release on one pixel is a tap.
+		pointer: {
+			kind: "gesture",
+			at: async (xNorm, yNorm) => {
+				const size = await pointerSize("screenshot");
+				return { x: toPx(xNorm, size.width), y: toPx(yNorm, size.height) };
+			},
+			tap: (point) => tapPx(point.x, point.y, 50),
+			swipe: async (from, to) => {
 				await shell(
-					["input", "swipe", String(start.x), String(start.y), String(x), String(y), "200"],
+					["input", "swipe", String(from.x), String(from.y), String(to.x), String(to.y), "200"],
 					"input swipe",
 				);
-			}
+			},
 		},
-		isPointerActive: () => lock.isPointerActive(),
-	};
+	});
 	return session;
 }

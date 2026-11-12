@@ -95,6 +95,38 @@ export type ScreenRecording = {
 	stop: () => Promise<void>;
 };
 
+/**
+ * The members of a Device Session a Lane may not have on its platform. The session still
+ * has each one; it rejects with `ActionUnsupportedError` (the runner answers 422) and the
+ * message the Lane declared in `LaneCapabilities.unsupported`.
+ */
+export type OptionalLaneMember =
+	| "startRecording"
+	| "backgroundApp"
+	| "openUrl"
+	| "acceptAlert"
+	| "dismissAlert";
+
+/**
+ * What a Lane declares it can do, fixed for the session's life. Callers read this instead
+ * of checking which members a session happens to have.
+ */
+export type LaneCapabilities = {
+	/** What `key` can press here. Anything else fails with `UnsupportedKeyError`. */
+	keys: KeySupport;
+	/**
+	 * The Lane remembers a target app: `setTargetApp` changes what it reads or relaunches,
+	 * and `targetApp` reads it back. Without one, `targetApp` is always undefined.
+	 */
+	targetApp: boolean;
+	/** Members this Lane cannot do, each with the message it rejects with (no video on web). */
+	unsupported: Partial<Record<OptionalLaneMember, string>>;
+};
+
+/**
+ * One Device Session, whichever Lane drives it. Every Lane builds it the same way, from its
+ * driver, in `device-session.ts`.
+ */
 export type DeviceSession = {
 	/** Which Lane drives this session. Fixed for the session's whole life. */
 	lane: LaneName;
@@ -110,6 +142,8 @@ export type DeviceSession = {
 	browserProfileName?: string | null;
 	/** The Viewport preset a web session emulates, for the Run report. */
 	viewport?: ViewportPresetName;
+	/** What this Lane can do. */
+	capabilities: LaneCapabilities;
 	quit: () => Promise<void>;
 	/** In-memory frame for live feed / grounding — never writes disk. */
 	captureFrame: () => Promise<CapturedFrame>;
@@ -119,9 +153,7 @@ export type DeviceSession = {
 	 * Start recording the screen to `path` (mp4). Rejects when this Lane or device cannot record;
 	 * callers treat that as "no video", never as a failed Run.
 	 */
-	startRecording?: (path: string) => Promise<ScreenRecording>;
-	/** Why there is no video, for a Lane without `startRecording` that can say more than that. */
-	noRecordingReason?: string;
+	startRecording: (path: string) => Promise<ScreenRecording>;
 	pageSource: () => Promise<string>;
 	getWindowSize: () => Promise<{ width: number; height: number }>;
 	tap: (
@@ -139,8 +171,6 @@ export type DeviceSession = {
 	) => Promise<void>;
 	drag: (x1: number, y1: number, x2: number, y2: number, durationMs?: number) => Promise<void>;
 	type: (text: string) => Promise<void>;
-	/** What `key` can press here. Anything else fails with `UnsupportedKeyError`. */
-	keySupport: KeySupport;
 	/** Press one named key, holding `modifiers` down while it is pressed. */
 	key: (key: KeyName, modifiers?: readonly KeyModifier[]) => Promise<void>;
 	activateApp: (appId: string) => Promise<void>;
@@ -151,21 +181,19 @@ export type DeviceSession = {
 	 */
 	setTargetApp: (appId: string | undefined) => void;
 	/** The app a Lane that remembers one reads now; undefined when it has none. */
-	targetApp?: () => string | undefined;
+	targetApp: () => string | undefined;
 	terminateApp: (appId: string) => Promise<void>;
 	/**
-	 * Start the app again from scratch, for a Lane whose restart is more than terminate then
-	 * activate (web clears the App origin's storage). Without it, restart-app is those two,
-	 * which keeps the App's storage. A Lane with one says whether it cleared the storage, or
-	 * kept it (the Everyday browser's).
+	 * Start the app again from scratch, and say whether its storage was cleared or kept. On
+	 * most Lanes it is terminate then activate, which keeps the storage; web clears the App
+	 * origin's storage (or keeps the Everyday browser's).
 	 */
-	restartApp?: (appId: string) => Promise<{ storage: AppStorage }>;
+	restartApp: (appId: string) => Promise<{ storage: AppStorage }>;
 	backgroundApp: (seconds?: number) => Promise<void>;
 	openUrl: (url: string) => Promise<void>;
 	acceptAlert: () => Promise<void>;
 	dismissAlert: () => Promise<void>;
-	/** Run an exclusive device action (blocks live pointer + other actions). */
-	withActionLock: <T>(fn: () => Promise<T>) => Promise<T>;
+	/** Live pointer input from the Inspector: a press and release in one place is a tap. */
 	pointerEvent: (phase: PointerPhase, xNorm: number, yNorm: number, seq: number) => Promise<void>;
 	isPointerActive: () => boolean;
 };
