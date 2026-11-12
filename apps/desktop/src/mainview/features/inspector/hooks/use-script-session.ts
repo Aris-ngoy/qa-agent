@@ -19,6 +19,7 @@ import { notify } from "@/features/inspector/utils/report";
 import {
 	caseScriptLinesFromShell,
 	defaultCaseNameFromScript,
+	reloadPageLine,
 	scriptHasBody,
 	scrollLines,
 	waitLine,
@@ -160,6 +161,16 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 		finishRun(script$);
 		abortRef.current = null;
 		void controller.refreshTree({ silent: true });
+	};
+
+	/** Reload (a page) now, and record it as a step, as Insert & Run does. */
+	const handleReloadPage = () => {
+		if (!feed$.active.peek() || script$.running.peek()) return;
+		appendScript(script$, [reloadPageLine()]);
+		void runActions(
+			{ version: 1, savedAt: Date.now(), actions: [{ type: "reload-page" }] },
+			{ resetLog: false, label: "Reload page…" },
+		);
 	};
 
 	const handleInsertAndRunLines = (lines: string[]) => {
@@ -409,6 +420,7 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 		handleDoubleTap,
 		handleAddScroll,
 		handleAddWait,
+		handleReloadPage,
 		handleInsertLines,
 		handleCopyLines,
 		handleInsertAndRunLines,

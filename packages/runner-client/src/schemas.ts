@@ -438,6 +438,12 @@ const caseScriptOpenUrlSchema = z.object({
 	reason: z.string().optional(),
 });
 
+/** Reload (a page): web only, so a mobile Lane fails it. */
+const caseScriptReloadPageSchema = z.object({
+	type: z.literal("reload-page"),
+	reason: z.string().optional(),
+});
+
 const caseScriptKeySchema = z.object({
 	type: z.literal("key"),
 	key: keyNameSchema,
@@ -459,6 +465,7 @@ const caseScriptGestureSchema = z.union([
 	caseScriptAppIdSchema("restart-app"),
 	caseScriptBackgroundAppSchema,
 	caseScriptOpenUrlSchema,
+	caseScriptReloadPageSchema,
 	caseScriptKeySchema,
 ]);
 
@@ -537,6 +544,7 @@ export const caseScriptActionSchemaByType = {
 	"restart-app": caseScriptAppIdSchema("restart-app"),
 	"background-app": caseScriptBackgroundAppSchema,
 	"open-url": caseScriptOpenUrlSchema,
+	"reload-page": caseScriptReloadPageSchema,
 	key: caseScriptKeySchema,
 	branch: caseScriptBranchSchema,
 } as const;
@@ -1310,6 +1318,7 @@ export const actionKindSchema = z.union([
 	z.literal("restart-app"),
 	z.literal("background-app"),
 	z.literal("open-url"),
+	z.literal("reload-page"),
 	z.literal("alert"),
 	z.literal("key"),
 ]);

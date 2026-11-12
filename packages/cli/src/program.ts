@@ -686,6 +686,7 @@ for (const kind of [
 	"restart-app",
 	"background-app",
 	"open-url",
+	"reload-page",
 ] as const) {
 	addActionOptions(action.command(kind).description(`Perform ${kind}`)).action(
 		async (options: Record<string, unknown>) => {

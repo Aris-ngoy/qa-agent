@@ -127,11 +127,12 @@ describe("replayCaseScript", () => {
 				{ type: "restart-app", appId: "com.example" },
 				{ type: "background-app", seconds: 2 },
 				{ type: "open-url", url: "myapp://x" },
+				{ type: "reload-page" },
 				{ type: "key", key: "Tab", modifiers: ["Shift"] },
 			),
 			device.port,
 		);
-		expect(result).toEqual({ ok: true, completed: 10, total: 10 });
+		expect(result).toEqual({ ok: true, completed: 11, total: 11 });
 		expect(device.requests).toEqual([
 			{ kind: "tap", label: "Home" },
 			{ kind: "tap", id: "submit", x: 1, y: 2, double: true, durationMs: 900 },
@@ -142,6 +143,7 @@ describe("replayCaseScript", () => {
 			{ kind: "restart-app", appId: "com.example" },
 			{ kind: "background-app", seconds: 2 },
 			{ kind: "open-url", url: "myapp://x" },
+			{ kind: "reload-page" },
 			{ kind: "key", key: "Tab", modifiers: ["Shift"] },
 		]);
 		// Nothing but `wait` and Screen checks sleeps: a Settle is the adapter's.

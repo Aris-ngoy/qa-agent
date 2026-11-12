@@ -363,6 +363,7 @@ yoqa action drag --x 100 --y 500 --x2 800 --y2 500 --duration 300
 yoqa action restart-app --app-id com.example.app
 yoqa action background-app --seconds 2
 yoqa action open-url --url 'https://example.com'
+yoqa action reload-page
 `,
 			{ savedAt: 1 },
 		);
@@ -372,6 +373,7 @@ yoqa action open-url --url 'https://example.com'
 			{ type: "restart-app", appId: "com.example.app" },
 			{ type: "background-app", seconds: 2 },
 			{ type: "open-url", url: "https://example.com" },
+			{ type: "reload-page" },
 		]);
 	});
 

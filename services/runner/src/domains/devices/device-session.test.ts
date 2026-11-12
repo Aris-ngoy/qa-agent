@@ -52,6 +52,7 @@ function fakeDriver(overrides: Partial<LaneDriver> = {}) {
 		targetApp: () => target,
 		startRecording: async () => ({ stop: async () => undefined }),
 		backgroundApp: record("backgroundApp"),
+		reloadPage: record("reloadPage"),
 		openUrl: record("openUrl"),
 		acceptAlert: record("acceptAlert"),
 		dismissAlert: record("dismissAlert"),
@@ -278,6 +279,7 @@ describe("unsupported members", () => {
 	const unsupported = {
 		startRecording: "No video here",
 		backgroundApp: "No background here",
+		reloadPage: "No page here",
 		openUrl: "No URLs here",
 		acceptAlert: "No alerts here",
 		dismissAlert: "No alerts here either",
@@ -288,6 +290,7 @@ describe("unsupported members", () => {
 			capabilities: { keys: { keys: ["Enter"], modifiers: false }, targetApp: true, unsupported },
 			startRecording: undefined,
 			backgroundApp: undefined,
+			reloadPage: undefined,
 			openUrl: undefined,
 			acceptAlert: undefined,
 			dismissAlert: undefined,
@@ -298,6 +301,7 @@ describe("unsupported members", () => {
 		const attempts = [
 			() => session.startRecording("/tmp/x.mp4"),
 			() => session.backgroundApp(),
+			() => session.reloadPage(),
 			() => session.openUrl("https://example.com"),
 			() => session.acceptAlert(),
 			() => session.dismissAlert(),

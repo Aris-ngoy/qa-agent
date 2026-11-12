@@ -22,6 +22,11 @@ export function scrollLines(direction: "up" | "down" | "left" | "right"): string
 	];
 }
 
+/** The line for one Reload (a page): a step with no fields. */
+export function reloadPageLine(): string {
+	return formatCaseScriptFileActionLine({ type: "reload-page" });
+}
+
 export function waitLine(seconds: number): string {
 	return formatCaseScriptFileActionLine({ type: "wait", ms: Math.round(seconds * 1000) });
 }

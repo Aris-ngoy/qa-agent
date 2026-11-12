@@ -194,6 +194,10 @@ export async function performAction(
 			await session.openUrl(body.url);
 			break;
 		}
+		case "reload-page": {
+			await session.reloadPage();
+			break;
+		}
 		case "key": {
 			if (!body.key) throw new ActionValidationError("key requires a key");
 			try {
