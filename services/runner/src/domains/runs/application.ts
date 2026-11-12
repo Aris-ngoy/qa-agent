@@ -13,7 +13,6 @@ import type {
 	StepPhases,
 } from "@yoqa/runner-client";
 import {
-	appStartTarget,
 	browserProfileSchema,
 	installedBrowserId,
 	runStepActionSchema,
@@ -23,7 +22,7 @@ import {
 	webDeviceOf,
 } from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
-import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
+import { resolveBuildForRun } from "../builds/application";
 import {
 	getApp,
 	getCase,
@@ -38,16 +37,9 @@ import { EVERYDAY_WARNING } from "../devices/everyday-warning";
 import { pruneOldRunScreenshots } from "../devices/screenshot-retention";
 import type { DeviceSession } from "../devices/session";
 import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
-import {
-	type AgentDecision,
-	AgentProviderError,
-	assertVisionCapableProvider,
-	decideNextAction,
-} from "./agent";
-import {
-	executeAgentCase as runAgentCase,
-	executeScriptCase as runScriptCase,
-} from "./case-executor";
+import { AgentProviderError, assertVisionCapableProvider } from "./agent";
+import { caseModeFor, executeCase } from "./case-executor";
+import { RunNotFoundError, RunValidationError } from "./errors";
 import { reportedLane, reportedLaneWarning } from "./legacy-lane";
 import {
 	CUT_OFF_NOTE,
@@ -58,8 +50,11 @@ import {
 	recordingFromRow,
 	runVideoPath,
 } from "./run-recording";
+import { type PlannedCase, openStartTarget, prepareRun, runProfileOf } from "./run-setup";
 import { runSteps, runTests, runs } from "./schema";
-import { buildScriptFromDecisions, parseCaseScript, serializeCaseScript } from "./script";
+import { parseCaseScript, serializeCaseScript } from "./script";
+
+export { RunNotFoundError, RunValidationError };
 
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["passed", "errored", "cancelled"]);
 
@@ -68,24 +63,6 @@ type RunControl = {
 };
 
 const runControls = new Map<string, RunControl>();
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export class RunValidationError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "RunValidationError";
-	}
-}
-
-export class RunNotFoundError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "RunNotFoundError";
-	}
-}
 
 function newId(prefix: string): string {
 	return `${prefix}_${crypto.randomUUID()}`;
@@ -146,20 +123,14 @@ function profileOf(value: string | null): Pick<Run, "profile"> {
 	return parsed.success ? { profile: parsed.data } : {};
 }
 
-/**
- * The browser profile a web Run opens: the one the Run asked for, else `clean` when any of
- * its Case Scripts asks for it (one session runs every case), else its App's Kept profile.
- */
+/** The browser profile a web Run on these cases would open (`runProfileOf`), before it exists. */
 async function resolveRunProfile(
 	requested: string | null | undefined,
 	caseIds: string[],
 ): Promise<BrowserProfile> {
-	const asked = browserProfileSchema.safeParse(requested);
-	if (asked.success) return asked.data;
-	for (const caseId of caseIds) {
-		if (parseCaseScript(await getCaseScriptJson(caseId))?.profile === "clean") return "clean";
-	}
-	return "kept";
+	const scripts: Array<ReturnType<typeof parseCaseScript>> = [];
+	for (const caseId of caseIds) scripts.push(parseCaseScript(await getCaseScriptJson(caseId)));
+	return runProfileOf(requested, scripts);
 }
 
 /**
@@ -179,15 +150,6 @@ async function assertEverydayRunAllowed(input: CreateRunRequest, caseIds: string
 			`${input.deviceId} is your Everyday browser, which Yoqa never wipes, so a Run there cannot use a clean profile. For a clean start, run on ${launched}, which Yoqa launches on the App's Kept profile, with profile clean or after resetting the Kept profile (yoqa devices web reset-profile).`,
 		);
 	}
-}
-
-function resolveCaseExecutionMode(
-	runMode: RunExecutionMode,
-	hasScript: boolean,
-): "script" | "agent" {
-	if (runMode === "agent") return "agent";
-	if (hasScript) return "script";
-	return "agent";
 }
 
 /** A finished Run whose executeRun has fully wound down (its control is cleared last). */
@@ -238,6 +200,10 @@ async function loadRun(runId: string): Promise<Run | null> {
 		});
 	}
 
+	return runFromRow(runRow, tests);
+}
+
+function runFromRow(runRow: typeof runs.$inferSelect, tests: RunTest[]): Run {
 	return {
 		id: runRow.id,
 		appId: runRow.appId,
@@ -337,170 +303,52 @@ async function persistCancelled(runId: string, reason = "Cancelled by user"): Pr
 	}
 }
 
-async function executeScriptCase(input: {
-	runId: string;
-	runTestId: string;
-	caseId: string;
-	session: DeviceSession;
-}): Promise<"passed" | "errored" | "cancelled"> {
-	const script = parseCaseScript(await getCaseScriptJson(input.caseId));
-	if (!script) {
-		return "errored";
-	}
-
-	return runScriptCase({
-		script,
-		session: input.session,
-		isAborted: () => isAborted(input.runId),
-		appendStep: async (step) => {
-			await appendStep({
-				runTestId: input.runTestId,
-				...step,
-			});
-		},
-		setCurrentCommand: async (command) => {
-			await setCurrentCommand(input.runTestId, command);
-		},
-		clock: { sleep, now: () => Date.now() },
-	});
-}
-
-async function executeAgentCase(input: {
-	runId: string;
-	runTestId: string;
-	caseId: string;
-	appContext: string;
-	appKnowledge?: string;
-	session: DeviceSession;
-	auth: ActiveProviderAuth;
-	screenMode: RunScreenMode;
-	defaultAppId?: string;
-}): Promise<{
-	status: "passed" | "errored" | "cancelled";
-	decisions: AgentDecision[];
-	error: string | null;
-}> {
-	const catalogCase = await getCase(input.caseId);
-	if (!catalogCase) {
-		throw new RunValidationError(`Case not found: ${input.caseId}`);
-	}
-
-	return runAgentCase({
-		catalogCase,
-		appContext: input.appContext,
-		appKnowledge: input.appKnowledge,
-		auth: input.auth,
-		session: input.session,
-		isAborted: () => isAborted(input.runId),
-		appendStep: async (step) => {
-			await appendStep({
-				runTestId: input.runTestId,
-				...step,
-			});
-		},
-		setCurrentCommand: async (command) => {
-			await setCurrentCommand(input.runTestId, command);
-		},
-		decide: decideNextAction,
-		screenMode: input.screenMode,
-		clock: { sleep, now: () => Date.now() },
-		defaultAppId: input.defaultAppId,
-	});
-}
-
-async function executeCase(input: {
-	runId: string;
-	runTestId: string;
-	caseId: string;
-	appContext: string;
-	appKnowledge?: string;
-	session: DeviceSession;
-	auth: ActiveProviderAuth | null;
-	caseMode: "script" | "agent";
-	screenMode: RunScreenMode;
-	defaultAppId?: string;
-}): Promise<"passed" | "errored" | "cancelled"> {
-	const db = getCatalogDb();
-
-	if (isAborted(input.runId)) {
-		return "cancelled";
-	}
-
-	const startedAt = Date.now();
-	await db
-		.update(runTests)
+/** A finished Run: passed unless a case errored, with its Lane's latest warning (ADR-0004). */
+async function persistFinished(
+	runId: string,
+	anyFailed: boolean,
+	session: DeviceSession | null,
+): Promise<void> {
+	await getCatalogDb()
+		.update(runs)
 		.set({
-			status: "running",
-			startedAt,
+			status: anyFailed ? "errored" : "passed",
+			finishedAt: Date.now(),
 			error: null,
-			executionMode: input.caseMode,
-			currentCommand: null,
+			...(session ? { laneWarning: session.laneWarning ?? null } : {}),
 		})
-		.where(eq(runTests.id, input.runTestId));
+		.where(eq(runs.id, runId));
+}
 
-	let caseStatus: "passed" | "errored" | "cancelled";
-	let caseError: string | null = null;
-	let decisions: AgentDecision[] = [];
-
-	if (input.caseMode === "script") {
-		const scriptStatus = await executeScriptCase({
-			runId: input.runId,
-			runTestId: input.runTestId,
-			caseId: input.caseId,
-			session: input.session,
-		});
-		if (scriptStatus === "errored") {
-			const script = parseCaseScript(await getCaseScriptJson(input.caseId));
-			caseError = script ? "Saved script replay failed" : "Saved script is missing or invalid";
-		}
-		caseStatus = scriptStatus;
-	} else if (!input.auth) {
-		caseStatus = "errored";
-		caseError = "No vision-capable provider configured for AI agent runs";
-	} else {
-		const result = await executeAgentCase({
-			runId: input.runId,
-			runTestId: input.runTestId,
-			caseId: input.caseId,
-			appContext: input.appContext,
-			appKnowledge: input.appKnowledge,
-			session: input.session,
-			auth: input.auth,
-			screenMode: input.screenMode,
-			defaultAppId: input.defaultAppId,
-		});
-		caseStatus = result.status;
-		decisions = result.decisions;
-		caseError = result.error;
-	}
-
-	if (isAborted(input.runId) || caseStatus === "cancelled") {
-		return "cancelled";
-	}
-
+/** A Run that could not go on: it and every case not yet finished error with `error`. */
+async function persistErrored(
+	runId: string,
+	error: unknown,
+	session: DeviceSession | null,
+): Promise<void> {
+	const db = getCatalogDb();
+	const message = error instanceof Error ? error.message : String(error);
 	const finishedAt = Date.now();
 	await db
-		.update(runTests)
+		.update(runs)
 		.set({
-			status: caseStatus,
-			error: caseError,
+			status: "errored",
+			error: message,
 			finishedAt,
-			currentCommand: null,
+			...(session ? { laneWarning: session.laneWarning ?? null } : {}),
 		})
-		.where(eq(runTests.id, input.runTestId));
-	await updateCaseLastRun(input.caseId, caseStatus, finishedAt);
+		.where(eq(runs.id, runId));
 
-	// Persist a replayable script after a successful AI agent run, on the profile the old one asked for.
-	if (caseStatus === "passed" && input.caseMode === "agent") {
-		const script = buildScriptFromDecisions(decisions, input.runId);
-		if (script) {
-			const profile = parseCaseScript(await getCaseScriptJson(input.caseId))?.profile;
-			const saved = profile ? { ...script, profile } : script;
-			await saveCaseScript(input.caseId, serializeCaseScript(saved), saved.savedAt);
+	const current = await loadRun(runId);
+	for (const test of current?.tests ?? []) {
+		if (test.status === "queued" || test.status === "running") {
+			await db
+				.update(runTests)
+				.set({ status: "errored", error: message, finishedAt })
+				.where(eq(runTests.id, test.id));
+			await updateCaseLastRun(test.caseId, "errored", finishedAt);
 		}
 	}
-
-	return caseStatus;
 }
 
 async function saveCaseRecording(runTestId: string, state: RunRecording): Promise<void> {
@@ -510,25 +358,101 @@ async function saveCaseRecording(runTestId: string, state: RunRecording): Promis
 		.where(eq(runTests.id, runTestId));
 }
 
+/** What every case of one Run shares when the Case executor runs it. */
+type RunCaseContext = {
+	runId: string;
+	session: DeviceSession;
+	auth: ActiveProviderAuth | null;
+	appContext: string;
+	appKnowledge?: string;
+	screenMode: RunScreenMode;
+	defaultAppId?: string;
+	/** The Run asked to record every case; otherwise each case decides for itself. */
+	recordAll: boolean;
+};
+
 /**
- * Open the App before the first case. On web that is loading its Web URL in the page. A
- * phone's session only targets the app's id (acquireSessionForRun), and opens nothing here.
+ * Run one planned Test Case through the Case executor, recorded when asked, and persist
+ * its outcome: its row, its case's last run, and the Case Script a passed agent case learns.
+ * A cancelled case is left to `persistCancelled`.
  */
-async function openStartTarget(
-	session: DeviceSession,
-	platform: Run["platform"],
-	startTarget: string | undefined,
-): Promise<void> {
-	switch (platform) {
-		case "ios":
-		case "android":
-			return;
-		case "web":
-			if (startTarget) await session.openUrl(startTarget);
-			return;
+async function runTest(
+	planned: PlannedCase,
+	context: RunCaseContext,
+): Promise<"passed" | "errored" | "cancelled"> {
+	const db = getCatalogDb();
+	const { test, catalogCase, mode } = planned;
+	if (!catalogCase) {
+		await db
+			.update(runTests)
+			.set({ status: "errored", error: "Case not found", finishedAt: Date.now() })
+			.where(eq(runTests.id, test.id));
+		return "errored";
 	}
+
+	const status = await recordCase(
+		context.session,
+		runVideoPath(test.id),
+		{
+			enabled: context.recordAll || catalogCase.recordVideo,
+			onState: (state) => saveCaseRecording(test.id, state),
+		},
+		async () => {
+			if (isAborted(context.runId)) return "cancelled";
+			await db
+				.update(runTests)
+				.set({
+					status: "running",
+					startedAt: Date.now(),
+					error: null,
+					executionMode: mode,
+					currentCommand: null,
+				})
+				.where(eq(runTests.id, test.id));
+
+			const outcome = await executeCase({
+				catalogCase,
+				mode,
+				runId: context.runId,
+				auth: context.auth,
+				session: context.session,
+				appContext: context.appContext,
+				appKnowledge: context.appKnowledge,
+				screenMode: context.screenMode,
+				defaultAppId: context.defaultAppId,
+				isAborted: () => isAborted(context.runId),
+				appendStep: (step) => appendStep({ runTestId: test.id, ...step }),
+				setCurrentCommand: (command) => setCurrentCommand(test.id, command),
+			});
+			if (isAborted(context.runId) || outcome.status === "cancelled") return "cancelled";
+
+			const finishedAt = Date.now();
+			await db
+				.update(runTests)
+				.set({
+					status: outcome.status,
+					error: outcome.error,
+					finishedAt,
+					currentCommand: null,
+				})
+				.where(eq(runTests.id, test.id));
+			await updateCaseLastRun(test.caseId, outcome.status, finishedAt);
+			const learned = outcome.learnedScript;
+			if (learned) {
+				await saveCaseScript(test.caseId, serializeCaseScript(learned), learned.savedAt);
+			}
+			return outcome.status;
+		},
+	);
+	// The Run was deleted while this case was recording; do not leave its video behind.
+	if (!(await loadRun(context.runId))) await deleteRunVideo(test.id);
+	return status;
 }
 
+/**
+ * Load → acquire the Device Session → run each Test Case through the Case executor →
+ * persist → release. A cancel at any point persists the Run as cancelled.
+ */
 export async function executeRun(runId: string): Promise<void> {
 	const db = getCatalogDb();
 	const run = await loadRun(runId);
@@ -544,10 +468,9 @@ export async function executeRun(runId: string): Promise<void> {
 			return;
 		}
 
-		const startedAt = Date.now();
 		await db
 			.update(runs)
-			.set({ status: "running", startedAt, error: null })
+			.set({ status: "running", startedAt: Date.now(), error: null })
 			.where(eq(runs.id, runId));
 
 		// Reclaim old run evidence in the background; never blocks or fails a run.
@@ -558,43 +481,7 @@ export async function executeRun(runId: string): Promise<void> {
 			return;
 		}
 
-		const app = await getApp(run.appId);
-		if (!app) {
-			throw new RunValidationError("App not found");
-		}
-		const startTarget = appStartTarget(app, run.platform);
-		if (run.platform === "web" && !startTarget) {
-			throw new RunValidationError(
-				`${app.name} has no Web URL, so a Run on web has nothing to open. Set one with: yoqa apps update ${app.prefix} --web-url <url>`,
-			);
-		}
-
-		const caseModes: Array<{ caseId: string; mode: "script" | "agent" }> = [];
-		for (const test of run.tests) {
-			const catalogCase = await getCase(test.caseId);
-			const hasScript = Boolean(catalogCase?.hasScript);
-			caseModes.push({
-				caseId: test.caseId,
-				mode: resolveCaseExecutionMode(run.executionMode, hasScript),
-			});
-		}
-		const needsAgent = caseModes.some((item) => item.mode === "agent");
-
-		let auth: ActiveProviderAuth | null = null;
-		if (needsAgent) {
-			auth = await assertVisionCapableProvider(await resolveActiveProviderAuth());
-		}
-
-		if (run.buildId) {
-			const build = await resolveBuildForRun({ buildId: run.buildId, appId: run.appId });
-			if (build) {
-				await installBuildOnDevice({
-					build,
-					deviceId: run.deviceId,
-					platform: run.platform,
-				});
-			}
-		}
+		const { app, startTarget, cases: planned, auth } = await prepareRun(run);
 
 		const runRow = (await db.select().from(runs).where(eq(runs.id, runId)))[0];
 		const requestedLane = runRow?.requestedLane;
@@ -602,9 +489,9 @@ export async function executeRun(runId: string): Promise<void> {
 		const everyday = webDeviceOf(run.deviceId)?.kind === "everyday";
 		const profile =
 			run.platform === "web" && !everyday
-				? await resolveRunProfile(
+				? runProfileOf(
 						runRow?.requestedProfile,
-						run.tests.map((test) => test.caseId),
+						planned.map((item) => item.catalogCase?.script),
 					)
 				: undefined;
 		// Adopt the shared Active Session when it already targets this device (on web, on
@@ -637,60 +524,23 @@ export async function executeRun(runId: string): Promise<void> {
 			.where(eq(runs.id, runId));
 		await openStartTarget(session, run.platform, startTarget);
 
-		if (isAborted(runId)) {
-			await persistCancelled(runId);
-			return;
-		}
-
+		const context: RunCaseContext = {
+			runId,
+			session: activeSession,
+			auth,
+			appContext: app.context,
+			appKnowledge: app.knowledge,
+			screenMode: run.screenMode ?? "tree",
+			defaultAppId: startTarget,
+			recordAll: runRow?.recordVideo === 1,
+		};
 		let anyFailed = false;
-		for (const test of run.tests) {
+		for (const item of planned) {
 			if (isAborted(runId)) {
 				await persistCancelled(runId);
 				return;
 			}
-
-			const catalogCase = await getCase(test.caseId);
-			if (!catalogCase) {
-				anyFailed = true;
-				await db
-					.update(runTests)
-					.set({
-						status: "errored",
-						error: "Case not found",
-						finishedAt: Date.now(),
-					})
-					.where(eq(runTests.id, test.id));
-				continue;
-			}
-
-			const caseMode =
-				caseModes.find((item) => item.caseId === test.caseId)?.mode ??
-				resolveCaseExecutionMode(run.executionMode, catalogCase.hasScript);
-
-			const status = await recordCase(
-				activeSession,
-				runVideoPath(test.id),
-				{
-					// The Run can ask for every case; otherwise each case decides for itself.
-					enabled: runRow?.recordVideo === 1 || catalogCase.recordVideo,
-					onState: (state) => saveCaseRecording(test.id, state),
-				},
-				() =>
-					executeCase({
-						runId,
-						runTestId: test.id,
-						caseId: test.caseId,
-						appContext: app.context,
-						appKnowledge: app.knowledge,
-						session: activeSession,
-						auth,
-						caseMode,
-						screenMode: run.screenMode ?? "tree",
-						defaultAppId: startTarget,
-					}),
-			);
-			// The Run was deleted while this case was recording; do not leave its video behind.
-			if (!(await loadRun(runId))) await deleteRunVideo(test.id);
+			const status = await runTest(item, context);
 			if (status === "cancelled" || isAborted(runId)) {
 				await persistCancelled(runId);
 				return;
@@ -702,52 +552,13 @@ export async function executeRun(runId: string): Promise<void> {
 			await persistCancelled(runId);
 			return;
 		}
-
-		const finishedAt = Date.now();
-		await db
-			.update(runs)
-			.set({
-				status: anyFailed ? "errored" : "passed",
-				finishedAt,
-				error: null,
-				// A Lane can fall back mid-run (ADR-0004); keep its latest warning.
-				...(session ? { laneWarning: session.laneWarning ?? null } : {}),
-			})
-			.where(eq(runs.id, runId));
+		await persistFinished(runId, anyFailed, session);
 	} catch (error) {
 		if (isAborted(runId)) {
 			await persistCancelled(runId);
 			return;
 		}
-
-		const message = error instanceof Error ? error.message : String(error);
-		const finishedAt = Date.now();
-		await db
-			.update(runs)
-			.set({
-				status: "errored",
-				error: message,
-				finishedAt,
-				...(session ? { laneWarning: session.laneWarning ?? null } : {}),
-			})
-			.where(eq(runs.id, runId));
-
-		const current = await loadRun(runId);
-		if (current) {
-			for (const test of current.tests) {
-				if (test.status === "queued" || test.status === "running") {
-					await db
-						.update(runTests)
-						.set({
-							status: "errored",
-							error: message,
-							finishedAt,
-						})
-						.where(eq(runTests.id, test.id));
-					await updateCaseLastRun(test.caseId, "errored", finishedAt);
-				}
-			}
-		}
+		await persistErrored(runId, error, session);
 	} finally {
 		if (session) {
 			// Shared sessions stay live as the Active Session; detached ones are quit.
@@ -797,7 +608,7 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 	}
 
 	const needsAgent = catalogCases.some(
-		(catalogCase) => resolveCaseExecutionMode(executionMode, catalogCase.hasScript) === "agent",
+		(catalogCase) => caseModeFor(executionMode, catalogCase.hasScript) === "agent",
 	);
 
 	if (needsAgent) {
@@ -916,27 +727,7 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		testsByRunId.set(test.runId, list);
 	}
 
-	return runRows.map((runRow) => ({
-		id: runRow.id,
-		appId: runRow.appId,
-		deviceId: runRow.deviceId,
-		platform: runRow.platform as Run["platform"],
-		buildId: runRow.buildId,
-		status: runRow.status as RunStatus,
-		executionMode: parseRunExecutionMode(runRow.executionMode),
-		screenMode: parseRunScreenMode(runRow.screenMode),
-		lane: reportedLane(runRow.lane),
-		laneWarning: reportedLaneWarning(runRow.laneWarning),
-		...(runRow.browser ? { browser: runRow.browser } : {}),
-		...(runRow.browserProfileName ? { browserProfileName: runRow.browserProfileName } : {}),
-		...viewportOf(runRow.viewport),
-		...profileOf(runRow.profile),
-		error: runRow.error,
-		createdAt: runRow.createdAt,
-		startedAt: runRow.startedAt,
-		finishedAt: runRow.finishedAt,
-		tests: testsByRunId.get(runRow.id) ?? [],
-	}));
+	return runRows.map((runRow) => runFromRow(runRow, testsByRunId.get(runRow.id) ?? []));
 }
 
 export async function deleteRun(runId: string): Promise<void> {
