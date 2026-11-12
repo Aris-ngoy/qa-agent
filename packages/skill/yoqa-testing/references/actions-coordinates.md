@@ -1,17 +1,11 @@
 # Actions by Coordinates
 
-Coordinates are relative, `0–1000` on both axes. X increases left→right, Y increases top→bottom, and
-`0,0` is the top-left of the screen, `1000,1000` the bottom-right. **This is the default way to act.**
+Rung 1 of the [targeting ladder](../SKILL.md#targeting-ladder). Coordinates are relative, `0–1000` on
+both axes: X increases left→right, Y top→bottom, `0,0` is the top-left of the screen and `1000,1000`
+the bottom-right.
 
-**Take a `yoqa screenshot` first**, look at the image, and send the **centre of the control** you want
-to hit: halfway between its left and right edges, halfway between its top and bottom edges. See
-[Inspect & App Control](inspect-and-app-control.md). Read the point off the image — never reuse a point
-from an earlier screen.
-
-Coordinates work on everything the screenshot shows, including custom-drawn controls, games, canvases,
-and system sheets that have no accessibility element. If a tap changes nothing, take a fresh screenshot
-and adjust the point — do not repeat the same one. After two misses in a row, switch to
-[`--id` / `--label`](actions-grounding.md) from `yoqa screen --json`.
+Read the point off a screenshot of the **current** screen and send the **centre of the control**:
+halfway between its left and right edges, halfway between its top and bottom edges.
 
 ### See the result: `--screenshot`
 
@@ -28,12 +22,9 @@ yoqa action tap --x 500 --y 926 --screenshot [--settle <ms>]
 ```
 
 - Open `marked` to check **where** the tap landed relative to the control. Read the next point off the raw `screenshot`.
-- `changed false` on a settled screen means the tap did nothing: move the point, do not repeat it.
+- `changed false` on a settled screen means the tap did nothing: a miss.
 - `settled false` / `changed unknown` means the screen was still animating at the cap (default 1500ms, `--settle <ms>` to change). That is normal on games with looping backgrounds. Judge from the image and the marker, not from `changed`.
 - A game that animates constantly cannot be tapped on a moving target this way (a round trip takes seconds). Use a Case Script for timing-sensitive play.
-
-For **swipe** and **drag** coordinates are the only option — those two commands do not accept
-`--id`, `--label`, or `--description`.
 
 If you are reading `yoqa screen` instead of a screenshot, its listed `x,y` is the element's
 **top-left corner**, so aim at its centre: `x + width / 2`, `y + height / 2`.
@@ -90,3 +81,27 @@ yoqa action input --text "hello world" --x 500 --y 420
 The point is tapped first to focus the field, then the text is typed. A newline in the text presses
 Enter. For other keys (Tab, Escape, arrows) use `yoqa action key` — see
 [Inspect & App Control](inspect-and-app-control.md#keys).
+
+### Batch
+
+When every next Action is known and nothing needs a look between them, send them in one call. The
+steps run in order, stop at the first failure, and one result screenshot comes back at the end.
+
+```bash
+yoqa action batch ./steps.json
+```
+
+```json
+[
+  { "kind": "tap", "x": 500, "y": 380 },
+  { "kind": "input", "text": "ada@example.com" },
+  { "kind": "key", "key": "Tab" },
+  { "kind": "input", "text": "s3cret", "label": "Password" },
+  { "kind": "tap", "id": "submit" }
+]
+```
+
+`kind` is any `yoqa action` name. A step targets by `x` / `y` (plus `x2` / `y2` for swipe and drag),
+`id` or `label`; a `description` step is rejected, because grounding needs a fresh screen. Other step
+fields: `text`, `durationMs`, `double`, `key`, `modifiers`, `appId`, `url`. Omit the file to read the
+JSON from stdin. On failure the output names `failedIndex`, counted from 0.

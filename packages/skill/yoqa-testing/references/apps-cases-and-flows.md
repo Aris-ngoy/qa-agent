@@ -1,6 +1,8 @@
 # Apps, Cases & Flows
 
-All catalog commands are **flag-based**. None of them take a JSON blob as an argument.
+All catalog commands are **flag-based**; none takes a JSON blob as an argument. Every write and delete
+here waits for the user's yes — see the [guardrail](../SKILL.md#guardrail). What a case, flow and app
+context are: [Test Cases, Flows & App Context](../concepts/test-cases.md).
 
 ## Apps
 
@@ -17,18 +19,10 @@ yoqa apps create --name "My Site" --web-url https://app.example.com   # web-only
 yoqa apps update APP --web-url http://localhost:8081  # the page a Run on web opens first
 ```
 
-The app **context** is a shared description injected into every test run — use it for credentials,
-screen names, and general rules the agent should always follow. `--context` **overwrites**, it does not
-append: read the current value with `yoqa apps get APP --json` first, then send the old text plus your
-additions.
-
-> **Always confirm with the user before running `apps update`** — show the exact text you plan to send
-> and wait for explicit approval.
+`--context` **overwrites**, it does not append: read the current value with `yoqa apps get APP --json`
+first, then send the old text plus your additions.
 
 ## Cases
-
-A **test case** describes a single scenario to verify — a title, optional tags, and a list of flows that
-define the steps and expected results.
 
 ```bash
 yoqa cases list APP                          # cases as `#<number>  <title>`
@@ -51,8 +45,10 @@ yoqa cases update APP 42 --flows-file ./flows.json                  # REPLACES a
 yoqa cases update APP 42 --tag smoke --tag regression               # REPLACES all tags
 ```
 
-The flows file is a JSON **array** of steps, in the order the agent runs them. Each step is either an
-inline step or a reference to a reusable flow:
+### The flows file
+
+A JSON **array** of steps, in the order the agent runs them. Each step is either an inline step or a
+reference to a reusable flow:
 
 ```json
 [
@@ -75,24 +71,10 @@ inline step or a reference to a reusable flow:
 - Tags are created automatically if they don't exist.
 - On `update` a step may also carry its existing `id` (from `cases get --json`) to keep that step's identity.
 
-> For how to phrase `instructions` and `expectedResult` (numbered steps, one goal per flow, concrete
-> results) follow [Writing Good Test Cases](../concepts/writing-test-cases.md).
-
-> **Before writing any inline step**, run `yoqa flows list APP` and check whether a matching reusable
-> flow already exists. If it does — reference it by `flowId`. If the step will appear in multiple cases —
-> create a reusable flow first, then reference it.
-
-> **Always confirm with the user before running `cases create` or `cases update`** — show the exact title,
-> tags, and flows file content you plan to send and wait for explicit approval.
-
-> **`cases delete` is destructive and irreversible — always get explicit user approval first.** Name the
-> exact case (number + title) you intend to delete and wait for confirmation. Never delete a case the
-> user didn't ask you to remove.
+How to phrase `instructions` and `expectedResult`:
+[Writing Good Test Cases](../concepts/writing-test-cases.md).
 
 ## Reusable flows
-
-A **reusable flow** is a named step shared across multiple test cases — e.g. "Go through onboarding".
-Instead of repeating the same instructions in every case, reference it by `flowId`.
 
 ```bash
 yoqa flows list APP                          # flows as `<id>  <name>`
@@ -110,13 +92,6 @@ unchanged. The change propagates to every case that references the flow.
 `flows delete` fails if the flow is still used by any test case — the server returns
 "Cannot delete flow: it is used in N case(s)". Remove or re-point those cases first.
 
-> **Always confirm with the user before running `flows update`** — show the exact values you plan to send
-> and wait for explicit approval.
-
-> **`flows delete` is destructive and irreversible — always get explicit user approval first.** Name the
-> exact flow (id + name) you intend to delete and wait for confirmation. Never delete a flow the user
-> didn't ask you to remove.
-
 ## Tags
 
 Tags are created automatically when you pass them with `--tag` on `cases create` / `cases update`. There
@@ -127,5 +102,5 @@ yoqa tags APP                      # list tag names
 yoqa tags APP --json               # raw JSON (id, appId, name)
 ```
 
-You may reuse existing tags freely, but confirm with the user before attaching tags to a case —
-especially when it would create a new tag rather than reuse one from `yoqa tags APP`.
+Reuse a tag from `yoqa tags APP` where one fits; a tag that would be new is part of what you show the
+user before saving the case.

@@ -30,7 +30,6 @@ already running. Use the full id on the second line to connect.
 yoqa devices connect <device_id> --platform ios
 yoqa devices connect <device_id> --platform android
 yoqa devices connect web-chrome
-# Connect opens the Direct lane, or it fails.
 ```
 
 Optionally launch an app as part of connecting:
@@ -169,8 +168,5 @@ yoqa devices disconnect            # close the active Device Session
 **Only one session exists at a time.** Check `yoqa devices active` before connecting; connecting again
 replaces the current session. Disconnect when you're done so another run can take the device.
 
-## Tips
-
-- Prefer a booted simulator over a physical device for speed
-- `--bundle-id` / `--app-package` do not apply on web; open the page with `open-url` after connecting
-- If `yoqa devices connect` fails, run `yoqa doctor --fix` — see [Environment](environment.md)
+A booted simulator is faster than a physical device. If a connect fails, `yoqa doctor --fix`
+([Environment](environment.md)).

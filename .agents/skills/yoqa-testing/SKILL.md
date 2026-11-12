@@ -1,124 +1,85 @@
 ---
 name: yoqa-testing
-description: Use this skill when the user wants to boot and interact with iOS or Android devices/simulators, or test a web app in a Chromium browser — inspect the screen, execute actions, run UI tests, or manage test cases via the Yoqa platform.
+description: Yoqa (`yoqa` CLI) drives iOS/Android devices and simulators, and web apps in a Chromium browser. Use when the user wants to look at or act on a device or browser screen, write or edit Yoqa test cases and flows, or run saved test cases.
 ---
 
-# Yoqa Device Testing
+# Yoqa
 
-Yoqa controls iOS/Android devices and simulators, and web pages in a Chromium browser, through the
-`yoqa` CLI. There are two modes of interaction: you drive the device yourself (debug), or the Yoqa agent
-runs saved test cases for you.
+The `yoqa` CLI drives an iOS or Android device or simulator, or a web page in a Chromium browser. Pick
+the branch that matches the request and follow its workflow file through to its **Done when**.
 
-Pick one workflow below by what the user wants. Follow that workflow's file — it links to the exact
-commands in `references/`.
+| Branch | The user wants | Needs | Workflow |
+|---|---|---|---|
+| **Debug** | you to drive the screen: explore, reproduce a bug, check a fix | a connected device | [Debug on device](workflows/debug-on-device.md) |
+| **Author** | test cases, reusable flows, tags or app context created or edited | a connected device, for the debug-run | [Author test cases](workflows/test-cases.md) |
+| **Run** | saved cases run by the Yoqa agent, with a report | a connected device + an AI provider | [Run saved cases](workflows/run-tests.md) |
 
-## Before you start
+A one-off command (list devices, register a build, export a report) needs no workflow: go straight to
+its file in [Commands](#commands).
 
-1. **Check readiness** — `yoqa status` reports the runner, AI provider, and active device
-   in one shot. Any command other than `yoqa serve` starts the local runner automatically, so you rarely
-   need to start it by hand.
-2. **Find the app & its prefix** — run `yoqa apps list` and note the `PREFIX`. Most catalog commands take
-   the prefix as their first argument. See [Apps, Cases & Flows](references/apps-cases-and-flows.md).
-3. **Configure a provider only if you need one** — `--description` grounding and agent runs require an AI
-   provider (Settings → Provider). Targeting by `--id` / `--label`, assertions, and everything in test
-   management work without one.
+## Start of every branch
 
-| Need | Requirement |
-|---|---|
-| Debug on device (screenshot + `--x` / `--y`, or `--id` / `--label`) | Runner + connected device |
-| Debug with `--description` grounding | Runner + connected device + AI provider |
-| Assertions (`yoqa assert`) | Runner + connected device |
-| Test management (apps/cases/flows) | Runner only |
-| Run saved cases | Runner + device + AI provider |
+1. `yoqa status --json` — the runner, the AI provider, and the active device. Any command starts the
+   local runner if it is down.
+2. `yoqa apps list` — where a command is written with `APP`, pass that app's `PREFIX`.
 
-Cloud sign-in and credits are not required for local workflows.
+An AI provider is needed only for the Run branch and for `--description`. When one is missing, ask the
+user to set it in the Yoqa app (Settings → Provider); Debug carries on without it on the first two
+rungs of the ladder.
+
+## Targeting ladder
+
+How `tap` and `input` find their target. Start on rung 1; step down one rung after two misses.
+
+1. **Point** — `--x` / `--y` read off a fresh `yoqa screenshot`, at the centre of the control. Reaches
+   everything the screenshot shows: custom-drawn UI, games, system sheets. Swipe and drag exist only on
+   this rung. [Actions by coordinates](references/actions-coordinates.md)
+2. **Identifier** — `--id` or `--label` read from `yoqa screen --json`, or known from the app's code.
+   Deterministic, but blind to a system sheet covering the app.
+   [Targeting elements](references/actions-grounding.md)
+3. **Description** — `--description`: a vision model locates the element. Needs an AI provider.
+
+A **miss** is a tap that changed nothing or a target that was not found. After a miss, take a fresh
+screenshot and change the attempt: move the point, answer the sheet or dialog covering the app, scroll
+the target into view, or step down a rung. Each attempt differs from the one before it. When the
+screenshot and `yoqa screen` disagree, the screenshot is right.
 
 ## Conventions
 
-- Pass `--json` whenever you intend to parse output — the human-readable formats are terse and change.
-- All screen coordinates are relative `0–1000` on both axes, `0,0` at the top-left. Read them off a
-  `yoqa screenshot` and aim at the centre of the control.
-- Look at a screenshot first. `yoqa screen` is the fallback (exact ids and labels), and it cannot see
-  system sheets.
-- Add `--screenshot` to an action to get the result screenshot in the same call (it waits for the
-  screen to settle, and a second image marks where the tap landed). The path is an Agent image
-  (downscaled for models); `raw` is the full Result screenshot. `--full` or `--scale 0.5` override.
-  Always use `--screenshot` on games.
-- When every next Action is known and you do not need to look between them, use `yoqa action batch`
-  with a JSON list of coordinate / id / label steps. Do not put `-d` / `description` steps in a batch.
-- `--duration` on an action is in **milliseconds**; `--timeout` on `assert` / `runs wait` is in **seconds**.
-- Use `yoqa action key` for Enter, Tab, Escape, arrows and the other named keys. Each device declares the
-  keys it can press, and one it can't fails with an error rather than doing nothing.
-- **Web** is a third platform. A web device is an installed Chromium browser (`yoqa devices web`);
-  connecting opens a fresh Yoqa-owned window at a fixed viewport preset (`desktop`, or `mobile` with
-  touch). Coordinates are relative to the page viewport. An App's Web URL is what `open-url` and a Run
-  open. Swipe scrolls, popups are followed, and `background-app` is unsupported.
+- **Coordinates** are relative `0–1000` on both axes, `0,0` at the top-left — on every platform.
+- **Units**: `--duration` and `--settle` are milliseconds; `--timeout` is seconds.
+- **`--json`** whenever you parse output; the human format is terse and changes.
+- **`--screenshot`** on any action waits for the screen to settle and returns the result screenshot in
+  the same call. Use it on every action in a game or canvas.
+- **Web** is a third platform: the device is an installed Chromium browser, the app is its Web URL, and
+  there is nothing to build or install. [Devices › Web browsers](references/devices.md#web-browsers)
 
-See [Environment, Diagnostics & Conventions](references/environment.md).
+## When blocked
 
-## Workflows
+- **Device or session unhealthy** ("not reachable", "no active session", a connect that hangs):
+  `yoqa doctor --fix`, then `yoqa status`; if a session is still stuck, `yoqa devices disconnect` and
+  connect again. If that fails too, ask the user to run `yoqa serve` or open the Yoqa desktop app.
+- **Something Yoqa-related this skill does not cover**: https://yoqa.arisn.dev/llms.txt
 
-### 1. Debug on device
+## Guardrail
 
-You drive the device: take a screenshot, act, then verify. **Look at the screenshot and act by `--x` /
-`--y`** ([Actions by coordinates](references/actions-coordinates.md)) — it works on every control,
-including custom-drawn UI, games, and system sheets, and it is the only way to swipe and drag. Fall back
-to `--id` or `--label` read off `yoqa screen --json` when you know the identifier or coordinates keep
-missing ([Targeting elements](references/actions-grounding.md)), then to `--description` grounding.
-Requires a connected device; install a build and launch by app id only if the app isn't already
-running.
+Every catalog write and every delete waits for the user's explicit yes: `apps update`,
+`cases create/update/delete`, `flows create/update/delete`, `builds delete`, `runs delete`. Show
+exactly what you will send (the full text, title, tags and flows file) or name exactly what you will
+delete (number or id, plus its title or name). Deletes are irreversible; delete only what the user
+asked to remove.
 
-- Workflow: [Debug directly on device](workflows/debug-on-device.md)
-
-### 2. Test Management
-
-Create and edit test cases, reusable flows, tags, and the app context. Does not run anything on a device.
-
-- Workflow: [Create & update test cases](workflows/test-cases.md)
-- Concepts: [Test Cases, Flows & App Context](concepts/test-cases.md) · [Writing Good Test Cases](concepts/writing-test-cases.md)
-
-### 3. Run saved test cases
-
-Run already-saved cases by number on the connected device — for smoke/regression. Requires a configured
-AI provider.
-
-- Workflow: [Run saved tests with the Yoqa agent](workflows/run-tests.md)
-
-### 4. Run tests in cloud
-
-Not implemented yet — in development.
-
-## Reference index
+## Commands
 
 | File | Covers |
 |---|---|
-| [Environment](references/environment.md) | `health`, `status`, `serve`, `doctor`, `runtime`, `setup`, `servers`, global flags |
-| [Devices](references/devices.md) | list, connect (incl. web browsers and viewport presets), active, disconnect |
-| [Inspect & App Control](references/inspect-and-app-control.md) | `screenshot` (first), `screen` (fallback), app lifecycle (and on web), alerts, keys |
-| [Actions by coordinates](references/actions-coordinates.md) | tap/input by point read off a screenshot; swipe and drag |
-| [Targeting elements](references/actions-grounding.md) | `--id`, `--label`, `--description` for tap/input (fallback) |
-| [Assertions](references/assertions.md) | `yoqa assert visible` / `not-visible` |
-| [Apps, Cases & Flows](references/apps-cases-and-flows.md) | the whole catalog surface |
-| [Builds](references/builds.md) | the build registry |
-| [Run Tests](references/run.md) | `runs create/get/wait/report` |
-
-## Rules
-
-- **If a command fails because the device or session is unhealthy** ("not reachable", "no active session",
-  a wedged connect):
-  1. `yoqa doctor --fix` — applies the safe repairs and re-reports
-  2. `yoqa status` to confirm what's still wrong
-  3. If a session is still stuck: `yoqa devices disconnect`, then reconnect
-  4. Do not invent other start commands; if it still fails, ask the user to start the runner/desktop
-     (`yoqa serve`, or `bun run desktop` from this repo)
-- **If a tap changes nothing or an element isn't found**, take a fresh `yoqa screenshot` and adjust the
-  point or pick a different target — never retry the same point or selector twice. Check for a system
-  sheet or dialog covering the app first. After two misses, read `yoqa screen --json` for an `--id` or
-  `--label`.
-- **If grounding or agent runs fail because no provider is configured**, tell the user to open
-  Settings → Provider in the Yoqa app. For debugging, switch to coordinates (or `--id` / `--label`) instead
-  of waiting on it.
-- **Confirm before any write or delete** in the catalog (`apps update`, `cases create/update/delete`,
-  `flows update/delete`, `builds delete`, `runs delete`) — show exactly what you intend to send.
-- If you need more information about Yoqa that isn't covered in this skill, refer to the documentation at
-  https://yoqa.arisn.dev/llms.txt
+| [Environment](references/environment.md) | `status`, `health`, `serve`, `doctor`, `servers`, `--base-url` |
+| [Devices](references/devices.md) | list, connect, active, disconnect; web browsers and viewport presets; the user's Everyday browser; iPhone signing |
+| [Inspect & App Control](references/inspect-and-app-control.md) | `screenshot`, `screen`, app lifecycle, `open-url`, `alert`, `key` |
+| [Actions by coordinates](references/actions-coordinates.md) | tap, input, swipe, drag by point; `--screenshot`; `action batch` |
+| [Targeting elements](references/actions-grounding.md) | `--id`, `--label`, `--description` |
+| [Assertions](references/assertions.md) | `assert visible` / `not-visible` |
+| [Apps, Cases & Flows](references/apps-cases-and-flows.md) | `apps`, `cases`, `flows`, `tags`; the flows file |
+| [Builds](references/builds.md) | the build registry; producing a binary for [iOS](references/builds-ios-native.md), [React Native](references/builds-react-native.md), [Android](references/builds-android.md) |
+| Install | putting a build on a device and resetting app state: [iOS](references/install-ios.md), [Android](references/install-android.md) |
+| [Run Tests](references/run.md) | `runs`, `report`, Case Scripts (`script export/validate/run`) |

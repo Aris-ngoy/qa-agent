@@ -1,12 +1,7 @@
-# Environment, Diagnostics & Conventions
+# Environment & Diagnostics
 
-## Global conventions
-
-- Every command accepts `--base-url <url>` (default `http://127.0.0.1:7420`).
-- Nearly every command accepts `--json`. **Prefer `--json` whenever you intend to parse output** — the
-  default human formats are terse and change; the JSON is the stable shape.
-- Any command other than `serve` starts the local runner automatically if it isn't up, so you rarely
-  need to start it by hand.
+Every command accepts `--base-url <url>` (default `http://127.0.0.1:7420`), and nearly every command
+`--json`. Any command other than `serve` starts the local runner if it is not up.
 
 ## Runner
 
@@ -30,8 +25,7 @@ yoqa doctor --fix           # apply the safe repairs it identified
 ```
 
 `yoqa doctor` exits non-zero when something is wrong. `--fix` applies only repairs the report marked
-safe (disconnect a stuck session) and re-reports.
-**Try `yoqa doctor --fix` before any manual recovery** — it covers most "it won't connect" cases.
+safe (disconnect a stuck session) and re-reports; it covers most "it won't connect" cases.
 
 ## Servers and sessions
 
