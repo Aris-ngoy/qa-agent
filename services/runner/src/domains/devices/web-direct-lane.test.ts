@@ -56,7 +56,9 @@ describe("web Direct lane: attach by port", () => {
 		const { session } = await attach();
 		expect(session.lane).toBe("direct");
 		expect(session.stream).toMatchObject({ ready: true });
-		expect(session.startRecording).toBeUndefined();
+		expect(session.capabilities.unsupported.startRecording).toBe(
+			"Run recording is not available on web",
+		);
 		await session.quit();
 	});
 });

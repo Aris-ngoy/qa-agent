@@ -33,6 +33,8 @@ function fakeSession(deviceId: string, lane: LaneName): unknown {
 		setTargetApp: (appId: string | undefined) => {
 			session.targets.push(appId);
 		},
+		// It records its targets, but like a Lane that remembers none, it names none.
+		targetApp: () => undefined,
 		stream: { ready: true, port: 9100, upstreamUrl: "http://127.0.0.1:9100/" },
 		getWindowSize: async () => {
 			if (!session.healthy) {

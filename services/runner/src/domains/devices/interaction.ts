@@ -82,7 +82,7 @@ export class ActionNotFoundError extends Error {
  * is a mistake, not the app's element.
  */
 function isUntargetedSystemTree(session: DeviceSession, source: ScreenSource | undefined) {
-	return source?.kind === "system" && !session.targetApp?.();
+	return source?.kind === "system" && !session.targetApp();
 }
 
 /**
@@ -182,14 +182,7 @@ export async function performAction(
 		}
 		case "restart-app": {
 			if (!body.appId) throw new ActionValidationError("restart-app requires appId");
-			if (session.restartApp) {
-				({ storage } = await session.restartApp(body.appId));
-			} else {
-				await session.terminateApp(body.appId);
-				await session.activateApp(body.appId);
-				// Ending an App's process and launching it again leaves its data alone.
-				storage = "kept";
-			}
+			({ storage } = await session.restartApp(body.appId));
 			break;
 		}
 		case "background-app": {
