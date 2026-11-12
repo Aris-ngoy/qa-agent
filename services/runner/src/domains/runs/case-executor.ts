@@ -7,6 +7,7 @@ import {
 	type CaseScriptBranchOutcome,
 	type CaseScriptReplayEvent,
 	type CatalogCase,
+	type RunExecutionMode,
 	type RunScreenMode,
 	type ScreenElement,
 	type StepPhases,
@@ -64,6 +65,7 @@ import {
 	verifyInstruction,
 } from "./agent";
 import { overlayCoordGrid } from "./coord-grid";
+import { buildScriptFromDecisions } from "./script";
 
 /** Max vision/action iterations for the current instruction (not the whole case). */
 export const MAX_STEPS_PER_CASE = 25;
@@ -1151,4 +1153,72 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	}
 
 	return { status: caseStatus, decisions: recordedDecisions, error: caseError };
+}
+
+/** How one Test Case runs: replaying its Case Script, or the agent deciding each step. */
+export type CaseMode = "script" | "agent";
+
+/** A Run in `agent` mode always decides; otherwise a case with a Case Script replays it. */
+export function caseModeFor(runMode: RunExecutionMode, hasScript: boolean): CaseMode {
+	if (runMode === "agent") return "agent";
+	if (hasScript) return "script";
+	return "agent";
+}
+
+export type CaseDeps = Omit<AgentCaseDeps, "auth"> & {
+	mode: CaseMode;
+	/** The Provider an agent case decides with; null when none is configured. */
+	auth: ActiveProviderAuth | null;
+	/** The Run this case belongs to, named as the source of a Case Script it learns. */
+	runId: string;
+};
+
+export type CaseOutcome = {
+	status: "passed" | "errored" | "cancelled";
+	error: string | null;
+	/**
+	 * The Case Script a passed agent case leaves behind, on the profile its old one asked
+	 * for; null otherwise.
+	 */
+	learnedScript: CaseScript | null;
+};
+
+/**
+ * Run one Test Case in `mode`: replay its Case Script (`catalogCase.script`, parsed once
+ * by the catalog), or the agent loop. A passed agent case comes back with the Case Script
+ * its decisions make.
+ */
+export async function executeCase(deps: CaseDeps): Promise<CaseOutcome> {
+	if (deps.mode === "script") {
+		const script = deps.catalogCase.script;
+		if (!script) {
+			return {
+				status: "errored",
+				error: "Saved script is missing or invalid",
+				learnedScript: null,
+			};
+		}
+		const status = await executeScriptCase({ ...deps, script });
+		return {
+			status,
+			error: status === "errored" ? "Saved script replay failed" : null,
+			learnedScript: null,
+		};
+	}
+	if (!deps.auth) {
+		return {
+			status: "errored",
+			error: "No vision-capable provider configured for AI agent runs",
+			learnedScript: null,
+		};
+	}
+	const result = await executeAgentCase({ ...deps, auth: deps.auth });
+	const learned =
+		result.status === "passed" ? buildScriptFromDecisions(result.decisions, deps.runId) : null;
+	const profile = deps.catalogCase.script?.profile;
+	return {
+		status: result.status,
+		error: result.error,
+		learnedScript: learned && profile ? { ...learned, profile } : learned,
+	};
 }
