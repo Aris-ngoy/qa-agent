@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { KEY_NAMES, type KeyName, type ScreenSource } from "@yoqa/runner-client";
 import { type PointerSize, toPx } from "./android-gestures";
+import { composeDeviceSession } from "./device-session";
+import { type ToolExec, type ToolResult, requireOk, spawnTool } from "./device-tool";
 import { requireIdbBins } from "./idb-companion";
 import { looksLikePhysicalIosUdid } from "./ios-udid";
 import {
@@ -11,17 +13,14 @@ import {
 	type DeviceSession,
 	type KeySupport,
 	type LiveStream,
-	type PointerPhase,
 	type ScreenRecording,
 	type SessionOptions,
-	assertKeySupported,
 	guardToolLoss,
 	reportLaneFallback,
 } from "./lane";
 import { remember } from "./once";
 import { RECORDER_FINALIZE_MS, exitsWithin, spawnRecorder } from "./recorder-process";
 import { cleanPageSource } from "./screen";
-import { SCREENSHOT_DIR } from "./screenshot-retention";
 import type { StartYoqaAx, YoqaAx, YoqaAxTree } from "./yoqa-ax";
 import { type SpawnYoqaSim, type YoqaSim, YoqaSimUnreachableError } from "./yoqa-sim";
 
@@ -51,14 +50,9 @@ export const IOS_HID_KEYCODES: Record<KeyName, number> = {
 /** `idb ui key` presses one key and lets go, so it cannot hold a modifier down. */
 const IOS_SIMULATOR_KEY_SUPPORT: KeySupport = { keys: KEY_NAMES, modifiers: false };
 
-export type IdbResult = {
-	stdout: string;
-	stderr: string;
-	exitCode: number;
-	stdoutBytes?: Uint8Array;
-};
+export type IdbResult = ToolResult;
 
-export type IdbExec = (args: string[]) => Promise<IdbResult>;
+export type IdbExec = ToolExec<IdbResult>;
 
 /** idb could not run, its companion is unreachable, or the simulator is gone. */
 const IDB_LOST_RE =
@@ -96,59 +90,8 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-function fail(result: IdbResult, label: string): never {
-	throw new Error(
-		`${label}: ${result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`}`,
-	);
-}
-
-async function requireOk(result: IdbResult, label: string): Promise<IdbResult> {
-	if (result.exitCode !== 0) fail(result, label);
-	return result;
-}
-
 export function createIdbExec(clientBin: string, companionPath: string): IdbExec {
-	return async (args) => {
-		try {
-			const proc = Bun.spawn([clientBin, "--companion-path", companionPath, ...args], {
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			const [stdoutBuf, stderr, exitCode] = await Promise.all([
-				new Response(proc.stdout).arrayBuffer(),
-				new Response(proc.stderr).text(),
-				proc.exited,
-			]);
-			const stdoutBytes = new Uint8Array(stdoutBuf);
-			return {
-				stdout: new TextDecoder().decode(stdoutBytes),
-				stderr,
-				exitCode,
-				stdoutBytes,
-			};
-		} catch (error) {
-			return { stdout: "", stderr: errorMessage(error), exitCode: 127 };
-		}
-	};
-}
-
-function createLock() {
-	let chain = Promise.resolve();
-	let pointerActive = false;
-	return {
-		isPointerActive: () => pointerActive,
-		setPointerActive: (value: boolean) => {
-			pointerActive = value;
-		},
-		withLock: <T>(fn: () => Promise<T>): Promise<T> => {
-			const run = chain.then(fn, fn);
-			chain = run.then(
-				() => undefined,
-				() => undefined,
-			);
-			return run;
-		},
-	};
+	return (args) => spawnTool([clientBin, "--companion-path", companionPath, ...args]);
 }
 
 type TargetDescribe = {
@@ -243,8 +186,6 @@ export async function createIosDirectSession(
 
 	const getWindowSize = remember(async () => pointSize(described));
 	let lastAppId = options.bundleId;
-	let pointerStart: { x: number; y: number } | null = null;
-	const lock = createLock();
 
 	const run = async (args: string[], label: string) => requireOk(await idb(args), label);
 
@@ -314,15 +255,6 @@ export async function createIosDirectSession(
 		return ensureYoqaSim();
 	};
 
-	/**
-	 * Run an action under the lock. The first one also starts `yoqa-ax`. `yoqa-sim` is
-	 * already up from connect.
-	 */
-	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
-		void startHelpers();
-		return lock.withLock(fn);
-	};
-
 	const captureViaIdb = async (): Promise<Uint8Array> => {
 		const dest = join(tmpdir(), `yoqa-idb-${crypto.randomUUID()}.png`);
 		let bytes: Uint8Array;
@@ -351,14 +283,6 @@ export async function createIosDirectSession(
 		const base64 = Buffer.from(bytes).toString("base64");
 		const hash = fromYoqaSim?.value.hash;
 		return { base64, mime: "image/png", ...(hash ? { hash } : {}) };
-	};
-
-	const screenshot = async () => {
-		await mkdir(SCREENSHOT_DIR, { recursive: true });
-		const frame = await captureFrame();
-		const path = join(SCREENSHOT_DIR, `shot_${Date.now()}_${crypto.randomUUID()}.png`);
-		await Bun.write(path, Uint8Array.from(Buffer.from(frame.base64, "base64")));
-		return { path, base64: frame.base64 };
 	};
 
 	/** The last tree `yoqa-ax` read, and the hash of the frame it was read on. */
@@ -469,17 +393,8 @@ export async function createIosDirectSession(
 		);
 	};
 
-	const tap = async (
-		xNorm: number,
-		yNorm: number,
-		tapOptions?: { durationMs?: number; coordSpace?: "window" | "screenshot" },
-	) => {
-		await withActionLock(() => tapNorm(xNorm, yNorm, tapOptions));
-	};
-
-	const swipe = async (x1: number, y1: number, x2: number, y2: number, durationMs = 400) => {
-		await withActionLock(() => swipeNorm(x1, y1, x2, y2, durationMs));
-	};
+	const swipe = (x1: number, y1: number, x2: number, y2: number, durationMs = 400) =>
+		swipeNorm(x1, y1, x2, y2, durationMs);
 
 	/**
 	 * One `idb ui text` per character. A single call sends every key at once, and a
@@ -487,48 +402,18 @@ export async function createIosDirectSession(
 	 * while "da" is in flight and resets the field. Each call's own spawn spaces the keys.
 	 */
 	const type = async (text: string) => {
-		await withActionLock(async () => {
-			for (const { segment } of graphemes.segment(text)) {
-				await run(["ui", "text", segment, "--udid", udid], "idb ui text");
-			}
-		});
-	};
-
-	const key: DeviceSession["key"] = async (name, modifiers = []) => {
-		assertKeySupported(IOS_SIMULATOR_KEY_SUPPORT, "on an iOS simulator", name, modifiers);
-		await withActionLock(async () => {
-			await run(["ui", "key", String(IOS_HID_KEYCODES[name]), "--udid", udid], "idb ui key");
-		});
-	};
-
-	const activateApp = async (appId: string) => {
-		await withActionLock(async () => {
-			lastAppId = appId;
-			await run(["launch", appId, "--udid", udid], "idb launch");
-		});
-	};
-
-	const terminateApp = async (appId: string) => {
-		await withActionLock(async () => {
-			await run(["terminate", appId, "--udid", udid], "idb terminate");
-		});
+		for (const { segment } of graphemes.segment(text)) {
+			await run(["ui", "text", segment, "--udid", udid], "idb ui text");
+		}
 	};
 
 	const backgroundApp = async (seconds = 3) => {
-		await withActionLock(async () => {
-			const pressed = await viaYoqaSim((running) => running.key("home"));
-			if (!pressed) await run(["ui", "button", "HOME", "--udid", udid], "idb HOME");
-			await Bun.sleep(Math.max(0, seconds) * 1000);
-			if (lastAppId) {
-				await run(["launch", lastAppId, "--udid", udid], "idb launch");
-			}
-		});
-	};
-
-	const openUrl = async (url: string) => {
-		await withActionLock(async () => {
-			await run(["open", url, "--udid", udid], "idb open");
-		});
+		const pressed = await viaYoqaSim((running) => running.key("home"));
+		if (!pressed) await run(["ui", "button", "HOME", "--udid", udid], "idb HOME");
+		await Bun.sleep(Math.max(0, seconds) * 1000);
+		if (lastAppId) {
+			await run(["launch", lastAppId, "--udid", udid], "idb launch");
+		}
 	};
 
 	/**
@@ -556,9 +441,12 @@ export async function createIosDirectSession(
 		await tapNorm(hit.x + hit.width / 2, hit.y + hit.height / 2);
 	};
 
-	const session: DeviceSession = {
-		lane: "direct",
+	const session: DeviceSession = composeDeviceSession({
 		stream: null,
+		capabilities: { keys: IOS_SIMULATOR_KEY_SUPPORT, targetApp: true, unsupported: {} },
+		where: "on an iOS simulator",
+		// The first Action also starts `yoqa-ax`; `yoqa-sim` is already up from connect.
+		lock: { queued: () => void startHelpers() },
 		quit: async () => {
 			quitting = true;
 			session.stream = null;
@@ -569,47 +457,38 @@ export async function createIosDirectSession(
 		},
 		startRecording: (path) => recordViaSimctl(udid, path),
 		captureFrame,
-		screenshot,
 		pageSource,
 		getWindowSize,
-		tap,
+		tap: tapNorm,
 		swipe,
 		drag: (x1, y1, x2, y2, durationMs = 800) => swipe(x1, y1, x2, y2, durationMs),
 		type,
-		keySupport: IOS_SIMULATOR_KEY_SUPPORT,
-		key,
-		activateApp,
+		key: async (name) => {
+			await run(["ui", "key", String(IOS_HID_KEYCODES[name]), "--udid", udid], "idb ui key");
+		},
+		activateApp: async (appId) => {
+			lastAppId = appId;
+			await run(["launch", appId, "--udid", udid], "idb launch");
+		},
 		setTargetApp: (appId) => {
 			lastAppId = appId;
 		},
 		targetApp: () => lastAppId,
-		terminateApp,
-		backgroundApp,
-		openUrl,
-		acceptAlert: () => withActionLock(() => resolveAlert("accept")),
-		dismissAlert: () => withActionLock(() => resolveAlert("dismiss")),
-		withActionLock,
-		pointerEvent: async (phase: PointerPhase, xNorm: number, yNorm: number) => {
-			if (phase === "begin") {
-				pointerStart = { x: xNorm, y: yNorm };
-				lock.setPointerActive(true);
-				return;
-			}
-			if (phase === "move") {
-				pointerStart = pointerStart ?? { x: xNorm, y: yNorm };
-				return;
-			}
-			const start = pointerStart ?? { x: xNorm, y: yNorm };
-			pointerStart = null;
-			lock.setPointerActive(false);
-			if (start.x === xNorm && start.y === yNorm) {
-				await tapNorm(xNorm, yNorm);
-			} else {
-				await swipeNorm(start.x, start.y, xNorm, yNorm);
-			}
+		terminateApp: async (appId) => {
+			await run(["terminate", appId, "--udid", udid], "idb terminate");
 		},
-		isPointerActive: () => lock.isPointerActive(),
-	};
+		backgroundApp,
+		openUrl: async (url) => {
+			await run(["open", url, "--udid", udid], "idb open");
+		},
+		acceptAlert: () => resolveAlert("accept"),
+		dismissAlert: () => resolveAlert("dismiss"),
+		pointer: {
+			kind: "gesture",
+			tap: (point) => tapNorm(point.x, point.y),
+			swipe: (from, to) => swipeNorm(from.x, from.y, to.x, to.y),
+		},
+	});
 	if (deps.yoqaSim) session.stream = liveStream(await ensureYoqaSim());
 	return session;
 }

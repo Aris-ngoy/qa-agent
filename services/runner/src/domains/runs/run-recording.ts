@@ -34,11 +34,8 @@ export async function startRunRecording(
 	session: DeviceSession,
 	path: string,
 ): Promise<ActiveRecording | { unavailable: string }> {
-	if (!session.startRecording) {
-		return {
-			unavailable: session.noRecordingReason ?? `The ${session.lane} lane cannot record video`,
-		};
-	}
+	const unavailable = session.capabilities.unsupported.startRecording;
+	if (unavailable !== undefined) return { unavailable };
 	let recording: ScreenRecording;
 	try {
 		recording = await session.startRecording(path);

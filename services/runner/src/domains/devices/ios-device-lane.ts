@@ -31,11 +31,13 @@
  * Alerts and URLs arrive in later slices; until then they reject with a clear message.
  */
 
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { type KeyName, type ScreenSource, screenSourceSchema } from "@yoqa/runner-client";
+import { composeDeviceSession, createActionLock } from "./device-session";
+import { requireOk } from "./device-tool";
 import {
 	appMainProcess,
 	parseDevicectlAppUrl,
@@ -53,18 +55,14 @@ import { IOS_PREVIEW_CAPTURE, type PhonePreview, startPhonePreview } from "./ios
 import { yoqaAxTreeToSource } from "./ios-direct-lane";
 import { looksLikePhysicalIosUdid } from "./ios-udid";
 import {
-	ActionUnsupportedError,
 	type CapturedFrame,
 	DeadSessionError,
 	type DeviceSession,
 	DeviceUnreachableError,
 	type KeySupport,
-	type PointerPhase,
 	type SessionOptions,
-	assertKeySupported,
 } from "./lane";
 import { remember } from "./once";
-import { SCREENSHOT_DIR } from "./screenshot-retention";
 import { connectUsbmux } from "./usbmuxd";
 import type { YoqaAxNode } from "./yoqa-ax";
 import { type RunnerExec, type YoqaRunner, startYoqaRunner, yoqaRunnerDeps } from "./yoqa-runner";
@@ -174,14 +172,11 @@ function snapshotSource(named: unknown, asked: string | undefined): ScreenSource
 }
 
 /**
- * An Action this Lane does not do yet. It is `ActionUnsupportedError`, so the runner answers
- * 422 (the Action cannot run here), not 500 (something broke), as the web lane does.
+ * Why an Action this Lane does not do yet fails. The session rejects it with
+ * `ActionUnsupportedError`, so the runner answers 422 (the Action cannot run here), not 500.
  */
-function notYet(what: string): () => Promise<never> {
-	return () =>
-		Promise.reject(
-			new ActionUnsupportedError(`${what} is not available on the physical-iOS Direct lane yet`),
-		);
+function notYet(what: string): string {
+	return `${what} is not available on the physical-iOS Direct lane yet`;
 }
 
 /** The real Mac: `YoqaRunner` through xcodebuild, usbmuxd, and `xcrun devicectl`. */
@@ -223,21 +218,9 @@ export async function createIosDeviceSession(
 	let quitting = false;
 	let stopping: Promise<void> | null = null;
 
-	let chain: Promise<unknown> = Promise.resolve();
-	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
-		const run = chain.then(fn, fn);
-		chain = run.catch(() => undefined);
-		return run;
-	};
-
 	// One inspector tunnel at a time, so a frame and a tree read do not open two usbmuxd
-	// connections together. Gestures stay on `withActionLock` and can run alongside a read.
-	let inspectorChain: Promise<unknown> = Promise.resolve();
-	const withInspectorLock = <T>(fn: () => Promise<T>): Promise<T> => {
-		const run = inspectorChain.then(fn, fn);
-		inspectorChain = run.catch(() => undefined);
-		return run;
-	};
+	// connections together. Gestures stay on the session's action lock and can run alongside a read.
+	const withInspectorLock = createActionLock();
 
 	/** A runner the cable no longer reaches is a Dead Session, reported once. */
 	let notifiedDead = false;
@@ -349,12 +332,7 @@ export async function createIosDeviceSession(
 	});
 
 	const devicectl = async (args: string[], label: string) => {
-		const result = await deps.devicectl(args);
-		if (result.exitCode !== 0) {
-			throw new Error(
-				`${label}: ${result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`}`,
-			);
-		}
+		requireOk(await deps.devicectl(args), label);
 	};
 
 	/** What a `devicectl` command reports through `--json-output`. */
@@ -485,14 +463,6 @@ export async function createIosDeviceSession(
 		}
 	};
 
-	const screenshot = async () => {
-		await mkdir(SCREENSHOT_DIR, { recursive: true });
-		const frame = await captureFrame();
-		const path = join(SCREENSHOT_DIR, `shot_${Date.now()}_${crypto.randomUUID()}.png`);
-		await Bun.write(path, Uint8Array.from(Buffer.from(frame.base64, "base64")));
-		return { path, base64: frame.base64 };
-	};
-
 	const tapNorm = async (xNorm: number, yNorm: number, durationMs = 0) => {
 		const point = { x: fraction(xNorm), y: fraction(yNorm) };
 		if (durationMs > LONG_PRESS_MIN_MS) {
@@ -521,9 +491,6 @@ export async function createIosDeviceSession(
 			true,
 		);
 	};
-
-	let pointerStart: { x: number; y: number } | null = null;
-	let pointerActive = false;
 
 	/**
 	 * Where the app is installed on the phone. `devicectl` terminates by pid, so the bundle id
@@ -592,9 +559,21 @@ export async function createIosDeviceSession(
 		);
 	};
 
-	return {
-		lane: "direct",
+	const launch = (id: string) =>
+		devicectl(["device", "process", "launch", "--device", udid, id], "devicectl launch");
+
+	return composeDeviceSession({
 		stream: preview?.stream ?? null,
+		capabilities: {
+			keys: PHONE_KEY_SUPPORT,
+			targetApp: true,
+			unsupported: {
+				openUrl: notYet("Opening a URL"),
+				acceptAlert: notYet("Accepting an alert"),
+				dismissAlert: notYet("Dismissing an alert"),
+			},
+		},
+		where: "on a cabled iPhone",
 		quit: async () => {
 			quitting = true;
 			await preview?.stop().catch(() => undefined);
@@ -607,66 +586,38 @@ export async function createIosDeviceSession(
 			await stopping;
 		},
 		captureFrame,
-		screenshot,
 		startRecording,
 		pageSource,
 		getWindowSize,
-		tap: (x, y, tapOptions) => withActionLock(() => tapNorm(x, y, tapOptions?.durationMs)),
+		tap: (x, y, tapOptions) => tapNorm(x, y, tapOptions?.durationMs),
 		swipe: (x1, y1, x2, y2, durationMs = SWIPE_MS) =>
-			withActionLock(() =>
-				dragNorm({ x: x1, y: y1 }, { x: x2, y: y2 }, durationMs, SWIPE_PRESS_MS),
-			),
+			dragNorm({ x: x1, y: y1 }, { x: x2, y: y2 }, durationMs, SWIPE_PRESS_MS),
 		drag: (x1, y1, x2, y2, durationMs = 800) =>
-			withActionLock(() => dragNorm({ x: x1, y: y1 }, { x: x2, y: y2 }, durationMs, DRAG_PRESS_MS)),
-		type: (text) => withActionLock(() => typeText(text)),
-		keySupport: PHONE_KEY_SUPPORT,
-		key: async (name, modifiers = []) => {
-			assertKeySupported(PHONE_KEY_SUPPORT, "on a cabled iPhone", name, modifiers);
+			dragNorm({ x: x1, y: y1 }, { x: x2, y: y2 }, durationMs, DRAG_PRESS_MS),
+		type: typeText,
+		key: async (name) => {
 			const [command, fields] = PHONE_KEYS[name as keyof typeof PHONE_KEYS];
-			await withActionLock(() => call(command, fields, true));
+			await call(command, fields, true);
 		},
 		activateApp: async (id) => {
-			await devicectl(["device", "process", "launch", "--device", udid, id], "devicectl launch");
+			await launch(id);
 			appId = id;
 		},
 		setTargetApp: (id) => {
 			appId = id;
 		},
 		targetApp: () => appId,
-		terminateApp: (id) => withActionLock(() => terminate(id)),
-		backgroundApp: (seconds = 3) =>
-			withActionLock(async () => {
-				await call("button", { name: "home" }, true);
-				if (!appId) return;
-				await Bun.sleep(seconds * 1000);
-				await devicectl(
-					["device", "process", "launch", "--device", udid, appId],
-					"devicectl launch",
-				);
-			}),
-		openUrl: notYet("Opening a URL"),
-		acceptAlert: notYet("Accepting an alert"),
-		dismissAlert: notYet("Dismissing an alert"),
-		withActionLock,
-		pointerEvent: async (phase: PointerPhase, xNorm: number, yNorm: number) => {
-			if (phase === "begin") {
-				pointerStart = { x: xNorm, y: yNorm };
-				pointerActive = true;
-				return;
-			}
-			if (phase === "move") {
-				pointerStart = pointerStart ?? { x: xNorm, y: yNorm };
-				return;
-			}
-			const start = pointerStart ?? { x: xNorm, y: yNorm };
-			pointerStart = null;
-			pointerActive = false;
-			if (start.x === xNorm && start.y === yNorm) {
-				await tapNorm(xNorm, yNorm);
-			} else {
-				await dragNorm(start, { x: xNorm, y: yNorm }, SWIPE_MS, SWIPE_PRESS_MS);
-			}
+		terminateApp: terminate,
+		backgroundApp: async (seconds = 3) => {
+			await call("button", { name: "home" }, true);
+			if (!appId) return;
+			await Bun.sleep(seconds * 1000);
+			await launch(appId);
 		},
-		isPointerActive: () => pointerActive,
-	};
+		pointer: {
+			kind: "gesture",
+			tap: (point) => tapNorm(point.x, point.y),
+			swipe: (from, to) => dragNorm(from, to, SWIPE_MS, SWIPE_PRESS_MS),
+		},
+	});
 }

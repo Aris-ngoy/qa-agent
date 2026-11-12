@@ -5,13 +5,20 @@ import type { DeviceSession } from "../devices/lane";
 import { recordCase, recordingFromRow, runVideoPath, startRunRecording } from "./run-recording";
 
 function sessionWith(startRecording?: DeviceSession["startRecording"]): DeviceSession {
-	return { lane: "direct", startRecording } as unknown as DeviceSession;
+	const unsupported = startRecording
+		? {}
+		: { startRecording: "Run recording is not available here" };
+	return {
+		lane: "direct",
+		capabilities: { unsupported },
+		startRecording,
+	} as unknown as DeviceSession;
 }
 
 describe("startRunRecording", () => {
-	test("reports a Lane that cannot record as unavailable instead of throwing", async () => {
+	test("reports a Lane that cannot record as unavailable, with its reason, instead of throwing", async () => {
 		const result = await startRunRecording(sessionWith(undefined), "/tmp/x.mp4");
-		expect(result).toEqual({ unavailable: "The direct lane cannot record video" });
+		expect(result).toEqual({ unavailable: "Run recording is not available here" });
 	});
 
 	test("tells the user to install ffmpeg when the recorder cannot find it", async () => {
@@ -130,7 +137,7 @@ describe("recordCase", () => {
 		);
 		expect(result).toBe("ran");
 		expect(states).toEqual([
-			{ status: "unavailable", note: "The direct lane cannot record video" },
+			{ status: "unavailable", note: "Run recording is not available here" },
 		]);
 	});
 

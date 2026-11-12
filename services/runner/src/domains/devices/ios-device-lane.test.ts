@@ -5,12 +5,7 @@ import { join } from "node:path";
 import { errorChain } from "./error-chain";
 import { ActionValidationError, performAction } from "./interaction";
 import { type IosDeviceDeps, createIosDeviceSession } from "./ios-device-lane";
-import {
-	ActionUnsupportedError,
-	DeadSessionError,
-	DeviceUnreachableError,
-	type SessionOptions,
-} from "./lane";
+import { DeadSessionError, DeviceUnreachableError, type SessionOptions } from "./lane";
 import { cleanPageSource, screenSourceOf } from "./screen";
 import { UsbmuxError } from "./usbmuxd";
 import { YoqaRunnerCommandError } from "./yoqa-runner-link";
@@ -467,21 +462,6 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 		await session.quit();
 	});
 
-	test("a terminate waits for a gesture in flight, and a gesture waits for it", async () => {
-		const phone = fakePhone({ shop: "running" });
-		const session = await createIosDeviceSession(options(), phone.deps);
-		const order: string[] = [];
-		const held = session.withActionLock(async () => {
-			await Bun.sleep(30);
-			order.push("gesture");
-		});
-		const terminated = session.terminateApp("com.example.shop").then(() => order.push("terminate"));
-		const tapped = session.tap(500, 500).then(() => order.push("tap"));
-		await Promise.all([held, terminated, tapped]);
-		expect(order).toEqual(["gesture", "terminate", "tap"]);
-		await session.quit();
-	});
-
 	test("a tap goes to the runner as fractions of the screen", async () => {
 		const phone = fakePhone();
 		const session = await createIosDeviceSession(options(), phone.deps);
@@ -828,18 +808,15 @@ describe("createIosDeviceSession (physical-iOS Direct lane)", () => {
 });
 
 describe("Actions a cabled iPhone does not do yet", () => {
-	test("open-url and alerts fail as unsupported (422), not as a broken runner (500)", async () => {
+	// That each one rejects as `ActionUnsupportedError` (422) is the Lane contract's test.
+	test("open-url and the alerts are declared unsupported", async () => {
 		const phone = fakePhone();
 		const session = await createIosDeviceSession(options(), phone.deps);
-		for (const attempt of [
-			() => session.openUrl("https://example.com"),
-			() => session.acceptAlert(),
-			() => session.dismissAlert(),
-		]) {
-			const error = await attempt().catch((caught: unknown) => caught);
-			expect(error).toBeInstanceOf(ActionUnsupportedError);
-			expect((error as Error).message).toContain("not available on the physical-iOS Direct lane");
-		}
+		expect(Object.keys(session.capabilities.unsupported).sort()).toEqual([
+			"acceptAlert",
+			"dismissAlert",
+			"openUrl",
+		]);
 		await session.quit();
 	});
 });

@@ -87,7 +87,7 @@ function streamStateOf(stream: DeviceSession["stream"]): StreamState {
 
 function toInfo(current: ActiveSession): ActiveSessionInfo {
 	const streamState = streamStateOf(current.session.stream);
-	const targetApp = current.session.targetApp?.();
+	const targetApp = current.session.targetApp();
 	return {
 		deviceId: current.deviceId,
 		platform: current.platform,
