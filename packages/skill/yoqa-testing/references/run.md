@@ -25,10 +25,6 @@ yoqa runs wait <run-id> --timeout 3600
 yoqa runs delete <run-id>                   # delete a run and its results (irreversible)
 ```
 
-> **`runs delete` is destructive and irreversible — always get explicit user approval first.** Name the
-> exact run (id) you intend to delete and wait for confirmation before running. Never delete a run the
-> user didn't ask you to remove.
-
 ## Notes
 
 - Saved cases are referenced by their **number** (from `yoqa cases list APP`), not `PREFIX-N`
@@ -54,7 +50,12 @@ yoqa runs delete <run-id>                   # delete a run and its results (irre
 - `--build-id` and `--build-path` are mutually exclusive
 - Supported build formats: `.ipa` (iOS device), `.app` (iOS simulator), `.apk` (Android)
 - `runs create` returns a `run_id`. Prefer `--wait` over polling; `--wait` exits non-zero if the run errored.
-- Optional `--mode auto|script|agent` — prefer a saved script, force AI, or auto (default)
+- `--mode auto|script|agent` — replay the case's saved Case Script, force the AI agent, or `auto`
+  (default)
+- `--screen-mode vision|tree` — what the agent sees: the screenshot only (default), or also the
+  accessibility tree
+- `--record-video` — record a screen video of every case in the run (not available on web)
+- `--profile kept|clean` — web only: the App's Kept browser profile, or a throwaway one
 - In CI, `--github-output` writes `run_id` and `status` to `$GITHUB_OUTPUT`
 
 ## Reports

@@ -1,10 +1,8 @@
 # Test Cases
 
-> This page is the **data model** — what a case, flow, reusable flow, and app context are.
-> For how to phrase good instructions and results see [Writing Good Test Cases](writing-test-cases.md).
-> For the authoring process and commands see the [workflow](../workflows/test-cases.md).
-
-Yoqa is a mobile testing platform. You describe test scenarios in plain English — the AI agent runs them on a real device or simulator and reports pass/fail with screenshots.
+The data model: what a case, a flow, a reusable flow and app context are. You describe a scenario in
+plain English; the Yoqa agent runs it on a device, simulator or browser and reports pass/fail with
+screenshots.
 
 ## Test case
 

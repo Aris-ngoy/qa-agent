@@ -15,7 +15,7 @@ yoqa builds create /abs/path/App.ipa --app APP --name "RC1"
 yoqa builds list                                  # all registered builds
 yoqa builds list APP                              # builds for one app
 yoqa builds list APP --json
-yoqa builds delete <build-id>                     # no app argument
+yoqa builds delete <build-id>                     # irreversible; no app argument
 ```
 
 - **`create`** takes an **absolute path** to a `.ipa` (iOS device), `.app` (iOS simulator), or `.apk`
@@ -24,7 +24,3 @@ yoqa builds delete <build-id>                     # no app argument
 - `--name` is optional; it's only a label to recognise the build later.
 - `builds list` prints `<id>  <platform>  <name>  <path>`; use `--json` for the full record.
 - The `id` is what you pass to `yoqa runs create APP --cases <n> --build-id <id>`. See [Run Tests](run.md).
-
-> **`builds delete` is destructive and irreversible — always get explicit user approval first.** Name the
-> exact build (id + name) you intend to delete and wait for confirmation before running. Never delete a
-> build the user didn't ask you to remove.

@@ -1,83 +1,64 @@
-# Workflow: Run Saved Tests with the Yoqa Agent
+# Workflow: Run Saved Cases
 
-Runs **already-saved** test cases autonomously on a connected device using the Yoqa agent. Requires a
-configured AI provider (`yoqa status` shows `provider: …`).
+The Yoqa agent runs **already-saved** cases on a connected device and you report the outcome. A
+scenario that is not saved yet goes through [Author test cases](test-cases.md) first.
 
-> Developing a new scenario? Drive it on the device first and iterate before saving the case — see
-> [Debug directly on device](debug-on-device.md).
+## 1. Preflight
 
-> References: [Devices](../references/devices.md) · [Run Tests](../references/run.md) ·
-> [Builds](../references/builds.md) · [iOS Native Builds](../references/builds-ios-native.md) ·
-> [React Native Builds](../references/builds-react-native.md) ·
-> [Android Builds](../references/builds-android.md)
+`yoqa status --json` must show an AI provider, and `yoqa cases list APP` must list every case number
+the user asked for.
 
-## Steps
+**Done when** both hold. With no provider, stop and ask the user to set one (Settings → Provider in the
+Yoqa app).
 
-### 1. Connect a device
+## 2. Connect a device
 
-List available devices and connect one (`--platform` is required). See
-[Devices](../references/devices.md).
+Phone or simulator: `yoqa devices connect <id> --platform <ios|android>`. Web:
+`yoqa devices connect web-chrome`. [Devices](../references/devices.md)
 
-### 2. Provide a build
+## 3. Give the run its app
 
-**Always run saved cases with a build.** Each run reinstalls the app from the build, which keeps a
-regression suite consistent — never rely on whatever happens to be installed on the device (e.g. a React
-Native app served via Metro is not reinstalled between runs). Produce a binary if needed —
-[iOS Native Builds](../references/builds-ios-native.md),
-[React Native Builds](../references/builds-react-native.md), or
-[Android Builds](../references/builds-android.md); use a Release build unless the user explicitly wants
-Debug.
-
-> **If the user wants to skip the build and run against the app already installed on the device, confirm
-> with them first and warn about the consequence.** Without a reinstall the app is not reset — leftover
-> login, completed onboarding, and data from previous runs or manual use carry over. Test cases assume a
-> [cold launch from a clean state](../concepts/writing-test-cases.md#every-test-starts-from-a-cold-launch),
-> so a case can pass or fail for the wrong reason. It is worse with several cases in one run: state from
-> one test bleeds into the next. Acceptable only for a quick single-case check; for a regression suite,
-> insist on a build. If they still want to reuse the installed app, reset its state first —
-> [Install iOS](../references/install-ios.md#clean-install-reset-app-state) ·
-> [Install Android](../references/install-android.md#clean-install-reset-app-state).
-
-Pass the build one of two ways:
-
-**Option A — register the build first, then run by ID (recommended):**
+**Phone or simulator — a build.** Each run reinstalls the app from the build, so every case starts
+from a [cold launch](../concepts/writing-test-cases.md#every-test-starts-from-a-cold-launch). Ask the
+user for the binary, or produce one — [iOS native](../references/builds-ios-native.md) ·
+[React Native](../references/builds-react-native.md) · [Android](../references/builds-android.md) —
+as a Release build unless the user wants Debug. Then either register it and reuse its id across runs:
 
 ```bash
 yoqa builds create /abs/path/App.ipa --app APP --name "RC1"
 ```
 
-Reuse the returned id across runs instead of re-passing a path. See [Builds](../references/builds.md).
+or pass `--build-path /abs/path/App.ipa` for a one-off. [Builds](../references/builds.md)
 
-**Option B — pass a build file path inline:**
+**Running without a build** uses whatever is installed: login, finished onboarding and data from
+earlier runs carry over, and with several cases one case's state bleeds into the next, so a case can
+pass or fail for the wrong reason. Tell the user that and get their yes first; it suits a quick
+single-case check, and a regression suite gets a build. If they go ahead, reset the app's state before
+the run: [iOS](../references/install-ios.md#clean-install-reset-app-state) ·
+[Android](../references/install-android.md#clean-install-reset-app-state).
 
-For a one-off, skip the registry and pass `--build-path /abs/path/App.ipa` per
-[Run Tests](../references/run.md).
+**Web — a Web URL.** There are no builds; the run opens the App's Web URL. Check it is set with
+`yoqa apps get APP`, and set it with `yoqa apps update APP --web-url <url>` if not.
 
-### 3. Run the tests
-
-Case numbers go in the required `--cases` flag:
+## 4. Run
 
 ```bash
-yoqa runs create APP --cases 1,2,5 --build-id <build-id> --wait
+yoqa runs create APP --cases 1,2,5 --build-id <build-id> --wait      # phone or simulator
+yoqa runs create APP --cases 1,2,5 --device web-chrome --wait        # web
 ```
 
-Prefer `--wait` over polling — it blocks until the run finishes and exits non-zero if it errored. Without
-`--wait` you get a `run_id` back; tell the user the run has started, share the id, and follow it with
-`yoqa runs wait <run-id>` or inspect it with `yoqa runs get <run-id>`.
+`--wait` blocks until the run finishes and exits non-zero if it errored. Without it you get a `run_id`:
+give the user the id and follow it with `yoqa runs wait <run-id>`. Every flag:
+[Run Tests](../references/run.md).
 
-### 4. Report the result
+## 5. Report
 
 ```bash
-yoqa runs get <run-id>                                  # per-test pass/fail
+yoqa runs get <run-id>                                  # per-case pass/fail
 yoqa runs get <run-id> --json                           # flows, expected results, steps
 yoqa runs report <run-id> --format md -o ./report.md    # shareable report with screenshots
 ```
 
-## Notes
-
-- All case numbers must belong to the same app (the prefix you pass)
-- A device must be connected before running; `runs get` / `runs wait` / `runs delete` take the run id
-  with **no app argument**
-- Supported build formats: `.ipa` (iOS device), `.app` (iOS simulator), `.apk` (Android)
-- If a run fails to start because no provider is configured, tell the user to open Settings → Provider
-  in the Yoqa app
+**Done when** every case number you passed to `--cases` appears in your answer as passed or failed,
+and each failure names the flow that failed, the expected result it missed, and what the agent saw
+instead (from `runs get --json`). Then `yoqa devices disconnect`.

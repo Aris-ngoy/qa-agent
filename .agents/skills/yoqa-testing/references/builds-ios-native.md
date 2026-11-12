@@ -17,17 +17,17 @@ xcodebuild -list
 xcodebuild -list -workspace <Name>.xcworkspace
 ```
 
-Use `Debug` for simulator builds — faster compilation, no provisioning needed. Use `Release` for physical device builds — tests real user flows with full optimization.
+`Debug` on the simulator compiles faster and needs no provisioning. `Release` on a physical device
+tests what users get.
 
 ## Simulator build (.app)
-
-Use `Debug` for simulator builds.
 
 ```bash
 xcodebuild \
   -scheme <SchemeName> \
   -sdk iphonesimulator \
   -configuration Debug \
+  -derivedDataPath build
 ```
 
 After building, apply an ad-hoc signature so the simulator runtime accepts the binary:

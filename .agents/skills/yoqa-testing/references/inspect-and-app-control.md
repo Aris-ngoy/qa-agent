@@ -1,29 +1,22 @@
 # Inspect & App Control
 
-Shared debug commands: screenshots, screen inspection, app lifecycle, and alerts. Act by explicit
-relative coordinates read off a screenshot — see [Actions by coordinates](actions-coordinates.md).
-`--id` / `--label` / `--description` are the fallback — see [Targeting elements](actions-grounding.md).
+Reading the screen, app lifecycle, alerts and keys.
 
-## Screenshot first
+## Screenshot
 
 ```bash
-yoqa screenshot /tmp/screen.png    # save a screenshot to file, then open the image and look at it
+yoqa screenshot /tmp/screen.png    # prints the saved path: open that file as an image
 ```
 
-**Always take a screenshot before and after any action to verify the actual UI state.**
+The screenshot is the primary read of the screen. It shows what the user sees: layout, icons, canvas
+and game controls, overlays, the soft keyboard, and **system sheets and dialogs** (App Store
+"Install", permission prompts, share sheets).
 
-**Look at the screenshot first — it is the primary way to read the screen.** It shows what the user
-sees: layout, icons, canvas and game controls, overlays, the soft keyboard, and **system sheets and
-dialogs** (App Store "Install", permission prompts, share sheets). Decide from the image, then act with
-`--x` / `--y`. The command prints the saved path; open that file as an image — do not try to read it as
-text.
+The element list can miss a system sheet covering the app and keep describing the screen underneath:
+a tree that says "Preparing to download" can sit under a sheet whose only button is "Install". When
+the two disagree, the screenshot is right.
 
-Do not trust the element list over the screenshot. The element list can miss a system sheet that is
-covering the app and keep describing the screen underneath it, so a tree that says "Preparing to
-download" can sit under a sheet whose only button is "Install". When the two disagree, the screenshot
-is right.
-
-## Screen inspection (fallback)
+## Screen inspection
 
 ```bash
 yoqa screen                        # cleaned element list
@@ -35,8 +28,7 @@ Use `yoqa screen` when the screenshot is not enough: you need an exact label or 
 deterministically, text is too small to read, or you want the list of everything on a long screen. It
 costs fewer tokens than an image but sees only the app's own accessibility tree.
 
-Call `yoqa screen` directly — do not pipe through `grep`, `awk`, or any other filter. Parse the raw
-output yourself. Filtering can hide elements you need.
+Read the whole output of `yoqa screen`; a `grep` or `awk` filter hides the elements you need.
 
 ### Reading the output
 
@@ -152,5 +144,4 @@ What each platform can press:
 | Physical iPhone | Enter, Backspace, Space | no |
 
 A key the device cannot press fails the Action with an error naming the key and what the device
-supports. Nothing is sent, so choose another way (tap the on-screen Return or Next button) rather than
-retrying.
+supports. Nothing was sent: tap the on-screen Return or Next button instead.

@@ -1,23 +1,16 @@
 # Writing Good Test Cases
 
-> This page is the **quality guide** — how to phrase instructions and results so the agent runs them reliably.
-> Before saving a case, debug-run the scenario on a device from a clean state — see [Debug on device](../workflows/debug-on-device.md).
-> For the data model (what a case, flow, or app context *is*) see [Test Cases](test-cases.md).
-> For the step-by-step authoring process and commands see the [workflow](../workflows/test-cases.md).
-
 A good test case reads like instructions you'd hand a careful human tester: clear goals, in order, each with a concrete way to tell it worked. Vague, run-on, or tap-by-tap instructions are the main reason a run fails for the wrong reason.
 
 ## Every test starts from a cold launch
 
-This is the single most important thing to internalise. **Each run installs or launches the app fresh — no saved session, no prior navigation, onboarding not yet completed, not logged in.** A test case must describe the whole path from that cold start to the thing you actually want to verify. The app is never already sitting on the screen you care about.
+**Each run installs or launches the app fresh — no saved session, no prior navigation, onboarding not yet completed, not logged in.** A test case must describe the whole path from that cold start to the thing you actually want to verify. The app is never already sitting on the screen you care about.
 
 So to test a screen deep inside the app, the run first has to *get there* — through onboarding, login, and any first-launch permission prompts. Three ways to handle that prefix:
 
 - **Reusable flow** (default) — wrap onboarding/login in a reusable flow and reference it by `flowId` from every case that needs it. Written once, shared everywhere.
 - **Deeplink** — if the app has a URL scheme handler (check the codebase), open a deeplink to jump straight to the target screen and skip the navigation.
 - **Test build / flag** — a build with onboarding disabled, a feature flag, or pre-seeded data.
-
-Never assume the app is already past onboarding or already logged in.
 
 ### Reaching a specific state
 
@@ -28,8 +21,6 @@ Figure out how to reach the state the test needs; if it's not clear from the cod
 - **Other state** — ask how to reach it reliably: test build, feature flag, cheat menu, or pre-seeded data.
 
 ## Formatting rules
-
-These rules have the biggest effect on quality. Apply them every time.
 
 **1. One flow = one goal.** Split a scenario into flows by goal (sign in / edit profile / verify result). Don't cram a whole scenario into one flow, and don't shatter a single goal into many one-tap flows.
 
@@ -79,8 +70,6 @@ Describe what should be visible on screen after the flow. The more concrete, the
 
 ## A complete example
 
-> Before saving the flows below, debug-run the whole scenario on a device from a clean state ([Debug on device](../workflows/debug-on-device.md)) to confirm the path and the expected results.
-
 A well-formed case: one goal per flow, a numbered list where a flow has several actions, and a concrete result on each.
 
 The flows go in a JSON file passed to `--flows-file`; the title and tags are flags:
@@ -111,9 +100,5 @@ reusable flow by `{"flowId": "..."}` instead of inlining it (see the [workflow](
 
 ## Tags
 
-Pass each tag with a repeatable `--tag` flag on `cases create` or `cases update` — created automatically
-if they don't exist. On `update`, `--tag` replaces the whole set.
-
-Conventions: `auth`, `payments`, `smoke`, `regression`, `ios-only`, `android-only`
-
-To see existing tags: `yoqa tags APP` — see [Apps, Cases & Flows](../references/apps-cases-and-flows.md).
+Reuse a tag from `yoqa tags APP` before coining one. Conventions: `auth`, `payments`, `smoke`,
+`regression`, `ios-only`, `android-only`. Commands: [Apps, Cases & Flows](../references/apps-cases-and-flows.md#tags).
