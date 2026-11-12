@@ -42,8 +42,9 @@ export function appendScript(script$: InspectorScript$, lines: string[]) {
 	script$.text.set((prev) => appendScriptLines(prev.trim() ? prev : emptyCaseScriptFile(), lines));
 }
 
+/** A whole new log: the Script panel reads it whole, and an in-place push leaves it a line behind. */
 export function pushLog(script$: InspectorScript$, entry: RunLogEntry) {
-	script$.log.push(entry);
+	script$.log.set([...script$.log.peek(), entry]);
 }
 
 /** Running, cleared log, and the first log line land in one notification. */

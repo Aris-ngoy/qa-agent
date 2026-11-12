@@ -41,6 +41,7 @@ Give a Browser device the equivalent of a browser's F5: load the page the Device
   - `useReloadShortcut`, with the pure `isReloadShortcut` and `isTypingTarget` checks in `utils/reload-shortcut.ts`.
   - `handleReloadPage` in `use-script-session.ts`.
   - "Reload page" in the step list and the saved-script summary.
+  - Run log fix, found while checking the button: `pushLog` used to add each line to the log in place, but the Script panel only redraws when the whole log is replaced. A run's last lines (✓ and "Done") therefore only showed once the next run started. It now sets a new array, as the AGENTS.md state rule asks.
 - **Docs:** the skill's lifecycle table (shipped and local copies), `agent-cli-parity.md`, `saved-scripts.md`, and the **Reload (a page)** term in `CONTEXT.md`.
 
 ## How to verify
