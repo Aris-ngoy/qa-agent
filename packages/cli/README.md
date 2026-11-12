@@ -16,6 +16,13 @@ The CLI talks to the local runner at `http://127.0.0.1:7420` by default. If noth
 yoqa serve
 ```
 
+For coding agents (Claude Code, Cursor, Codex), install the `yoqa-testing` skill the CLI carries:
+
+```bash
+yoqa skill install                        # every agent, user-level
+yoqa skill install --dir .claude/skills   # one project
+```
+
 Disable auto-start with `YOQA_NO_AUTOSTART=1`. Override the URL with `YOQA_RUNNER_HOST` / `YOQA_RUNNER_PORT` / `YOQA_RUNNER_URL`.
 
 See [CLI docs](https://yoqa.arisn.dev/docs/cli) and [GitHub Actions](https://yoqa.arisn.dev/docs/github-actions).

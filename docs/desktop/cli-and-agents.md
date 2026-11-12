@@ -26,6 +26,17 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
   - Dev checkout: source is `packages/skill/yoqa-testing`
 - UI wired with live ✓/× status, Install/Reinstall, Open folder
 
+### Skill install without the desktop app
+
+- `yoqa skill install` — the CLI carries the skill and installs it itself, so `npx @yoqa/cli skill install` works on a machine with no desktop app
+  - The skill is inlined at build time by a Bun macro (`packages/cli/src/skill-files.macro.ts`), so the npm bundle and the desktop's compiled `yoqa` both hold it with no file shipped beside them; `skill-install.test.ts` checks the inlined copy is `packages/skill/yoqa-testing` file for file
+  - Default: one real copy in the store, linked into `~/.agents/skills`, `~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`. On macOS the store is the desktop's folder (`~/Library/Application Support/yoqa/skills/yoqa-testing`), so Settings shows a CLI install as installed and either installer refreshes the other's copy. Linux: `$XDG_DATA_HOME` or `~/.local/share`; Windows: `%LOCALAPPDATA%`
+  - A `yoqa-testing` it did not install (a copy, or a link elsewhere) is kept and reported; `--force` replaces it
+  - `--dir <path>` writes a plain copy to `<path>/yoqa-testing` only, for a project's own skills directory
+  - Starts no runner
+- `npx skills add Aris-ngoy/qa-agent --skill yoqa-testing` also works with no code of ours: the repo is public and tracks the mirror at `.agents/skills/yoqa-testing`
+- Rejected: a tarball on the GitHub release with a `curl | tar` line — a third artifact to keep in step, for a path npm already covers
+
 ### Runner / CLI
 
 - Active session: `POST /devices/connect`, `GET /devices/active`, `POST /devices/retarget` (switch app, see [Session bar](./session-bar.md)), `POST /devices/disconnect`
@@ -41,6 +52,7 @@ Make Settings → **CLI & Agents** fully functional (Install CLI, Install skill,
 
 1. Open desktop → Settings → CLI & Agents → **Install** CLI, then in a new terminal: `yoqa health`
 2. **Install** skill → four targets show ✓; **Open folder** reveals App Support skill tree
+   - Without the desktop app: `yoqa skill install` prints the store and one `linked` line per agent directory; `yoqa skill install --dir /tmp/skills && ls /tmp/skills/yoqa-testing` shows `SKILL.md`
 3. With runner up and a booted simulator:
    ```bash
    yoqa devices ios --booted-only

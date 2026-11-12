@@ -12,6 +12,24 @@ Both live in the desktop app **Settings → CLI & Agents** (or install the CLI f
 - **Install CLI** — links `yoqa` into `~/.local/bin` (or use the npm global binary).
 - **Install skill** — installs `yoqa-testing` into common agent skill directories so the agent knows the workflows without you pasting docs.
 
+### Install the skill without the desktop app
+
+The CLI carries the skill, so a terminal or CI machine can install it on its own:
+
+```bash
+yoqa skill install
+```
+
+That links `yoqa-testing` into the user-level skill directories of Claude Code, Cursor, Codex and the shared `~/.agents/skills`. A `yoqa-testing` that something else put there is kept; `--force` replaces it. With npm and no global install: `npx @yoqa/cli skill install`.
+
+To keep the skill in one project instead (and commit it with the repo), give it the project's skills directory:
+
+```bash
+yoqa skill install --dir .claude/skills
+```
+
+The skill is also in the public repository, for the [`skills`](https://skills.sh) installer: `npx skills add Aris-ngoy/qa-agent --skill yoqa-testing`.
+
 Full command surface: [CLI reference](/docs/cli). Public index: `https://yoqa.arisn.dev/llms.txt`.
 
 ## What you can do locally
