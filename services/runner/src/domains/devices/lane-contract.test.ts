@@ -9,7 +9,12 @@ import {
 import { pngSizeFromBase64 } from "./android-gestures";
 import { jpegSize, readMjpegFrames } from "./fake-cdp";
 import { getScreen, performAction } from "./interaction";
-import { UnsupportedKeyError, isDeadSessionError } from "./lane";
+import {
+	ActionUnsupportedError,
+	type OptionalLaneMember,
+	UnsupportedKeyError,
+	isDeadSessionError,
+} from "./lane";
 import {
 	BUTTON,
 	DEVICE,
@@ -151,20 +156,40 @@ for (const makeHarness of LANES) {
 			expect(full.source).toEqual(harness.screenSource);
 		});
 
-		test("a Lane that names its target app names the one it was last pointed at", async () => {
+		test("a Lane that names its target app names the one it was last pointed at, and one that does not names none", async () => {
 			const { session } = await open(makeHarness());
-			if (!session.targetApp) return;
 			session.setTargetApp("com.example.other");
-			expect(session.targetApp()).toBe("com.example.other");
+			expect(session.targetApp()).toBe(
+				session.capabilities.targetApp ? "com.example.other" : undefined,
+			);
 			session.setTargetApp(undefined);
 			expect(session.targetApp()).toBeUndefined();
+			await session.quit();
+		});
+
+		test("what the Lane declares it cannot do fails as unsupported, with its reason", async () => {
+			const { session } = await open(makeHarness());
+			const attempts: Record<OptionalLaneMember, () => Promise<unknown>> = {
+				startRecording: () => session.startRecording("/tmp/yoqa-contract.mp4"),
+				backgroundApp: () => session.backgroundApp(0),
+				openUrl: () => session.openUrl("https://example.com/"),
+				acceptAlert: () => session.acceptAlert(),
+				dismissAlert: () => session.dismissAlert(),
+			};
+			for (const [member, reason] of Object.entries(session.capabilities.unsupported)) {
+				const error = await attempts[member as OptionalLaneMember]().catch(
+					(caught: unknown) => caught,
+				);
+				expect(error).toBeInstanceOf(ActionUnsupportedError);
+				expect((error as Error).message).toBe(reason);
+			}
 			await session.quit();
 		});
 
 		test("every key the Lane declares reaches the device, with modifiers where it holds them", async () => {
 			const harness = makeHarness();
 			const { session } = await open(harness);
-			const { keys, modifiers } = session.keySupport;
+			const { keys, modifiers } = session.capabilities.keys;
 			expect(keys.length).toBeGreaterThan(0);
 			const held = modifiers ? [...KEY_MODIFIERS] : [];
 			for (const key of keys) await session.key(key, held);
@@ -174,7 +199,7 @@ for (const makeHarness of LANES) {
 		test("a key the Lane does not declare fails clearly and reaches nothing", async () => {
 			const harness = makeHarness();
 			const { session } = await open(harness);
-			const { keys, modifiers } = session.keySupport;
+			const { keys, modifiers } = session.capabilities.keys;
 			for (const key of KEY_NAMES.filter((name) => !keys.includes(name))) {
 				const error = await session.key(key).catch((caught: unknown) => caught);
 				expect(error).toBeInstanceOf(UnsupportedKeyError);

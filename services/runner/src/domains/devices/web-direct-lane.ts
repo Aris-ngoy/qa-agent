@@ -38,8 +38,6 @@
  * one. Single shots (Run step screenshots, `/screenshot/image`) still do.
  */
 
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import {
 	DEFAULT_VIEWPORT_PRESET,
 	KEY_NAMES,
@@ -67,20 +65,17 @@ import {
 	type ScreencastFrameMetadata,
 	type TargetInfo,
 } from "./cdp-client";
+import { type PointerDriver, composeDeviceSession } from "./device-session";
 import {
-	ActionUnsupportedError,
 	type CapturedFrame,
 	DeadSessionError,
 	type DeviceSession,
 	type KeySupport,
-	type PointerPhase,
 	type SessionOptions,
-	assertKeySupported,
 } from "./lane";
 import { startMjpegServer } from "./mjpeg-server";
 import type { WebAxSource, WebDialogSource } from "./screen";
 import { debounceScreenChanges } from "./screen-changes";
-import { SCREENSHOT_DIR } from "./screenshot-retention";
 import { AUTO_ATTACH, createWebScreenReader } from "./web-screen-reader";
 
 /** What the lane needs to reach a browser: the browser connection's. */
@@ -517,21 +512,11 @@ export async function createWebDirectSession(
 	const callBrowser = <M extends CdpMethod>(method: M, params: CdpCommands[M]["params"]) =>
 		guarded(() => client.send(method, params));
 
-	let chain: Promise<unknown> = Promise.resolve();
-	/** An Action's work, one at a time; whatever it did, the Screen may have changed. */
-	const withActionLock = <T>(fn: () => Promise<T>): Promise<T> => {
-		const after = () => switching.then(fn);
-		const run = chain.then(after, after);
-		chain = run.catch(() => undefined).finally(screenChanges.changed);
-		return run;
-	};
-
 	/** An Action that would reach the page: it fails while a dialog holds the page. */
-	const withPageActionLock = (fn: () => Promise<void>): Promise<void> =>
-		withActionLock(async () => {
-			if (openDialog) throw dialogOpenError(openDialog);
-			await fn();
-		});
+	const pageAction = async (fn: () => Promise<void>): Promise<void> => {
+		if (openDialog) throw dialogOpenError(openDialog);
+		await fn();
+	};
 
 	/** The page viewport in CSS pixels: the preset's, on every page, however the window is sized. */
 	const getWindowSize = () =>
@@ -779,14 +764,6 @@ export async function createWebDirectSession(
 		return { base64: shot.data, mime: "image/png" };
 	};
 
-	const screenshot = async () => {
-		await mkdir(SCREENSHOT_DIR, { recursive: true });
-		const frame = await captureFrame();
-		const path = join(SCREENSHOT_DIR, `shot_${Date.now()}_${crypto.randomUUID()}.png`);
-		await Bun.write(path, Uint8Array.from(Buffer.from(frame.base64, "base64")));
-		return { path, base64: frame.base64 };
-	};
-
 	/**
 	 * The page's full accessibility tree, as the JSON the Screen reads, with each iframe's
 	 * under its iframe element. Each node of an element that is laid out carries its box and
@@ -807,14 +784,39 @@ export async function createWebDirectSession(
 		} satisfies WebAxSource);
 	};
 
-	let pointerDown = false;
+	/** The Inspector's pointer reaches the page as it moves, and the Screen may change on release. */
+	const livePointer: PointerDriver = {
+		kind: "live",
+		at: toPage,
+		press: async (point) => {
+			await pointer.press(point);
+		},
+		move: async (point) => {
+			await pointer.move(point);
+		},
+		release: async (point) => {
+			await pointer.release(point);
+			screenChanges.changed();
+		},
+	};
 
-	return {
-		lane: "direct",
+	return composeDeviceSession({
 		stream: { ...feed.stream, survivesTreeRead: true },
 		...label,
 		viewport: preset.name,
-		noRecordingReason: "Run recording is not available on web",
+		capabilities: {
+			keys: WEB_KEY_SUPPORT,
+			// Every lifecycle Action names its Web URL, and a Run opens it itself, so none is kept.
+			targetApp: false,
+			unsupported: {
+				startRecording: "Run recording is not available on web",
+				backgroundApp:
+					"background-app is not supported on web: a browser page has no background to send it to",
+			},
+		},
+		where: "on the web",
+		// An Action waits for any move to another page; whatever it did, the Screen may have changed.
+		lock: { ready: () => switching, settled: screenChanges.changed },
 		quit: async () => {
 			quitting = true;
 			screenChanges.stop();
@@ -823,68 +825,36 @@ export async function createWebDirectSession(
 			await connection.disconnect([page, ...openers].map((own) => own.targetId));
 		},
 		captureFrame,
-		screenshot,
 		pageSource,
 		getWindowSize,
 		tap: (x, y, tapOptions) =>
-			withActionLock(() =>
-				openDialog ? tapDialog(openDialog, x, y) : click(x, y, tapOptions?.durationMs),
-			),
-		swipe: (x1, y1, x2, y2, durationMs) =>
-			withPageActionLock(() => scroll(x1, y1, x2, y2, durationMs)),
-		drag: (x1, y1, x2, y2, durationMs) =>
-			withPageActionLock(() => drag(x1, y1, x2, y2, durationMs)),
-		type: (text) => withPageActionLock(() => typeText(text)),
-		keySupport: WEB_KEY_SUPPORT,
-		key: async (name, modifiers = []) => {
-			assertKeySupported(WEB_KEY_SUPPORT, "on the web", name, modifiers);
-			await withPageActionLock(() => pressKey(name, modifiers));
-		},
-		activateApp: (appId) => withActionLock(() => openApp(webUrlOf(appId))),
-		// Every lifecycle Action names its Web URL, and a Run opens it itself, so none is kept.
+			openDialog ? tapDialog(openDialog, x, y) : click(x, y, tapOptions?.durationMs),
+		swipe: (x1, y1, x2, y2, durationMs) => pageAction(() => scroll(x1, y1, x2, y2, durationMs)),
+		drag: (x1, y1, x2, y2, durationMs) => pageAction(() => drag(x1, y1, x2, y2, durationMs)),
+		type: (text) => pageAction(() => typeText(text)),
+		key: (name, modifiers = []) => pageAction(() => pressKey(name, modifiers)),
+		activateApp: (appId) => openApp(webUrlOf(appId)),
 		setTargetApp: () => undefined,
-		terminateApp: (appId) =>
-			withActionLock(async () => {
-				webUrlOf(appId);
-				await closeAppPage();
-			}),
-		restartApp: (appId) =>
-			withActionLock(async () => {
-				const url = webUrlOf(appId);
-				await closeAppPage();
-				const storage = connection.restartStorage;
-				if (storage === "cleared") {
-					await callBrowser("Storage.clearDataForOrigin", {
-						origin: url.origin,
-						storageTypes: "all",
-					});
-				}
-				await navigate(url.href);
-				return { storage };
-			}),
-		backgroundApp: () =>
-			Promise.reject(
-				new ActionUnsupportedError(
-					"background-app is not supported on web: a browser page has no background to send it to",
-				),
-			),
-		openUrl: (url) => withActionLock(() => navigate(url)),
-		acceptAlert: () => withActionLock(() => answerDialog(true)),
-		dismissAlert: () => withActionLock(() => answerDialog(false)),
-		withActionLock,
-		pointerEvent: async (phase: PointerPhase, xNorm: number, yNorm: number) => {
-			const point = await toPage(xNorm, yNorm);
-			if (phase === "begin") {
-				pointerDown = true;
-				await pointer.press(point);
-			} else if (phase === "move") {
-				await pointer.move(point);
-			} else {
-				pointerDown = false;
-				await pointer.release(point);
-				screenChanges.changed();
-			}
+		terminateApp: async (appId) => {
+			webUrlOf(appId);
+			await closeAppPage();
 		},
-		isPointerActive: () => pointerDown,
-	};
+		restartApp: async (appId) => {
+			const url = webUrlOf(appId);
+			await closeAppPage();
+			const storage = connection.restartStorage;
+			if (storage === "cleared") {
+				await callBrowser("Storage.clearDataForOrigin", {
+					origin: url.origin,
+					storageTypes: "all",
+				});
+			}
+			await navigate(url.href);
+			return { storage };
+		},
+		openUrl: (url) => navigate(url),
+		acceptAlert: () => answerDialog(true),
+		dismissAlert: () => answerDialog(false),
+		pointer: livePointer,
+	});
 }
