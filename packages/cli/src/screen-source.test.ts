@@ -42,10 +42,11 @@ describe("yoqa screen and the Screen's source", () => {
 		else process.env.YOQA_NO_AUTOSTART = autostart;
 	});
 
+	/** Lines as a calling agent would see them: the seam writes a command's output in one call. */
 	async function yoqa(...args: string[]): Promise<string[]> {
 		printed = [];
 		await buildProgram().parseAsync(["bun", "yoqa", ...args, "--base-url", runner.url]);
-		return printed;
+		return printed.flatMap((chunk) => chunk.split("\n"));
 	}
 
 	const screen = (source?: ScreenResponse["source"]): ScreenResponse => ({
@@ -83,5 +84,34 @@ describe("yoqa screen and the Screen's source", () => {
 		expect(JSON.parse((await yoqa("screen", "--json")).join("\n")).source).toEqual({
 			kind: "system",
 		});
+	});
+
+	/** 100 elements: more than the cap, so one read of it would flood a calling agent. */
+	const denseScreen = (): ScreenResponse => ({
+		full: false,
+		window: { width: 390, height: 844 },
+		elements: Array.from({ length: 100 }, (_, index) => ({ ...BUTTON, y: index * 10 })),
+	});
+
+	test("a dense screen is capped, and says how many elements it left out", async () => {
+		runner.serve(denseScreen());
+		const lines = await yoqa("screen");
+
+		expect(lines).toHaveLength(81);
+		expect(lines.at(-1)).toBe("… 20 more elements omitted");
+	});
+
+	test("--limit reads exactly as much tree as the task needs", async () => {
+		runner.serve(denseScreen());
+
+		expect(await yoqa("screen", "--limit", "3")).toHaveLength(4);
+		expect(await yoqa("screen", "--limit", "100")).toHaveLength(100);
+	});
+
+	test("--json is one line, and --pretty indents it again", async () => {
+		runner.serve(denseScreen());
+
+		expect(await yoqa("screen", "--json")).toHaveLength(1);
+		expect((await yoqa("screen", "--pretty", "--json")).length).toBeGreaterThan(1);
 	});
 });

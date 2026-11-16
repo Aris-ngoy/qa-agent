@@ -138,10 +138,11 @@ Your Everyday browser needs remote debugging on at `chrome://inspect/#remote-deb
 ```bash
 yoqa screenshot ./shot.png                   # save a PNG — look at it first
 yoqa screen                                  # cleaned element tree + relative coords (0–1000)
+yoqa screen --limit 200                      # past the 80-element default cap
 yoqa screen --full                           # raw accessibility tree
 ```
 
-In agent loops, look at a screenshot first and tap the centre of the control with `--x` / `--y`. Use `yoqa screen` as the fallback for exact ids and labels. Details: [CLI for agents](/guide/cli-for-agents).
+In agent loops, look at a screenshot first and tap the centre of the control with `--x` / `--y`. Use `yoqa screen` as the fallback for exact ids and labels. It prints the first 80 elements and counts the rest, so one read of a dense screen stays bounded; `--limit` raises or lowers that. JSON output is compact — pass `--pretty` when you are reading it yourself. Details: [CLI for agents](/guide/cli-for-agents).
 
 ## Actions
 

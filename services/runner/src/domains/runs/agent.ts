@@ -3,10 +3,12 @@ import {
 	type CallUsage,
 	KEY_MODIFIERS,
 	KEY_NAMES,
+	MAX_SCREEN_SNAPSHOT_ROWS,
 	type ScreenElement,
 	formatKeyChord,
 	keyModifierSchema,
 	keyNameSchema,
+	screenRowsOmittedLine,
 } from "@yoqa/runner-client";
 import { z } from "zod";
 import { parseVisionObject } from "../providers/agent-json";
@@ -154,8 +156,6 @@ export function resolveSwipeNorm(decision: {
 	if (decision.direction) return FINGER_SWIPE_NORMS[decision.direction];
 	return null;
 }
-
-const MAX_SCREEN_SNAPSHOT_ROWS = 80;
 
 function padNorm(n: number): string {
 	return String(Math.round(n)).padStart(4, " ");
@@ -422,7 +422,7 @@ export function formatScreenSnapshot(elements: ScreenElement[] | undefined): str
 		return `${padNorm(element.x)},${padNorm(element.y)}  ${Math.round(element.width)}x${Math.round(element.height)}${id}  ${label}`;
 	});
 	if (ordered.length > shown.length) {
-		lines.push(`… ${ordered.length - shown.length} more elements omitted`);
+		lines.push(screenRowsOmittedLine(ordered.length - shown.length));
 	}
 	return lines.join("\n");
 }
