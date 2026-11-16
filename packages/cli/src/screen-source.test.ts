@@ -42,10 +42,11 @@ describe("yoqa screen and the Screen's source", () => {
 		else process.env.YOQA_NO_AUTOSTART = autostart;
 	});
 
+	/** Lines as a calling agent would see them: the seam writes a command's output in one call. */
 	async function yoqa(...args: string[]): Promise<string[]> {
 		printed = [];
 		await buildProgram().parseAsync(["bun", "yoqa", ...args, "--base-url", runner.url]);
-		return printed;
+		return printed.flatMap((chunk) => chunk.split("\n"));
 	}
 
 	const screen = (source?: ScreenResponse["source"]): ScreenResponse => ({
@@ -83,5 +84,46 @@ describe("yoqa screen and the Screen's source", () => {
 		expect(JSON.parse((await yoqa("screen", "--json")).join("\n")).source).toEqual({
 			kind: "system",
 		});
+	});
+
+	/** 100 elements: more than the cap, so one read of it would flood a calling agent. */
+	const denseScreen = (): ScreenResponse => ({
+		full: false,
+		window: { width: 390, height: 844 },
+		elements: Array.from({ length: 100 }, (_, index) => ({ ...BUTTON, y: index * 10 })),
+	});
+
+	// What the cap and the options *say* is the seam's contract (agent-output.test.ts).
+	// These only prove the command reaches it, and that its options arrive intact.
+	test("a dense screen reaches the cap", async () => {
+		runner.serve(denseScreen());
+
+		expect(await yoqa("screen")).toHaveLength(81);
+	});
+
+	test("--limit, --json and --pretty arrive at the seam", async () => {
+		runner.serve(denseScreen());
+
+		expect(await yoqa("screen", "--limit", "3")).toHaveLength(4);
+		expect(await yoqa("screen", "--json")).toHaveLength(1);
+		expect((await yoqa("screen", "--pretty", "--json")).length).toBeGreaterThan(1);
+	});
+
+	test("a nonsense --limit fails the command instead of printing a stack trace", async () => {
+		runner.serve(denseScreen());
+		const errors: string[] = [];
+		const error = console.error;
+		console.error = (...args: unknown[]) => errors.push(args.join(" "));
+		try {
+			expect(await yoqa("screen", "--limit", "0")).toEqual([]);
+		} finally {
+			console.error = error;
+		}
+
+		expect(errors).toEqual([
+			"yoqa screen failed: --limit must be a whole number of rows, 1 or more",
+		]);
+		expect(process.exitCode).toBe(1);
+		process.exitCode = 0;
 	});
 });

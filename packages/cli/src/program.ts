@@ -8,9 +8,9 @@ import {
 	type DevicePlatform,
 	KEY_MODIFIERS,
 	KEY_NAMES,
+	MAX_SCREEN_ROWS,
 	REMOTE_DEBUGGING_SETTING_URL,
 	RunnerUnreachableError,
-	type ScreenSource,
 	WaitForRunTimeoutError,
 	caseScriptActionCommand,
 	checkScreen,
@@ -49,6 +49,7 @@ import {
 	summarizeLatency,
 } from "../../../services/runner/src/domains/benchmark/summarize";
 import packageJson from "../package.json" with { type: "json" };
+import { parseScreenLimit, writeAgentOutput } from "./agent-output";
 import { findCatalogApp } from "./catalog-app";
 import { formatDoctorReport } from "./doctor-table";
 import {
@@ -571,36 +572,37 @@ devices
 
 // --- screen / screenshot / action ---
 
-/** The line `yoqa screen` leads with, so a SpringBoard tree is not taken for the app's. */
-function screenSourceLine(source: ScreenSource): string {
-	if (source.kind === "system") return "Read from the system (SpringBoard), not an app";
-	const app = source.bundleId ?? "an unnamed app";
-	return `Read from ${app} (${source.kind === "target" ? "target app" : "foreground app"})`;
-}
-
 program
 	.command("screen")
 	.description("Inspect the active device screen (cleaned tree by default)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--full", "Return the raw accessibility tree")
 	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; full?: boolean; json?: boolean }) => {
-		try {
-			const body = await client(options.baseUrl).getScreen({ full: options.full });
-			if (options.json || options.full) {
-				console.log(JSON.stringify(body, null, 2));
-				return;
-			}
-			if (body.source) console.log(screenSourceLine(body.source));
-			for (const el of body.elements ?? []) {
-				console.log(
-					`${String(el.x).padStart(4)},${String(el.y).padStart(4)}  ${el.width}x${el.height}  ${el.label}`,
+	.option("--pretty", "Indent the JSON (compact by default — indentation costs an agent tokens)")
+	.option(
+		"--limit <rows>",
+		`Cleaned-tree rows to print (default ${MAX_SCREEN_ROWS}); the rest are counted, not printed`,
+	)
+	.action(
+		async (options: {
+			baseUrl: string;
+			full?: boolean;
+			json?: boolean;
+			pretty?: boolean;
+			limit?: string;
+		}) => {
+			try {
+				const limit = parseScreenLimit(options.limit);
+				const screen = await client(options.baseUrl).getScreen({ full: options.full });
+				writeAgentOutput(
+					{ kind: "screen", screen },
+					{ json: options.json, pretty: options.pretty, limit },
 				);
+			} catch (error) {
+				fail("screen", error);
 			}
-		} catch (error) {
-			fail("screen", error);
-		}
-	});
+		},
+	);
 
 program
 	.command("screenshot")

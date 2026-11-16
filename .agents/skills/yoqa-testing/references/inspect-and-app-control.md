@@ -19,7 +19,8 @@ the two disagree, the screenshot is right.
 ## Screen inspection
 
 ```bash
-yoqa screen                        # cleaned element list
+yoqa screen                        # cleaned element list — the first 80 elements
+yoqa screen --limit 200            # more (or fewer) rows, when 80 is not enough
 yoqa screen --json                 # same list as JSON — includes each element's id, type, enabled, visible
 yoqa screen --full                 # raw accessibility tree (JSON-wrapped, very long)
 ```
@@ -28,7 +29,12 @@ Use `yoqa screen` when the screenshot is not enough: you need an exact label or 
 deterministically, text is too small to read, or you want the list of everything on a long screen. It
 costs fewer tokens than an image but sees only the app's own accessibility tree.
 
-Read the whole output of `yoqa screen`; a `grep` or `awk` filter hides the elements you need.
+`yoqa screen` prints at most **80 elements** and ends with `… N more elements omitted` on a denser
+screen, so one read cannot flood your context; `--json` caps the same way and adds `omittedElements`.
+Raise it with `--limit` when what you need is past the cut, rather than reading everything every
+time. Read what it does print in full: a `grep` or `awk` filter hides the elements you need.
+
+The JSON is one line. Pass `--pretty` to indent it if you are reading it yourself.
 
 ### Reading the output
 

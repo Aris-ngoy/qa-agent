@@ -95,6 +95,10 @@ _Avoid_: idle wait, sleep (a fixed delay is not a Settle)
 The screenshot captured after an Action has settled, so the effect of that Action is seen without a separate capture. It is the raw device image and the stored ground truth (reports, assertions, replay). A connector caller is handed an Agent image of it by default; an annotated copy marks where the Action landed.
 _Avoid_: post-action capture, verification screenshot
 
+**Agent output**:
+Everything Yoqa writes to stdout for a calling agent: one command's formatted text or JSON, shaped and bounded at the point it is emitted. A cleaned Screen listing in it is capped at a row count and says how many elements it left out; the raw accessibility tree is never capped. It is not a Run report (evidence for a human, after the fact) and not an Agent image (an image for a model, named by path in the Agent output and paid for only when the agent reads the file).
+_Avoid_: stdout (the stream, not what is on it), CLI output (says nothing about who reads it), Run report, console log
+
 **Agent image**:
 A reduced-size copy of a screenshot prepared for a model: what Decide sends to a Vision-capable Provider, and what a connector caller receives by default after an Action. Never the stored original; the raw frame is always kept.
 _Avoid_: thumbnail, preview, compressed screenshot

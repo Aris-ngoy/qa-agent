@@ -37,7 +37,7 @@ capture_failure() {
 		adb -s "$SERIAL" logcat -d -t 120 -s ReactNative:V ReactNativeJS:V AndroidRuntime:E libc:F || true
 	} >artifacts/android-diagnostics.txt 2>&1 || true
 	yoqa screenshot artifacts/android-failure.png || true
-	yoqa screen --json >artifacts/android-screen.json || true
+	yoqa screen --json --pretty --limit 1000 >artifacts/android-screen.json || true
 }
 
 trap capture_failure ERR
