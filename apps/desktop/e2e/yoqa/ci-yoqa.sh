@@ -104,6 +104,6 @@ yoqa runs create DESK --cases 1,2 --mode script --wait --github-output || status
 # Where the Run left the webview; the HTML report has a screenshot for every step.
 yoqa screenshot "$SHOT_DIR/desktop-final.png" || true
 if [ "$status" -ne 0 ]; then
-	yoqa screen --json >artifacts/desktop-screen.json || true
+	yoqa screen --json --pretty --limit 1000 >artifacts/desktop-screen.json || true
 fi
 exit "$status"
