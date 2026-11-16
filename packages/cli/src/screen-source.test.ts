@@ -93,25 +93,37 @@ describe("yoqa screen and the Screen's source", () => {
 		elements: Array.from({ length: 100 }, (_, index) => ({ ...BUTTON, y: index * 10 })),
 	});
 
-	test("a dense screen is capped, and says how many elements it left out", async () => {
+	// What the cap and the options *say* is the seam's contract (agent-output.test.ts).
+	// These only prove the command reaches it, and that its options arrive intact.
+	test("a dense screen reaches the cap", async () => {
 		runner.serve(denseScreen());
-		const lines = await yoqa("screen");
 
-		expect(lines).toHaveLength(81);
-		expect(lines.at(-1)).toBe("… 20 more elements omitted");
+		expect(await yoqa("screen")).toHaveLength(81);
 	});
 
-	test("--limit reads exactly as much tree as the task needs", async () => {
+	test("--limit, --json and --pretty arrive at the seam", async () => {
 		runner.serve(denseScreen());
 
 		expect(await yoqa("screen", "--limit", "3")).toHaveLength(4);
-		expect(await yoqa("screen", "--limit", "100")).toHaveLength(100);
-	});
-
-	test("--json is one line, and --pretty indents it again", async () => {
-		runner.serve(denseScreen());
-
 		expect(await yoqa("screen", "--json")).toHaveLength(1);
 		expect((await yoqa("screen", "--pretty", "--json")).length).toBeGreaterThan(1);
+	});
+
+	test("a nonsense --limit fails the command instead of printing a stack trace", async () => {
+		runner.serve(denseScreen());
+		const errors: string[] = [];
+		const error = console.error;
+		console.error = (...args: unknown[]) => errors.push(args.join(" "));
+		try {
+			expect(await yoqa("screen", "--limit", "0")).toEqual([]);
+		} finally {
+			console.error = error;
+		}
+
+		expect(errors).toEqual([
+			"yoqa screen failed: --limit must be a whole number of rows, 1 or more",
+		]);
+		expect(process.exitCode).toBe(1);
+		process.exitCode = 0;
 	});
 });

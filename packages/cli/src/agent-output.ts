@@ -11,7 +11,7 @@
  */
 
 import {
-	MAX_SCREEN_SNAPSHOT_ROWS,
+	MAX_SCREEN_ROWS,
 	type ScreenElement,
 	type ScreenResponse,
 	type ScreenSource,
@@ -52,7 +52,7 @@ function screenRow(element: ScreenElement): string {
 }
 
 /** Compact unless a human asked to read it, because indentation is tokens with no content. */
-function json(body: unknown, options: AgentOutputOptions): string {
+function asJson(body: unknown, options: AgentOutputOptions): string {
 	return options.pretty ? JSON.stringify(body, null, 2) : JSON.stringify(body);
 }
 
@@ -63,10 +63,10 @@ export function formatAgentOutput(
 	const screen = payload.screen;
 
 	// The raw tree is the escape hatch for a hard problem: never trimmed, only ever compacted.
-	if (screen.full) return { text: json(screen, options), omitted: 0 };
+	if (screen.full) return { text: asJson(screen, options), omitted: 0 };
 
 	const elements = screen.elements ?? [];
-	const cap = options.limit ?? MAX_SCREEN_SNAPSHOT_ROWS;
+	const cap = options.limit ?? MAX_SCREEN_ROWS;
 	const shown = elements.slice(0, cap);
 	const omitted = elements.length - shown.length;
 
@@ -77,7 +77,7 @@ export function formatAgentOutput(
 			elements: shown,
 			...(omitted > 0 ? { omittedElements: omitted } : {}),
 		};
-		return { text: json(body, options), omitted };
+		return { text: asJson(body, options), omitted };
 	}
 
 	const lines = screen.source ? [screenSourceLine(screen.source)] : [];
@@ -87,10 +87,12 @@ export function formatAgentOutput(
 }
 
 /**
- * `--limit` as commander should read it. Rejecting a nonsense value here fails the command
- * before it touches the device, rather than quietly reading the whole tree.
+ * `--limit` as the command should read it. Checked before the device is touched, so a nonsense
+ * value fails the command rather than quietly reading the whole tree — and it throws where the
+ * command's own `fail` handler reports it, not out of commander's option parser.
  */
-export function parseScreenLimit(value: string): number {
+export function parseScreenLimit(value: string | undefined): number | undefined {
+	if (value == null) return undefined;
 	const rows = Number(value);
 	if (!Number.isInteger(rows) || rows < 1) {
 		throw new Error("--limit must be a whole number of rows, 1 or more");
