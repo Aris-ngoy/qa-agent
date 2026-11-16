@@ -557,6 +557,8 @@ export {
 	type CheckScreenResult,
 } from "./screen-check";
 
+export { MAX_SCREEN_SNAPSHOT_ROWS, screenRowsOmittedLine } from "./screen-rows";
+
 export { appStartTarget, startTargetRequest } from "./app-start-target";
 
 export { decodeXmlEntities } from "./xml-entities";

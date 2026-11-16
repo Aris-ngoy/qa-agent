@@ -71,6 +71,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [cli/github-actions-expo.md](./cli/github-actions-expo.md) | Expo demo app + GitHub Actions device smoke for `@yoqa/cli` |
 | [cli/expo-e2e-catalog-report.md](./cli/expo-e2e-catalog-report.md) | Catalog script smoke + HTML artifacts + iOS WDA timeout |
 | [cli/headless-runner.md](./cli/headless-runner.md) | Headless `yoqa serve` / auto-start for CI |
+| [cli/agent-output.md](./cli/agent-output.md) | One CLI **Agent output** seam; `yoqa screen` capped at the Decide loop's row limit, `--limit`, compact JSON (#442) |
 | [desktop/cli-and-agents.md](./desktop/cli-and-agents.md) | Settings CLI/skill install + full `yoqa` agent CLI |
 | [desktop/servers-and-doctor.md](./desktop/servers-and-doctor.md) | Servers panel + `yoqa doctor` diagnostics |
 | [desktop/manual-inspector.md](./desktop/manual-inspector.md) | Script-first Manual Inspector (select → Case Script file → run) |
