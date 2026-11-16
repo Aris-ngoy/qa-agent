@@ -47,6 +47,9 @@ like any other, and its rows are dearer than the formatted ones, so it caps too 
 - `yoqa screen --json` and `--full` emit single-line JSON. **Breaking for anyone parsing
   whitespace**, which nothing should be; `--pretty` restores indentation.
 - Glossary: **Agent output** in `CONTEXT.md`.
+- The four CI failure-diagnosis scripts that capture `yoqa screen --json` as an artifact now pass
+  `--pretty --limit 1000`. Those files are downloaded and read by a human when a device job fails,
+  so they want the whole tree, indented — the opposite of what an agent wants.
 - The shipped skill and the public docs say what the cap is and how to raise it.
 
 ## How to verify

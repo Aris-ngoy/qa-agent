@@ -50,7 +50,7 @@ trap cleanup EXIT
 
 capture_failure() {
 	yoqa screenshot artifacts/web-failure.png || true
-	yoqa screen --json >artifacts/web-screen.json || true
+	yoqa screen --json --pretty --limit 1000 >artifacts/web-screen.json || true
 }
 
 python3 -m http.server "$WEB_PORT" --bind 127.0.0.1 --directory "$WEB_DIR" \

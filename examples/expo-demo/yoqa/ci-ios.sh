@@ -30,7 +30,7 @@ echo "Using iOS Simulator ${UDID}"
 capture_failure() {
 	mkdir -p artifacts
 	yoqa screenshot artifacts/ios-failure.png || true
-	yoqa screen --json >artifacts/ios-screen.json || true
+	yoqa screen --json --pretty --limit 1000 >artifacts/ios-screen.json || true
 }
 
 trap capture_failure ERR
