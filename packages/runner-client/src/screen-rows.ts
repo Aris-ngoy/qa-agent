@@ -6,7 +6,7 @@
  * about what a bounded tree is, so both import it from here.
  */
 
-export const MAX_SCREEN_SNAPSHOT_ROWS = 80;
+export const MAX_SCREEN_ROWS = 80;
 
 /** Closes a trimmed listing with the count of what the cap left out. */
 export function screenRowsOmittedLine(omitted: number): string {

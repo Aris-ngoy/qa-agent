@@ -557,7 +557,7 @@ export {
 	type CheckScreenResult,
 } from "./screen-check";
 
-export { MAX_SCREEN_SNAPSHOT_ROWS, screenRowsOmittedLine } from "./screen-rows";
+export { MAX_SCREEN_ROWS, screenRowsOmittedLine } from "./screen-rows";
 
 export { appStartTarget, startTargetRequest } from "./app-start-target";
 

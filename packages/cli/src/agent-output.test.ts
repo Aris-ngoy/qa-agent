@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { MAX_SCREEN_SNAPSHOT_ROWS, type ScreenResponse } from "@yoqa/runner-client";
+import { MAX_SCREEN_ROWS, type ScreenResponse } from "@yoqa/runner-client";
 import { formatAgentOutput, parseScreenLimit } from "./agent-output";
 
 /** A cleaned Screen holding `count` elements, laid out one per row down the screen. */
@@ -39,8 +39,8 @@ describe("a cleaned Screen read", () => {
 	});
 
 	test("caps at the same row count as the Decide loop's screen snapshot", () => {
-		expect(screenOutput(cleanedScreen(MAX_SCREEN_SNAPSHOT_ROWS)).omitted).toBe(0);
-		expect(screenOutput(cleanedScreen(MAX_SCREEN_SNAPSHOT_ROWS + 1)).omitted).toBe(1);
+		expect(screenOutput(cleanedScreen(MAX_SCREEN_ROWS)).omitted).toBe(0);
+		expect(screenOutput(cleanedScreen(MAX_SCREEN_ROWS + 1)).omitted).toBe(1);
 	});
 });
 
@@ -96,6 +96,11 @@ describe("the row limit a caller asks for", () => {
 				"--limit must be a whole number of rows, 1 or more",
 			);
 		}
+	});
+
+	test("unset leaves the shared cap in charge", () => {
+		expect(parseScreenLimit(undefined)).toBeUndefined();
+		expect(screenOutput(cleanedScreen(100), { limit: undefined }).omitted).toBe(20);
 	});
 });
 

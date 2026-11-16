@@ -21,10 +21,11 @@ read, and so does the Decide loop's screen snapshot. Capping there would silentl
 a saved script takes, so trimming happens only where output is emitted to a calling agent.
 Rejected: a `limit` on `GET /screen`, for exactly that reason.
 
-**One row cap, shared.** `MAX_SCREEN_SNAPSHOT_ROWS` and the `… N more elements omitted` wording
-moved from the Decide loop into `@yoqa/runner-client`, which both the runner and the CLI already
-depend on. Two surfaces bound the same tree; a second declaration would let them drift.
-Rejected: re-declaring 80 in the CLI, and importing the runner's agent module into the CLI for it.
+**One row cap, shared.** The Decide loop's row limit and its `… N more elements omitted` wording
+moved into `@yoqa/runner-client`, which both the runner and the CLI already depend on, and the
+constant was renamed `MAX_SCREEN_ROWS` — "snapshot" was Decide-loop-local vocabulary, and the
+glossary's term is **Screen**. Two surfaces bound the same tree; a second declaration would let
+them drift. Rejected: re-declaring 80 in the CLI, and importing the runner's agent module for it.
 
 **Compact JSON, `--pretty` to undo.** Indentation is tokens with no content. Rejected: keeping
 2-space JSON as the default and adding an opt-in `--compact`, which leaves the expensive shape as
@@ -75,3 +76,13 @@ section (#441).
 
 Known gap until #439 lands: the seam is the only writer for `screen` and nothing else, so
 `writeAgentOutput` is not yet enforceable as the single path to stdout. That is #440's job.
+
+Two row formatters still print the same tree in near-identical shapes: this seam's, and the Decide
+loop's `formatScreenSnapshot`. Only the cap and the omitted line are shared. Unifying them would
+mean adopting the Decide loop's sorting, rounding and `id=` column in `yoqa screen`, which changes
+that command's long-standing output for reasons this ticket has none — so it is left alone
+deliberately, not overlooked.
+
+`yoqa screen --json` and `--full` landed compact here, ahead of #438, because `--full` could not be
+compacted without `--pretty` to undo it and a half-compact command would be incoherent. #438 is
+therefore the remaining 16 JSON sites, not 17.

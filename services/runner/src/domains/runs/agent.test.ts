@@ -536,6 +536,23 @@ describe("formatScreenSnapshot", () => {
 		expect(formatScreenSnapshot(undefined)).toBe("(screen tree unavailable)");
 	});
 
+	test("caps a dense tree and counts what it left out, so a prompt cannot grow without bound", () => {
+		const snapshot = formatScreenSnapshot(
+			Array.from({ length: 100 }, (_, index) => ({
+				type: "Button",
+				label: `Row ${index}`,
+				x: 10,
+				y: index * 10,
+				width: 30,
+				height: 40,
+			})),
+		);
+		const lines = snapshot.split("\n");
+
+		expect(lines).toHaveLength(81);
+		expect(lines.at(-1)).toBe("… 20 more elements omitted");
+	});
+
 	test("hides a full-screen game surface so the model does not tap its centre", () => {
 		const snapshot = formatScreenSnapshot([
 			{

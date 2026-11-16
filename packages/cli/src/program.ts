@@ -8,7 +8,7 @@ import {
 	type DevicePlatform,
 	KEY_MODIFIERS,
 	KEY_NAMES,
-	MAX_SCREEN_SNAPSHOT_ROWS,
+	MAX_SCREEN_ROWS,
 	REMOTE_DEBUGGING_SETTING_URL,
 	RunnerUnreachableError,
 	WaitForRunTimeoutError,
@@ -581,8 +581,7 @@ program
 	.option("--pretty", "Indent the JSON (compact by default — indentation costs an agent tokens)")
 	.option(
 		"--limit <rows>",
-		`Cleaned-tree rows to print (default ${MAX_SCREEN_SNAPSHOT_ROWS}); the rest are counted, not printed`,
-		parseScreenLimit,
+		`Cleaned-tree rows to print (default ${MAX_SCREEN_ROWS}); the rest are counted, not printed`,
 	)
 	.action(
 		async (options: {
@@ -590,13 +589,14 @@ program
 			full?: boolean;
 			json?: boolean;
 			pretty?: boolean;
-			limit?: number;
+			limit?: string;
 		}) => {
 			try {
+				const limit = parseScreenLimit(options.limit);
 				const screen = await client(options.baseUrl).getScreen({ full: options.full });
 				writeAgentOutput(
 					{ kind: "screen", screen },
-					{ json: options.json, pretty: options.pretty, limit: options.limit },
+					{ json: options.json, pretty: options.pretty, limit },
 				);
 			} catch (error) {
 				fail("screen", error);

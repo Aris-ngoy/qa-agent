@@ -3,7 +3,7 @@ import {
 	type CallUsage,
 	KEY_MODIFIERS,
 	KEY_NAMES,
-	MAX_SCREEN_SNAPSHOT_ROWS,
+	MAX_SCREEN_ROWS,
 	type ScreenElement,
 	formatKeyChord,
 	keyModifierSchema,
@@ -415,7 +415,7 @@ export function formatScreenSnapshot(elements: ScreenElement[] | undefined): str
 		return "(empty tree — full-screen canvas or game surface only. Ignore it. Use screenshot x,y for the centre of the control.)";
 	}
 	const ordered = [...usable].sort((a, b) => a.y - b.y || a.x - b.x);
-	const shown = ordered.slice(0, MAX_SCREEN_SNAPSHOT_ROWS);
+	const shown = ordered.slice(0, MAX_SCREEN_ROWS);
 	const lines = shown.map((element) => {
 		const id = element.id?.trim() ? ` id=${element.id.trim()}` : "";
 		const label = element.label?.trim() || "(no label)";
