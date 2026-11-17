@@ -6,11 +6,15 @@
 import { describe, expect, test } from "bun:test";
 import {
 	DEFAULT_OUTPUT_BUDGET,
+	DEFAULT_WARN_AT_PERCENT,
+	budgetWarning,
 	deviceSessionId,
 	estimateImageTokens,
 	estimateTextTokens,
 	formatEmittedUsage,
+	outputWarningSuppressed,
 	resolveOutputBudget,
+	resolveWarnAtPercent,
 } from "./emitted-usage";
 
 describe("estimating what emitted text cost", () => {
@@ -121,5 +125,77 @@ describe("the Device Session a total is accounted to", () => {
 		expect(deviceSessionId({ deviceId: "sim-ABC", connectedAt: 1_700_000_009_999 })).not.toBe(
 			deviceSessionId({ deviceId: "sim-ABC", connectedAt: 1_700_000_000_000 }),
 		);
+	});
+});
+
+describe("the warning on crossing the Output budget threshold", () => {
+	// 80% of a 250,000-token budget: the high-water mark sits at 200,000.
+	const budget = { budget: 250_000, warnAtPercent: 80 };
+
+	test("says nothing while the total is still below the high-water mark", () => {
+		expect(budgetWarning({ before: 100_000, after: 199_999, ...budget })).toBeNull();
+	});
+
+	test("names the total, the budget, and both remedies on the crossing", () => {
+		expect(budgetWarning({ before: 199_000, after: 203_418, ...budget })).toBe(
+			"Yoqa has emitted 203,418 of 250,000 tokens (81%) into this context — delegate further exploration to a sub-agent, or compact.",
+		);
+	});
+
+	test("says nothing again for a later command in the same band", () => {
+		expect(budgetWarning({ before: 203_418, after: 240_000, ...budget })).toBeNull();
+	});
+
+	test("warns again on reaching the budget itself, the figure the warning is about", () => {
+		// The high-water mark is 200,000 and the budget is 250,000: a session that runs out of
+		// the window it was warned about has to be told, or the first line was the only one.
+		expect(budgetWarning({ before: 249_000, after: 250_000, ...budget })).toBe(
+			"Yoqa has emitted 250,000 of 250,000 tokens (100%) into this context — delegate further exploration to a sub-agent, or compact.",
+		);
+	});
+
+	test("then once per further budget's worth, so a runaway session keeps being told", () => {
+		expect(budgetWarning({ before: 260_000, after: 400_000, ...budget })).toBeNull();
+		expect(budgetWarning({ before: 400_000, after: 500_000, ...budget })).toContain("(200%)");
+		expect(budgetWarning({ before: 500_000, after: 600_000, ...budget })).toBeNull();
+		expect(budgetWarning({ before: 600_000, after: 750_000, ...budget })).toContain("(300%)");
+	});
+
+	test("warns on the command that skips a mark outright, never silently", () => {
+		// One enormous emission from nothing, past both the mark and the budget in one go.
+		expect(budgetWarning({ before: 0, after: 500_000, ...budget })).toContain("500,000");
+	});
+
+	test("stays silent for a threshold or budget that cannot describe a mark", () => {
+		expect(budgetWarning({ before: 0, after: 1_000, budget: 0, warnAtPercent: 80 })).toBeNull();
+	});
+});
+
+describe("the threshold and the switch that turns the warning off", () => {
+	test("warns at 80% of the budget unless the environment says otherwise", () => {
+		expect(resolveWarnAtPercent({})).toBe(DEFAULT_WARN_AT_PERCENT);
+		expect(DEFAULT_WARN_AT_PERCENT).toBe(80);
+	});
+
+	test("reads the threshold as a percent of the budget, not a token count", () => {
+		expect(resolveWarnAtPercent({ YOQA_OUTPUT_WARN_AT: "50" })).toBe(50);
+	});
+
+	test("keeps the default rather than guessing at an unusable threshold", () => {
+		expect(resolveWarnAtPercent({ YOQA_OUTPUT_WARN_AT: "half" })).toBe(DEFAULT_WARN_AT_PERCENT);
+		expect(resolveWarnAtPercent({ YOQA_OUTPUT_WARN_AT: "0" })).toBe(DEFAULT_WARN_AT_PERCENT);
+		expect(resolveWarnAtPercent({ YOQA_OUTPUT_WARN_AT: "-10" })).toBe(DEFAULT_WARN_AT_PERCENT);
+		expect(resolveWarnAtPercent({ YOQA_OUTPUT_WARN_AT: "72.5" })).toBe(DEFAULT_WARN_AT_PERCENT);
+	});
+
+	test("is not suppressed by default — a silent budget is no budget", () => {
+		expect(outputWarningSuppressed({})).toBe(false);
+	});
+
+	test("is suppressed by the same words that turn autostart off, for CI", () => {
+		expect(outputWarningSuppressed({ YOQA_NO_OUTPUT_WARNING: "1" })).toBe(true);
+		expect(outputWarningSuppressed({ YOQA_NO_OUTPUT_WARNING: "true" })).toBe(true);
+		expect(outputWarningSuppressed({ YOQA_NO_OUTPUT_WARNING: " YES " })).toBe(true);
+		expect(outputWarningSuppressed({ YOQA_NO_OUTPUT_WARNING: "0" })).toBe(false);
 	});
 });

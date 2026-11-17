@@ -18,8 +18,17 @@ import {
 	type ScreenSource,
 	screenRowsOmittedLine,
 } from "@yoqa/runner-client";
-import { type EmittedImage, estimateImageTokens, estimateTextTokens } from "./emitted-usage";
+import {
+	type EmittedImage,
+	budgetWarning,
+	estimateImageTokens,
+	estimateTextTokens,
+	outputWarningSuppressed,
+	resolveOutputBudget,
+	resolveWarnAtPercent,
+} from "./emitted-usage";
 import { type LedgerOptions, appendEmittedUsage } from "./emitted-usage-ledger";
+import { envWholeNumber } from "./env";
 
 /** How the caller asked for this command's output to be shaped. */
 export type AgentOutputOptions = {
@@ -108,6 +117,20 @@ export function formatAgentOutput(
 }
 
 /**
+ * The default row cap in force, from `YOQA_SCREEN_ROWS`. An unusable value leaves the shared cap
+ * alone, and `--limit` outranks both.
+ *
+ * It moves this seam's cap and deliberately not the Decide loop's screen snapshot, though both
+ * read `MAX_SCREEN_ROWS` for their default. The snapshot is model input, so shrinking it changes
+ * which decisions a run makes rather than what a context window costs — and because the CLI
+ * autostarts the runner, which inherits its environment, one knob for both would make that happen
+ * silently.
+ */
+export function resolveScreenRows(env: Record<string, string | undefined> = process.env): number {
+	return envWholeNumber(env.YOQA_SCREEN_ROWS, MAX_SCREEN_ROWS);
+}
+
+/**
  * `--limit` as the command should read it. Checked before the device is touched, so a nonsense
  * value fails the command rather than quietly reading the whole tree — and it throws where the
  * command's own `fail` handler reports it, not out of commander's option parser.
@@ -143,7 +166,12 @@ export async function emitAgentOutput(
 	options: AgentOutputOptions,
 	context: AgentOutputContext,
 ): Promise<AgentOutput> {
-	const output = formatAgentOutput(payload, options);
+	// The environment's row cap is applied here, not at each command, so every command that
+	// reaches this seam honours it without having to remember to.
+	const output = formatAgentOutput(payload, {
+		...options,
+		limit: options.limit ?? resolveScreenRows(),
+	});
 	if (output.text) console.log(output.text);
 	if (output.tokens > 0) await record(output, context);
 	return output;
@@ -154,11 +182,31 @@ async function record(output: AgentOutput, context: AgentOutputContext): Promise
 	try {
 		const session = await context.session();
 		if (!session) return;
-		await appendEmittedUsage(
+		const total = await appendEmittedUsage(
 			{ session, command: context.command, tokens: output.tokens },
 			context.ledger ?? {},
 		);
+		if (total != null) warnOnCrossing(total - output.tokens, total);
 	} catch {
 		// Accounting never fails the command it is accounting for.
 	}
+}
+
+/**
+ * The Output budget's one warning, on stderr.
+ *
+ * stderr so it can never corrupt output an agent is parsing, and here — after the write and after
+ * the append — so stdout is byte-identical whether or not it fires and nothing is delayed ahead
+ * of the answer the agent is waiting for. It warns and never blocks: no command is refused,
+ * delayed or truncated on account of a running total.
+ */
+function warnOnCrossing(before: number, after: number): void {
+	if (outputWarningSuppressed()) return;
+	const warning = budgetWarning({
+		before,
+		after,
+		budget: resolveOutputBudget(),
+		warnAtPercent: resolveWarnAtPercent(),
+	});
+	if (warning) console.error(warning);
 }

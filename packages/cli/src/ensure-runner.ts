@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { homedir as osHomedir } from "node:os";
 import { dirname, join, posix, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
+import { envFlagEnabled } from "./env";
 
 export const DEFAULT_RUNNER_HOST = "127.0.0.1";
 export const DEFAULT_RUNNER_PORT = 7420;
@@ -80,8 +81,7 @@ export function runnerBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): stri
 }
 
 export function shouldSkipAutostart(env: NodeJS.ProcessEnv = process.env): boolean {
-	const raw = env.YOQA_NO_AUTOSTART?.trim().toLowerCase();
-	return raw === "1" || raw === "true" || raw === "yes";
+	return envFlagEnabled(env.YOQA_NO_AUTOSTART);
 }
 
 export function isRunnerHealth(value: unknown): value is RunnerHealth {
