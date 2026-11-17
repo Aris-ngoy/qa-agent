@@ -693,10 +693,10 @@ program
 			try {
 				const body = await client(options.baseUrl).takeScreenshot({ path });
 				if (options.json) {
-					await emitJson(body, options, cmd);
+					await emitJson(body, options, cmd, body.path);
 					return;
 				}
-				await emitText(body.path, options, cmd);
+				await emitText(body.path, options, cmd, body.path);
 			} catch (error) {
 				fail("screenshot", error);
 			}
@@ -793,7 +793,7 @@ for (const kind of [
 					imageScale: options.scale as number | undefined,
 				});
 				if (options.json) {
-					await emitJson(body, options, cmd);
+					await emitJson(body, options, cmd, body.screenshot?.path);
 					return;
 				}
 				const lines = [`ok ${body.kind}`];
@@ -802,7 +802,7 @@ for (const kind of [
 				}
 				if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
 				if (body.phases) lines.push(actionPhasesLine(body.phases));
-				await emitText(lines, options, cmd);
+				await emitText(lines, options, cmd, body.screenshot?.path);
 			} catch (error) {
 				fail(`action ${kind}`, error);
 			}
@@ -826,12 +826,12 @@ addActionOptions(
 			imageScale: options.scale as number | undefined,
 		});
 		if (options.json) {
-			await emitJson(body, options, cmd);
+			await emitJson(body, options, cmd, body.screenshot?.path);
 			return;
 		}
 		const lines = [`ok ${body.kind}`];
 		if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
-		await emitText(lines, options, cmd);
+		await emitText(lines, options, cmd, body.screenshot?.path);
 	} catch (error) {
 		fail("action alert", error);
 	}
@@ -861,13 +861,13 @@ addActionOptions(
 			imageScale: options.scale as number | undefined,
 		});
 		if (options.json) {
-			await emitJson(body, options, cmd);
+			await emitJson(body, options, cmd, body.screenshot?.path);
 			return;
 		}
 		const lines = [`ok ${body.kind}`];
 		if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
 		if (body.phases) lines.push(actionPhasesLine(body.phases));
-		await emitText(lines, options, cmd);
+		await emitText(lines, options, cmd, body.screenshot?.path);
 	} catch (error) {
 		fail("action key", error);
 	}
@@ -908,14 +908,14 @@ addActionOptions(
 			imageScale: options.scale as number | undefined,
 		});
 		if (options.json) {
-			await emitJson(body, options, cmd);
+			await emitJson(body, options, cmd, body.screenshot?.path);
 			return;
 		}
 		const lines = [`batch ${body.ok ? "ok" : "failed"} ${body.completed}/${body.total}`];
 		if (body.failedIndex != null) lines.push(`failedIndex ${body.failedIndex}`);
 		if (body.error) lines.push(body.error);
 		if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
-		await emitText(lines, options, cmd);
+		await emitText(lines, options, cmd, body.screenshot?.path);
 		if (!body.ok) process.exitCode = 1;
 	} catch (error) {
 		fail("action batch", error);

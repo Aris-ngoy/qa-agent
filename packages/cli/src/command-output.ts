@@ -66,15 +66,17 @@ function emitContext(options: EmitOptions, cmd: Command): AgentOutputContext {
  * active Device Session under the command's own name.
  *
  * The one call every `--json` path makes, so the shape of machine-readable output is decided in
- * one place rather than per command.
+ * one place rather than per command. `imagePath` is the image the result hands the caller to
+ * read, priced on top of the JSON that names it.
  */
 export async function emitJson(
 	body: unknown,
 	options: EmitJsonOptions,
 	cmd: Command,
+	imagePath?: string,
 ): Promise<void> {
 	await emitAgentOutput(
-		{ kind: "json", body },
+		{ kind: "json", body, imagePath },
 		{ json: true, pretty: options.pretty },
 		emitContext(options, cmd),
 	);
@@ -87,15 +89,17 @@ export async function emitJson(
  * One line or many — many because a command that prints a block prints it as one emission, which
  * is both what the ledger should charge for it and what keeps the block from being interleaved.
  * The lines arrive shaped: this neither wraps, trims nor re-formats them, so what a person reads
- * is byte for byte what the command wrote before the seam existed.
+ * is byte for byte what the command wrote before the seam existed. `imagePath` is as for
+ * `emitJson`.
  */
 export async function emitText(
 	lines: string | string[],
 	options: EmitOptions,
 	cmd: Command,
+	imagePath?: string,
 ): Promise<void> {
 	await emitAgentOutput(
-		{ kind: "text", lines: Array.isArray(lines) ? lines : [lines] },
+		{ kind: "text", lines: Array.isArray(lines) ? lines : [lines], imagePath },
 		{},
 		emitContext(options, cmd),
 	);

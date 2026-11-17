@@ -29,6 +29,7 @@ import {
 } from "./emitted-usage";
 import { type LedgerOptions, appendEmittedUsage } from "./emitted-usage-ledger";
 import { envWholeNumber } from "./env";
+import { readImageSize } from "./image-size";
 
 /** How the caller asked for this command's output to be shaped. */
 export type AgentOutputOptions = {
@@ -69,11 +70,16 @@ type AgentOutputBody =
 	| { kind: "document"; text: string };
 
 /**
- * Any payload may name an Agent image: the calling agent pays for it the moment it reads the
- * file, so the seam counts it where it names it. A tree read names none; `action --screenshot`
- * is the first command that will.
+ * Any payload may name an image for the caller to read — an Agent image, or the raw screenshot
+ * `yoqa screenshot` and `--full` hand back. The calling agent pays for it the moment it reads the
+ * file, so the seam counts it where it names it. A tree read names none.
+ *
+ * `image` is a size already known, and the pure formatter prices it. `imagePath` is a file whose
+ * size is not: only `emitAgentOutput` reads it, after the output is written, so an agent never
+ * waits on accounting for its answer. A known size wins, so a file is never read for a number the
+ * payload already carries.
  */
-export type AgentOutputPayload = AgentOutputBody & { image?: EmittedImage };
+export type AgentOutputPayload = AgentOutputBody & { image?: EmittedImage; imagePath?: string };
 
 /** The line a cleaned-tree listing leads with, so a SpringBoard tree is not taken for the app's. */
 function screenSourceLine(source: ScreenSource): string {
@@ -200,8 +206,23 @@ export async function emitAgentOutput(
 		limit: options.limit ?? resolveScreenRows(),
 	});
 	write(output, payload);
-	if (output.tokens > 0) await record(output, context);
-	return output;
+	const priced = await withNamedImage(output, payload);
+	if (priced.tokens > 0) await record(priced, context);
+	return priced;
+}
+
+/**
+ * The output's Emitted usage plus the image its payload named by path. One the CLI cannot
+ * open or size — a runner on another host, a deleted file — adds nothing, because a guess would be
+ * worse than a gap, and an agent on this machine could not have read it either.
+ */
+async function withNamedImage(
+	output: AgentOutput,
+	payload: AgentOutputPayload,
+): Promise<AgentOutput> {
+	if (payload.image || !payload.imagePath) return output;
+	const image = await readImageSize(payload.imagePath);
+	return { ...output, tokens: output.tokens + estimateImageTokens(image) };
 }
 
 /**
