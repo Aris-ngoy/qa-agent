@@ -50,9 +50,9 @@ import {
 } from "../../../services/runner/src/domains/benchmark/summarize";
 import packageJson from "../package.json" with { type: "json" };
 import { resetSessionCache, sessionIdOnce } from "./active-session";
-import { agentJson, emitAgentOutput, parseScreenLimit } from "./agent-output";
+import { emitAgentOutput, parseScreenLimit } from "./agent-output";
 import { findCatalogApp } from "./catalog-app";
-import { type JsonOptions, addJsonOptions, emitJson } from "./command-output";
+import { type JsonOptions, PRETTY_JSON_HELP, commandPath, emitJson } from "./command-output";
 import { formatDoctorReport } from "./doctor-table";
 import { formatEmittedUsage, resolveOutputBudget } from "./emitted-usage";
 import { readEmittedUsage } from "./emitted-usage-ledger";
@@ -246,18 +246,23 @@ program
 	.command("health")
 	.description("Check that the local runner is reachable")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.action(async (options: { baseUrl: string }) => {
+	// No `--json`: this command has never printed anything else, so there is nothing to switch on.
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const health = await client(options.baseUrl).health();
-			console.log(JSON.stringify(health, null, 2));
+			await emitJson(health, options, cmd);
 		} catch (error) {
 			fail("health", error);
 		}
 	});
 
-addJsonOptions(program.command("status"))
+program
+	.command("status")
 	.description("Show local runner, provider, and active device status")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const body = await client(options.baseUrl).getStatus();
@@ -335,22 +340,25 @@ for (const platform of Object.keys(PLATFORM_DEVICES_DESCRIPTION) as DevicePlatfo
 		.description(PLATFORM_DEVICES_DESCRIPTION[platform])
 		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 		.option("--json", "Print raw JSON")
+		.option("--pretty", PRETTY_JSON_HELP)
 		.option("--all", "Include unavailable / shutdown devices", true)
 		.option("--booted-only", "Only show booted / online devices")
 		.action(
-			async (options: {
-				baseUrl: string;
-				json?: boolean;
-				all?: boolean;
-				bootedOnly?: boolean;
-			}) => {
+			async (
+				options: {
+					baseUrl: string;
+					all?: boolean;
+					bootedOnly?: boolean;
+				} & JsonOptions,
+				cmd: Command,
+			) => {
 				try {
 					const includeUnavailable = options.bootedOnly ? false : options.all !== false;
 					const body = await client(options.baseUrl).listDevices(platform, {
 						includeUnavailable,
 					});
 					if (options.json) {
-						console.log(JSON.stringify(body, null, 2));
+						await emitJson(body, options, cmd);
 						return;
 					}
 					printDevicesTable(body.devices);
@@ -371,12 +379,13 @@ platformDevices.web
 	.option("--browser <id>", "One browser's profile, e.g. web-chrome (default: every browser's)")
 	.configureHelp({ showGlobalOptions: true })
 	.action(async (_options: unknown, command: Command) => {
-		const options = command.optsWithGlobals<{
-			app?: string;
-			browser?: string;
-			baseUrl: string;
-			json?: boolean;
-		}>();
+		const options = command.optsWithGlobals<
+			{
+				app?: string;
+				browser?: string;
+				baseUrl: string;
+			} & JsonOptions
+		>();
 		try {
 			const c = client(options.baseUrl);
 			// A profile outlives its App, so an id the catalog no longer has is reset as given.
@@ -385,7 +394,7 @@ platformDevices.web
 				: undefined;
 			const body = await c.resetWebProfile({ appId, browserId: options.browser });
 			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
+				await emitJson(body, options, command);
 				return;
 			}
 			if (body.browserIds.length === 0) {
@@ -455,6 +464,7 @@ devices
 	)
 	.option("--yes", "Everyday browser only: accept its first-use warning for the App")
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
 		async (
 			deviceId: string,
@@ -467,8 +477,8 @@ devices
 				viewport?: string;
 				app?: string;
 				yes?: boolean;
-				json?: boolean;
-			},
+			} & JsonOptions,
+			cmd: Command,
 		) => {
 			const web = webDeviceOf(deviceId);
 			// The browser the Allow prompt appears in (`Google Chrome`), for an Everyday browser.
@@ -504,7 +514,7 @@ devices
 					return;
 				}
 				if (options.json) {
-					console.log(JSON.stringify(body, null, 2));
+					await emitJson(body, options, cmd);
 					return;
 				}
 				console.log(`connected ${describeSession(body)}`);
@@ -540,7 +550,8 @@ devices
 	.description("Show the currently connected device")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const body = await client(options.baseUrl).getActiveDevice();
 			if (!body) {
@@ -549,7 +560,7 @@ devices
 				return;
 			}
 			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
+				await emitJson(body, options, cmd);
 				return;
 			}
 			console.log(describeSession(body));
@@ -564,11 +575,12 @@ devices
 	.description("Close the active Device Session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const body = await client(options.baseUrl).disconnectDevice();
 			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
+				await emitJson(body, options, cmd);
 				return;
 			}
 			console.log(`disconnected ${body.platform} ${body.deviceId}`);
@@ -585,7 +597,7 @@ program
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
 	.option("--pretty", "Indent the JSON (compact by default — indentation costs an agent tokens)")
-	.action(async (options: { baseUrl: string; json?: boolean; pretty?: boolean }) => {
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const session = await sessionIdOnce(options.baseUrl);
 			const usage = session ? await readEmittedUsage(session) : null;
@@ -598,7 +610,9 @@ program
 					byCommand: usage?.byCommand ?? [],
 					budget,
 				};
-				console.log(agentJson(body, options));
+				// Reading the meter costs the agent tokens too, so the meter counts it. The total
+				// above was read before this line, so a report never includes itself.
+				await emitJson(body, options, cmd);
 				return;
 			}
 			console.log(formatEmittedUsage(usage, { budget }));
@@ -621,20 +635,21 @@ program
 		`Cleaned-tree rows to print (default ${MAX_SCREEN_ROWS}, or YOQA_SCREEN_ROWS); the rest are counted, not printed`,
 	)
 	.action(
-		async (options: {
-			baseUrl: string;
-			full?: boolean;
-			json?: boolean;
-			pretty?: boolean;
-			limit?: string;
-		}) => {
+		async (
+			options: {
+				baseUrl: string;
+				full?: boolean;
+				limit?: string;
+			} & JsonOptions,
+			cmd: Command,
+		) => {
 			try {
 				const limit = parseScreenLimit(options.limit);
 				const screen = await client(options.baseUrl).getScreen({ full: options.full });
 				await emitAgentOutput(
 					{ kind: "screen", screen },
 					{ json: options.json, pretty: options.pretty, limit },
-					{ command: "screen", session: () => sessionIdOnce(options.baseUrl) },
+					{ command: commandPath(cmd), session: () => sessionIdOnce(options.baseUrl) },
 				);
 			} catch (error) {
 				fail("screen", error);
@@ -648,18 +663,21 @@ program
 	.argument("[path]", "Output PNG path")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (path: string | undefined, options: { baseUrl: string; json?: boolean }) => {
-		try {
-			const body = await client(options.baseUrl).takeScreenshot({ path });
-			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
-				return;
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(
+		async (path: string | undefined, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
+			try {
+				const body = await client(options.baseUrl).takeScreenshot({ path });
+				if (options.json) {
+					await emitJson(body, options, cmd);
+					return;
+				}
+				console.log(body.path);
+			} catch (error) {
+				fail("screenshot", error);
 			}
-			console.log(body.path);
-		} catch (error) {
-			fail("screenshot", error);
-		}
-	});
+		},
+	);
 
 const action = program.command("action").description("Perform an action on the active device");
 
@@ -667,6 +685,7 @@ function addActionOptions(cmd: Command) {
 	return cmd
 		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 		.option("--json", "Print raw JSON")
+		.option("--pretty", PRETTY_JSON_HELP)
 		.option("-d, --description <text>", "Ground target by natural language")
 		.option("--label <text>", "Tap/focus by accessibility label (cleaned screen tree)")
 		.option("--id <text>", "Tap/focus by resource-id / accessibility id")
@@ -729,7 +748,7 @@ for (const kind of [
 	"reload-page",
 ] as const) {
 	addActionOptions(action.command(kind).description(`Perform ${kind}`)).action(
-		async (options: Record<string, unknown>) => {
+		async (options: Record<string, unknown>, cmd: Command) => {
 			try {
 				const body = await client(String(options.baseUrl)).performAction({
 					kind,
@@ -752,7 +771,7 @@ for (const kind of [
 					imageScale: options.scale as number | undefined,
 				});
 				if (options.json) {
-					console.log(JSON.stringify(body, null, 2));
+					await emitJson(body, options, cmd);
 					return;
 				}
 				console.log(`ok ${body.kind}`);
@@ -773,7 +792,7 @@ addActionOptions(
 		.command("alert")
 		.description("Accept or dismiss a system alert")
 		.option("--dismiss", "Dismiss instead of accept"),
-).action(async (options: Record<string, unknown>) => {
+).action(async (options: Record<string, unknown>, cmd: Command) => {
 	try {
 		const body = await client(String(options.baseUrl)).performAction({
 			kind: "alert",
@@ -784,7 +803,7 @@ addActionOptions(
 			imageScale: options.scale as number | undefined,
 		});
 		if (options.json) {
-			console.log(JSON.stringify(body, null, 2));
+			await emitJson(body, options, cmd);
 			return;
 		}
 		console.log(`ok ${body.kind}`);
@@ -803,7 +822,7 @@ addActionOptions(
 			"--modifiers <list>",
 			`Held while the key is pressed, comma-separated: ${KEY_MODIFIERS.join(", ")}`,
 		),
-).action(async (keyName: string, options: Record<string, unknown>) => {
+).action(async (keyName: string, options: Record<string, unknown>, cmd: Command) => {
 	try {
 		const key = parseKeyName(keyName);
 		const modifiers =
@@ -818,7 +837,7 @@ addActionOptions(
 			imageScale: options.scale as number | undefined,
 		});
 		if (options.json) {
-			console.log(JSON.stringify(body, null, 2));
+			await emitJson(body, options, cmd);
 			return;
 		}
 		console.log(`ok ${body.kind}`);
@@ -836,7 +855,7 @@ addActionOptions(
 			"Run known Actions from a JSON file or stdin (one Settle and Result screenshot at the end). Description-grounded steps are rejected.",
 		)
 		.argument("[file]", "JSON file of { steps: Action[] } or an Action array. Omit to read stdin."),
-).action(async (file: string | undefined, options: Record<string, unknown>) => {
+).action(async (file: string | undefined, options: Record<string, unknown>, cmd: Command) => {
 	try {
 		const raw = file
 			? await readFile(file, "utf8")
@@ -864,7 +883,7 @@ addActionOptions(
 			imageScale: options.scale as number | undefined,
 		});
 		if (options.json) {
-			console.log(JSON.stringify(body, null, 2));
+			await emitJson(body, options, cmd);
 			return;
 		}
 		console.log(`batch ${body.ok ? "ok" : "failed"} ${body.completed}/${body.total}`);
@@ -884,11 +903,12 @@ const servers = program
 	.description("List or control the local runner and device sessions")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const body = await client(options.baseUrl).listServers();
 			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
+				await emitJson(body, options, cmd);
 				return;
 			}
 			if (body.servers.length === 0) {
@@ -918,11 +938,12 @@ servers
 	.description("List running servers")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const body = await client(options.baseUrl).listServers();
 			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
+				await emitJson(body, options, cmd);
 				return;
 			}
 			if (body.servers.length === 0) {
@@ -952,11 +973,12 @@ servers
 	.description("Disconnect the device session (does not stop the runner)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const body = await client(options.baseUrl).stopAllServers();
 			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
+				await emitJson(body, options, cmd);
 				return;
 			}
 			console.log(body.message);
@@ -971,7 +993,8 @@ servers
 	.argument("<id>", "Server id from yoqa servers list")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (id: string, options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (id: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			if (id === "runner-self") {
 				throw new Error(
@@ -980,7 +1003,7 @@ servers
 			}
 			const body = await client(options.baseUrl).stopServer(id);
 			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
+				await emitJson(body, options, cmd);
 				return;
 			}
 			console.log(body.message);
@@ -995,7 +1018,8 @@ servers
 	.argument("<id>", "Server id from yoqa servers list")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (id: string, options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (id: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			if (id === "runner-self") {
 				throw new Error(
@@ -1004,7 +1028,7 @@ servers
 			}
 			const body = await client(options.baseUrl).restartServer(id);
 			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
+				await emitJson(body, options, cmd);
 				return;
 			}
 			console.log(body.message);
@@ -1018,8 +1042,9 @@ program
 	.description("Diagnose local tooling and the device session")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.option("--fix", "Apply safe repairs (disconnect a stuck session)")
-	.action(async (options: { baseUrl: string; json?: boolean; fix?: boolean }) => {
+	.action(async (options: { baseUrl: string; fix?: boolean } & JsonOptions, cmd: Command) => {
 		try {
 			const c = client(options.baseUrl);
 			if (options.fix) {
@@ -1033,7 +1058,7 @@ program
 				];
 				if (repairs.length === 0) {
 					if (options.json) {
-						console.log(JSON.stringify({ ok: true, message: "No safe repairs", report }, null, 2));
+						await emitJson({ ok: true, message: "No safe repairs", report }, options, cmd);
 					} else {
 						console.log("No safe repairs to apply");
 					}
@@ -1042,7 +1067,7 @@ program
 				}
 				const result = await c.repairDoctor({ repairs });
 				if (options.json) {
-					console.log(JSON.stringify(result, null, 2));
+					await emitJson(result, options, cmd);
 				} else {
 					console.log(result.message);
 					console.log(formatDoctorReport(result.report));
@@ -1053,7 +1078,7 @@ program
 
 			const report = await c.getDoctorReport();
 			if (options.json) {
-				console.log(JSON.stringify(report, null, 2));
+				await emitJson(report, options, cmd);
 			} else {
 				console.log(formatDoctorReport(report));
 			}
@@ -1070,10 +1095,12 @@ const signing = program
 	.description("Choose and check the Apple team that signs YoqaRunner for physical iPhones")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const status = await client(options.baseUrl).getIosSigning();
-			console.log(options.json ? JSON.stringify(status, null, 2) : formatSigningStatus(status));
+			if (options.json) await emitJson(status, options, cmd);
+			else console.log(formatSigningStatus(status));
 		} catch (error) {
 			fail("signing", error);
 		}
@@ -1087,12 +1114,14 @@ signing
 	.argument("<team>", "Ten-character Apple team ID, or auto")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (team: string, options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (team: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const status = await client(options.baseUrl).setIosSigningTeam(
 				team.toLowerCase() === "auto" ? null : team,
 			);
-			console.log(options.json ? JSON.stringify(status, null, 2) : formatSigningStatus(status));
+			if (options.json) await emitJson(status, options, cmd);
+			else console.log(formatSigningStatus(status));
 		} catch (error) {
 			fail("signing use", error);
 		}
@@ -1105,8 +1134,9 @@ signing
 	)
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.option("--device <udid>", "iPhone UDID (default: the one cabled iPhone)")
-	.action(async (options: { baseUrl: string; json?: boolean; device?: string }) => {
+	.action(async (options: { baseUrl: string; device?: string } & JsonOptions, cmd: Command) => {
 		try {
 			const c = client(options.baseUrl);
 			const deviceId = pickCheckDevice(
@@ -1115,7 +1145,8 @@ signing
 			);
 			if (!options.json) console.error(`Signing YoqaRunner for ${deviceId}…`);
 			const check = await c.checkIosSigning({ deviceId });
-			console.log(options.json ? JSON.stringify(check, null, 2) : formatSigningCheck(check));
+			if (options.json) await emitJson(check, options, cmd);
+			else console.log(formatSigningCheck(check));
 			if (!check.ok) process.exitCode = 1;
 		} catch (error) {
 			fail("signing check", error);
@@ -1138,17 +1169,20 @@ for (const kind of ["visible", "not-visible"] as const) {
 		)
 		.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 		.option("--json", "Print raw JSON")
+		.option("--pretty", PRETTY_JSON_HELP)
 		.option("-t, --text <text>", "Text / label substring to match")
 		.option("--id <id>", "Element id to match, as a tap by id does (instead of --text)")
 		.option("--timeout <seconds>", "Seconds to wait before failing", (v) => Number(v), 5)
 		.action(
-			async (options: {
-				baseUrl: string;
-				json?: boolean;
-				text?: string;
-				id?: string;
-				timeout: number;
-			}) => {
+			async (
+				options: {
+					baseUrl: string;
+					text?: string;
+					id?: string;
+					timeout: number;
+				} & JsonOptions,
+				cmd: Command,
+			) => {
 				// A usage error, not a runner one: no "Is the runner up?" hint.
 				if ((options.text == null) === (options.id == null)) {
 					const usage =
@@ -1175,9 +1209,7 @@ for (const kind of ["visible", "not-visible"] as const) {
 					const error = met ? undefined : screenCheckMissMessage(check);
 					if (!met) process.exitCode = ASSERT_EXIT_CODE.notMet;
 					if (options.json) {
-						console.log(
-							JSON.stringify({ ok: met, completed: met ? 1 : 0, total: 1, error }, null, 2),
-						);
+						await emitJson({ ok: met, completed: met ? 1 : 0, total: 1, error }, options, cmd);
 						return;
 					}
 					if (error) {
@@ -1200,11 +1232,12 @@ appsCmd
 	.command("list")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const apps = await client(options.baseUrl).listApps();
 			if (options.json) {
-				console.log(JSON.stringify({ apps }, null, 2));
+				await emitJson({ apps }, options, cmd);
 				return;
 			}
 			console.log(`${"PREFIX".padEnd(20)}NAME`);
@@ -1226,16 +1259,19 @@ appsCmd
 	.option("--web-url <url>", "Web URL a Run on web opens (http or https)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
-		async (options: {
-			baseUrl: string;
-			name: string;
-			prefix?: string;
-			iosBundleId?: string;
-			androidApplicationId?: string;
-			webUrl?: string;
-			json?: boolean;
-		}) => {
+		async (
+			options: {
+				baseUrl: string;
+				name: string;
+				prefix?: string;
+				iosBundleId?: string;
+				androidApplicationId?: string;
+				webUrl?: string;
+			} & JsonOptions,
+			cmd: Command,
+		) => {
 			try {
 				const c = client(options.baseUrl);
 				let app = await c.createApp({
@@ -1250,7 +1286,7 @@ appsCmd
 					});
 				}
 				if (options.json) {
-					console.log(JSON.stringify(app, null, 2));
+					await emitJson(app, options, cmd);
 					return;
 				}
 				console.log(`created ${app.prefix}`);
@@ -1265,13 +1301,14 @@ appsCmd
 	.argument("<app>", "App prefix or id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (appArg: string, options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (appArg: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const c = client(options.baseUrl);
 			const resolved = await resolveAppId(c, appArg);
 			const app = await c.getApp(resolved.id);
 			if (options.json) {
-				console.log(JSON.stringify(app, null, 2));
+				await emitJson(app, options, cmd);
 				return;
 			}
 			console.log(`prefix: ${app.prefix}`);
@@ -1298,6 +1335,7 @@ appsCmd
 	.option("--android-application-id <id>", "Android application id")
 	.option("--web-url <url>", "Web URL a Run on web opens (empty clears it)")
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
 		async (
 			appArg: string,
@@ -1310,8 +1348,8 @@ appsCmd
 				iosBundleId?: string;
 				androidApplicationId?: string;
 				webUrl?: string;
-				json?: boolean;
-			},
+			} & JsonOptions,
+			cmd: Command,
 		) => {
 			try {
 				const c = client(options.baseUrl);
@@ -1326,7 +1364,7 @@ appsCmd
 					webUrl: options.webUrl,
 				});
 				if (options.json) {
-					console.log(JSON.stringify(app, null, 2));
+					await emitJson(app, options, cmd);
 					return;
 				}
 				console.log(`updated ${app.prefix}`);
@@ -1344,26 +1382,33 @@ casesCmd
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--tag <tag>", "Filter by tag (repeatable; a case must carry every tag)", collect, [])
 	.option("--json", "Print raw JSON")
-	.action(async (appArg: string, options: { baseUrl: string; tag: string[]; json?: boolean }) => {
-		try {
-			const c = client(options.baseUrl);
-			const resolved = await resolveAppId(c, appArg);
-			let cases = await c.listCases(resolved.id);
-			const tags = options.tag;
-			if (tags.length > 0) {
-				cases = cases.filter((item) => tags.every((tag) => item.tags.includes(tag)));
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(
+		async (
+			appArg: string,
+			options: { baseUrl: string; tag: string[] } & JsonOptions,
+			cmd: Command,
+		) => {
+			try {
+				const c = client(options.baseUrl);
+				const resolved = await resolveAppId(c, appArg);
+				let cases = await c.listCases(resolved.id);
+				const tags = options.tag;
+				if (tags.length > 0) {
+					cases = cases.filter((item) => tags.every((tag) => item.tags.includes(tag)));
+				}
+				if (options.json) {
+					await emitJson({ cases }, options, cmd);
+					return;
+				}
+				for (const item of cases) {
+					console.log(`#${item.number}  ${item.name}`);
+				}
+			} catch (error) {
+				fail("cases list", error);
 			}
-			if (options.json) {
-				console.log(JSON.stringify({ cases }, null, 2));
-				return;
-			}
-			for (const item of cases) {
-				console.log(`#${item.number}  ${item.name}`);
-			}
-		} catch (error) {
-			fail("cases list", error);
-		}
-	});
+		},
+	);
 
 casesCmd
 	.command("get")
@@ -1371,28 +1416,36 @@ casesCmd
 	.argument("<number>", "Case number", (v) => Number(v))
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (appArg: string, number: number, options: { baseUrl: string; json?: boolean }) => {
-		try {
-			const c = client(options.baseUrl);
-			const resolved = await resolveAppId(c, appArg);
-			const cases = await c.listCases(resolved.id);
-			const found = cases.find((item) => item.number === number);
-			if (!found) throw new Error(`Case #${number} not found`);
-			const detail = await c.getCase(found.id);
-			if (options.json) {
-				console.log(JSON.stringify(detail, null, 2));
-				return;
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(
+		async (
+			appArg: string,
+			number: number,
+			options: { baseUrl: string } & JsonOptions,
+			cmd: Command,
+		) => {
+			try {
+				const c = client(options.baseUrl);
+				const resolved = await resolveAppId(c, appArg);
+				const cases = await c.listCases(resolved.id);
+				const found = cases.find((item) => item.number === number);
+				if (!found) throw new Error(`Case #${number} not found`);
+				const detail = await c.getCase(found.id);
+				if (options.json) {
+					await emitJson(detail, options, cmd);
+					return;
+				}
+				console.log(`#${detail.number} ${detail.name}`);
+				console.log(`tags: ${detail.tags.join(", ") || "(none)"}`);
+				for (const step of detail.flows) {
+					console.log(`- ${step.instructions}`);
+					if (step.expectedResult) console.log(`  => ${step.expectedResult}`);
+				}
+			} catch (error) {
+				fail("cases get", error);
 			}
-			console.log(`#${detail.number} ${detail.name}`);
-			console.log(`tags: ${detail.tags.join(", ") || "(none)"}`);
-			for (const step of detail.flows) {
-				console.log(`- ${step.instructions}`);
-				if (step.expectedResult) console.log(`  => ${step.expectedResult}`);
-			}
-		} catch (error) {
-			fail("cases get", error);
-		}
-	});
+		},
+	);
 
 casesCmd
 	.command("create")
@@ -1406,6 +1459,7 @@ casesCmd
 	)
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
 		async (
 			appArg: string,
@@ -1415,8 +1469,8 @@ casesCmd
 				tag: string[];
 				flowsFile?: string;
 				scriptFile?: string;
-				json?: boolean;
-			},
+			} & JsonOptions,
+			cmd: Command,
 		) => {
 			try {
 				const c = client(options.baseUrl);
@@ -1432,7 +1486,7 @@ casesCmd
 					});
 				}
 				if (options.json) {
-					console.log(JSON.stringify(created, null, 2));
+					await emitJson(created, options, cmd);
 					return;
 				}
 				console.log(`created #${created.number} ${created.name}`);
@@ -1455,6 +1509,7 @@ casesCmd
 		"Path to a Case Script file (.yoqa.yaml, or legacy .yoqa.json) to attach",
 	)
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
 		async (
 			appArg: string,
@@ -1465,8 +1520,8 @@ casesCmd
 				tag: string[];
 				flowsFile?: string;
 				scriptFile?: string;
-				json?: boolean;
-			},
+			} & JsonOptions,
+			cmd: Command,
 		) => {
 			try {
 				const c = client(options.baseUrl);
@@ -1483,7 +1538,7 @@ casesCmd
 						: undefined,
 				});
 				if (options.json) {
-					console.log(JSON.stringify(updated, null, 2));
+					await emitJson(updated, options, cmd);
 					return;
 				}
 				console.log(`updated #${updated.number}`);
@@ -1519,13 +1574,14 @@ flowsCmd
 	.argument("<app>", "App prefix or id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (appArg: string, options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (appArg: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const c = client(options.baseUrl);
 			const resolved = await resolveAppId(c, appArg);
 			const flows = await c.listFlows(resolved.id);
 			if (options.json) {
-				console.log(JSON.stringify({ flows }, null, 2));
+				await emitJson({ flows }, options, cmd);
 				return;
 			}
 			for (const flow of flows) {
@@ -1542,22 +1598,30 @@ flowsCmd
 	.argument("<flowId>", "Flow id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (appArg: string, flowId: string, options: { baseUrl: string; json?: boolean }) => {
-		try {
-			const c = client(options.baseUrl);
-			await resolveAppId(c, appArg);
-			const flow = await c.getFlow(flowId);
-			if (options.json) {
-				console.log(JSON.stringify(flow, null, 2));
-				return;
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(
+		async (
+			appArg: string,
+			flowId: string,
+			options: { baseUrl: string } & JsonOptions,
+			cmd: Command,
+		) => {
+			try {
+				const c = client(options.baseUrl);
+				await resolveAppId(c, appArg);
+				const flow = await c.getFlow(flowId);
+				if (options.json) {
+					await emitJson(flow, options, cmd);
+					return;
+				}
+				console.log(flow.name);
+				console.log(flow.instructions);
+				if (flow.expectedResult) console.log(`=> ${flow.expectedResult}`);
+			} catch (error) {
+				fail("flows get", error);
 			}
-			console.log(flow.name);
-			console.log(flow.instructions);
-			if (flow.expectedResult) console.log(`=> ${flow.expectedResult}`);
-		} catch (error) {
-			fail("flows get", error);
-		}
-	});
+		},
+	);
 
 flowsCmd
 	.command("create")
@@ -1567,6 +1631,7 @@ flowsCmd
 	.option("--result <text>", "Expected result", "")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
 		async (
 			appArg: string,
@@ -1575,8 +1640,8 @@ flowsCmd
 				name: string;
 				instructions?: string;
 				result?: string;
-				json?: boolean;
-			},
+			} & JsonOptions,
+			cmd: Command,
 		) => {
 			try {
 				const c = client(options.baseUrl);
@@ -1587,7 +1652,7 @@ flowsCmd
 					expectedResult: options.result ?? "",
 				});
 				if (options.json) {
-					console.log(JSON.stringify(flow, null, 2));
+					await emitJson(flow, options, cmd);
 					return;
 				}
 				console.log(`created ${flow.id} ${flow.name}`);
@@ -1606,6 +1671,7 @@ flowsCmd
 	.option("--result <text>", "Expected result")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
 		async (
 			appArg: string,
@@ -1615,8 +1681,8 @@ flowsCmd
 				name?: string;
 				instructions?: string;
 				result?: string;
-				json?: boolean;
-			},
+			} & JsonOptions,
+			cmd: Command,
 		) => {
 			try {
 				const c = client(options.baseUrl);
@@ -1627,7 +1693,7 @@ flowsCmd
 					expectedResult: options.result,
 				});
 				if (options.json) {
-					console.log(JSON.stringify(flow, null, 2));
+					await emitJson(flow, options, cmd);
 					return;
 				}
 				console.log(`updated ${flow.id}`);
@@ -1659,13 +1725,14 @@ program
 	.argument("<app>", "App prefix or id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (appArg: string, options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (appArg: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const c = client(options.baseUrl);
 			const resolved = await resolveAppId(c, appArg);
 			const tags = await c.listTags(resolved.id);
 			if (options.json) {
-				console.log(JSON.stringify({ tags }, null, 2));
+				await emitJson({ tags }, options, cmd);
 				return;
 			}
 			for (const tag of tags) {
@@ -1685,25 +1752,32 @@ buildsCmd
 	.argument("[app]", "Optional app prefix or id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (appArg: string | undefined, options: { baseUrl: string; json?: boolean }) => {
-		try {
-			const c = client(options.baseUrl);
-			let appId: string | undefined;
-			if (appArg) {
-				appId = (await resolveAppId(c, appArg)).id;
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(
+		async (
+			appArg: string | undefined,
+			options: { baseUrl: string } & JsonOptions,
+			cmd: Command,
+		) => {
+			try {
+				const c = client(options.baseUrl);
+				let appId: string | undefined;
+				if (appArg) {
+					appId = (await resolveAppId(c, appArg)).id;
+				}
+				const builds = await c.listBuilds(appId);
+				if (options.json) {
+					await emitJson({ builds }, options, cmd);
+					return;
+				}
+				for (const build of builds) {
+					console.log(`${build.id}  ${build.platform.padEnd(8)} ${build.name}  ${build.path}`);
+				}
+			} catch (error) {
+				fail("builds list", error);
 			}
-			const builds = await c.listBuilds(appId);
-			if (options.json) {
-				console.log(JSON.stringify({ builds }, null, 2));
-				return;
-			}
-			for (const build of builds) {
-				console.log(`${build.id}  ${build.platform.padEnd(8)} ${build.name}  ${build.path}`);
-			}
-		} catch (error) {
-			fail("builds list", error);
-		}
-	});
+		},
+	);
 
 buildsCmd
 	.command("create")
@@ -1712,10 +1786,12 @@ buildsCmd
 	.option("--name <name>", "Display name")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
 		async (
 			path: string,
-			options: { baseUrl: string; app?: string; name?: string; json?: boolean },
+			options: { baseUrl: string; app?: string; name?: string } & JsonOptions,
+			cmd: Command,
 		) => {
 			try {
 				const c = client(options.baseUrl);
@@ -1725,7 +1801,7 @@ buildsCmd
 				}
 				const build = await c.createBuild({ path, appId, name: options.name });
 				if (options.json) {
-					console.log(JSON.stringify(build, null, 2));
+					await emitJson(build, options, cmd);
 					return;
 				}
 				console.log(`created ${build.id}`);
@@ -1767,13 +1843,14 @@ runsCmd
 	.argument("<app>", "App prefix or id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (appArg: string, options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (appArg: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const c = client(options.baseUrl);
 			const resolved = await resolveAppId(c, appArg);
 			const runs = await c.listRuns(resolved.id);
 			if (options.json) {
-				console.log(JSON.stringify({ runs }, null, 2));
+				await emitJson({ runs }, options, cmd);
 				return;
 			}
 			for (const run of runs) {
@@ -1789,11 +1866,12 @@ runsCmd
 	.argument("<runId>", "Run id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.action(async (runId: string, options: { baseUrl: string; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (runId: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const run = await client(options.baseUrl).getRun(runId);
 			if (options.json) {
-				console.log(JSON.stringify(run, null, 2));
+				await emitJson(run, options, cmd);
 				return;
 			}
 			console.log(`${run.id} ${run.status}`);
@@ -1828,6 +1906,7 @@ attachGithubOutputOptions(
 )
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
 		async (
 			runId: string,
@@ -1835,8 +1914,8 @@ attachGithubOutputOptions(
 				baseUrl: string;
 				timeout?: string;
 				githubOutput?: boolean;
-				json?: boolean;
-			},
+			} & JsonOptions,
+			cmd: Command,
 		) => {
 			try {
 				const finished = await waitForRun(client(options.baseUrl), runId, {
@@ -1845,7 +1924,7 @@ attachGithubOutputOptions(
 				});
 				await maybeWriteGithubRunOutput(finished, options.githubOutput);
 				if (options.json) {
-					console.log(JSON.stringify(finished, null, 2));
+					await emitJson(finished, options, cmd);
 				} else {
 					console.log(`${finished.id} ${finished.status}`);
 				}
@@ -1903,6 +1982,7 @@ runsCmd
 	)
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.option("--wait", "Wait until the run finishes (passed / errored / cancelled)")
 	.option(
 		"--timeout <seconds>",
@@ -1927,11 +2007,11 @@ runsCmd
 				recordVideo?: boolean;
 				profile?: string;
 				viewport?: string;
-				json?: boolean;
 				wait?: boolean;
 				timeout?: string;
 				githubOutput?: boolean;
-			},
+			} & JsonOptions,
+			cmd: Command,
 		) => {
 			try {
 				const c = client(options.baseUrl);
@@ -2029,7 +2109,7 @@ runsCmd
 				}
 				await maybeWriteGithubRunOutput(run, options.githubOutput);
 				if (options.json) {
-					console.log(JSON.stringify(run, null, 2));
+					await emitJson(run, options, cmd);
 				} else {
 					console.log(`created ${run.id} (${run.status})`);
 					for (const test of run.tests) {
@@ -2059,19 +2139,18 @@ scriptCmd
 	.command("validate")
 	.argument("<file>", "Path to a Case Script file (.yoqa.yaml, or legacy .yoqa.json)")
 	.option("--json", "Print the parsed Case Script, or the errors, as JSON")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.description("Check a Case Script file without a runner or device")
-	.action(async (file: string, options: { json?: boolean }) => {
+	.action(async (file: string, options: JsonOptions, cmd: Command) => {
 		try {
 			const parsed = parseCaseScriptFile(await readFile(file, "utf8"));
 			if (options.json) {
-				console.log(
-					JSON.stringify(
-						parsed.ok
-							? { ok: true, name: parsed.name, script: parsed.script }
-							: { ok: false, errors: parsed.errors },
-						null,
-						2,
-					),
+				await emitJson(
+					parsed.ok
+						? { ok: true, name: parsed.name, script: parsed.script }
+						: { ok: false, errors: parsed.errors },
+					options,
+					cmd,
 				);
 			} else if (parsed.ok) {
 				const count = parsed.script.actions.length;
@@ -2090,8 +2169,9 @@ scriptCmd
 	.argument("<file>", "Path to a Case Script file (.yoqa.yaml, or legacy .yoqa.json)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON per action")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.description("Replay a Case Script file on the active device session")
-	.action(async (file: string, options: { baseUrl: string; json?: boolean }) => {
+	.action(async (file: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const { script } = await loadCaseScriptFile(file);
 			const c = client(options.baseUrl);
@@ -2102,27 +2182,27 @@ scriptCmd
 
 			const result = await runCaseScript(c, script, {
 				pauseAfterActionMs: 800,
-				onStep: (event) => {
+				// Async because each step's JSON goes through the output seam, which accounts for it.
+				// `runCaseScript` awaits every `onStep`, so nothing here is fire-and-forget.
+				onStep: async (event) => {
 					const { position, total, action, status, error, response, outcome } = event;
 					if (status === "running") return;
 					const step = position + 1;
 					if (options.json) {
-						console.log(
-							JSON.stringify(
-								{
-									ok: status === "ok",
-									status,
-									type: action.type,
-									step,
-									path: event.path,
-									command: caseScriptActionCommand(action),
-									...(outcome ? { outcome } : {}),
-									...(error ? { error } : {}),
-									...(response ? { response } : {}),
-								},
-								null,
-								2,
-							),
+						await emitJson(
+							{
+								ok: status === "ok",
+								status,
+								type: action.type,
+								step,
+								path: event.path,
+								command: caseScriptActionCommand(action),
+								...(outcome ? { outcome } : {}),
+								...(error ? { error } : {}),
+								...(response ? { response } : {}),
+							},
+							options,
+							cmd,
 						);
 						return;
 					}
@@ -2206,20 +2286,23 @@ program
 	.option("--out <path>", "Write the JSON report to this path")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print JSON instead of the table")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(
-		async (options: {
-			device: string;
-			platform: string;
-			repeats?: number;
-			suite?: string;
-			tools: string;
-			lane: string;
-			arms?: string;
-			app?: string;
-			out?: string;
-			baseUrl: string;
-			json?: boolean;
-		}) => {
+		async (
+			options: {
+				device: string;
+				platform: string;
+				repeats?: number;
+				suite?: string;
+				tools: string;
+				lane: string;
+				arms?: string;
+				app?: string;
+				out?: string;
+				baseUrl: string;
+			} & JsonOptions,
+			cmd: Command,
+		) => {
 			try {
 				const platform = parsePlatform(options.platform);
 				if (platform === "web") throw new Error("benchmark runs on ios or android only");
@@ -2271,7 +2354,7 @@ program
 						`${JSON.stringify({ ...report, recommendation }, null, 2)}\n`,
 					);
 				}
-				if (options.json) console.log(JSON.stringify({ ...report, recommendation }, null, 2));
+				if (options.json) await emitJson({ ...report, recommendation }, options, cmd);
 				else {
 					console.log(formatLatencyTable(report));
 					if (arms.includes("tree")) {
@@ -2299,10 +2382,12 @@ program
 	)
 	.option("--force", `Replace a ${SKILL_NAME} that yoqa did not install`)
 	.option("--json", "Print raw JSON")
-	.action(async (options: { dir?: string; force?: boolean; json?: boolean }) => {
+	.option("--pretty", PRETTY_JSON_HELP)
+	.action(async (options: { dir?: string; force?: boolean } & JsonOptions, cmd: Command) => {
 		try {
 			const result = await installSkill({ dir: options.dir, force: options.force });
-			console.log(options.json ? JSON.stringify(result, null, 2) : formatSkillInstall(result));
+			if (options.json) await emitJson(result, options, cmd);
+			else console.log(formatSkillInstall(result));
 		} catch (error) {
 			fail("skill install", error);
 		}
