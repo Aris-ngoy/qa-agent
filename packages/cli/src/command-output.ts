@@ -53,7 +53,7 @@ export type EmitOptions = { baseUrl?: string };
  */
 export type EmitJsonOptions = EmitOptions & { pretty?: boolean };
 
-/** Who the ledger credits this emission to, derived once for all three emit calls. */
+/** Who the ledger credits an emission to: the command as typed, and its Device Session if any. */
 function emitContext(options: EmitOptions, cmd: Command): AgentOutputContext {
 	return {
 		command: commandPath(cmd),

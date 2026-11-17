@@ -437,6 +437,19 @@ describe("a command's human-readable listing", () => {
 	const textOutput = (lines: string[], options: Parameters<typeof formatAgentOutput>[1] = {}) =>
 		formatAgentOutput({ kind: "text", lines }, options);
 
+	/** What one emission of `lines` put on stdout, one entry per `console.log` call. */
+	const printedBy = async (lines: string[], command: string) => {
+		const log = console.log;
+		const printed: string[] = [];
+		console.log = (...args: unknown[]) => printed.push(args.join(" "));
+		try {
+			await emitAgentOutput({ kind: "text", lines }, {}, { command, session: async () => null });
+		} finally {
+			console.log = log;
+		}
+		return printed;
+	};
+
 	test("is the lines a caller gave, in order, joined by one newline each", () => {
 		expect(textOutput(["prefix: DEMO", "name: Demo app"]).text).toBe(
 			"prefix: DEMO\nname: Demo app",
@@ -450,56 +463,20 @@ describe("a command's human-readable listing", () => {
 	test("still writes a line that happens to be empty, as console.log always did", async () => {
 		// A flow with no instructions prints a blank line. Dropping it would shift every line after
 		// it, and the promise of this batch is byte-identical output.
-		const log = console.log;
-		const printed: string[] = [];
-		console.log = (...args: unknown[]) => printed.push(args.join(" "));
-		try {
-			await emitAgentOutput(
-				{ kind: "text", lines: [""] },
-				{},
-				{ command: "flows get", session: async () => null },
-			);
-		} finally {
-			console.log = log;
-		}
-
-		expect(printed).toEqual([""]);
+		expect(await printedBy([""], "flows get")).toEqual([""]);
 	});
 
 	test("writes nothing at all for a listing with no lines, as an empty loop always did", async () => {
-		const log = console.log;
-		const printed: string[] = [];
-		console.log = (...args: unknown[]) => printed.push(args.join(" "));
-		try {
-			await emitAgentOutput(
-				{ kind: "text", lines: [] },
-				{},
-				{ command: "cases list", session: async () => null },
-			);
-		} finally {
-			console.log = log;
-		}
-
-		expect(printed).toEqual([]);
+		expect(await printedBy([], "cases list")).toEqual([]);
 	});
 
 	test("writes each line as its own line, the way the command always wrote it", async () => {
 		// One emission for the ledger, but the same writes on stdout: a caller watching line by
 		// line sees exactly what it saw before the seam existed.
-		const log = console.log;
-		const printed: string[] = [];
-		console.log = (...args: unknown[]) => printed.push(args.join(" "));
-		try {
-			await emitAgentOutput(
-				{ kind: "text", lines: ["prefix: DEMO", "name: Demo app"] },
-				{},
-				{ command: "apps get", session: async () => null },
-			);
-		} finally {
-			console.log = log;
-		}
-
-		expect(printed).toEqual(["prefix: DEMO", "name: Demo app"]);
+		expect(await printedBy(["prefix: DEMO", "name: Demo app"], "apps get")).toEqual([
+			"prefix: DEMO",
+			"name: Demo app",
+		]);
 	});
 
 	test("keeps a blank line a formatter put between sections", () => {

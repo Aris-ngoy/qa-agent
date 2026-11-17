@@ -13,12 +13,16 @@ Then warn before the window fills, rather than after the work is lost.
 
 Then stop charging a calling agent for whitespace on every command, not just one.
 
-Covers four tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
+Then put every human-readable line behind the same seam, so the meter covers the whole surface and
+there is one route to stdout left to guard.
+
+Covers five tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
 [#442](https://github.com/Aris-ngoy/qa-agent/issues/442), the seam itself;
 [#436](https://github.com/Aris-ngoy/qa-agent/issues/436), **Emitted usage** accounting and
 `yoqa usage`; [#437](https://github.com/Aris-ngoy/qa-agent/issues/437), the **Output budget**
-threshold warning; and [#438](https://github.com/Aris-ngoy/qa-agent/issues/438), compact JSON
-across every command. Non-JSON output still writes the way it did — that is #439.
+threshold warning; [#438](https://github.com/Aris-ngoy/qa-agent/issues/438), compact JSON
+across every command; and [#439](https://github.com/Aris-ngoy/qa-agent/issues/439), every
+remaining human-readable write.
 
 ## Plan summary
 
@@ -130,6 +134,30 @@ mid-command. Scoped by a `preAction` hook to one invocation rather than one proc
 `yoqa` run those are the same thing, but the tests run many commands in one process and a reconnect
 between two of them must never be served the previous session. Rejected: a process-lifetime cache,
 which would have made #436's "a new Device Session starts from zero" test pass against a stale id.
+
+**Two shapes for human-readable output, not one.** It arrived in two byte shapes: lines that
+`console.log` terminated, and `script export`'s file, written raw with `process.stdout.write`
+because a Case Script ends in its own newline and the shell form ends in none. The seam gained
+`text` (lines, written one `console.log` each, so both the bytes and the write pattern are what
+they were) and `document` (bytes, verbatim). Rejected: one `text` kind with a single newline rule,
+which adds or drops a byte on one of the two export forms.
+
+**One emission per command, not one per line.** A block or loop builds its lines and emits once, so
+the ledger records one call per command, as it does for JSON. The `print*` helpers that wrote for
+themselves became line builders (`devicesTableLines`, `serverTableLines`,
+`resultScreenshotLines`). `script run` is the exception, as it is for `--json`: a line per step.
+
+**`yoqa usage` accounts its own text.** It reads the total first, as its JSON form already does, so
+a report never includes itself — but the next one does. Rejected: exempting it, which would make the
+one unaccounted human-readable command the one that says what is accounted.
+
+**`writeReport` has no default stdout.** Its `log` defaulted to `console.log`, a route around the
+seam waiting for a caller that forgot to pass one. The default is now silence; the CLI passes
+`emitText`.
+
+**Text is accounted, not capped.** The budget warning covers it; nothing trims it.
+"Byte-identical" and "capped" cannot both hold for a long `cases list`, and this was the
+byte-identical batch. `formatAgentOutput` ignores `limit` for `text` and `document`.
 
 ## What shipped
 
@@ -339,11 +367,29 @@ stream stops being line-delimited. That is accepted rather than fixed, because `
 person reading a replay by eye and the compact default — the one an agent gets — is unaffected.
 No other command emits more than once, so no other command has the question.
 
-#### What #438 did not do
+### Every remaining write (#439)
 
-Non-JSON output is untouched. `formatSigningStatus`, `printDevicesTable`, the `ok <kind>` lines
-and every other human rendering still go straight to `console.log`. That is #439's batch, and
-until it lands a command can have its JSON on the seam and its text off it.
+- All 96 `console.log` and `process.stdout.write` calls left in `program.ts` now go through one of
+  three calls in `command-output.ts`: `emitJson`, and the new `emitText` and `emitDocument`. The
+  three share one `emitContext`, so the name and Device Session the ledger credits are worked out
+  once. Outside `agent-output.ts`, nothing in `packages/cli/src` writes to stdout.
+- Human-readable output is **byte-identical**: stdout, stderr and exit code, for every command (see
+  *How to verify*).
+- Every command run with a `--base-url` and a Device Session now records under its own name, in
+  either form. That means one more memoized `GET /devices/active` per human-readable command. It
+  happens after the output is written, and it gives up after 2 s.
+- `script validate` and `skill install` are offline, as they were for #438: written through the
+  seam, and not accounted.
+- Tests: a root `bunfig.toml` preloads `packages/cli/src/test-preload.ts`. That points
+  `YOQA_EMITTED_USAGE_PATH` at a temp file for any test that has not set its own. Every command now
+  accounts, so a test that runs one against a fake runner with a Device Session would otherwise
+  write to the developer's own `~/.yoqa`.
+- The ticket asked that existing tests pass unchanged. Two things did change:
+  - The fakes in `action-key.test.ts` and `app-web-url.test.ts` now answer `/devices/active` with a
+    404, where they used to throw on a body-less GET. No assertion changed in either file.
+  - In `emitted-usage-command.test.ts`, the second `usage` warning now quotes 35 tokens where it
+    quoted 12. The difference is the 23-token report that the first `usage` printed. That follows
+    from the `usage` decision above.
 
 ## How to verify
 
@@ -357,7 +403,28 @@ bun test packages/cli/src/emitted-usage-ledger.test.ts  # the ledger, over an in
 bun test packages/cli/src/emitted-usage-command.test.ts # `yoqa usage`, against a fake runner
 bun test packages/cli/src/screen-source.test.ts         # `yoqa screen`, against a fake runner
 bun test packages/runner-client/src services/runner/src/domains/runs  # replay, Branch, Decide loop
+
+# The one stdout writer: nothing outside the seam.
+grep -rnE "console\.(log|info|debug|dir|table|trace)|process\.stdout\.write|Bun\.stdout" \
+  packages/cli/src --include='*.ts' | grep -v '\.test\.ts' | grep -v agent-output.ts
 ```
+
+Human-readable output, against any runner with a device connected:
+
+```bash
+yoqa devices active && yoqa usage   # `devices active` appears in the breakdown
+yoqa usage && yoqa usage            # the second report counts the first
+```
+
+#439's byte-identity check was a throwaway harness, deliberately not committed (#440's guard is
+the durable check). It ran 58 human-readable invocations as `bun run packages/cli/src/main.ts`
+subprocesses against a `Bun.serve` fake runner, on `main` and on the branch. Each got its own temp
+ledger and `NO_COLOR=1`, and temp paths and the port were normalized out. Result:
+- stdout, stderr and exit code were identical in **58/58**.
+- **54/58** wrote a ledger row. The four that did not: `cases list --tag` with no match, which
+  prints nothing; `script validate` twice; and `skill install`.
+- To show the harness could fail, a mutant seam that dropped the last line of every `text` payload
+  was caught in 20 commands.
 
 On a device, against a dense screen:
 
@@ -434,25 +501,41 @@ Before this ticket only the `screen` row existed. `devices ios` costing 2,126 to
 
 ## Follow-ups
 
-The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435), in dependency order:
-migrating the rest of the CLI's output through the seam (#439), the guard test that keeps the seam
-single (#440), and the skill's context-budget section (#441). #441 is where the shipped skill
+The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435), in dependency order: the
+guard test that keeps the seam single (#440), and the skill's context-budget section (#441). #441 is where the shipped skill
 learns to read the budget warning and act on it — #437 wrote the line, not the instructions for
 responding to it.
 
-**The budget warning now has 42 commands that can trigger it**, not one. #437 shipped with only
-`screen` on the seam; a session's total is now the real cost of its machine-readable output. It is
-still an undercount of a session's *whole* cost until #439 moves the human-readable output across.
+**Every command can now trigger the budget warning**, in either form. Since #439, a session's
+total is the cost of everything Yoqa's own code wrote to stdout.
+
+**Two routes to stdout are not Yoqa's code, and #440's guard must allow or close them.**
+- commander writes `--help`, `<command> --help` and `--version` itself. These are unaccounted, and
+  an agent reads help often.
+- Foreground `yoqa serve` starts the runner with `stdio: "inherit"` (`ensure-runner.ts`), so the
+  runner's logs reach the CLI's stdout.
+
+Routing help through `configureOutput({ writeOut })` is the obvious fix, but it is a synchronous
+hook in front of an async seam.
 
 **The image arm of the estimator has no call site yet.** `estimateImageTokens` is in #436's
 acceptance criteria and ships tested, and the seam prices any payload that names an Agent image —
-but the only payload through the seam today is `screen`, which is a tree. `action --screenshot` is
-the first command that will carry one, when #439 moves it onto the seam; that call site will also
-have to read the PNG's dimensions, which nothing does today. Stated here rather than left looking
-like an oversight.
+but no payload through the seam names one yet. #436 expected `action --screenshot` to carry the
+first one when #439 moved it onto the seam. It did not: #439 moved the action's *lines* across, and
+the `screenshot <path>` line is priced as text. Pricing the image means reading the PNG's
+dimensions at that call site, which nothing does today, and a byte-identical batch was the wrong
+place to add a read. The Agent image is still the largest cost the meter does not see.
 
-**`yoqa usage`'s human-readable form still writes with `console.log`**, like every other text path
-#439 has yet to migrate. Its `--json` form is on the seam and accounts for itself.
+**Offline commands record nothing.** `script validate` and `skill install` have no runner to ask
+for a Device Session. If they ever matter, they need a session they can find without a runner.
+
+**The text estimate leaves out line terminators.** `text` is priced on its lines joined by `\n`,
+so the newline `console.log` adds after each line is not counted. JSON is priced the same way, so
+the two are consistent. Each such line undercounts by under a token.
+
+**`servers list|stop|restart|stop-all --base-url <url>` ignores the flag.** The parent `servers`
+command takes `--base-url` before the subcommand sees it, so the subcommand talks to the default
+runner. This predates #439; the harness found it. It needs its own ticket.
 
 **`script run --json` reads the ledger once per action.** Each emission appends and then reads back
 to compute the running total (#437). A twenty-action replay is twenty reads of a file capped at
@@ -463,9 +546,6 @@ profile.
 **Nothing prunes old sessions' records.** The 1 MB compaction drops them only when the file grows
 past the cap, so a long-lived ledger keeps dead sessions until then. Age-based pruning, the way
 `pruneOldRunScreenshots` does it, would be the obvious next step if that ever matters.
-
-Known gap until #439 lands: the seam is the only writer for every `--json` path and no text path,
-so `emitAgentOutput` is not yet enforceable as the single route to stdout. That is #440's job.
 
 Two row formatters still print the same tree in near-identical shapes: this seam's, and the Decide
 loop's `formatScreenSnapshot`. Only the cap and the omitted line are shared. Unifying them would
