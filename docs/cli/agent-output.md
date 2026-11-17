@@ -163,25 +163,32 @@ seam waiting for a caller that forgot to pass one. The default is now silence; t
 byte-identical batch. `formatAgentOutput` ignores `limit` for `text` and `document`.
 
 **The guard reads source, the way the desktop's `no-react-state` test does.** It scans every
-non-test file in `packages/cli/src` for anything that writes to stdout and fails naming each
-`file:line`, the code, and the three `emit*` calls to use instead. Rejected: spying on
+non-test file in `packages/cli/src` for the ways a file can reach stdout, and fails naming each
+`file:line`, the code, which route it took, and the three `emit*` calls to use instead. Whole files
+are matched, not single lines, so an import or a `stdio` array split across lines is still seen. Rejected: spying on
 `console.log` and `process.stdout.write` while running every command, which only catches the
 paths a test happens to drive — the regression this guards against is a new command nobody has
 written a test for yet.
 
-**Writers, not the stream.** `process.stdout.isTTY` is a read (`doctor-table.ts` uses it for
-colour), so reading the stream's `isTTY`, `columns`, `rows` or `fd` is allowed and anything else on
-`process.stdout` is not — a `.write`, a `.pipe(process.stdout)`, the stream passed as an argument.
-Comment lines are skipped: this codebase's doc comments name `console.log` freely.
+**Holding the stream is a write; reading its shape is not.** `process.stdout.isTTY` is a read
+(`doctor-table.ts` uses it for colour), so `isTTY`, `columns` and `rows` are allowed. Anything else
+that gets hold of stdout counts, because whatever holds it can write to it: `.write`,
+`.pipe(process.stdout)`, `process.stdout.fd`, `{ stdout }` taken out of `process` or
+`node:process`, `Bun.stdout`, `writeSync(1, …)` and `/dev/stdout`. The same goes for the
+`console` methods that print to stdout, whether they are called or just passed along, as
+`const log = console.log` passes one. Lines that start as a comment are skipped, because this
+codebase's doc comments name `console.log` freely.
 
-**A child process that inherits stdout is a write.** `stdio: "inherit"` hands the CLI's stdout to
-a subprocess, which is a route around the seam no `console` pattern sees. The guard catches it in
-either spelling, the string or the array.
+**A child process that inherits stdout is a write.** Inheriting hands the CLI's stdout to a
+subprocess, which is a route around the seam that no `console` pattern sees. The guard catches
+node's `stdio: "inherit"`, written as a string or an array, and Bun's `stdout: "inherit"`.
 
-**One exemption, by exact line, and it must stay true.** Foreground `yoqa serve` spawns the runner
+**One exemption, for one write, and it must stay true.** Foreground `yoqa serve` spawns the runner
 with `stdio: "inherit"`. That is a long-lived server whose stdout is a log for a person at a
-terminal, not Agent output, so it is allowed with its reason next to it. The exemption names the
-line, not the file, so a second write in `ensure-runner.ts` is still caught. A second test fails if
+terminal, not Agent output, so it is allowed and its reason is written next to it. The exemption
+names the file and the code, and it covers exactly one match. A second `stdio: "inherit",` in
+`ensure-runner.ts` is still caught, even one formatted identically, which is what a match on text
+alone would have let through. Review found that mistake in the first draft. A second test fails if
 an exemption no longer matches any write, so one cannot outlive its site and quietly cover the
 next thing to land there. Rejected: closing it by piping the runner's logs through the seam,
 which would account a server log against a context window that never reads it.
@@ -428,19 +435,30 @@ No other command emits more than once, so no other command has the question.
 - `packages/cli/src/no-direct-stdout.test.ts` — three tests: no stdout write outside
   `agent-output.ts` except the named exemption; every exemption still names a real write; and the
   scan actually reached `program.ts` and the seam, so a moved directory cannot make it pass by
-  scanning nothing.
+  scanning nothing. Each route to stdout is a named pattern, so a failure says which one tripped.
 - It passes on the current tree with no code change: #439 had already moved every site.
 - A failure reads like this:
 
 ```
 + [
-+   "program.ts:2457  console.log(\"x\");  — write through emitText, emitJson or emitDocument in command-output.ts",
++   "program.ts:2457  console.log(\"x\");  — a console method that prints to stdout; write through emitText, emitJson or emitDocument in command-output.ts",
 + ]
 ```
 
-- Known false positive, accepted: `stdio: ["inherit", "pipe", "pipe"]` inherits only stdin and is
-  still flagged. The guard does not parse which slot inherits; a site that needs it adds an
-  exemption with its reason.
+- **What it cannot see.** The guard matches text, not types. It catches every route listed above,
+  but it is not a proof:
+  - an alias made a step removed, such as `const c = console; c.log(…)` or `const p = process;
+    p.stdout`, gets through;
+  - so does a write in a package the CLI imports, because only `packages/cli/src` is scanned
+    (`@yoqa/runner-client` has no stdout writes today);
+  - so does commander's own help output.
+
+  The guard exists to stop the easy mistake, a new command that calls `console.log`, and that is
+  the mistake it catches.
+- **False positives, accepted.** `stdio: ["inherit", "pipe", "pipe"]` inherits only stdin and is
+  still flagged, because the guard does not work out which slot inherits. A trailing
+  `foo(); // console.log(x)` is flagged too, because only lines that start as a comment are
+  skipped. A site that really needs either takes an exemption and a reason.
 
 ## How to verify
 
@@ -459,11 +477,23 @@ bun test packages/cli/src/no-direct-stdout.test.ts      # the one stdout writer:
 ```
 
 To see the guard fail, add `console.log("x");` to any function in `packages/cli/src/program.ts`
-and rerun it: it names the line. Each pattern was checked that way — `console.log`,
-`console.info`, `console.table`, `process.stdout.write`, `.pipe(process.stdout)`,
-`Bun.write(Bun.stdout, …)`, `writeSync(1, …)`, and `stdio: "inherit"` in both spellings each
-failed it, `process.stdout.isTTY` and a commented-out `console.log` did not, and removing the
-exempt `stdio: "inherit"` from `ensure-runner.ts` failed the stale-exemption test.
+and rerun it: the failure names the line. Each route was checked that way, one probe file at a
+time, and all 16 of these failed the guard:
+- `console.log(…)`, `console.table(…)`, `const log = console.log` and `.forEach(console.info)`
+- `process.stdout.write`, `process["stdout"].write`, `.pipe(process.stdout)` and
+  `writeSync(process.stdout.fd, …)`
+- `const { stdout } = process`, and a multi-line `import { stdout } from "node:process"`
+- `Bun.write(Bun.stdout, …)`, `writeSync(1, …)` and `Bun.file("/dev/stdout")`
+- `stdio: "inherit"` as a string, as a multi-line array, and as Bun's `stdout: "inherit"`
+
+None of these failed it:
+- `process.stdout.isTTY` and `.columns`
+- a commented-out `console.log`, and a doc comment that names one
+- an `execFile` callback's `stdout` parameter, and `const { stdout } = await run()`
+- `console.error`
+
+Two more checks went the right way. Adding a second, identical `stdio: "inherit",` to
+`ensure-runner.ts` failed the guard. Removing the exempt one failed the stale-exemption test.
 
 Human-readable output, against any runner with a device connected:
 
@@ -558,9 +588,8 @@ Before this ticket only the `screen` row existed. `devices ios` costing 2,126 to
 ## Follow-ups
 
 The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435): the skill's context-budget
-section (#441). #441 is where the shipped skill
-learns to read the budget warning and act on it — #437 wrote the line, not the instructions for
-responding to it.
+section (#441). #441 is where the shipped skill learns to read the budget warning and act on it
+— #437 wrote the line, not the instructions for responding to it.
 
 **Every command can now trigger the budget warning**, in either form. Since #439, a session's
 total is the cost of everything Yoqa's own code wrote to stdout.
