@@ -27,7 +27,8 @@ yoqa screen --full                 # raw accessibility tree (JSON-wrapped, very 
 
 Use `yoqa screen` when the screenshot is not enough: you need an exact label or `--id` to target
 deterministically, text is too small to read, or you want the list of everything on a long screen. It
-costs fewer tokens than an image but sees only the app's own accessibility tree.
+sees only the app's own accessibility tree; what it costs next to an image is in the
+[context budget](../SKILL.md#context-budget).
 
 `yoqa screen` prints at most **80 elements** and ends with `… N more elements omitted` on a denser
 screen, so one read cannot flood your context; `--json` caps the same way and adds `omittedElements`.
