@@ -126,6 +126,13 @@ number nobody is billed for. A tree of coordinates tokenizes worse than prose an
 still, so the figure is an order of magnitude for deciding when to delegate or compact. It is
 never presented as a bill.
 
+The largest known error is script rather than content: CJK and Cyrillic run closer to one token per
+character, so a localized app's tree can cost several times what Yoqa reports. Found by verifying
+against a real page — `example.com`'s four-language tree reported 262 tokens. Left uncorrected on
+purpose: a script-aware divisor would still be a guess, and the number answers "am I near the
+budget", which an understatement on one screen does not change. Named in the estimator's comment so
+nobody reads the figure as precise.
+
 #### Two readings worth stating
 
 **"A corrupt ledger yields a zero total"** is implemented as *never an error*, not as *always
