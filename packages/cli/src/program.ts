@@ -49,9 +49,11 @@ import {
 	summarizeLatency,
 } from "../../../services/runner/src/domains/benchmark/summarize";
 import packageJson from "../package.json" with { type: "json" };
-import { parseScreenLimit, writeAgentOutput } from "./agent-output";
+import { emitAgentOutput, parseScreenLimit } from "./agent-output";
 import { findCatalogApp } from "./catalog-app";
 import { formatDoctorReport } from "./doctor-table";
+import { deviceSessionId, formatEmittedUsage, resolveOutputBudget } from "./emitted-usage";
+import { readEmittedUsage } from "./emitted-usage-ledger";
 import {
 	commandChainIncludes,
 	ensureRunner,
@@ -100,6 +102,17 @@ program
 
 function client(baseUrl: string) {
 	return createRunnerClient({ baseUrl });
+}
+
+/**
+ * The Device Session **Emitted usage** is accounted to, or null when nothing is connected.
+ *
+ * One extra localhost round-trip, and the output seam makes it only after it has already written
+ * the command's output — so a calling agent has its answer before any accounting happens.
+ */
+async function activeSessionId(baseUrl: string): Promise<string | null> {
+	const active = await client(baseUrl).getActiveDevice();
+	return active ? deviceSessionId(active) : null;
 }
 
 /**
@@ -570,6 +583,32 @@ devices
 		}
 	});
 
+// --- usage (what Yoqa has put into the calling agent's context) ---
+
+program
+	.command("usage")
+	.description("Report Emitted usage for the active Device Session against the Output budget")
+	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
+	.option("--json", "Print raw JSON")
+	.option("--pretty", "Indent the JSON (compact by default — indentation costs an agent tokens)")
+	.action(async (options: { baseUrl: string; json?: boolean; pretty?: boolean }) => {
+		try {
+			const session = await activeSessionId(options.baseUrl);
+			const usage = session
+				? await readEmittedUsage(session)
+				: { session: null, total: 0, byCommand: [] };
+			const budget = resolveOutputBudget();
+			if (options.json) {
+				const body = { ...usage, budget };
+				console.log(options.pretty ? JSON.stringify(body, null, 2) : JSON.stringify(body));
+				return;
+			}
+			console.log(formatEmittedUsage(usage, { budget }));
+		} catch (error) {
+			fail("usage", error);
+		}
+	});
+
 // --- screen / screenshot / action ---
 
 program
@@ -594,9 +633,10 @@ program
 			try {
 				const limit = parseScreenLimit(options.limit);
 				const screen = await client(options.baseUrl).getScreen({ full: options.full });
-				writeAgentOutput(
+				await emitAgentOutput(
 					{ kind: "screen", screen },
 					{ json: options.json, pretty: options.pretty, limit },
+					{ command: "screen", session: () => activeSessionId(options.baseUrl) },
 				);
 			} catch (error) {
 				fail("screen", error);
