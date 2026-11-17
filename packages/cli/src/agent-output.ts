@@ -17,6 +17,8 @@ import {
 	type ScreenSource,
 	screenRowsOmittedLine,
 } from "@yoqa/runner-client";
+import { type EmittedImage, estimateImageTokens, estimateTextTokens } from "./emitted-usage";
+import { type LedgerOptions, appendEmittedUsage } from "./emitted-usage-ledger";
 
 /** How the caller asked for this command's output to be shaped. */
 export type AgentOutputOptions = {
@@ -28,16 +30,25 @@ export type AgentOutputOptions = {
 	limit?: number;
 };
 
-/** What one command emitted, and what the cap kept out of it. */
+/** What one command emitted, what the cap kept out of it, and what it cost. */
 export type AgentOutput = {
 	/** The exact text to write, with no trailing newline. */
 	text: string;
 	/** Cleaned-tree elements the cap left out; 0 when nothing was trimmed. */
 	omitted: number;
+	/** Estimated **Emitted usage** for this output: the text, plus any Agent image it names. */
+	tokens: number;
 };
 
 /** A command's result, before it is shaped into Agent output. */
-export type AgentOutputPayload = { kind: "screen"; screen: ScreenResponse };
+type AgentOutputBody = { kind: "screen"; screen: ScreenResponse };
+
+/**
+ * Any payload may name an Agent image: the calling agent pays for it the moment it reads the
+ * file, so the seam counts it where it names it. A tree read names none; `action --screenshot`
+ * is the first command that will.
+ */
+export type AgentOutputPayload = AgentOutputBody & { image?: EmittedImage };
 
 /** The line a cleaned-tree listing leads with, so a SpringBoard tree is not taken for the app's. */
 function screenSourceLine(source: ScreenSource): string {
@@ -56,6 +67,11 @@ function asJson(body: unknown, options: AgentOutputOptions): string {
 	return options.pretty ? JSON.stringify(body, null, 2) : JSON.stringify(body);
 }
 
+/** One output's Emitted usage: what was written, plus any Agent image it pointed the agent at. */
+function priced(text: string, omitted: number, payload: AgentOutputPayload): AgentOutput {
+	return { text, omitted, tokens: estimateTextTokens(text) + estimateImageTokens(payload.image) };
+}
+
 export function formatAgentOutput(
 	payload: AgentOutputPayload,
 	options: AgentOutputOptions = {},
@@ -63,7 +79,7 @@ export function formatAgentOutput(
 	const screen = payload.screen;
 
 	// The raw tree is the escape hatch for a hard problem: never trimmed, only ever compacted.
-	if (screen.full) return { text: asJson(screen, options), omitted: 0 };
+	if (screen.full) return priced(asJson(screen, options), 0, payload);
 
 	const elements = screen.elements ?? [];
 	const cap = options.limit ?? MAX_SCREEN_ROWS;
@@ -77,13 +93,13 @@ export function formatAgentOutput(
 			elements: shown,
 			...(omitted > 0 ? { omittedElements: omitted } : {}),
 		};
-		return { text: asJson(body, options), omitted };
+		return priced(asJson(body, options), omitted, payload);
 	}
 
 	const lines = screen.source ? [screenSourceLine(screen.source)] : [];
 	lines.push(...shown.map(screenRow));
 	if (omitted > 0) lines.push(screenRowsOmittedLine(omitted));
-	return { text: lines.join("\n"), omitted };
+	return priced(lines.join("\n"), omitted, payload);
 }
 
 /**
@@ -100,12 +116,44 @@ export function parseScreenLimit(value: string | undefined): number | undefined 
 	return rows;
 }
 
-/** The one place a command's Agent output reaches stdout. */
-export function writeAgentOutput(
+/** What the seam needs to know beyond the payload, to account for what it writes. */
+export type AgentOutputContext = {
+	/** The command as a caller typed it, e.g. `screen` — this is what the ledger records. */
+	command: string;
+	/** The Device Session this emission belongs to. Best-effort: null, or a throw, is fine. */
+	session: () => Promise<string | null>;
+	/** Injected in tests, so no test writes to the real `~/.yoqa` ledger. */
+	ledger?: LedgerOptions;
+};
+
+/**
+ * The one place a command's Agent output reaches stdout.
+ *
+ * Output is written first and accounted second, so the calling agent has its answer before any
+ * ledger work happens — and a ledger that cannot be read or written changes nothing about the
+ * command's output or its exit code.
+ */
+export async function emitAgentOutput(
 	payload: AgentOutputPayload,
-	options: AgentOutputOptions = {},
-): AgentOutput {
+	options: AgentOutputOptions,
+	context: AgentOutputContext,
+): Promise<AgentOutput> {
 	const output = formatAgentOutput(payload, options);
 	if (output.text) console.log(output.text);
+	if (output.tokens > 0) await record(output, context);
 	return output;
+}
+
+/** Best-effort accounting: resolving the session is as optional as writing the line. */
+async function record(output: AgentOutput, context: AgentOutputContext): Promise<void> {
+	try {
+		const session = await context.session();
+		if (!session) return;
+		await appendEmittedUsage(
+			{ session, command: context.command, tokens: output.tokens },
+			context.ledger ?? {},
+		);
+	} catch {
+		// Accounting never fails the command it is accounting for.
+	}
 }

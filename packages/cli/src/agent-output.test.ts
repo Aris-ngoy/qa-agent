@@ -4,9 +4,13 @@
  * Pure: no runner, no device, no clock.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { MAX_SCREEN_ROWS, type ScreenResponse } from "@yoqa/runner-client";
-import { formatAgentOutput, parseScreenLimit } from "./agent-output";
+import { emitAgentOutput, formatAgentOutput, parseScreenLimit } from "./agent-output";
+import { readEmittedUsage } from "./emitted-usage-ledger";
 
 /** A cleaned Screen holding `count` elements, laid out one per row down the screen. */
 function cleanedScreen(count: number): ScreenResponse {
@@ -56,8 +60,8 @@ describe("a Screen that fits", () => {
 		expect(out.omitted).toBe(0);
 	});
 
-	test("says nothing at all for an empty tree", () => {
-		expect(screenOutput(cleanedScreen(0))).toEqual({ text: "", omitted: 0 });
+	test("says nothing at all, and costs nothing, for an empty tree", () => {
+		expect(screenOutput(cleanedScreen(0))).toEqual({ text: "", omitted: 0, tokens: 0 });
 	});
 
 	test("leads with the app the tree was read from, so a SpringBoard tree is not taken for the app's", () => {
@@ -164,5 +168,106 @@ describe("the raw accessibility tree", () => {
 
 		expect(JSON.parse(out.text).raw).toBe(rawScreen.raw);
 		expect(out.omitted).toBe(0);
+	});
+});
+
+describe("what the seam says one command cost", () => {
+	test("estimates the text it is about to write", () => {
+		// Three `  10,   0  30x40  Row 0` rows of 23 characters, plus 2 newlines: 71 characters,
+		// 18 tokens at the estimator's 4 characters to the token.
+		const out = screenOutput(cleanedScreen(3));
+
+		expect(out.text).toHaveLength(71);
+		expect(out.tokens).toBe(18);
+	});
+
+	test("rises with the payload, and is the same every time for the same payload", () => {
+		const small = screenOutput(cleanedScreen(3)).tokens;
+		const large = screenOutput(cleanedScreen(50)).tokens;
+
+		expect(large).toBeGreaterThan(small);
+		expect(screenOutput(cleanedScreen(3)).tokens).toBe(small);
+	});
+
+	test("charges a trimmed tree for what it emitted, not for the tree it read", () => {
+		const dense = cleanedScreen(1000);
+		const capped = screenOutput(dense).tokens;
+		const whole = screenOutput(dense, { limit: 1000 }).tokens;
+
+		// The cap is what keeps a dense screen from being a large fraction of the window.
+		expect(capped).toBeLessThan(whole / 10);
+	});
+
+	test("adds the Agent image the output names, because the agent pays on reading it", () => {
+		const screen = cleanedScreen(3);
+		const text = formatAgentOutput({ kind: "screen", screen }).tokens;
+		const withImage = formatAgentOutput({
+			kind: "screen",
+			screen,
+			image: { width: 1000, height: 750 },
+		}).tokens;
+
+		expect(withImage).toBe(text + 1000);
+	});
+});
+
+describe("emitting a command's output", () => {
+	let dir = "";
+	let path = "";
+	const log = console.log;
+	let printed: string[] = [];
+
+	beforeEach(async () => {
+		dir = await mkdtemp(join(tmpdir(), "yoqa-emit-"));
+		path = join(dir, "emitted-usage.jsonl");
+		printed = [];
+		console.log = (...args: unknown[]) => printed.push(args.join(" "));
+	});
+
+	afterEach(async () => {
+		console.log = log;
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	test("writes the output, then records what it cost against the Device Session", async () => {
+		const out = await emitAgentOutput(
+			{ kind: "screen", screen: cleanedScreen(3) },
+			{},
+			{ command: "screen", session: async () => "ios-sim-ABC@1000", ledger: { path } },
+		);
+
+		expect(printed).toEqual([out.text]);
+		expect(await readEmittedUsage("ios-sim-ABC@1000", { path })).toEqual({
+			session: "ios-sim-ABC@1000",
+			total: out.tokens,
+			byCommand: [{ command: "screen", tokens: out.tokens, calls: 1 }],
+		});
+	});
+
+	test("still writes the output when the Device Session cannot be resolved", async () => {
+		const out = await emitAgentOutput(
+			{ kind: "screen", screen: cleanedScreen(3) },
+			{},
+			{
+				command: "screen",
+				session: async () => {
+					throw new Error("runner is down");
+				},
+				ledger: { path },
+			},
+		);
+
+		expect(printed).toEqual([out.text]);
+	});
+
+	test("records nothing for a command that emitted nothing", async () => {
+		await emitAgentOutput(
+			{ kind: "screen", screen: cleanedScreen(0) },
+			{},
+			{ command: "screen", session: async () => "ios-sim-ABC@1000", ledger: { path } },
+		);
+
+		expect(printed).toEqual([]);
+		expect((await readEmittedUsage("ios-sim-ABC@1000", { path })).total).toBe(0);
 	});
 });

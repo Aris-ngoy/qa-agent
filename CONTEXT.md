@@ -103,6 +103,14 @@ _Avoid_: stdout (the stream, not what is on it), CLI output (says nothing about 
 A reduced-size copy of a screenshot prepared for a model: what Decide sends to a Vision-capable Provider, and what a connector caller receives by default after an Action. Never the stored original; the raw frame is always kept.
 _Avoid_: thumbnail, preview, compressed screenshot
 
+**Emitted usage**:
+Yoqa's own estimate of what the Agent output one command wrote cost a calling agent's context window: the emitted text by character count, plus any Agent image the output named by path. Accumulated per Device Session in an append-only ledger the CLI writes, and reported by `yoqa usage` against the Output budget. Estimated by a documented formula with no tokenizer and no model, so it is an order of magnitude for deciding when to delegate or compact, never a bill.
+_Avoid_: Call usage (what a Provider reports for one Decide or verify call — the two are never summed), cost, context usage, spend
+
+**Output budget**:
+The token figure a Device Session's Emitted usage is reported against, 250k by default and overridable. A warning line and never a wall: no command is refused, delayed, or truncated because the running total is high — Yoqa reports, and the engineer and their agent decide whether to delegate further exploration to a sub-agent or compact.
+_Avoid_: limit, quota, cap (the row cap on a Screen listing is a different thing), context window
+
 ### Providers
 
 **Provider**:
@@ -123,7 +131,7 @@ _Avoid_: token cache (ambiguous with auth tokens), decision cache, response cach
 
 **Call usage**:
 The token accounting a Provider reports for one Decide or verify call: fresh input, Prompt cache reads, Prompt cache writes, and output.
-_Avoid_: cost, tokens (alone), billing
+_Avoid_: Emitted usage (Yoqa's own estimate of what it wrote to a calling agent — the two are never summed), cost, tokens (alone), billing
 
 ### Catalog
 
