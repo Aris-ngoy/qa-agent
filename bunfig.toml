@@ -1,0 +1,5 @@
+[test]
+# Every CLI command accounts its output to the Emitted usage ledger, so a test that runs one
+# against a fake runner with a Device Session would otherwise write to the developer's own
+# `~/.yoqa`. A test that inspects the ledger still sets its own path.
+preload = ["./packages/cli/src/test-preload.ts"]

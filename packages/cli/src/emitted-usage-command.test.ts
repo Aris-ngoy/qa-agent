@@ -135,6 +135,13 @@ describe("yoqa usage", () => {
 		}
 	});
 
+	test("accounts what a command prints for a person under that command's name", async () => {
+		await yoqa("devices", "active");
+
+		// `ios sim-ABC lane direct` is 23 characters: 6 tokens at 4 to the token.
+		expect((await yoqa("usage"))[1]).toBe("  devices active   6 (1 call)");
+	});
+
 	test("--json gives an agent the same numbers on one line", async () => {
 		await yoqa("screen");
 		const lines = await yoqa("usage", "--json");
@@ -209,11 +216,16 @@ describe("yoqa usage", () => {
 			await yoqa("screen");
 			await yoqa("screen");
 
-			// The warning is advice; it changes nothing about the accounting it reports on.
+			// The warning is advice; it changes nothing about the accounting it reports on. The
+			// report reads its total before its own line is written, so it never includes itself.
 			expect((await yoqa("usage"))[0]).toBe(
 				"Emitted 12 of 20 tokens (60%) — Device Session sim-ABC@1700000000000",
 			);
-			expect(warned).toEqual([]);
+			// Reading the meter costs the agent tokens too: the report's own 92 characters are 23
+			// more, which on a 20-token budget is enough to cross it.
+			expect(warned).toEqual([
+				`Yoqa has emitted 35 of 20 tokens (175%) into this context — ${remedies}`,
+			]);
 		});
 	});
 

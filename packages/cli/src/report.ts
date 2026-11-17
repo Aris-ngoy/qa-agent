@@ -99,7 +99,11 @@ export type ExportCatalogRunReportDeps = {
 	writeFile?: (path: string, data: string, encoding: "utf8") => Promise<void>;
 	mkdir?: (path: string, options: { recursive: true }) => Promise<string | undefined>;
 	appendGithubFile?: (path: string, contents: string) => Promise<void>;
-	log?: (message: string) => void;
+	/**
+	 * Where the one line saying what was written goes. The CLI passes the output seam's; without
+	 * one the line goes nowhere, because a default of stdout would be a route around the seam.
+	 */
+	log?: (message: string) => void | Promise<void>;
 	env?: NodeJS.ProcessEnv;
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
@@ -162,7 +166,7 @@ export async function exportCatalogRunReport(
 	const format = normalizeReportFormat(options.format);
 	const failOn = parseFailOn(options.failOn);
 	const env = deps.env ?? process.env;
-	const log = deps.log ?? console.log;
+	const log = deps.log ?? (() => undefined);
 	const write = deps.writeFile ?? writeFile;
 	const makeDir = deps.mkdir ?? mkdir;
 	const append = deps.appendGithubFile ?? appendGithubFile;
@@ -216,7 +220,7 @@ export async function exportCatalogRunReport(
 	const outputPath = options.output?.trim() || `${suggestedRunReportBasename(doc)}.${extension}`;
 	await makeDir(dirname(outputPath), { recursive: true });
 	await write(outputPath, contents, "utf8");
-	log(`wrote ${outputPath} (${doc.status}, ${steps.length} steps)`);
+	await log(`wrote ${outputPath} (${doc.status}, ${steps.length} steps)`);
 
 	const summaryPath = resolveGithubWritePath(options.githubSummary, env.GITHUB_STEP_SUMMARY, env);
 	if (summaryPath) {

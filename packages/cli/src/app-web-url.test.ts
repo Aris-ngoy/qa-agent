@@ -11,6 +11,8 @@ function fakeRunner() {
 		port: 0,
 		fetch: async (request) => {
 			const { pathname } = new URL(request.url);
+			// The output seam asks which Device Session to account to; this runner has none.
+			if (pathname === "/devices/active") return new Response(null, { status: 404 });
 			if (request.method === "GET" && pathname === "/apps") return Response.json({ apps });
 			const found = apps.find((candidate) => pathname === `/apps/${candidate.id}`);
 			if (request.method === "GET" && found) return Response.json(found);
