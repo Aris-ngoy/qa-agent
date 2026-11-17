@@ -2441,6 +2441,7 @@ program
 		try {
 			const result = await installSkill({ dir: options.dir, force: options.force });
 			if (options.json) await emitJson(result, options, cmd);
+			// Offline, like `script validate`: written, and not accounted.
 			else await emitText(formatSkillInstall(result), {}, cmd);
 		} catch (error) {
 			fail("skill install", error);
