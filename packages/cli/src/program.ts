@@ -49,10 +49,11 @@ import {
 	summarizeLatency,
 } from "../../../services/runner/src/domains/benchmark/summarize";
 import packageJson from "../package.json" with { type: "json" };
-import { emitAgentOutput, parseScreenLimit } from "./agent-output";
+import { activeSessionId } from "./active-session";
+import { agentJson, emitAgentOutput, parseScreenLimit } from "./agent-output";
 import { findCatalogApp } from "./catalog-app";
 import { formatDoctorReport } from "./doctor-table";
-import { deviceSessionId, formatEmittedUsage, resolveOutputBudget } from "./emitted-usage";
+import { formatEmittedUsage, resolveOutputBudget } from "./emitted-usage";
 import { readEmittedUsage } from "./emitted-usage-ledger";
 import {
 	commandChainIncludes,
@@ -102,17 +103,6 @@ program
 
 function client(baseUrl: string) {
 	return createRunnerClient({ baseUrl });
-}
-
-/**
- * The Device Session **Emitted usage** is accounted to, or null when nothing is connected.
- *
- * One extra localhost round-trip, and the output seam makes it only after it has already written
- * the command's output — so a calling agent has its answer before any accounting happens.
- */
-async function activeSessionId(baseUrl: string): Promise<string | null> {
-	const active = await client(baseUrl).getActiveDevice();
-	return active ? deviceSessionId(active) : null;
 }
 
 /**
@@ -594,13 +584,17 @@ program
 	.action(async (options: { baseUrl: string; json?: boolean; pretty?: boolean }) => {
 		try {
 			const session = await activeSessionId(options.baseUrl);
-			const usage = session
-				? await readEmittedUsage(session)
-				: { session: null, total: 0, byCommand: [] };
+			const usage = session ? await readEmittedUsage(session) : null;
 			const budget = resolveOutputBudget();
 			if (options.json) {
-				const body = { ...usage, budget };
-				console.log(options.pretty ? JSON.stringify(body, null, 2) : JSON.stringify(body));
+				// One shape whether or not a session is connected, so an agent can parse it either way.
+				const body = {
+					session,
+					total: usage?.total ?? 0,
+					byCommand: usage?.byCommand ?? [],
+					budget,
+				};
+				console.log(agentJson(body, options));
 				return;
 			}
 			console.log(formatEmittedUsage(usage, { budget }));

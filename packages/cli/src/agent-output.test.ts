@@ -1,7 +1,9 @@
 /**
  * The CLI's one Agent output seam. Everything `yoqa` writes to stdout for a calling agent is
  * shaped here, so these tests are the contract for what lands in that agent's context window.
- * Pure: no runner, no device, no clock.
+ *
+ * Shaping is pure — no runner, no device, no clock. Only the emitting tests at the bottom touch a
+ * ledger, and they inject its path.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";

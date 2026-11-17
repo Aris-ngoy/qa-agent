@@ -60,15 +60,18 @@ export function resolveOutputBudget(env: Record<string, string | undefined> = pr
 	return budget;
 }
 
-/** What `yoqa usage` reports: one Device Session's running total, or that there is no session. */
-export type EmittedUsageReport = {
-	/** The Device Session the total belongs to; null when none is connected. */
-	session: string | null;
+/** One command's share of a Device Session's total. */
+export type EmittedUsageCommand = { command: string; tokens: number; calls: number };
+
+/** What one Device Session has emitted so far. */
+export type EmittedUsage = {
+	session: string;
 	total: number;
-	byCommand: { command: string; tokens: number; calls: number }[];
+	/** Dearest command first, so the expensive one is the one an engineer reads. */
+	byCommand: EmittedUsageCommand[];
 };
 
-function thousands(value: number): string {
+function groupDigits(value: number): string {
 	return value.toLocaleString("en-US");
 }
 
@@ -78,24 +81,24 @@ function thousands(value: number): string {
  * often as by a person, and a share over 100% is shown as-is because the budget never blocks.
  */
 export function formatEmittedUsage(
-	report: EmittedUsageReport,
+	usage: EmittedUsage | null,
 	options: { budget: number },
 ): string {
-	if (report.session == null) return "No active Device Session, so nothing is being accounted.";
+	if (!usage) return "No active Device Session, so nothing is being accounted.";
 
-	const share = Math.round((report.total / options.budget) * 100);
+	const share = Math.round((usage.total / options.budget) * 100);
 	const lines = [
-		`Emitted ${thousands(report.total)} of ${thousands(options.budget)} tokens (${share}%) — Device Session ${report.session}`,
+		`Emitted ${groupDigits(usage.total)} of ${groupDigits(options.budget)} tokens (${share}%) — Device Session ${usage.session}`,
 	];
-	if (report.byCommand.length === 0) {
+	if (usage.byCommand.length === 0) {
 		lines.push("Nothing emitted for this Device Session yet.");
 		return lines.join("\n");
 	}
 
-	const width = Math.max(...report.byCommand.map((entry) => entry.command.length));
-	for (const entry of report.byCommand) {
+	const width = Math.max(...usage.byCommand.map((entry) => entry.command.length));
+	for (const entry of usage.byCommand) {
 		const calls = entry.calls === 1 ? "1 call" : `${entry.calls} calls`;
-		lines.push(`  ${entry.command.padEnd(width)}   ${thousands(entry.tokens)} (${calls})`);
+		lines.push(`  ${entry.command.padEnd(width)}   ${groupDigits(entry.tokens)} (${calls})`);
 	}
 	return lines.join("\n");
 }

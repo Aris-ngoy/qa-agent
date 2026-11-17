@@ -68,8 +68,9 @@ threshold are #437's whole job and are not here.
 
 ## What shipped
 
-- `packages/cli/src/agent-output.ts` — the seam: `formatAgentOutput` (pure), `writeAgentOutput`
-  (the only writer), `parseScreenLimit` (commander's coercion for `--limit`).
+- `packages/cli/src/agent-output.ts` — the seam: `formatAgentOutput` (pure), `emitAgentOutput`
+  (the only writer; `writeAgentOutput` until #436 gave it accounting to do), `agentJson` (the one
+  JSON path), `parseScreenLimit` (`--limit` as the command reads it).
 - `packages/runner-client/src/screen-rows.ts` — the shared row cap and omitted-line wording. The
   Decide loop's `formatScreenSnapshot` now imports both; its output is unchanged.
 - `yoqa screen` writes through the seam and gains `--limit <rows>` and `--pretty`. The formatted
@@ -93,8 +94,17 @@ threshold are #437's whole job and are not here.
   database, so CI keeps its accounting off a developer's own.
 - `AgentOutput` gains `tokens`, and a payload may name an Agent image. The seam prices what it
   wrote, not what it read: a trimmed tree is charged for its 80 rows, not its 1000 elements.
+- `packages/cli/src/active-session.ts` — the one place accounting touches the runner, and the only
+  CLI call that carries a deadline of its own (2s). The seam looks the session up *after* output is
+  written, so a runner that accepts the connection and then stops answering must not hang a command
+  with nothing left to say. The deadline is a parameter, so its test bounds a hanging server in
+  50ms rather than waiting the real 2s — the posture
+  [unit-test-speed.md](../architecture/unit-test-speed.md) asks for.
+- `agentJson` is exported from the seam and `yoqa usage` uses it, so the `JSON.stringify(body,
+  null, 2)` pattern #438 has to delete does not gain a new instance here.
 - `yoqa usage` reports the running total against the budget with a per-command breakdown, dearest
-  command first. `--json` is compact, `--pretty` indents.
+  command first. `--json` is compact, `--pretty` indents, and the JSON shape is the same whether or
+  not a session is connected so an agent can parse it either way.
 
 ```
 $ yoqa usage
@@ -115,6 +125,17 @@ and no model is consulted, deliberately: a provider-specific count would be more
 number nobody is billed for. A tree of coordinates tokenizes worse than prose and a URL worse
 still, so the figure is an order of magnitude for deciding when to delegate or compact. It is
 never presented as a bill.
+
+#### Two readings worth stating
+
+**"A corrupt ledger yields a zero total"** is implemented as *never an error*, not as *always
+zero*: a line that will not parse costs its own tokens and the rest of the total survives. A
+partial total is more use than nothing and still cannot throw. Only a file that cannot be read at
+all reads as zero.
+
+**"One record per command"** is about granularity, not about recording zeroes. A command that
+emitted nothing — an empty tree — appends nothing, which also spares it the session lookup. The
+ledger answers "which commands are expensive", and a row of zero tokens is not an answer.
 
 #### Two things to know about the ledger
 
@@ -172,7 +193,7 @@ past the cap, so a long-lived ledger keeps dead sessions until then. Age-based p
 `pruneOldRunScreenshots` does it, would be the obvious next step if that ever matters.
 
 Known gap until #439 lands: the seam is the only writer for `screen` and nothing else, so
-`writeAgentOutput` is not yet enforceable as the single path to stdout. That is #440's job.
+`emitAgentOutput` is not yet enforceable as the single path to stdout. That is #440's job.
 
 Two row formatters still print the same tree in near-identical shapes: this seam's, and the Decide
 loop's `formatScreenSnapshot`. Only the cap and the omitted line are shared. Unifying them would
