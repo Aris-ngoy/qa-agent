@@ -1,3 +1,12 @@
+/**
+ * The Agent output seam stays the CLI's only route to stdout.
+ *
+ * Read from source, the way the desktop's `no-react-state` test reads it, rather than by spying on
+ * writes while commands run: the regression this guards against is a new command that no test
+ * drives yet. Whole files are scanned, not lines, so an import or a `stdio` array split across
+ * lines is still seen; each finding is reported at the line it starts on.
+ */
+
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -6,24 +15,39 @@ import { join } from "node:path";
 const SEAM = "agent-output.ts";
 
 /**
- * Anything that puts bytes on stdout. Reading a property of the stream (`process.stdout.isTTY`)
- * is not a write, so only the stream's writers count, along with handing the stream itself to
- * something that will write to it — a pipe, or a child process that inherits it.
+ * Every way found to put bytes on stdout, named so a failure says which one it was. Reading a
+ * property of the stream (`process.stdout.isTTY`) is not a write; taking hold of the stream
+ * itself is, because whatever holds it can write to it.
  */
-const STDOUT_WRITE =
-	/\bconsole\.(log|info|debug|dir|dirxml|table|group|groupCollapsed|count|timeLog)\s*\(|\bprocess\.stdout\b(?!\.(isTTY|columns|rows|fd)\b)|\bBun\.stdout\b|\bwriteSync\(\s*1\s*,|\bstdio:.*["']inherit["']/;
+const STDOUT_WRITES: Record<string, RegExp> = {
+	"a console method that prints to stdout":
+		/\bconsole\s*\.\s*(log|info|debug|dir|dirxml|table|group|groupCollapsed|count|timeLog)\b/g,
+	"process.stdout, other than reading its size or TTY-ness":
+		/\bprocess\s*(\.\s*stdout|\[\s*["']stdout["']\s*\])(?!\s*\.\s*(isTTY|columns|rows)\b)/g,
+	"stdout taken out of process":
+		/\{[^}]*\bstdout\b[^}]*\}\s*(=\s*process\b|from\s*["'](node:)?process["'])/g,
+	"Bun's stdout": /\bBun\s*\.\s*stdout\b/g,
+	"file descriptor 1": /\bwriteSync\s*\(\s*1\s*,|["']\/dev\/stdout["']/g,
+	"a child process that inherits stdout":
+		/\bstdio\s*:\s*(\[[^\]]*)?["']inherit["']|\bstdout\s*:\s*["']inherit["']/g,
+};
 
 /** A doc comment naming `console.log` is not a write. */
 const COMMENT = /^\s*(\/\/|\/\*|\*)/;
 
+/** One place a file reaches stdout: where it is, the code there, and which route it took. */
+type StdoutWrite = { file: string; line: number; code: string; route: string };
+
+type Exemption = { file: string; code: string; why: string };
+
 /**
- * Routes to stdout that are deliberately not Agent output. Each names its line exactly, so a
- * second write in the same file is still caught.
+ * Routes to stdout that are deliberately not Agent output. Each covers exactly one write, so a
+ * second identical line in the same file is still caught.
  */
-const EXEMPT = [
+const EXEMPT: Exemption[] = [
 	{
 		file: "ensure-runner.ts",
-		line: 'stdio: "inherit",',
+		code: 'stdio: "inherit",',
 		why: "foreground `yoqa serve` is a long-lived server; its stdout is the runner's log for a person at a terminal",
 	},
 ];
@@ -34,40 +58,55 @@ function scannedFiles(): string[] {
 	);
 }
 
-/** Every stdout write outside the seam, as `file:line  code`, exempt or not. */
-function stdoutWrites(): { file: string; site: string; code: string }[] {
-	const found: { file: string; site: string; code: string }[] = [];
-	for (const file of scannedFiles()) {
-		if (file === SEAM) continue;
-		const lines = readFileSync(join(import.meta.dir, file), "utf8").split("\n");
-		lines.forEach((line, index) => {
-			if (COMMENT.test(line) || !STDOUT_WRITE.test(line)) return;
-			found.push({ file, site: `${file}:${index + 1}`, code: line.trim() });
-		});
+function writesIn(file: string): StdoutWrite[] {
+	const source = readFileSync(join(import.meta.dir, file), "utf8");
+	const lines = source.split("\n");
+	const found = new Map<number, StdoutWrite>();
+	for (const [route, pattern] of Object.entries(STDOUT_WRITES)) {
+		for (const match of source.matchAll(pattern)) {
+			const line = source.slice(0, match.index).split("\n").length;
+			const code = lines[line - 1] ?? "";
+			if (COMMENT.test(code) || found.has(line)) continue;
+			found.set(line, { file, line, code: code.trim(), route });
+		}
 	}
-	return found;
+	return [...found.values()].sort((a, b) => a.line - b.line);
 }
 
-function isExempt(write: { file: string; code: string }): boolean {
-	return EXEMPT.some((exempt) => exempt.file === write.file && exempt.line === write.code);
+/** Every stdout write outside the seam, exempt or not. */
+function stdoutWrites(): StdoutWrite[] {
+	return scannedFiles()
+		.filter((file) => file !== SEAM)
+		.flatMap(writesIn);
+}
+
+function covers(exemption: Exemption, write: StdoutWrite): boolean {
+	return exemption.file === write.file && exemption.code === write.code;
+}
+
+/** Writes no exemption covers, and exemptions that covered nothing. Each exemption covers one. */
+function audit(): { bypasses: StdoutWrite[]; stale: Exemption[] } {
+	const unused = [...EXEMPT];
+	const bypasses = stdoutWrites().filter((write) => {
+		const index = unused.findIndex((exemption) => covers(exemption, write));
+		if (index === -1) return true;
+		unused.splice(index, 1);
+		return false;
+	});
+	return { bypasses, stale: unused };
 }
 
 describe("Agent output", () => {
 	test("commands write to stdout only through the output seam", () => {
-		const bypasses = stdoutWrites()
-			.filter((write) => !isExempt(write))
-			.map(
-				(write) =>
-					`${write.site}  ${write.code}  — write through emitText, emitJson or emitDocument in command-output.ts`,
-			);
+		const bypasses = audit().bypasses.map(
+			(write) =>
+				`${write.file}:${write.line}  ${write.code}  — ${write.route}; write through emitText, emitJson or emitDocument in command-output.ts`,
+		);
 		expect(bypasses).toEqual([]);
 	});
 
 	test("every exemption still names a real write", () => {
-		const writes = stdoutWrites();
-		const stale = EXEMPT.filter(
-			(exempt) => !writes.some((write) => write.file === exempt.file && write.code === exempt.line),
-		).map((exempt) => `${exempt.file}  ${exempt.line}`);
+		const stale = audit().stale.map((exemption) => `${exemption.file}  ${exemption.code}`);
 		expect(stale).toEqual([]);
 	});
 
