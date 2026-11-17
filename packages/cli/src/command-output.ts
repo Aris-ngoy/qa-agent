@@ -7,7 +7,7 @@
 
 import type { Command } from "commander";
 import { sessionIdOnce } from "./active-session";
-import { emitAgentOutput } from "./agent-output";
+import { type AgentOutputContext, emitAgentOutput } from "./agent-output";
 
 /**
  * The command as a caller typed it — `devices ios`, `action tap`, `status` — which is the name the
@@ -41,19 +41,32 @@ export const PRETTY_JSON_HELP =
 	"Indent the JSON (compact by default — indentation costs an agent tokens)";
 
 /**
- * What `emitJson` reads off the command's options: where the runner is, and whether a human asked
- * for indentation. Deliberately not `json` — the caller has already decided that by calling.
+ * What every emit reads off the command's options: where the runner is. A command with no
+ * `--base-url` has no runner to ask about a Device Session, so it emits and records nothing —
+ * accounting is best-effort, and a command that never touches a device has nothing to account to.
  */
-export type EmitJsonOptions = { baseUrl?: string; pretty?: boolean };
+export type EmitOptions = { baseUrl?: string };
+
+/**
+ * What `emitJson` reads on top of that: whether a human asked for indentation. Deliberately not
+ * `json` — the caller has already decided that by calling.
+ */
+export type EmitJsonOptions = EmitOptions & { pretty?: boolean };
+
+/** Who the ledger credits this emission to, derived once for all three emit calls. */
+function emitContext(options: EmitOptions, cmd: Command): AgentOutputContext {
+	return {
+		command: commandPath(cmd),
+		session: () => (options.baseUrl ? sessionIdOnce(options.baseUrl) : Promise.resolve(null)),
+	};
+}
 
 /**
  * Write one command's result as Agent output: compact JSON unless `--pretty`, accounted to the
  * active Device Session under the command's own name.
  *
  * The one call every `--json` path makes, so the shape of machine-readable output is decided in
- * one place rather than per command. A command with no `--base-url` has no runner to ask about a
- * Device Session, so it emits and records nothing — accounting is best-effort, and a command that
- * never touches a device has nothing to account to.
+ * one place rather than per command.
  */
 export async function emitJson(
 	body: unknown,
@@ -63,9 +76,41 @@ export async function emitJson(
 	await emitAgentOutput(
 		{ kind: "json", body },
 		{ json: true, pretty: options.pretty },
-		{
-			command: commandPath(cmd),
-			session: () => (options.baseUrl ? sessionIdOnce(options.baseUrl) : Promise.resolve(null)),
-		},
+		emitContext(options, cmd),
 	);
+}
+
+/**
+ * Write what a command prints for a person: the lines it already decided on, accounted to the
+ * active Device Session under the command's own name.
+ *
+ * One line or many — many because a command that prints a block prints it as one emission, which
+ * is both what the ledger should charge for it and what keeps the block from being interleaved.
+ * The lines arrive shaped: this neither wraps, trims nor re-formats them, so what a person reads
+ * is byte for byte what the command wrote before the seam existed.
+ */
+export async function emitText(
+	lines: string | string[],
+	options: EmitOptions,
+	cmd: Command,
+): Promise<void> {
+	await emitAgentOutput(
+		{ kind: "text", lines: Array.isArray(lines) ? lines : [lines] },
+		{},
+		emitContext(options, cmd),
+	);
+}
+
+/**
+ * Write a file's contents to stdout — an exported Case Script — exactly as they came.
+ *
+ * Its own call rather than `emitText` because a document is not a listing: the newline it ends
+ * with, or pointedly lacks, belongs to the file and not to the terminal.
+ */
+export async function emitDocument(
+	text: string,
+	options: EmitOptions,
+	cmd: Command,
+): Promise<void> {
+	await emitAgentOutput({ kind: "document", text }, {}, emitContext(options, cmd));
 }
