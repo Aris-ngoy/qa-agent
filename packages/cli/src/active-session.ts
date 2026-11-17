@@ -46,14 +46,15 @@ const resolved = new Map<string, Promise<string | null>>();
  * request. A rejection is cached too, deliberately: the only way this rejects is a runner that
  * accepted the connection and stopped answering, and paying that 2-second deadline once per
  * emitted line is exactly the hang the deadline exists to prevent.
+ *
+ * It takes no deadline of its own, on purpose. A per-call timeout would be honoured by whichever
+ * caller happened to miss the cache and silently ignored by the rest; `activeSessionId` is where
+ * a test sets one.
  */
-export function sessionIdOnce(
-	baseUrl: string,
-	options: { timeoutMs?: number } = {},
-): Promise<string | null> {
+export function sessionIdOnce(baseUrl: string): Promise<string | null> {
 	const cached = resolved.get(baseUrl);
 	if (cached) return cached;
-	const pending = activeSessionId(baseUrl, options);
+	const pending = activeSessionId(baseUrl);
 	resolved.set(baseUrl, pending);
 	return pending;
 }
