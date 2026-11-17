@@ -42,7 +42,7 @@ export type AgentOutputOptions = {
 
 /** What one command emitted, what the cap kept out of it, and what it cost. */
 export type AgentOutput = {
-	/** The exact text to write, with no trailing newline. */
+	/** The exact text to write. Every shape but `document` leaves the line's terminator to the seam. */
 	text: string;
 	/** Cleaned-tree elements the cap left out; 0 when nothing was trimmed. */
 	omitted: number;
@@ -56,8 +56,17 @@ export type AgentOutput = {
  * `screen` is its own kind because the row cap and the tree's row format live in this seam. Every
  * other command hands over a plain `json` body: there is one way to turn a result into JSON, and
  * a command that knows how to indent its own output is a command that can get it wrong.
+ *
+ * `text` is what a command prints for a person: lines it has already decided on, which the seam
+ * writes and accounts for but never re-shapes. `document` is a file's contents — an exported Case
+ * Script — written byte for byte, because a file carries its own terminator or deliberately
+ * carries none, and that is not a line for the seam to finish.
  */
-type AgentOutputBody = { kind: "screen"; screen: ScreenResponse } | { kind: "json"; body: unknown };
+type AgentOutputBody =
+	| { kind: "screen"; screen: ScreenResponse }
+	| { kind: "json"; body: unknown }
+	| { kind: "text"; lines: string[] }
+	| { kind: "document"; text: string };
 
 /**
  * Any payload may name an Agent image: the calling agent pays for it the moment it reads the
@@ -101,6 +110,12 @@ export function formatAgentOutput(
 	if (payload.kind === "json") {
 		return withEmittedUsage(agentJson(payload.body, options), 0, payload);
 	}
+
+	// Lines a command already chose, and a document's own bytes: nothing to shape, so none of the
+	// shaping options apply. Re-wrapping either underneath the command would change what a person
+	// reading it was promised.
+	if (payload.kind === "text") return withEmittedUsage(payload.lines.join("\n"), 0, payload);
+	if (payload.kind === "document") return withEmittedUsage(payload.text, 0, payload);
 
 	const screen = payload.screen;
 
@@ -184,9 +199,29 @@ export async function emitAgentOutput(
 		...options,
 		limit: options.limit ?? resolveScreenRows(),
 	});
-	if (output.text) console.log(output.text);
+	write(output, payload);
 	if (output.tokens > 0) await record(output, context);
 	return output;
+}
+
+/**
+ * Putting it on stdout: a listing is a line, a document is bytes.
+ *
+ * `console.log` for every shape that is a listing, because terminating the line is what the
+ * commands reaching this seam have always done. A `document` is written exactly as it came: it is
+ * a file's contents, and the newline it ends with — or pointedly lacks — is part of the file.
+ *
+ * A `text` listing is one emission but still one write per line, the way its command always
+ * wrote it — so it is the same on stdout down to the call, and one empty line is still a line.
+ */
+function write(output: AgentOutput, payload: AgentOutputPayload): void {
+	if (payload.kind === "text") {
+		for (const line of payload.lines) console.log(line);
+		return;
+	}
+	if (!output.text) return;
+	if (payload.kind === "document") process.stdout.write(output.text);
+	else console.log(output.text);
 }
 
 /** Best-effort accounting: resolving the session is as optional as writing the line. */

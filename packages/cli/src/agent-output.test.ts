@@ -432,3 +432,107 @@ describe("a command's JSON result", () => {
 		expect(JSON.parse(jsonOutput({ limit: 1 }).text)).toEqual(body);
 	});
 });
+
+describe("a command's human-readable listing", () => {
+	const textOutput = (lines: string[], options: Parameters<typeof formatAgentOutput>[1] = {}) =>
+		formatAgentOutput({ kind: "text", lines }, options);
+
+	test("is the lines a caller gave, in order, joined by one newline each", () => {
+		expect(textOutput(["prefix: DEMO", "name: Demo app"]).text).toBe(
+			"prefix: DEMO\nname: Demo app",
+		);
+	});
+
+	test("carries no trailing newline, because the seam terminates the line it writes", () => {
+		expect(textOutput(["ok tap"]).text).toBe("ok tap");
+	});
+
+	test("still writes a line that happens to be empty, as console.log always did", async () => {
+		// A flow with no instructions prints a blank line. Dropping it would shift every line after
+		// it, and the promise of this batch is byte-identical output.
+		const log = console.log;
+		const printed: string[] = [];
+		console.log = (...args: unknown[]) => printed.push(args.join(" "));
+		try {
+			await emitAgentOutput(
+				{ kind: "text", lines: [""] },
+				{},
+				{ command: "flows get", session: async () => null },
+			);
+		} finally {
+			console.log = log;
+		}
+
+		expect(printed).toEqual([""]);
+	});
+
+	test("writes nothing at all for a listing with no lines, as an empty loop always did", async () => {
+		const log = console.log;
+		const printed: string[] = [];
+		console.log = (...args: unknown[]) => printed.push(args.join(" "));
+		try {
+			await emitAgentOutput(
+				{ kind: "text", lines: [] },
+				{},
+				{ command: "cases list", session: async () => null },
+			);
+		} finally {
+			console.log = log;
+		}
+
+		expect(printed).toEqual([]);
+	});
+
+	test("writes each line as its own line, the way the command always wrote it", async () => {
+		// One emission for the ledger, but the same writes on stdout: a caller watching line by
+		// line sees exactly what it saw before the seam existed.
+		const log = console.log;
+		const printed: string[] = [];
+		console.log = (...args: unknown[]) => printed.push(args.join(" "));
+		try {
+			await emitAgentOutput(
+				{ kind: "text", lines: ["prefix: DEMO", "name: Demo app"] },
+				{},
+				{ command: "apps get", session: async () => null },
+			);
+		} finally {
+			console.log = log;
+		}
+
+		expect(printed).toEqual(["prefix: DEMO", "name: Demo app"]);
+	});
+
+	test("keeps a blank line a formatter put between sections", () => {
+		expect(textOutput(["doctor  ok", "", "• Bun"]).text.split("\n")).toHaveLength(3);
+	});
+
+	test("costs what it wrote, so a listing shows up in the breakdown like any other output", () => {
+		expect(textOutput(["ok tap"]).tokens).toBeGreaterThan(0);
+	});
+
+	test("ignores the shaping options a listing has no use for", () => {
+		// `--json`, `--pretty` and `--limit` all belong to other shapes: a command that has already
+		// chosen to print for a human must not have its lines re-shaped underneath it.
+		const out = textOutput(["ok tap", "resolved 10,20"], { json: true, pretty: true, limit: 1 });
+
+		expect(out.text).toBe("ok tap\nresolved 10,20");
+		expect(out.omitted).toBe(0);
+	});
+});
+
+describe("a document a command writes to stdout", () => {
+	const documentOutput = (text: string) => formatAgentOutput({ kind: "document", text });
+
+	test("is the text exactly as it came, terminator and all", () => {
+		// A Case Script file ends in one newline; the shell form ends in none. Both are the file's
+		// own bytes, so neither is a line the seam may terminate for it.
+		expect(documentOutput("version: 1\nactions: []\n").text).toBe("version: 1\nactions: []\n");
+		expect(documentOutput("#!/bin/sh\nyoqa action tap --label Open").text).toBe(
+			"#!/bin/sh\nyoqa action tap --label Open",
+		);
+	});
+
+	test("costs what it wrote, so an exported script shows up in the breakdown", () => {
+		expect(documentOutput("version: 1\n").tokens).toBeGreaterThan(0);
+	});
+});
