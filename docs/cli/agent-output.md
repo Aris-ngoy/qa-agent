@@ -413,6 +413,25 @@ stdout was 81 rows every time, warning or not. `YOQA_NO_OUTPUT_WARNING=1` gave t
 that still accounted all 2,733 tokens, and `YOQA_SCREEN_ROWS=5` gave 6 lines, `--limit 20` gave 21,
 and `YOQA_SCREEN_ROWS=nonsense` fell back to 81.
 
+Verified against the real runner, with `YOQA_EMITTED_USAGE_PATH` pointed at a temp file so the run
+left nothing in `~/.yoqa`. `yoqa health` bare is 1 line and 6 with `--pretty`; `yoqa status --json`
+is 1 and 12; `jq -S` over both shows no difference. With nothing connected, `yoqa usage` says there
+is no Device Session and no ledger file is created at all — the documented "every command *can*
+contribute". With a Browser device connected, five commands in a row give the breakdown this
+ticket's whole point:
+
+```
+Emitted 2,632 of 250,000 tokens (1%) — Device Session web-chrome@1794916201738
+  devices ios       2,126 (1 call)
+  screen              395 (1 call)
+  status               84 (1 call)
+  health               19 (1 call)
+  action open-url       8 (1 call)
+```
+
+Before this ticket only the `screen` row existed. `devices ios` costing 2,126 tokens — eighty times
+`action open-url`, five times `screen` — is the sort of thing the breakdown could not show.
+
 ## Follow-ups
 
 The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435), in dependency order:
