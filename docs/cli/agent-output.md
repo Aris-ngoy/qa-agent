@@ -16,13 +16,16 @@ Then stop charging a calling agent for whitespace on every command, not just one
 Then put every human-readable line behind the same seam, so the meter covers the whole surface and
 there is one route to stdout left to guard.
 
-Covers five tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
+Then guard it, so the seam stays single as the CLI grows.
+
+Covers six tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
 [#442](https://github.com/Aris-ngoy/qa-agent/issues/442), the seam itself;
 [#436](https://github.com/Aris-ngoy/qa-agent/issues/436), **Emitted usage** accounting and
 `yoqa usage`; [#437](https://github.com/Aris-ngoy/qa-agent/issues/437), the **Output budget**
 threshold warning; [#438](https://github.com/Aris-ngoy/qa-agent/issues/438), compact JSON
-across every command; and [#439](https://github.com/Aris-ngoy/qa-agent/issues/439), every
-remaining human-readable write.
+across every command; [#439](https://github.com/Aris-ngoy/qa-agent/issues/439), every
+remaining human-readable write; and [#440](https://github.com/Aris-ngoy/qa-agent/issues/440), the
+guard that keeps it that way.
 
 ## Plan summary
 
@@ -158,6 +161,35 @@ seam waiting for a caller that forgot to pass one. The default is now silence; t
 **Text is accounted, not capped.** The budget warning covers it; nothing trims it.
 "Byte-identical" and "capped" cannot both hold for a long `cases list`, and this was the
 byte-identical batch. `formatAgentOutput` ignores `limit` for `text` and `document`.
+
+**The guard reads source, the way the desktop's `no-react-state` test does.** It scans every
+non-test file in `packages/cli/src` for anything that writes to stdout and fails naming each
+`file:line`, the code, and the three `emit*` calls to use instead. Rejected: spying on
+`console.log` and `process.stdout.write` while running every command, which only catches the
+paths a test happens to drive — the regression this guards against is a new command nobody has
+written a test for yet.
+
+**Writers, not the stream.** `process.stdout.isTTY` is a read (`doctor-table.ts` uses it for
+colour), so reading the stream's `isTTY`, `columns`, `rows` or `fd` is allowed and anything else on
+`process.stdout` is not — a `.write`, a `.pipe(process.stdout)`, the stream passed as an argument.
+Comment lines are skipped: this codebase's doc comments name `console.log` freely.
+
+**A child process that inherits stdout is a write.** `stdio: "inherit"` hands the CLI's stdout to
+a subprocess, which is a route around the seam no `console` pattern sees. The guard catches it in
+either spelling, the string or the array.
+
+**One exemption, by exact line, and it must stay true.** Foreground `yoqa serve` spawns the runner
+with `stdio: "inherit"`. That is a long-lived server whose stdout is a log for a person at a
+terminal, not Agent output, so it is allowed with its reason next to it. The exemption names the
+line, not the file, so a second write in `ensure-runner.ts` is still caught. A second test fails if
+an exemption no longer matches any write, so one cannot outlive its site and quietly cover the
+next thing to land there. Rejected: closing it by piping the runner's logs through the seam,
+which would account a server log against a context window that never reads it.
+
+**commander's own help and version are allowed, not closed.** `--help` and `--version` are written
+inside commander, so no source line exists for a scan to find. Closing them means
+`configureOutput({ writeOut })`, a synchronous hook in front of an async seam, which is a change
+to how help is produced rather than a guard. Left as a follow-up.
 
 ## What shipped
 
@@ -391,6 +423,25 @@ No other command emits more than once, so no other command has the question.
     quoted 12. The difference is the 23-token report that the first `usage` printed. That follows
     from the `usage` decision above.
 
+### The guard (#440)
+
+- `packages/cli/src/no-direct-stdout.test.ts` — three tests: no stdout write outside
+  `agent-output.ts` except the named exemption; every exemption still names a real write; and the
+  scan actually reached `program.ts` and the seam, so a moved directory cannot make it pass by
+  scanning nothing.
+- It passes on the current tree with no code change: #439 had already moved every site.
+- A failure reads like this:
+
+```
++ [
++   "program.ts:2457  console.log(\"x\");  — write through emitText, emitJson or emitDocument in command-output.ts",
++ ]
+```
+
+- Known false positive, accepted: `stdio: ["inherit", "pipe", "pipe"]` inherits only stdin and is
+  still flagged. The guard does not parse which slot inherits; a site that needs it adds an
+  exemption with its reason.
+
 ## How to verify
 
 ```bash
@@ -404,10 +455,15 @@ bun test packages/cli/src/emitted-usage-command.test.ts # `yoqa usage`, against 
 bun test packages/cli/src/screen-source.test.ts         # `yoqa screen`, against a fake runner
 bun test packages/runner-client/src services/runner/src/domains/runs  # replay, Branch, Decide loop
 
-# The one stdout writer: nothing outside the seam.
-grep -rnE "console\.(log|info|debug|dir|table|trace)|process\.stdout\.write|Bun\.stdout" \
-  packages/cli/src --include='*.ts' | grep -v '\.test\.ts' | grep -v agent-output.ts
+bun test packages/cli/src/no-direct-stdout.test.ts      # the one stdout writer: nothing outside the seam
 ```
+
+To see the guard fail, add `console.log("x");` to any function in `packages/cli/src/program.ts`
+and rerun it: it names the line. Each pattern was checked that way — `console.log`,
+`console.info`, `console.table`, `process.stdout.write`, `.pipe(process.stdout)`,
+`Bun.write(Bun.stdout, …)`, `writeSync(1, …)`, and `stdio: "inherit"` in both spellings each
+failed it, `process.stdout.isTTY` and a commented-out `console.log` did not, and removing the
+exempt `stdio: "inherit"` from `ensure-runner.ts` failed the stale-exemption test.
 
 Human-readable output, against any runner with a device connected:
 
@@ -501,22 +557,21 @@ Before this ticket only the `screen` row existed. `devices ios` costing 2,126 to
 
 ## Follow-ups
 
-The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435), in dependency order: the
-guard test that keeps the seam single (#440), and the skill's context-budget section (#441). #441 is where the shipped skill
+The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435): the skill's context-budget
+section (#441). #441 is where the shipped skill
 learns to read the budget warning and act on it — #437 wrote the line, not the instructions for
 responding to it.
 
 **Every command can now trigger the budget warning**, in either form. Since #439, a session's
 total is the cost of everything Yoqa's own code wrote to stdout.
 
-**Two routes to stdout are not Yoqa's code, and #440's guard must allow or close them.**
+**Two routes to stdout are not Yoqa's code, and #440's guard allows both rather than closing them.**
 - commander writes `--help`, `<command> --help` and `--version` itself. These are unaccounted, and
-  an agent reads help often.
+  an agent reads help often. Routing help through `configureOutput({ writeOut })` is the obvious
+  fix, but it is a synchronous hook in front of an async seam.
 - Foreground `yoqa serve` starts the runner with `stdio: "inherit"` (`ensure-runner.ts`), so the
-  runner's logs reach the CLI's stdout.
-
-Routing help through `configureOutput({ writeOut })` is the obvious fix, but it is a synchronous
-hook in front of an async seam.
+  runner's logs reach the CLI's stdout. This one is a named exemption in the guard, and deliberate:
+  a server log is not Agent output.
 
 **The image arm of the estimator has no call site yet.** `estimateImageTokens` is in #436's
 acceptance criteria and ships tested, and the seam prices any payload that names an Agent image —
