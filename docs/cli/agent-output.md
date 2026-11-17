@@ -18,14 +18,17 @@ there is one route to stdout left to guard.
 
 Then guard it, so the seam stays single as the CLI grows.
 
-Covers six tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
+Then teach the shipped skill to spend the budget well, and what to do when the warning fires.
+
+Covers all seven tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
 [#442](https://github.com/Aris-ngoy/qa-agent/issues/442), the seam itself;
 [#436](https://github.com/Aris-ngoy/qa-agent/issues/436), **Emitted usage** accounting and
 `yoqa usage`; [#437](https://github.com/Aris-ngoy/qa-agent/issues/437), the **Output budget**
 threshold warning; [#438](https://github.com/Aris-ngoy/qa-agent/issues/438), compact JSON
 across every command; [#439](https://github.com/Aris-ngoy/qa-agent/issues/439), every
-remaining human-readable write; and [#440](https://github.com/Aris-ngoy/qa-agent/issues/440), the
-guard that keeps it that way.
+remaining human-readable write; [#440](https://github.com/Aris-ngoy/qa-agent/issues/440), the
+guard that keeps it that way; and [#441](https://github.com/Aris-ngoy/qa-agent/issues/441), the
+`yoqa-testing` skill's context-budget section.
 
 ## Plan summary
 
@@ -197,6 +200,25 @@ which would account a server log against a context window that never reads it.
 inside commander, so no source line exists for a scan to find. Closing them means
 `configureOutput({ writeOut })`, a synchronous hook in front of an async seam, which is a change
 to how help is produced rather than a guard. Left as a follow-up.
+
+**The skill says "when", because Yoqa cannot pull the levers.** Delegating to a sub-agent and
+compacting belong to the harness running the calling agent. So the section tells an agent which
+instrument to reach for first, and what the stderr line asks of it, and nothing more. It is one
+section in `SKILL.md`, twelve lines, because that file loads into every consuming agent's context.
+Rejected: a new reference file. It would hold guidance the agent needs before its first read, so
+it would have to be pointed at from the entry point anyway, and the pointer would cost about as
+much as the section.
+
+**The instruments are ranked by what they cost, not by what they show.** That order is cleaned
+tree, small Agent image, full Agent image, raw tree. It is a different ladder from the targeting
+ladder, which ranks by what reaches a target and puts the screenshot first. The two coexist. The
+targeting ladder decides how to find a control. The budget decides which read to take when either
+would answer.
+
+**`--scale 0.2`, not `0.5`.** `--scale` multiplies the raw frame, while the default Agent image
+caps the long edge near 1000 px. On a 2796 px iPhone frame, `0.5` gives a 1398 px image, which is
+*larger* than the default. `0.2` lands near 500 px on common phones, about a quarter of the
+default's tokens. "~600 tokens on a phone" is #436's `width × height / 750` on a 1000 × 460 frame.
 
 ## What shipped
 
@@ -460,6 +482,17 @@ No other command emits more than once, so no other command has the question.
   `foo(); // console.log(x)` is flagged too, because only lines that start as a comment are
   skipped. A site that really needs either takes an exemption and a reason.
 
+### The skill's context budget (#441)
+
+- `packages/skill/yoqa-testing/SKILL.md` gains **Context budget**, between Conventions and When
+  blocked. It covers the four instruments in cost order, `action batch` as one Settle and one
+  Result screenshot for a known sequence, long sweeps in a sub-agent that reports a short verdict,
+  `yoqa usage`, and what the `Yoqa has emitted N of M tokens …` line asks for.
+- `references/inspect-and-app-control.md` had a half-sentence saying the tree "costs fewer tokens
+  than an image". It now links to the section, so the comparison lives in one place.
+- The entry point grew from 5,498 to 6,296 bytes, about 200 tokens.
+- `.agents/skills/yoqa-testing` is updated in step, which `skill-docs.test.ts` requires.
+
 ## How to verify
 
 ```bash
@@ -474,6 +507,7 @@ bun test packages/cli/src/screen-source.test.ts         # `yoqa screen`, against
 bun test packages/runner-client/src services/runner/src/domains/runs  # replay, Branch, Decide loop
 
 bun test packages/cli/src/no-direct-stdout.test.ts      # the one stdout writer: nothing outside the seam
+bun test packages/cli/src/skill-docs.test.ts            # the skill's commands exist; local copy matches
 ```
 
 To see the guard fail, add `console.log("x");` to any function in `packages/cli/src/program.ts`
@@ -587,9 +621,12 @@ Before this ticket only the `screen` row existed. `devices ios` costing 2,126 to
 
 ## Follow-ups
 
-The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435): the skill's context-budget
-section (#441). #441 is where the shipped skill learns to read the budget warning and act on it
-— #437 wrote the line, not the instructions for responding to it.
+With #441, every ticket of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435) has shipped.
+
+**The skill's cost order is ahead of the meter.** The section ranks Agent images by what they cost.
+`yoqa usage` does not count them yet, because the image arm of the estimator has no call site (see
+below). So a session heavy on screenshots reads low on the meter, and its warning fires late. The
+skill line stays true once images are priced. It is the meter that has to catch up.
 
 **Every command can now trigger the budget warning**, in either form. Since #439, a session's
 total is the cost of everything Yoqa's own code wrote to stdout.
