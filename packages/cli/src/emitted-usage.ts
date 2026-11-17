@@ -12,6 +12,12 @@
  * it is deliberately not provider-specific — no tokenizer is loaded and no model is consulted.
  * A tree listing of coordinates tokenizes worse than prose and a URL worse still, so treat the
  * result as an order of magnitude for deciding when to delegate or compact, never as a bill.
+ *
+ * The largest known error is script, not content: CJK and Cyrillic run closer to one token per
+ * character, so a localized app's tree can cost several times what this reports. Accepted rather
+ * than corrected — a script-aware divisor would still be a guess, and the figure answers "am I
+ * near the budget", which an understatement on one screen does not change. Measured against a
+ * real page: a four-language tree reported 262 tokens.
  */
 const CHARS_PER_TOKEN = 4;
 
