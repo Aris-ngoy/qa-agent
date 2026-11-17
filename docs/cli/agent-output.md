@@ -690,9 +690,12 @@ for a Device Session. If they ever matter, they need a session they can find wit
 so the newline `console.log` adds after each line is not counted. JSON is priced the same way, so
 the two are consistent. Each such line undercounts by under a token.
 
-**`servers list|stop|restart|stop-all --base-url <url>` ignores the flag.** The parent `servers`
-command takes `--base-url` before the subcommand sees it, so the subcommand talks to the default
-runner. This predates #439; the harness found it. It needs its own ticket.
+**`servers list|stop|restart|stop-all` ignored `--base-url` — fixed in #452.** The parent
+`servers` command took `--base-url` before the subcommand saw it, so the subcommand talked to the
+default runner; `--json` and `--pretty` were lost the same way, so `servers list --json` printed the
+table. The subcommands now read all three from `servers` with `optsWithGlobals()`, as
+`devices web reset-profile` already did. `servers-flags.test.ts` drives each one against a fake
+named runner and a fake default runner, so a regression stops nothing real.
 
 **`script run --json` reads the ledger once per action.** Each emission appends and then reads back
 to compute the running total (#437). A twenty-action replay is twenty reads of a file capped at

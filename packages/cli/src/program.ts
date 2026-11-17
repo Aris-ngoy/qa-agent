@@ -961,13 +961,14 @@ const servers = program
 		}
 	});
 
+// --base-url, --json and --pretty are `servers`'s, which parses them wherever they are, so its
+// subcommands read them from there rather than declaring copies commander never fills.
 servers
 	.command("list")
 	.description("List running servers")
-	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.option("--pretty", PRETTY_JSON_HELP)
-	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
+	.configureHelp({ showGlobalOptions: true })
+	.action(async (_options: unknown, cmd: Command) => {
+		const options = cmd.optsWithGlobals<{ baseUrl: string } & JsonOptions>();
 		try {
 			const body = await client(options.baseUrl).listServers();
 			if (options.json) {
@@ -983,10 +984,9 @@ servers
 servers
 	.command("stop-all")
 	.description("Disconnect the device session (does not stop the runner)")
-	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.option("--pretty", PRETTY_JSON_HELP)
-	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
+	.configureHelp({ showGlobalOptions: true })
+	.action(async (_options: unknown, cmd: Command) => {
+		const options = cmd.optsWithGlobals<{ baseUrl: string } & JsonOptions>();
 		try {
 			const body = await client(options.baseUrl).stopAllServers();
 			if (options.json) {
@@ -1003,10 +1003,9 @@ servers
 	.command("stop")
 	.description("Stop one server by id")
 	.argument("<id>", "Server id from yoqa servers list")
-	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.option("--pretty", PRETTY_JSON_HELP)
-	.action(async (id: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
+	.configureHelp({ showGlobalOptions: true })
+	.action(async (id: string, _options: unknown, cmd: Command) => {
+		const options = cmd.optsWithGlobals<{ baseUrl: string } & JsonOptions>();
 		try {
 			if (id === "runner-self") {
 				throw new Error(
@@ -1028,10 +1027,9 @@ servers
 	.command("restart")
 	.description("Restart one server by id")
 	.argument("<id>", "Server id from yoqa servers list")
-	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.option("--pretty", PRETTY_JSON_HELP)
-	.action(async (id: string, options: { baseUrl: string } & JsonOptions, cmd: Command) => {
+	.configureHelp({ showGlobalOptions: true })
+	.action(async (id: string, _options: unknown, cmd: Command) => {
+		const options = cmd.optsWithGlobals<{ baseUrl: string } & JsonOptions>();
 		try {
 			if (id === "runner-self") {
 				throw new Error(
