@@ -49,9 +49,10 @@ import {
 	summarizeLatency,
 } from "../../../services/runner/src/domains/benchmark/summarize";
 import packageJson from "../package.json" with { type: "json" };
-import { activeSessionId } from "./active-session";
+import { resetSessionCache, sessionIdOnce } from "./active-session";
 import { agentJson, emitAgentOutput, parseScreenLimit } from "./agent-output";
 import { findCatalogApp } from "./catalog-app";
+import { type JsonOptions, addJsonOptions, emitJson } from "./command-output";
 import { formatDoctorReport } from "./doctor-table";
 import { formatEmittedUsage, resolveOutputBudget } from "./emitted-usage";
 import { readEmittedUsage } from "./emitted-usage-ledger";
@@ -99,7 +100,12 @@ const program = new Command();
 program
 	.name("yoqa")
 	.description("Local Yoqa CLI (talks to the local runner over HTTP)")
-	.version(packageJson.version);
+	.version(packageJson.version)
+	// The Device Session lookup is memoized for the command being run, not for the process: one
+	// command can emit many times, but a reconnect between two commands must never be served the
+	// previous session. In a real `yoqa` invocation those are the same thing; in the tests, which
+	// run many commands in one process, they are not.
+	.hook("preAction", resetSessionCache);
 
 function client(baseUrl: string) {
 	return createRunnerClient({ baseUrl });
@@ -249,16 +255,14 @@ program
 		}
 	});
 
-program
-	.command("status")
+addJsonOptions(program.command("status"))
 	.description("Show local runner, provider, and active device status")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.option("--json", "Print raw JSON")
-	.action(async (options: { baseUrl: string; json?: boolean }) => {
+	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const body = await client(options.baseUrl).getStatus();
 			if (options.json) {
-				console.log(JSON.stringify(body, null, 2));
+				await emitJson(body, options, cmd);
 				return;
 			}
 			console.log(
@@ -583,7 +587,7 @@ program
 	.option("--pretty", "Indent the JSON (compact by default — indentation costs an agent tokens)")
 	.action(async (options: { baseUrl: string; json?: boolean; pretty?: boolean }) => {
 		try {
-			const session = await activeSessionId(options.baseUrl);
+			const session = await sessionIdOnce(options.baseUrl);
 			const usage = session ? await readEmittedUsage(session) : null;
 			const budget = resolveOutputBudget();
 			if (options.json) {
@@ -630,7 +634,7 @@ program
 				await emitAgentOutput(
 					{ kind: "screen", screen },
 					{ json: options.json, pretty: options.pretty, limit },
-					{ command: "screen", session: () => activeSessionId(options.baseUrl) },
+					{ command: "screen", session: () => sessionIdOnce(options.baseUrl) },
 				);
 			} catch (error) {
 				fail("screen", error);

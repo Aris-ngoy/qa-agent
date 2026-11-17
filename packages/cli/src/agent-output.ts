@@ -50,8 +50,14 @@ export type AgentOutput = {
 	tokens: number;
 };
 
-/** A command's result, before it is shaped into Agent output. */
-type AgentOutputBody = { kind: "screen"; screen: ScreenResponse };
+/**
+ * A command's result, before it is shaped into Agent output.
+ *
+ * `screen` is its own kind because the row cap and the tree's row format live in this seam. Every
+ * other command hands over a plain `json` body: there is one way to turn a result into JSON, and
+ * a command that knows how to indent its own output is a command that can get it wrong.
+ */
+type AgentOutputBody = { kind: "screen"; screen: ScreenResponse } | { kind: "json"; body: unknown };
 
 /**
  * Any payload may name an Agent image: the calling agent pays for it the moment it reads the
@@ -90,6 +96,12 @@ export function formatAgentOutput(
 	payload: AgentOutputPayload,
 	options: AgentOutputOptions = {},
 ): AgentOutput {
+	// A result is not a tree: there is nothing to trim and no row format to keep, only the one
+	// JSON path. `--limit` is meaningless here and is ignored rather than rejected.
+	if (payload.kind === "json") {
+		return withEmittedUsage(agentJson(payload.body, options), 0, payload);
+	}
+
 	const screen = payload.screen;
 
 	// The raw tree is the escape hatch for a hard problem: never trimmed, only ever compacted.
