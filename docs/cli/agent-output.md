@@ -204,21 +204,22 @@ to how help is produced rather than a guard. Left as a follow-up.
 **The skill says "when", because Yoqa cannot pull the levers.** Delegating to a sub-agent and
 compacting belong to the harness running the calling agent. So the section tells an agent which
 instrument to reach for first, and what the stderr line asks of it, and nothing more. It is one
-section in `SKILL.md`, twelve lines, because that file loads into every consuming agent's context.
+section in `SKILL.md`, a dozen lines, because that file loads into every consuming agent's context.
 Rejected: a new reference file. It would hold guidance the agent needs before its first read, so
 it would have to be pointed at from the entry point anyway, and the pointer would cost about as
 much as the section.
 
 **The instruments are ranked by what they cost, not by what they show.** That order is cleaned
-tree, small Agent image, full Agent image, raw tree. It is a different ladder from the targeting
+tree, small Agent image, full Agent image, raw tree. `yoqa screenshot` is named beside the full
+Agent image because it saves the raw frame, and the targeting ladder starts from it. It is a different ladder from the targeting
 ladder, which ranks by what reaches a target and puts the screenshot first. The two coexist. The
 targeting ladder decides how to find a control. The budget decides which read to take when either
 would answer.
 
 **`--scale 0.2`, not `0.5`.** `--scale` multiplies the raw frame, while the default Agent image
 caps the long edge near 1000 px. On a 2796 px iPhone frame, `0.5` gives a 1398 px image, which is
-*larger* than the default. `0.2` lands near 500 px on common phones, about a quarter of the
-default's tokens. "~600 tokens on a phone" is #436's `width × height / 750` on a 1000 × 460 frame.
+*larger* than the default. `0.2` lands near 500 px on common phones, a quarter to a third of
+the default's tokens. "~600 tokens on a phone" is #436's `width × height / 750` on a 1000 × 460 frame.
 
 ## What shipped
 
@@ -490,7 +491,7 @@ No other command emits more than once, so no other command has the question.
   `yoqa usage`, and what the `Yoqa has emitted N of M tokens …` line asks for.
 - `references/inspect-and-app-control.md` had a half-sentence saying the tree "costs fewer tokens
   than an image". It now links to the section, so the comparison lives in one place.
-- The entry point grew from 5,498 to 6,296 bytes, about 200 tokens.
+- The entry point grew from 5,498 to 6,357 bytes, about 200 tokens.
 - `.agents/skills/yoqa-testing` is updated in step, which `skill-docs.test.ts` requires.
 
 ## How to verify
