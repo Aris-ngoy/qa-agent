@@ -11,6 +11,7 @@ import {
 	MAX_SCREEN_ROWS,
 	REMOTE_DEBUGGING_SETTING_URL,
 	RunnerUnreachableError,
+	type ServerEntry,
 	WaitForRunTimeoutError,
 	caseScriptActionCommand,
 	checkScreen,
@@ -52,7 +53,14 @@ import packageJson from "../package.json" with { type: "json" };
 import { resetSessionCache, sessionIdOnce } from "./active-session";
 import { emitAgentOutput, parseScreenLimit } from "./agent-output";
 import { findCatalogApp } from "./catalog-app";
-import { type JsonOptions, PRETTY_JSON_HELP, commandPath, emitJson } from "./command-output";
+import {
+	type JsonOptions,
+	PRETTY_JSON_HELP,
+	commandPath,
+	emitDocument,
+	emitJson,
+	emitText,
+} from "./command-output";
 import { formatDoctorReport } from "./doctor-table";
 import { formatEmittedUsage, resolveOutputBudget } from "./emitted-usage";
 import { readEmittedUsage } from "./emitted-usage-ledger";
@@ -137,18 +145,18 @@ program
 	.description("Start the local Yoqa runner in the foreground (no desktop app required)")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--stop", "Stop a runner previously started by yoqa (pid file)")
-	.action(async (options: { baseUrl: string; stop?: boolean }) => {
+	.action(async (options: { baseUrl: string; stop?: boolean }, cmd: Command) => {
 		try {
 			if (options.stop) {
 				const result = await stopOwnedRunner();
-				console.log(result.message);
+				await emitText(result.message, options, cmd);
 				if (!result.ok) process.exitCode = 1;
 				return;
 			}
 			const baseUrl = options.baseUrl;
 			const health = await fetchRunnerHealth(baseUrl);
 			if (health) {
-				console.log(`already running at ${baseUrl} (${health.version})`);
+				await emitText(`already running at ${baseUrl} (${health.version})`, options, cmd);
 				return;
 			}
 			await ensureRunner({ mode: "foreground", baseUrl });
@@ -223,6 +231,7 @@ async function handleReportCommand(
 	commandLabel: string,
 	runIdArg: string | undefined,
 	options: ReportCommandOptions,
+	cmd: Command,
 ): Promise<void> {
 	try {
 		const c = client(options.baseUrl);
@@ -233,6 +242,7 @@ async function handleReportCommand(
 		const runId = await resolveReportRunId(c, runIdArg, latestAppId, options.latest ?? "");
 		const result = await exportCatalogRunReport(c, runId, options, {
 			onWaitStatus: createWaitStatusLogger(),
+			log: (message) => emitText(message, options, cmd),
 		});
 		if (result.shouldFail) process.exitCode = 1;
 	} catch (error) {
@@ -270,21 +280,21 @@ program
 				await emitJson(body, options, cmd);
 				return;
 			}
-			console.log(
-				`runner: ${body.runner.ok ? "ok" : "down"}${body.runner.version ? ` (${body.runner.version})` : ""}`,
+			const provider = body.provider.configured
+				? `${body.provider.label ?? body.provider.kind ?? "configured"}`
+				: "not configured";
+			const device = body.activeDevice
+				? `${body.activeDevice.platform} ${body.activeDevice.deviceId}`
+				: "none";
+			await emitText(
+				[
+					`runner: ${body.runner.ok ? "ok" : "down"}${body.runner.version ? ` (${body.runner.version})` : ""}`,
+					`provider: ${provider}`,
+					`active device: ${device}`,
+				],
+				options,
+				cmd,
 			);
-			console.log(
-				`provider: ${
-					body.provider.configured
-						? `${body.provider.label ?? body.provider.kind ?? "configured"}`
-						: "not configured"
-				}`,
-			);
-			if (body.activeDevice) {
-				console.log(`active device: ${body.activeDevice.platform} ${body.activeDevice.deviceId}`);
-			} else {
-				console.log("active device: none");
-			}
 		} catch (error) {
 			fail("status", error);
 		}
@@ -302,7 +312,8 @@ const EVERYDAY_HINTS: Record<string, string> = {
 	"not running": `Open it, turn on remote debugging at ${REMOTE_DEBUGGING_SETTING_URL}, then connect`,
 };
 
-function printDevicesTable(
+/** The device listing `yoqa devices <platform>` prints, a line per row. */
+function devicesTableLines(
 	devicesList: Array<{
 		id: string;
 		name: string;
@@ -313,24 +324,23 @@ function printDevicesTable(
 		unavailableReason?: string;
 		verified?: boolean;
 	}>,
-) {
-	if (devicesList.length === 0) {
-		console.log("No devices found.");
-		return;
-	}
+): string[] {
+	if (devicesList.length === 0) return ["No devices found."];
+	const lines: string[] = [];
 	for (const device of devicesList) {
 		const label = device.owner ? `${device.name} (${device.owner})` : device.name;
 		const stateLine = formatDeviceState(device);
 		const state = stateLine ? ` [${stateLine}]` : "";
-		console.log(`${device.kind.padEnd(10)} ${label} — ${device.osVersion}${state}`);
-		console.log(`           ${device.id}`);
+		lines.push(`${device.kind.padEnd(10)} ${label} — ${device.osVersion}${state}`);
+		lines.push(`           ${device.id}`);
 		if (device.unavailableReason) {
-			console.log(`           Not a target: ${device.unavailableReason}`);
+			lines.push(`           Not a target: ${device.unavailableReason}`);
 		}
 		const hint =
 			webDeviceOf(device.id)?.kind === "everyday" ? EVERYDAY_HINTS[device.state ?? ""] : undefined;
-		if (hint) console.log(`           ${hint}`);
+		if (hint) lines.push(`           ${hint}`);
 	}
+	return lines;
 }
 
 const platformDevices = {} as Record<DevicePlatform, Command>;
@@ -361,7 +371,7 @@ for (const platform of Object.keys(PLATFORM_DEVICES_DESCRIPTION) as DevicePlatfo
 						await emitJson(body, options, cmd);
 						return;
 					}
-					printDevicesTable(body.devices);
+					await emitText(devicesTableLines(body.devices), options, cmd);
 				} catch (error) {
 					fail(`devices ${platform}`, error);
 				}
@@ -399,10 +409,14 @@ platformDevices.web
 			}
 			if (body.browserIds.length === 0) {
 				const browser = options.browser ? ` in ${options.browser}` : "";
-				console.log(`No Kept profile for ${body.appId}${browser} to reset.`);
+				await emitText(`No Kept profile for ${body.appId}${browser} to reset.`, options, command);
 				return;
 			}
-			console.log(`reset the Kept profile for ${body.appId} in ${body.browserIds.join(", ")}`);
+			await emitText(
+				`reset the Kept profile for ${body.appId} in ${body.browserIds.join(", ")}`,
+				options,
+				command,
+			);
 		} catch (error) {
 			fail("devices web reset-profile", error);
 		}
@@ -517,8 +531,14 @@ devices
 					await emitJson(body, options, cmd);
 					return;
 				}
-				console.log(`connected ${describeSession(body)}`);
-				if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
+				await emitText(
+					[
+						`connected ${describeSession(body)}`,
+						...(body.laneWarning ? [`lane warning: ${body.laneWarning}`] : []),
+					],
+					options,
+					cmd,
+				);
 			} catch (error) {
 				const warning = everydayWarningRequired(error);
 				if (warning) {
@@ -555,7 +575,7 @@ devices
 		try {
 			const body = await client(options.baseUrl).getActiveDevice();
 			if (!body) {
-				console.log("No active device session.");
+				await emitText("No active device session.", options, cmd);
 				process.exitCode = 1;
 				return;
 			}
@@ -563,8 +583,11 @@ devices
 				await emitJson(body, options, cmd);
 				return;
 			}
-			console.log(describeSession(body));
-			if (body.laneWarning) console.log(`lane warning: ${body.laneWarning}`);
+			await emitText(
+				[describeSession(body), ...(body.laneWarning ? [`lane warning: ${body.laneWarning}`] : [])],
+				options,
+				cmd,
+			);
 		} catch (error) {
 			fail("devices active", error);
 		}
@@ -583,7 +606,7 @@ devices
 				await emitJson(body, options, cmd);
 				return;
 			}
-			console.log(`disconnected ${body.platform} ${body.deviceId}`);
+			await emitText(`disconnected ${body.platform} ${body.deviceId}`, options, cmd);
 		} catch (error) {
 			fail("devices disconnect", error);
 		}
@@ -615,7 +638,8 @@ program
 				await emitJson(body, options, cmd);
 				return;
 			}
-			console.log(formatEmittedUsage(usage, { budget }));
+			// Accounted like the JSON report, and for the same reason: the total was read first.
+			await emitText(formatEmittedUsage(usage, { budget }), options, cmd);
 		} catch (error) {
 			fail("usage", error);
 		}
@@ -672,7 +696,7 @@ program
 					await emitJson(body, options, cmd);
 					return;
 				}
-				console.log(body.path);
+				await emitText(body.path, options, cmd);
 			} catch (error) {
 				fail("screenshot", error);
 			}
@@ -719,20 +743,18 @@ function addActionOptions(cmd: Command) {
 		);
 }
 
-function printResultScreenshot(shot: NonNullable<ActionResponse["screenshot"]>): void {
-	console.log(`screenshot ${shot.path}`);
-	if (shot.rawPath) console.log(`raw ${shot.rawPath}`);
-	if (shot.annotatedPath) console.log(`marked ${shot.annotatedPath}`);
-	console.log(`settled ${shot.settled} (${Math.round(shot.waitedMs)}ms)`);
-	console.log(
+function resultScreenshotLines(shot: NonNullable<ActionResponse["screenshot"]>): string[] {
+	return [
+		`screenshot ${shot.path}`,
+		...(shot.rawPath ? [`raw ${shot.rawPath}`] : []),
+		...(shot.annotatedPath ? [`marked ${shot.annotatedPath}`] : []),
+		`settled ${shot.settled} (${Math.round(shot.waitedMs)}ms)`,
 		`changed ${shot.changed === null ? "unknown (screen still animating)" : shot.changed}`,
-	);
+	];
 }
 
-function printActionPhases(phases: NonNullable<ActionResponse["phases"]>): void {
-	console.log(
-		`phases capture=${phases.captureMs} action=${phases.actionMs} settle=${phases.settleMs}`,
-	);
+function actionPhasesLine(phases: NonNullable<ActionResponse["phases"]>): string {
+	return `phases capture=${phases.captureMs} action=${phases.actionMs} settle=${phases.settleMs}`;
 }
 
 for (const kind of [
@@ -774,12 +796,13 @@ for (const kind of [
 					await emitJson(body, options, cmd);
 					return;
 				}
-				console.log(`ok ${body.kind}`);
+				const lines = [`ok ${body.kind}`];
 				if (body.resolved?.x != null && body.resolved?.y != null) {
-					console.log(`resolved ${body.resolved.x},${body.resolved.y}`);
+					lines.push(`resolved ${body.resolved.x},${body.resolved.y}`);
 				}
-				if (body.screenshot) printResultScreenshot(body.screenshot);
-				if (body.phases) printActionPhases(body.phases);
+				if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
+				if (body.phases) lines.push(actionPhasesLine(body.phases));
+				await emitText(lines, options, cmd);
 			} catch (error) {
 				fail(`action ${kind}`, error);
 			}
@@ -806,8 +829,9 @@ addActionOptions(
 			await emitJson(body, options, cmd);
 			return;
 		}
-		console.log(`ok ${body.kind}`);
-		if (body.screenshot) printResultScreenshot(body.screenshot);
+		const lines = [`ok ${body.kind}`];
+		if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
+		await emitText(lines, options, cmd);
 	} catch (error) {
 		fail("action alert", error);
 	}
@@ -840,9 +864,10 @@ addActionOptions(
 			await emitJson(body, options, cmd);
 			return;
 		}
-		console.log(`ok ${body.kind}`);
-		if (body.screenshot) printResultScreenshot(body.screenshot);
-		if (body.phases) printActionPhases(body.phases);
+		const lines = [`ok ${body.kind}`];
+		if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
+		if (body.phases) lines.push(actionPhasesLine(body.phases));
+		await emitText(lines, options, cmd);
 	} catch (error) {
 		fail("action key", error);
 	}
@@ -886,10 +911,11 @@ addActionOptions(
 			await emitJson(body, options, cmd);
 			return;
 		}
-		console.log(`batch ${body.ok ? "ok" : "failed"} ${body.completed}/${body.total}`);
-		if (body.failedIndex != null) console.log(`failedIndex ${body.failedIndex}`);
-		if (body.error) console.log(body.error);
-		if (body.screenshot) printResultScreenshot(body.screenshot);
+		const lines = [`batch ${body.ok ? "ok" : "failed"} ${body.completed}/${body.total}`];
+		if (body.failedIndex != null) lines.push(`failedIndex ${body.failedIndex}`);
+		if (body.error) lines.push(body.error);
+		if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
+		await emitText(lines, options, cmd);
 		if (!body.ok) process.exitCode = 1;
 	} catch (error) {
 		fail("action batch", error);
@@ -897,6 +923,24 @@ addActionOptions(
 });
 
 // --- servers / doctor ---
+
+/** The table `yoqa servers` and `yoqa servers list` both print, a line per server. */
+function serverTableLines(entries: ServerEntry[]): string[] {
+	if (entries.length === 0) return ["No servers running"];
+	return entries.map((entry) => {
+		const meta = [
+			entry.kind,
+			entry.ownership,
+			entry.status,
+			entry.port ? `:${entry.port}` : null,
+			entry.pid ? `pid ${entry.pid}` : null,
+			entry.actions.length > 0 ? `actions=${entry.actions.join(",")}` : "actions=none",
+		]
+			.filter(Boolean)
+			.join(" · ");
+		return `${entry.id}\t${entry.label}\t${meta}`;
+	});
+}
 
 const servers = program
 	.command("servers")
@@ -911,23 +955,7 @@ const servers = program
 				await emitJson(body, options, cmd);
 				return;
 			}
-			if (body.servers.length === 0) {
-				console.log("No servers running");
-				return;
-			}
-			for (const entry of body.servers) {
-				const meta = [
-					entry.kind,
-					entry.ownership,
-					entry.status,
-					entry.port ? `:${entry.port}` : null,
-					entry.pid ? `pid ${entry.pid}` : null,
-					entry.actions.length > 0 ? `actions=${entry.actions.join(",")}` : "actions=none",
-				]
-					.filter(Boolean)
-					.join(" · ");
-				console.log(`${entry.id}\t${entry.label}\t${meta}`);
-			}
+			await emitText(serverTableLines(body.servers), options, cmd);
 		} catch (error) {
 			fail("servers", error);
 		}
@@ -946,23 +974,7 @@ servers
 				await emitJson(body, options, cmd);
 				return;
 			}
-			if (body.servers.length === 0) {
-				console.log("No servers running");
-				return;
-			}
-			for (const entry of body.servers) {
-				const meta = [
-					entry.kind,
-					entry.ownership,
-					entry.status,
-					entry.port ? `:${entry.port}` : null,
-					entry.pid ? `pid ${entry.pid}` : null,
-					entry.actions.length > 0 ? `actions=${entry.actions.join(",")}` : "actions=none",
-				]
-					.filter(Boolean)
-					.join(" · ");
-				console.log(`${entry.id}\t${entry.label}\t${meta}`);
-			}
+			await emitText(serverTableLines(body.servers), options, cmd);
 		} catch (error) {
 			fail("servers list", error);
 		}
@@ -981,7 +993,7 @@ servers
 				await emitJson(body, options, cmd);
 				return;
 			}
-			console.log(body.message);
+			await emitText(body.message, options, cmd);
 		} catch (error) {
 			fail("servers stop-all", error);
 		}
@@ -1006,7 +1018,7 @@ servers
 				await emitJson(body, options, cmd);
 				return;
 			}
-			console.log(body.message);
+			await emitText(body.message, options, cmd);
 		} catch (error) {
 			fail("servers stop", error);
 		}
@@ -1031,7 +1043,7 @@ servers
 				await emitJson(body, options, cmd);
 				return;
 			}
-			console.log(body.message);
+			await emitText(body.message, options, cmd);
 		} catch (error) {
 			fail("servers restart", error);
 		}
@@ -1060,7 +1072,7 @@ program
 					if (options.json) {
 						await emitJson({ ok: true, message: "No safe repairs", report }, options, cmd);
 					} else {
-						console.log("No safe repairs to apply");
+						await emitText("No safe repairs to apply", options, cmd);
 					}
 					if (!report.ok) process.exitCode = 1;
 					return;
@@ -1069,8 +1081,7 @@ program
 				if (options.json) {
 					await emitJson(result, options, cmd);
 				} else {
-					console.log(result.message);
-					console.log(formatDoctorReport(result.report));
+					await emitText([result.message, formatDoctorReport(result.report)], options, cmd);
 				}
 				if (!result.report.ok) process.exitCode = 1;
 				return;
@@ -1080,7 +1091,7 @@ program
 			if (options.json) {
 				await emitJson(report, options, cmd);
 			} else {
-				console.log(formatDoctorReport(report));
+				await emitText(formatDoctorReport(report), options, cmd);
 			}
 			if (!report.ok) process.exitCode = 1;
 		} catch (error) {
@@ -1100,7 +1111,7 @@ const signing = program
 		try {
 			const status = await client(options.baseUrl).getIosSigning();
 			if (options.json) await emitJson(status, options, cmd);
-			else console.log(formatSigningStatus(status));
+			else await emitText(formatSigningStatus(status), options, cmd);
 		} catch (error) {
 			fail("signing", error);
 		}
@@ -1121,7 +1132,7 @@ signing
 				team.toLowerCase() === "auto" ? null : team,
 			);
 			if (options.json) await emitJson(status, options, cmd);
-			else console.log(formatSigningStatus(status));
+			else await emitText(formatSigningStatus(status), options, cmd);
 		} catch (error) {
 			fail("signing use", error);
 		}
@@ -1146,7 +1157,7 @@ signing
 			if (!options.json) console.error(`Signing YoqaRunner for ${deviceId}…`);
 			const check = await c.checkIosSigning({ deviceId });
 			if (options.json) await emitJson(check, options, cmd);
-			else console.log(formatSigningCheck(check));
+			else await emitText(formatSigningCheck(check), options, cmd);
 			if (!check.ok) process.exitCode = 1;
 		} catch (error) {
 			fail("signing check", error);
@@ -1216,7 +1227,7 @@ for (const kind of ["visible", "not-visible"] as const) {
 						console.error(`yoqa assert ${kind} failed: ${error}`);
 						return;
 					}
-					console.log(`ok assert ${kind}`);
+					await emitText(`ok assert ${kind}`, options, cmd);
 				} catch (error) {
 					// Not a miss: the Screen could not be checked, so a Branch must not take `else`.
 					fail(`assert ${kind}`, error);
@@ -1240,10 +1251,11 @@ appsCmd
 				await emitJson({ apps }, options, cmd);
 				return;
 			}
-			console.log(`${"PREFIX".padEnd(20)}NAME`);
-			for (const app of apps) {
-				console.log(`${app.prefix.padEnd(20)}${app.name}`);
-			}
+			await emitText(
+				[`${"PREFIX".padEnd(20)}NAME`, ...apps.map((app) => `${app.prefix.padEnd(20)}${app.name}`)],
+				options,
+				cmd,
+			);
 		} catch (error) {
 			fail("apps list", error);
 		}
@@ -1289,7 +1301,7 @@ appsCmd
 					await emitJson(app, options, cmd);
 					return;
 				}
-				console.log(`created ${app.prefix}`);
+				await emitText(`created ${app.prefix}`, options, cmd);
 			} catch (error) {
 				fail("apps create", error);
 			}
@@ -1311,13 +1323,19 @@ appsCmd
 				await emitJson(app, options, cmd);
 				return;
 			}
-			console.log(`prefix: ${app.prefix}`);
-			console.log(`name: ${app.name}`);
-			console.log(`app_context: ${app.context || "(empty)"}`);
-			console.log(`app_knowledge: ${app.knowledge || "(empty)"}`);
-			console.log(`ios_bundle_id: ${app.iosBundleId || "(empty)"}`);
-			console.log(`android_application_id: ${app.androidApplicationId || "(empty)"}`);
-			console.log(`web_url: ${app.webUrl || "(empty)"}`);
+			await emitText(
+				[
+					`prefix: ${app.prefix}`,
+					`name: ${app.name}`,
+					`app_context: ${app.context || "(empty)"}`,
+					`app_knowledge: ${app.knowledge || "(empty)"}`,
+					`ios_bundle_id: ${app.iosBundleId || "(empty)"}`,
+					`android_application_id: ${app.androidApplicationId || "(empty)"}`,
+					`web_url: ${app.webUrl || "(empty)"}`,
+				],
+				options,
+				cmd,
+			);
 		} catch (error) {
 			fail("apps get", error);
 		}
@@ -1367,7 +1385,7 @@ appsCmd
 					await emitJson(app, options, cmd);
 					return;
 				}
-				console.log(`updated ${app.prefix}`);
+				await emitText(`updated ${app.prefix}`, options, cmd);
 			} catch (error) {
 				fail("apps update", error);
 			}
@@ -1401,9 +1419,11 @@ casesCmd
 					await emitJson({ cases }, options, cmd);
 					return;
 				}
-				for (const item of cases) {
-					console.log(`#${item.number}  ${item.name}`);
-				}
+				await emitText(
+					cases.map((item) => `#${item.number}  ${item.name}`),
+					options,
+					cmd,
+				);
 			} catch (error) {
 				fail("cases list", error);
 			}
@@ -1435,12 +1455,15 @@ casesCmd
 					await emitJson(detail, options, cmd);
 					return;
 				}
-				console.log(`#${detail.number} ${detail.name}`);
-				console.log(`tags: ${detail.tags.join(", ") || "(none)"}`);
+				const lines = [
+					`#${detail.number} ${detail.name}`,
+					`tags: ${detail.tags.join(", ") || "(none)"}`,
+				];
 				for (const step of detail.flows) {
-					console.log(`- ${step.instructions}`);
-					if (step.expectedResult) console.log(`  => ${step.expectedResult}`);
+					lines.push(`- ${step.instructions}`);
+					if (step.expectedResult) lines.push(`  => ${step.expectedResult}`);
 				}
+				await emitText(lines, options, cmd);
 			} catch (error) {
 				fail("cases get", error);
 			}
@@ -1489,7 +1512,7 @@ casesCmd
 					await emitJson(created, options, cmd);
 					return;
 				}
-				console.log(`created #${created.number} ${created.name}`);
+				await emitText(`created #${created.number} ${created.name}`, options, cmd);
 			} catch (error) {
 				fail("cases create", error);
 			}
@@ -1541,7 +1564,7 @@ casesCmd
 					await emitJson(updated, options, cmd);
 					return;
 				}
-				console.log(`updated #${updated.number}`);
+				await emitText(`updated #${updated.number}`, options, cmd);
 			} catch (error) {
 				fail("cases update", error);
 			}
@@ -1553,7 +1576,7 @@ casesCmd
 	.argument("<app>", "App prefix or id")
 	.argument("<number>", "Case number", (v) => Number(v))
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.action(async (appArg: string, number: number, options: { baseUrl: string }) => {
+	.action(async (appArg: string, number: number, options: { baseUrl: string }, cmd: Command) => {
 		try {
 			const c = client(options.baseUrl);
 			const resolved = await resolveAppId(c, appArg);
@@ -1561,7 +1584,7 @@ casesCmd
 			const found = cases.find((item) => item.number === number);
 			if (!found) throw new Error(`Case #${number} not found`);
 			await c.deleteCase(found.id);
-			console.log(`deleted #${number}`);
+			await emitText(`deleted #${number}`, options, cmd);
 		} catch (error) {
 			fail("cases delete", error);
 		}
@@ -1584,9 +1607,11 @@ flowsCmd
 				await emitJson({ flows }, options, cmd);
 				return;
 			}
-			for (const flow of flows) {
-				console.log(`${flow.id}  ${flow.name}`);
-			}
+			await emitText(
+				flows.map((flow) => `${flow.id}  ${flow.name}`),
+				options,
+				cmd,
+			);
 		} catch (error) {
 			fail("flows list", error);
 		}
@@ -1614,9 +1639,15 @@ flowsCmd
 					await emitJson(flow, options, cmd);
 					return;
 				}
-				console.log(flow.name);
-				console.log(flow.instructions);
-				if (flow.expectedResult) console.log(`=> ${flow.expectedResult}`);
+				await emitText(
+					[
+						flow.name,
+						flow.instructions,
+						...(flow.expectedResult ? [`=> ${flow.expectedResult}`] : []),
+					],
+					options,
+					cmd,
+				);
 			} catch (error) {
 				fail("flows get", error);
 			}
@@ -1655,7 +1686,7 @@ flowsCmd
 					await emitJson(flow, options, cmd);
 					return;
 				}
-				console.log(`created ${flow.id} ${flow.name}`);
+				await emitText(`created ${flow.id} ${flow.name}`, options, cmd);
 			} catch (error) {
 				fail("flows create", error);
 			}
@@ -1696,7 +1727,7 @@ flowsCmd
 					await emitJson(flow, options, cmd);
 					return;
 				}
-				console.log(`updated ${flow.id}`);
+				await emitText(`updated ${flow.id}`, options, cmd);
 			} catch (error) {
 				fail("flows update", error);
 			}
@@ -1708,12 +1739,12 @@ flowsCmd
 	.argument("<app>", "App prefix or id")
 	.argument("<flowId>", "Flow id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.action(async (appArg: string, flowId: string, options: { baseUrl: string }) => {
+	.action(async (appArg: string, flowId: string, options: { baseUrl: string }, cmd: Command) => {
 		try {
 			const c = client(options.baseUrl);
 			await resolveAppId(c, appArg);
 			await c.deleteFlow(flowId);
-			console.log(`deleted ${flowId}`);
+			await emitText(`deleted ${flowId}`, options, cmd);
 		} catch (error) {
 			fail("flows delete", error);
 		}
@@ -1735,9 +1766,11 @@ program
 				await emitJson({ tags }, options, cmd);
 				return;
 			}
-			for (const tag of tags) {
-				console.log(tag.name);
-			}
+			await emitText(
+				tags.map((tag) => tag.name),
+				options,
+				cmd,
+			);
 		} catch (error) {
 			fail("tags", error);
 		}
@@ -1770,9 +1803,13 @@ buildsCmd
 					await emitJson({ builds }, options, cmd);
 					return;
 				}
-				for (const build of builds) {
-					console.log(`${build.id}  ${build.platform.padEnd(8)} ${build.name}  ${build.path}`);
-				}
+				await emitText(
+					builds.map(
+						(build) => `${build.id}  ${build.platform.padEnd(8)} ${build.name}  ${build.path}`,
+					),
+					options,
+					cmd,
+				);
 			} catch (error) {
 				fail("builds list", error);
 			}
@@ -1804,7 +1841,7 @@ buildsCmd
 					await emitJson(build, options, cmd);
 					return;
 				}
-				console.log(`created ${build.id}`);
+				await emitText(`created ${build.id}`, options, cmd);
 			} catch (error) {
 				fail("builds create", error);
 			}
@@ -1815,10 +1852,10 @@ buildsCmd
 	.command("delete")
 	.argument("<buildId>", "Build id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.action(async (buildId: string, options: { baseUrl: string }) => {
+	.action(async (buildId: string, options: { baseUrl: string }, cmd: Command) => {
 		try {
 			await client(options.baseUrl).deleteBuild(buildId);
-			console.log(`deleted ${buildId}`);
+			await emitText(`deleted ${buildId}`, options, cmd);
 		} catch (error) {
 			fail("builds delete", error);
 		}
@@ -1832,8 +1869,8 @@ attachReportCommandOptions(
 		.description("Export a detailed HTML or Markdown report with step screenshots"),
 )
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.action(async (runId: string | undefined, options: ReportCommandOptions) => {
-		await handleReportCommand("report", runId, options);
+	.action(async (runId: string | undefined, options: ReportCommandOptions, cmd: Command) => {
+		await handleReportCommand("report", runId, options, cmd);
 	});
 
 const runsCmd = program.command("runs").description("Create and inspect local agent runs");
@@ -1853,9 +1890,11 @@ runsCmd
 				await emitJson({ runs }, options, cmd);
 				return;
 			}
-			for (const run of runs) {
-				console.log(`${run.id}  ${run.status.padEnd(10)} ${run.platform} ${run.deviceId}`);
-			}
+			await emitText(
+				runs.map((run) => `${run.id}  ${run.status.padEnd(10)} ${run.platform} ${run.deviceId}`),
+				options,
+				cmd,
+			);
 		} catch (error) {
 			fail("runs list", error);
 		}
@@ -1874,10 +1913,16 @@ runsCmd
 				await emitJson(run, options, cmd);
 				return;
 			}
-			console.log(`${run.id} ${run.status}`);
-			for (const test of run.tests) {
-				console.log(`  test ${test.caseId} ${test.status}${test.error ? ` — ${test.error}` : ""}`);
-			}
+			await emitText(
+				[
+					`${run.id} ${run.status}`,
+					...run.tests.map(
+						(test) => `  test ${test.caseId} ${test.status}${test.error ? ` — ${test.error}` : ""}`,
+					),
+				],
+				options,
+				cmd,
+			);
 		} catch (error) {
 			fail("runs get", error);
 		}
@@ -1889,8 +1934,8 @@ attachReportCommandOptions(
 		.description("Export a detailed HTML or Markdown report with step screenshots"),
 )
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.action(async (runId: string | undefined, options: ReportCommandOptions) => {
-		await handleReportCommand("runs report", runId, options);
+	.action(async (runId: string | undefined, options: ReportCommandOptions, cmd: Command) => {
+		await handleReportCommand("runs report", runId, options, cmd);
 	});
 
 attachGithubOutputOptions(
@@ -1926,7 +1971,7 @@ attachGithubOutputOptions(
 				if (options.json) {
 					await emitJson(finished, options, cmd);
 				} else {
-					console.log(`${finished.id} ${finished.status}`);
+					await emitText(`${finished.id} ${finished.status}`, options, cmd);
 				}
 				if (shouldFailOnRunStatus("errored", finished.status)) process.exitCode = 1;
 			} catch (error) {
@@ -1942,10 +1987,10 @@ runsCmd
 	.command("delete")
 	.argument("<runId>", "Run id")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
-	.action(async (runId: string, options: { baseUrl: string }) => {
+	.action(async (runId: string, options: { baseUrl: string }, cmd: Command) => {
 		try {
 			await client(options.baseUrl).deleteRun(runId);
-			console.log(`deleted ${runId}`);
+			await emitText(`deleted ${runId}`, options, cmd);
 		} catch (error) {
 			fail("runs delete", error);
 		}
@@ -2111,14 +2156,15 @@ runsCmd
 				if (options.json) {
 					await emitJson(run, options, cmd);
 				} else {
-					console.log(`created ${run.id} (${run.status})`);
+					const lines = [`created ${run.id} (${run.status})`];
 					for (const test of run.tests) {
 						if (test.recording?.status === "ready") {
-							console.log(`video ${c.getRunTestVideoUrl(run.id, test.id)}`);
+							lines.push(`video ${c.getRunTestVideoUrl(run.id, test.id)}`);
 						} else if (test.recording?.status === "unavailable") {
-							console.log(`video unavailable: ${test.recording.note ?? "unknown reason"}`);
+							lines.push(`video unavailable: ${test.recording.note ?? "unknown reason"}`);
 						}
 					}
+					await emitText(lines, options, cmd);
 				}
 				if (options.wait && shouldFailOnRunStatus("errored", run.status)) {
 					process.exitCode = 1;
@@ -2154,7 +2200,8 @@ scriptCmd
 				);
 			} else if (parsed.ok) {
 				const count = parsed.script.actions.length;
-				console.log(`ok ${file}: ${count} action${count === 1 ? "" : "s"}`);
+				// Offline: no runner to ask for a Device Session, so this is written and not accounted.
+				await emitText(`ok ${file}: ${count} action${count === 1 ? "" : "s"}`, {}, cmd);
 			} else {
 				console.error(`${file}:\n${formatCaseScriptFileErrors(parsed.errors)}`);
 			}
@@ -2207,9 +2254,9 @@ scriptCmd
 						return;
 					}
 					const line = formatCaseScriptReplayStep(event);
-					if (status === "ok") console.log(`ok ${line} (${step}/${total})`);
+					if (status === "ok") await emitText(`ok ${line} (${step}/${total})`, options, cmd);
 					else if (status === "error") console.error(`error ${line} (${step}/${total}): ${error}`);
-					else console.log(`skipped ${line} (${step}/${total})`);
+					else await emitText(`skipped ${line} (${step}/${total})`, options, cmd);
 				},
 			});
 
@@ -2220,7 +2267,7 @@ scriptCmd
 				throw new Error(`${where} failed: ${result.error ?? "failed"}`);
 			}
 			if (!options.json) {
-				console.log(`done ${result.total} step${result.total === 1 ? "" : "s"}`);
+				await emitText(`done ${result.total} step${result.total === 1 ? "" : "s"}`, options, cmd);
 			}
 		} catch (error) {
 			fail("script run", error);
@@ -2240,6 +2287,7 @@ scriptCmd
 			appArg: string,
 			number: number,
 			options: { format: string; out?: string; baseUrl: string },
+			cmd: Command,
 		) => {
 			try {
 				if (options.format !== "yaml" && options.format !== "shell") {
@@ -2262,9 +2310,9 @@ scriptCmd
 						: formatCaseScriptFile(detail.script, { name: detail.name });
 				if (options.out) {
 					await writeFile(options.out, text, "utf8");
-					console.log(`wrote ${options.out}`);
+					await emitText(`wrote ${options.out}`, options, cmd);
 				} else {
-					process.stdout.write(text);
+					await emitDocument(text, options, cmd);
 				}
 			} catch (error) {
 				fail("script export", error);
@@ -2356,10 +2404,16 @@ program
 				}
 				if (options.json) await emitJson({ ...report, recommendation }, options, cmd);
 				else {
-					console.log(formatLatencyTable(report));
-					if (arms.includes("tree")) {
-						console.log(`default ${recommendation.screenMode} — ${recommendation.reason}`);
-					}
+					await emitText(
+						[
+							formatLatencyTable(report),
+							...(arms.includes("tree")
+								? [`default ${recommendation.screenMode} — ${recommendation.reason}`]
+								: []),
+						],
+						options,
+						cmd,
+					);
 				}
 			} catch (error) {
 				fail("benchmark", error);
@@ -2387,7 +2441,7 @@ program
 		try {
 			const result = await installSkill({ dir: options.dir, force: options.force });
 			if (options.json) await emitJson(result, options, cmd);
-			else console.log(formatSkillInstall(result));
+			else await emitText(formatSkillInstall(result), {}, cmd);
 		} catch (error) {
 			fail("skill install", error);
 		}

@@ -8,6 +8,10 @@ function fakeRunner() {
 		hostname: "127.0.0.1",
 		port: 0,
 		fetch: async (request) => {
+			// The output seam asks which Device Session to account to; this runner has none.
+			if (new URL(request.url).pathname === "/devices/active") {
+				return new Response(null, { status: 404 });
+			}
 			const body = (await request.json()) as { kind: string };
 			actions.push(body);
 			return Response.json({ ok: true, kind: body.kind });
