@@ -56,18 +56,18 @@ screenshot and `yoqa screen` disagree, the screenshot is right.
 
 ## Context budget
 
-Everything Yoqa prints lands in your context. Cheapest instrument first:
+Every read costs context. Take the cheapest one that answers:
 
-1. `yoqa screen` — the cleaned tree, capped at 80 rows.
-2. `--screenshot --scale 0.2` on a phone — a small Agent image, to check that a step landed.
-3. `--screenshot` — the full Agent image, ~600 tokens on a phone.
-4. `yoqa screen --full` — the raw tree, often tens of thousands of tokens.
+1. `yoqa screen` — the cleaned element list, capped.
+2. `yoqa action … --screenshot --scale 0.2` on a phone — a small Agent image, to check a step landed.
+3. `yoqa action … --screenshot` — the full Agent image, ~600 tokens on a phone; `yoqa screenshot` is
+   the raw frame, several times that.
+4. `yoqa screen --full` — the raw accessibility tree, often tens of thousands of tokens.
 
-Send a known sequence as one [`action batch`](references/actions-coordinates.md#batch): one Settle
-and one Result screenshot for all of it. Run a long exploratory sweep in a sub-agent that reports
-back a short verdict. `yoqa usage` reports what Yoqa has emitted against its budget; a stderr line
-`Yoqa has emitted N of M tokens …` means that budget is nearly spent: delegate to a sub-agent, or
-compact.
+Send a known sequence as one [`action batch`](references/actions-coordinates.md#batch): one Settle,
+one Result screenshot. Run a long exploratory sweep in a sub-agent that reports back a short
+verdict. `yoqa usage` reports Yoqa's emitted total against its budget; a stderr line
+`Yoqa has emitted N of M tokens …` means you are deep into it: delegate to a sub-agent, or compact.
 
 ## When blocked
 
