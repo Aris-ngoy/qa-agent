@@ -20,6 +20,8 @@ Then guard it, so the seam stays single as the CLI grows.
 
 Then teach the shipped skill to spend the budget well, and what to do when the warning fires.
 
+Then put the Agent image on the meter, since it is the biggest thing an agent pays for.
+
 Covers all seven tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
 [#442](https://github.com/Aris-ngoy/qa-agent/issues/442), the seam itself;
 [#436](https://github.com/Aris-ngoy/qa-agent/issues/436), **Emitted usage** accounting and
@@ -28,7 +30,8 @@ threshold warning; [#438](https://github.com/Aris-ngoy/qa-agent/issues/438), com
 across every command; [#439](https://github.com/Aris-ngoy/qa-agent/issues/439), every
 remaining human-readable write; [#440](https://github.com/Aris-ngoy/qa-agent/issues/440), the
 guard that keeps it that way; and [#441](https://github.com/Aris-ngoy/qa-agent/issues/441), the
-`yoqa-testing` skill's context-budget section.
+`yoqa-testing` skill's context-budget section. The follow-up
+[#450](https://github.com/Aris-ngoy/qa-agent/issues/450) prices the Agent image a command names.
 
 ## Plan summary
 
@@ -494,6 +497,30 @@ No other command emits more than once, so no other command has the question.
 - The entry point grew from 5,498 to 6,357 bytes, about 200 tokens.
 - `.agents/skills/yoqa-testing` is updated in step, which `skill-docs.test.ts` requires.
 
+### Agent images on the meter (#450)
+
+- `packages/cli/src/image-size.ts` reads an image's pixel size from the head of its file. PNG
+  comes from the IHDR chunk. JPEG comes from the frame header, after skipping the JFIF, Exif and
+  ICC segments a `sips` Agent image puts first. It reads the first 64 KiB and never the whole
+  file, so a `--full` screenshot's megabytes are not read to get two numbers. It never throws.
+- A payload can now name its image by `imagePath`, as well as by a known `image` size.
+  `emitAgentOutput` reads the size *after* the output is written, so the agent never waits for
+  accounting, and adds `estimateImageTokens` to the command's total. `formatAgentOutput` stays
+  pure: it prices `image` and never touches disk.
+- Every `action <kind>` (including `alert`, `key` and `batch`) passes `screenshot.path` to the
+  seam in both text and `--json` modes. `yoqa screenshot` passes the path it saved. Only the
+  image the caller is handed is priced. The `raw` and `marked` copies are named but not priced,
+  because the agent reads one image per step, not all three.
+- **The CLI reads the image, not the runner.** The runner already makes the Agent image, so it
+  could report the size. But that means a schema change and a skew between CLI and runner
+  versions. Reading the file also gives the right answer for a remote runner: this machine
+  cannot open the path, so neither can an agent running here. It costs nothing because it was
+  never read.
+- What it adds, measured against the real runner on a 1280×800 Browser device: one
+  `action tap --screenshot` emits 953 tokens. Its Agent image (1000×625 JPEG) is 834 of them, and
+  its seven lines of paths and timings are 119. Before this, the meter saw only the 119. A bare
+  `yoqa screenshot` names the 1280×800 raw PNG, which is 1,392 tokens, 1,366 of them the image.
+
 ## How to verify
 
 ```bash
@@ -501,6 +528,7 @@ bun test packages/cli/src/compact-json.test.ts          # every command's JSON, 
 bun test packages/cli/src/command-output.test.ts        # the name the ledger records
 bun test packages/cli/src/active-session.test.ts        # the lookup, its deadline, and its memo
 bun test packages/cli/src/agent-output.test.ts          # the seam, pure
+bun test packages/cli/src/image-size.test.ts            # PNG and JPEG sizes, from real headers
 bun test packages/cli/src/emitted-usage.test.ts         # estimator, budget, report formatter
 bun test packages/cli/src/emitted-usage-ledger.test.ts  # the ledger, over an injected clock + path
 bun test packages/cli/src/emitted-usage-command.test.ts # `yoqa usage`, against a fake runner
@@ -535,6 +563,13 @@ Human-readable output, against any runner with a device connected:
 ```bash
 yoqa devices active && yoqa usage   # `devices active` appears in the breakdown
 yoqa usage && yoqa usage            # the second report counts the first
+```
+
+Agent images (#450), against a runner with a Browser device connected:
+
+```bash
+yoqa action tap --x 500 --y 500 --screenshot && yoqa usage   # `action tap` ≈ 950, not ≈ 120
+yoqa screenshot && yoqa usage                                # `screenshot` ≈ 1,390 at 1280×800
 ```
 
 #439's byte-identity check was a throwaway harness, deliberately not committed (#440's guard is
@@ -622,12 +657,10 @@ Before this ticket only the `screen` row existed. `devices ios` costing 2,126 to
 
 ## Follow-ups
 
-With #441, every ticket of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435) has shipped.
+With #441 and its follow-up #450, every ticket of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435) has shipped.
 
-**The skill's cost order is ahead of the meter.** The section ranks Agent images by what they cost.
-`yoqa usage` does not count them yet, because the image arm of the estimator has no call site (see
-below). So a session heavy on screenshots reads low on the meter, and its warning fires late. The
-skill line stays true once images are priced. It is the meter that has to catch up.
+**The skill's cost order and the meter now agree.** Since #450, `yoqa usage` prices the Agent
+image as well as the lines that name it, so a screenshot-heavy session no longer reads low.
 
 **Every command can now trigger the budget warning**, in either form. Since #439, a session's
 total is the cost of everything Yoqa's own code wrote to stdout.
@@ -640,13 +673,15 @@ total is the cost of everything Yoqa's own code wrote to stdout.
   runner's logs reach the CLI's stdout. This one is a named exemption in the guard, and deliberate:
   a server log is not Agent output.
 
-**The image arm of the estimator has no call site yet.** `estimateImageTokens` is in #436's
-acceptance criteria and ships tested, and the seam prices any payload that names an Agent image —
-but no payload through the seam names one yet. #436 expected `action --screenshot` to carry the
-first one when #439 moved it onto the seam. It did not: #439 moved the action's *lines* across, and
-the `screenshot <path>` line is priced as text. Pricing the image means reading the PNG's
-dimensions at that call site, which nothing does today, and a byte-identical batch was the wrong
-place to add a read. The Agent image is still the largest cost the meter does not see.
+**The image price is Anthropic's formula, applied to the file as it is.** `width × height / 750`
+on the image Yoqa wrote. A provider that shrinks large images before counting them will charge a
+`--full` raw frame less than this says (Anthropic caps the long edge near 1568 px). The estimate
+runs high in that one case, and running high is the safe side for a warning. Capping the long
+edge here would bring in one provider's resize rule, which the estimator deliberately avoids.
+
+**An image the agent reads more than once is priced once.** The ledger counts what Yoqa named, not
+what the agent opened. An agent that reads the same `screenshot` path twice, or also opens the
+`marked` copy, pays more than the meter shows.
 
 **Offline commands record nothing.** `script validate` and `skill install` have no runner to ask
 for a Device Session. If they ever matter, they need a session they can find without a runner.

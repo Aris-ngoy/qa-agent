@@ -4,10 +4,10 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ActiveDeviceResponse, ScreenResponse } from "@yoqa/runner-client";
+import type { ActionResponse, ActiveDeviceResponse, ScreenResponse } from "@yoqa/runner-client";
 import { buildProgram } from "./program";
 
 /** A runner with one Device Session and a dense screen to read. */
@@ -22,12 +22,21 @@ function fakeRunner() {
 		window: { width: 390, height: 844 },
 		elements: [{ type: "Button", label: "Open", x: 10, y: 20, width: 30, height: 40 }],
 	};
+	let agentImage = "";
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
 		port: 0,
 		fetch: (request) => {
 			const path = new URL(request.url).pathname;
 			if (path === "/screen") return Response.json(screen);
+			if (path === "/action") {
+				const action: ActionResponse = {
+					ok: true,
+					kind: "tap",
+					screenshot: { path: agentImage, settled: true, waitedMs: 120, changed: true },
+				};
+				return Response.json(action);
+			}
 			if (path === "/devices/active") {
 				return active ? Response.json(active) : new Response(null, { status: 404 });
 			}
@@ -38,9 +47,24 @@ function fakeRunner() {
 		connect: (next: ActiveDeviceResponse | null) => {
 			active = next;
 		},
+		/** Where the next Action's Agent image is said to be. */
+		nameAgentImage: (path: string) => {
+			agentImage = path;
+		},
 		url: `http://127.0.0.1:${server.port}`,
 		stop: () => server.stop(true),
 	};
+}
+
+/** The signature and IHDR chunk of a PNG of the given size — all a size read looks at. */
+function pngHeader(width: number, height: number): Uint8Array {
+	const bytes = Buffer.alloc(33);
+	Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+	bytes.writeUInt32BE(13, 8);
+	bytes.write("IHDR", 12, "ascii");
+	bytes.writeUInt32BE(width, 16);
+	bytes.writeUInt32BE(height, 20);
+	return bytes;
 }
 
 describe("yoqa usage", () => {
@@ -226,6 +250,44 @@ describe("yoqa usage", () => {
 			expect(warned).toEqual([
 				`Yoqa has emitted 35 of 20 tokens (175%) into this context — ${remedies}`,
 			]);
+		});
+	});
+
+	describe("an Action's Agent image", () => {
+		/** What `action tap` has cost the active Device Session so far. */
+		async function tapTokens(): Promise<number> {
+			const usage = JSON.parse((await yoqa("usage", "--json"))[0] as string) as {
+				byCommand: { command: string; tokens: number }[];
+			};
+			return usage.byCommand.find((entry) => entry.command === "action tap")?.tokens ?? 0;
+		}
+
+		/**
+		 * One tap naming an image that is not there, then — in a fresh Device Session — one naming
+		 * an image that is. The two paths are the same length, so the printed lines cost the same
+		 * and the whole difference is the image.
+		 */
+		async function imageCost(...flags: string[]): Promise<number> {
+			await writeFile(join(dir, "agent.png"), pngHeader(1000, 750));
+			const tap = ["action", "tap", "--x", "500", "--y", "500", "--screenshot", ...flags];
+
+			runner.nameAgentImage(join(dir, "ghost.png"));
+			await yoqa(...tap);
+			const linesOnly = await tapTokens();
+
+			runner.connect({ deviceId: "sim-ABC", platform: "ios", connectedAt: 1_700_000_005_000 });
+			runner.nameAgentImage(join(dir, "agent.png"));
+			await yoqa(...tap);
+			return (await tapTokens()) - linesOnly;
+		}
+
+		test("costs the session what the agent pays to read it, on top of the lines printed", async () => {
+			// 1000 × 750 px at 750 px to the token.
+			expect(await imageCost()).toBe(1000);
+		});
+
+		test("costs the same when the Action answers in JSON", async () => {
+			expect(await imageCost("--json")).toBe(1000);
 		});
 	});
 

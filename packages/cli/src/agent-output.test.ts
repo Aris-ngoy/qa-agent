@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,6 +35,17 @@ function cleanedScreen(count: number): ScreenResponse {
 			height: 40,
 		})),
 	};
+}
+
+/** The signature and IHDR chunk of a PNG of the given size — all a size read looks at. */
+function pngHeader(width: number, height: number): Uint8Array {
+	const bytes = Buffer.alloc(33);
+	Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
+	bytes.writeUInt32BE(13, 8);
+	bytes.write("IHDR", 12, "ascii");
+	bytes.writeUInt32BE(width, 16);
+	bytes.writeUInt32BE(height, 20);
+	return bytes;
 }
 
 const screenOutput = (screen: ScreenResponse, options = {}) =>
@@ -282,6 +294,43 @@ describe("emitting a command's output", () => {
 		);
 
 		expect(printed).toEqual([out.text]);
+	});
+
+	test("prices the Agent image a command names by path, once its output is written", async () => {
+		const image = join(dir, "result_agent.png");
+		const lines = [`screenshot ${image}`];
+		const text = formatAgentOutput({ kind: "text", lines }).tokens;
+		// The image only exists once the line naming it is on stdout, so it is priced only if the
+		// seam reads it after writing — an agent never waits on accounting for its answer.
+		console.log = (...args: unknown[]) => {
+			printed.push(args.join(" "));
+			writeFileSync(image, pngHeader(1000, 750));
+		};
+
+		const out = await emitAgentOutput(
+			{ kind: "text", lines, imagePath: image },
+			{},
+			{ command: "action tap", session: async () => "ios-sim-ABC@1000", ledger: { path } },
+		);
+
+		// 1000 × 750 px at 750 px to the token.
+		expect(out.tokens).toBe(text + 1000);
+		expect(printed).toEqual(lines);
+		expect((await readEmittedUsage("ios-sim-ABC@1000", { path })).total).toBe(text + 1000);
+	});
+
+	test("prices a named image it cannot open as no image, and still writes the output", async () => {
+		const lines = [`screenshot ${join(dir, "elsewhere.png")}`];
+		const text = formatAgentOutput({ kind: "text", lines }).tokens;
+
+		const out = await emitAgentOutput(
+			{ kind: "text", lines, imagePath: join(dir, "elsewhere.png") },
+			{},
+			{ command: "action tap", session: async () => "ios-sim-ABC@1000", ledger: { path } },
+		);
+
+		expect(out.tokens).toBe(text);
+		expect(printed).toEqual(lines);
 	});
 
 	test("records nothing for a command that emitted nothing", async () => {

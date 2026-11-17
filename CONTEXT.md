@@ -104,7 +104,7 @@ A reduced-size copy of a screenshot prepared for a model: what Decide sends to a
 _Avoid_: thumbnail, preview, compressed screenshot
 
 **Emitted usage**:
-Yoqa's own estimate of what the Agent output one command wrote cost a calling agent's context window: the emitted text by character count, plus any Agent image the output named by path. Accumulated per Device Session in an append-only ledger the CLI writes, and reported by `yoqa usage` against the Output budget. Estimated by a documented formula with no tokenizer and no model, so it is an order of magnitude for deciding when to delegate or compact, never a bill.
+Yoqa's own estimate of what the Agent output one command wrote cost a calling agent's context window: the emitted text by character count, plus any image the output named by path for the caller to read — an Agent image, or the raw screenshot that `yoqa screenshot` and `--full` hand back. Accumulated per Device Session in an append-only ledger the CLI writes, and reported by `yoqa usage` against the Output budget. Estimated by a documented formula with no tokenizer and no model, so it is an order of magnitude for deciding when to delegate or compact, never a bill.
 _Avoid_: Call usage (what a Provider reports for one Decide or verify call — the two are never summed), cost, context usage, spend
 
 **Output budget**:
