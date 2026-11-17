@@ -614,7 +614,7 @@ program
 	.option("--pretty", "Indent the JSON (compact by default — indentation costs an agent tokens)")
 	.option(
 		"--limit <rows>",
-		`Cleaned-tree rows to print (default ${MAX_SCREEN_ROWS}); the rest are counted, not printed`,
+		`Cleaned-tree rows to print (default ${MAX_SCREEN_ROWS}, or YOQA_SCREEN_ROWS); the rest are counted, not printed`,
 	)
 	.action(
 		async (options: {

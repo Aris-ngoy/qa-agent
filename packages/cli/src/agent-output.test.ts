@@ -11,7 +11,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MAX_SCREEN_ROWS, type ScreenResponse } from "@yoqa/runner-client";
-import { emitAgentOutput, formatAgentOutput, parseScreenLimit } from "./agent-output";
+import {
+	emitAgentOutput,
+	formatAgentOutput,
+	parseScreenLimit,
+	resolveScreenRows,
+} from "./agent-output";
 import { readEmittedUsage } from "./emitted-usage-ledger";
 
 /** A cleaned Screen holding `count` elements, laid out one per row down the screen. */
@@ -107,6 +112,23 @@ describe("the row limit a caller asks for", () => {
 	test("unset leaves the shared cap in charge", () => {
 		expect(parseScreenLimit(undefined)).toBeUndefined();
 		expect(screenOutput(cleanedScreen(100), { limit: undefined }).omitted).toBe(20);
+	});
+});
+
+describe("the row cap the environment sets", () => {
+	test("leaves the shared cap in charge when nothing overrides it", () => {
+		expect(resolveScreenRows({})).toBe(MAX_SCREEN_ROWS);
+	});
+
+	test("takes a whole number of rows from YOQA_SCREEN_ROWS", () => {
+		expect(resolveScreenRows({ YOQA_SCREEN_ROWS: "20" })).toBe(20);
+		expect(resolveScreenRows({ YOQA_SCREEN_ROWS: "500" })).toBe(500);
+	});
+
+	test("keeps the shared cap rather than guessing at an unusable row count", () => {
+		for (const bad of ["0", "-5", "2.5", "lots", ""]) {
+			expect(resolveScreenRows({ YOQA_SCREEN_ROWS: bad })).toBe(MAX_SCREEN_ROWS);
+		}
 	});
 });
 
@@ -271,5 +293,108 @@ describe("emitting a command's output", () => {
 
 		expect(printed).toEqual([]);
 		expect((await readEmittedUsage("ios-sim-ABC@1000", { path })).total).toBe(0);
+	});
+});
+
+describe("warning when the Output budget threshold is crossed", () => {
+	const log = console.log;
+	const error = console.error;
+	const env = { ...process.env };
+	let dir = "";
+	let path = "";
+	let printed: string[] = [];
+	let warned: string[] = [];
+
+	beforeEach(async () => {
+		dir = await mkdtemp(join(tmpdir(), "yoqa-warn-"));
+		path = join(dir, "emitted-usage.jsonl");
+		printed = [];
+		warned = [];
+		console.log = (...args: unknown[]) => printed.push(args.join(" "));
+		console.error = (...args: unknown[]) => warned.push(args.join(" "));
+		// A 100-token budget warning at 10% puts the high-water mark at 10 tokens, so one
+		// three-row tree (18) crosses it. The real defaults would need a whole QA session.
+		process.env.YOQA_OUTPUT_BUDGET = "100";
+		process.env.YOQA_OUTPUT_WARN_AT = "10";
+	});
+
+	afterEach(async () => {
+		console.log = log;
+		console.error = error;
+		process.env = { ...env };
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	const emit = (session = "ios-sim-ABC@1000") =>
+		emitAgentOutput(
+			{ kind: "screen", screen: cleanedScreen(3) },
+			{},
+			{ command: "screen", session: async () => session, ledger: { path } },
+		);
+
+	test("writes exactly one line, and writes it to stderr", async () => {
+		const out = await emit();
+
+		expect(warned).toEqual([
+			"Yoqa has emitted 18 of 100 tokens (18%) into this context — delegate further exploration to a sub-agent, or compact.",
+		]);
+		// stdout carries the command's answer and nothing else: a warning there could corrupt it.
+		expect(printed).toEqual([out.text]);
+	});
+
+	test("leaves stdout byte-identical whether or not it fires", async () => {
+		// Two Device Sessions rather than two thresholds: each has its own running total, so one
+		// crosses and one never will, and the only difference between them is the stderr line.
+		process.env.YOQA_NO_OUTPUT_WARNING = "1";
+		const quiet = (await emit("ios-sim-QUIET@1000")).text;
+		expect(warned).toEqual([]);
+
+		Reflect.deleteProperty(process.env, "YOQA_NO_OUTPUT_WARNING");
+		const loud = (await emit("ios-sim-LOUD@1000")).text;
+		expect(warned).toHaveLength(1);
+
+		expect(loud).toBe(quiet);
+		expect(printed).toEqual([quiet, loud]);
+	});
+
+	test("says nothing at all when the environment suppresses it", async () => {
+		process.env.YOQA_NO_OUTPUT_WARNING = "1";
+		const out = await emit();
+
+		expect(warned).toEqual([]);
+		expect(printed).toEqual([out.text]);
+	});
+
+	test("caps at the environment's row count, so every command through the seam honours it", async () => {
+		process.env.YOQA_SCREEN_ROWS = "5";
+		const out = await emitAgentOutput(
+			{ kind: "screen", screen: cleanedScreen(100) },
+			{},
+			{ command: "screen", session: async () => null, ledger: { path } },
+		);
+
+		expect(out.text.split("\n")).toHaveLength(6);
+		expect(out.omitted).toBe(95);
+	});
+
+	test("lets a caller's own limit outrank the environment's row count", async () => {
+		process.env.YOQA_SCREEN_ROWS = "5";
+		const out = await emitAgentOutput(
+			{ kind: "screen", screen: cleanedScreen(100) },
+			{ limit: 20 },
+			{ command: "screen", session: async () => null, ledger: { path } },
+		);
+
+		expect(out.omitted).toBe(80);
+	});
+
+	test("never warns about a session it could not account to", async () => {
+		await emitAgentOutput(
+			{ kind: "screen", screen: cleanedScreen(3) },
+			{},
+			{ command: "screen", session: async () => null, ledger: { path } },
+		);
+
+		expect(warned).toEqual([]);
 	});
 });

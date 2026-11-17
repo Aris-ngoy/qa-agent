@@ -6,6 +6,8 @@
  * Everything here is pure, so the numbers are reviewable without a provider, a device or a clock.
  */
 
+import { envFlagEnabled, envWholeNumber } from "./env";
+
 /**
  * Characters to a token. An estimate, not a count: it approximates the ~4-characters-per-token
  * rule of thumb that Anthropic's and OpenAI's own tokenizer guidance gives for English prose, and
@@ -61,9 +63,7 @@ export const DEFAULT_OUTPUT_BUDGET = 250_000;
 
 /** The budget in force, from `YOQA_OUTPUT_BUDGET`. An unusable value leaves the default alone. */
 export function resolveOutputBudget(env: Record<string, string | undefined> = process.env): number {
-	const budget = Number(env.YOQA_OUTPUT_BUDGET);
-	if (!Number.isInteger(budget) || budget < 1) return DEFAULT_OUTPUT_BUDGET;
-	return budget;
+	return envWholeNumber(env.YOQA_OUTPUT_BUDGET, DEFAULT_OUTPUT_BUDGET);
 }
 
 /** One command's share of a Device Session's total. */
@@ -82,6 +82,17 @@ function groupDigits(value: number): string {
 }
 
 /**
+ * A running total against its budget: `203,418 of 250,000 tokens (81%)`.
+ *
+ * Shared by the report and the warning so the two cannot describe the same session differently.
+ * A share over 100% is shown as-is, because the budget never blocks.
+ */
+function tokensOfBudget(total: number, budget: number): string {
+	const share = Math.round((total / budget) * 100);
+	return `${groupDigits(total)} of ${groupDigits(budget)} tokens (${share}%)`;
+}
+
+/**
  * The running total, the budget, the share of the window it has taken, and which commands took
  * it. Deliberately plain: this is read by an agent deciding whether to delegate or compact as
  * often as by a person, and a share over 100% is shown as-is because the budget never blocks.
@@ -92,9 +103,8 @@ export function formatEmittedUsage(
 ): string {
 	if (!usage) return "No active Device Session, so nothing is being accounted.";
 
-	const share = Math.round((usage.total / options.budget) * 100);
 	const lines = [
-		`Emitted ${groupDigits(usage.total)} of ${groupDigits(options.budget)} tokens (${share}%) — Device Session ${usage.session}`,
+		`Emitted ${tokensOfBudget(usage.total, options.budget)} — Device Session ${usage.session}`,
 	];
 	if (usage.byCommand.length === 0) {
 		lines.push("Nothing emitted for this Device Session yet.");
@@ -119,4 +129,62 @@ export function formatEmittedUsage(
  */
 export function deviceSessionId(session: { deviceId: string; connectedAt: number }): string {
 	return `${session.deviceId}@${session.connectedAt}`;
+}
+
+/**
+ * The high-water mark, as a percent of the budget. 80% leaves a fifth of the window to act in,
+ * which is what makes the warning useful: a line that arrives at 99% has nothing left to buy.
+ */
+export const DEFAULT_WARN_AT_PERCENT = 80;
+
+/** The threshold in force, from `YOQA_OUTPUT_WARN_AT`. An unusable value leaves the default alone. */
+export function resolveWarnAtPercent(
+	env: Record<string, string | undefined> = process.env,
+): number {
+	return envWholeNumber(env.YOQA_OUTPUT_WARN_AT, DEFAULT_WARN_AT_PERCENT);
+}
+
+/**
+ * Whether `YOQA_NO_OUTPUT_WARNING` turns the line off. For CI and other non-interactive runs,
+ * where nobody is there to delegate or compact and the line is only noise in a log.
+ */
+export function outputWarningSuppressed(
+	env: Record<string, string | undefined> = process.env,
+): boolean {
+	return envFlagEnabled(env.YOQA_NO_OUTPUT_WARNING);
+}
+
+/**
+ * Which band a running total sits in: 0 below the high-water mark, then one per budget's worth
+ * above it.
+ *
+ * The marks are the high-water mark and then every further whole budget — 200k, 250k, 500k on the
+ * defaults. Multiples of the high-water mark alone would put the second mark at 160% of the
+ * budget, leaving a session that used up the very window it was warned about with nothing said,
+ * which is the one crossing nobody should miss.
+ */
+function budgetBand(total: number, options: OutputBudgetThreshold): number {
+	const mark = (options.budget * options.warnAtPercent) / 100;
+	if (!(mark > 0) || !(options.budget > 0)) return 0;
+	if (total < mark) return 0;
+	return 1 + Math.floor(total / options.budget);
+}
+
+/** The budget a total is measured against, and the share of it that earns the first warning. */
+export type OutputBudgetThreshold = { budget: number; warnAtPercent: number };
+
+/**
+ * The one stderr line for a command that pushed a Device Session past a high-water mark, or null
+ * for one that did not.
+ *
+ * A crossing is derived from the two totals rather than remembered, which is why nothing here
+ * keeps state: the ledger is append-only, so the total before a command is the total after it
+ * minus what it emitted, and "has this already been warned about" is simply "were both totals in
+ * the same band". A command that skips a mark outright still warns, because its band still rose.
+ */
+export function budgetWarning(
+	totals: { before: number; after: number } & OutputBudgetThreshold,
+): string | null {
+	if (budgetBand(totals.after, totals) <= budgetBand(totals.before, totals)) return null;
+	return `Yoqa has emitted ${tokensOfBudget(totals.after, totals.budget)} into this context — delegate further exploration to a sub-agent, or compact.`;
 }

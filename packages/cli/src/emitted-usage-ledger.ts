@@ -77,13 +77,18 @@ async function readRecords(path: string): Promise<LedgerLine[]> {
 }
 
 /**
- * Append one command's emission. Never throws and never reports failure: the command it accounts
- * for has already written its output, and a ledger problem must not change its exit code.
+ * Append one command's emission and answer with the session's new running total, or null if the
+ * ledger could not be written or read back.
+ *
+ * Never throws and never reports failure as an error: the command it accounts for has already
+ * written its output, and a ledger problem must not change its exit code. The total comes back
+ * because a crossing of the Output budget threshold is derived from it rather than remembered —
+ * see `budgetWarning`. Null therefore means "no judgement available", not "zero".
  */
 export async function appendEmittedUsage(
 	record: EmittedUsageRecord,
 	options: LedgerOptions = {},
-): Promise<void> {
+): Promise<number | null> {
 	const path = ledgerPath(options);
 	const line = `${JSON.stringify({ ...record, at: (options.now ?? Date.now)() })}\n`;
 	try {
@@ -91,16 +96,27 @@ export async function appendEmittedUsage(
 		await mkdir(dirname(path), { recursive: true });
 		await appendFile(path, line, "utf8");
 	} catch {
-		return;
+		return null;
 	}
+
+	let written: LedgerLine[];
 	try {
-		if ((await stat(path)).size <= MAX_LEDGER_BYTES) return;
-		const mine = await readRecords(path);
-		const kept = mine.filter((entry) => entry.session === record.session);
-		await writeFile(path, kept.map((entry) => `${JSON.stringify(entry)}\n`).join(""), "utf8");
+		written = await readRecords(path);
+	} catch {
+		return null;
+	}
+	const mine = written.filter((entry) => entry.session === record.session);
+	const total = mine.reduce((sum, entry) => sum + entry.tokens, 0);
+
+	try {
+		// Read once and reused: compaction keeps this session's records and drops every other.
+		if ((await stat(path)).size > MAX_LEDGER_BYTES) {
+			await writeFile(path, mine.map((entry) => `${JSON.stringify(entry)}\n`).join(""), "utf8");
+		}
 	} catch {
 		// An over-long ledger is a disk problem, not a reason to fail a QA command.
 	}
+	return total;
 }
 
 /** What this Device Session has emitted. Zero for a session, or a ledger, that is not there. */

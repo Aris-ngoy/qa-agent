@@ -9,10 +9,13 @@ guarded later.
 Then measure it, so "stays inside a context window" is something anyone can check rather than a
 slogan.
 
-Covers two tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
-[#442](https://github.com/Aris-ngoy/qa-agent/issues/442), the seam itself, and
+Then warn before the window fills, rather than after the work is lost.
+
+Covers three tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
+[#442](https://github.com/Aris-ngoy/qa-agent/issues/442), the seam itself;
 [#436](https://github.com/Aris-ngoy/qa-agent/issues/436), **Emitted usage** accounting and
-`yoqa usage`. Every other command still writes the way it did, so nothing else moved.
+`yoqa usage`; and [#437](https://github.com/Aris-ngoy/qa-agent/issues/437), the **Output budget**
+threshold warning. Every other command still writes the way it did, so nothing else moved.
 
 ## Plan summary
 
@@ -62,9 +65,43 @@ writes as a no-op. A line that will not parse costs its own tokens, not the whol
 here can change a command's output or its exit code. This is the `pruneOldRunScreenshots` posture,
 for the same reason: accounting must never be able to break a QA session.
 
-**The Output budget ships with #436, the threshold with #437.** A report that says "of 250,000" on
-a 1M-window model is a lie, so `YOQA_OUTPUT_BUDGET` is here. The stderr warning and its high-water
-threshold are #437's whole job and are not here.
+**The Output budget shipped with #436, ahead of its ticket.** A report that says "of 250,000" on a
+1M-window model is a lie, so `YOQA_OUTPUT_BUDGET` could not wait for #437.
+
+**A crossing is derived, not remembered.** There is no warned-flag and no new state file. The
+ledger is append-only, so the total before a command is the total after it minus what that command
+emitted, and "has this already been warned about" is simply "were both totals in the same band".
+`appendEmittedUsage` therefore returns the session's new running total. Rejected: a flag on disk or
+a marker record in the ledger, both of which add state to answer a question two numbers already
+answer, and both of which would have to be reset on a new Device Session.
+
+**A band is the high-water mark, then every further whole budget.** The marks are 200k, 250k,
+500k, 750k on the defaults, and the line fires when the band rises. The literal reading of "once
+per threshold crossing" is one line per session forever, which goes quiet exactly when a runaway
+session most needs telling. Rejected on the way there: multiples of the high-water mark alone
+(`floor(total / mark)`), which puts the second mark at 160% of the budget and so says *nothing* to
+a session that has used up the very window it was warned about — the one crossing nobody should
+miss. Found in review, not in the design.
+
+**The warning fires on stderr, inside the seam, after the append.** stdout therefore cannot be
+touched by it, so it is byte-identical whether or not the line fires; and it sits behind the output
+write, so nothing is delayed ahead of the answer the agent is waiting for. `yoqa usage` does not
+warn: it is the report, and a report that warns about itself is noise. Rejected: warning before the
+write (stdout and stderr interleave unpredictably, and the agent's answer should come first).
+
+**The row cap override is read in the seam, not in each command.** `emitAgentOutput` resolves it
+and `formatAgentOutput` stays pure, so every command #439 moves across honours the knob without
+having to remember to. `--limit` still outranks it, and the shared constant is still the default.
+
+**The row cap override moves Agent output only.** `YOQA_SCREEN_ROWS` changes this seam's default
+and deliberately not the Decide loop's `formatScreenSnapshot`, though both read `MAX_SCREEN_ROWS`.
+The snapshot is model input: shrinking it changes which decisions a run makes, not what a context
+window costs. And because the CLI autostarts the runner, which inherits its environment, one knob
+for both would make that happen silently. Rejected: a single knob for the single constant, which is
+tidier and wrong.
+
+**The suppression switch reads the same words as `YOQA_NO_AUTOSTART`.** `1`, `true` or `yes`, so
+the CLI has one spelling of "off" rather than two.
 
 ## What shipped
 
@@ -115,6 +152,70 @@ Emitted 24,118 of 250,000 tokens (10%) — Device Session sim-ABC@1700000000000
 
 - Glossary: **Emitted usage** and **Output budget** in `CONTEXT.md`, each listing the other
   accounting concept under `_Avoid_` so Call usage and Emitted usage cannot be conflated.
+
+### The Output budget warning (#437)
+
+- `budgetWarning` in `packages/cli/src/emitted-usage.ts` — pure: two totals, a budget and a
+  threshold in, one line or null out. The band arithmetic is private to it; the crossing is the
+  behaviour worth pinning, not the band number.
+- `appendEmittedUsage` returns the session's new running total, or null when the ledger could not
+  be written or read back. Null means "no judgement available", not "zero", so a broken ledger
+  warns about nothing rather than warning about a total it invented.
+- **This costs every emitting command one read of the ledger.** Before, the file was read only
+  when `stat` said it was over 1 MB; now the running total needs it on every append, so each
+  emitting command gains a read of at most ~1 MB and a `JSON.parse` per line. The read is reused
+  for log compaction rather than done twice. It sits after stdout like the rest of the accounting,
+  so it delays nothing the calling agent is waiting for — and unlike the session lookup it carries
+  no deadline, because a local read of a file we have just appended to successfully has no
+  accept-then-hang failure mode, and `appendFile`, `mkdir` and `stat` were already on that path
+  before this ticket. Named here rather than left to be discovered in a profile.
+- `emitAgentOutput` writes the line with `console.error` after the append. Everything in that tail
+  is still inside the same `try` that swallows accounting failures, so a warning cannot fail a
+  command either.
+- Four environment variables now shape Agent output and its accounting:
+
+| Variable | Default | What it does |
+|---|---|---|
+| `YOQA_OUTPUT_BUDGET` | `250000` | the budget totals are reported and warned against |
+| `YOQA_OUTPUT_WARN_AT` | `80` | the high-water mark, as a **percent of the budget** |
+| `YOQA_SCREEN_ROWS` | `80` | the Agent output row cap; `--limit` still outranks it |
+| `YOQA_NO_OUTPUT_WARNING` | unset | `1`/`true`/`yes` silences the warning, for CI |
+
+  Each keeps its default rather than guessing at an unusable value, the posture
+  `resolveOutputBudget` set in #436.
+- `packages/cli/src/env.ts` — the two shapes every non-path `YOQA_*` knob has: `envWholeNumber`
+  (a whole number with a floor of 1, or the default) and `envFlagEnabled` (`1`/`true`/`yes`).
+  Added because this ticket would otherwise have been the third copy of the integer parser and the
+  second copy of `shouldSkipAutostart`'s flag reader, which now calls it too. One spelling of
+  "unusable value" and one of "off", rather than one per knob.
+
+```
+$ yoqa screen
+Read from com.demo (target app)
+  120, 340  200x44  Sign in
+  …
+Yoqa has emitted 203,418 of 250,000 tokens (81%) into this context — delegate further exploration to a sub-agent, or compact.
+```
+
+The last line is on stderr; the rest is stdout.
+
+#### What "once" rests on
+
+The prior total is derived, not read: `total - output.tokens`. Two things can make it wrong, both
+accepted. A ledger line that will not parse is dropped by `readRecords`, so a corrupt file can
+shift a total and move a mark. And two `yoqa` processes emitting for the same Device Session at the
+same moment each read back the other's record, so one of them can compute a prior total that was
+never true. The cost either way is a duplicated or skipped *advisory line*, never a wrong report
+and never a failed command — and the alternative, a warned-flag on disk, would be new state that
+has to be reset per Device Session to answer a question two numbers already answer.
+
+#### Why a percent and not a token count
+
+`YOQA_OUTPUT_WARN_AT=80` is read as 80% of the budget, not 80 tokens. A token count would be a
+second figure to keep in step with `YOQA_OUTPUT_BUDGET` every time the budget moved, and the
+threshold is only ever meaningful as a share of the window. It takes a whole number, so there is no
+float to misparse — and it is not capped at 100, because a mark above the budget is a coherent
+thing to ask for even if nobody should.
 
 #### The formula, and what it is not
 
@@ -175,14 +276,50 @@ yoqa usage                  # what this Device Session has emitted, against the 
 yoqa screen && yoqa usage   # the total goes up; `screen` appears in the breakdown
 yoqa devices disconnect && yoqa devices connect ios   # the total is back to zero
 YOQA_OUTPUT_BUDGET=1000000 yoqa usage                 # reported against 1,000,000
+
+YOQA_SCREEN_ROWS=5 yoqa screen                        # 5 rows, then the omitted line
+YOQA_SCREEN_ROWS=5 yoqa screen --limit 40             # 40 rows: --limit still wins
 ```
+
+The warning, on a session that has emitted something. A small budget reaches the mark without a
+whole QA session, and `2>/dev/null` is how you see that stdout never carried it:
+
+```bash
+YOQA_OUTPUT_BUDGET=2000 YOQA_OUTPUT_WARN_AT=10 yoqa screen   # one stderr line on the crossing
+YOQA_OUTPUT_BUDGET=2000 YOQA_OUTPUT_WARN_AT=10 yoqa screen   # silent: still the same band
+YOQA_OUTPUT_BUDGET=2000 YOQA_OUTPUT_WARN_AT=10 yoqa screen 2>/dev/null  # stdout only, unchanged
+YOQA_NO_OUTPUT_WARNING=1 YOQA_OUTPUT_BUDGET=2000 yoqa screen # silent whatever the total
+yoqa usage                                                   # the total the warning quoted
+```
+
+Verified on a real Browser device against a dense Wikipedia article, with
+`YOQA_EMITTED_USAGE_PATH` pointed at a temp file so the run left nothing in `~/.yoqa`. One
+`yoqa screen` of that page costs ~910 tokens, so a 2,000-token budget warning at 10% walks every
+band in four reads:
+
+| read | total | stderr |
+|---|---|---|
+| 1 | 911 | `Yoqa has emitted 911 of 2,000 tokens (46%) into this context — delegate further exploration to a sub-agent, or compact.` |
+| 2 | 1,822 | — same band |
+| 3 | 2,733 | `Yoqa has emitted 2,733 of 2,000 tokens (137%) …` — the budget itself |
+| 4 | 3,644 | — same band |
+
+stdout was 81 rows every time, warning or not. `YOQA_NO_OUTPUT_WARNING=1` gave three silent reads
+that still accounted all 2,733 tokens, and `YOQA_SCREEN_ROWS=5` gave 6 lines, `--limit 20` gave 21,
+and `YOQA_SCREEN_ROWS=nonsense` fell back to 81.
 
 ## Follow-ups
 
-The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435), in dependency order: the
-**Output budget** stderr warning (#437), compact JSON across the remaining commands (#438),
-migrating the rest of the CLI's output through the seam (#439), the guard test that keeps the seam
-single (#440), and the skill's context-budget section (#441).
+The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435), in dependency order: compact
+JSON across the remaining commands (#438), migrating the rest of the CLI's output through the seam
+(#439), the guard test that keeps the seam single (#440), and the skill's context-budget section
+(#441). #441 is where the shipped skill learns to read the warning and act on it — this ticket
+wrote the line, not the instructions for responding to it.
+
+**Only `screen` can trigger the warning today**, because it is the only command through the seam.
+A session's real total — and so the real crossing — arrives when #439 moves the rest of the CLI's
+output across. Until then the line is correct about what it measures and an undercount of what a
+session actually costs.
 
 **The image arm of the estimator has no call site yet.** `estimateImageTokens` is in #436's
 acceptance criteria and ships tested, and the seam prices any payload that names an Agent image —

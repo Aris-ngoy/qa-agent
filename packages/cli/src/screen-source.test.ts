@@ -109,6 +109,17 @@ describe("yoqa screen and the Screen's source", () => {
 		expect((await yoqa("screen", "--pretty", "--json")).length).toBeGreaterThan(1);
 	});
 
+	test("YOQA_SCREEN_ROWS moves the default cap, and --limit still outranks it", async () => {
+		runner.serve(denseScreen());
+		process.env.YOQA_SCREEN_ROWS = "5";
+		try {
+			expect(await yoqa("screen")).toHaveLength(6);
+			expect(await yoqa("screen", "--limit", "20")).toHaveLength(21);
+		} finally {
+			Reflect.deleteProperty(process.env, "YOQA_SCREEN_ROWS");
+		}
+	});
+
 	test("a nonsense --limit fails the command instead of printing a stack trace", async () => {
 		runner.serve(denseScreen());
 		const errors: string[] = [];

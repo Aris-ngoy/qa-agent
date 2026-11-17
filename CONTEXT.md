@@ -108,7 +108,7 @@ Yoqa's own estimate of what the Agent output one command wrote cost a calling ag
 _Avoid_: Call usage (what a Provider reports for one Decide or verify call — the two are never summed), cost, context usage, spend
 
 **Output budget**:
-The token figure a Device Session's Emitted usage is reported against, 250k by default and overridable. A warning line and never a wall: no command is refused, delayed, or truncated because the running total is high — Yoqa reports, and the engineer and their agent decide whether to delegate further exploration to a sub-agent or compact.
+The token figure a Device Session's Emitted usage is reported against, 250k by default and overridable. Crossing a high-water mark of it — 80% by default, also overridable — writes one line to stderr naming the total and the two remedies, then one more line each time a further budget's worth is emitted, rather than on every later command. CI can switch it off. A warning line and never a wall: no command is refused, delayed, or truncated because the running total is high — Yoqa reports, and the engineer and their agent decide whether to delegate further exploration to a sub-agent or compact.
 _Avoid_: limit, quota, cap (the row cap on a Screen listing is a different thing), context window
 
 ### Providers
