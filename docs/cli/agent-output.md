@@ -11,11 +11,14 @@ slogan.
 
 Then warn before the window fills, rather than after the work is lost.
 
-Covers three tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
+Then stop charging a calling agent for whitespace on every command, not just one.
+
+Covers four tickets of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435):
 [#442](https://github.com/Aris-ngoy/qa-agent/issues/442), the seam itself;
 [#436](https://github.com/Aris-ngoy/qa-agent/issues/436), **Emitted usage** accounting and
-`yoqa usage`; and [#437](https://github.com/Aris-ngoy/qa-agent/issues/437), the **Output budget**
-threshold warning. Every other command still writes the way it did, so nothing else moved.
+`yoqa usage`; [#437](https://github.com/Aris-ngoy/qa-agent/issues/437), the **Output budget**
+threshold warning; and [#438](https://github.com/Aris-ngoy/qa-agent/issues/438), compact JSON
+across every command. Non-JSON output still writes the way it did — that is #439.
 
 ## Plan summary
 
@@ -102,6 +105,31 @@ tidier and wrong.
 
 **The suppression switch reads the same words as `YOQA_NO_AUTOSTART`.** `1`, `true` or `yes`, so
 the CLI has one spelling of "off" rather than two.
+
+**One JSON path, and commands stop owning the decision.** The seam gained a `json` payload kind,
+so a command hands over a body and the seam decides the shape. Rejected: leaving each command to
+call a shared `agentJson` helper itself, which is what #436 did for `usage` — it removes the
+duplicated `null, 2` but keeps forty commands able to make a different choice, and keeps them off
+the accounting path.
+
+**`--json` and `--pretty` are held together by a test, not a helper.** The first design was an
+`addJsonOptions(cmd)` helper. It was dropped: wrapping forty existing chains in a call costs an
+indentation level at every site, and — the real objection — a helper cannot catch a command that
+does not call it. A test that walks the built command tree can, and it names the offender. The
+help text for `--pretty` is still declared once.
+
+**The ledger's command name comes from commander.** `commandPath(cmd)` walks up from the command
+commander hands the action, stopping before the root, whose name is the program's. Forty literals
+would go stale the first time a command was renamed, and tokens attributed to a command nobody can
+run are worse than no breakdown. This also replaced the one literal `"screen"` #436 left behind.
+
+**The session lookup is memoized for the command being run.** It was one localhost round-trip per
+emission, which was fine while `screen` was the only caller. `script run --json` emits a line per
+action, so a twenty-action replay would have made twenty requests for an answer that cannot change
+mid-command. Scoped by a `preAction` hook to one invocation rather than one process: in a real
+`yoqa` run those are the same thing, but the tests run many commands in one process and a reconnect
+between two of them must never be served the previous session. Rejected: a process-lifetime cache,
+which would have made #436's "a new Device Session starts from zero" test pass against a stale id.
 
 ## What shipped
 
@@ -253,9 +281,76 @@ session's records. Append-only in a user's home directory otherwise grows withou
 total Yoqa reports is scoped to one session anyway. Log compaction, named here rather than left for
 someone to discover.
 
+### Compact JSON everywhere (#438)
+
+- **42 commands** now emit single-line JSON through the seam. Two of them already had `--pretty`
+  (`screen` from #442 and `usage` from #436); the other forty had no way to be read by eye at all,
+  and now do.
+- `packages/cli/src/command-output.ts` — the bridge from commander to the seam: `commandPath`,
+  `emitJson`, and the `--pretty` help text. Its own module so `program.ts` gains one call per
+  command rather than one copy of the emit plumbing per command, and so the seam never has to know
+  what commander is.
+- `packages/cli/src/active-session.ts` — `sessionIdOnce` and `resetSessionCache`.
+- Every migrated command contributes to **Emitted usage**, named as a caller typed it. `yoqa usage`
+  breakdowns now read `devices ios`, `action tap`, `runs create` rather than only `screen`.
+  "Contributes" means *can*: accounting is keyed by **Device Session**, so a command run before
+  `yoqa devices connect` still has nothing to account to and records nothing. That is #436's design
+  and not new here, but it is the difference between "every command contributes" and "every run
+  does".
+
+Four commands did not fit the shape, and the call for each:
+
+| Command | What happens |
+|---|---|
+| `health` | Has only ever printed JSON, so it gained `--pretty` and no `--json`: there is nothing to switch on. |
+| `script run --json` | Prints a line per action, so its `onStep` is now `async`. `runCaseScript` awaits every `onStep`, so each line is accounted like any other emission rather than fire-and-forget. |
+| `yoqa usage --json` | Goes through the path too, so reading the meter now costs what reading it costs. The total is read before the line is written, so a report never includes itself. |
+| `script validate` and `skill install` | Have no `--base-url`, so there is no runner to ask for a Device Session: they emit through the seam and record nothing. |
+
+The `--out` file writes in `script export` and `benchmark` stay indented. A file on disk is read by
+a person, which is the same reason the CI failure-diagnosis scripts pass `--pretty`.
+
+#### Breaking: the output shape
+
+**Every `--json` output is now one line.** Anyone parsing Yoqa's JSON with a line-oriented tool —
+`grep`, `awk`, `head -n`, a regex over the pretty shape — will see different bytes. Anyone using a
+JSON parser sees exactly the same content. `--pretty` restores the old shape where a human or a
+script wants it.
+
+That equivalence is asserted end to end for one command of each shape — `status` (a plain body),
+`signing` (a body whose other half is a human rendering), `devices ios` (a subcommand),
+`action tap` (options arriving as an untyped bag) and `health` (no `--json` to switch) — not for
+all 42. What holds for all 42 is the structural guarantee: a test walks the built command tree and
+fails if any command offering `--json` does not also offer `--pretty`, counting the flags it
+inherits from its parents as well as its own.
+
+`yoqa health` is the one to call out separately: it has no `--json` flag, so a person typing it
+bare to check the runner is up now gets one line instead of four. `yoqa health --pretty` is the
+old output.
+
+Nothing in this repo parsed the pretty shape — the four CI failure-diagnosis scripts already pass
+`--pretty` for exactly this reason, and they were changed in #442.
+
+#### `--pretty` costs something on one command
+
+`script run --json` prints one line per action, which is line-delimited JSON a caller can parse as
+it arrives. `script run --json --pretty` prints an *indented object* per action, which is not: the
+stream stops being line-delimited. That is accepted rather than fixed, because `--pretty` is for a
+person reading a replay by eye and the compact default — the one an agent gets — is unaffected.
+No other command emits more than once, so no other command has the question.
+
+#### What #438 did not do
+
+Non-JSON output is untouched. `formatSigningStatus`, `printDevicesTable`, the `ok <kind>` lines
+and every other human rendering still go straight to `console.log`. That is #439's batch, and
+until it lands a command can have its JSON on the seam and its text off it.
+
 ## How to verify
 
 ```bash
+bun test packages/cli/src/compact-json.test.ts          # every command's JSON, and the option guard
+bun test packages/cli/src/command-output.test.ts        # the name the ledger records
+bun test packages/cli/src/active-session.test.ts        # the lookup, its deadline, and its memo
 bun test packages/cli/src/agent-output.test.ts          # the seam, pure
 bun test packages/cli/src/emitted-usage.test.ts         # estimator, budget, report formatter
 bun test packages/cli/src/emitted-usage-ledger.test.ts  # the ledger, over an injected clock + path
@@ -292,6 +387,16 @@ YOQA_NO_OUTPUT_WARNING=1 YOQA_OUTPUT_BUDGET=2000 yoqa screen # silent whatever t
 yoqa usage                                                   # the total the warning quoted
 ```
 
+Compact JSON, on any command:
+
+```bash
+yoqa status --json | wc -l            # 1
+yoqa status --json --pretty | wc -l   # more than 1
+diff <(yoqa status --json | jq -S .) <(yoqa status --json --pretty | jq -S .)   # no output
+yoqa health | wc -l                   # 1 — it has no --json to switch
+yoqa devices ios --json && yoqa usage # `devices ios` appears in the breakdown
+```
+
 Verified on a real Browser device against a dense Wikipedia article, with
 `YOQA_EMITTED_USAGE_PATH` pointed at a temp file so the run left nothing in `~/.yoqa`. One
 `yoqa screen` of that page costs ~910 tokens, so a 2,000-token budget warning at 10% walks every
@@ -310,16 +415,15 @@ and `YOQA_SCREEN_ROWS=nonsense` fell back to 81.
 
 ## Follow-ups
 
-The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435), in dependency order: compact
-JSON across the remaining commands (#438), migrating the rest of the CLI's output through the seam
-(#439), the guard test that keeps the seam single (#440), and the skill's context-budget section
-(#441). #441 is where the shipped skill learns to read the warning and act on it — this ticket
-wrote the line, not the instructions for responding to it.
+The rest of [#435](https://github.com/Aris-ngoy/qa-agent/issues/435), in dependency order:
+migrating the rest of the CLI's output through the seam (#439), the guard test that keeps the seam
+single (#440), and the skill's context-budget section (#441). #441 is where the shipped skill
+learns to read the budget warning and act on it — #437 wrote the line, not the instructions for
+responding to it.
 
-**Only `screen` can trigger the warning today**, because it is the only command through the seam.
-A session's real total — and so the real crossing — arrives when #439 moves the rest of the CLI's
-output across. Until then the line is correct about what it measures and an undercount of what a
-session actually costs.
+**The budget warning now has 42 commands that can trigger it**, not one. #437 shipped with only
+`screen` on the seam; a session's total is now the real cost of its machine-readable output. It is
+still an undercount of a session's *whole* cost until #439 moves the human-readable output across.
 
 **The image arm of the estimator has no call site yet.** `estimateImageTokens` is in #436's
 acceptance criteria and ships tested, and the seam prices any payload that names an Agent image —
@@ -328,16 +432,21 @@ the first command that will carry one, when #439 moves it onto the seam; that ca
 have to read the PNG's dimensions, which nothing does today. Stated here rather than left looking
 like an oversight.
 
-**`yoqa usage` writes with `console.log`, like every other command #439 has yet to migrate.** It
-is new output on an unmigrated path, which #440's guard will catch if #439 misses it. Whether the
-reporting command should account for its own emission is #439's call.
+**`yoqa usage`'s human-readable form still writes with `console.log`**, like every other text path
+#439 has yet to migrate. Its `--json` form is on the seam and accounts for itself.
+
+**`script run --json` reads the ledger once per action.** Each emission appends and then reads back
+to compute the running total (#437). A twenty-action replay is twenty reads of a file capped at
+1 MB, each after its line is already on stdout, against twenty HTTP round-trips and 800 ms of
+settle time per action — noise next to the work, but named rather than left to be found in a
+profile.
 
 **Nothing prunes old sessions' records.** The 1 MB compaction drops them only when the file grows
 past the cap, so a long-lived ledger keeps dead sessions until then. Age-based pruning, the way
 `pruneOldRunScreenshots` does it, would be the obvious next step if that ever matters.
 
-Known gap until #439 lands: the seam is the only writer for `screen` and nothing else, so
-`emitAgentOutput` is not yet enforceable as the single path to stdout. That is #440's job.
+Known gap until #439 lands: the seam is the only writer for every `--json` path and no text path,
+so `emitAgentOutput` is not yet enforceable as the single route to stdout. That is #440's job.
 
 Two row formatters still print the same tree in near-identical shapes: this seam's, and the Decide
 loop's `formatScreenSnapshot`. Only the cap and the omitted line are shared. Unifying them would
@@ -345,6 +454,9 @@ mean adopting the Decide loop's sorting, rounding and `id=` column in `yoqa scre
 that command's long-standing output for reasons this ticket has none — so it is left alone
 deliberately, not overlooked.
 
-`yoqa screen --json` and `--full` landed compact here, ahead of #438, because `--full` could not be
-compacted without `--pretty` to undo it and a half-compact command would be incoherent. #438 is
-therefore the remaining 16 JSON sites, not 17.
+`yoqa screen --json` and `--full` landed compact in #442, ahead of #438, because `--full` could not
+be compacted without `--pretty` to undo it and a half-compact command would be incoherent. The note
+here used to say that left "16 JSON sites" for #438. That was wrong by a factor of nearly three:
+#438 found **42 commands** offering `--json` and 47 `JSON.stringify(…, null, 2)` calls in
+`program.ts`. Corrected rather than quietly dropped, because the estimate is the kind of thing a
+later ticket plans against.
