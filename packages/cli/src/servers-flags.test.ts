@@ -118,6 +118,33 @@ describe("yoqa servers subcommands read the flags typed after them", () => {
 		expect(restart.out).toBe("did /servers/device-session/restart");
 	});
 
+	test("stop-all --json and restart <id> --json print the runner's response as JSON", async () => {
+		const stopAll = await yoqa("servers", "stop-all", "--json");
+		expect(stopAll.requests).toEqual(["POST /servers/stop-all"]);
+		expect(JSON.parse(stopAll.out)).toEqual({
+			ok: true,
+			message: "did /servers/stop-all",
+			servers: [SERVER],
+		});
+
+		const restart = await yoqa("servers", "restart", "device-session", "--json");
+		expect(restart.requests).toEqual(["POST /servers/device-session/restart"]);
+		expect(restart.out).toBe(
+			JSON.stringify({
+				ok: true,
+				message: "did /servers/device-session/restart",
+				servers: [SERVER],
+			}),
+		);
+	});
+
+	test("a flag typed before the subcommand is heard too", async () => {
+		const { out, requests, defaultRequests } = await yoqa("servers", "--json", "list");
+		expect(requests).toEqual(["GET /servers"]);
+		expect(defaultRequests).toEqual([]);
+		expect(out).toBe(JSON.stringify({ servers: [SERVER] }));
+	});
+
 	test("bare servers still lists the named runner's servers", async () => {
 		const { out, requests, defaultRequests } = await yoqa("servers");
 		expect(requests).toEqual(["GET /servers"]);

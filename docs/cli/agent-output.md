@@ -521,6 +521,23 @@ No other command emits more than once, so no other command has the question.
   its seven lines of paths and timings are 119. Before this, the meter saw only the 119. A bare
   `yoqa screenshot` names the 1280×800 raw PNG, which is 1,392 tokens, 1,366 of them the image.
 
+### `servers` subcommands hear their flags (#452)
+
+Found while running #439's harness, and filed from the follow-up this doc used to carry.
+- `servers` declares `--base-url`, `--json` and `--pretty`, and so did `servers list`, `stop-all`,
+  `stop <id>` and `restart <id>`. Commander gives a known option to the parent wherever it is
+  typed, so the copies were never filled. `servers stop <id> --base-url <url>` stopped a server
+  on the **default** runner, and `servers list --json` printed the table.
+- The subcommands now declare none of the three and read them from `servers` with
+  `optsWithGlobals()`, the way `devices web reset-profile` already reads `devices web`'s. Their
+  `--help` lists the three under Global Options.
+- The Emitted usage ledger is unchanged: `commandPath` still credits `servers stop` and the
+  others, and the Device Session is now asked of the runner `--base-url` names.
+- The test points the default runner at a second fake, so if this regresses nothing real is
+  stopped.
+- `signing use` and `signing check` redeclare `signing`'s three options the same way and are
+  left for their own ticket.
+
 ## How to verify
 
 ```bash
@@ -533,6 +550,7 @@ bun test packages/cli/src/emitted-usage.test.ts         # estimator, budget, rep
 bun test packages/cli/src/emitted-usage-ledger.test.ts  # the ledger, over an injected clock + path
 bun test packages/cli/src/emitted-usage-command.test.ts # `yoqa usage`, against a fake runner
 bun test packages/cli/src/screen-source.test.ts         # `yoqa screen`, against a fake runner
+bun test packages/cli/src/servers-flags.test.ts         # `servers` subcommands, against two fake runners
 bun test packages/runner-client/src services/runner/src/domains/runs  # replay, Branch, Decide loop
 
 bun test packages/cli/src/no-direct-stdout.test.ts      # the one stdout writer: nothing outside the seam
@@ -689,13 +707,6 @@ for a Device Session. If they ever matter, they need a session they can find wit
 **The text estimate leaves out line terminators.** `text` is priced on its lines joined by `\n`,
 so the newline `console.log` adds after each line is not counted. JSON is priced the same way, so
 the two are consistent. Each such line undercounts by under a token.
-
-**`servers list|stop|restart|stop-all` ignored `--base-url` — fixed in #452.** The parent
-`servers` command took `--base-url` before the subcommand saw it, so the subcommand talked to the
-default runner; `--json` and `--pretty` were lost the same way, so `servers list --json` printed the
-table. The subcommands now read all three from `servers` with `optsWithGlobals()`, as
-`devices web reset-profile` already did. `servers-flags.test.ts` drives each one against a fake
-named runner and a fake default runner, so a regression stops nothing real.
 
 **`script run --json` reads the ledger once per action.** Each emission appends and then reads back
 to compute the running total (#437). A twenty-action replay is twenty reads of a file capped at

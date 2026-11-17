@@ -961,8 +961,9 @@ const servers = program
 		}
 	});
 
-// --base-url, --json and --pretty are `servers`'s, which parses them wherever they are, so its
-// subcommands read them from there rather than declaring copies commander never fills.
+// --base-url, --json and --pretty are `servers`'s, which takes them even when typed after a
+// subcommand, so its subcommands read them from there rather than declaring copies commander
+// never fills.
 servers
 	.command("list")
 	.description("List running servers")
