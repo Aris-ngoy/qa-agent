@@ -3,7 +3,8 @@
  *
  * One seam, so no command can emit unbounded text by accident. `formatAgentOutput` is pure —
  * it takes what the runner answered plus the output options the caller passed, and returns the
- * exact text to write. `writeAgentOutput` is the only thing that writes it.
+ * exact text to write together with its **Emitted usage**. `emitAgentOutput` is the only thing
+ * that writes it, and the only thing that records what it cost.
  *
  * The trimming lives here and deliberately not in the runner's shared Screen read: Case Script
  * Branches match against that same read, so capping it there would silently change which side a
@@ -62,13 +63,17 @@ function screenRow(element: ScreenElement): string {
 	return `${String(element.x).padStart(4)},${String(element.y).padStart(4)}  ${element.width}x${element.height}  ${element.label}`;
 }
 
-/** Compact unless a human asked to read it, because indentation is tokens with no content. */
-function asJson(body: unknown, options: AgentOutputOptions): string {
+/**
+ * Compact unless a human asked to read it, because indentation is tokens with no content.
+ * Exported so every command that offers JSON goes through one path rather than repeating the
+ * `JSON.stringify(body, null, 2)` pattern per command.
+ */
+export function agentJson(body: unknown, options: Pick<AgentOutputOptions, "pretty">): string {
 	return options.pretty ? JSON.stringify(body, null, 2) : JSON.stringify(body);
 }
 
 /** One output's Emitted usage: what was written, plus any Agent image it pointed the agent at. */
-function priced(text: string, omitted: number, payload: AgentOutputPayload): AgentOutput {
+function withEmittedUsage(text: string, omitted: number, payload: AgentOutputPayload): AgentOutput {
 	return { text, omitted, tokens: estimateTextTokens(text) + estimateImageTokens(payload.image) };
 }
 
@@ -79,7 +84,7 @@ export function formatAgentOutput(
 	const screen = payload.screen;
 
 	// The raw tree is the escape hatch for a hard problem: never trimmed, only ever compacted.
-	if (screen.full) return priced(asJson(screen, options), 0, payload);
+	if (screen.full) return withEmittedUsage(agentJson(screen, options), 0, payload);
 
 	const elements = screen.elements ?? [];
 	const cap = options.limit ?? MAX_SCREEN_ROWS;
@@ -93,13 +98,13 @@ export function formatAgentOutput(
 			elements: shown,
 			...(omitted > 0 ? { omittedElements: omitted } : {}),
 		};
-		return priced(asJson(body, options), omitted, payload);
+		return withEmittedUsage(agentJson(body, options), omitted, payload);
 	}
 
 	const lines = screen.source ? [screenSourceLine(screen.source)] : [];
 	lines.push(...shown.map(screenRow));
 	if (omitted > 0) lines.push(screenRowsOmittedLine(omitted));
-	return priced(lines.join("\n"), omitted, payload);
+	return withEmittedUsage(lines.join("\n"), omitted, payload);
 }
 
 /**

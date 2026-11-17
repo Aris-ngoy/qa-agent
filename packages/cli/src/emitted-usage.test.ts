@@ -106,10 +106,10 @@ describe("the Emitted usage report an engineer or their agent reads", () => {
 		);
 	});
 
-	test("names no Device Session when none is connected", () => {
-		expect(
-			formatEmittedUsage({ session: null, total: 0, byCommand: [] }, { budget: 250_000 }),
-		).toBe("No active Device Session, so nothing is being accounted.");
+	test("says there is nothing to account when no Device Session is connected", () => {
+		expect(formatEmittedUsage(null, { budget: 250_000 })).toBe(
+			"No active Device Session, so nothing is being accounted.",
+		);
 	});
 });
 

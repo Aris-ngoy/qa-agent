@@ -13,6 +13,7 @@
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { EmittedUsage, EmittedUsageCommand } from "./emitted-usage";
 import { yoqaRoot } from "./ensure-runner";
 
 /** One command's emission, as the output seam records it. */
@@ -25,16 +26,8 @@ export type EmittedUsageRecord = {
 	tokens: number;
 };
 
-/** One command's share of a session's total. */
-export type EmittedUsageCommand = { command: string; tokens: number; calls: number };
-
-/** What one Device Session has emitted so far. */
-export type EmittedUsage = {
-	session: string;
-	total: number;
-	/** Dearest command first, so the expensive one is the one an engineer reads. */
-	byCommand: EmittedUsageCommand[];
-};
+/** One record as it sits on disk: what was emitted, and when. */
+type LedgerLine = EmittedUsageRecord & { at: number };
 
 /**
  * Past this, an append rewrites the ledger with only the current session's records. Append-only in
@@ -61,9 +54,9 @@ function ledgerPath(options: LedgerOptions): string {
 }
 
 /** Records whose JSON parsed into the shape we wrote. A line that did not is simply dropped. */
-async function readRecords(path: string): Promise<(EmittedUsageRecord & { at: number })[]> {
+async function readRecords(path: string): Promise<LedgerLine[]> {
 	const text = await readFile(path, "utf8");
-	const records: (EmittedUsageRecord & { at: number })[] = [];
+	const records: LedgerLine[] = [];
 	for (const line of text.split("\n")) {
 		if (!line.trim()) continue;
 		try {
@@ -115,7 +108,7 @@ export async function readEmittedUsage(
 	session: string,
 	options: LedgerOptions = {},
 ): Promise<EmittedUsage> {
-	let records: (EmittedUsageRecord & { at: number })[] = [];
+	let records: LedgerLine[] = [];
 	try {
 		records = (await readRecords(ledgerPath(options))).filter(
 			(record) => record.session === session,
