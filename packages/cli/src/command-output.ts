@@ -30,16 +30,14 @@ export function commandPath(cmd: Command): string {
 export type JsonOptions = { json?: boolean; pretty?: boolean };
 
 /**
- * `--json` and `--pretty`, added together.
+ * The help text for `--pretty`, declared once for the forty commands that offer it.
  *
- * Together and never separately: a command that offered `--json` without `--pretty` would be a
- * command whose output a person cannot read, and before this there were forty of them.
+ * A command offering `--json` without `--pretty` is a command whose output a person cannot read,
+ * which is the state all forty were in. The pairing is enforced by a test that walks the built
+ * command tree rather than by a helper every new command would have to remember to call.
  */
-export function addJsonOptions(cmd: Command, description = "Print raw JSON"): Command {
-	return cmd
-		.option("--json", description)
-		.option("--pretty", "Indent the JSON (compact by default — indentation costs an agent tokens)");
-}
+export const PRETTY_JSON_HELP =
+	"Indent the JSON (compact by default — indentation costs an agent tokens)";
 
 /** What `emitJson` needs from the command: where the runner is, and how to shape the output. */
 export type EmitJsonOptions = JsonOptions & { baseUrl?: string };
