@@ -7,7 +7,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Command } from "commander";
@@ -48,6 +48,9 @@ function fakeRunner() {
 					],
 				});
 			}
+			if (path === "/action") {
+				return Response.json({ kind: "tap", ok: true });
+			}
 			if (path === "/ios/signing") {
 				return Response.json({
 					team: "ABCDE12345",
@@ -76,6 +79,7 @@ describe("every command's JSON output", () => {
 	beforeAll(() => {
 		process.env.YOQA_NO_AUTOSTART = "1";
 		console.log = (...args: unknown[]) => printed.push(args.join(" "));
+		// Swallowed, not asserted on: `fail()` writes here, but so does the Output budget warning.
 		console.error = (...args: unknown[]) => failed.push(args.join(" "));
 	});
 
@@ -99,9 +103,15 @@ describe("every command's JSON output", () => {
 	async function yoqa(...args: string[]): Promise<string> {
 		printed = [];
 		failed = [];
+		process.exitCode = 0;
 		await buildProgram().parseAsync(["bun", "yoqa", ...args, "--base-url", runner.url]);
-		// A command that failed would otherwise look like a command that emitted nothing.
-		if (failed.length > 0) throw new Error(failed.join("\n"));
+		// A command that failed would otherwise look like a command that emitted nothing. The exit
+		// code and not stderr, because several commands fail by exit code alone — and because the
+		// Output budget warning writes to stderr on a crossing, which is not a failure.
+		if (process.exitCode) {
+			process.exitCode = 0;
+			throw new Error(failed.join("\n") || `yoqa ${args.join(" ")} set a failing exit code`);
+		}
 		return printed.join("\n");
 	}
 
@@ -147,9 +157,47 @@ describe("every command's JSON output", () => {
 		);
 	});
 
+	test("yoqa action tap — whose options arrive as an untyped bag", async () => {
+		expect(await expectCompactAndPretty("action", "tap", "--x", "10", "--y", "20")).toMatchObject({
+			kind: "tap",
+		});
+	});
+
+	/**
+	 * The one command that emits more than once. It is why the Device Session lookup is memoized,
+	 * and the one place `--pretty` costs something real: a stream of indented objects is no longer
+	 * line-delimited, so only the compact default can be parsed as it arrives.
+	 */
+	test("yoqa script run --json is one line per action, and accounts for each", async () => {
+		const file = join(dir, "smoke.yoqa.yaml");
+		await writeFile(
+			file,
+			[
+				"version: 1",
+				"name: Two taps",
+				"actions:",
+				"  - tap: { x: 10, y: 20 }",
+				"  - tap: { x: 30, y: 40 }",
+			].join("\n"),
+		);
+
+		const lines = (await yoqa("script", "run", file, "--json")).split("\n");
+
+		expect(lines).toHaveLength(2);
+		for (const [index, line] of lines.entries()) {
+			expect(JSON.parse(line)).toMatchObject({ ok: true, type: "tap", step: index + 1 });
+		}
+
+		const { byCommand } = JSON.parse(await yoqa("usage", "--json")) as {
+			byCommand: { command: string; calls: number }[];
+		};
+		expect(byCommand).toContainEqual(expect.objectContaining({ command: "script run", calls: 2 }));
+	});
+
 	test("every migrated command contributes to Emitted usage", async () => {
 		await yoqa("status", "--json");
 		await yoqa("devices", "ios", "--json");
+		await yoqa("action", "tap", "--x", "10", "--y", "20", "--json");
 
 		const report = await yoqa("usage", "--json");
 		const { byCommand } = JSON.parse(report) as {
@@ -157,23 +205,40 @@ describe("every command's JSON output", () => {
 		};
 
 		// Named as a caller typed them, which is what makes the breakdown worth reading.
-		expect(byCommand.map((entry) => entry.command).sort()).toEqual(["devices ios", "status"]);
+		expect(byCommand.map((entry) => entry.command).sort()).toEqual([
+			"action tap",
+			"devices ios",
+			"status",
+		]);
 		expect(byCommand.every((entry) => entry.tokens > 0)).toBe(true);
 	});
 });
 
 describe("the options every JSON command carries", () => {
-	/** Every command in the built tree, by the name a caller would type. */
+	/**
+	 * Every command in the built tree, by the name a caller would type, with the flags that
+	 * command actually accepts — its own and every ancestor's, because commander lets a
+	 * subcommand read a parent's options and `devices web reset-profile` does exactly that.
+	 */
 	function allCommands(): { path: string; flags: string[] }[] {
-		const walk = (cmd: Command, prefix: string[]): { path: string; flags: string[] }[] => {
+		const walk = (
+			cmd: Command,
+			prefix: string[],
+			inherited: string[],
+		): { path: string; flags: string[] }[] => {
 			const path = [...prefix, cmd.name()];
-			const here = {
-				path: path.join(" "),
-				flags: cmd.options.map((option) => option.long ?? option.short ?? ""),
-			};
-			return [here, ...cmd.commands.flatMap((child) => walk(child, path))];
+			const flags = [
+				...inherited,
+				...cmd.options.map((option) => option.long ?? option.short ?? ""),
+			];
+			return [
+				{ path: path.join(" "), flags },
+				...cmd.commands.flatMap((child) => walk(child, path, flags)),
+			];
 		};
-		return buildProgram().commands.flatMap((cmd) => walk(cmd, []));
+		const root = buildProgram();
+		const rootFlags = root.options.map((option) => option.long ?? option.short ?? "");
+		return root.commands.flatMap((cmd) => walk(cmd, [], rootFlags));
 	}
 
 	test("a command offering --json always offers --pretty", () => {

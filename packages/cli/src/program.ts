@@ -596,7 +596,7 @@ program
 	.description("Report Emitted usage for the active Device Session against the Output budget")
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--json", "Print raw JSON")
-	.option("--pretty", "Indent the JSON (compact by default — indentation costs an agent tokens)")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.action(async (options: { baseUrl: string } & JsonOptions, cmd: Command) => {
 		try {
 			const session = await sessionIdOnce(options.baseUrl);
@@ -629,7 +629,7 @@ program
 	.option("--base-url <url>", "Runner base URL", runnerBaseUrl())
 	.option("--full", "Return the raw accessibility tree")
 	.option("--json", "Print raw JSON")
-	.option("--pretty", "Indent the JSON (compact by default — indentation costs an agent tokens)")
+	.option("--pretty", PRETTY_JSON_HELP)
 	.option(
 		"--limit <rows>",
 		`Cleaned-tree rows to print (default ${MAX_SCREEN_ROWS}, or YOQA_SCREEN_ROWS); the rest are counted, not printed`,

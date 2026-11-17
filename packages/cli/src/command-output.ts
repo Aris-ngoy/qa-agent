@@ -7,7 +7,7 @@
 
 import type { Command } from "commander";
 import { sessionIdOnce } from "./active-session";
-import { type AgentOutputOptions, emitAgentOutput } from "./agent-output";
+import { emitAgentOutput } from "./agent-output";
 
 /**
  * The command as a caller typed it — `devices ios`, `action tap`, `status` — which is the name the
@@ -16,14 +16,15 @@ import { type AgentOutputOptions, emitAgentOutput } from "./agent-output";
  * Derived from commander rather than written out per command, because forty hand-typed names go
  * stale the first time one is renamed, and a ledger that attributes tokens to a command nobody can
  * run is worse than no breakdown. The walk stops before the root: its name is the program's, taken
- * from argv, so including it would put the invoked binary's name in the ledger.
+ * from argv, so including it would put the invoked binary's name in the ledger — which is also why
+ * there is no fallback for the root itself. The root has no action, so nothing emits from it.
  */
 export function commandPath(cmd: Command): string {
 	const names: string[] = [];
-	for (let node: Command | undefined = cmd; node?.parent; node = node.parent ?? undefined) {
+	for (let node = cmd; node.parent; node = node.parent) {
 		names.unshift(node.name());
 	}
-	return names.join(" ") || cmd.name();
+	return names.join(" ");
 }
 
 /** The two options every command offering machine-readable output carries. */
@@ -39,8 +40,11 @@ export type JsonOptions = { json?: boolean; pretty?: boolean };
 export const PRETTY_JSON_HELP =
 	"Indent the JSON (compact by default — indentation costs an agent tokens)";
 
-/** What `emitJson` needs from the command: where the runner is, and how to shape the output. */
-export type EmitJsonOptions = JsonOptions & { baseUrl?: string };
+/**
+ * What `emitJson` reads off the command's options: where the runner is, and whether a human asked
+ * for indentation. Deliberately not `json` — the caller has already decided that by calling.
+ */
+export type EmitJsonOptions = { baseUrl?: string; pretty?: boolean };
 
 /**
  * Write one command's result as Agent output: compact JSON unless `--pretty`, accounted to the
@@ -55,11 +59,10 @@ export async function emitJson(
 	body: unknown,
 	options: EmitJsonOptions,
 	cmd: Command,
-	output: Pick<AgentOutputOptions, "limit"> = {},
 ): Promise<void> {
 	await emitAgentOutput(
 		{ kind: "json", body },
-		{ ...output, json: true, pretty: options.pretty },
+		{ json: true, pretty: options.pretty },
 		{
 			command: commandPath(cmd),
 			session: () => (options.baseUrl ? sessionIdOnce(options.baseUrl) : Promise.resolve(null)),
