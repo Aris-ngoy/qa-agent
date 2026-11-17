@@ -398,3 +398,37 @@ describe("warning when the Output budget threshold is crossed", () => {
 		expect(warned).toEqual([]);
 	});
 });
+
+describe("a command's JSON result", () => {
+	const body = { ok: true, device: { id: "sim-ABC", platform: "ios" }, apps: ["a", "b"] };
+	const jsonOutput = (options: Parameters<typeof formatAgentOutput>[1] = {}) =>
+		formatAgentOutput({ kind: "json", body }, options);
+
+	test("emits one line, because indentation is tokens with no content", () => {
+		const out = jsonOutput();
+
+		expect(out.text.split("\n")).toHaveLength(1);
+		expect(out.text).toBe(
+			'{"ok":true,"device":{"id":"sim-ABC","platform":"ios"},"apps":["a","b"]}',
+		);
+	});
+
+	test("indents for a human who asked to read it", () => {
+		expect(jsonOutput({ pretty: true }).text.split("\n").length).toBeGreaterThan(1);
+	});
+
+	test("parses to the same content either way, which is the whole promise", () => {
+		expect(JSON.parse(jsonOutput().text)).toEqual(body);
+		expect(JSON.parse(jsonOutput({ pretty: true }).text)).toEqual(body);
+	});
+
+	test("costs what it wrote, so a pretty result is dearer than a compact one", () => {
+		expect(jsonOutput().tokens).toBeGreaterThan(0);
+		expect(jsonOutput({ pretty: true }).tokens).toBeGreaterThan(jsonOutput().tokens);
+	});
+
+	test("trims nothing: a result is not a tree, and the row cap has no meaning for it", () => {
+		expect(jsonOutput({ limit: 1 }).omitted).toBe(0);
+		expect(JSON.parse(jsonOutput({ limit: 1 }).text)).toEqual(body);
+	});
+});
