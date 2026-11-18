@@ -1,5 +1,5 @@
 name: Yoqa HTML report
-description: Export a Yoqa catalog-run HTML report, upload it as an artifact, and append a compact GitHub job summary.
+description: Export a Yoqa catalog-run HTML report, upload it as an artifact, and append a Job Summary with every Test Case's steps and a link to the artifact.
 author: Yoqa
 inputs:
   run-id:
@@ -44,24 +44,46 @@ runs:
         if [ -n "${YOQA_REPORT_BASE_URL}" ]; then
           yoqa report "${{ inputs.run-id }}" \
             -o "${{ inputs.output }}" \
-            --github-summary \
+            --no-github-summary \
             --github-output \
             --fail-on never \
             --base-url "${YOQA_REPORT_BASE_URL}"
         else
           yoqa report "${{ inputs.run-id }}" \
             -o "${{ inputs.output }}" \
-            --github-summary \
+            --no-github-summary \
             --github-output \
             --fail-on never
         fi
 
     - name: Upload HTML report
+      id: upload
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ inputs.artifact-name }}
         path: ${{ inputs.output }}
         if-no-files-found: error
+
+    # Written after the upload so the Job Summary can link to the artifact. `--summary-only`
+    # fetches no screenshots and leaves the report file and step outputs from the first step alone.
+    - name: Write Job Summary
+      shell: bash
+      env:
+        YOQA_REPORT_BASE_URL: ${{ inputs.base-url }}
+        YOQA_REPORT_RUN_ID: ${{ steps.report.outputs.run_id }}
+        YOQA_REPORT_URL: ${{ steps.upload.outputs.artifact-url }}
+      run: |
+        set -euo pipefail
+        if [ -n "${YOQA_REPORT_BASE_URL}" ]; then
+          yoqa report "${YOQA_REPORT_RUN_ID}" \
+            --summary-only \
+            --report-url "${YOQA_REPORT_URL}" \
+            --base-url "${YOQA_REPORT_BASE_URL}"
+        else
+          yoqa report "${YOQA_REPORT_RUN_ID}" \
+            --summary-only \
+            --report-url "${YOQA_REPORT_URL}"
+        fi
 
     - name: Fail on errored run
       if: inputs.fail-on-error == 'true'

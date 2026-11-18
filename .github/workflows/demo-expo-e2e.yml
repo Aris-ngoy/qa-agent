@@ -20,6 +20,7 @@ on:
       - packages/cli/**
       - packages/runner-client/**
       - services/runner/**
+      - .github/actions/yoqa-report/**
       - .github/workflows/demo-expo-e2e.yml
   push:
     branches: [main]
@@ -30,6 +31,7 @@ on:
       - packages/cli/**
       - packages/runner-client/**
       - services/runner/**
+      - .github/actions/yoqa-report/**
       - .github/workflows/demo-expo-e2e.yml
 
 permissions:

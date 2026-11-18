@@ -30,6 +30,12 @@ export type ReportCommandOptions = {
 	githubSummary?: boolean;
 	githubOutput?: boolean;
 	failOn?: string;
+	reportUrl?: string;
+	/**
+	 * Append only the Job Summary: no screenshot fetches, no report file, no GitHub outputs.
+	 * Implies `githubSummary`.
+	 */
+	summaryOnly?: boolean;
 };
 
 export function normalizeReportFormat(raw: string | undefined): "html" | "md" {
@@ -87,7 +93,8 @@ export async function resolveReportRunId(
 }
 
 export type ExportCatalogRunReportResult = {
-	outputPath: string;
+	/** `null` with `summaryOnly`, which writes no report file. */
+	outputPath: string | null;
 	status: string;
 	runId: string;
 	stepCount: number;
@@ -172,13 +179,27 @@ export async function exportCatalogRunReport(
 	const append = deps.appendGithubFile ?? appendGithubFile;
 	const fetchImpl = deps.fetchImpl ?? fetch;
 
-	const run = await loadFinishedRun(client, runId, options, deps);
+	const summaryOnly = options.summaryOnly === true;
+	const run = await loadFinishedRun(
+		client,
+		runId,
+		summaryOnly ? { ...options, githubOutput: false } : options,
+		deps,
+	);
+	const summaryPath = resolveGithubWritePath(
+		summaryOnly || options.githubSummary,
+		env.GITHUB_STEP_SUMMARY,
+		env,
+	);
+	if (summaryOnly && !summaryPath) {
+		throw new Error("--summary-only needs $GITHUB_STEP_SUMMARY to be set");
+	}
 
 	const screenshotsByStepId: Record<string, string> = {};
 	const steps = run.tests.flatMap((test) => test.steps ?? []);
 	await Promise.all(
 		steps.map(async (step) => {
-			if (!step.screenshotUri) return;
+			if (summaryOnly || !step.screenshotUri) return;
 			const response = await fetchImpl(client.getRunStepScreenshotUrl(run.id, step.id));
 			if (!response.ok) return;
 			const bytes = new Uint8Array(await response.arrayBuffer());
@@ -215,6 +236,22 @@ export async function exportCatalogRunReport(
 		screenshotsByStepId,
 	);
 
+	const summary = summaryPath
+		? formatRunReportGithubSummary(doc, { reportUrl: options.reportUrl?.trim() || undefined })
+		: null;
+	const result = {
+		status: doc.status,
+		runId: run.id,
+		stepCount: steps.length,
+		shouldFail: shouldFailOnRunStatus(failOn, doc.status),
+	};
+
+	if (summaryOnly && summaryPath && summary !== null) {
+		await append(summaryPath, summary);
+		await log(`appended Job Summary to ${summaryPath} (${doc.status}, ${steps.length} steps)`);
+		return { ...result, outputPath: null };
+	}
+
 	const contents = format === "html" ? formatRunReportHtml(doc) : formatRunReportMarkdown(doc);
 	const extension = format === "html" ? "html" : "md";
 	const outputPath = options.output?.trim() || `${suggestedRunReportBasename(doc)}.${extension}`;
@@ -222,20 +259,13 @@ export async function exportCatalogRunReport(
 	await write(outputPath, contents, "utf8");
 	await log(`wrote ${outputPath} (${doc.status}, ${steps.length} steps)`);
 
-	const summaryPath = resolveGithubWritePath(options.githubSummary, env.GITHUB_STEP_SUMMARY, env);
-	if (summaryPath) {
-		await append(summaryPath, formatRunReportGithubSummary(doc));
+	if (summaryPath && summary !== null) {
+		await append(summaryPath, summary);
 	}
 
 	await writeRunGithubOutput(run, outputPath, { ...deps, env, appendGithubFile: append }, options);
 
-	return {
-		outputPath,
-		status: doc.status,
-		runId: run.id,
-		stepCount: steps.length,
-		shouldFail: shouldFailOnRunStatus(failOn, doc.status),
-	};
+	return { ...result, outputPath };
 }
 
 export function attachReportCommandOptions(cmd: Command): Command {
@@ -250,8 +280,13 @@ export function attachReportCommandOptions(cmd: Command): Command {
 			"Wait timeout in seconds (default: 1800)",
 			String(DEFAULT_RUN_WAIT_TIMEOUT_SECONDS),
 		)
-		.option("--github-summary", "Append compact markdown to $GITHUB_STEP_SUMMARY")
+		.option("--github-summary", "Append the Job Summary markdown to $GITHUB_STEP_SUMMARY")
 		.option("--no-github-summary", "Do not write a GitHub job summary")
+		.option("--report-url <url>", "Link the Job Summary footer to the uploaded Run report")
+		.option(
+			"--summary-only",
+			"Only append the Job Summary: no screenshots, no report file, no GitHub outputs",
+		)
 		.option("--github-output", "Write run_id, status, report_path to $GITHUB_OUTPUT")
 		.option("--no-github-output", "Do not write GitHub step outputs")
 		.option("--fail-on <when>", "errored | never (default: never)", "never");

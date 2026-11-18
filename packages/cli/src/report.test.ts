@@ -202,6 +202,116 @@ describe("exportCatalogRunReport", () => {
 		);
 	});
 
+	test("links the Job Summary footer to --report-url", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "yoqa-report-"));
+		const summaryPath = join(dir, "summary.md");
+		const run = sampleRun();
+		const client = {
+			getRun: async () => run,
+			listApps: async () => [],
+			listCases: async () => [],
+			listDevices: async () => ({ devices: [] }),
+			getRunStepScreenshotUrl: () => "http://127.0.0.1/shot",
+		} as unknown as RunnerClient;
+
+		await exportCatalogRunReport(
+			client,
+			run.id,
+			{
+				baseUrl: "http://127.0.0.1:7420",
+				output: join(dir, "index.html"),
+				githubSummary: true,
+				reportUrl: "https://github.com/o/r/actions/runs/1/artifacts/2",
+			},
+			{ env: { GITHUB_STEP_SUMMARY: summaryPath }, log: () => undefined },
+		);
+
+		expect(await readFile(summaryPath, "utf8")).toContain(
+			"[Full Run report with screenshots](https://github.com/o/r/actions/runs/1/artifacts/2)",
+		);
+	});
+
+	test("--summary-only appends only the Job Summary", async () => {
+		const run = sampleRun({
+			tests: [
+				{
+					id: "rt_1",
+					runId: "run_abc",
+					caseId: "case_1",
+					status: "passed",
+					error: null,
+					startedAt: 1,
+					finishedAt: 2,
+					steps: [
+						{
+							id: "step_1",
+							runTestId: "rt_1",
+							idx: 0,
+							action: {},
+							screenshotUri: "/shots/0.png",
+							ok: true,
+							latencyMs: 120,
+							detail: null,
+							command: "tap @e1",
+							createdAt: 1,
+						},
+					],
+				},
+			],
+		});
+		const client = {
+			getRun: async () => run,
+			listApps: async () => [],
+			listCases: async () => [],
+			listDevices: async () => ({ devices: [] }),
+			getRunStepScreenshotUrl: () => "http://127.0.0.1/shot",
+		} as unknown as RunnerClient;
+		const fetched: string[] = [];
+		const written: string[] = [];
+		const appended: { path: string; contents: string }[] = [];
+
+		const result = await exportCatalogRunReport(
+			client,
+			run.id,
+			{
+				baseUrl: "http://127.0.0.1:7420",
+				output: "yoqa-report/index.html",
+				summaryOnly: true,
+				reportUrl: "https://example.test/report",
+			},
+			{
+				env: {
+					GITHUB_ACTIONS: "true",
+					GITHUB_STEP_SUMMARY: "/gha/summary.md",
+					GITHUB_OUTPUT: "/gha/output",
+				},
+				fetchImpl: (async (url: string) => {
+					fetched.push(url);
+					return new Response(null, { status: 404 });
+				}) as typeof fetch,
+				writeFile: async (path) => {
+					written.push(path);
+				},
+				mkdir: async (path) => {
+					written.push(path);
+					return undefined;
+				},
+				appendGithubFile: async (path, contents) => {
+					appended.push({ path, contents });
+				},
+				log: () => undefined,
+			},
+		);
+
+		expect(fetched).toEqual([]);
+		expect(written).toEqual([]);
+		expect(appended.map((row) => row.path)).toEqual(["/gha/summary.md"]);
+		expect(appended[0]?.contents).toContain("`tap @e1`");
+		expect(appended[0]?.contents).toContain("(https://example.test/report)");
+		expect(result.outputPath).toBeNull();
+		expect(result.status).toBe("passed");
+	});
+
 	test("shouldFail is true only with --fail-on errored", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "yoqa-report-"));
 		const htmlPath = join(dir, "fail.html");
