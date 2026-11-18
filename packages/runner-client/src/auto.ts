@@ -11,7 +11,10 @@ import {
  * Case. What the agent may do is set by the mode of each message (CONTEXT.md → Auto).
  */
 
-/** Ask reads only; Run may also write the Case draft and start Runs; Explore may also drive the device. */
+/**
+ * Ask reads only; Run may also write the Case draft and start Runs; Explore may also read the
+ * Screen, drive the device and propose a new Test Case.
+ */
 export const autoChatModeSchema = z.union([
 	z.literal("ask"),
 	z.literal("run"),
@@ -111,6 +114,20 @@ export const caseDraftSchema = z.object({
 export type CaseDraft = z.infer<typeof caseDraftSchema>;
 
 /**
+ * A new Test Case the chat agent proposes in Explore, while the chat has none: its name and
+ * steps. Accepting it creates the Test Case, with no steps yet, as the chat's case, and the
+ * proposed steps become its Case draft, which must pass a Run before Apply like any draft.
+ */
+export const caseProposalSchema = z.object({
+	name: z.string().trim().min(1),
+	/** What the case checks, and why the agent proposes it. */
+	reason: z.string(),
+	steps: z.array(caseFlowStepSchema.pick({ instructions: true, expectedResult: true })).min(1),
+	updatedAt: z.number().int().nonnegative(),
+});
+export type CaseProposal = z.infer<typeof caseProposalSchema>;
+
+/**
  * A Test Case's one previous version: the steps and Case Script that applying a Case draft
  * replaced. Restore previous version swaps it with the current ones.
  */
@@ -193,6 +210,8 @@ export const autoChatSchema = autoChatSummarySchema.extend({
 	reply: autoReplySchema.nullable(),
 	/** The chat's Case draft; null until the agent writes one. */
 	draft: caseDraftSchema.nullable(),
+	/** The new Test Case proposed in Explore, waiting to be accepted; null when none is. */
+	proposal: caseProposalSchema.nullable(),
 	/** The Run of the draft in progress; null when none is. */
 	run: autoRunSchema.nullable(),
 	/** The chat's Test Case's previous version, which Restore puts back; null when it has none. */
@@ -357,6 +376,7 @@ export const autoChatEventSchema = z.discriminatedUnion("type", [
 	}),
 	z.object({ type: z.literal("chat"), chat: autoChatSummarySchema }),
 	z.object({ type: z.literal("draft"), draft: caseDraftSchema.nullable() }),
+	z.object({ type: z.literal("proposal"), proposal: caseProposalSchema.nullable() }),
 	z.object({ type: z.literal("run"), run: autoRunSchema }),
 	z.object({
 		type: z.literal("previous_version"),

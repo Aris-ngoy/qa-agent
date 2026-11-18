@@ -2,7 +2,7 @@ import type { AutoChatMode } from "@yoqa/runner-client";
 
 export type ModeOption = { id: AutoChatMode; label: string; enabled: boolean; hint: string };
 
-/** The composer's modes. Ask and Run work for now; Explore comes with a later ticket. */
+/** The composer's modes, from the narrowest (Ask) to the widest (Explore). */
 export const MODE_OPTIONS: ModeOption[] = [
 	{ id: "ask", label: "Ask", enabled: true, hint: "Reads the Test Case and its Runs only." },
 	{
@@ -14,8 +14,8 @@ export const MODE_OPTIONS: ModeOption[] = [
 	{
 		id: "explore",
 		label: "Explore",
-		enabled: false,
-		hint: "Coming soon: drive the device and propose a Test Case.",
+		enabled: true,
+		hint: "Also reads the Screen, acts on the device and proposes a new Test Case.",
 	},
 ];
 
@@ -57,5 +57,5 @@ export function composerHint(input: {
 }): string {
 	if (input.runLive) return "Enter queues your message until the run finishes · Esc to stop";
 	if (input.queueing) return "Enter queues your message behind the ones waiting";
-	return `${modeOption(input.mode)?.hint} Explore is coming soon.`;
+	return modeOption(input.mode)?.hint ?? "";
 }

@@ -413,7 +413,16 @@ export async function getCase(caseId: string): Promise<CatalogCase | null> {
 	return loadCaseDetail(caseId);
 }
 
-export async function createCase(appId: string, input: CreateCaseRequest): Promise<CatalogCase> {
+/**
+ * Create a Test Case; with no steps given it gets one blank step to edit. `withoutSteps`
+ * gives it none at all: a case accepted from an Auto chat's proposal, whose steps come only
+ * when its Case draft is applied.
+ */
+export async function createCase(
+	appId: string,
+	input: CreateCaseRequest,
+	options: { withoutSteps?: boolean } = {},
+): Promise<CatalogCase> {
 	await ensureAppExists(appId);
 	const name = input.name.trim();
 	if (!name) {
@@ -447,7 +456,9 @@ export async function createCase(appId: string, input: CreateCaseRequest): Promi
 	const flowInputs =
 		input.flows && input.flows.length > 0
 			? input.flows
-			: [{ instructions: "", expectedResult: "" }];
+			: options.withoutSteps
+				? []
+				: [{ instructions: "", expectedResult: "" }];
 	await replaceCaseFlows(id, flowInputs);
 	await replaceCaseTags(id, appId, input.tags ?? []);
 

@@ -95,6 +95,18 @@ export async function applyAutoDraft(chatId: string): Promise<AutoChat> {
 	return client.applyAutoDraft(chatId);
 }
 
+/** Accept the Test Case proposed in Explore: it becomes the chat's case, its steps the draft. */
+export async function acceptAutoProposal(chatId: string): Promise<AutoChat> {
+	const client = await getRunnerClient();
+	return client.acceptAutoProposal(chatId);
+}
+
+/** Reject the Test Case proposed in Explore. */
+export async function rejectAutoProposal(chatId: string): Promise<AutoChat> {
+	const client = await getRunnerClient();
+	return client.rejectAutoProposal(chatId);
+}
+
 /** Put back the Test Case's previous steps and Case Script. */
 export async function restoreAutoPreviousVersion(chatId: string): Promise<AutoChat> {
 	const client = await getRunnerClient();

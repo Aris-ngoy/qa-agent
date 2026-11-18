@@ -10,6 +10,7 @@ import {
 	AutoConflictError,
 	AutoNotFoundError,
 	AutoValidationError,
+	acceptProposal,
 	applyDraft,
 	controlRun,
 	createChat,
@@ -17,6 +18,7 @@ import {
 	getChat,
 	listChats,
 	rejectDraft,
+	rejectProposal,
 	removeDraftStep,
 	removeQueuedMessage,
 	restorePreviousVersion,
@@ -118,6 +120,14 @@ export function createAutoRoutes(options: { agent?: ChatAgent } = {}) {
 
 	app.post("/auto/chats/:chatId/draft/apply", async (c) =>
 		c.json(await applyDraft(c.req.param("chatId"))),
+	);
+
+	app.post("/auto/chats/:chatId/proposal/accept", async (c) =>
+		c.json(await acceptProposal(c.req.param("chatId"))),
+	);
+
+	app.delete("/auto/chats/:chatId/proposal", async (c) =>
+		c.json(await rejectProposal(c.req.param("chatId"))),
 	);
 
 	app.post("/auto/chats/:chatId/previous-version/restore", async (c) =>

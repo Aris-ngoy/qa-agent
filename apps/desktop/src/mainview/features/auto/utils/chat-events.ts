@@ -21,14 +21,15 @@ export function parseAutoChatEvent(data: string): AutoChatEvent | null {
 }
 
 /**
- * The chat as the picker lists it, without its messages, in-flight reply, Case draft, Run,
- * its Test Case's previous version and its queue.
+ * The chat as the picker lists it, without its messages, in-flight reply, Case draft, proposed
+ * Test Case, Run, its Test Case's previous version and its queue.
  */
 export function summaryOf(chat: AutoChat): AutoChatSummary {
 	const {
 		messages: _messages,
 		reply: _reply,
 		draft: _draft,
+		proposal: _proposal,
 		run: _run,
 		previousVersion: _previousVersion,
 		queue: _queue,
@@ -67,6 +68,8 @@ export function applyAutoChatEvent(chat: AutoChat, event: AutoChatEvent): AutoCh
 			return event.chat.id === chat.id ? { ...chat, ...event.chat } : chat;
 		case "draft":
 			return { ...chat, draft: event.draft };
+		case "proposal":
+			return { ...chat, proposal: event.proposal };
 		case "run":
 			return { ...chat, run: event.run };
 		case "previous_version":

@@ -112,7 +112,7 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 	);
 }
 
-/** Ask / Run / Explore. Explore is off for now; it shows what it will do. */
+/** Ask / Run / Explore, each naming what it may do. */
 function ModeControl({
 	mode,
 	onChange,

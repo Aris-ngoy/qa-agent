@@ -1,8 +1,10 @@
 import { PanelEmpty } from "@/features/auto/components/auto-panel-empty";
 import { shownAutoChat$ } from "@/features/auto/data/state/shown-chat";
 import {
+	useAcceptAutoProposal,
 	useApplyAutoDraft,
 	useRejectAutoDraft,
+	useRejectAutoProposal,
 	useRemoveAutoDraftStep,
 	useRestoreAutoPreviousVersion,
 } from "@/features/auto/hooks/usequery/use-auto";
@@ -15,7 +17,7 @@ import {
 import { isRunLive } from "@/features/auto/utils/run-card";
 import { Button } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
-import type { CaseDraft, CaseFlowStep } from "@yoqa/runner-client";
+import type { CaseDraft, CaseFlowStep, CaseProposal } from "@yoqa/runner-client";
 
 type DraftView = "changes" | "full";
 
@@ -29,8 +31,9 @@ type RemoveStep = ((stepId: string) => void) | null;
 
 /**
  * The chat's Case draft: its changes against the saved Test Case, or the whole case as it
- * would be saved, with ✕ on each step, Apply, Reject all and Restore previous version. It
- * follows the chat's events, so the agent's edits and Runs show as they happen.
+ * would be saved, with ✕ on each step, Apply, Reject all and Restore previous version. Before
+ * the chat has a Test Case, the one proposed in Explore, to accept or reject. It follows the
+ * chat's events, so the agent's edits and Runs show as they happen.
  */
 export function AutoTestTab() {
 	const chatId = useValue(shownAutoChat$.chatId);
@@ -39,7 +42,10 @@ export function AutoTestTab() {
 	const hasPreviousVersion = useValue(() => Boolean(shownAutoChat$.chat.previousVersion.get()));
 	const view$ = useObservable<DraftView>("changes");
 	const view = useValue(view$);
+	const proposal = useValue(shownAutoChat$.chat.proposal);
 	const removeStep = useRemoveAutoDraftStep();
+
+	if (!draft && proposal && chatId) return <ProposalView chatId={chatId} proposal={proposal} />;
 
 	if (!draft) {
 		return (
@@ -48,7 +54,7 @@ export function AutoTestTab() {
 					<PanelEmpty title="No Case draft">
 						{caseNumber
 							? `In Run mode, ask the chat agent to fix #${caseNumber}: its proposed steps show here as changes to the saved Test Case.`
-							: "Once the chat works on a Test Case, the steps the chat agent proposes in Run mode show here."}
+							: "Once the chat works on a Test Case, the steps the chat agent proposes in Run mode show here. In Explore mode it can propose a new Test Case, shown here to accept."}
 					</PanelEmpty>
 				</div>
 				{hasPreviousVersion && chatId ? (
@@ -102,6 +108,73 @@ export function AutoTestTab() {
 			{chatId ? (
 				<DraftActions chatId={chatId} draft={draft} hasPreviousVersion={hasPreviousVersion} />
 			) : null}
+		</div>
+	);
+}
+
+/**
+ * A new Test Case the chat agent proposed in Explore: its name, why, and its steps. Accept
+ * creates it as the chat's case, with these steps as its Case draft; Reject drops it.
+ */
+function ProposalView({ chatId, proposal }: { chatId: string; proposal: CaseProposal }) {
+	const accept = useAcceptAutoProposal();
+	const reject = useRejectAutoProposal();
+	const busy = accept.isPending || reject.isPending;
+
+	return (
+		<div className="flex h-full min-h-0 flex-col gap-3">
+			<header className="flex flex-col gap-1">
+				<div className="flex items-center gap-2">
+					<span className="rounded bg-warning-container px-1.5 py-0.5 text-[11px] font-medium text-on-warning-container">
+						Proposed
+					</span>
+					<h3 className="m-0 min-w-0 truncate text-body-sm font-semibold text-on-surface">
+						{proposal.name}
+					</h3>
+					<span className="ml-auto shrink-0 text-helper text-on-surface-variant">
+						{proposal.steps.length} {proposal.steps.length === 1 ? "step" : "steps"}
+					</span>
+				</div>
+				{proposal.reason ? (
+					<p className="m-0 text-helper text-on-surface-variant">{proposal.reason}</p>
+				) : null}
+			</header>
+			<ol className="m-0 flex min-h-0 flex-1 list-none flex-col gap-2 overflow-y-auto p-0">
+				{proposal.steps.map((step, index) => (
+					<li
+						className="flex gap-3 rounded-lg border border-outline-variant bg-surface-container-low p-3"
+						// The proposal is replaced whole, never edited step by step.
+						// biome-ignore lint/suspicious/noArrayIndexKey: its steps have no ids
+						key={index}
+					>
+						<span className="shrink-0 text-body-sm font-medium text-outline">{index + 1}</span>
+						<StepText step={{ id: String(index), flowId: null, ...step }} />
+					</li>
+				))}
+			</ol>
+			<div className="flex shrink-0 flex-col gap-2 border-t border-outline-variant pt-3">
+				<p className="m-0 text-helper text-on-surface-variant">
+					Accept creates this Test Case on the App as the chat's case. Its steps become the Case
+					draft, saved once a Run of it passes and you apply it.
+				</p>
+				<div className="flex flex-wrap items-center gap-2">
+					<Button
+						className="h-8 rounded-lg bg-primary px-4 text-body-sm font-semibold text-on-primary data-[hovered=true]:bg-primary/90 data-[disabled=true]:bg-surface-container-highest data-[disabled=true]:text-on-surface-variant"
+						isDisabled={busy}
+						onPress={() => accept.mutate(chatId)}
+					>
+						Accept
+					</Button>
+					<Button
+						className="h-8 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 text-body-sm font-semibold text-on-surface shadow-none data-[hovered=true]:bg-surface-container"
+						isDisabled={busy}
+						onPress={() => reject.mutate(chatId)}
+						variant="ghost"
+					>
+						Reject
+					</Button>
+				</div>
+			</div>
 		</div>
 	);
 }
