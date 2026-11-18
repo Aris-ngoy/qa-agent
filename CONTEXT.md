@@ -185,7 +185,11 @@ _Avoid_: pending changes, edit, patch
 
 **Previous version**:
 The steps and Case Script a Test Case had before a Case draft was last applied to it. A Test Case keeps only one; restoring it swaps it with the current steps and Case Script, so restoring again puts the applied ones back.
-_Avoid_: history, undo, revision
+_Avoid_: history (that is the History summary), undo, revision
+
+**History summary**:
+How healthy a Test Case is over its recent Runs: how many passed and failed, the average time of the passing ones, each Run's duration and step results, and one note from a fixed rule, never a model call. The note is _consistent_ when the latest Runs that ended failed at the same step, two or more in a row, else _flaky_ when the last five mix passes and failures with the same steps, else none. Runs from an Auto chat count like any other.
+_Avoid_: health score, insights, stats
 
 **Take over**:
 Pausing a Run started from an Auto chat to drive the device by hand. Actions taken by hand are not recorded in the Run or the Case draft; when it resumes, the Run's agent decides again from the screen the user left, and the chat agent is told the user took over. A Run taken over is not clean: it never becomes a Case draft's passing Run.

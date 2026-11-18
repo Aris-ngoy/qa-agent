@@ -6,6 +6,7 @@ import {
 	type AutoChatEvent,
 	type AutoRun,
 	type CaseFlowStep,
+	type CaseHistory,
 	type CaseScript,
 	type Run,
 	type SendAutoMessageResponse,
@@ -325,7 +326,14 @@ describe("the Auto chat routes", () => {
 		await stream.until(() => stream.events.filter(isReply).length === 2);
 		await stream.close();
 
-		const readTools = ["get_test_case", "list_runs", "get_run", "set_test_case", "get_case_draft"];
+		const readTools = [
+			"get_test_case",
+			"list_runs",
+			"get_run",
+			"get_history",
+			"set_test_case",
+			"get_case_draft",
+		];
 		expect(agent.turns.map((turn) => turn.tools.map((tool) => tool.name))).toEqual([
 			readTools,
 			[
@@ -921,6 +929,59 @@ describe("the Auto chat routes", () => {
 			const detail = (await (await runsRoutes.request(`/runs/${last.runId}`)).json()) as Run;
 			expect(detail.autoChat).toEqual({ id: chat.id, title: "Fix it and run it" });
 			expect(detail.tests[0]?.steps?.length).toBeGreaterThan(0);
+		});
+
+		test("the chat's Run in progress shows in its case's History as in progress, with the draft's steps, and counts once it ends", async () => {
+			await connectBrowser();
+			const { saved, chat } = await chatOnSavedCase("History of a live run");
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				await turn.callTool("add_draft_step", {
+					instructions: "Tap Done",
+					expectedResult: "The shop shows",
+					reason: "A new last screen",
+				});
+				await turn.callTool("run_case_draft", {});
+				yield { type: "text", delta: "Ran it." };
+			};
+			const stream = await openEvents(chat.id);
+			const { promise: held, resolve: release } = Promise.withResolvers<void>();
+			vision.held = held;
+			vision.holdOn = "Tap Done";
+			const history = async () =>
+				(await (
+					await createRunsRoutes().request(`/cases/${saved.id}/history`)
+				).json()) as CaseHistory;
+
+			await send(chat.id, "Fix it and run it", "run");
+			await waitUntil(() => vision.deciding);
+			const live = await history();
+			release();
+			await stream.until(isReply);
+			await stream.close();
+			const ended = await history();
+
+			expect(live).toMatchObject({ passed: 0, failed: 0, averagePassMs: null, note: null });
+			expect(live.runs).toEqual([
+				expect.objectContaining({
+					number: 1,
+					status: "running",
+					autoChat: { id: chat.id, title: "Fix it and run it" },
+					durationMs: null,
+					currentStep: 2,
+					failedStep: null,
+					// The draft's two steps, not the saved case's one.
+					steps: ["passed", "running"],
+				}),
+			]);
+			expect(ended).toMatchObject({ passed: 1, failed: 0 });
+			expect(ended.runs[0]).toMatchObject({
+				status: "passed",
+				currentStep: null,
+				steps: ["passed", "passed"],
+			});
+			expect(ended.runs[0]?.durationMs).toEqual(expect.any(Number));
+			expect(ended.averagePassMs).toBe(ended.runs[0]?.durationMs as number);
 		});
 
 		test("Stop cancels the chat's Run through the Run's own cancel, and the agent hears it stopped", async () => {
@@ -1571,6 +1632,290 @@ describe("the Auto chat routes", () => {
 				expect(again?.script).toEqual(applied?.script);
 				expect(again?.scriptSavedAt).toBe(applied?.scriptSavedAt);
 			});
+		});
+	});
+
+	describe("the History summary", () => {
+		const DAY = 24 * 60 * 60 * 1000;
+		const NOW = Date.now();
+		const STEPS = [
+			{ instructions: "Open the payout screen", expectedResult: "" },
+			{ instructions: "Enter 10", expectedResult: "" },
+			{ instructions: "Tap Pay out", expectedResult: "The payout is sent" },
+		];
+
+		type SeededRun = {
+			status: "passed" | "errored" | "cancelled" | "running";
+			daysAgo: number;
+			seconds?: number;
+			/** The step (from 0) a Run that did not pass ended on. */
+			endedAt?: number;
+			steps?: Array<{ instructions: string; expectedResult: string }> | null;
+			executionMode?: "agent" | "script";
+			/** An agent Run that ended before its first step (the App would not start). */
+			noSteps?: boolean;
+		};
+
+		/**
+		 * A Run of `caseId` as the Run engine stores it: one agent step per step of the case
+		 * up to where it ended, each verified but the last of a Run that did not pass.
+		 */
+		async function seedRun(appId: string, caseId: string, seeded: SeededRun): Promise<string> {
+			const db = getCatalogDb();
+			const id = `run_${Math.random().toString(36).slice(2)}`;
+			const createdAt = NOW - seeded.daysAgo * DAY;
+			const finishedAt =
+				seeded.status === "running" ? null : createdAt + (seeded.seconds ?? 30) * 1000;
+			await db.insert(runs).values({
+				id,
+				appId,
+				deviceId: "emulator-5554",
+				platform: "android",
+				status: seeded.status,
+				executionMode: "auto",
+				createdAt,
+				startedAt: createdAt,
+				finishedAt,
+			});
+			await db.insert(runTests).values({
+				id: `rtest_${id}`,
+				runId: id,
+				caseId,
+				status: seeded.status,
+				executionMode: seeded.executionMode ?? "agent",
+				error: seeded.status === "errored" ? "It did not work" : null,
+				startedAt: createdAt,
+				finishedAt,
+				stepsJson: seeded.steps === null ? null : JSON.stringify(seeded.steps ?? STEPS),
+			});
+			const ran = seeded.steps ?? STEPS;
+			const last = seeded.status === "passed" ? ran.length - 1 : (seeded.endedAt ?? 0);
+			if (seeded.executionMode === "script" || seeded.noSteps) return id;
+			for (let flowStep = 0; flowStep <= last; flowStep++) {
+				const done = seeded.status === "passed" || flowStep < last;
+				await db.insert(runSteps).values({
+					id: `rstep_${id}_${flowStep}`,
+					runTestId: `rtest_${id}`,
+					idx: flowStep,
+					actionJson: JSON.stringify({
+						type: "tap",
+						flowStep,
+						cycle: { verify: { type: done ? "verify" : "continue" } },
+					}),
+					ok: done || seeded.status !== "errored" ? 1 : 0,
+					createdAt: createdAt + flowStep,
+				});
+			}
+			return id;
+		}
+
+		async function caseWithRuns(name: string, seeded: SeededRun[]) {
+			const app = await createApp({ name });
+			const payout = await createCase(app.id, { name: "Payout", flows: STEPS });
+			// Oldest first, as they ran.
+			const ids: string[] = [];
+			for (const item of seeded) ids.push(await seedRun(app.id, payout.id, item));
+			return { app, payout, ids };
+		}
+
+		async function history(caseId: string) {
+			const response = await createRunsRoutes().request(`/cases/${caseId}/history`);
+			return {
+				status: response.status,
+				body: (await response.json()) as CaseHistory & { error?: string },
+			};
+		}
+
+		test("gives the pass rate, the average passing time, the failing count and each Run's duration and step results, newest first", async () => {
+			const { payout, ids } = await caseWithRuns("History stats", [
+				{ status: "passed", daysAgo: 21, seconds: 34 },
+				{ status: "passed", daysAgo: 14, seconds: 30 },
+				{ status: "cancelled", daysAgo: 10, seconds: 5, endedAt: 1 },
+				{ status: "errored", daysAgo: 6, seconds: 17, endedAt: 2 },
+				{ status: "passed", daysAgo: 4, seconds: 32 },
+				{ status: "errored", daysAgo: 2, seconds: 9, endedAt: 0, executionMode: "script" },
+			]);
+
+			const { status, body } = await history(payout.id);
+
+			expect(status).toBe(200);
+			expect(body).toMatchObject({
+				caseId: payout.id,
+				passed: 3,
+				failed: 2,
+				averagePassMs: 32_000,
+			});
+			expect(body.runs.map((run) => run.runId)).toEqual([...ids].reverse());
+			expect(body.runs.map((run) => [run.number, run.status, run.durationMs])).toEqual([
+				[6, "errored", 9_000],
+				[5, "passed", 32_000],
+				[4, "errored", 17_000],
+				[3, "cancelled", 5_000],
+				[2, "passed", 30_000],
+				[1, "passed", 34_000],
+			]);
+			expect(body.runs.map((run) => [run.failedStep, run.steps])).toEqual([
+				// A replayed Case Script does not say which step it stopped at.
+				[null, ["skipped", "skipped", "skipped"]],
+				[null, ["passed", "passed", "passed"]],
+				[3, ["passed", "passed", "failed"]],
+				[null, ["passed", "skipped", "skipped"]],
+				[null, ["passed", "passed", "passed"]],
+				[null, ["passed", "passed", "passed"]],
+			]);
+			// The five that ended mix passes and failures, the stopped one aside.
+			expect(body.note).toEqual({ kind: "flaky", passed: 3, failed: 2 });
+		});
+
+		test("a case never run has an empty History, and an unknown case is not found", async () => {
+			const { payout } = await caseWithRuns("No history", []);
+			expect((await history(payout.id)).body).toEqual({
+				caseId: payout.id,
+				passed: 0,
+				failed: 0,
+				averagePassMs: null,
+				runs: [],
+				note: null,
+			});
+			expect((await history("case_missing")).status).toBe(404);
+		});
+
+		test("the note is consistent when the last two or more Runs failed at the same step, from the first of them, a stopped Run between them aside", async () => {
+			const { payout, ids } = await caseWithRuns("Consistent", [
+				{ status: "passed", daysAgo: 9 },
+				{ status: "errored", daysAgo: 8, endedAt: 1 },
+				{ status: "errored", daysAgo: 6, endedAt: 2 },
+				{ status: "cancelled", daysAgo: 5, endedAt: 0 },
+				{ status: "errored", daysAgo: 4, endedAt: 2 },
+				{ status: "errored", daysAgo: 1, endedAt: 2 },
+			]);
+			const createdAt = (await getRun(ids[2] as string)).createdAt;
+
+			expect((await history(payout.id)).body.note).toEqual({
+				kind: "consistent",
+				step: 3,
+				failures: 3,
+				since: createdAt,
+			});
+		});
+
+		test("no note when only the last Run failed, or the last two failed at different steps", async () => {
+			const once = await caseWithRuns("Failed once", [
+				{ status: "passed", daysAgo: 2 },
+				{ status: "errored", daysAgo: 1, endedAt: 2 },
+			]);
+			expect((await history(once.payout.id)).body.note).toBeNull();
+			const apart = await caseWithRuns("Failed apart", [
+				{ status: "errored", daysAgo: 2, endedAt: 1 },
+				{ status: "errored", daysAgo: 1, endedAt: 2 },
+			]);
+			expect((await history(apart.payout.id)).body.note).toBeNull();
+		});
+
+		test("no consistent note from Runs that failed before their first step, or at a step of the same number with other text", async () => {
+			const unstarted = await caseWithRuns("Never started", [
+				{ status: "errored", daysAgo: 2, noSteps: true },
+				{ status: "errored", daysAgo: 1, noSteps: true },
+			]);
+			const { body } = await history(unstarted.payout.id);
+			expect(body.note).toBeNull();
+			expect(body.runs.map((run) => [run.failedStep, run.steps])).toEqual([
+				[null, ["skipped", "skipped", "skipped"]],
+				[null, ["skipped", "skipped", "skipped"]],
+			]);
+			const reworded = await caseWithRuns("Step 3 reworded", [
+				{
+					status: "errored",
+					daysAgo: 2,
+					endedAt: 2,
+					steps: [...STEPS.slice(0, 2), { instructions: "Tap Send", expectedResult: "" }],
+				},
+				{ status: "errored", daysAgo: 1, endedAt: 2 },
+			]);
+			expect((await history(reworded.payout.id)).body.note).toBeNull();
+		});
+
+		test("the note is flaky when the last five Runs mix passes and failures and ran the same steps", async () => {
+			const flaky = await caseWithRuns("Flaky", [
+				{ status: "errored", daysAgo: 9, endedAt: 0 },
+				{ status: "passed", daysAgo: 5 },
+				{ status: "errored", daysAgo: 4, endedAt: 1 },
+				{ status: "passed", daysAgo: 3 },
+				{ status: "passed", daysAgo: 2 },
+				{ status: "errored", daysAgo: 1, endedAt: 2 },
+			]);
+			expect((await history(flaky.payout.id)).body.note).toEqual({
+				kind: "flaky",
+				passed: 3,
+				failed: 2,
+			});
+		});
+
+		test("the agent reads the History summary as text, in every mode", async () => {
+			const { app, payout } = await caseWithRuns("History for the agent", [
+				{ status: "passed", daysAgo: 3, seconds: 30 },
+				{ status: "errored", daysAgo: 2, seconds: 12, endedAt: 2 },
+				{ status: "errored", daysAgo: 1, seconds: 14, endedAt: 2 },
+			]);
+			const outputs: Array<{ text: string; isError: boolean }> = [];
+			agent.script = async function* (turn) {
+				outputs.push(await turn.callTool("get_history", {}));
+				yield { type: "text", delta: "It keeps failing at step 3." };
+			};
+			const chat = await newChat(app.id, payout.id);
+			const stream = await openEvents(chat.id);
+
+			for (const [index, mode] of ["ask", "run"].entries()) {
+				await send(chat.id, "How healthy is it?", mode);
+				await stream.until(() => stream.events.filter(isReply).length === index + 1);
+			}
+			await stream.close();
+
+			expect(outputs).toHaveLength(2);
+			const [output] = outputs as [{ text: string; isError: boolean }];
+			expect(output.isError).toBe(false);
+			expect(output.text).toContain("History of #1 Payout, over its last 3 Runs");
+			expect(output.text).toContain("Passed 1 of the 3 that ended · average passing time 30 s");
+			expect(output.text).toContain(
+				"Note: consistent failure: the last 2 Runs failed at step 3, the first of them at",
+			);
+			expect(output.text).toContain("Run 3 · failed at step 3 · 14 s");
+			expect(output.text).toContain("steps: passed, passed, failed");
+			expect(output.text).toContain("Run 1 · passed · 30 s");
+		});
+
+		test("no flaky note when the steps changed between those five Runs, when they all passed, or with fewer than five", async () => {
+			const changed = await caseWithRuns("Steps changed", [
+				{ status: "passed", daysAgo: 5, steps: STEPS.slice(0, 2) },
+				{ status: "errored", daysAgo: 4, endedAt: 1 },
+				{ status: "passed", daysAgo: 3 },
+				{ status: "errored", daysAgo: 2, endedAt: 0 },
+				{ status: "passed", daysAgo: 1 },
+			]);
+			expect((await history(changed.payout.id)).body.note).toBeNull();
+			// A Run from before Runs kept their steps cannot say they were the same.
+			const unknown = await caseWithRuns("Steps unknown", [
+				{ status: "passed", daysAgo: 5, steps: null },
+				{ status: "errored", daysAgo: 4, endedAt: 1 },
+				{ status: "passed", daysAgo: 3 },
+				{ status: "errored", daysAgo: 2, endedAt: 0 },
+				{ status: "passed", daysAgo: 1 },
+			]);
+			expect((await history(unknown.payout.id)).body.note).toBeNull();
+			const passing = await caseWithRuns("All pass", [
+				{ status: "passed", daysAgo: 5 },
+				{ status: "passed", daysAgo: 4 },
+				{ status: "passed", daysAgo: 3 },
+				{ status: "passed", daysAgo: 2 },
+				{ status: "passed", daysAgo: 1 },
+			]);
+			expect((await history(passing.payout.id)).body.note).toBeNull();
+			const few = await caseWithRuns("Few runs", [
+				{ status: "passed", daysAgo: 3 },
+				{ status: "errored", daysAgo: 2, endedAt: 1 },
+				{ status: "passed", daysAgo: 1 },
+			]);
+			expect((await history(few.payout.id)).body.note).toBeNull();
 		});
 	});
 });

@@ -1,6 +1,6 @@
 # Auto chat
 
-Status: Ask mode built (#463, #455); Run mode writes the Case draft (#456) and runs it (#457), the Test tab applies, trims, rejects and restores it (#458), the Run card pauses, takes over and resumes the Run (#459), and messages sent during a Run queue until it ends (#460); Explore not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
+Status: Ask mode built (#463, #455); Run mode writes the Case draft (#456) and runs it (#457), the Test tab applies, trims, rejects and restores it (#458), the Run card pauses, takes over and resumes the Run (#459), messages sent during a Run queue until it ends (#460), and the History tab shows the case's health (#461); Explore not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, History summary, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
 
 ## Goal
 
@@ -38,6 +38,8 @@ A new **Auto** screen in the desktop side menu where you test by talking: write 
 **Model.** One picker in the composer for the chat model (the `claude` Provider's models). Runs use the app's default vision Provider from Settings, shown on the Run card but not changed there.
 
 **Not signed in.** Auto shows an empty state linking to Settings → Providers → Claude. No fallback to another Provider.
+
+**History.** A History summary per Test Case, computed in the runner over its last 20 Runs, Runs from chats included (they are normal Runs). Pass rate and failing count count the Runs that ended passed or failed; a stopped Run or one in progress is neither, but shows in the chart and the list. The note is a fixed rule, consistent first: the latest Runs that ended failing at the same step, two or more in a row (stopped Runs between them ignored; the same step means the same number and, where both Runs kept their steps, the same text), else flaky when the last five that ended mix passes and failures and ran exactly the same steps. To know that, each Run now keeps the steps it ran (`run_tests.steps_json`, a draft's own steps for a Run of one); Runs from before cannot say, so they never count towards flaky. Rejected: comparing against the case's `updatedAt` (it moves on any edit, name or tags included, and says nothing about a draft Run's steps).
 
 **Queue.** Messages sent during a Run queue in order as removable pending bubbles, and go to the agent together as one turn when the Run ends. Esc stops the Run and keeps the queue. That turn takes the narrowest of the queued messages' modes (Ask over Run), so no message gets tools its own mode does not allow. Rejected: the last message's mode (an Ask question queued after a Run message would get Run's tools), and one turn per mode (the ticket asks for one turn).
 
@@ -119,11 +121,18 @@ In the desktop: the chat shows the **Run card** under the reply (progress such a
 - **Over SSE.** Each change pushes a `queue` event with the whole queue (empty once it is sent), and `GET /auto/chats/:id` carries `queue`.
 - **Desktop.** While the Run is live (or messages wait), Send becomes **Queue** and stays on while the agent's reply is being written, and the hint reads "Enter queues your message until the run finishes · Esc to stop" (after the Run ends, while messages still wait for the agent's reply about it, "Enter queues your message behind the ones waiting"). Queued messages show under the Run card as dashed pending bubbles with their mode and ✕; the bubbles follow the stream's `queue` events only, so a late ✕ answer never brings back a queue already sent. If saving the queued messages fails, those not saved go back to the front of the queue.
 
+**History tab (#461).**
+- **History summary.** `GET /cases/:caseId/history` (`CaseHistory`) covers the case's last 20 Runs, newest first: how many passed and failed, the average time of the passing ones, and per Run its number among the case's Runs, the case's status in it, the chat that started it, how long it ran, the step it is on or failed at, and one result per step it ran (passed, failed, skipped, running, pending). Step results come from the agent steps' `flowStep`, the same reading as the Run card's (`runs/step-progress.ts`); a replayed Case Script does not say which step it is on, so a failed replay has no failed step and its steps read skipped, as do an agent Run's that ended before its first step (the App would not start), so neither makes a consistent note. 404 for an unknown case.
+- **Steps kept per Run.** Creating a Run writes each case's steps into `run_tests.steps_json` (the draft's, for a Run of a Case draft). The strips use them, so a Run of a 2-step draft shows 2 cells on a 1-step case; a Run from before falls back to the case's current steps.
+- **Note.** `consistent` (step, failures, since: the first of them) or `flaky` (passes and failures of the last five), else null, by the rule in Plan summary.
+- **Agent.** `get_history` in every mode answers the summary as text: the counts, the note, then a line per Run with its steps.
+- **Desktop.** The History tab, from the prototype: the case and **All runs** (the Runs page), the three tiles (Pass rate, Avg pass, Failing), a duration bar per Run (passed, failed, stopped, and a dashed bar for one in progress, capped at the longest that ended) with a tooltip naming the Run, the note, and the Runs with a per-step strip, each opening its Run. The summary is read again each time the chat's Run card moves on (its id, status or step), so the chat's Run shows as it goes. Colors are the Run card's tokens, so both themes follow.
+
 ## How to verify
 
 The draft Run groundwork: `bun test services/runner/src/domains/runs/draft-run.test.ts` (real catalog in a temp folder, the fake CDP browser, and a fake OpenAI-compatible endpoint as the vision Provider).
 
-The chat: `bun test services/runner/src/interfaces/http/auto.test.ts` (the routes, the SSE stream, the Ask tools, the Case draft tools, Runs of the draft, Apply, ✕, Reject all and Restore, including a script-mode Run of the applied case with Decide set to fail, and Pause, Take over (a tap by hand through the session routes) and Resume, and the message queue (order, ✕, one turn, Stop keeping it), with a scripted chat agent; the Runs use the real Run engine, the fake CDP browser and a fake vision Provider, `domains/runs/fake-vision.ts`) and `bun test services/runner/src/domains/auto/claude-agent.test.ts` (the contract with the Claude Agent SDK, its `query` faked). The replayed Case Script's pause point: `bun test services/runner/src/domains/runs/case-executor.test.ts`. The screen's pure helpers: `bun test apps/desktop/src/mainview/features/auto`.
+The chat: `bun test services/runner/src/interfaces/http/auto.test.ts` (the routes, the SSE stream, the Ask tools, the Case draft tools, Runs of the draft, Apply, ✕, Reject all and Restore, including a script-mode Run of the applied case with Decide set to fail, and Pause, Take over (a tap by hand through the session routes) and Resume, the message queue (order, ✕, one turn, Stop keeping it), and the History summary (stats, per-step results, the consistent, flaky and no-note rules on seeded Runs, the chat's Run in progress, and `get_history`), with a scripted chat agent; the Runs use the real Run engine, the fake CDP browser and a fake vision Provider, `domains/runs/fake-vision.ts`) and `bun test services/runner/src/domains/auto/claude-agent.test.ts` (the contract with the Claude Agent SDK, its `query` faked). The replayed Case Script's pause point: `bun test services/runner/src/domains/runs/case-executor.test.ts`. The screen's pure helpers: `bun test apps/desktop/src/mainview/features/auto`.
 
 By hand:
 1. Sign in the Claude Provider, connect a device, open **Auto**. With it signed out, Auto shows the empty state with a link to Settings → Providers → Claude.
@@ -137,6 +146,7 @@ By hand:
 6. **Restore previous version** brings back the old steps and Case Script; pressing it again brings back the applied ones. **Reject all** on a new draft leaves #8 as it is.
 7. Run the draft and press **Pause** on the Run card: it stops after the Action in flight, says Paused, and **Resume** carries on. Press **Take over**: the Device tab says you have the device, and a tap or drag on the frame drives it. **Resume**: the agent looks at the screen you left and goes on. The Run may pass, but Apply stays off until a Run of the draft passes without a Take over, and the Run's steps and the draft hold nothing you did by hand.
 8. Run the draft and, while it runs, send two messages: they show as queued bubbles under the Run card, and ✕ takes one back. Press Esc: the Run stops, the queue stays, and once the agent's reply about the Run is in, the queued messages appear as sent and the agent answers them together.
+9. Open the **History** tab on a case with a few Runs: the pass rate, the average passing time and the failing count, a bar per Run and a strip per Run. Run the draft: its Run shows dashed in the chart and running in its strip, then lands as passed or failed. Fail the case twice at the same step (a step the app cannot do): the note says "Consistent failure, not flaky." In dark mode the same.
 
 ## Follow-ups
 
@@ -144,6 +154,10 @@ By hand:
 - A failed Run of an unchanged draft keeps an earlier passing Run. If a flaky pass should not be enough to apply, clear the pass on any failed Run of the whole draft.
 
 - Compare two Runs from the History tab.
+- A failed Case Script replay names no failed step, so a case that fails in script mode never gets a consistent note, and a replay in progress shows all its steps pending. If replayed actions recorded their step of the case, both could.
+- The History reads its last 20 Runs one by one (`loadRun` each, steps included). Fine at 20; a case with long Runs could read only the steps' results instead.
+- The History tab reads the summary again when the chat's own Run moves on, or on focus. A Run started elsewhere (the Runs page, the CLI) shows on the next read; a runs change feed could push it.
+- In Chrome an `EventSource` opens only once the first bytes arrive, and the chat's stream sends none until something changes, so a chat opened in Chrome (the e2e webview) stays loading. The desktop's own webview was not checked for the same. Sending an SSE comment as the stream opens would settle it either way.
 - Codex as a second harness once the `codex` Provider supports a CLI login.
 - Recording Take over Actions into the draft, if reproducing them by hand turns out to be painful.
 - The packaged runner: the SDK starts Claude Code from a per-platform optional package, which the bundled npm runner may not carry. Check a packaged build; if it is missing, ship the SDK unbundled or point `pathToClaudeCodeExecutable` at the Claude CLI.

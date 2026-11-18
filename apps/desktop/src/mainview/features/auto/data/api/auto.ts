@@ -4,6 +4,7 @@ import type {
 	AutoChatSummary,
 	AutoRunControl,
 	AutoStatus,
+	CaseHistory,
 	ListAutoModelsResponse,
 	SendAutoMessageRequest,
 	SendAutoMessageResponse,
@@ -104,4 +105,10 @@ export async function restoreAutoPreviousVersion(chatId: string): Promise<AutoCh
 export async function autoChatEventsUrl(chatId: string): Promise<string> {
 	const client = await getRunnerClient();
 	return client.getAutoChatEventsUrl(chatId);
+}
+
+/** The History summary of Test Case `caseId`: its recent Runs, how healthy they are, the note. */
+export async function getCaseHistory(caseId: string): Promise<CaseHistory> {
+	const client = await getRunnerClient();
+	return client.getCaseHistory(caseId);
 }

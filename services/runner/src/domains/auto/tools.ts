@@ -2,13 +2,16 @@ import type {
 	AutoChatMode,
 	AutoChatSummary,
 	CaseDraft,
+	CaseHistory,
 	CatalogCase,
+	HistoryRun,
 	Run,
 	RunStep,
 } from "@yoqa/runner-client";
 import { z } from "zod";
 import { listCases } from "../catalog/application";
 import { RunNotFoundError, getRun, listRuns } from "../runs/application";
+import { caseHistory } from "../runs/history";
 import { addStep, changeStep, describeDraft, removeStep, setSteps, startDraft } from "./case-draft";
 import type { ChatTool, ChatToolOutput } from "./chat-agent";
 import type { ChatRunResult } from "./chat-runs";
@@ -101,6 +104,52 @@ export function describeRun(run: Run, caseLabels: Map<string, string>): string {
 	return lines.join("\n");
 }
 
+function seconds(ms: number): string {
+	return `${Math.round(ms / 1000)} s`;
+}
+
+function historyRunLine(run: HistoryRun): string {
+	const outcome =
+		run.status === "errored"
+			? run.failedStep
+				? `failed at step ${run.failedStep}`
+				: "failed"
+			: run.status === "running" && run.currentStep
+				? `running step ${run.currentStep}`
+				: run.status;
+	return [
+		`Run ${run.number}`,
+		outcome,
+		...(run.durationMs !== null ? [seconds(run.durationMs)] : []),
+		when(run.createdAt),
+		...(run.autoChat ? [`from chat "${run.autoChat.title}"`] : []),
+		`steps: ${run.steps.join(", ")}`,
+	].join(" · ");
+}
+
+/** A Test Case's History summary as text: its health, the note, then each recent Run. */
+export function describeHistory(history: CaseHistory, label: string): string {
+	if (history.runs.length === 0) return `${label} has no Runs yet.`;
+	const ended = history.passed + history.failed;
+	const average =
+		history.averagePassMs !== null
+			? ` · average passing time ${seconds(history.averagePassMs)}`
+			: "";
+	const { note } = history;
+	const noteLine =
+		note?.kind === "consistent"
+			? `Note: consistent failure: the last ${note.failures} Runs failed at step ${note.step}, the first of them at ${when(note.since)}.`
+			: note?.kind === "flaky"
+				? `Note: flaky: the last 5 Runs mix ${note.passed} passes and ${note.failed} failures, with the same steps.`
+				: "Note: none.";
+	return [
+		`History of ${label}, over its last ${history.runs.length} Runs, newest first:`,
+		`Passed ${history.passed} of the ${ended} that ended${average} · ${history.failed} failing`,
+		noteLine,
+		...history.runs.map(historyRunLine),
+	].join("\n");
+}
+
 /** A tool, its input's type read from its input shape. */
 function chatTool<Shape extends z.ZodRawShape>(tool: ChatTool<Shape>): ChatTool {
 	return tool as unknown as ChatTool;
@@ -188,6 +237,19 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 				if (error instanceof RunNotFoundError) return refuse(`There is no Run ${runId}.`);
 				throw error;
 			}
+		},
+	});
+
+	const getHistory = chatTool({
+		name: "get_history",
+		description:
+			"Read a Test Case's History summary: its pass rate, average passing time and failing count over its recent Runs, each Run's duration and step results, and the note (a consistent failure at one step, or flaky). Without a number, the chat's own Test Case.",
+		modes: ALL_MODES,
+		input: { number: z.number().int().positive().optional() },
+		run: async ({ number }) => {
+			const found = await findCase(number);
+			if (typeof found === "string") return refuse(found);
+			return answer(describeHistory(await caseHistory(found.id), caseLabel(found)));
 		},
 	});
 
@@ -341,6 +403,7 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 		getTestCase,
 		listCaseRuns,
 		getRunDetail,
+		getHistory,
 		setTestCase,
 		getCaseDraft,
 		setDraftSteps,

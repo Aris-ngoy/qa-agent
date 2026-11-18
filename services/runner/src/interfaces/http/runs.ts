@@ -1,5 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { createRunRequestSchema, listRunsResponseSchema, runSchema } from "@yoqa/runner-client";
+import {
+	caseHistorySchema,
+	createRunRequestSchema,
+	listRunsResponseSchema,
+	runSchema,
+} from "@yoqa/runner-client";
 import { Hono } from "hono";
 import {
 	RunNotFoundError,
@@ -13,6 +18,7 @@ import {
 	getRunTestVideoPath,
 	listRuns,
 } from "../../domains/runs/application";
+import { caseHistory } from "../../domains/runs/history";
 
 /**
  * Parse a single `bytes=start-end` Range header. Null when absent or malformed (serve the
@@ -129,6 +135,15 @@ export function createRunsRoutes() {
 		try {
 			const run = await createRun(parsed.data);
 			return c.json(runSchema.parse(run), 201);
+		} catch (error) {
+			const mapped = runErrorResponse(error);
+			return c.json(mapped.body, mapped.status);
+		}
+	});
+
+	app.get("/cases/:caseId/history", async (c) => {
+		try {
+			return c.json(caseHistorySchema.parse(await caseHistory(c.req.param("caseId"))));
 		} catch (error) {
 			const mapped = runErrorResponse(error);
 			return c.json(mapped.body, mapped.status);

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { caseFlowStepSchema, caseScriptSchema, runStatusSchema } from "./schemas";
+import {
+	caseFlowStepSchema,
+	caseScriptSchema,
+	runStatusSchema,
+	runTestStatusSchema,
+} from "./schemas";
 
 /**
  * Auto chat: a saved conversation, on one App, with the chat agent about at most one Test
@@ -226,6 +231,82 @@ export const sendAutoMessageResponseSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("queued"), queued: autoQueuedMessageSchema }),
 ]);
 export type SendAutoMessageResponse = z.infer<typeof sendAutoMessageResponseSchema>;
+
+/**
+ * How one step of the Test Case went in one Run, for the History tab's per-step strip:
+ * `skipped` once the Run failed or stopped before it, `pending` while a Run in progress has
+ * not reached it yet.
+ */
+export const historyStepResultSchema = z.union([
+	z.literal("passed"),
+	z.literal("failed"),
+	z.literal("skipped"),
+	z.literal("running"),
+	z.literal("pending"),
+]);
+export type HistoryStepResult = z.infer<typeof historyStepResultSchema>;
+
+/** One recent Run of a Test Case, as the History tab charts and lists it. */
+export const historyRunSchema = z.object({
+	runId: z.string().min(1),
+	/** The Run's number among the case's Runs, oldest first. */
+	number: z.number().int().positive(),
+	/** How the case went in the Run (`errored` is a failure). */
+	status: runTestStatusSchema,
+	/** The Auto chat that started the Run, while that chat exists. */
+	autoChat: z.object({ id: z.string().min(1), title: z.string() }).nullable(),
+	createdAt: z.number().int().nonnegative(),
+	/** How long the case ran; null until it ends. */
+	durationMs: z.number().int().nonnegative().nullable(),
+	/** The step (from 1) a Run in progress is on; null otherwise, and on a replay. */
+	currentStep: z.number().int().positive().nullable(),
+	/**
+	 * The step (from 1) a failed Run stopped at; null otherwise, and when no step says (a
+	 * replayed Case Script does not say which step it is on).
+	 */
+	failedStep: z.number().int().positive().nullable(),
+	/** Each of the steps the Run ran (the Case draft's, for a Run of one), in order. */
+	steps: z.array(historyStepResultSchema),
+});
+export type HistoryRun = z.infer<typeof historyRunSchema>;
+
+/**
+ * The History note, from a fixed rule over the Runs that ended (stopped ones are left out):
+ * - `consistent`: the last `failures` (two or more) failed at the same `step`, the first of
+ *   them at `since`.
+ * - `flaky`: the last five mix passes and failures, and they all ran the same steps.
+ */
+export const historyNoteSchema = z.discriminatedUnion("kind", [
+	z.object({
+		kind: z.literal("consistent"),
+		step: z.number().int().positive(),
+		failures: z.number().int().min(2),
+		since: z.number().int().nonnegative(),
+	}),
+	z.object({
+		kind: z.literal("flaky"),
+		passed: z.number().int().positive(),
+		failed: z.number().int().positive(),
+	}),
+]);
+export type HistoryNote = z.infer<typeof historyNoteSchema>;
+
+/**
+ * A Test Case's History summary, over its recent Runs: how many passed and failed (a Run
+ * stopped or in progress is neither), the average time of the passing ones, each Run, and
+ * the note.
+ */
+export const caseHistorySchema = z.object({
+	caseId: z.string().min(1),
+	passed: z.number().int().nonnegative(),
+	failed: z.number().int().nonnegative(),
+	/** Null while no recent Run passed. */
+	averagePassMs: z.number().int().nonnegative().nullable(),
+	/** The recent Runs, newest first. */
+	runs: z.array(historyRunSchema),
+	note: historyNoteSchema.nullable(),
+});
+export type CaseHistory = z.infer<typeof caseHistorySchema>;
 
 /** Whether Auto can talk to its chat agent: the Claude Provider is signed in. Never another Provider. */
 export const autoStatusSchema = z.object({

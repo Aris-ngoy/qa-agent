@@ -65,6 +65,11 @@ export const runTests = sqliteTable("run_tests", {
 	recordingStatus: text("recording_status"),
 	/** Why the recording is unavailable. */
 	recordingNote: text("recording_note"),
+	/**
+	 * JSON `{ instructions, expectedResult }[]`: the steps the case ran (a Case draft's, for a
+	 * Run of one), kept as they were when the Run started. Null on rows from before.
+	 */
+	stepsJson: text("steps_json"),
 });
 
 export const runSteps = sqliteTable("run_steps", {

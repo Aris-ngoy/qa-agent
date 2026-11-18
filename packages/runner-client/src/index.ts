@@ -3,6 +3,7 @@ import {
 	type AutoChatSummary,
 	type AutoRunControl,
 	type AutoStatus,
+	type CaseHistory,
 	type CreateAutoChatRequest,
 	type ListAutoModelsResponse,
 	type SendAutoMessageRequest,
@@ -10,6 +11,7 @@ import {
 	type UpdateAutoChatRequest,
 	autoChatSchema,
 	autoStatusSchema,
+	caseHistorySchema,
 	createAutoChatRequestSchema,
 	listAutoChatsResponseSchema,
 	listAutoModelsResponseSchema,
@@ -1280,6 +1282,16 @@ export class RunnerClient {
 			"Create chat failed",
 		);
 		return autoChatSchema.parse(json);
+	}
+
+	/** A Test Case's History summary over its recent Runs, with its note. */
+	async getCaseHistory(caseId: string): Promise<CaseHistory> {
+		const json = await this.requestJson(
+			`/cases/${encodeURIComponent(caseId)}/history`,
+			undefined,
+			"Get history failed",
+		);
+		return caseHistorySchema.parse(json);
 	}
 
 	async getAutoChat(chatId: string): Promise<AutoChat> {
