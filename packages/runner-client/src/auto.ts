@@ -39,6 +39,18 @@ export const autoMessageSchema = z.object({
 });
 export type AutoMessage = z.infer<typeof autoMessageSchema>;
 
+/**
+ * A message sent while the chat's Run is live: held in order, and removable, until the Run
+ * ends; then every one still queued goes to the agent together, as one turn.
+ */
+export const autoQueuedMessageSchema = z.object({
+	id: z.string().min(1),
+	mode: autoChatModeSchema,
+	text: z.string(),
+	createdAt: z.number().int().nonnegative(),
+});
+export type AutoQueuedMessage = z.infer<typeof autoQueuedMessageSchema>;
+
 /** A chat as the chat picker lists it, with the Test Case its header names. */
 export const autoChatSummarySchema = z.object({
 	id: z.string().min(1),
@@ -180,6 +192,8 @@ export const autoChatSchema = autoChatSummarySchema.extend({
 	run: autoRunSchema.nullable(),
 	/** The chat's Test Case's previous version, which Restore puts back; null when it has none. */
 	previousVersion: casePreviousVersionSchema.nullable(),
+	/** The messages queued until the chat's Run ends, in order. */
+	queue: z.array(autoQueuedMessageSchema),
 });
 export type AutoChat = z.infer<typeof autoChatSchema>;
 
@@ -205,6 +219,13 @@ export const sendAutoMessageRequestSchema = z.object({
 	mode: autoChatModeSchema,
 });
 export type SendAutoMessageRequest = z.infer<typeof sendAutoMessageRequestSchema>;
+
+/** What sending a message did: sent to the agent, or queued because the chat's Run is live. */
+export const sendAutoMessageResponseSchema = z.discriminatedUnion("type", [
+	z.object({ type: z.literal("sent"), message: autoMessageSchema }),
+	z.object({ type: z.literal("queued"), queued: autoQueuedMessageSchema }),
+]);
+export type SendAutoMessageResponse = z.infer<typeof sendAutoMessageResponseSchema>;
 
 /** Whether Auto can talk to its chat agent: the Claude Provider is signed in. Never another Provider. */
 export const autoStatusSchema = z.object({
@@ -238,6 +259,7 @@ export type ListAutoModelsResponse = z.infer<typeof listAutoModelsResponseSchema
  * - `draft`: the chat's Case draft changed (null once it is gone).
  * - `run`: a Run of the draft started or moved on; sent once more when it ends.
  * - `previous_version`: Apply or Restore changed the Test Case's previous version.
+ * - `queue`: a message was queued or removed, or the queue went to the agent (now empty).
  */
 export const autoChatEventSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("message"), message: autoMessageSchema }),
@@ -259,5 +281,6 @@ export const autoChatEventSchema = z.discriminatedUnion("type", [
 		type: z.literal("previous_version"),
 		previousVersion: casePreviousVersionSchema.nullable(),
 	}),
+	z.object({ type: z.literal("queue"), queue: z.array(autoQueuedMessageSchema) }),
 ]);
 export type AutoChatEvent = z.infer<typeof autoChatEventSchema>;

@@ -1,5 +1,7 @@
 import { toolCallInputText, toolCallName, toolCallState } from "@/features/auto/utils/chat-labels";
-import type { AutoMessage, AutoReply, AutoToolCall } from "@yoqa/runner-client";
+import { modeOption } from "@/features/auto/utils/composer";
+import { Button } from "@heroui/react";
+import type { AutoMessage, AutoQueuedMessage, AutoReply, AutoToolCall } from "@yoqa/runner-client";
 
 /** One saved message: the user's prompt on the right, the agent's reply on the left. */
 export function AutoMessageBubble({ message }: { message: AutoMessage }) {
@@ -19,6 +21,48 @@ export function AutoMessageBubble({ message }: { message: AutoMessage }) {
 			error={message.error}
 			writing={false}
 		/>
+	);
+}
+
+/**
+ * A message queued until the chat's Run ends: a pending bubble on the right, with ✕ to take it
+ * back before it is sent.
+ */
+export function AutoQueuedBubble({
+	queued,
+	onRemove,
+}: {
+	queued: AutoQueuedMessage;
+	onRemove: (() => void) | null;
+}) {
+	const mode = modeOption(queued.mode)?.label ?? queued.mode;
+	return (
+		<div className="flex justify-end">
+			<div className="flex max-w-[80%] items-start gap-2 rounded-2xl rounded-br-md border border-dashed border-outline-variant px-4 py-2.5">
+				<div className="flex min-w-0 flex-col gap-0.5">
+					<span className="text-helper font-semibold text-on-surface-variant">Queued · {mode}</span>
+					<p className="m-0 whitespace-pre-wrap break-words text-body-md text-on-surface-variant">
+						{queued.text}
+					</p>
+				</div>
+				<Button
+					aria-label="Remove the queued message"
+					className="size-6 min-w-6 shrink-0 rounded-md bg-transparent p-0 text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"
+					isDisabled={!onRemove}
+					onPress={() => onRemove?.()}
+					variant="ghost"
+				>
+					<svg aria-hidden="true" fill="none" height="12" viewBox="0 0 12 12" width="12">
+						<path
+							d="M3 3l6 6M9 3l-6 6"
+							stroke="currentColor"
+							strokeLinecap="round"
+							strokeWidth="1.5"
+						/>
+					</svg>
+				</Button>
+			</div>
+		</div>
 	);
 }
 

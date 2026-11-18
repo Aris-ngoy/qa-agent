@@ -18,6 +18,7 @@ import {
 	listChats,
 	rejectDraft,
 	removeDraftStep,
+	removeQueuedMessage,
 	restorePreviousVersion,
 	sendMessage,
 	stopRun,
@@ -102,6 +103,10 @@ export function createAutoRoutes(options: { agent?: ChatAgent } = {}) {
 		if (!parsed.ok) return c.json(parsed.error, 400);
 		return c.json(await sendMessage(agent, c.req.param("chatId"), parsed.data), 202);
 	});
+
+	app.delete("/auto/chats/:chatId/queue/:queuedId", async (c) =>
+		c.json(await removeQueuedMessage(c.req.param("chatId"), c.req.param("queuedId"))),
+	);
 
 	app.delete("/auto/chats/:chatId/draft", async (c) =>
 		c.json(await rejectDraft(c.req.param("chatId"))),

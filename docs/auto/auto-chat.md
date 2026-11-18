@@ -1,6 +1,6 @@
 # Auto chat
 
-Status: Ask mode built (#463, #455); Run mode writes the Case draft (#456) and runs it (#457), the Test tab applies, trims, rejects and restores it (#458), and the Run card pauses, takes over and resumes the Run (#459); Explore not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
+Status: Ask mode built (#463, #455); Run mode writes the Case draft (#456) and runs it (#457), the Test tab applies, trims, rejects and restores it (#458), the Run card pauses, takes over and resumes the Run (#459), and messages sent during a Run queue until it ends (#460); Explore not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
 
 ## Goal
 
@@ -39,7 +39,7 @@ A new **Auto** screen in the desktop side menu where you test by talking: write 
 
 **Not signed in.** Auto shows an empty state linking to Settings → Providers → Claude. No fallback to another Provider.
 
-**Queue.** Messages sent during a Run queue in order as removable pending bubbles, and go to the agent together as one turn when the Run ends. Esc stops the Run and keeps the queue.
+**Queue.** Messages sent during a Run queue in order as removable pending bubbles, and go to the agent together as one turn when the Run ends. Esc stops the Run and keeps the queue. That turn takes the narrowest of the queued messages' modes (Ask over Run), so no message gets tools its own mode does not allow. Rejected: the last message's mode (an Ask question queued after a Run message would get Run's tools), and one turn per mode (the ticket asks for one turn).
 
 ## UI
 
@@ -112,11 +112,18 @@ In the desktop (`features/auto`):
 
 In the desktop: the chat shows the **Run card** under the reply (progress such as "Step 3 of 5", time elapsed, each step with its status and commands, the vision Provider, and **Open Run**); a finished card stays until the next prompt. The composer shows **Stop** while the Run is live, and Esc stops it too, unless it is closing a menu or dialog. The Device tab overlays the Action in flight on the live frame, and says the device is view only while a Run holds it.
 
+**Message queue (#460).**
+- **Queued, not sent.** `POST /auto/chats/:id/messages` while the chat's Run is starting or running answers 202 with `{ type: "queued", queued }` (`AutoQueuedMessage`: id, mode, text, time) and starts no turn; otherwise `{ type: "sent", message }` as before. A message sent while messages already wait queues behind them, so the order holds after the Run ends too. The queue is in memory, like the reply being written and the Run's control; deleting the chat drops it.
+- **Sent as one turn.** Once the Run has ended (passed, failed or stopped) and the reply it was part of is saved, the queued messages are saved as user messages, in order, and the agent answers them in one turn: one message as usual, several numbered in one prompt, each naming its own mode where it differs from the turn's. The turn's mode is the narrowest of theirs (see Plan summary). A Run that outlives its turn (the agent failed while it ran) sends the queue as it ends.
+- **Remove.** `DELETE /auto/chats/:id/queue/:queuedId` takes one back and answers the chat; 404 once it was sent or removed. **Stop** keeps the queue: it only ends the Run sooner.
+- **Over SSE.** Each change pushes a `queue` event with the whole queue (empty once it is sent), and `GET /auto/chats/:id` carries `queue`.
+- **Desktop.** While the Run is live (or messages wait), Send becomes **Queue** and stays on while the agent's reply is being written, and the hint reads "Enter queues your message until the run finishes · Esc to stop" (after the Run ends, while messages still wait for the agent's reply about it, "Enter queues your message behind the ones waiting"). Queued messages show under the Run card as dashed pending bubbles with their mode and ✕; the bubbles follow the stream's `queue` events only, so a late ✕ answer never brings back a queue already sent. If saving the queued messages fails, those not saved go back to the front of the queue.
+
 ## How to verify
 
 The draft Run groundwork: `bun test services/runner/src/domains/runs/draft-run.test.ts` (real catalog in a temp folder, the fake CDP browser, and a fake OpenAI-compatible endpoint as the vision Provider).
 
-The chat: `bun test services/runner/src/interfaces/http/auto.test.ts` (the routes, the SSE stream, the Ask tools, the Case draft tools, Runs of the draft, Apply, ✕, Reject all and Restore, including a script-mode Run of the applied case with Decide set to fail, and Pause, Take over (a tap by hand through the session routes) and Resume, with a scripted chat agent; the Runs use the real Run engine, the fake CDP browser and a fake vision Provider, `domains/runs/fake-vision.ts`) and `bun test services/runner/src/domains/auto/claude-agent.test.ts` (the contract with the Claude Agent SDK, its `query` faked). The replayed Case Script's pause point: `bun test services/runner/src/domains/runs/case-executor.test.ts`. The screen's pure helpers: `bun test apps/desktop/src/mainview/features/auto`.
+The chat: `bun test services/runner/src/interfaces/http/auto.test.ts` (the routes, the SSE stream, the Ask tools, the Case draft tools, Runs of the draft, Apply, ✕, Reject all and Restore, including a script-mode Run of the applied case with Decide set to fail, and Pause, Take over (a tap by hand through the session routes) and Resume, and the message queue (order, ✕, one turn, Stop keeping it), with a scripted chat agent; the Runs use the real Run engine, the fake CDP browser and a fake vision Provider, `domains/runs/fake-vision.ts`) and `bun test services/runner/src/domains/auto/claude-agent.test.ts` (the contract with the Claude Agent SDK, its `query` faked). The replayed Case Script's pause point: `bun test services/runner/src/domains/runs/case-executor.test.ts`. The screen's pure helpers: `bun test apps/desktop/src/mainview/features/auto`.
 
 By hand:
 1. Sign in the Claude Provider, connect a device, open **Auto**. With it signed out, Auto shows the empty state with a link to Settings → Providers → Claude.
@@ -129,6 +136,7 @@ By hand:
 5. Remove one draft step with ✕: Apply turns off, with why, until the draft passes again. Apply, then replay #8 with `yoqa script run` (or a script-mode Run): it passes with no Provider call. The Test tab shows no draft, and #8 in Test Cases has the new steps.
 6. **Restore previous version** brings back the old steps and Case Script; pressing it again brings back the applied ones. **Reject all** on a new draft leaves #8 as it is.
 7. Run the draft and press **Pause** on the Run card: it stops after the Action in flight, says Paused, and **Resume** carries on. Press **Take over**: the Device tab says you have the device, and a tap or drag on the frame drives it. **Resume**: the agent looks at the screen you left and goes on. The Run may pass, but Apply stays off until a Run of the draft passes without a Take over, and the Run's steps and the draft hold nothing you did by hand.
+8. Run the draft and, while it runs, send two messages: they show as queued bubbles under the Run card, and ✕ takes one back. Press Esc: the Run stops, the queue stays, and once the agent's reply about the Run is in, the queued messages appear as sent and the agent answers them together.
 
 ## Follow-ups
 
@@ -148,5 +156,8 @@ By hand:
 - A Take over during a replayed Case Script carries on with the script's next step, blind to what the user changed. It could fall back to the agent instead.
 - The chat agent hears that the user took over (in `run_case_draft`'s answer), but in Run mode it has no tool to read the Screen, so it never sees the screen they left itself; the Run's agent does, on Resume. Explore (#462) brings Screen reads.
 - Resume pressed in the middle of a drag by hand hands the device back before the drag's release reaches it, which is then refused. Resume could wait for the pointer to come up.
+- The queue lives in memory: a runner restart during a Run loses it (and the Run). If that bites, keep it in `auto_messages` as pending rows.
+- After the Run ends, while the agent still writes its reply about it, a message sent with nothing queued is refused (409, one reply at a time), as before. It could queue too.
+- Queued messages of different modes answer in the narrowest one, so a Run-mode message queued beside an Ask question cannot change the draft in that turn; the agent says Run mode will do it.
 - The `previous_version` event goes only to the chat that applied or restored. Other chats on the same Test Case see the change when they are opened again.
 - The model list for an API-key login reads the Anthropic models endpoint each time; it could use the Provider's cached list (`listProviderModels`).

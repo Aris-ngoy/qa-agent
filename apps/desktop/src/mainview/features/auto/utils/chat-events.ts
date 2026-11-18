@@ -21,8 +21,8 @@ export function parseAutoChatEvent(data: string): AutoChatEvent | null {
 }
 
 /**
- * The chat as the picker lists it, without its messages, in-flight reply, Case draft, Run and
- * its Test Case's previous version.
+ * The chat as the picker lists it, without its messages, in-flight reply, Case draft, Run,
+ * its Test Case's previous version and its queue.
  */
 export function summaryOf(chat: AutoChat): AutoChatSummary {
 	const {
@@ -31,6 +31,7 @@ export function summaryOf(chat: AutoChat): AutoChatSummary {
 		draft: _draft,
 		run: _run,
 		previousVersion: _previousVersion,
+		queue: _queue,
 		...summary
 	} = chat;
 	return summary;
@@ -70,6 +71,8 @@ export function applyAutoChatEvent(chat: AutoChat, event: AutoChatEvent): AutoCh
 			return { ...chat, run: event.run };
 		case "previous_version":
 			return { ...chat, previousVersion: event.previousVersion };
+		case "queue":
+			return { ...chat, queue: event.queue };
 	}
 }
 

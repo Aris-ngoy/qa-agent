@@ -6,7 +6,7 @@ import {
 	useStopAutoRun,
 } from "@/features/auto/hooks/usequery/use-auto";
 import { modelFromKey, modelKey, modelOptions } from "@/features/auto/utils/chat-labels";
-import { MODE_OPTIONS, canSend, isSendKey } from "@/features/auto/utils/composer";
+import { MODE_OPTIONS, canSend, composerHint, isSendKey } from "@/features/auto/utils/composer";
 import { isRunLive } from "@/features/auto/utils/run-card";
 import { Button, ListBox, Select } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
@@ -19,7 +19,7 @@ const ESC_OWNERS = '[role="dialog"], [role="listbox"], [role="menu"]';
 /**
  * The composer: the prompt, the mode it is sent in, the chat model, and Send. Enter sends,
  * Shift+Enter starts a new line; Send waits while a reply is being written. While the chat's
- * Run is live, Stop (or Esc) cancels it.
+ * Run is live, Enter queues the message until the Run ends, and Stop (or Esc) cancels the Run.
  */
 export function AutoComposer({ chatId }: { chatId: string }) {
 	const composer$ = useObservable({ text: "", mode: "ask" as AutoChatMode });
@@ -31,9 +31,12 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 		const run = shownAutoChat$.chat.run.get();
 		return run != null && isRunLive(run);
 	});
+	// The runner queues a message while the Run is live, and behind messages already queued.
+	const queued = useValue(() => shownAutoChat$.chat.queue.get()?.length ?? 0);
+	const queueing = runLive || queued > 0;
 	const send = useSendAutoMessage();
 	const stop = useStopAutoRun();
-	const sendable = loaded && canSend({ text, sending: send.isPending, replying });
+	const sendable = loaded && canSend({ text, sending: send.isPending, replying, queueing });
 
 	const stopRun = stop.mutate;
 
@@ -69,7 +72,13 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 						event.preventDefault();
 						submit();
 					}}
-					placeholder={replying ? "The agent is replying…" : "Ask about a Test Case or its Runs"}
+					placeholder={
+						queueing
+							? "Queue a message for when the run ends"
+							: replying
+								? "The agent is replying…"
+								: "Ask about a Test Case or its Runs"
+					}
 					rows={2}
 					value={text}
 				/>
@@ -91,13 +100,13 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 							isDisabled={!sendable}
 							onPress={submit}
 						>
-							{replying ? "Replying…" : "Send"}
+							{queueing ? "Queue" : replying ? "Replying…" : "Send"}
 						</Button>
 					</div>
 				</div>
 			</div>
 			<p className="m-0 mt-1.5 px-1 text-helper text-outline">
-				{MODE_OPTIONS.find((option) => option.id === mode)?.hint} Explore is coming soon.
+				{composerHint({ mode, runLive, queueing })}
 			</p>
 		</div>
 	);

@@ -1,20 +1,20 @@
 import {
 	type AutoChat,
 	type AutoChatSummary,
-	type AutoMessage,
 	type AutoRunControl,
 	type AutoStatus,
 	type CreateAutoChatRequest,
 	type ListAutoModelsResponse,
 	type SendAutoMessageRequest,
+	type SendAutoMessageResponse,
 	type UpdateAutoChatRequest,
 	autoChatSchema,
-	autoMessageSchema,
 	autoStatusSchema,
 	createAutoChatRequestSchema,
 	listAutoChatsResponseSchema,
 	listAutoModelsResponseSchema,
 	sendAutoMessageRequestSchema,
+	sendAutoMessageResponseSchema,
 	updateAutoChatRequestSchema,
 } from "./auto";
 import {
@@ -1312,8 +1312,14 @@ export class RunnerClient {
 		);
 	}
 
-	/** Send a message; the reply streams on the chat's events stream. Returns the saved prompt. */
-	async sendAutoMessage(chatId: string, request: SendAutoMessageRequest): Promise<AutoMessage> {
+	/**
+	 * Send a message; the reply streams on the chat's events stream. Returns the saved prompt,
+	 * or the queued message while the chat's Run is live.
+	 */
+	async sendAutoMessage(
+		chatId: string,
+		request: SendAutoMessageRequest,
+	): Promise<SendAutoMessageResponse> {
 		const json = await this.requestJson(
 			`/auto/chats/${encodeURIComponent(chatId)}/messages`,
 			{
@@ -1323,7 +1329,17 @@ export class RunnerClient {
 			},
 			"Send message failed",
 		);
-		return autoMessageSchema.parse(json);
+		return sendAutoMessageResponseSchema.parse(json);
+	}
+
+	/** Take back a message queued during the chat's Run, before it is sent. */
+	async removeAutoQueuedMessage(chatId: string, queuedId: string): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/queue/${encodeURIComponent(queuedId)}`,
+			{ method: "DELETE" },
+			"Remove queued message failed",
+		);
+		return autoChatSchema.parse(json);
 	}
 
 	/** ✕ in the Test tab: remove one step from the chat's Case draft, which must then pass again. */

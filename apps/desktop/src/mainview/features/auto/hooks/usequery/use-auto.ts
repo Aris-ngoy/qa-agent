@@ -9,6 +9,7 @@ import {
 	listAutoModels,
 	rejectAutoDraft,
 	removeAutoDraftStep,
+	removeAutoQueuedMessage,
 	restoreAutoPreviousVersion,
 	sendAutoMessage,
 	setAutoChatModel,
@@ -98,19 +99,36 @@ export function useSetAutoChatModel() {
 
 /**
  * Send a message. The saved prompt shows at once (the stream sends it too; it shows once) and
- * the reply streams in. A refusal (not signed in, a reply already being written) is a toast,
- * and the sign-in status is read again.
+ * the reply streams in; a message queued during the Run shows from the stream's queue. A
+ * refusal (not signed in, a reply already being written) is a toast, and the sign-in status is
+ * read again.
  */
 export function useSendAutoMessage() {
 	const queryClient = useQueryClient();
 	return useMutation({
 		mutationFn: ({ chatId, text, mode }: { chatId: string; text: string; mode: AutoChatMode }) =>
 			sendAutoMessage(chatId, { text, mode }),
-		onSuccess: (message) => applyToShownChat(message.chatId, { type: "message", message }),
+		onSuccess: (sent) => {
+			if (sent.type === "sent") {
+				applyToShownChat(sent.message.chatId, { type: "message", message: sent.message });
+			}
+		},
 		onError: (error) => {
 			showErrorToast(error, "Failed to send the message");
 			void queryClient.invalidateQueries({ queryKey: autoStatusQueryKey });
 		},
+	});
+}
+
+/**
+ * ✕ on a queued message: take it back. The queue shows it gone from the stream, not from the
+ * answer, which can arrive after the stream says the queue was sent.
+ */
+export function useRemoveAutoQueuedMessage() {
+	return useMutation({
+		mutationFn: ({ chatId, queuedId }: { chatId: string; queuedId: string }) =>
+			removeAutoQueuedMessage(chatId, queuedId),
+		onError: (error) => showErrorToast(error, "Failed to remove the queued message"),
 	});
 }
 

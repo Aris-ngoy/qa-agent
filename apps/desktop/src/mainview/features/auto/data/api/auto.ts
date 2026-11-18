@@ -2,11 +2,11 @@ import { getRunnerClient } from "@/app/runner-client";
 import type {
 	AutoChat,
 	AutoChatSummary,
-	AutoMessage,
 	AutoRunControl,
 	AutoStatus,
 	ListAutoModelsResponse,
 	SendAutoMessageRequest,
+	SendAutoMessageResponse,
 } from "@yoqa/runner-client";
 
 export async function getAutoStatus(): Promise<AutoStatus> {
@@ -46,13 +46,22 @@ export async function deleteAutoChat(chatId: string): Promise<void> {
 	await client.deleteAutoChat(chatId);
 }
 
-/** Send a message; the runner saves it and answers, and the reply streams on the chat's events. */
+/**
+ * Send a message; the runner saves it and answers, and the reply streams on the chat's events.
+ * While the chat's Run is live, the runner queues it instead.
+ */
 export async function sendAutoMessage(
 	chatId: string,
 	request: SendAutoMessageRequest,
-): Promise<AutoMessage> {
+): Promise<SendAutoMessageResponse> {
 	const client = await getRunnerClient();
 	return client.sendAutoMessage(chatId, request);
+}
+
+/** ✕ on a queued message: take it back before it is sent. */
+export async function removeAutoQueuedMessage(chatId: string, queuedId: string): Promise<AutoChat> {
+	const client = await getRunnerClient();
+	return client.removeAutoQueuedMessage(chatId, queuedId);
 }
 
 /** Stop the chat's Run of its Case draft, through the Run's own cancel. */
