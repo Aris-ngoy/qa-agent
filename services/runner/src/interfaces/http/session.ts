@@ -27,7 +27,7 @@ import {
 	connectDevice,
 	disconnectDevice,
 	getActiveSessionInfo,
-	isActiveSessionHeldByRun,
+	isActiveSessionViewOnly,
 	requireActiveSession,
 	resetKeptProfile,
 	retargetActiveSession,
@@ -379,7 +379,7 @@ export function createSessionRoutes(profiles: { home?: string } = {}) {
 		}
 		try {
 			const { session } = requireActiveSession();
-			if (isActiveSessionHeldByRun()) {
+			if (isActiveSessionViewOnly()) {
 				return c.json(
 					{
 						error: "A run is using this device session. Cancel the run to interact manually.",
@@ -420,7 +420,7 @@ export function createSessionRoutes(profiles: { home?: string } = {}) {
 		}
 		try {
 			const { session } = requireActiveSession();
-			if (isActiveSessionHeldByRun()) {
+			if (isActiveSessionViewOnly()) {
 				return c.json(
 					{
 						error: "A run is using this device session. Cancel the run to interact manually.",

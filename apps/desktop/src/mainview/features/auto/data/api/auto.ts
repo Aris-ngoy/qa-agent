@@ -3,6 +3,7 @@ import type {
 	AutoChat,
 	AutoChatSummary,
 	AutoMessage,
+	AutoRunControl,
 	AutoStatus,
 	ListAutoModelsResponse,
 	SendAutoMessageRequest,
@@ -58,6 +59,12 @@ export async function sendAutoMessage(
 export async function stopAutoRun(chatId: string): Promise<void> {
 	const client = await getRunnerClient();
 	await client.stopAutoRun(chatId);
+}
+
+/** Pause, take over or resume the chat's Run of its Case draft, from the Run card. */
+export async function controlAutoRun(chatId: string, control: AutoRunControl): Promise<AutoChat> {
+	const client = await getRunnerClient();
+	return client.controlAutoRun(chatId, control);
 }
 
 /** ✕ in the Test tab: remove one step from the Case draft; the draft must pass again. */

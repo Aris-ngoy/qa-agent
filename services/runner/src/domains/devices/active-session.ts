@@ -49,6 +49,8 @@ export type ActiveSessionInfo = {
 	heldByRun: boolean;
 	/** The id of the Run that holds this session, while one does. */
 	heldByRunId?: string;
+	/** The Run holding it is taken over: the user drives the device by hand until it resumes. */
+	takenOver: boolean;
 	lane: import("./lane").LaneName;
 	laneWarning?: string;
 	/** The Viewport preset a web session emulates. */
@@ -68,6 +70,8 @@ type ActiveSession = {
 	session: DeviceSession;
 	/** Run id currently executing on this session, when a Run owns it. */
 	heldByRunId: string | null;
+	/** The Run holding it is taken over, so the user's own Actions are let through. */
+	takenOver: boolean;
 	/** Web only: the App and profile a launched browser was opened on. */
 	appId?: string;
 	profile?: BrowserProfile;
@@ -115,6 +119,7 @@ function toInfo(current: ActiveSession): ActiveSessionInfo {
 		streamUrl: current.streamUrl,
 		heldByRun: current.heldByRunId != null,
 		...(current.heldByRunId != null ? { heldByRunId: current.heldByRunId } : {}),
+		takenOver: current.takenOver,
 		lane: current.session.lane,
 		...(current.session.laneWarning ? { laneWarning: current.session.laneWarning } : {}),
 		...(current.session.viewport ? { viewport: current.session.viewport } : {}),
@@ -144,6 +149,19 @@ export function requireActiveSession(): ActiveSession {
 /** True while a Run owns the shared session (view-only interactive mode). */
 export function isActiveSessionHeldByRun(): boolean {
 	return active?.heldByRunId != null;
+}
+
+/** True while a Run drives the shared session: held, and not taken over. The user only watches. */
+export function isActiveSessionViewOnly(): boolean {
+	return active?.heldByRunId != null && !active.takenOver;
+}
+
+/**
+ * Take over: hand the session the Run `runId` holds to the user (`takenOver`), or back to the
+ * Run. The Run keeps holding it either way, so it cannot be replaced or disconnected.
+ */
+export function setActiveSessionTakenOver(runId: string, takenOver: boolean): void {
+	if (active?.heldByRunId === runId) active.takenOver = takenOver;
 }
 
 /**
@@ -199,6 +217,7 @@ async function createAndRegister(options: {
 		streamUrl: "/stream.mjpeg",
 		session,
 		heldByRunId: options.heldByRunId,
+		takenOver: false,
 		appId: options.appId,
 		profile: options.profile,
 	};
@@ -434,6 +453,7 @@ export async function acquireSessionForRun(options: {
 			.catch(() => false);
 		if (healthy) {
 			onDevice.heldByRunId = options.runId;
+			onDevice.takenOver = false;
 			// The session may have been opened for another app; the Run reads its own.
 			onDevice.session.setTargetApp(targetAppFor(options));
 			return { session: onDevice.session, shared: true };
@@ -495,5 +515,6 @@ export async function releaseSessionFromRun(
 	}
 	if (active && active.heldByRunId === runId) {
 		active.heldByRunId = null;
+		active.takenOver = false;
 	}
 }

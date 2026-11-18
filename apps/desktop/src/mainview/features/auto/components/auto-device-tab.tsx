@@ -1,21 +1,67 @@
 import { useApps } from "@/features/apps/hooks/use-apps";
 import { shownAutoChat$ } from "@/features/auto/data/state/shown-chat";
 import { isRunLive } from "@/features/auto/utils/run-card";
+import { activeDeviceSessionQueryKey } from "@/features/devices/hooks/usequery/use-active-device-session";
 import { screenAspect } from "@/features/devices/utils/web-device";
 import { LiveFrame } from "@/features/inspector/components/live-frame";
 import { useInspectorFeed } from "@/features/inspector/hooks/use-inspector-feed";
+import { coordsFromImageRect } from "@/features/inspector/utils/inspect-pointer";
 import { useValue } from "@legendapp/state/react";
-import { useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { type PointerEvent, useEffect, useRef } from "react";
 
 /**
  * The connected device's live frames, through the Inspector's Frame Feed, with the Action the
- * chat's Run is taking overlaid. View only: Auto never connects, switches or drives the device
- * here; the top bar owns the Device Session.
+ * chat's Run is taking overlaid. View only, except while the user has taken the Run over: then
+ * a press, drag or tap on the frame drives the device, as live control does in the Inspector.
+ * Auto never connects or switches the device here; the top bar owns the Device Session.
  */
 export function AutoDeviceTab() {
 	const { selectedApp } = useApps();
 	const feed = useInspectorFeed(selectedApp?.id);
 	const imgRef = useRef<HTMLImageElement | null>(null);
+	const pointerDown = useRef(false);
+	const queryClient = useQueryClient();
+	const takenOver = useValue(() => shownAutoChat$.chat.run.get()?.pause === "taken_over");
+	// The Run card hears of a Take over first; the Active Session says so once it is read again.
+	const byHand = takenOver && feed.active != null && !feed.viewOnly;
+	const { handleLiveControlChange, sendPointer } = feed;
+
+	useEffect(() => {
+		if (takenOver) void queryClient.invalidateQueries({ queryKey: activeDeviceSessionQueryKey });
+	}, [takenOver, queryClient]);
+
+	useEffect(() => {
+		handleLiveControlChange(byHand);
+	}, [byHand, handleLiveControlChange]);
+
+	const pointAt = (event: PointerEvent<HTMLElement>) =>
+		imgRef.current
+			? coordsFromImageRect(imgRef.current.getBoundingClientRect(), event.clientX, event.clientY)
+			: null;
+	const onPointerDown = (event: PointerEvent<HTMLElement>) => {
+		if (!byHand || event.button !== 0) return;
+		const point = pointAt(event);
+		if (!point) return;
+		event.preventDefault();
+		event.currentTarget.setPointerCapture(event.pointerId);
+		pointerDown.current = true;
+		sendPointer("begin", point.x, point.y);
+	};
+	const onPointerMove = (event: PointerEvent<HTMLElement>) => {
+		if (!pointerDown.current) return;
+		const point = pointAt(event);
+		if (point) sendPointer("move", point.x, point.y);
+	};
+	const onPointerUp = (event: PointerEvent<HTMLElement>) => {
+		if (!pointerDown.current) return;
+		pointerDown.current = false;
+		const point = pointAt(event) ?? { x: 500, y: 500 };
+		sendPointer("end", point.x, point.y);
+		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+			event.currentTarget.releasePointerCapture(event.pointerId);
+		}
+	};
 	const hasFrame = useValue(() => feed.feed$.imageUrl.get() != null);
 	const loading = useValue(() => feed.feed$.bootLoading.get() && feed.feed$.imageUrl.get() == null);
 	const feedMode = useValue(feed.feed$.feedMode);
@@ -48,7 +94,11 @@ export function AutoDeviceTab() {
 						{liveLabel}
 					</span>
 				) : null}
-				{session?.heldByRun ? (
+				{takenOver ? (
+					<span className="text-helper font-medium text-on-surface">
+						You have the device · Resume on the Run card hands it back
+					</span>
+				) : session?.heldByRun ? (
 					<span className="text-helper text-on-surface-variant">
 						A Run holds the device · view only
 					</span>
@@ -57,13 +107,19 @@ export function AutoDeviceTab() {
 
 			<div className="relative flex min-h-56 flex-1 items-center justify-center rounded-xl bg-surface-container p-3">
 				{hasFrame ? (
-					<div className="relative w-fit max-w-full">
+					<div
+						className={`relative w-fit max-w-full ${byHand ? "cursor-pointer touch-none ring-2 ring-primary ring-offset-2 ring-offset-surface-container" : ""} ${frameRadius}`}
+						onPointerCancel={onPointerUp}
+						onPointerDown={onPointerDown}
+						onPointerMove={onPointerMove}
+						onPointerUp={onPointerUp}
+					>
 						<LiveFrame
 							className={`pointer-events-none block max-h-[max(260px,calc(100vh-14rem))] w-auto max-w-full ${frameRadius} shadow-float select-none`}
 							imgRef={imgRef}
 							src$={feed.feed$.imageUrl}
 						/>
-						{action ? (
+						{action && !takenOver ? (
 							<output
 								aria-live="polite"
 								className="motion-fade-in absolute inset-x-3 bottom-3 truncate rounded-lg bg-inverse-surface/85 px-2.5 py-1.5 text-center font-mono text-[11px] text-inverse-on-surface shadow-float"

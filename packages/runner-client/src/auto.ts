@@ -121,6 +121,17 @@ export const autoRunStepSchema = z.object({
 });
 export type AutoRunStep = z.infer<typeof autoRunStepSchema>;
 
+/** Where a chat's Run is with Pause and Take over. */
+export const autoRunPauseSchema = z.union([
+	z.literal("pausing"),
+	z.literal("paused"),
+	z.literal("taken_over"),
+]);
+export type AutoRunPause = z.infer<typeof autoRunPauseSchema>;
+
+/** Run control from the Run card, besides Stop: each is its route, `/auto/chats/:id/run/<control>`. */
+export type AutoRunControl = "pause" | "take-over" | "resume";
+
 /**
  * A Run of the chat's Case draft, as the chat's Run card shows it, taken from the Run's own
  * steps. It is a normal Run: its detail page has the rest.
@@ -140,6 +151,11 @@ export const autoRunSchema = z.object({
 	currentStep: z.number().int().positive().nullable(),
 	/** The command in flight right now; null between Actions. */
 	currentCommand: z.string().nullable(),
+	/**
+	 * Pause and Take over: `pausing` until the Action in flight settles, then `paused`, or
+	 * `taken_over` while the user drives the device by hand; null while the Run goes on.
+	 */
+	pause: autoRunPauseSchema.nullable(),
 	steps: z.array(autoRunStepSchema),
 	/** The commands a replayed Case Script ran: a replay does not say which step each is of. */
 	replayed: z.array(z.string()),

@@ -2,6 +2,7 @@ import {
 	type AutoChat,
 	type AutoChatSummary,
 	type AutoMessage,
+	type AutoRunControl,
 	type AutoStatus,
 	type CreateAutoChatRequest,
 	type ListAutoModelsResponse,
@@ -1364,6 +1365,19 @@ export class RunnerClient {
 			`/auto/chats/${encodeURIComponent(chatId)}/previous-version/restore`,
 			{ method: "POST" },
 			"Restore previous version failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
+	/**
+	 * Run control from the Run card: `pause` stops the Run before its next Action,
+	 * `take-over` also hands the device to the user, `resume` carries on.
+	 */
+	async controlAutoRun(chatId: string, control: AutoRunControl): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/run/${control}`,
+			{ method: "POST" },
+			"Run control failed",
 		);
 		return autoChatSchema.parse(json);
 	}

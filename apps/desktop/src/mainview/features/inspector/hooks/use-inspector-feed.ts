@@ -54,16 +54,17 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 
 	// The Active Session lives in useQuery. Copy the fields these observers read so a
 	// query update restarts them after render, then attach the feed when a session is up.
-	const heldByRun = Boolean(activeSession?.heldByRun);
+	// A Run drives the session, unless the user took it over: then they drive it by hand.
+	const runDrives = Boolean(activeSession?.heldByRun && !activeSession.takenOver);
 	const session$ = useObservable({
 		deviceId: null as string | null,
-		heldByRun: false,
+		runDrives: false,
 		targetApp: null as string | null,
 	});
 	useEffect(() => {
 		session$.set({
 			deviceId: activeSession?.deviceId ?? null,
-			heldByRun,
+			runDrives,
 			targetApp: activeSession?.targetApp ?? null,
 		});
 		if (!activeSession) {
@@ -81,7 +82,7 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 			return;
 		}
 		void controller.connect(activeSession);
-	}, [activeSession, heldByRun, session$, controller, feed$]);
+	}, [activeSession, runDrives, session$, controller, feed$]);
 
 	useEffect(() => {
 		devLog("Inspector page visibility", { visibilityState: document.visibilityState });
@@ -246,9 +247,9 @@ export function useInspectorFeed(selectedAppId: string | undefined) {
 
 	const connected = active != null;
 	// A Run owns the shared session while live — the inspector becomes a viewer.
-	const viewOnly = connected && heldByRun;
+	const viewOnly = connected && runDrives;
 	useObserveEffect(
-		() => feed$.active.get() != null && session$.heldByRun.get() && feed$.liveControl.get(),
+		() => feed$.active.get() != null && session$.runDrives.get() && feed$.liveControl.get(),
 		(event) => {
 			if (event.value) controller.setLiveControl(false);
 		},

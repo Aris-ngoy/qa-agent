@@ -11,6 +11,7 @@ import {
 	AutoNotFoundError,
 	AutoValidationError,
 	applyDraft,
+	controlRun,
 	createChat,
 	deleteChat,
 	getChat,
@@ -116,6 +117,18 @@ export function createAutoRoutes(options: { agent?: ChatAgent } = {}) {
 
 	app.post("/auto/chats/:chatId/previous-version/restore", async (c) =>
 		c.json(await restorePreviousVersion(c.req.param("chatId"))),
+	);
+
+	app.post("/auto/chats/:chatId/run/pause", async (c) =>
+		c.json(await controlRun(c.req.param("chatId"), "pause")),
+	);
+
+	app.post("/auto/chats/:chatId/run/take-over", async (c) =>
+		c.json(await controlRun(c.req.param("chatId"), "take-over")),
+	);
+
+	app.post("/auto/chats/:chatId/run/resume", async (c) =>
+		c.json(await controlRun(c.req.param("chatId"), "resume")),
 	);
 
 	app.post("/auto/chats/:chatId/run/stop", async (c) => {

@@ -127,6 +127,52 @@ describe("executeScriptCase", () => {
 		expect(steps[1]?.action).toMatchObject({ type: "done" });
 	});
 
+	it("waits at its pause point before each step, and takes no Action until it is resumed", async () => {
+		const actions: ActionRequest[] = [];
+		const script: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{ type: "tap", x: 100, y: 200, reason: "first" },
+				{ type: "tap", x: 300, y: 400, reason: "second" },
+			],
+		};
+		let paused = false;
+		const { promise: resumed, resolve: resume } = Promise.withResolvers<void>();
+		const { promise: waiting, resolve: reachedPause } = Promise.withResolvers<void>();
+
+		const replay = executeScriptCase({
+			script,
+			session: fakeSession(),
+			isAborted: () => false,
+			waitIfPaused: async () => {
+				if (!paused) return false;
+				reachedPause();
+				await resumed;
+				return false;
+			},
+			appendStep: async () => {},
+			performAction: async (_session, body) => {
+				actions.push(body);
+				// Pause lands while the first tap is in flight.
+				paused = true;
+				return { ok: true, kind: body.kind };
+			},
+			clock: fakeClock(),
+			settle: { capMs: 0, pollMs: 0, stableWindowMs: 0 },
+		});
+		await waiting;
+		expect(actions).toEqual([{ kind: "tap", x: 100, y: 200 }]);
+
+		paused = false;
+		resume();
+		expect(await replay).toBe("passed");
+		expect(actions).toEqual([
+			{ kind: "tap", x: 100, y: 200 },
+			{ kind: "tap", x: 300, y: 400 },
+		]);
+	});
+
 	it("replays a key with its modifiers", async () => {
 		const actions: ActionRequest[] = [];
 		const steps: Array<{ action: unknown; command?: string | null }> = [];

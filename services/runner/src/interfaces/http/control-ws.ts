@@ -1,7 +1,7 @@
 import { type ControlScreenChangedMessage, controlMessageSchema } from "@yoqa/runner-client";
 import {
 	getActiveSession,
-	isActiveSessionHeldByRun,
+	isActiveSessionViewOnly,
 	onActiveScreenChanged,
 } from "../../domains/devices/active-session";
 
@@ -80,7 +80,7 @@ export const controlWebSocket = {
 		}
 
 		const msg = result.data;
-		if (isActiveSessionHeldByRun()) {
+		if (isActiveSessionViewOnly()) {
 			ws.send(
 				JSON.stringify({
 					ok: false,

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { isRunLive, runCardElapsedMs, runCardProgress } from "@/features/auto/utils/run-card";
+import {
+	isRunLive,
+	runCardControls,
+	runCardElapsedMs,
+	runCardPauseNote,
+	runCardProgress,
+} from "@/features/auto/utils/run-card";
 import type { AutoRun, AutoRunStep } from "@yoqa/runner-client";
 
 function step(status: AutoRunStep["status"]): AutoRunStep {
@@ -18,6 +24,7 @@ function run(overrides: Partial<AutoRun> = {}): AutoRun {
 		finishedAt: null,
 		currentStep: 3,
 		currentCommand: null,
+		pause: null,
 		steps: [step("passed"), step("passed"), step("running"), step("pending"), step("pending")],
 		replayed: [],
 		error: null,
@@ -64,5 +71,34 @@ describe("isRunLive", () => {
 			isRunLive(run({ status: "errored" })),
 			isRunLive(run({ status: "cancelled" })),
 		]).toEqual([true, true, false, false, false]);
+	});
+});
+
+describe("runCardControls", () => {
+	test("a Run going on can be paused or taken over", () => {
+		expect(runCardControls(run())).toEqual(["pause", "take-over"]);
+	});
+
+	test("a paused Run, or one pausing, resumes or is taken over; a taken over one only resumes", () => {
+		expect(runCardControls(run({ pause: "pausing" }))).toEqual(["resume", "take-over"]);
+		expect(runCardControls(run({ pause: "paused" }))).toEqual(["resume", "take-over"]);
+		expect(runCardControls(run({ pause: "taken_over" }))).toEqual(["resume"]);
+	});
+
+	test("a Run that ended has none", () => {
+		expect(runCardControls(run({ status: "passed", finishedAt: 3_000 }))).toEqual([]);
+	});
+});
+
+describe("runCardPauseNote", () => {
+	test("says where the Run is with Pause and Take over, and nothing while it goes on", () => {
+		expect(runCardPauseNote(run())).toBeNull();
+		expect(runCardPauseNote(run({ pause: "pausing" }))).toBe(
+			"Pausing once the Action in flight settles…",
+		);
+		expect(runCardPauseNote(run({ pause: "paused" }))).toBe("Paused. Resume carries on from here.");
+		expect(runCardPauseNote(run({ pause: "taken_over" }))).toBe(
+			"You have the device: drive it in the Device tab. What you do by hand is not recorded, and a Run taken over does not count for Apply.",
+		);
 	});
 });

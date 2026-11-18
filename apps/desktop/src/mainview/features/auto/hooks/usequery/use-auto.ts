@@ -1,6 +1,7 @@
 import { showErrorToast } from "@/app/show-error-toast";
 import {
 	applyAutoDraft,
+	controlAutoRun,
 	createAutoChat,
 	deleteAutoChat,
 	getAutoStatus,
@@ -18,7 +19,7 @@ import { summaryOf } from "@/features/auto/utils/chat-events";
 import { removeChatSummary, upsertChatSummary } from "@/features/auto/utils/chat-list";
 import { caseQueryKey, casesQueryKey } from "@/features/test-cases/hooks/usequery/use-cases";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AutoChat, AutoChatMode, AutoChatSummary } from "@yoqa/runner-client";
+import type { AutoChat, AutoChatMode, AutoChatSummary, AutoRunControl } from "@yoqa/runner-client";
 
 export const autoStatusQueryKey = ["auto", "status"] as const;
 export const autoModelsQueryKey = ["auto", "models"] as const;
@@ -118,6 +119,18 @@ export function useStopAutoRun() {
 	return useMutation({
 		mutationFn: (chatId: string) => stopAutoRun(chatId),
 		onError: (error) => showErrorToast(error, "Failed to stop the run"),
+	});
+}
+
+/** Pause, Take over or Resume from the Run card; the Run card shows what the runner answered. */
+export function useControlAutoRun() {
+	return useMutation({
+		mutationFn: ({ chatId, control }: { chatId: string; control: AutoRunControl }) =>
+			controlAutoRun(chatId, control),
+		onSuccess: (chat) => {
+			if (chat.run) applyToShownChat(chat.id, { type: "run", run: chat.run });
+		},
+		onError: (error) => showErrorToast(error, "Run control failed"),
 	});
 }
 
