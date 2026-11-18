@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import type {
-	BrowserProfile,
+	CaseScript,
 	CreateRunRequest,
 	Run,
 	RunExecutionMode,
@@ -23,13 +23,7 @@ import {
 } from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import { resolveBuildForRun } from "../builds/application";
-import {
-	getApp,
-	getCase,
-	getCaseScriptJson,
-	isEverydayWarningAccepted,
-	saveCaseScript,
-} from "../catalog/application";
+import { getApp, getCase, isEverydayWarningAccepted, saveCaseScript } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
 import { acquireSessionForRun, releaseSessionFromRun } from "../devices/active-session";
@@ -50,11 +44,19 @@ import {
 	recordingFromRow,
 	runVideoPath,
 } from "./run-recording";
-import { type PlannedCase, openStartTarget, prepareRun, runProfileOf } from "./run-setup";
+import {
+	type DraftSteps,
+	type PlannedCase,
+	draftMode,
+	openStartTarget,
+	prepareRun,
+	runProfileOf,
+} from "./run-setup";
 import { runSteps, runTests, runs } from "./schema";
-import { parseCaseScript, serializeCaseScript } from "./script";
+import { serializeCaseScript } from "./script";
 
 export { RunNotFoundError, RunValidationError };
+export type { DraftSteps };
 
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["passed", "errored", "cancelled"]);
 
@@ -63,6 +65,27 @@ type RunControl = {
 };
 
 const runControls = new Map<string, RunControl>();
+
+/** How a Run of a Case draft's steps ended, for whoever started it. None of it reaches the catalog. */
+export type DraftRunOutcome = {
+	runId: string;
+	status: "passed" | "errored" | "cancelled";
+	error: string | null;
+	/** The Case Script the passed Run learned; null when it did not pass or replayed one. */
+	learnedScript: CaseScript | null;
+};
+
+/** What a Run of a Case draft's steps starts with: the steps, and who waits for its outcome. */
+type DraftRunStart = {
+	steps: DraftSteps;
+	settle: (outcome: DraftRunOutcome) => void;
+};
+
+/** A Run of a Case draft's steps, from its create until its outcome is handed back. */
+type DraftRun = DraftRunStart & { learnedScript: CaseScript | null };
+
+/** Runs of a Case draft's steps in progress: the one place that says a Run must not touch the catalog. */
+const draftRuns = new Map<string, DraftRun>();
 
 function newId(prefix: string): string {
 	return `${prefix}_${crypto.randomUUID()}`;
@@ -123,27 +146,21 @@ function profileOf(value: string | null): Pick<Run, "profile"> {
 	return parsed.success ? { profile: parsed.data } : {};
 }
 
-/** The browser profile a web Run on these cases would open (`runProfileOf`), before it exists. */
-async function resolveRunProfile(
-	requested: string | null | undefined,
-	caseIds: string[],
-): Promise<BrowserProfile> {
-	const scripts: Array<ReturnType<typeof parseCaseScript>> = [];
-	for (const caseId of caseIds) scripts.push(parseCaseScript(await getCaseScriptJson(caseId)));
-	return runProfileOf(requested, scripts);
-}
-
 /**
  * A Run on the Everyday browser needs its App to have accepted the first-use warning, at a
- * connect, and cannot be clean: Yoqa never wipes the user's own profile.
+ * connect, and cannot be clean: Yoqa never wipes the user's own profile. `scripts` are the
+ * Case Scripts its cases would run with.
  */
-async function assertEverydayRunAllowed(input: CreateRunRequest, caseIds: string[]): Promise<void> {
+async function assertEverydayRunAllowed(
+	input: CreateRunRequest,
+	scripts: Array<CaseScript | null>,
+): Promise<void> {
 	if (!(await isEverydayWarningAccepted(input.appId))) {
 		throw new RunValidationError(
 			`${EVERYDAY_WARNING} Connect to ${input.deviceId} for this App once and accept the warning before a Run uses it.`,
 		);
 	}
-	if ((await resolveRunProfile(input.profile, caseIds)) === "clean") {
+	if (runProfileOf(input.profile, scripts) === "clean") {
 		const browser = webDeviceOf(input.deviceId)?.browser;
 		const launched = browser ? installedBrowserId(browser.browser) : input.deviceId;
 		throw new RunValidationError(
@@ -346,7 +363,7 @@ async function persistErrored(
 				.update(runTests)
 				.set({ status: "errored", error: message, finishedAt })
 				.where(eq(runTests.id, test.id));
-			await updateCaseLastRun(test.caseId, "errored", finishedAt);
+			if (!draftRuns.has(runId)) await updateCaseLastRun(test.caseId, "errored", finishedAt);
 		}
 	}
 }
@@ -374,7 +391,8 @@ type RunCaseContext = {
 /**
  * Run one planned Test Case through the Case executor, recorded when asked, and persist
  * its outcome: its row, its case's last run, and the Case Script a passed agent case learns.
- * A cancelled case is left to `persistCancelled`.
+ * A case running a Case draft's steps keeps what it learned for its caller instead, and
+ * leaves its case's last run alone. A cancelled case is left to `persistCancelled`.
  */
 async function runTest(
 	planned: PlannedCase,
@@ -436,6 +454,11 @@ async function runTest(
 					currentCommand: null,
 				})
 				.where(eq(runTests.id, test.id));
+			const draftRun = draftRuns.get(context.runId);
+			if (draftRun) {
+				draftRun.learnedScript = outcome.learnedScript;
+				return outcome.status;
+			}
 			await updateCaseLastRun(test.caseId, outcome.status, finishedAt);
 			const learned = outcome.learnedScript;
 			if (learned) {
@@ -481,7 +504,12 @@ export async function executeRun(runId: string): Promise<void> {
 			return;
 		}
 
-		const { app, startTarget, cases: planned, auth } = await prepareRun(run);
+		const {
+			app,
+			startTarget,
+			cases: planned,
+			auth,
+		} = await prepareRun(run, draftRuns.get(runId)?.steps);
 
 		const runRow = (await db.select().from(runs).where(eq(runs.id, runId)))[0];
 		// The Everyday browser runs on the user's own profile: neither a Kept one nor clean.
@@ -565,7 +593,54 @@ export async function executeRun(runId: string): Promise<void> {
 	}
 }
 
-export async function createRun(input: CreateRunRequest): Promise<Run> {
+export function createRun(input: CreateRunRequest): Promise<Run> {
+	return startRun(input);
+}
+
+export type CreateDraftRunRequest = Omit<CreateRunRequest, "caseIds"> & {
+	/** The Test Case the draft is of. Its saved steps, Case Script and last result stay as they are. */
+	caseId: string;
+	steps: DraftSteps;
+};
+
+/**
+ * Run a Case draft's steps in place of its Test Case's saved ones: replayed when the draft
+ * has a Case Script and the mode allows it, else by the agent. It is a normal Run otherwise.
+ * `outcome` settles once the Run is over, with the Case Script it learned; nothing is saved.
+ */
+export async function createDraftRun(
+	input: CreateDraftRunRequest,
+): Promise<{ run: Run; outcome: Promise<DraftRunOutcome> }> {
+	if (input.steps.flows.length === 0) {
+		throw new RunValidationError("A Case draft needs at least one step to run");
+	}
+	const { caseId, steps, ...request } = input;
+	const { promise: outcome, resolve: settle } = Promise.withResolvers<DraftRunOutcome>();
+	const run = await startRun({ ...request, caseIds: [caseId] }, { steps, settle });
+	return { run, outcome };
+}
+
+/** Hand a finished Run of a Case draft's steps back to its caller, from what the Run stored. */
+async function settleDraftRun(runId: string): Promise<void> {
+	const draftRun = draftRuns.get(runId);
+	if (!draftRun) return;
+	draftRuns.delete(runId);
+	const run = await loadRun(runId).catch(() => null);
+	const test = run?.tests[0];
+	// A cancel can land after the case finished: the Run's own status has the last word.
+	const status =
+		run?.status !== "cancelled" && (test?.status === "passed" || test?.status === "errored")
+			? test.status
+			: "cancelled";
+	draftRun.settle({
+		runId,
+		status,
+		error: test?.error ?? run?.error ?? null,
+		learnedScript: status === "passed" ? draftRun.learnedScript : null,
+	});
+}
+
+async function startRun(input: CreateRunRequest, draft?: DraftRunStart): Promise<Run> {
 	if (runControls.size > 0) {
 		throw new RunValidationError(
 			"A run is already in progress. Cancel it before starting another.",
@@ -601,12 +676,16 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 	}
 
 	if (webDeviceOf(input.deviceId)?.kind === "everyday") {
-		await assertEverydayRunAllowed(input, uniqueCaseIds);
+		// A draft with no Case Script of its own runs on the profile its saved one asks for.
+		const scripts = catalogCases.map((catalogCase) => draft?.steps.script ?? catalogCase.script);
+		await assertEverydayRunAllowed(input, scripts);
 	}
 
-	const needsAgent = catalogCases.some(
-		(catalogCase) => caseModeFor(executionMode, catalogCase.hasScript) === "agent",
-	);
+	const needsAgent = draft
+		? draftMode(executionMode, draft.steps) === "agent"
+		: catalogCases.some(
+				(catalogCase) => caseModeFor(executionMode, catalogCase.hasScript) === "agent",
+			);
 
 	if (needsAgent) {
 		try {
@@ -669,9 +748,12 @@ export async function createRun(input: CreateRunRequest): Promise<Run> {
 		throw new Error("Failed to create run");
 	}
 
-	void executeRun(runId).catch((error) => {
-		console.error(`[runs] executeRun ${runId} failed`, error);
-	});
+	if (draft) draftRuns.set(runId, { ...draft, learnedScript: null });
+	void executeRun(runId)
+		.catch((error) => {
+			console.error(`[runs] executeRun ${runId} failed`, error);
+		})
+		.finally(() => settleDraftRun(runId));
 
 	return created;
 }
