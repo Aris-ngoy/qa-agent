@@ -4,6 +4,7 @@ import { providers } from "../providers/schema";
 /**
  * A faked Decide: an OpenAI-compatible endpoint behind a custom Provider. Each instruction
  * is one tap at the middle of the page, which verify then accepts, unless `failWith` is set.
+ * Verify first answers `continue` `continues` times, so the agent takes that many taps.
  * While `held` is set, a Decide waits for it (only one whose prompt has `holdOn`, when that
  * is set), and `deciding` says one has arrived.
  */
@@ -11,6 +12,7 @@ export type FakeVision = {
 	url: string;
 	prompts: string[];
 	failWith: string | null;
+	continues: number;
 	held: Promise<void> | null;
 	holdOn: string | null;
 	deciding: boolean;
@@ -22,6 +24,7 @@ export function startFakeVision(): FakeVision {
 		url: "",
 		prompts: [],
 		failWith: null,
+		continues: 0,
 		held: null,
 		holdOn: null,
 		deciding: false,
@@ -46,11 +49,15 @@ export function startFakeVision(): FakeVision {
 					await vision.held;
 				}
 			}
+			const continuing = verifying && vision.continues > 0;
+			if (continuing) vision.continues -= 1;
 			const reply = vision.failWith
 				? { type: "fail", reason: vision.failWith, thoughts: "The page cannot do this." }
-				: verifying
-					? { type: "verify", reason: "Done", thoughts: "The tap landed." }
-					: { type: "tap", x: 500, y: 500, reason: "tap the middle", thoughts: "Middle." };
+				: continuing
+					? { type: "continue", reason: "Not yet", thoughts: "Tap it." }
+					: verifying
+						? { type: "verify", reason: "Done", thoughts: "The tap landed." }
+						: { type: "tap", x: 500, y: 500, reason: "tap the middle", thoughts: "Middle." };
 			return Response.json({
 				id: "chatcmpl-fake",
 				object: "chat.completion",

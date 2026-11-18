@@ -100,6 +100,12 @@ export type AppendCaseStep = (input: {
 
 export type SetCurrentCommand = (command: string | null) => Promise<void>;
 
+/**
+ * The pause point, before each Action: waits while the Run is paused. True when the user
+ * took the device over meanwhile, so the screen may not be the one the Action was decided on.
+ */
+export type WaitIfPaused = () => Promise<boolean>;
+
 export type CaseDecideFn = (input: {
 	auth: ActiveProviderAuth;
 	appContext: string;
@@ -146,6 +152,7 @@ export type ScriptCaseDeps = {
 	script: CaseScript;
 	session: DeviceSession;
 	isAborted: () => boolean;
+	waitIfPaused?: WaitIfPaused;
 	appendStep: AppendCaseStep;
 	setCurrentCommand?: SetCurrentCommand;
 	performAction?: PerformActionFn;
@@ -163,6 +170,7 @@ export type AgentCaseDeps = {
 	auth: ActiveProviderAuth;
 	session: DeviceSession;
 	isAborted: () => boolean;
+	waitIfPaused?: WaitIfPaused;
 	appendStep: AppendCaseStep;
 	setCurrentCommand?: SetCurrentCommand;
 	decide?: CaseDecideFn;
@@ -190,6 +198,8 @@ const defaultClock: CaseExecutorClock = {
 };
 
 const noopSetCurrentCommand: SetCurrentCommand = async () => {};
+
+const neverPaused: WaitIfPaused = async () => false;
 
 async function withCurrentCommand<T>(
 	setCurrentCommand: SetCurrentCommand,
@@ -374,6 +384,7 @@ export async function executeScriptCase(
 		});
 	const clock = deps.clock ?? defaultClock;
 	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
+	const waitIfPaused = deps.waitIfPaused ?? neverPaused;
 
 	let stepIdx = 0;
 	let lastScreenshotUri: string | null = null;
@@ -389,6 +400,8 @@ export async function executeScriptCase(
 	const onStep = async (event: CaseScriptReplayEvent) => {
 		const { action } = event;
 		if (event.status === "running") {
+			// A Case Script replays blind: after a Take over it carries on with its next step.
+			await waitIfPaused();
 			const startedAt = clock.now();
 			current = { startedAt, screenshotUri: null, latencyMs: 0 };
 			if (action.type !== "branch") {
@@ -515,6 +528,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 	const clock = deps.clock ?? defaultClock;
 	const maxSteps = deps.maxStepsPerCase ?? MAX_STEPS_PER_CASE;
 	const setCurrentCommand = deps.setCurrentCommand ?? noopSetCurrentCommand;
+	const waitIfPaused = deps.waitIfPaused ?? neverPaused;
 
 	let stepIdx = 0;
 	let caseStatus: "passed" | "errored" | "cancelled" = "passed";
@@ -794,6 +808,14 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 			});
 		};
 
+		/** A decided Action that was never taken: it is neither a recent Action nor in the Case Script. */
+		const forget = (decision: AgentDecision) => {
+			for (const list of [recentActions, recordedDecisions]) {
+				const at = list.lastIndexOf(decision);
+				if (at >= 0) list.splice(at, 1);
+			}
+		};
+
 		for (let instructionIndex = 0; instructionIndex < instructionQueue.length; instructionIndex++) {
 			const instruction = instructionQueue[instructionIndex];
 			if (!instruction) break;
@@ -807,6 +829,12 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 			let pending: AgentDecision | null = null;
 			let pendingElements: ScreenElement[] = [];
 			for (let attempt = 0; attempt < maxSteps && !instructionDone; attempt++) {
+				if ((await waitIfPaused()) && pending) {
+					// The user drove the device meanwhile: drop the Action decided before, look at
+					// the screen they left, and decide again.
+					forget(pending);
+					pending = null;
+				}
 				if (deps.isAborted()) {
 					caseStatus = "cancelled";
 					instructionDone = true;

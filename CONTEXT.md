@@ -188,5 +188,5 @@ The steps and Case Script a Test Case had before a Case draft was last applied t
 _Avoid_: history, undo, revision
 
 **Take over**:
-Pausing a Run started from an Auto chat to drive the device by hand. Actions taken by hand are not recorded in the Case draft; the chat agent sees the resulting screen on its next turn.
+Pausing a Run started from an Auto chat to drive the device by hand. Actions taken by hand are not recorded in the Run or the Case draft; when it resumes, the Run's agent decides again from the screen the user left, and the chat agent is told the user took over. A Run taken over is not clean: it never becomes a Case draft's passing Run.
 _Avoid_: manual mode, takeover (one word)

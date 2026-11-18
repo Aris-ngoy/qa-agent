@@ -27,7 +27,11 @@ import { resolveBuildForRun } from "../builds/application";
 import { getApp, getCase, isEverydayWarningAccepted, saveCaseScript } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
 import { cases } from "../catalog/schema";
-import { acquireSessionForRun, releaseSessionFromRun } from "../devices/active-session";
+import {
+	acquireSessionForRun,
+	releaseSessionFromRun,
+	setActiveSessionTakenOver,
+} from "../devices/active-session";
 import { EVERYDAY_WARNING } from "../devices/everyday-warning";
 import { pruneOldRunScreenshots } from "../devices/screenshot-retention";
 import type { DeviceSession } from "../devices/session";
@@ -63,7 +67,16 @@ const TERMINAL_RUN_STATUSES = new Set<RunStatus>(["passed", "errored", "cancelle
 
 type RunControl = {
 	aborted: boolean;
+	/** Pause asked for, and whether it hands the device to the user; null while the Run goes on. */
+	pause: { takeOver: boolean } | null;
+	/** The Case executor is waiting at its pause point. */
+	waiting: boolean;
+	/** Wakes the Case executor waiting at its pause point: on Resume, Take over or a cancel. */
+	wake: () => void;
 };
+
+/** Where a Run in progress is with Pause and Take over; none while it goes on. */
+export type RunPause = "pausing" | "paused" | "taken_over";
 
 const runControls = new Map<string, RunControl>();
 
@@ -74,6 +87,8 @@ export type DraftRunOutcome = {
 	error: string | null;
 	/** The Case Script the passed Run learned; null when it did not pass or replayed one. */
 	learnedScript: CaseScript | null;
+	/** The user took the Run over at some point, so it is not a clean Run. */
+	takenOver: boolean;
 };
 
 /** What a Run of a Case draft's steps starts with: the steps, and who waits for its outcome. */
@@ -84,7 +99,11 @@ type DraftRunStart = {
 };
 
 /** A Run of a Case draft's steps, from its create until its outcome is handed back. */
-type DraftRun = DraftRunStart & { learnedScript: CaseScript | null };
+type DraftRun = DraftRunStart & {
+	learnedScript: CaseScript | null;
+	/** Taken over at some point, so what the user did by hand is part of the Run. */
+	takenOver: boolean;
+};
 
 /** Runs of a Case draft's steps in progress: the one place that says a Run must not touch the catalog. */
 const draftRuns = new Map<string, DraftRun>();
@@ -114,12 +133,91 @@ function isAborted(runId: string): boolean {
 	return runControls.get(runId)?.aborted === true;
 }
 
+function newControl(aborted: boolean): RunControl {
+	return { aborted, pause: null, waiting: false, wake: () => {} };
+}
+
 function registerControl(runId: string): RunControl {
 	const existing = runControls.get(runId);
 	if (existing) return existing;
-	const control: RunControl = { aborted: false };
+	const control = newControl(false);
 	runControls.set(runId, control);
 	return control;
+}
+
+/** Cancel the Run: its Case executor stops at the next check, and stops waiting if it is paused. */
+function abortControl(runId: string): void {
+	const control = runControls.get(runId);
+	if (!control) {
+		// Queued but executeRun not registered yet: register it aborted, so executeRun exits early.
+		runControls.set(runId, newControl(true));
+		return;
+	}
+	control.aborted = true;
+	control.wake();
+}
+
+/** The control of a Run in progress, which Pause, Take over and Resume change. */
+function liveControl(runId: string): RunControl {
+	const control = runControls.get(runId);
+	if (!control || control.aborted) throw new RunValidationError("The Run is not in progress.");
+	return control;
+}
+
+/** Where the Run in progress is with Pause and Take over; null while it goes on. */
+export function runPauseOf(runId: string): RunPause | null {
+	const control = runControls.get(runId);
+	if (!control?.pause || control.aborted) return null;
+	if (!control.waiting) return "pausing";
+	return control.pause.takeOver ? "taken_over" : "paused";
+}
+
+/** Pause: the Run stops before its next Action, once the one in flight has settled, and stays open. */
+export function pauseRun(runId: string): void {
+	const control = liveControl(runId);
+	control.pause ??= { takeOver: false };
+}
+
+/** Take over: pause, and hand the device to the user once the Action in flight has settled. */
+export function takeOverRun(runId: string): void {
+	const control = liveControl(runId);
+	control.pause = { takeOver: true };
+	control.wake();
+}
+
+/** Resume: hand the device back to the Run, which carries on. */
+export function resumeRun(runId: string): void {
+	const control = liveControl(runId);
+	if (!control.pause) throw new RunValidationError("The Run is not paused.");
+	control.pause = null;
+	control.wake();
+}
+
+/**
+ * The Case executor's pause point, before each Action: wait while the Run is paused, the
+ * device handed to the user while it is taken over. True when it was taken over meanwhile.
+ */
+async function waitIfPaused(runId: string): Promise<boolean> {
+	const control = runControls.get(runId);
+	if (!control) return false;
+	let tookOver = false;
+	while (control.pause && !control.aborted) {
+		// Each wake reads the pause again: a Resume then a Pause before this wakes is a plain pause.
+		const handOver = control.pause.takeOver;
+		if (handOver) {
+			tookOver = true;
+			const draftRun = draftRuns.get(runId);
+			if (draftRun) draftRun.takenOver = true;
+		}
+		setActiveSessionTakenOver(runId, handOver);
+		const { promise, resolve } = Promise.withResolvers<void>();
+		control.wake = resolve;
+		control.waiting = true;
+		await promise;
+	}
+	control.waiting = false;
+	setActiveSessionTakenOver(runId, false);
+	return tookOver;
 }
 
 function clearControl(runId: string): void {
@@ -460,6 +558,7 @@ async function runTest(
 				screenMode: context.screenMode,
 				defaultAppId: context.defaultAppId,
 				isAborted: () => isAborted(context.runId),
+				waitIfPaused: () => waitIfPaused(context.runId),
 				appendStep: (step) => appendStep({ runTestId: test.id, ...step }),
 				setCurrentCommand: (command) => setCurrentCommand(test.id, command),
 			});
@@ -660,6 +759,7 @@ async function settleDraftRun(runId: string): Promise<void> {
 		status,
 		error: test?.error ?? run?.error ?? null,
 		learnedScript: status === "passed" ? draftRun.learnedScript : null,
+		takenOver: draftRun.takenOver,
 	});
 }
 
@@ -772,7 +872,7 @@ async function startRun(input: CreateRunRequest, draft?: DraftRunStart): Promise
 		throw new Error("Failed to create run");
 	}
 
-	if (draft) draftRuns.set(runId, { ...draft, learnedScript: null });
+	if (draft) draftRuns.set(runId, { ...draft, learnedScript: null, takenOver: false });
 	void executeRun(runId)
 		.catch((error) => {
 			console.error(`[runs] executeRun ${runId} failed`, error);
@@ -841,12 +941,7 @@ export async function deleteRun(runId: string): Promise<void> {
 	}
 
 	if (!TERMINAL_RUN_STATUSES.has(run.status)) {
-		const control = runControls.get(runId);
-		if (control) {
-			control.aborted = true;
-		} else {
-			runControls.set(runId, { aborted: true });
-		}
+		abortControl(runId);
 		await persistCancelled(runId);
 	}
 
@@ -866,14 +961,7 @@ export async function cancelRun(runId: string): Promise<Run> {
 		return run;
 	}
 
-	const control = runControls.get(runId);
-	if (control) {
-		control.aborted = true;
-	} else {
-		// Queued but executeRun not registered yet — register aborted control so executeRun exits early.
-		runControls.set(runId, { aborted: true });
-	}
-
+	abortControl(runId);
 	await persistCancelled(runId);
 	return getRun(runId);
 }
@@ -883,8 +971,8 @@ export async function cancelRun(runId: string): Promise<Run> {
  * left `running`. Its cases still queued or running say the runner stopped.
  */
 export async function cancelRunsInProgress(): Promise<void> {
-	for (const [runId, control] of runControls) {
-		control.aborted = true;
+	for (const runId of runControls.keys()) {
+		abortControl(runId);
 		await persistCancelled(runId, "The runner stopped");
 	}
 }

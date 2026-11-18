@@ -36,6 +36,7 @@ import {
 import { runSteps, runTests, runs } from "../../domains/runs/schema";
 import { createAutoRoutes } from "./auto";
 import { createRunsRoutes } from "./runs";
+import { createSessionRoutes } from "./session";
 
 /** A chat agent that answers each turn by running `script`, and records the turns it was given. */
 type ScriptedAgent = ChatAgent & {
@@ -786,6 +787,7 @@ describe("the Auto chat routes", () => {
 			browser?.kill();
 			vision.prompts = [];
 			vision.failWith = null;
+			vision.continues = 0;
 			vision.held = null;
 			vision.holdOn = null;
 			vision.deciding = false;
@@ -952,6 +954,163 @@ describe("the Auto chat routes", () => {
 			expect((await getRun(live?.runId as string)).status).toBe("cancelled");
 			expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft?.passingRunId).toBeNull();
 			expect((await getCase(saved.id))?.lastRunStatus).toBeNull();
+		});
+
+		/** Wait until `check` holds, up to five seconds. */
+		async function waitUntil(check: () => boolean | Promise<boolean>): Promise<void> {
+			for (let attempt = 0; attempt < 500 && !(await check()); attempt++) await Bun.sleep(10);
+		}
+
+		const control = (chatId: string, action: "pause" | "take-over" | "resume") =>
+			json<AutoChat & { error?: string }>(`/auto/chats/${chatId}/run/${action}`, {
+				method: "POST",
+			});
+
+		const shownRun = async (chatId: string) =>
+			(await json<AutoChat>(`/auto/chats/${chatId}`)).body.run;
+
+		test("Pause stops the Run before its next Action and keeps it open, over SSE, and Resume carries on from where it paused", async () => {
+			await connectBrowser();
+			const { chat } = await chatOnSavedCase("Paused");
+			// One tap: the first verify says the step is not done yet.
+			vision.continues = 1;
+			const { promise: held, resolve: release } = Promise.withResolvers<void>();
+			vision.held = held;
+			const outputs: Array<{ text: string; isError: boolean }> = [];
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				outputs.push(await turn.callTool("run_case_draft", {}));
+				yield { type: "text", delta: "Ran it." };
+			};
+			const stream = await openEvents(chat.id);
+
+			expect((await control(chat.id, "pause")).status).toBe(409);
+			await send(chat.id, "Fix it and run it", "run");
+			await waitUntil(() => vision.deciding);
+			const pausing = await control(chat.id, "pause");
+			expect(pausing.status).toBe(200);
+			expect(pausing.body.run?.pause).toBe("pausing");
+			release();
+			await waitUntil(async () => (await shownRun(chat.id))?.pause === "paused");
+			await Bun.sleep(FOLLOW_WAIT_MS);
+			const paused = await shownRun(chat.id);
+			// The tap it decided on waits for Resume.
+			expect(paused).toMatchObject({ status: "running", pause: "paused" });
+			expect(browser.clicks).toEqual([]);
+			expect(vision.prompts).toHaveLength(1);
+
+			const resumed = await control(chat.id, "resume");
+			expect(resumed.status).toBe(200);
+			expect(resumed.body.run?.pause).toBeNull();
+			const cards = runCards(await stream.until(isReply));
+			await stream.close();
+
+			expect(browser.clicks).toEqual([{ x: 640, y: 400 }]);
+			const states = cards
+				.map((card) => card.pause)
+				.filter((state, index, all) => state !== all[index - 1]);
+			expect(states).toEqual([null, "pausing", "paused", null]);
+			expect(outputs[0]?.text).toContain("· passed");
+			// A pause alone leaves the Run clean: it is the draft's passing Run.
+			const runId = cards.at(-1)?.runId;
+			expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft?.passingRunId).toBe(
+				runId as string,
+			);
+			expect((await control(chat.id, "resume")).status).toBe(409);
+		});
+
+		test("Take over pauses and hands the device to the user; their Actions are not recorded, the Run goes on from the screen they left, and it does not count as a passing Run", async () => {
+			await connectBrowser();
+			const { chat } = await chatOnSavedCase("Taken over");
+			vision.continues = 1;
+			const { promise: held, resolve: release } = Promise.withResolvers<void>();
+			vision.held = held;
+			const outputs: Array<{ text: string; isError: boolean }> = [];
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				outputs.push(await turn.callTool("run_case_draft", {}));
+				yield { type: "text", delta: "Ran it." };
+			};
+			const stream = await openEvents(chat.id);
+			const session = createSessionRoutes();
+			const tapByHand = () =>
+				session.request("/action", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ kind: "tap", x: 100, y: 100 }),
+				});
+
+			await send(chat.id, "Fix it and run it", "run");
+			await waitUntil(() => vision.deciding);
+			// While the Run drives, the device is view only.
+			expect((await tapByHand()).status).toBe(409);
+			const taking = await control(chat.id, "take-over");
+			expect(taking.status).toBe(200);
+			expect(taking.body.run?.pause).toBe("pausing");
+			release();
+			await waitUntil(async () => (await shownRun(chat.id))?.pause === "taken_over");
+			expect(getActiveSessionInfo()).toMatchObject({ heldByRun: true, takenOver: true });
+			expect((await tapByHand()).status).toBe(200);
+			expect(browser.clicks).toEqual([{ x: 128, y: 80 }]);
+
+			expect((await control(chat.id, "resume")).status).toBe(200);
+			const cards = runCards(await stream.until(isReply));
+			await stream.close();
+
+			expect(cards.some((card) => card.pause === "taken_over")).toBe(true);
+			expect(getActiveSessionInfo()?.takenOver).toBe(false);
+			// The tap decided before the Take over is dropped: the agent looked at the screen the
+			// user left and decided again, and that screen already passed.
+			expect(browser.clicks).toEqual([{ x: 128, y: 80 }]);
+			expect(vision.prompts).toHaveLength(2);
+			const runId = cards.at(-1)?.runId as string;
+			const run = await getRun(runId);
+			expect(run.status).toBe("passed");
+			for (const step of run.tests[0]?.steps ?? []) {
+				expect(step.action).not.toMatchObject({ x: 100, y: 100 });
+			}
+			expect(outputs[0]?.text).toContain("· passed");
+			expect(outputs[0]?.text).toContain("The user took over this Run");
+			const { draft } = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+			expect(draft).toMatchObject({ passingRunId: null, learnedScript: null });
+			expect(draft?.steps.map((step) => step.instructions)).toEqual(["Tap Pay now"]);
+		});
+
+		test("Stop while taken over ends the Run and hands the device back; with no Run in progress there is nothing to pause, take over or resume", async () => {
+			await connectBrowser();
+			const { chat } = await chatOnSavedCase("Stopped while taken over");
+			vision.continues = 1;
+			const { promise: held, resolve: release } = Promise.withResolvers<void>();
+			vision.held = held;
+			const outputs: Array<{ text: string; isError: boolean }> = [];
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				outputs.push(await turn.callTool("run_case_draft", {}));
+				yield { type: "text", delta: "Stopped." };
+			};
+			const stream = await openEvents(chat.id);
+
+			for (const action of ["pause", "take-over", "resume"] as const) {
+				const refused = await control(chat.id, action);
+				expect(refused.status).toBe(409);
+				expect(refused.body.error).toBe("No Run of this chat is in progress.");
+			}
+			await send(chat.id, "Fix it and run it", "run");
+			await waitUntil(() => vision.deciding);
+			expect((await control(chat.id, "resume")).body.error).toBe("The Run is not paused.");
+			await control(chat.id, "take-over");
+			release();
+			await waitUntil(async () => (await shownRun(chat.id))?.pause === "taken_over");
+			const stopped = await routes.request(`/auto/chats/${chat.id}/run/stop`, { method: "POST" });
+			expect(stopped.status).toBe(204);
+			const cards = runCards(await stream.until(isReply));
+			await stream.close();
+
+			expect(cards.at(-1)).toMatchObject({ status: "cancelled", pause: null });
+			expect(outputs[0]?.text).toContain("The Run was stopped before it ended.");
+			expect(outputs[0]?.text).toContain("The user took over this Run");
+			await waitUntil(() => getActiveSessionInfo()?.heldByRun === false);
+			expect(getActiveSessionInfo()).toMatchObject({ heldByRun: false, takenOver: false });
 		});
 
 		test("any change to the draft after its passing Run clears the pass and its Case Script", async () => {

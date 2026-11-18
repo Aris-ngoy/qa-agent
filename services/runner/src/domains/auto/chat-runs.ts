@@ -1,5 +1,6 @@
 import type {
 	AutoRun,
+	AutoRunControl,
 	AutoRunStep,
 	CaseDraft,
 	CaseFlowStep,
@@ -9,7 +10,17 @@ import type {
 import { getActiveSessionInfo } from "../devices/active-session";
 import { getProvider, resolveActiveProviderAuth } from "../providers/application";
 import { flattenCaseInstructions } from "../runs/agent";
-import { RunValidationError, cancelRun, createDraftRun, getRun } from "../runs/application";
+import {
+	type RunPause,
+	RunValidationError,
+	cancelRun,
+	createDraftRun,
+	getRun,
+	pauseRun,
+	resumeRun,
+	runPauseOf,
+	takeOverRun,
+} from "../runs/application";
 import { draftMode } from "../runs/run-setup";
 
 /**
@@ -24,6 +35,8 @@ const FOLLOW_INTERVAL_MS = 250;
 const chatRuns = new Map<string, AutoRun>();
 /** The chats starting or following a Run of their draft: one at a time each. */
 const runningChats = new Set<string>();
+/** For each chat's Run in progress: read it again and show its Run card now, not at the next read. */
+const showRunCardNow = new Map<string, () => Promise<void>>();
 
 /** The chat's Run of its draft in progress; null when none is. */
 export function currentChatRun(chatId: string): AutoRun | null {
@@ -36,6 +49,32 @@ export async function stopChatRun(chatId: string): Promise<boolean> {
 	if (!run) return false;
 	await cancelRun(run.runId);
 	return true;
+}
+
+const CONTROLS: Record<AutoRunControl, (runId: string) => void> = {
+	pause: pauseRun,
+	"take-over": takeOverRun,
+	resume: resumeRun,
+};
+
+/**
+ * Pause, take over or resume the chat's Run in progress, its Run card shown again at once.
+ * Why it cannot, as text, when it cannot.
+ */
+export async function controlChatRun(
+	chatId: string,
+	control: AutoRunControl,
+): Promise<string | null> {
+	const run = chatRuns.get(chatId);
+	if (!run) return "No Run of this chat is in progress.";
+	try {
+		CONTROLS[control](run.runId);
+	} catch (error) {
+		if (error instanceof RunValidationError) return error.message;
+		throw error;
+	}
+	await showRunCardNow.get(chatId)?.();
+	return null;
 }
 
 function stepStatus(
@@ -80,7 +119,12 @@ function reachedStep(runSteps: RunStep[], flows: CaseFlowStep[]): number {
  * A Run of a draft's `flows` as its Run card shows it: each step's status and the commands
  * it ran, read from the Run's steps (each agent step knows its step of the case).
  */
-function autoRunOf(run: Run, flows: CaseFlowStep[], provider: string | null): AutoRun {
+function autoRunOf(
+	run: Run,
+	flows: CaseFlowStep[],
+	provider: string | null,
+	pause: RunPause | null,
+): AutoRun {
 	const test = run.tests[0];
 	const runSteps = test?.steps ?? [];
 	const reached = reachedStep(runSteps, flows);
@@ -97,6 +141,7 @@ function autoRunOf(run: Run, flows: CaseFlowStep[], provider: string | null): Au
 		finishedAt: run.finishedAt,
 		currentStep: running && agent ? reached + 1 : null,
 		currentCommand: running ? (test?.currentCommand ?? null) : null,
+		pause: running ? pause : null,
 		steps: flows.map((flow, index) => ({
 			instructions: flow.instructions,
 			expectedResult: flow.expectedResult,
@@ -128,6 +173,8 @@ export type ChatRunResult = {
 	run: Run;
 	/** The Case Script a passed Run learned, or the draft's own one it replayed. */
 	passingScript: CaseDraft["learnedScript"];
+	/** The user took the Run over at some point, so it is not a clean Run. */
+	takenOver: boolean;
 };
 
 /** What a chat's Run of its draft starts from, and where its Run card goes. */
@@ -191,7 +238,7 @@ async function startAndFollow(input: ChatRunInput): Promise<ChatRunResult | stri
 
 	let lastCardJson = "";
 	const show = (run: Run) => {
-		const card = autoRunOf(run, flows, provider);
+		const card = autoRunOf(run, flows, provider, runPauseOf(run.id));
 		const json = JSON.stringify(card);
 		if (json === lastCardJson) return;
 		lastCardJson = json;
@@ -200,6 +247,10 @@ async function startAndFollow(input: ChatRunInput): Promise<ChatRunResult | stri
 	};
 	const stop = () => void cancelRun(created.id).catch(() => undefined);
 	input.signal.addEventListener("abort", stop, { once: true });
+	showRunCardNow.set(chatId, async () => {
+		const run = await getRun(created.id).catch(() => null);
+		if (run) show(run);
+	});
 	show(created);
 	try {
 		let ended = false;
@@ -220,8 +271,10 @@ async function startAndFollow(input: ChatRunInput): Promise<ChatRunResult | stri
 			run,
 			passingScript:
 				result.status === "passed" ? (result.learnedScript ?? draft.learnedScript) : null,
+			takenOver: result.takenOver,
 		};
 	} finally {
 		input.signal.removeEventListener("abort", stop);
+		showRunCardNow.delete(chatId);
 	}
 }

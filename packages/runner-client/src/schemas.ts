@@ -1221,6 +1221,8 @@ export const activeDeviceResponseSchema = z.object({
 	heldByRun: z.boolean().optional(),
 	/** The id of the Run that holds this session, while one does. */
 	heldByRunId: z.string().min(1).optional(),
+	/** The Run holding it is taken over: the user drives the device by hand until it resumes. */
+	takenOver: z.boolean().optional(),
 	lane: laneNameSchema.optional(),
 	laneWarning: z.string().min(1).optional(),
 	/** The Viewport preset a web session emulates. Absent on other platforms. */

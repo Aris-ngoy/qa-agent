@@ -321,17 +321,19 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 			}
 			const result = await context.runDraft(found, draft);
 			if (typeof result === "string") return refuse(result);
-			const { run, passing } = result;
-			const note =
-				run.status === "cancelled"
-					? "The Run was stopped before it ended."
-					: passing
-						? "This is now the draft's passing Run: the user can apply the draft."
-						: run.status === "passed"
-							? "The Case draft changed while it ran, so it has to pass again."
-							: "";
-			const summary = describeRun(run, await caseLabels());
-			return answer(note ? `${summary}\n${note}` : summary);
+			const { run, passing, takenOver } = result;
+			const notes = [
+				run.status === "cancelled" ? "The Run was stopped before it ended." : null,
+				takenOver
+					? "The user took over this Run and drove the device by hand: the steps after it started from the screen they left. A Run taken over does not count, so the draft has to pass again without one."
+					: null,
+				passing
+					? "This is now the draft's passing Run: the user can apply the draft."
+					: run.status === "passed" && !takenOver
+						? "The Case draft changed while it ran, so it has to pass again."
+						: null,
+			].filter((note) => note !== null);
+			return answer([describeRun(run, await caseLabels()), ...notes].join("\n"));
 		},
 	});
 

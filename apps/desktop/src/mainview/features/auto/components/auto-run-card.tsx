@@ -1,8 +1,17 @@
-import { isRunLive, runCardElapsedMs, runCardProgress } from "@/features/auto/utils/run-card";
+import { shownAutoChat$ } from "@/features/auto/data/state/shown-chat";
+import { useControlAutoRun } from "@/features/auto/hooks/usequery/use-auto";
+import {
+	isRunLive,
+	runCardControls,
+	runCardElapsedMs,
+	runCardPauseNote,
+	runCardProgress,
+} from "@/features/auto/utils/run-card";
 import { formatRunDuration } from "@/features/runs/utils/labels";
+import { Button } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
 import { Link } from "@tanstack/react-router";
-import type { AutoRun, AutoRunStep } from "@yoqa/runner-client";
+import type { AutoRun, AutoRunControl, AutoRunStep } from "@yoqa/runner-client";
 import { useEffect } from "react";
 
 const STEP_DOT: Record<AutoRunStep["status"], string> = {
@@ -21,9 +30,16 @@ const STATUS_TONE: Record<AutoRun["status"], string> = {
 	cancelled: "text-on-surface-variant",
 };
 
+const CONTROL_LABEL: Record<AutoRunControl, string> = {
+	pause: "Pause",
+	"take-over": "Take over",
+	resume: "Resume",
+};
+
 /**
  * The chat's Run of its Case draft: how far it got and for how long, each step with what it
- * ran, and the vision Provider driving it. The composer's Stop (and Esc) cancels it.
+ * ran, and the vision Provider driving it, with Pause, Take over and Resume. The composer's
+ * Stop (and Esc) cancels it.
  */
 export function AutoRunCard({ run }: { run: AutoRun }) {
 	const live = isRunLive(run);
@@ -91,7 +107,46 @@ export function AutoRunCard({ run }: { run: AutoRun }) {
 						? "Replayed with no Provider call"
 						: "Driven by the app's default vision Provider"}
 			</p>
+			<RunControls run={run} />
 		</section>
+	);
+}
+
+/** Pause, Take over and Resume, and where the Run is with them. */
+function RunControls({ run }: { run: AutoRun }) {
+	const chatId = useValue(shownAutoChat$.chatId);
+	const control = useControlAutoRun();
+	const controls = runCardControls(run);
+	const note = runCardPauseNote(run);
+	if (controls.length === 0) return null;
+
+	return (
+		<div className="flex flex-col gap-1.5 border-t border-outline-variant pt-2">
+			{note ? (
+				<output aria-live="polite" className="text-helper text-on-surface-variant">
+					{note}
+				</output>
+			) : null}
+			<div className="flex flex-wrap items-center gap-2">
+				{controls.map((item) => (
+					<Button
+						className={
+							item === "resume"
+								? "h-7 rounded-lg bg-primary px-3 text-helper font-semibold text-on-primary data-[hovered=true]:bg-primary/90"
+								: "h-7 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 text-helper font-semibold text-on-surface shadow-none data-[hovered=true]:bg-surface-container"
+						}
+						isDisabled={!chatId || control.isPending}
+						key={item}
+						onPress={() => {
+							if (chatId) control.mutate({ chatId, control: item });
+						}}
+						variant={item === "resume" ? undefined : "ghost"}
+					>
+						{CONTROL_LABEL[item]}
+					</Button>
+				))}
+			</div>
+		</div>
 	);
 }
 

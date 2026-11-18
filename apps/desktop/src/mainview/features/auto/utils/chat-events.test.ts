@@ -38,6 +38,7 @@ function run(overrides: Partial<AutoRun> = {}): AutoRun {
 		finishedAt: null,
 		currentStep: 1,
 		currentCommand: null,
+		pause: null,
 		steps: [{ instructions: "Tap Pay", expectedResult: "", status: "running", commands: [] }],
 		replayed: [],
 		error: null,

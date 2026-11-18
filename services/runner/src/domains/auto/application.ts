@@ -5,6 +5,7 @@ import type {
 	AutoChatSummary,
 	AutoMessage,
 	AutoReply,
+	AutoRunControl,
 	AutoToolCall,
 	CaseDraft,
 	CatalogCase,
@@ -28,7 +29,7 @@ import { getCatalogDb } from "../catalog/db";
 import { caseEditedSince, removeStep } from "./case-draft";
 import type { ChatAgent, ChatToolOutput } from "./chat-agent";
 import { autoChatDir } from "./chat-dir";
-import { currentChatRun, runChatDraft, stopChatRun } from "./chat-runs";
+import { controlChatRun, currentChatRun, runChatDraft, stopChatRun } from "./chat-runs";
 import { autoCaseDrafts, autoChats, autoMessages } from "./schema";
 import { type ChatDraftRun, MODE_LABEL, callChatTool, chatTools } from "./tools";
 
@@ -188,8 +189,8 @@ async function saveDraft(chatId: string, draft: CaseDraft): Promise<void> {
 
 /**
  * Run the whole of the chat's `draft` and wait for it to end, its Run card on the chat's
- * events. A passed Run of a draft unchanged since it started is the draft's passing Run, with
- * the Case Script it learned. Why it cannot start, as text.
+ * events. A clean passed Run (never taken over) of a draft unchanged since it started is the
+ * draft's passing Run, with the Case Script it learned. Why it cannot start, as text.
  */
 async function runDraft(
 	chatId: string,
@@ -206,7 +207,7 @@ async function runDraft(
 	});
 	if (typeof result === "string") return result;
 	const passed =
-		result.run.status === "passed"
+		result.run.status === "passed" && !result.takenOver
 			? recordPass(chatId, catalogCase.id, draft.updatedAt, result)
 			: null;
 	if (passed) publish(chatId, { type: "draft", draft: passed });
@@ -323,6 +324,14 @@ export async function applyDraft(chatId: string): Promise<AutoChat> {
 	if (refusal) throw new AutoConflictError(refusal);
 	publish(chatId, { type: "draft", draft: null });
 	await publishPreviousVersion(chatId, caseId);
+	return getChat(chatId);
+}
+
+/** Pause, take over or resume the chat's Run of its draft in progress. */
+export async function controlRun(chatId: string, control: AutoRunControl): Promise<AutoChat> {
+	await chatRow(chatId);
+	const refusal = await controlChatRun(chatId, control);
+	if (refusal) throw new AutoConflictError(refusal);
 	return getChat(chatId);
 }
 
