@@ -183,6 +183,10 @@ _Avoid_: Auto run (`executionMode: auto` is script-first replay, a different thi
 The changes an Auto chat proposes to one Test Case: changed, added and removed steps, and the Case Script that a passing Run of the draft learned. It reaches the Test Case only when the user applies it, whole, and only after a Run of the whole draft has passed from a clean start; any change to it, such as removing a step, clears that pass. A Run of a Case draft never changes the saved Test Case, its Case Script, or its last result.
 _Avoid_: pending changes, edit, patch
 
+**Previous version**:
+The steps and Case Script a Test Case had before a Case draft was last applied to it. A Test Case keeps only one; restoring it swaps it with the current steps and Case Script, so restoring again puts the applied ones back.
+_Avoid_: history, undo, revision
+
 **Take over**:
 Pausing a Run started from an Auto chat to drive the device by hand. Actions taken by hand are not recorded in the Case draft; the chat agent sees the resulting screen on its next turn.
 _Avoid_: manual mode, takeover (one word)

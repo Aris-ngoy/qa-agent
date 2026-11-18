@@ -1325,6 +1325,49 @@ export class RunnerClient {
 		return autoMessageSchema.parse(json);
 	}
 
+	/** ✕ in the Test tab: remove one step from the chat's Case draft, which must then pass again. */
+	async removeAutoDraftStep(chatId: string, stepId: string): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/draft/steps/${encodeURIComponent(stepId)}`,
+			{ method: "DELETE" },
+			"Remove step failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
+	/** Reject all: throw the chat's Case draft away. */
+	async rejectAutoDraft(chatId: string): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/draft`,
+			{ method: "DELETE" },
+			"Reject draft failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
+	/**
+	 * Apply the chat's Case draft to its Test Case (steps and learned Case Script together).
+	 * Refused, with why, until a Run of the whole draft has passed.
+	 */
+	async applyAutoDraft(chatId: string): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/draft/apply`,
+			{ method: "POST" },
+			"Apply draft failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
+	/** Swap the chat's Test Case's current and previous versions (steps and Case Script). */
+	async restoreAutoPreviousVersion(chatId: string): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/previous-version/restore`,
+			{ method: "POST" },
+			"Restore previous version failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
 	/** Stop the chat's Run of its Case draft in progress (Stop and Esc). */
 	async stopAutoRun(chatId: string): Promise<void> {
 		await this.requestJson(

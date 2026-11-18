@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CaseDraft, CaseFlowStep } from "@yoqa/runner-client";
-import { draftChangeRows, unchangedLabel } from "./case-draft";
+import { applyBlocker, draftChangeRows, unchangedLabel } from "./case-draft";
 
 function saved(id: string, instructions: string): CaseFlowStep {
 	return { id, instructions, expectedResult: `${instructions} done`, flowId: null };
@@ -103,5 +103,23 @@ describe("unchangedLabel", () => {
 	test("names one step or a range", () => {
 		expect(unchangedLabel({ from: 3, to: 3 })).toBe("Step 3 unchanged");
 		expect(unchangedLabel({ from: 1, to: 2 })).toBe("Steps 1–2 unchanged");
+	});
+});
+
+describe("applyBlocker", () => {
+	const draft = draftOf([asSaved(open)]);
+
+	test("Apply is off until a Run of the whole draft passed, saying why", () => {
+		expect(applyBlocker(draft, false)).toBe(
+			"Apply turns on once a Run of the whole draft passes. Ask the chat agent to run it.",
+		);
+		expect(applyBlocker(draft, true)).toBe(
+			"A Run of the draft is in progress: Apply turns on if it passes.",
+		);
+	});
+
+	test("Apply is on once the draft has a passing Run", () => {
+		expect(applyBlocker({ ...draft, passingRunId: "run_1" }, false)).toBeNull();
+		expect(applyBlocker({ ...draft, passingRunId: "run_1" }, true)).toBeNull();
 	});
 });

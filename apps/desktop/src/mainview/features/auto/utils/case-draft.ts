@@ -80,3 +80,14 @@ export function unchangedLabel(row: { from: number; to: number }): string {
 		? `Step ${row.from} unchanged`
 		: `Steps ${row.from}–${row.to} unchanged`;
 }
+
+/**
+ * Why the Test tab's Apply is off, or null when it is on: Apply needs a Run of the whole draft
+ * that passed since the draft last changed. `runLive` is whether a Run of it is going now.
+ */
+export function applyBlocker(draft: CaseDraft, runLive: boolean): string | null {
+	if (draft.passingRunId) return null;
+	return runLive
+		? "A Run of the draft is in progress: Apply turns on if it passes."
+		: "Apply turns on once a Run of the whole draft passes. Ask the chat agent to run it.";
+}

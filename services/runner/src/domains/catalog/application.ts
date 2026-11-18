@@ -1,6 +1,8 @@
 import {
 	type CaseFlowStep,
+	type CasePreviousVersion,
 	type CaseRunStatus,
+	type CaseScript,
 	type CatalogApp,
 	type CatalogCase,
 	type CatalogFlow,
@@ -12,14 +14,16 @@ import {
 	type UpdateAppRequest,
 	type UpdateCaseRequest,
 	type UpdateFlowRequest,
+	caseFlowStepSchema,
 	caseRunStatusSchema,
 } from "@yoqa/runner-client";
 import { and, asc, desc, eq, max } from "drizzle-orm";
 import { parseCaseScript } from "../runs/script";
-import { getCatalogDb } from "./db";
+import { type CatalogDb, getCatalogDb } from "./db";
 import {
 	apps,
 	caseFlows,
+	casePreviousVersions,
 	caseTags,
 	cases,
 	everydayWarningAcceptances,
@@ -644,4 +648,173 @@ export async function getCaseScriptJson(caseId: string): Promise<string | null> 
 	const db = getCatalogDb();
 	const row = await db.query.cases.findFirst({ where: eq(cases.id, caseId) });
 	return row?.scriptJson ?? null;
+}
+
+/** A write to the catalog inside one transaction (synchronous, like bun:sqlite). */
+export type CatalogTx = Parameters<Parameters<CatalogDb["transaction"]>[0]>[0];
+
+/** A Test Case's steps and Case Script (its raw JSON and when it was saved). */
+type CaseVersion = {
+	steps: CaseFlowStep[];
+	scriptJson: string | null;
+	scriptSavedAt: number | null;
+};
+
+/** A previous version's steps; null when they cannot be read. */
+function parseSteps(raw: string): CaseFlowStep[] | null {
+	try {
+		const parsed = caseFlowStepSchema.array().safeParse(JSON.parse(raw));
+		return parsed.success ? parsed.data : null;
+	} catch {
+		return null;
+	}
+}
+
+/** The case's current steps, a reusable Flow's text read from the Flow, and its Case Script. */
+function readCaseVersion(tx: CatalogTx, caseId: string): CaseVersion | null {
+	const row = tx.select().from(cases).where(eq(cases.id, caseId)).get();
+	if (!row) return null;
+	const rows = tx
+		.select({ step: caseFlows, flow: flows })
+		.from(caseFlows)
+		.leftJoin(flows, eq(caseFlows.flowId, flows.id))
+		.where(eq(caseFlows.caseId, caseId))
+		.orderBy(asc(caseFlows.position))
+		.all();
+	return {
+		steps: rows.map(({ step, flow }) => ({
+			id: step.id,
+			instructions: flow?.instructions ?? step.instructions ?? "",
+			expectedResult: flow?.expectedResult ?? step.expectedResult ?? "",
+			flowId: flow ? flow.id : null,
+		})),
+		scriptJson: row.scriptJson,
+		scriptSavedAt: row.scriptSavedAt,
+	};
+}
+
+/** The Test Case's steps, read inside `tx`; null when there is no such case. */
+export function caseStepsIn(tx: CatalogTx, caseId: string): CaseFlowStep[] | null {
+	return readCaseVersion(tx, caseId)?.steps ?? null;
+}
+
+/**
+ * Write `version` as the case's steps and Case Script. A step of a reusable Flow stays linked
+ * to it while the Flow exists, and keeps its own text once it is gone.
+ */
+function writeCaseVersion(tx: CatalogTx, caseId: string, version: CaseVersion, at: number): void {
+	const flowIds = new Set(
+		tx
+			.select({ id: flows.id })
+			.from(flows)
+			.all()
+			.map((row) => row.id),
+	);
+	tx.delete(caseFlows).where(eq(caseFlows.caseId, caseId)).run();
+	version.steps.forEach((step, position) => {
+		const flowId = step.flowId && flowIds.has(step.flowId) ? step.flowId : null;
+		tx.insert(caseFlows)
+			.values({
+				id: step.id.startsWith("cf_") ? step.id : newId("cf"),
+				caseId,
+				position,
+				instructions: flowId ? null : step.instructions,
+				expectedResult: flowId ? null : step.expectedResult,
+				flowId,
+			})
+			.run();
+	});
+	tx.update(cases)
+		.set({ scriptJson: version.scriptJson, scriptSavedAt: version.scriptSavedAt, updatedAt: at })
+		.where(eq(cases.id, caseId))
+		.run();
+}
+
+function keepPreviousVersion(
+	tx: CatalogTx,
+	caseId: string,
+	version: CaseVersion,
+	at: number,
+): void {
+	const row = {
+		caseId,
+		flowsJson: JSON.stringify(version.steps),
+		scriptJson: version.scriptJson,
+		scriptSavedAt: version.scriptSavedAt,
+		replacedAt: at,
+	};
+	tx.insert(casePreviousVersions)
+		.values(row)
+		.onConflictDoUpdate({ target: casePreviousVersions.caseId, set: row })
+		.run();
+}
+
+/**
+ * Save `steps` and `script` as the Test Case's steps and Case Script, together, inside `tx`,
+ * keeping the ones they replace as its one previous version.
+ */
+export function replaceCaseVersion(
+	tx: CatalogTx,
+	caseId: string,
+	next: { steps: CaseFlowStep[]; script: CaseScript | null },
+): void {
+	const current = readCaseVersion(tx, caseId);
+	if (!current) throw new CatalogNotFoundError("Case not found");
+	const at = Date.now();
+	keepPreviousVersion(tx, caseId, current, at);
+	writeCaseVersion(
+		tx,
+		caseId,
+		{
+			steps: next.steps,
+			scriptJson: next.script ? JSON.stringify({ ...next.script, savedAt: at }) : null,
+			scriptSavedAt: next.script ? at : null,
+		},
+		at,
+	);
+}
+
+/**
+ * Swap the Test Case's current and previous versions. False when it has no previous version
+ * (or one whose steps cannot be read).
+ */
+export function restoreCasePreviousVersion(caseId: string): boolean {
+	return getCatalogDb().transaction((tx) => {
+		const previous = tx
+			.select()
+			.from(casePreviousVersions)
+			.where(eq(casePreviousVersions.caseId, caseId))
+			.get();
+		const current = readCaseVersion(tx, caseId);
+		// Steps that cannot be read are never restored over the current ones.
+		const steps = previous ? parseSteps(previous.flowsJson) : null;
+		if (!previous || !current || !steps) return false;
+		const at = Date.now();
+		keepPreviousVersion(tx, caseId, current, at);
+		writeCaseVersion(
+			tx,
+			caseId,
+			{
+				steps,
+				scriptJson: previous.scriptJson,
+				scriptSavedAt: previous.scriptSavedAt,
+			},
+			at,
+		);
+		return true;
+	});
+}
+
+/** The Test Case's previous version; null when it has none. */
+export async function getCasePreviousVersion(caseId: string): Promise<CasePreviousVersion | null> {
+	const row = await getCatalogDb().query.casePreviousVersions.findFirst({
+		where: eq(casePreviousVersions.caseId, caseId),
+	});
+	const steps = row ? parseSteps(row.flowsJson) : null;
+	if (!row || !steps) return null;
+	return {
+		steps,
+		hasScript: parseCaseScript(row.scriptJson) !== null,
+		replacedAt: row.replacedAt,
+	};
 }

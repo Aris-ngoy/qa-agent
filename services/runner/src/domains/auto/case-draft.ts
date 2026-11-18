@@ -132,6 +132,22 @@ function withSteps(draft: CaseDraft, steps: CaseDraftStep[], reason: string): Ca
 	};
 }
 
+/**
+ * Whether the Test Case's steps are no longer those the draft started from: steps added,
+ * removed, reordered or relinked, or a step's own text edited. A step of a reusable Flow only
+ * has to keep its Flow: the Flow's text may change, and applying keeps the link.
+ */
+export function caseEditedSince(draft: CaseDraft, steps: CaseFlowStep[]): boolean {
+	return (
+		steps.length !== draft.base.length ||
+		steps.some((step, index) => {
+			const base = draft.base[index];
+			if (!base || step.id !== base.id || step.flowId !== base.flowId) return true;
+			return step.flowId === null && !sameText(step, base);
+		})
+	);
+}
+
 function stepIndex(draft: CaseDraft, step: number): number | string {
 	if (step < 1 || step > draft.steps.length) {
 		return `There is no step ${step}: the Case draft has ${draft.steps.length} steps.`;

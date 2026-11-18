@@ -11,7 +11,15 @@ import {
 	autoChatEventSchema,
 } from "@yoqa/runner-client";
 import type { ChatAgent, ChatAgentEvent, ChatTurn } from "../../domains/auto/chat-agent";
-import { createApp, createCase, getCase, saveCaseScript } from "../../domains/catalog/application";
+import {
+	createApp,
+	createCase,
+	createFlow,
+	getCase,
+	saveCaseScript,
+	updateCase,
+	updateFlow,
+} from "../../domains/catalog/application";
 import { closeCatalogDb, getCatalogDb, openCatalogDb } from "../../domains/catalog/db";
 import {
 	connectDevice,
@@ -1025,6 +1033,272 @@ describe("the Auto chat routes", () => {
 			expect(outputs.map((output) => output.isError)).toEqual([true, true]);
 			expect(outputs[0]?.text).toContain("There is no Case draft of");
 			expect(outputs[1]?.text).toContain("No device is connected");
+		});
+
+		describe("applying the Case draft", () => {
+			/** Have the agent write the draft (`fixPay`), and run it when `run` is set. */
+			async function writeDraft(chatId: string, run: boolean) {
+				agent.script = async function* (turn) {
+					await turn.callTool("change_draft_step", fixPay);
+					if (run) await turn.callTool("run_case_draft", {});
+					yield { type: "text", delta: "Done." };
+				};
+				const stream = await openEvents(chatId);
+				await send(chatId, "Fix it", "run");
+				await stream.until(isReply);
+				await stream.close();
+				return (await json<AutoChat>(`/auto/chats/${chatId}`)).body.draft;
+			}
+
+			const apply = (chatId: string) =>
+				json<AutoChat & { error?: string }>(`/auto/chats/${chatId}/draft/apply`, {
+					method: "POST",
+				});
+
+			test("Apply on a draft with no passing Run is refused with why, and the Test Case is unchanged", async () => {
+				const { saved, chat } = await chatOnSavedCase("Not passed yet");
+				const draft = await writeDraft(chat.id, false);
+				expect(draft?.passingRunId).toBeNull();
+
+				const applied = await apply(chat.id);
+
+				expect(applied.status).toBe(409);
+				expect(applied.body.error).toContain("passing Run");
+				const after = await getCase(saved.id);
+				expect(after?.flows).toEqual(saved.flows);
+				expect(after?.script).toEqual(SAVED_SCRIPT);
+				expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft).toEqual(draft);
+			});
+
+			test("Apply on a passed draft saves its steps and learned Case Script together, keeps the replaced ones as the previous version, and the case then replays with no Provider call", async () => {
+				const deviceId = await connectBrowser();
+				const { app, saved, chat } = await chatOnSavedCase("Applied");
+				const draft = await writeDraft(chat.id, true);
+				expect(draft?.passingRunId).toEqual(expect.any(String));
+				const stream = await openEvents(chat.id);
+
+				const applied = await apply(chat.id);
+				const events = await stream.until((event) => event.type === "previous_version");
+				await stream.close();
+
+				expect(applied.status).toBe(200);
+				const after = await getCase(saved.id);
+				expect(after?.flows).toEqual([
+					{
+						id: saved.flows[0]?.id as string,
+						instructions: "Tap Pay now",
+						expectedResult: "The receipt shows",
+						flowId: null,
+					},
+				]);
+				expect(after?.script?.actions).toEqual(draft?.learnedScript?.actions);
+				expect(after?.script?.actions).not.toEqual(SAVED_SCRIPT.actions);
+				expect(applied.body.draft).toBeNull();
+				expect(applied.body.previousVersion).toMatchObject({
+					steps: saved.flows,
+					hasScript: true,
+				});
+				expect(events).toContainEqual({ type: "draft", draft: null });
+				expect(events.at(-1)).toEqual({
+					type: "previous_version",
+					previousVersion: applied.body.previousVersion,
+				});
+
+				// Decide fails the Run if it is called at all.
+				vision.failWith = "Decide must not be called";
+				vision.prompts = [];
+				const runsRoutes = createRunsRoutes();
+				const started = await runsRoutes.request("/runs", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						appId: app.id,
+						caseIds: [saved.id],
+						deviceId,
+						platform: "web",
+						executionMode: "script",
+					}),
+				});
+				expect(started.status).toBe(201);
+				const { id: runId } = (await started.json()) as Run;
+				let replayed = await getRun(runId);
+				for (let attempt = 0; attempt < 500; attempt++) {
+					replayed = await getRun(runId);
+					if (replayed.status !== "queued" && replayed.status !== "running") break;
+					await Bun.sleep(10);
+				}
+				expect(replayed.status).toBe("passed");
+				expect(replayed.tests[0]?.executionMode).toBe("script");
+				expect(vision.prompts).toEqual([]);
+			});
+
+			test("✕ on a step removes it from the draft and clears the pass, over SSE, and Apply is refused until the draft passes again", async () => {
+				await connectBrowser();
+				const { saved, chat } = await chatOnSavedCase("Step removed");
+				agent.script = async function* (turn) {
+					await turn.callTool("change_draft_step", fixPay);
+					await turn.callTool("add_draft_step", {
+						instructions: "Tap Done",
+						expectedResult: "The shop shows",
+						reason: "A new last screen",
+					});
+					await turn.callTool("run_case_draft", {});
+					yield { type: "text", delta: "Passed." };
+				};
+				let stream = await openEvents(chat.id);
+				await send(chat.id, "Fix it and run it", "run");
+				const passed = (await stream.until(isReply))
+					.flatMap((event) => (event.type === "draft" ? [event.draft] : []))
+					.at(-1);
+				expect(passed?.passingRunId).toEqual(expect.any(String));
+				const added = passed?.steps[1]?.id as string;
+
+				const removed = await json<AutoChat>(`/auto/chats/${chat.id}/draft/steps/${added}`, {
+					method: "DELETE",
+				});
+				const event = (await stream.until((item) => item.type === "draft")).at(-1);
+				await stream.close();
+
+				expect(removed.status).toBe(200);
+				expect(removed.body.draft?.steps.map((step) => step.instructions)).toEqual(["Tap Pay now"]);
+				expect(removed.body.draft).toMatchObject({ passingRunId: null, learnedScript: null });
+				expect(event?.type === "draft" && event.draft).toEqual(removed.body.draft);
+				expect((await apply(chat.id)).status).toBe(409);
+				expect((await getCase(saved.id))?.flows).toEqual(saved.flows);
+				expect(
+					(await json(`/auto/chats/${chat.id}/draft/steps/cf_missing`, { method: "DELETE" }))
+						.status,
+				).toBe(404);
+
+				agent.script = async function* (turn) {
+					await turn.callTool("run_case_draft", {});
+					yield { type: "text", delta: "Passed again." };
+				};
+				stream = await openEvents(chat.id);
+				await send(chat.id, "Run it again", "run");
+				await stream.until(isReply);
+				await stream.close();
+				expect((await apply(chat.id)).status).toBe(200);
+				expect((await getCase(saved.id))?.flows.map((step) => step.instructions)).toEqual([
+					"Tap Pay now",
+				]);
+			});
+
+			test("Apply is refused when the Test Case was edited since the draft started, keeping the edit", async () => {
+				await connectBrowser();
+				const { saved, chat } = await chatOnSavedCase("Edited meanwhile");
+				await writeDraft(chat.id, true);
+				const edit = [{ instructions: "Tap Checkout", expectedResult: "The basket shows" }];
+				await updateCase(saved.id, { flows: edit });
+
+				const applied = await apply(chat.id);
+
+				expect(applied.status).toBe(409);
+				expect(applied.body.error).toContain("edited since the Case draft started");
+				const after = await getCase(saved.id);
+				expect(after?.flows.map((step) => step.instructions)).toEqual(["Tap Checkout"]);
+				expect(after?.script).toEqual(SAVED_SCRIPT);
+				expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.previousVersion).toBeNull();
+			});
+
+			test("editing a reusable Flow the case uses does not block Apply, and the applied step stays linked to it", async () => {
+				await connectBrowser();
+				const app = await createApp({ name: "Flow edited", webUrl: WEB_URL });
+				const flow = await createFlow(app.id, {
+					name: "Open the shop",
+					instructions: "Open the shop",
+					expectedResult: "The shop shows",
+				});
+				const saved = await createCase(app.id, {
+					name: "Shop",
+					flows: [
+						{ flowId: flow.id },
+						{ instructions: "Tap Pay", expectedResult: "The receipt shows" },
+					],
+				});
+				const chat = await newChat(app.id, saved.id);
+				agent.script = async function* (turn) {
+					await turn.callTool("change_draft_step", { ...fixPay, step: 2 });
+					await turn.callTool("run_case_draft", {});
+					yield { type: "text", delta: "Passed." };
+				};
+				const stream = await openEvents(chat.id);
+				await send(chat.id, "Fix it and run it", "run");
+				await stream.until(isReply);
+				await stream.close();
+				await updateFlow(flow.id, { instructions: "Open the shop's home page" });
+
+				const applied = await apply(chat.id);
+
+				expect(applied.status).toBe(200);
+				const after = await getCase(saved.id);
+				expect(after?.flows.map((step) => [step.flowId, step.instructions])).toEqual([
+					[flow.id, "Open the shop's home page"],
+					[null, "Tap Pay now"],
+				]);
+			});
+
+			test("Reject all throws the draft away, over SSE, and the Test Case is unchanged", async () => {
+				const { saved, chat } = await chatOnSavedCase("Rejected");
+				await writeDraft(chat.id, false);
+				const stream = await openEvents(chat.id);
+
+				const rejected = await json<AutoChat>(`/auto/chats/${chat.id}/draft`, {
+					method: "DELETE",
+				});
+				const events = await stream.until((event) => event.type === "draft");
+				await stream.close();
+
+				expect(rejected.status).toBe(200);
+				expect(rejected.body.draft).toBeNull();
+				expect(events.at(-1)).toEqual({ type: "draft", draft: null });
+				expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft).toBeNull();
+				const after = await getCase(saved.id);
+				expect(after?.flows).toEqual(saved.flows);
+				expect(after?.script).toEqual(SAVED_SCRIPT);
+				expect((await json(`/auto/chats/${chat.id}/draft`, { method: "DELETE" })).status).toBe(404);
+			});
+
+			test("Restore previous version swaps the current and previous steps and Case Script, and restoring twice returns to the applied version", async () => {
+				await connectBrowser();
+				const { saved, chat } = await chatOnSavedCase("Restored");
+				const restore = () =>
+					json<AutoChat & { error?: string }>(`/auto/chats/${chat.id}/previous-version/restore`, {
+						method: "POST",
+					});
+				const none = await restore();
+				expect(none.status).toBe(409);
+				expect(none.body.error).toContain("no previous version");
+
+				await writeDraft(chat.id, true);
+				await apply(chat.id);
+				const applied = await getCase(saved.id);
+				const stream = await openEvents(chat.id);
+
+				const first = await restore();
+				const events = await stream.until((event) => event.type === "previous_version");
+				await stream.close();
+
+				expect(first.status).toBe(200);
+				const restored = await getCase(saved.id);
+				expect(restored?.flows).toEqual(saved.flows);
+				expect(restored?.script).toEqual(SAVED_SCRIPT);
+				expect(restored?.scriptSavedAt).toBe(saved.scriptSavedAt);
+				expect(first.body.previousVersion).toMatchObject({
+					steps: applied?.flows,
+					hasScript: true,
+				});
+				expect(events.at(-1)).toEqual({
+					type: "previous_version",
+					previousVersion: first.body.previousVersion,
+				});
+
+				expect((await restore()).status).toBe(200);
+				const again = await getCase(saved.id);
+				expect(again?.flows).toEqual(applied?.flows);
+				expect(again?.script).toEqual(applied?.script);
+				expect(again?.scriptSavedAt).toBe(applied?.scriptSavedAt);
+			});
 		});
 	});
 });

@@ -15,8 +15,17 @@ import type {
 import { autoToolCallSchema, caseDraftSchema } from "@yoqa/runner-client";
 import { and, asc, desc, eq, isNull, max } from "drizzle-orm";
 import { z } from "zod";
-import { getApp, getCase } from "../catalog/application";
+import {
+	type CatalogTx,
+	caseStepsIn,
+	getApp,
+	getCase,
+	getCasePreviousVersion,
+	replaceCaseVersion,
+	restoreCasePreviousVersion,
+} from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
+import { caseEditedSince, removeStep } from "./case-draft";
 import type { ChatAgent, ChatToolOutput } from "./chat-agent";
 import { autoChatDir } from "./chat-dir";
 import { currentChatRun, runChatDraft, stopChatRun } from "./chat-runs";
@@ -46,6 +55,8 @@ export class AutoConflictError extends Error {
 }
 
 const NEW_CHAT_TITLE = "New chat";
+/** The reason a saved step removed with ✕ in the Test tab shows. */
+const REMOVED_IN_TEST_TAB = "Removed in the Test tab";
 const TITLE_LENGTH = 60;
 
 type ChatRow = typeof autoChats.$inferSelect;
@@ -142,7 +153,13 @@ export async function getChat(chatId: string): Promise<AutoChat> {
 		reply: activeTurns.get(chatId)?.reply ?? null,
 		draft: await readDraft(chatId, summary.caseId),
 		run: currentChatRun(chatId),
+		previousVersion: summary.caseId ? await getCasePreviousVersion(summary.caseId) : null,
 	};
+}
+
+function parseDraft(raw: string): CaseDraft | null {
+	const parsed = caseDraftSchema.safeParse(JSON.parse(raw));
+	return parsed.success ? parsed.data : null;
 }
 
 /** The chat's Case draft of `caseId`, its Test Case; null when it has none. */
@@ -151,9 +168,7 @@ async function readDraft(chatId: string, caseId: string | null): Promise<CaseDra
 	const row = await getCatalogDb().query.autoCaseDrafts.findFirst({
 		where: and(eq(autoCaseDrafts.chatId, chatId), eq(autoCaseDrafts.caseId, caseId)),
 	});
-	if (!row) return null;
-	const parsed = caseDraftSchema.safeParse(JSON.parse(row.draftJson));
-	return parsed.success ? parsed.data : null;
+	return row ? parseDraft(row.draftJson) : null;
 }
 
 /** Save the chat's Case draft and show it. */
@@ -190,17 +205,125 @@ async function runDraft(
 		report: (run) => publish(chatId, { type: "run", run }),
 	});
 	if (typeof result === "string") return result;
-	const current = await readDraft(chatId, catalogCase.id);
-	const passing =
-		result.run.status === "passed" && current !== null && current.updatedAt === draft.updatedAt;
-	if (passing) {
-		await saveDraft(chatId, {
-			...current,
-			passingRunId: result.run.id,
-			learnedScript: result.passingScript,
-		});
+	const passed =
+		result.run.status === "passed"
+			? recordPass(chatId, catalogCase.id, draft.updatedAt, result)
+			: null;
+	if (passed) publish(chatId, { type: "draft", draft: passed });
+	return { ...result, passing: passed !== null };
+}
+
+/**
+ * Make `result` the passing Run of the chat's draft, if the draft is still the one that ran
+ * (`ranAt`, its `updatedAt` then). Read and written in one transaction, so a ✕ or Reject all
+ * meanwhile is never undone. The draft with its pass, or null when it changed or is gone.
+ */
+function recordPass(
+	chatId: string,
+	caseId: string,
+	ranAt: number,
+	result: { run: { id: string }; passingScript: CaseDraft["learnedScript"] },
+): CaseDraft | null {
+	return getCatalogDb().transaction((tx) => {
+		const current = draftIn(tx, chatId, caseId);
+		if (!current || current.updatedAt !== ranAt) return null;
+		const passed = { ...current, passingRunId: result.run.id, learnedScript: result.passingScript };
+		tx.update(autoCaseDrafts)
+			.set({ draftJson: JSON.stringify(passed) })
+			.where(eq(autoCaseDrafts.chatId, chatId))
+			.run();
+		return passed;
+	});
+}
+
+/** The chat's Case draft of `caseId`, read inside `tx`. */
+function draftIn(tx: CatalogTx, chatId: string, caseId: string): CaseDraft | null {
+	const row = tx
+		.select()
+		.from(autoCaseDrafts)
+		.where(and(eq(autoCaseDrafts.chatId, chatId), eq(autoCaseDrafts.caseId, caseId)))
+		.get();
+	return row ? parseDraft(row.draftJson) : null;
+}
+
+/** The chat's Case draft, which the Test tab's actions need. */
+async function chatDraft(chatId: string): Promise<CaseDraft> {
+	const { caseId } = await chatRow(chatId);
+	const draft = await readDraft(chatId, caseId);
+	if (!draft) throw new AutoNotFoundError("This chat has no Case draft.");
+	return draft;
+}
+
+/** ✕ in the Test tab: remove one step from the chat's Case draft, which must then pass again. */
+export async function removeDraftStep(chatId: string, stepId: string): Promise<AutoChat> {
+	const draft = await chatDraft(chatId);
+	const index = draft.steps.findIndex((step) => step.id === stepId);
+	if (index < 0) throw new AutoNotFoundError("That step is not in the Case draft.");
+	const written = removeStep(draft, index + 1, REMOVED_IN_TEST_TAB);
+	if (typeof written === "string") throw new AutoValidationError(written);
+	await saveDraft(chatId, written);
+	return getChat(chatId);
+}
+
+/** Show the chat's Test Case's previous version, just changed by Apply or Restore. */
+async function publishPreviousVersion(chatId: string, caseId: string): Promise<void> {
+	publish(chatId, {
+		type: "previous_version",
+		previousVersion: await getCasePreviousVersion(caseId),
+	});
+}
+
+/** Reject all: throw the chat's Case draft away. The Test Case is left as it is. */
+export async function rejectDraft(chatId: string): Promise<AutoChat> {
+	await chatDraft(chatId);
+	await getCatalogDb().delete(autoCaseDrafts).where(eq(autoCaseDrafts.chatId, chatId));
+	publish(chatId, { type: "draft", draft: null });
+	return getChat(chatId);
+}
+
+/** Swap the chat's Test Case's current and previous versions (steps and Case Script). */
+export async function restorePreviousVersion(chatId: string): Promise<AutoChat> {
+	const { caseId } = await chatRow(chatId);
+	if (!caseId || !restoreCasePreviousVersion(caseId)) {
+		throw new AutoConflictError("The Test Case has no previous version to restore.");
 	}
-	return { ...result, passing };
+	await publishPreviousVersion(chatId, caseId);
+	return getChat(chatId);
+}
+
+/**
+ * Apply the chat's Case draft to its Test Case: its steps and the Case Script its passing Run
+ * learned, together, the replaced ones kept as the case's previous version; the draft is then
+ * gone. Refused, with why, unless a Run of the whole draft passed since its last change, or
+ * when the Test Case was edited since the draft started.
+ */
+export async function applyDraft(chatId: string): Promise<AutoChat> {
+	const { caseId } = await chatRow(chatId);
+	if (!caseId) throw new AutoConflictError("This chat has no Case draft to apply.");
+	// Read, checked and applied in one transaction: a change to the draft meanwhile cannot slip in.
+	const refusal = getCatalogDb().transaction((tx) => {
+		const draft = draftIn(tx, chatId, caseId);
+		if (!draft) return "This chat has no Case draft to apply.";
+		if (!draft.passingRunId) {
+			return "The Case draft has no passing Run yet: run the whole draft, and apply it once it passes.";
+		}
+		if (!draft.learnedScript) {
+			return "The passing Run learned no Case Script (it took no Actions), so the applied Test Case could not replay. Change the draft so its steps act, and run it again.";
+		}
+		if (caseEditedSince(draft, caseStepsIn(tx, caseId) ?? [])) {
+			return "The Test Case was edited since the Case draft started, so applying it would undo that edit. Reject all and ask for the fix again.";
+		}
+		replaceCaseVersion(tx, caseId, {
+			steps: draft.steps.map(({ reason: _reason, ...step }) => step),
+			script: draft.learnedScript,
+		});
+		tx.delete(autoCaseDrafts).where(eq(autoCaseDrafts.chatId, chatId)).run();
+		return null;
+	});
+	if (refusal) throw new AutoConflictError(refusal);
+	publish(chatId, { type: "draft", draft: null });
+	await publishPreviousVersion(chatId, caseId);
+	return getChat(chatId);
 }
 
 /** Stop the chat's Run of its draft in progress. */

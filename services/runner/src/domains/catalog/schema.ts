@@ -88,6 +88,20 @@ export const caseTags = sqliteTable(
 	(table) => [primaryKey({ columns: [table.caseId, table.tagId] })],
 );
 
+/**
+ * A Test Case's one previous version: the steps (JSON CaseFlowStep[]) and Case Script that
+ * applying a Case draft replaced. Restoring swaps it with the current ones.
+ */
+export const casePreviousVersions = sqliteTable("case_previous_versions", {
+	caseId: text("case_id")
+		.primaryKey()
+		.references(() => cases.id, { onDelete: "cascade" }),
+	flowsJson: text("flows_json").notNull(),
+	scriptJson: text("script_json"),
+	scriptSavedAt: integer("script_saved_at"),
+	replacedAt: integer("replaced_at").notNull(),
+});
+
 export const caseFlows = sqliteTable("case_flows", {
 	id: text("id").primaryKey(),
 	caseId: text("case_id")

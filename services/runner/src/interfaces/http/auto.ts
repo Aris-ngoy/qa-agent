@@ -10,10 +10,14 @@ import {
 	AutoConflictError,
 	AutoNotFoundError,
 	AutoValidationError,
+	applyDraft,
 	createChat,
 	deleteChat,
 	getChat,
 	listChats,
+	rejectDraft,
+	removeDraftStep,
+	restorePreviousVersion,
 	sendMessage,
 	stopRun,
 	subscribeToChat,
@@ -97,6 +101,22 @@ export function createAutoRoutes(options: { agent?: ChatAgent } = {}) {
 		if (!parsed.ok) return c.json(parsed.error, 400);
 		return c.json(await sendMessage(agent, c.req.param("chatId"), parsed.data), 202);
 	});
+
+	app.delete("/auto/chats/:chatId/draft", async (c) =>
+		c.json(await rejectDraft(c.req.param("chatId"))),
+	);
+
+	app.delete("/auto/chats/:chatId/draft/steps/:stepId", async (c) =>
+		c.json(await removeDraftStep(c.req.param("chatId"), c.req.param("stepId"))),
+	);
+
+	app.post("/auto/chats/:chatId/draft/apply", async (c) =>
+		c.json(await applyDraft(c.req.param("chatId"))),
+	);
+
+	app.post("/auto/chats/:chatId/previous-version/restore", async (c) =>
+		c.json(await restorePreviousVersion(c.req.param("chatId"))),
+	);
 
 	app.post("/auto/chats/:chatId/run/stop", async (c) => {
 		await stopRun(c.req.param("chatId"));

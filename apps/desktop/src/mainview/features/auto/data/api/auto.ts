@@ -60,6 +60,30 @@ export async function stopAutoRun(chatId: string): Promise<void> {
 	await client.stopAutoRun(chatId);
 }
 
+/** ✕ in the Test tab: remove one step from the Case draft; the draft must pass again. */
+export async function removeAutoDraftStep(chatId: string, stepId: string): Promise<AutoChat> {
+	const client = await getRunnerClient();
+	return client.removeAutoDraftStep(chatId, stepId);
+}
+
+/** Reject all: throw the Case draft away. */
+export async function rejectAutoDraft(chatId: string): Promise<AutoChat> {
+	const client = await getRunnerClient();
+	return client.rejectAutoDraft(chatId);
+}
+
+/** Apply the Case draft to its Test Case; refused until a Run of the whole draft passed. */
+export async function applyAutoDraft(chatId: string): Promise<AutoChat> {
+	const client = await getRunnerClient();
+	return client.applyAutoDraft(chatId);
+}
+
+/** Put back the Test Case's previous steps and Case Script. */
+export async function restoreAutoPreviousVersion(chatId: string): Promise<AutoChat> {
+	const client = await getRunnerClient();
+	return client.restoreAutoPreviousVersion(chatId);
+}
+
 /** The chat's SSE stream URL, for an `EventSource`. */
 export async function autoChatEventsUrl(chatId: string): Promise<string> {
 	const client = await getRunnerClient();

@@ -1,10 +1,14 @@
 import { showErrorToast } from "@/app/show-error-toast";
 import {
+	applyAutoDraft,
 	createAutoChat,
 	deleteAutoChat,
 	getAutoStatus,
 	listAutoChats,
 	listAutoModels,
+	rejectAutoDraft,
+	removeAutoDraftStep,
+	restoreAutoPreviousVersion,
 	sendAutoMessage,
 	setAutoChatModel,
 	stopAutoRun,
@@ -12,8 +16,9 @@ import {
 import { applyToShownChat } from "@/features/auto/data/state/shown-chat";
 import { summaryOf } from "@/features/auto/utils/chat-events";
 import { removeChatSummary, upsertChatSummary } from "@/features/auto/utils/chat-list";
+import { caseQueryKey, casesQueryKey } from "@/features/test-cases/hooks/usequery/use-cases";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AutoChatMode, AutoChatSummary } from "@yoqa/runner-client";
+import type { AutoChat, AutoChatMode, AutoChatSummary } from "@yoqa/runner-client";
 
 export const autoStatusQueryKey = ["auto", "status"] as const;
 export const autoModelsQueryKey = ["auto", "models"] as const;
@@ -113,5 +118,62 @@ export function useStopAutoRun() {
 	return useMutation({
 		mutationFn: (chatId: string) => stopAutoRun(chatId),
 		onError: (error) => showErrorToast(error, "Failed to stop the run"),
+	});
+}
+
+/** Show the Case draft and previous version a Test tab action answered with (the stream says so too). */
+function showDraftOf(chat: AutoChat): void {
+	applyToShownChat(chat.id, { type: "draft", draft: chat.draft });
+	applyToShownChat(chat.id, { type: "previous_version", previousVersion: chat.previousVersion });
+}
+
+/** The chat's Test Case changed in the catalog: Test Cases reads it again. */
+function refetchChatCase(queryClient: QueryClient, chat: AutoChat): void {
+	void queryClient.invalidateQueries({ queryKey: casesQueryKey(chat.appId) });
+	if (chat.caseId) void queryClient.invalidateQueries({ queryKey: caseQueryKey(chat.caseId) });
+}
+
+/** ✕ on a draft step: remove it; Apply turns off until the draft passes again. */
+export function useRemoveAutoDraftStep() {
+	return useMutation({
+		mutationFn: ({ chatId, stepId }: { chatId: string; stepId: string }) =>
+			removeAutoDraftStep(chatId, stepId),
+		onSuccess: showDraftOf,
+		onError: (error) => showErrorToast(error, "Failed to remove the step"),
+	});
+}
+
+/** Reject all: throw the Case draft away. */
+export function useRejectAutoDraft() {
+	return useMutation({
+		mutationFn: (chatId: string) => rejectAutoDraft(chatId),
+		onSuccess: showDraftOf,
+		onError: (error) => showErrorToast(error, "Failed to reject the draft"),
+	});
+}
+
+/** Apply the Case draft to its Test Case; a refusal says why in a toast. */
+export function useApplyAutoDraft() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (chatId: string) => applyAutoDraft(chatId),
+		onSuccess: (chat) => {
+			showDraftOf(chat);
+			refetchChatCase(queryClient, chat);
+		},
+		onError: (error) => showErrorToast(error, "Failed to apply the draft"),
+	});
+}
+
+/** Restore previous version: swap the Test Case's current and previous steps and Case Script. */
+export function useRestoreAutoPreviousVersion() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (chatId: string) => restoreAutoPreviousVersion(chatId),
+		onSuccess: (chat) => {
+			showDraftOf(chat);
+			refetchChatCase(queryClient, chat);
+		},
+		onError: (error) => showErrorToast(error, "Failed to restore the previous version"),
 	});
 }
