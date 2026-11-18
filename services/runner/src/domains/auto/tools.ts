@@ -1,7 +1,15 @@
-import type { AutoChatMode, AutoChatSummary, CatalogCase, Run, RunStep } from "@yoqa/runner-client";
+import type {
+	AutoChatMode,
+	AutoChatSummary,
+	CaseDraft,
+	CatalogCase,
+	Run,
+	RunStep,
+} from "@yoqa/runner-client";
 import { z } from "zod";
 import { listCases } from "../catalog/application";
 import { RunNotFoundError, getRun, listRuns } from "../runs/application";
+import { addStep, changeStep, describeDraft, removeStep, setSteps, startDraft } from "./case-draft";
 import type { ChatTool, ChatToolOutput } from "./chat-agent";
 
 /** What the Yoqa tools of one chat read and change. */
@@ -11,9 +19,14 @@ export type ChatToolContext = {
 	caseId: () => Promise<string | null>;
 	/** Set the chat's Test Case while it has none; null when it already had one. */
 	setCase: (caseId: string) => Promise<AutoChatSummary | null>;
+	/** The chat's Case draft of its Test Case `caseId`; null before the agent writes one. */
+	draft: (caseId: string) => Promise<CaseDraft | null>;
+	saveDraft: (draft: CaseDraft) => Promise<void>;
 };
 
 const ALL_MODES: AutoChatMode[] = ["ask", "run", "explore"];
+/** The modes that may write the Case draft. */
+const DRAFT_MODES: AutoChatMode[] = ["run", "explore"];
 const STEP_DETAIL_LIMIT = 200;
 
 const MODE_LABEL: Record<AutoChatMode, string> = { ask: "Ask", run: "Run", explore: "Explore" };
@@ -79,6 +92,17 @@ export function describeRun(run: Run, caseLabels: Map<string, string>): string {
 	return lines.join("\n");
 }
 
+/** A tool, its input's type read from its input shape. */
+function chatTool<Shape extends z.ZodRawShape>(tool: ChatTool<Shape>): ChatTool {
+	return tool as unknown as ChatTool;
+}
+
+const stepTextShape = {
+	instructions: z.string().trim().min(1),
+	expectedResult: z.string(),
+};
+const reasonSchema = z.string().trim().min(1);
+
 /** The Yoqa tools of one chat, each with the modes that allow it. */
 export function chatTools(context: ChatToolContext): ChatTool[] {
 	/** A case of the chat's App by number, or the chat's own case when no number is given. */
@@ -102,7 +126,7 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 		return new Map(appCases.map((item) => [item.id, caseLabel(item)]));
 	}
 
-	const getTestCase: ChatTool<{ number: z.ZodOptional<z.ZodNumber> }> = {
+	const getTestCase = chatTool({
 		name: "get_test_case",
 		description:
 			"Read a Test Case: its steps (instructions and expected results), its Case Script and its last result. Without a number, the chat's own Test Case.",
@@ -112,12 +136,9 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 			const found = await findCase(number);
 			return typeof found === "string" ? refuse(found) : answer(describeCase(found));
 		},
-	};
+	});
 
-	const listCaseRuns: ChatTool<{
-		number: z.ZodOptional<z.ZodNumber>;
-		limit: z.ZodOptional<z.ZodNumber>;
-	}> = {
+	const listCaseRuns = chatTool({
 		name: "list_runs",
 		description:
 			"List the latest Runs of a Test Case, newest first: id, status, when, how it ran and its error. Without a number, the chat's own Test Case.",
@@ -141,9 +162,9 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 			});
 			return answer(`Runs of ${caseLabel(found)}:\n${lines.join("\n")}`);
 		},
-	};
+	});
 
-	const getRunDetail: ChatTool<{ runId: z.ZodString }> = {
+	const getRunDetail = chatTool({
 		name: "get_run",
 		description:
 			"Read one Run of this App: its outcome, and each case's steps in order with what each did, whether it worked and why not.",
@@ -159,9 +180,9 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 				throw error;
 			}
 		},
-	};
+	});
 
-	const setTestCase: ChatTool<{ number: z.ZodNumber }> = {
+	const setTestCase = chatTool({
 		name: "set_test_case",
 		description:
 			"Set the Test Case this chat works on, by number. Only once: a chat that already has one keeps it (another case needs a new chat).",
@@ -179,9 +200,114 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 			if (!(await context.setCase(found.id))) return refuseTaken();
 			return answer(`This chat now works on ${caseLabel(found)}.`);
 		},
-	};
+	});
 
-	return [getTestCase, listCaseRuns, getRunDetail, setTestCase] as ChatTool[];
+	/** The chat's own Test Case, which the Case draft tools need. */
+	async function chatCase(): Promise<CatalogCase | string> {
+		const found = await findCase(undefined);
+		return typeof found === "string"
+			? "This chat has no Test Case yet, so there is no Case draft. Set one with set_test_case first."
+			: found;
+	}
+
+	/** Make one change to the Case draft, started from the saved steps, and answer the new draft. */
+	async function writeDraft(
+		change: (draft: CaseDraft) => CaseDraft | string,
+	): Promise<ChatToolOutput> {
+		const found = await chatCase();
+		if (typeof found === "string") return refuse(found);
+		const written = change((await context.draft(found.id)) ?? startDraft(found));
+		if (typeof written === "string") return refuse(written);
+		await context.saveDraft(written);
+		return answer(describeDraft(written, caseLabel(found)));
+	}
+
+	const getCaseDraft = chatTool({
+		name: "get_case_draft",
+		description:
+			"Read the chat's Case draft: the steps proposed for its Test Case, numbered, with what changed and why, and the saved steps it removes.",
+		modes: ALL_MODES,
+		input: {},
+		run: async () => {
+			const found = await chatCase();
+			if (typeof found === "string") return refuse(found);
+			const draft = await context.draft(found.id);
+			return answer(
+				draft
+					? describeDraft(draft, caseLabel(found))
+					: `There is no Case draft of ${caseLabel(found)} yet: its steps are as saved.`,
+			);
+		},
+	});
+
+	const setDraftSteps = chatTool({
+		name: "set_draft_steps",
+		description:
+			"Write the whole Case draft at once, in order. Give a step savedStep (its number in the saved Test Case) when it rewrites that step; a step written exactly as saved stays unchanged; saved steps you leave out are removed. A step may give its own reason in place of the call's. Never changes the saved Test Case.",
+		modes: DRAFT_MODES,
+		input: {
+			steps: z
+				.array(
+					z.object({
+						...stepTextShape,
+						savedStep: z.number().int().positive().optional(),
+						reason: reasonSchema.optional(),
+					}),
+				)
+				.min(1),
+			reason: reasonSchema,
+		},
+		run: async (input) => writeDraft((draft) => setSteps(draft, input.steps, input.reason)),
+	});
+
+	const addDraftStep = chatTool({
+		name: "add_draft_step",
+		description:
+			"Add a step to the Case draft, at position (the step number it becomes) or at the end.",
+		modes: DRAFT_MODES,
+		input: {
+			...stepTextShape,
+			position: z.number().int().positive().optional(),
+			reason: reasonSchema,
+		},
+		run: async (input) =>
+			writeDraft((draft) => addStep(draft, input, input.position, input.reason)),
+	});
+
+	const changeDraftStep = chatTool({
+		name: "change_draft_step",
+		description:
+			"Change one step of the Case draft, by its number in the draft: its instructions, its expected result, or both.",
+		modes: DRAFT_MODES,
+		input: {
+			step: z.number().int().positive(),
+			instructions: stepTextShape.instructions.optional(),
+			expectedResult: z.string().optional(),
+			reason: reasonSchema,
+		},
+		run: async ({ step, instructions, expectedResult, reason }) =>
+			writeDraft((draft) => changeStep(draft, step, { instructions, expectedResult }, reason)),
+	});
+
+	const removeDraftStep = chatTool({
+		name: "remove_draft_step",
+		description: "Remove one step from the Case draft, by its number in the draft.",
+		modes: DRAFT_MODES,
+		input: { step: z.number().int().positive(), reason: reasonSchema },
+		run: async ({ step, reason }) => writeDraft((draft) => removeStep(draft, step, reason)),
+	});
+
+	return [
+		getTestCase,
+		listCaseRuns,
+		getRunDetail,
+		setTestCase,
+		getCaseDraft,
+		setDraftSteps,
+		addDraftStep,
+		changeDraftStep,
+		removeDraftStep,
+	];
 }
 
 /**

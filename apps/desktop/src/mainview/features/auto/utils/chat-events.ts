@@ -19,9 +19,9 @@ export function parseAutoChatEvent(data: string): AutoChatEvent | null {
 	}
 }
 
-/** The chat as the picker lists it, without its messages and in-flight reply. */
+/** The chat as the picker lists it, without its messages, in-flight reply and Case draft. */
 export function summaryOf(chat: AutoChat): AutoChatSummary {
-	const { messages: _messages, reply: _reply, ...summary } = chat;
+	const { messages: _messages, reply: _reply, draft: _draft, ...summary } = chat;
 	return summary;
 }
 
@@ -53,6 +53,8 @@ export function applyAutoChatEvent(chat: AutoChat, event: AutoChatEvent): AutoCh
 		}
 		case "chat":
 			return event.chat.id === chat.id ? { ...chat, ...event.chat } : chat;
+		case "draft":
+			return { ...chat, draft: event.draft };
 	}
 }
 

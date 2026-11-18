@@ -6,18 +6,19 @@ import type {
 	AutoMessage,
 	AutoReply,
 	AutoToolCall,
+	CaseDraft,
 	CreateAutoChatRequest,
 	SendAutoMessageRequest,
 	UpdateAutoChatRequest,
 } from "@yoqa/runner-client";
-import { autoToolCallSchema } from "@yoqa/runner-client";
+import { autoToolCallSchema, caseDraftSchema } from "@yoqa/runner-client";
 import { and, asc, desc, eq, isNull, max } from "drizzle-orm";
 import { z } from "zod";
 import { getApp, getCase } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
 import type { ChatAgent, ChatToolOutput } from "./chat-agent";
 import { autoChatDir } from "./chat-dir";
-import { autoChats, autoMessages } from "./schema";
+import { autoCaseDrafts, autoChats, autoMessages } from "./schema";
 import { MODE_LABEL, callChatTool, chatTools } from "./tools";
 
 export class AutoNotFoundError extends Error {
@@ -137,7 +138,34 @@ export async function getChat(chatId: string): Promise<AutoChat> {
 		...summary,
 		messages: rows.map(messageFromRow),
 		reply: activeTurns.get(chatId)?.reply ?? null,
+		draft: await readDraft(chatId, summary.caseId),
 	};
+}
+
+/** The chat's Case draft of `caseId`, its Test Case; null when it has none. */
+async function readDraft(chatId: string, caseId: string | null): Promise<CaseDraft | null> {
+	if (!caseId) return null;
+	const row = await getCatalogDb().query.autoCaseDrafts.findFirst({
+		where: and(eq(autoCaseDrafts.chatId, chatId), eq(autoCaseDrafts.caseId, caseId)),
+	});
+	if (!row) return null;
+	const parsed = caseDraftSchema.safeParse(JSON.parse(row.draftJson));
+	return parsed.success ? parsed.data : null;
+}
+
+/** Save the chat's Case draft and show it. */
+async function saveDraft(chatId: string, draft: CaseDraft): Promise<void> {
+	const row = {
+		chatId,
+		caseId: draft.caseId,
+		draftJson: JSON.stringify(draft),
+		updatedAt: draft.updatedAt,
+	};
+	await getCatalogDb()
+		.insert(autoCaseDrafts)
+		.values(row)
+		.onConflictDoUpdate({ target: autoCaseDrafts.chatId, set: row });
+	publish(chatId, { type: "draft", draft });
 }
 
 export async function listChats(appId: string): Promise<AutoChatSummary[]> {
@@ -265,14 +293,15 @@ async function systemPrompt(chat: ChatRow): Promise<string> {
 		`You are the chat agent in Yoqa's Auto screen, helping test the App "${app?.name ?? chat.appId}".`,
 		"You work only through the Yoqa tools: you have no files, no shell and no web.",
 		testCase,
-		"Each message starts with its mode. In Ask mode you only read the Test Case and its Runs: you cannot change the Test Case, start a Run or touch the device. When asked to, say that Run mode will do it.",
+		"Each message starts with its mode. In Ask mode you only read the Test Case, its Runs and its Case draft: you cannot change anything or touch the device. When asked to, say that Run mode will do it.",
+		"In Run mode you may also write the Case draft: the steps you propose for the chat's Test Case, each with instructions and an expected result, and each change with a short reason. You never edit the saved Test Case: the user applies the draft. You cannot start Runs yet.",
 		"Be brief. Name the step numbers and Run ids you read; never state a result you have not read.",
 	].join("\n");
 }
 
 /**
  * Send a message to a chat: saved and shown at once, answered by `agent` in the background,
- * the reply streaming on the chat's events. Only Ask works for now; one reply at a time.
+ * the reply streaming on the chat's events. Ask and Run work for now; one reply at a time.
  */
 export async function sendMessage(
 	agent: ChatAgent,
@@ -280,9 +309,9 @@ export async function sendMessage(
 	input: SendAutoMessageRequest,
 ): Promise<AutoMessage> {
 	const chat = await chatRow(chatId);
-	if (input.mode !== "ask") {
+	if (input.mode === "explore") {
 		throw new AutoValidationError(
-			`${MODE_LABEL[input.mode]} mode is not here yet: Auto answers in Ask mode for now.`,
+			`${MODE_LABEL[input.mode]} mode is not here yet: Auto answers in Ask and Run modes for now.`,
 		);
 	}
 	if (activeTurns.has(chatId)) {
@@ -326,6 +355,8 @@ async function answerTurn(
 			appId: chat.appId,
 			caseId: async () => (await chatRow(chatId)).caseId,
 			setCase: (caseId) => setChatCase(chatId, caseId),
+			draft: async (caseId) => readDraft(chatId, caseId),
+			saveDraft: (draft) => saveDraft(chatId, draft),
 		});
 		const callTool = async (name: string, input: unknown): Promise<ChatToolOutput> => {
 			const call: AutoToolCall = { id: newId("call"), name, input, output: null, isError: false };

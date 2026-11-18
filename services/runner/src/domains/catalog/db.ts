@@ -189,6 +189,12 @@ function ensureSchema(sqlite: Database): void {
 			error TEXT,
 			created_at INTEGER NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS auto_case_drafts (
+			chat_id TEXT PRIMARY KEY NOT NULL REFERENCES auto_chats(id) ON DELETE CASCADE,
+			case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+			draft_json TEXT NOT NULL,
+			updated_at INTEGER NOT NULL
+		);
 	`);
 
 	migrateProvidersTable(sqlite);

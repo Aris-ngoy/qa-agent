@@ -18,6 +18,18 @@ export const autoChats = sqliteTable("auto_chats", {
 	updatedAt: integer("updated_at").notNull(),
 });
 
+/** A chat's Case draft (JSON CaseDraft); gone with the chat or its Test Case. */
+export const autoCaseDrafts = sqliteTable("auto_case_drafts", {
+	chatId: text("chat_id")
+		.primaryKey()
+		.references(() => autoChats.id, { onDelete: "cascade" }),
+	caseId: text("case_id")
+		.notNull()
+		.references(() => cases.id, { onDelete: "cascade" }),
+	draftJson: text("draft_json").notNull(),
+	updatedAt: integer("updated_at").notNull(),
+});
+
 export const autoMessages = sqliteTable("auto_messages", {
 	id: text("id").primaryKey(),
 	chatId: text("chat_id")

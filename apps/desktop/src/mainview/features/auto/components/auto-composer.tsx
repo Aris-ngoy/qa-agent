@@ -59,13 +59,13 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 				</div>
 			</div>
 			<p className="m-0 mt-1.5 px-1 text-helper text-outline">
-				{MODE_OPTIONS.find((option) => option.id === mode)?.hint} Run and Explore are coming soon.
+				{MODE_OPTIONS.find((option) => option.id === mode)?.hint} Explore is coming soon.
 			</p>
 		</div>
 	);
 }
 
-/** Ask / Run / Explore. Only Ask is on for now; the others show what they will do. */
+/** Ask / Run / Explore. Explore is off for now; it shows what it will do. */
 function ModeControl({
 	mode,
 	onChange,
