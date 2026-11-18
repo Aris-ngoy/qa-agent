@@ -1,6 +1,7 @@
 import { RootLayout } from "@/app/root-layout";
 import { ConfigurationPage } from "@/features/apps/components/configuration-page";
 import { WelcomePage } from "@/features/apps/components/welcome-page";
+import { AutoPage } from "@/features/auto/components/auto-page";
 import { InspectorPage } from "@/features/inspector/components/inspector-page";
 import { RunDetailPage } from "@/features/runs/components/run-detail-page";
 import { RunsListPage } from "@/features/runs/components/runs-list-page";
@@ -43,6 +44,16 @@ const runDetailRoute = createRoute({
 	component: RunDetailPage,
 });
 
+const autoRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/auto",
+	// `chat` opens that Auto chat; without it the App's newest chat opens.
+	validateSearch: (search: Record<string, unknown>): { chat?: string } => ({
+		chat: typeof search.chat === "string" && search.chat.length > 0 ? search.chat : undefined,
+	}),
+	component: AutoPage,
+});
+
 const inspectorRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/inspector",
@@ -70,6 +81,7 @@ export const routeTree = rootRoute.addChildren([
 	testCaseDetailRoute,
 	runsListRoute,
 	runDetailRoute,
+	autoRoute,
 	inspectorRoute,
 	configurationRoute,
 	settingsRoute,

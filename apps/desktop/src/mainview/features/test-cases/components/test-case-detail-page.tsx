@@ -1,5 +1,7 @@
+import { selectAppId } from "@/features/apps/data/state/selected-app";
+import { useCreateAutoChat } from "@/features/auto/hooks/usequery/use-auto";
 import { CaseConfigurationPanel } from "@/features/test-cases/components/case-configuration-panel";
-import { DuplicateIcon, TrashIcon } from "@/features/test-cases/components/case-icons";
+import { ChatIcon, DuplicateIcon, TrashIcon } from "@/features/test-cases/components/case-icons";
 import { CaseInstructionsPanel } from "@/features/test-cases/components/case-instructions-panel";
 import { CaseScriptPanel } from "@/features/test-cases/components/case-script-panel";
 import { useTestCaseSelection } from "@/features/test-cases/hooks/use-test-case-selection";
@@ -65,6 +67,7 @@ export function TestCaseDetailPage() {
 	const deleteMutation = useDeleteCase();
 	const duplicateMutation = useCreateCase();
 	const scriptMutation = useUpdateCase();
+	const chatMutation = useCreateAutoChat();
 
 	const saveCase = (next: FormValues) => {
 		if (!caseId) return;
@@ -114,6 +117,23 @@ export function TestCaseDetailPage() {
 			{
 				onSuccess: (created) =>
 					void navigate({ to: "/test-cases/$caseId", params: { caseId: created.id } }),
+			},
+		);
+	};
+
+	/**
+	 * "Chat about this case": an Auto chat already set to this Test Case. Auto shows the
+	 * selected App's chats, so the case's App becomes the selected one.
+	 */
+	const chatAboutCase = () => {
+		if (!testCase) return;
+		chatMutation.mutate(
+			{ appId: testCase.appId, caseId: testCase.id },
+			{
+				onSuccess: (chat) => {
+					selectAppId(chat.appId);
+					void navigate({ to: "/auto", search: { chat: chat.id } });
+				},
 			},
 		);
 	};
@@ -194,6 +214,15 @@ export function TestCaseDetailPage() {
 				</nav>
 
 				<div className="flex items-center gap-1">
+					<Button
+						className="mr-1 h-10 gap-1.5 rounded-lg border border-outline-variant bg-transparent px-3 text-body-sm font-semibold text-on-surface data-[hovered=true]:bg-surface-container"
+						isDisabled={chatMutation.isPending}
+						onPress={chatAboutCase}
+						variant="ghost"
+					>
+						<ChatIcon />
+						Chat about this case
+					</Button>
 					<Button
 						aria-label="Delete test case"
 						className="size-10 min-w-10 rounded-lg bg-transparent text-on-surface-variant data-[hovered=true]:bg-error-container/40 data-[hovered=true]:text-error"

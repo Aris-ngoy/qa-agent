@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { RunnerSettings } from "../../settings";
+import { createAutoRoutes } from "./auto";
 import { createBuildsRoutes } from "./builds";
 import { createCatalogRoutes } from "./catalog";
 import { createDevicesRoutes } from "./devices";
@@ -65,11 +66,12 @@ export function createApp(settings: RunnerSettings, startedAt = Date.now()) {
 	app.route("/", createBuildsRoutes());
 	app.route("/", createProviderRoutes());
 	app.route("/", createRunsRoutes());
+	app.route("/", createAutoRoutes());
 
 	app.get("/", (c) =>
 		c.json({
 			name: "yoqa-runner",
-			docs: "GET /health · GET /status · GET /doctor · /ios/signing · GET /servers · GET /devices · POST /devices/connect · GET /screen · GET /screenshot/image · GET /stream.mjpeg · WS /ws/control · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds",
+			docs: "GET /health · GET /status · GET /doctor · /ios/signing · GET /servers · GET /devices · POST /devices/connect · GET /screen · GET /screenshot/image · GET /stream.mjpeg · WS /ws/control · POST /action · /apps · /cases · /flows · /tags · /providers · /runs · /builds · /auto",
 		}),
 	);
 

@@ -1,4 +1,22 @@
 import {
+	type AutoChat,
+	type AutoChatSummary,
+	type AutoMessage,
+	type AutoStatus,
+	type CreateAutoChatRequest,
+	type ListAutoModelsResponse,
+	type SendAutoMessageRequest,
+	type UpdateAutoChatRequest,
+	autoChatSchema,
+	autoMessageSchema,
+	autoStatusSchema,
+	createAutoChatRequestSchema,
+	listAutoChatsResponseSchema,
+	listAutoModelsResponseSchema,
+	sendAutoMessageRequestSchema,
+	updateAutoChatRequestSchema,
+} from "./auto";
+import {
 	type ActionBatchRequest,
 	type ActionBatchResponse,
 	type ActionRequest,
@@ -560,6 +578,7 @@ export {
 export { MAX_SCREEN_ROWS, screenRowsOmittedLine } from "./screen-rows";
 
 export { appStartTarget, startTargetRequest } from "./app-start-target";
+export * from "./auto";
 
 export { decodeXmlEntities } from "./xml-entities";
 
@@ -1227,6 +1246,88 @@ export class RunnerClient {
 			"Cancel run failed",
 		);
 		return runSchema.parse(json);
+	}
+
+	/** Whether Auto can talk to its chat agent (the Claude Provider is signed in). */
+	async getAutoStatus(): Promise<AutoStatus> {
+		const json = await this.requestJson("/auto/status", undefined, "Auto status failed");
+		return autoStatusSchema.parse(json);
+	}
+
+	async listAutoModels(): Promise<ListAutoModelsResponse> {
+		const json = await this.requestJson("/auto/models", undefined, "List chat models failed");
+		return listAutoModelsResponseSchema.parse(json);
+	}
+
+	async listAutoChats(appId: string): Promise<AutoChatSummary[]> {
+		const json = await this.requestJson(
+			`/apps/${encodeURIComponent(appId)}/auto/chats`,
+			undefined,
+			"List chats failed",
+		);
+		return listAutoChatsResponseSchema.parse(json).chats;
+	}
+
+	async createAutoChat(appId: string, request: CreateAutoChatRequest = {}): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/apps/${encodeURIComponent(appId)}/auto/chats`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(createAutoChatRequestSchema.parse(request)),
+			},
+			"Create chat failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
+	async getAutoChat(chatId: string): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}`,
+			undefined,
+			"Get chat failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
+	async updateAutoChat(chatId: string, request: UpdateAutoChatRequest): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}`,
+			{
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(updateAutoChatRequestSchema.parse(request)),
+			},
+			"Update chat failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
+	async deleteAutoChat(chatId: string): Promise<void> {
+		await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}`,
+			{ method: "DELETE" },
+			"Delete chat failed",
+		);
+	}
+
+	/** Send a message; the reply streams on the chat's events stream. Returns the saved prompt. */
+	async sendAutoMessage(chatId: string, request: SendAutoMessageRequest): Promise<AutoMessage> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/messages`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(sendAutoMessageRequestSchema.parse(request)),
+			},
+			"Send message failed",
+		);
+		return autoMessageSchema.parse(json);
+	}
+
+	/** The chat's SSE stream: one `AutoChatEvent` JSON per `data:` line. */
+	getAutoChatEventsUrl(chatId: string): string {
+		return `${this.baseUrl}/auto/chats/${encodeURIComponent(chatId)}/events`;
 	}
 
 	getRunStepScreenshotUrl(runId: string, stepId: string): string {

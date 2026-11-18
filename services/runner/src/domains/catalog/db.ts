@@ -3,12 +3,19 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import * as autoSchema from "../auto/schema";
 import * as buildsSchema from "../builds/schema";
 import * as providersSchema from "../providers/schema";
 import * as runsSchema from "../runs/schema";
 import * as schema from "./schema";
 
-const drizzleSchema = { ...schema, ...providersSchema, ...runsSchema, ...buildsSchema };
+const drizzleSchema = {
+	...schema,
+	...providersSchema,
+	...runsSchema,
+	...buildsSchema,
+	...autoSchema,
+};
 
 export type CatalogDb = ReturnType<typeof drizzle<typeof drizzleSchema>>;
 
@@ -157,6 +164,29 @@ function ensureSchema(sqlite: Database): void {
 			name TEXT NOT NULL,
 			bundle_id TEXT,
 			version TEXT,
+			created_at INTEGER NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS auto_chats (
+			id TEXT PRIMARY KEY NOT NULL,
+			app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+			case_id TEXT REFERENCES cases(id) ON DELETE SET NULL,
+			title TEXT NOT NULL,
+			model TEXT,
+			sdk_session_id TEXT,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS auto_messages (
+			id TEXT PRIMARY KEY NOT NULL,
+			chat_id TEXT NOT NULL REFERENCES auto_chats(id) ON DELETE CASCADE,
+			seq INTEGER NOT NULL,
+			role TEXT NOT NULL,
+			mode TEXT,
+			text TEXT NOT NULL,
+			tool_calls_json TEXT NOT NULL DEFAULT '[]',
+			error TEXT,
 			created_at INTEGER NOT NULL
 		);
 	`);
