@@ -478,6 +478,7 @@ export {
 	type CatalogRunReportMeta,
 	type InspectorRunReportInput,
 	type RunReportDocument,
+	type RunReportGithubSummaryOptions,
 	type RunReportStatus,
 	type RunReportStep,
 	type RunReportTest,

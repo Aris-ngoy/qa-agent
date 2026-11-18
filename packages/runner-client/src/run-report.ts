@@ -733,10 +733,42 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 	return lines.join("\n");
 }
 
+export type RunReportGithubSummaryOptions = {
+	/** Where the Run report was stored; the footer links to it. */
+	reportUrl?: string;
+	/** UTF-8 byte budget; defaults under GitHub's 1 MiB per-step Job Summary cap. */
+	maxBytes?: number;
+};
+
+const GITHUB_SUMMARY_MAX_BYTES = 900 * 1024;
+
+/** Which Test Cases get a step block: all, only errored/cancelled, or none. */
+type GithubSummaryDetail = "full" | "trimmed" | "compact";
+
 /**
- * Compact Markdown for GitHub Job Summaries. Omits screenshots (Job Summary is 1MB).
+ * Markdown for a GitHub Job Summary: every Test Case's steps, without screenshots,
+ * thoughts or phases (they stay in the HTML Run report). Over `maxBytes`, passing
+ * Test Cases' steps go first, then every step block.
  */
-export function formatRunReportGithubSummary(doc: RunReportDocument): string {
+export function formatRunReportGithubSummary(
+	doc: RunReportDocument,
+	options: RunReportGithubSummaryOptions = {},
+): string {
+	const maxBytes = options.maxBytes ?? GITHUB_SUMMARY_MAX_BYTES;
+	const encoder = new TextEncoder();
+	let markdown = "";
+	for (const detail of ["full", "trimmed", "compact"] as const) {
+		markdown = renderGithubSummary(doc, options.reportUrl, detail);
+		if (encoder.encode(markdown).length <= maxBytes) break;
+	}
+	return markdown;
+}
+
+function renderGithubSummary(
+	doc: RunReportDocument,
+	reportUrl: string | undefined,
+	detail: GithubSummaryDetail,
+): string {
 	const accent = statusAccent(doc.status);
 	const passed = doc.tests.filter((test) => test.status === "passed").length;
 	const failed = doc.tests.filter((test) => test.status === "errored").length;
@@ -802,6 +834,64 @@ export function formatRunReportGithubSummary(doc: RunReportDocument): string {
 		lines.push("");
 	}
 
-	lines.push("Download the `yoqa-report` artifact for the full HTML report with screenshots.", "");
+	for (const test of doc.tests) {
+		if (detail === "compact" || (detail === "trimmed" && test.status === "passed")) continue;
+		lines.push(...githubSummaryTestBlock(test));
+	}
+
+	if (detail !== "full") {
+		lines.push(
+			"_Passing Test Cases' steps were trimmed to fit the Job Summary; the Run report has every step._",
+			"",
+		);
+	}
+
+	lines.push(
+		reportUrl
+			? `[Full Run report with screenshots](${reportUrl})`
+			: "Download the `yoqa-report` artifact for the full HTML report with screenshots.",
+		"",
+	);
 	return lines.join("\n");
+}
+
+function testStatusLabel(status: RunTestStatus): string {
+	return status === "passed"
+		? "Passed"
+		: status === "errored"
+			? "Failed"
+			: status === "cancelled"
+				? "Cancelled"
+				: status;
+}
+
+function githubSummaryTestBlock(test: RunReportTest): string[] {
+	const open = test.status === "errored" || test.status === "cancelled";
+	const lines = [
+		open ? "<details open>" : "<details>",
+		`<summary>${escapeHtml(test.title.replace(/\s*\r?\n\s*/g, " "))} — ${testStatusLabel(test.status)}</summary>`,
+		"",
+	];
+	if (test.steps.length === 0) {
+		lines.push("_No steps recorded_", "", "</details>", "");
+		return lines;
+	}
+	lines.push("| # | Step | Result | Time | Command |", "| --- | --- | --- | --- | --- |");
+	for (const step of test.steps) {
+		const time = step.latencyMs != null ? `${step.latencyMs}ms` : "—";
+		const command = step.command ? `\`${escapeMd(step.command)}\`` : "—";
+		lines.push(
+			`| ${step.index} | ${escapeMd(step.summary)} | ${step.ok ? "✅" : "❌"} | ${time} | ${command} |`,
+		);
+	}
+	const failures = test.steps.flatMap((step) => {
+		if (step.ok) return [];
+		const parts = [step.reason, step.detail !== step.reason ? step.detail : null].filter(
+			(part): part is string => Boolean(part),
+		);
+		return parts.length > 0 ? [`- Step ${step.index}: ${parts.map(escapeMd).join(" — ")}`] : [];
+	});
+	if (failures.length > 0) lines.push("", ...failures);
+	lines.push("", "</details>", "");
+	return lines;
 }
