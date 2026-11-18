@@ -1,17 +1,33 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import {
 	type AutoChat,
 	type AutoChatEvent,
+	type AutoRun,
 	type CaseFlowStep,
+	type CaseScript,
+	type Run,
 	autoChatEventSchema,
 } from "@yoqa/runner-client";
 import type { ChatAgent, ChatAgentEvent, ChatTurn } from "../../domains/auto/chat-agent";
-import { createApp, createCase, getCase } from "../../domains/catalog/application";
+import { createApp, createCase, getCase, saveCaseScript } from "../../domains/catalog/application";
 import { closeCatalogDb, getCatalogDb, openCatalogDb } from "../../domains/catalog/db";
+import {
+	connectDevice,
+	disconnectDevice,
+	getActiveSessionInfo,
+} from "../../domains/devices/active-session";
+import { type FakeCdp, startFakeCdp } from "../../domains/devices/fake-cdp";
+import { getRun } from "../../domains/runs/application";
+import {
+	type FakeVision,
+	addFakeVisionProvider,
+	startFakeVision,
+} from "../../domains/runs/fake-vision";
 import { runSteps, runTests, runs } from "../../domains/runs/schema";
 import { createAutoRoutes } from "./auto";
+import { createRunsRoutes } from "./runs";
 
 /** A chat agent that answers each turn by running `script`, and records the turns it was given. */
 type ScriptedAgent = ChatAgent & {
@@ -44,17 +60,25 @@ function scriptedAgent(): ScriptedAgent {
 	return agent;
 }
 
+const WEB_URL = "https://shop.example.com/";
+/** Longer than the chat takes to read a Run in progress again for its Run card. */
+const FOLLOW_WAIT_MS = 400;
+
 describe("the Auto chat routes", () => {
 	let agent: ScriptedAgent;
 	let routes: ReturnType<typeof createAutoRoutes>;
+	let vision: FakeVision;
 
 	beforeAll(async () => {
 		closeCatalogDb();
 		const dir = await mkdtemp(`${tmpdir()}/auto-`);
 		openCatalogDb(`${dir}/catalog.db`);
 		process.env.YOQA_AUTO_CHATS_DIR = `${dir}/chats`;
+		vision = startFakeVision();
+		await addFakeVisionProvider(vision);
 	});
 	afterAll(() => {
+		vision.stop();
 		closeCatalogDb();
 		Reflect.deleteProperty(process.env, "YOQA_AUTO_CHATS_DIR");
 	});
@@ -277,6 +301,7 @@ describe("the Auto chat routes", () => {
 		const removal = { step: 1, reason: "Not needed" };
 		agent.script = async function* (turn) {
 			outputs.push(await turn.callTool("remove_draft_step", removal));
+			outputs.push(await turn.callTool("run_case_draft", {}));
 			yield { type: "text", delta: "I can only read here." };
 		};
 		const stream = await openEvents(chat.id);
@@ -293,22 +318,30 @@ describe("the Auto chat routes", () => {
 		const readTools = ["get_test_case", "list_runs", "get_run", "set_test_case", "get_case_draft"];
 		expect(agent.turns.map((turn) => turn.tools.map((tool) => tool.name))).toEqual([
 			readTools,
-			[...readTools, "set_draft_steps", "add_draft_step", "change_draft_step", "remove_draft_step"],
+			[
+				...readTools,
+				"set_draft_steps",
+				"add_draft_step",
+				"change_draft_step",
+				"remove_draft_step",
+				"run_case_draft",
+			],
 		]);
 		const refusal = "remove_draft_step is not available in Ask mode.";
-		expect(outputs).toEqual([{ text: refusal, isError: true }]);
+		expect(outputs).toEqual([
+			{ text: refusal, isError: true },
+			{ text: "run_case_draft is not available in Ask mode.", isError: true },
+		]);
 		expect(events.map((event) => event.type)).toContain("tool_call");
 		expect(events.map((event) => event.type)).not.toContain("draft");
 		const reply = events.find(isReply);
-		expect(reply?.type === "message" && reply.message.toolCalls).toEqual([
-			{
-				id: expect.any(String),
-				name: "remove_draft_step",
-				input: removal,
-				output: refusal,
-				isError: true,
-			},
-		]);
+		expect(reply?.type === "message" && reply.message.toolCalls[0]).toEqual({
+			id: expect.any(String),
+			name: "remove_draft_step",
+			input: removal,
+			output: refusal,
+			isError: true,
+		});
 		expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft).toBeNull();
 	});
 
@@ -379,6 +412,8 @@ describe("the Auto chat routes", () => {
 				},
 			],
 			removed: [{ before: saved1, reason: "The app opens on its own" }],
+			passingRunId: null,
+			learnedScript: null,
 			updatedAt: expect.any(Number),
 		};
 		const drafts = events.filter((event) => event.type === "draft");
@@ -723,5 +758,273 @@ describe("the Auto chat routes", () => {
 			"Looking",
 			"The Claude Provider is rate limited.",
 		]);
+	});
+	describe("running the Case draft", () => {
+		let browser: FakeCdp;
+
+		/** A browser to run on, connected as the device the chat uses. */
+		async function connectBrowser(): Promise<string> {
+			browser = startFakeCdp({ viewport: { width: 1280, height: 800 } });
+			const deviceId = `chromium-cdp-${browser.port}`;
+			await connectDevice({ deviceId, platform: "web" });
+			return deviceId;
+		}
+
+		afterEach(async () => {
+			for (let attempt = 0; attempt < 500 && getActiveSessionInfo()?.heldByRun; attempt++) {
+				await Bun.sleep(10);
+			}
+			await disconnectDevice();
+			browser?.kill();
+			vision.prompts = [];
+			vision.failWith = null;
+			vision.held = null;
+			vision.holdOn = null;
+			vision.deciding = false;
+		});
+
+		const SAVED_SCRIPT: CaseScript = {
+			version: 1,
+			savedAt: 1,
+			actions: [{ type: "tap", x: 100, y: 100, reason: "the saved tap" }],
+		};
+
+		/** A web App with a saved, never-run Test Case that has a Case Script, and a chat on it. */
+		async function chatOnSavedCase(name: string) {
+			const app = await createApp({ name, webUrl: WEB_URL });
+			const saved = await createCase(app.id, {
+				name: "Checkout",
+				flows: [{ instructions: "Tap Pay", expectedResult: "The receipt shows" }],
+			});
+			await saveCaseScript(saved.id, JSON.stringify(SAVED_SCRIPT), SAVED_SCRIPT.savedAt);
+			const chat = await newChat(app.id, saved.id);
+			return { app, saved: (await getCase(saved.id)) ?? saved, chat };
+		}
+
+		const fixPay = {
+			step: 1,
+			instructions: "Tap Pay now",
+			reason: "The button was renamed",
+		};
+
+		test("Run mode runs the whole draft's steps, answers a text summary, and records the passing Run on the draft, leaving the saved case alone", async () => {
+			await connectBrowser();
+			const { saved, chat } = await chatOnSavedCase("Runs its draft");
+			const outputs: Array<{ text: string; isError: boolean }> = [];
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				outputs.push(await turn.callTool("run_case_draft", {}));
+				yield { type: "text", delta: "It passes now." };
+			};
+			const stream = await openEvents(chat.id);
+
+			expect((await send(chat.id, "Fix it and run it", "run")).status).toBe(202);
+			await stream.until(isReply);
+			await stream.close();
+
+			expect(outputs).toHaveLength(1);
+			const [output] = outputs as [{ text: string; isError: boolean }];
+			expect(output.isError).toBe(false);
+			const runId = output.text.match(/Run (run_\S+)/)?.[1] as string;
+			expect(output.text).toContain(`Run ${runId} · passed`);
+			expect(output.text).toContain("1. ok tap: tap the middle");
+			expect(output.text).not.toMatch(/base64|data:image|\.png/);
+			expect(vision.prompts.join("\n")).toContain("Tap Pay now");
+			expect(vision.prompts.join("\n")).not.toContain("Tap Pay\n");
+
+			const run = await getRun(runId);
+			expect(run.status).toBe("passed");
+			expect(run.tests.map((item) => item.caseId)).toEqual([saved.id]);
+			const after = await getCase(saved.id);
+			expect(after?.script).toEqual(SAVED_SCRIPT);
+			expect(after?.scriptSavedAt).toBe(saved.scriptSavedAt);
+			expect(after?.lastRunStatus).toBeNull();
+			expect(after?.lastRunAt).toBeNull();
+
+			const { draft } = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+			expect(draft?.passingRunId).toBe(runId);
+			expect(draft?.learnedScript?.actions).toEqual([
+				expect.objectContaining({ type: "tap", x: 500, y: 500 }),
+			]);
+		});
+
+		const runCards = (events: AutoChatEvent[]): AutoRun[] =>
+			events.flatMap((event) => (event.type === "run" ? [event.run] : []));
+
+		test("the Run card streams over SSE with each step's status and commands and the vision Provider, and the Run is listed labelled with its chat", async () => {
+			await connectBrowser();
+			const { app, chat } = await chatOnSavedCase("Run card");
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				await turn.callTool("add_draft_step", {
+					instructions: "Tap Done",
+					expectedResult: "The shop shows",
+					reason: "A new last screen",
+				});
+				await turn.callTool("run_case_draft", {});
+				yield { type: "text", delta: "Ran it." };
+			};
+			const stream = await openEvents(chat.id);
+			const { promise: held, resolve: release } = Promise.withResolvers<void>();
+			vision.held = held;
+			vision.holdOn = "Tap Done";
+
+			await send(chat.id, "Fix it and run it", "run");
+			// Held at the first Decide of step 2: the Run card has step 1 done and step 2 running.
+			for (let attempt = 0; attempt < 500 && !vision.deciding; attempt++) await Bun.sleep(10);
+			await Bun.sleep(FOLLOW_WAIT_MS);
+			const live = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body.run;
+			release();
+			const cards = runCards(await stream.until(isReply));
+			await stream.close();
+
+			expect(live).toMatchObject({ status: "running", currentStep: 2 });
+			expect(live?.steps.map((step) => step.status)).toEqual(["passed", "running"]);
+			expect(cards.some((card) => card.currentStep === 2)).toBe(true);
+			const last = cards.at(-1) as AutoRun;
+			expect(last).toMatchObject({
+				status: "passed",
+				executionMode: "agent",
+				provider: "Fake vision · fake-vision",
+				currentStep: null,
+				error: null,
+			});
+			expect(last.startedAt).toEqual(expect.any(Number));
+			expect(last.finishedAt).toEqual(expect.any(Number));
+			expect(last.steps.map((step) => [step.instructions, step.status])).toEqual([
+				["Tap Pay now", "passed"],
+				["Tap Done", "passed"],
+			]);
+			for (const step of last.steps) {
+				expect(step.commands).toEqual([expect.stringContaining("tap")]);
+			}
+			expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.run).toBeNull();
+
+			const runsRoutes = createRunsRoutes();
+			const listed = (await (await runsRoutes.request(`/runs?appId=${app.id}`)).json()) as {
+				runs: Run[];
+			};
+			expect(listed.runs.map((run) => [run.id, run.autoChat])).toEqual([
+				[last.runId, { id: chat.id, title: "Fix it and run it" }],
+			]);
+			const detail = (await (await runsRoutes.request(`/runs/${last.runId}`)).json()) as Run;
+			expect(detail.autoChat).toEqual({ id: chat.id, title: "Fix it and run it" });
+			expect(detail.tests[0]?.steps?.length).toBeGreaterThan(0);
+		});
+
+		test("Stop cancels the chat's Run through the Run's own cancel, and the agent hears it stopped", async () => {
+			await connectBrowser();
+			const { saved, chat } = await chatOnSavedCase("Stopped");
+			const { promise: held, resolve: release } = Promise.withResolvers<void>();
+			vision.held = held;
+			const outputs: Array<{ text: string; isError: boolean }> = [];
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				outputs.push(await turn.callTool("run_case_draft", {}));
+				yield { type: "text", delta: "Stopped." };
+			};
+			const stream = await openEvents(chat.id);
+
+			expect((await json(`/auto/chats/${chat.id}/run/stop`, { method: "POST" })).status).toBe(409);
+			await send(chat.id, "Fix it and run it", "run");
+			for (let attempt = 0; attempt < 500 && !vision.deciding; attempt++) await Bun.sleep(10);
+			await Bun.sleep(FOLLOW_WAIT_MS);
+			const live = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body.run;
+			const stopped = await routes.request(`/auto/chats/${chat.id}/run/stop`, { method: "POST" });
+			expect(stopped.status).toBe(204);
+			release();
+			const cards = runCards(await stream.until(isReply));
+			await stream.close();
+
+			expect(live?.status).toBe("running");
+			expect(cards.at(-1)?.status).toBe("cancelled");
+			expect(cards.at(-1)?.steps[0]?.status).toBe("stopped");
+			expect(outputs[0]?.text).toContain("· cancelled");
+			expect(outputs[0]?.text).toContain("The Run was stopped before it ended.");
+			expect((await getRun(live?.runId as string)).status).toBe("cancelled");
+			expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft?.passingRunId).toBeNull();
+			expect((await getCase(saved.id))?.lastRunStatus).toBeNull();
+		});
+
+		test("any change to the draft after its passing Run clears the pass and its Case Script", async () => {
+			await connectBrowser();
+			const { chat } = await chatOnSavedCase("Cleared");
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				await turn.callTool("run_case_draft", {});
+				yield { type: "text", delta: "Passed." };
+			};
+			const stream = await openEvents(chat.id);
+			await send(chat.id, "Fix it and run it", "run");
+			await stream.until(isReply);
+			expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft?.passingRunId).toEqual(
+				expect.any(String),
+			);
+
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", {
+					step: 1,
+					expectedResult: "The receipt and a thank-you show",
+					reason: "Clearer",
+				});
+				yield { type: "text", delta: "Changed." };
+			};
+			await send(chat.id, "Say more in step 1", "run");
+			const events = await stream.until(() => stream.events.filter(isReply).length === 2);
+			await stream.close();
+
+			const lastDraft = events.filter((event) => event.type === "draft").at(-1);
+			expect(lastDraft?.type === "draft" && lastDraft.draft).toMatchObject({
+				passingRunId: null,
+				learnedScript: null,
+			});
+			const { draft } = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+			expect(draft).toMatchObject({ passingRunId: null, learnedScript: null });
+		});
+
+		test("a chat runs one draft Run at a time: a second call while one runs is refused", async () => {
+			await connectBrowser();
+			const { chat } = await chatOnSavedCase("One Run at a time");
+			let outputs: Array<{ text: string; isError: boolean }> = [];
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				outputs = await Promise.all([
+					turn.callTool("run_case_draft", {}),
+					turn.callTool("run_case_draft", {}),
+				]);
+				yield { type: "text", delta: "Ran once." };
+			};
+			const stream = await openEvents(chat.id);
+
+			await send(chat.id, "Run it twice", "run");
+			await stream.until(isReply);
+			await stream.close();
+
+			expect(outputs.map((output) => output.isError)).toEqual([false, true]);
+			expect(outputs[0]?.text).toContain("· passed");
+			expect(outputs[1]?.text).toBe(
+				"A Run of this Case draft is already in progress. Wait for it to end.",
+			);
+		});
+
+		test("running needs a connected device and a draft", async () => {
+			const { chat } = await chatOnSavedCase("Nothing to run on");
+			const outputs: Array<{ text: string; isError: boolean }> = [];
+			agent.script = async function* (turn) {
+				outputs.push(await turn.callTool("run_case_draft", {}));
+				await turn.callTool("change_draft_step", fixPay);
+				outputs.push(await turn.callTool("run_case_draft", {}));
+				yield { type: "text", delta: "Cannot." };
+			};
+			const stream = await openEvents(chat.id);
+
+			await send(chat.id, "Run it", "run");
+			await stream.until(isReply);
+			await stream.close();
+
+			expect(outputs.map((output) => output.isError)).toEqual([true, true]);
+			expect(outputs[0]?.text).toContain("There is no Case draft of");
+			expect(outputs[1]?.text).toContain("No device is connected");
+		});
 	});
 });

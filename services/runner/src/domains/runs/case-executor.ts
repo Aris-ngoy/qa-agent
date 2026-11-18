@@ -699,11 +699,21 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		return settled;
 	};
 
+	// Each Run step knows the step of the case its instruction came from.
+	let currentFlowStep = 0;
+	const appendAgentStep: AppendCaseStep = (step) =>
+		deps.appendStep({
+			...step,
+			action: { ...(step.action as object), flowStep: currentFlowStep },
+		});
+
 	try {
-		const instructionQueue = flattenCaseInstructions(
+		const flows =
 			deps.catalogCase.flows.length > 0
 				? deps.catalogCase.flows
-				: [{ id: "empty", instructions: "", expectedResult: "", flowId: null }],
+				: [{ id: "empty", instructions: "", expectedResult: "", flowId: null }];
+		const instructionQueue = flows.flatMap((flow, flowStep) =>
+			flattenCaseInstructions([flow]).map((instruction) => ({ ...instruction, flowStep })),
 		);
 
 		const recentActions: AgentDecision[] = [];
@@ -787,6 +797,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		for (let instructionIndex = 0; instructionIndex < instructionQueue.length; instructionIndex++) {
 			const instruction = instructionQueue[instructionIndex];
 			if (!instruction) break;
+			currentFlowStep = instruction.flowStep;
 			if (deps.isAborted()) {
 				caseStatus = "cancelled";
 				break;
@@ -855,7 +866,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 							const outcome = terminal.type === "fail" ? "fail" : "done";
 							recentActions.push(terminal);
 							recordedDecisions.push(terminal);
-							await deps.appendStep({
+							await appendAgentStep({
 								idx: stepIdx,
 								action: {
 									...terminal,
@@ -1072,7 +1083,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 				const command = commandForDecision(performed ?? decision, deps.defaultAppId);
 				recentActions.push(decision);
 				recordedDecisions.push(decision);
-				await deps.appendStep({
+				await appendAgentStep({
 					idx: stepIdx,
 					action: {
 						...decision,
@@ -1131,7 +1142,7 @@ export async function executeAgentCase(deps: AgentCaseDeps): Promise<{
 		} else {
 			caseStatus = "errored";
 			caseError = error instanceof Error ? error.message : String(error);
-			await deps.appendStep({
+			await appendAgentStep({
 				idx: stepIdx,
 				action: {
 					type: "fail",

@@ -3,17 +3,23 @@ import {
 	useAutoModels,
 	useSendAutoMessage,
 	useSetAutoChatModel,
+	useStopAutoRun,
 } from "@/features/auto/hooks/usequery/use-auto";
 import { modelFromKey, modelKey, modelOptions } from "@/features/auto/utils/chat-labels";
 import { MODE_OPTIONS, canSend, isSendKey } from "@/features/auto/utils/composer";
+import { isRunLive } from "@/features/auto/utils/run-card";
 import { Button, ListBox, Select } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
 import type { AutoChatMode } from "@yoqa/runner-client";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+
+/** Open things that Esc closes, rather than stopping the Run. */
+const ESC_OWNERS = '[role="dialog"], [role="listbox"], [role="menu"]';
 
 /**
  * The composer: the prompt, the mode it is sent in, the chat model, and Send. Enter sends,
- * Shift+Enter starts a new line; Send waits while a reply is being written.
+ * Shift+Enter starts a new line; Send waits while a reply is being written. While the chat's
+ * Run is live, Stop (or Esc) cancels it.
  */
 export function AutoComposer({ chatId }: { chatId: string }) {
 	const composer$ = useObservable({ text: "", mode: "ask" as AutoChatMode });
@@ -21,8 +27,29 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 	const mode = useValue(composer$.mode);
 	const loaded = useValue(() => shownAutoChat$.chat.id.get() === chatId);
 	const replying = useValue(() => shownAutoChat$.chat.reply.get() != null);
+	const runLive = useValue(() => {
+		const run = shownAutoChat$.chat.run.get();
+		return run != null && isRunLive(run);
+	});
 	const send = useSendAutoMessage();
+	const stop = useStopAutoRun();
 	const sendable = loaded && canSend({ text, sending: send.isPending, replying });
+
+	const stopRun = stop.mutate;
+
+	// Esc stops the Run from anywhere on the screen, except to close something open (a menu, a dialog).
+	useEffect(() => {
+		if (!runLive) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape" || event.defaultPrevented) return;
+			const target = event.target instanceof Element ? event.target : null;
+			if (target?.closest(ESC_OWNERS)) return;
+			event.preventDefault();
+			stopRun(chatId);
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [runLive, chatId, stopRun]);
 
 	const submit = () => {
 		if (!sendable) return;
@@ -49,13 +76,24 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 				<div className="flex flex-wrap items-center gap-2">
 					<ModeControl mode={mode} onChange={(next) => composer$.mode.set(next)} />
 					<ModelPicker chatId={chatId} />
-					<Button
-						className="ml-auto h-8 rounded-lg bg-primary px-4 text-body-sm font-semibold text-on-primary data-[hovered=true]:bg-primary/90 data-[disabled=true]:bg-surface-container-highest data-[disabled=true]:text-on-surface-variant"
-						isDisabled={!sendable}
-						onPress={submit}
-					>
-						{replying ? "Replying…" : "Send"}
-					</Button>
+					<div className="ml-auto flex items-center gap-2">
+						{runLive ? (
+							<Button
+								className="h-8 rounded-lg bg-error-container px-4 text-body-sm font-semibold text-on-error-container data-[hovered=true]:bg-error-container/80"
+								isDisabled={stop.isPending}
+								onPress={() => stop.mutate(chatId)}
+							>
+								Stop <span className="ml-1 font-mono text-[10px] opacity-70">Esc</span>
+							</Button>
+						) : null}
+						<Button
+							className="h-8 rounded-lg bg-primary px-4 text-body-sm font-semibold text-on-primary data-[hovered=true]:bg-primary/90 data-[disabled=true]:bg-surface-container-highest data-[disabled=true]:text-on-surface-variant"
+							isDisabled={!sendable}
+							onPress={submit}
+						>
+							{replying ? "Replying…" : "Send"}
+						</Button>
+					</div>
 				</div>
 			</div>
 			<p className="m-0 mt-1.5 px-1 text-helper text-outline">

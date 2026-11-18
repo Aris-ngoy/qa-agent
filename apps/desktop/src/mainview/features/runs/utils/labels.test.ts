@@ -7,6 +7,7 @@ import {
 	formatRunDuration,
 	formatRunEnvironment,
 	formatRunListDate,
+	runChatLabel,
 	runListResult,
 } from "@/features/runs/utils/labels";
 import type { Device, Run, RunTest } from "@yoqa/runner-client";
@@ -282,5 +283,20 @@ describe("formatRunEnvironment", () => {
 
 	test("is nothing for a phone's Run, whose details stay as they were", () => {
 		expect(formatRunEnvironment(run({ status: "passed", tests: [], lane: "direct" }))).toBeNull();
+	});
+});
+
+describe("runChatLabel", () => {
+	test("a Run an Auto chat started is labelled with its chat", () => {
+		const fromChat = run({
+			status: "passed",
+			tests: [],
+			autoChat: { id: "chat_1", title: "Fix the Pay button" },
+		});
+		expect(runChatLabel(fromChat)).toBe("Auto · Fix the Pay button");
+	});
+
+	test("any other Run has no chat label", () => {
+		expect(runChatLabel(run({ status: "passed", tests: [] }))).toBeNull();
 	});
 });

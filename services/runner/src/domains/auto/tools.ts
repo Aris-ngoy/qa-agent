@@ -11,6 +11,7 @@ import { listCases } from "../catalog/application";
 import { RunNotFoundError, getRun, listRuns } from "../runs/application";
 import { addStep, changeStep, describeDraft, removeStep, setSteps, startDraft } from "./case-draft";
 import type { ChatTool, ChatToolOutput } from "./chat-agent";
+import type { ChatRunResult } from "./chat-runs";
 
 /** What the Yoqa tools of one chat read and change. */
 export type ChatToolContext = {
@@ -22,7 +23,15 @@ export type ChatToolContext = {
 	/** The chat's Case draft of its Test Case `caseId`; null before the agent writes one. */
 	draft: (caseId: string) => Promise<CaseDraft | null>;
 	saveDraft: (draft: CaseDraft) => Promise<void>;
+	/**
+	 * Run the whole of `draft` of `catalogCase` on the connected device and wait for it to
+	 * end, recording a passing Run on the draft; why it cannot start, as text.
+	 */
+	runDraft: (catalogCase: CatalogCase, draft: CaseDraft) => Promise<ChatDraftRun | string>;
 };
+
+/** A chat's Run of its draft once it ended, and whether it is now the draft's passing Run. */
+export type ChatDraftRun = ChatRunResult & { passing: boolean };
 
 const ALL_MODES: AutoChatMode[] = ["ask", "run", "explore"];
 /** The modes that may write the Case draft. */
@@ -297,6 +306,35 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 		run: async ({ step, reason }) => writeDraft((draft) => removeStep(draft, step, reason)),
 	});
 
+	const runCaseDraft = chatTool({
+		name: "run_case_draft",
+		description:
+			"Run the whole Case draft on the connected device, from the App's start, and wait for it to end. The Yoqa agent drives the device (or replays the draft's Case Script); the answer is each step as text. A passing Run lets the user apply the draft. Never changes the saved Test Case.",
+		modes: DRAFT_MODES,
+		input: {},
+		run: async () => {
+			const found = await chatCase();
+			if (typeof found === "string") return refuse(found);
+			const draft = await context.draft(found.id);
+			if (!draft) {
+				return refuse(`There is no Case draft of ${caseLabel(found)} yet: write one, then run it.`);
+			}
+			const result = await context.runDraft(found, draft);
+			if (typeof result === "string") return refuse(result);
+			const { run, passing } = result;
+			const note =
+				run.status === "cancelled"
+					? "The Run was stopped before it ended."
+					: passing
+						? "This is now the draft's passing Run: the user can apply the draft."
+						: run.status === "passed"
+							? "The Case draft changed while it ran, so it has to pass again."
+							: "";
+			const summary = describeRun(run, await caseLabels());
+			return answer(note ? `${summary}\n${note}` : summary);
+		},
+	});
+
 	return [
 		getTestCase,
 		listCaseRuns,
@@ -307,6 +345,7 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 		addDraftStep,
 		changeDraftStep,
 		removeDraftStep,
+		runCaseDraft,
 	];
 }
 

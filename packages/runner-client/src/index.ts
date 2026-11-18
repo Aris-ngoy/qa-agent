@@ -1325,6 +1325,15 @@ export class RunnerClient {
 		return autoMessageSchema.parse(json);
 	}
 
+	/** Stop the chat's Run of its Case draft in progress (Stop and Esc). */
+	async stopAutoRun(chatId: string): Promise<void> {
+		await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/run/stop`,
+			{ method: "POST" },
+			"Stop run failed",
+		);
+	}
+
 	/** The chat's SSE stream: one `AutoChatEvent` JSON per `data:` line. */
 	getAutoChatEventsUrl(chatId: string): string {
 		return `${this.baseUrl}/auto/chats/${encodeURIComponent(chatId)}/events`;

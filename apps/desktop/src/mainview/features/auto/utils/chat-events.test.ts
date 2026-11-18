@@ -4,7 +4,7 @@ import {
 	parseAutoChatEvent,
 	summaryOf,
 } from "@/features/auto/utils/chat-events";
-import type { AutoChat, AutoChatEvent, AutoMessage, CaseDraft } from "@yoqa/runner-client";
+import type { AutoChat, AutoChatEvent, AutoMessage, AutoRun, CaseDraft } from "@yoqa/runner-client";
 
 function chat(overrides: Partial<AutoChat> = {}): AutoChat {
 	return {
@@ -20,6 +20,26 @@ function chat(overrides: Partial<AutoChat> = {}): AutoChat {
 		messages: [],
 		reply: null,
 		draft: null,
+		run: null,
+		...overrides,
+	};
+}
+
+function run(overrides: Partial<AutoRun> = {}): AutoRun {
+	return {
+		runId: "run_1",
+		caseId: "case_1",
+		status: "running",
+		executionMode: "agent",
+		provider: "OpenAI · gpt-5",
+		createdAt: 100,
+		startedAt: 110,
+		finishedAt: null,
+		currentStep: 1,
+		currentCommand: null,
+		steps: [{ instructions: "Tap Pay", expectedResult: "", status: "running", commands: [] }],
+		replayed: [],
+		error: null,
 		...overrides,
 	};
 }
@@ -165,6 +185,8 @@ describe("applyAutoChatEvent", () => {
 				{ id: "s1", instructions: "Open", expectedResult: "", flowId: null, reason: "First step" },
 			],
 			removed: [],
+			passingRunId: null,
+			learnedScript: null,
 			updatedAt: 300,
 		};
 		const drafted = applyAutoChatEvent(chat(), { type: "draft", draft });
@@ -187,5 +209,30 @@ describe("summaryOf", () => {
 		expect("reply" in summary).toBe(false);
 		expect("draft" in summary).toBe(false);
 		expect(summary.id).toBe("chat_1");
+	});
+
+	test("a run event shows the chat's Run card, and the next prompt clears a Run that ended", () => {
+		const live = applyAutoChatEvent(chat(), { type: "run", run: run() });
+		expect(live.run).toEqual(run());
+		const ended = applyAutoChatEvent(live, {
+			type: "run",
+			run: run({ status: "passed", finishedAt: 200, currentStep: null }),
+		});
+		expect(ended.run?.status).toBe("passed");
+		const reply = applyAutoChatEvent(ended, {
+			type: "message",
+			message: message({ id: "msg_reply", role: "assistant", mode: null }),
+		});
+		expect(reply.run?.status).toBe("passed");
+		const next = applyAutoChatEvent(reply, {
+			type: "message",
+			message: message({ id: "msg_next", text: "Again" }),
+		});
+		expect(next.run).toBeNull();
+		const stillLive = applyAutoChatEvent(live, {
+			type: "message",
+			message: message({ id: "msg_queued", text: "Meanwhile" }),
+		});
+		expect(stillLive.run).toEqual(run());
 	});
 });

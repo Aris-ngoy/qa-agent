@@ -1,4 +1,5 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { autoChats } from "../auto/schema";
 import { apps, cases } from "../catalog/schema";
 
 export const runs = sqliteTable("runs", {
@@ -36,6 +37,8 @@ export const runs = sqliteTable("runs", {
 	profile: text("profile"),
 	/** 1 when the Run was started asking to record every case, whatever the cases say. */
 	recordVideo: integer("record_video").notNull().default(0),
+	/** The Auto chat that started the Run; null for any other Run, or once the chat is deleted. */
+	autoChatId: text("auto_chat_id").references(() => autoChats.id, { onDelete: "set null" }),
 	error: text("error"),
 	createdAt: integer("created_at").notNull(),
 	startedAt: integer("started_at"),

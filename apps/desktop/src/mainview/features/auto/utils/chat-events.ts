@@ -1,3 +1,4 @@
+import { isRunLive } from "@/features/auto/utils/run-card";
 import {
 	type AutoChat,
 	type AutoChatEvent,
@@ -19,9 +20,9 @@ export function parseAutoChatEvent(data: string): AutoChatEvent | null {
 	}
 }
 
-/** The chat as the picker lists it, without its messages, in-flight reply and Case draft. */
+/** The chat as the picker lists it, without its messages, in-flight reply, Case draft and Run. */
 export function summaryOf(chat: AutoChat): AutoChatSummary {
-	const { messages: _messages, reply: _reply, draft: _draft, ...summary } = chat;
+	const { messages: _messages, reply: _reply, draft: _draft, run: _run, ...summary } = chat;
 	return summary;
 }
 
@@ -55,12 +56,14 @@ export function applyAutoChatEvent(chat: AutoChat, event: AutoChatEvent): AutoCh
 			return event.chat.id === chat.id ? { ...chat, ...event.chat } : chat;
 		case "draft":
 			return { ...chat, draft: event.draft };
+		case "run":
+			return { ...chat, run: event.run };
 	}
 }
 
 /**
  * A saved message: the user's prompt starts the reply being written, the agent's saved reply
- * takes the place of the in-flight one.
+ * takes the place of the in-flight one. A new prompt also clears the card of a Run that ended.
  */
 function applyMessage(chat: AutoChat, message: AutoMessage): AutoChat {
 	if (message.chatId !== chat.id) return chat;
@@ -70,5 +73,13 @@ function applyMessage(chat: AutoChat, message: AutoMessage): AutoChat {
 		: [...chat.messages, message];
 	const reply =
 		message.role === "assistant" ? null : known ? chat.reply : (chat.reply ?? EMPTY_REPLY);
-	return { ...chat, messages, reply, updatedAt: Math.max(chat.updatedAt, message.createdAt) };
+	const run =
+		message.role === "user" && !known && chat.run && !isRunLive(chat.run) ? null : chat.run;
+	return {
+		...chat,
+		messages,
+		reply,
+		run,
+		updatedAt: Math.max(chat.updatedAt, message.createdAt),
+	};
 }

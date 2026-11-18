@@ -15,6 +15,7 @@ import {
 	getChat,
 	listChats,
 	sendMessage,
+	stopRun,
 	subscribeToChat,
 	updateChat,
 } from "../../domains/auto/application";
@@ -95,6 +96,11 @@ export function createAutoRoutes(options: { agent?: ChatAgent } = {}) {
 		const parsed = await parseBody(c.req.raw, sendAutoMessageRequestSchema);
 		if (!parsed.ok) return c.json(parsed.error, 400);
 		return c.json(await sendMessage(agent, c.req.param("chatId"), parsed.data), 202);
+	});
+
+	app.post("/auto/chats/:chatId/run/stop", async (c) => {
+		await stopRun(c.req.param("chatId"));
+		return c.body(null, 204);
 	});
 
 	app.get("/auto/chats/:chatId/events", async (c) => {

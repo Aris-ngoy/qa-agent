@@ -7,6 +7,7 @@ import type {
 	AutoReply,
 	AutoToolCall,
 	CaseDraft,
+	CatalogCase,
 	CreateAutoChatRequest,
 	SendAutoMessageRequest,
 	UpdateAutoChatRequest,
@@ -18,8 +19,9 @@ import { getApp, getCase } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
 import type { ChatAgent, ChatToolOutput } from "./chat-agent";
 import { autoChatDir } from "./chat-dir";
+import { currentChatRun, runChatDraft, stopChatRun } from "./chat-runs";
 import { autoCaseDrafts, autoChats, autoMessages } from "./schema";
-import { MODE_LABEL, callChatTool, chatTools } from "./tools";
+import { type ChatDraftRun, MODE_LABEL, callChatTool, chatTools } from "./tools";
 
 export class AutoNotFoundError extends Error {
 	constructor(message: string) {
@@ -139,6 +141,7 @@ export async function getChat(chatId: string): Promise<AutoChat> {
 		messages: rows.map(messageFromRow),
 		reply: activeTurns.get(chatId)?.reply ?? null,
 		draft: await readDraft(chatId, summary.caseId),
+		run: currentChatRun(chatId),
 	};
 }
 
@@ -166,6 +169,46 @@ async function saveDraft(chatId: string, draft: CaseDraft): Promise<void> {
 		.values(row)
 		.onConflictDoUpdate({ target: autoCaseDrafts.chatId, set: row });
 	publish(chatId, { type: "draft", draft });
+}
+
+/**
+ * Run the whole of the chat's `draft` and wait for it to end, its Run card on the chat's
+ * events. A passed Run of a draft unchanged since it started is the draft's passing Run, with
+ * the Case Script it learned. Why it cannot start, as text.
+ */
+async function runDraft(
+	chatId: string,
+	catalogCase: CatalogCase,
+	draft: CaseDraft,
+	signal: AbortSignal,
+): Promise<ChatDraftRun | string> {
+	const result = await runChatDraft({
+		chatId,
+		catalogCase,
+		draft,
+		signal,
+		report: (run) => publish(chatId, { type: "run", run }),
+	});
+	if (typeof result === "string") return result;
+	const current = await readDraft(chatId, catalogCase.id);
+	const passing =
+		result.run.status === "passed" && current !== null && current.updatedAt === draft.updatedAt;
+	if (passing) {
+		await saveDraft(chatId, {
+			...current,
+			passingRunId: result.run.id,
+			learnedScript: result.passingScript,
+		});
+	}
+	return { ...result, passing };
+}
+
+/** Stop the chat's Run of its draft in progress. */
+export async function stopRun(chatId: string): Promise<void> {
+	await chatRow(chatId);
+	if (!(await stopChatRun(chatId))) {
+		throw new AutoConflictError("No Run of this chat is in progress.");
+	}
 }
 
 export async function listChats(appId: string): Promise<AutoChatSummary[]> {
@@ -294,7 +337,8 @@ async function systemPrompt(chat: ChatRow): Promise<string> {
 		"You work only through the Yoqa tools: you have no files, no shell and no web.",
 		testCase,
 		"Each message starts with its mode. In Ask mode you only read the Test Case, its Runs and its Case draft: you cannot change anything or touch the device. When asked to, say that Run mode will do it.",
-		"In Run mode you may also write the Case draft: the steps you propose for the chat's Test Case, each with instructions and an expected result, and each change with a short reason. You never edit the saved Test Case: the user applies the draft. You cannot start Runs yet.",
+		"In Run mode you may also write the Case draft: the steps you propose for the chat's Test Case, each with instructions and an expected result, and each change with a short reason. You never edit the saved Test Case: the user applies the draft.",
+		"In Run mode you may also run the whole draft on the connected device with run_case_draft. The Yoqa agent drives the device; you get each step back as text. The user can apply the draft only after a Run of it passes, and any change to the draft means it must pass again.",
 		"Be brief. Name the step numbers and Run ids you read; never state a result you have not read.",
 	].join("\n");
 }
@@ -357,6 +401,7 @@ async function answerTurn(
 			setCase: (caseId) => setChatCase(chatId, caseId),
 			draft: async (caseId) => readDraft(chatId, caseId),
 			saveDraft: (draft) => saveDraft(chatId, draft),
+			runDraft: (catalogCase, draft) => runDraft(chatId, catalogCase, draft, turn.abort.signal),
 		});
 		const callTool = async (name: string, input: unknown): Promise<ChatToolOutput> => {
 			const call: AutoToolCall = { id: newId("call"), name, input, output: null, isError: false };

@@ -180,7 +180,7 @@ A saved conversation, on one App, with the chat agent about at most one Test Cas
 _Avoid_: Auto run (`executionMode: auto` is script-first replay, a different thing), session (a Device Session), thread
 
 **Case draft**:
-The changes an Auto chat proposes to one Test Case: changed, added and removed steps, and the Case Script that a passing Run of the draft learned. It reaches the Test Case only when the user applies it, whole, and only after a Run of the whole draft has passed from a clean start; removing a step from it clears that pass. A Run of a Case draft never changes the saved Test Case, its Case Script, or its last result.
+The changes an Auto chat proposes to one Test Case: changed, added and removed steps, and the Case Script that a passing Run of the draft learned. It reaches the Test Case only when the user applies it, whole, and only after a Run of the whole draft has passed from a clean start; any change to it, such as removing a step, clears that pass. A Run of a Case draft never changes the saved Test Case, its Case Script, or its last result.
 _Avoid_: pending changes, edit, patch
 
 **Take over**:

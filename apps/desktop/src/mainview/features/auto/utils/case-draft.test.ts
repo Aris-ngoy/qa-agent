@@ -12,7 +12,15 @@ const password = saved("s3", "Type the password");
 const submit = saved("s4", "Tap Submit");
 
 function draftOf(steps: CaseDraft["steps"], removed: CaseDraft["removed"] = []): CaseDraft {
-	return { caseId: "case_1", base: [open, signIn, password, submit], steps, removed, updatedAt: 1 };
+	return {
+		caseId: "case_1",
+		base: [open, signIn, password, submit],
+		steps,
+		removed,
+		passingRunId: null,
+		learnedScript: null,
+		updatedAt: 1,
+	};
 }
 
 const asSaved = (step: CaseFlowStep) => ({ ...step, reason: null });

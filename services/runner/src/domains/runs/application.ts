@@ -22,6 +22,7 @@ import {
 	webDeviceOf,
 } from "@yoqa/runner-client";
 import { asc, desc, eq, inArray } from "drizzle-orm";
+import { autoChats } from "../auto/schema";
 import { resolveBuildForRun } from "../builds/application";
 import { getApp, getCase, isEverydayWarningAccepted, saveCaseScript } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
@@ -79,6 +80,7 @@ export type DraftRunOutcome = {
 type DraftRunStart = {
 	steps: DraftSteps;
 	settle: (outcome: DraftRunOutcome) => void;
+	chatId?: string;
 };
 
 /** A Run of a Case draft's steps, from its create until its outcome is handed back. */
@@ -217,10 +219,26 @@ async function loadRun(runId: string): Promise<Run | null> {
 		});
 	}
 
-	return runFromRow(runRow, tests);
+	return runFromRow(runRow, tests, await chatTitles([runRow]));
 }
 
-function runFromRow(runRow: typeof runs.$inferSelect, tests: RunTest[]): Run {
+/** The titles of the Auto chats that started `runRows`, by chat id. */
+async function chatTitles(runRows: Array<typeof runs.$inferSelect>): Promise<Map<string, string>> {
+	const ids = [...new Set(runRows.flatMap((row) => (row.autoChatId ? [row.autoChatId] : [])))];
+	if (ids.length === 0) return new Map();
+	const rows = await getCatalogDb()
+		.select({ id: autoChats.id, title: autoChats.title })
+		.from(autoChats)
+		.where(inArray(autoChats.id, ids));
+	return new Map(rows.map((row) => [row.id, row.title]));
+}
+
+function runFromRow(
+	runRow: typeof runs.$inferSelect,
+	tests: RunTest[],
+	chats: Map<string, string>,
+): Run {
+	const chatTitle = runRow.autoChatId ? chats.get(runRow.autoChatId) : undefined;
 	return {
 		id: runRow.id,
 		appId: runRow.appId,
@@ -236,6 +254,9 @@ function runFromRow(runRow: typeof runs.$inferSelect, tests: RunTest[]): Run {
 		...(runRow.browserProfileName ? { browserProfileName: runRow.browserProfileName } : {}),
 		...viewportOf(runRow.viewport),
 		...profileOf(runRow.profile),
+		...(runRow.autoChatId && chatTitle !== undefined
+			? { autoChat: { id: runRow.autoChatId, title: chatTitle } }
+			: {}),
 		error: runRow.error,
 		createdAt: runRow.createdAt,
 		startedAt: runRow.startedAt,
@@ -601,6 +622,8 @@ export type CreateDraftRunRequest = Omit<CreateRunRequest, "caseIds"> & {
 	/** The Test Case the draft is of. Its saved steps, Case Script and last result stay as they are. */
 	caseId: string;
 	steps: DraftSteps;
+	/** The Auto chat starting the Run, which labels it. */
+	chatId?: string;
 };
 
 /**
@@ -614,9 +637,9 @@ export async function createDraftRun(
 	if (input.steps.flows.length === 0) {
 		throw new RunValidationError("A Case draft needs at least one step to run");
 	}
-	const { caseId, steps, ...request } = input;
+	const { caseId, steps, chatId, ...request } = input;
 	const { promise: outcome, resolve: settle } = Promise.withResolvers<DraftRunOutcome>();
-	const run = await startRun({ ...request, caseIds: [caseId] }, { steps, settle });
+	const run = await startRun({ ...request, caseIds: [caseId] }, { steps, settle, chatId });
 	return { run, outcome };
 }
 
@@ -724,6 +747,7 @@ async function startRun(input: CreateRunRequest, draft?: DraftRunStart): Promise
 		requestedProfile: input.profile ?? null,
 		requestedViewport: input.viewport ?? null,
 		recordVideo: input.recordVideo ? 1 : 0,
+		autoChatId: draft?.chatId ?? null,
 		error: null,
 		createdAt: now,
 		startedAt: null,
@@ -806,7 +830,8 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		testsByRunId.set(test.runId, list);
 	}
 
-	return runRows.map((runRow) => runFromRow(runRow, testsByRunId.get(runRow.id) ?? []));
+	const chats = await chatTitles(runRows);
+	return runRows.map((runRow) => runFromRow(runRow, testsByRunId.get(runRow.id) ?? [], chats));
 }
 
 export async function deleteRun(runId: string): Promise<void> {
