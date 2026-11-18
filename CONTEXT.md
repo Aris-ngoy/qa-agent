@@ -157,6 +157,14 @@ _Avoid_: Job, job run, pipeline
 An opt-in screen video of one Test Case within a Run, captured alongside its Result screenshots. A Test Case says whether it records (off by default); starting a Run can also ask to record every case. Evidence only: it is never shown to Decide and never takes part in Settle. It is playable only after the Run has finished. A Lane or device that cannot record leaves the Run unaffected and the case records why there is no video.
 _Avoid_: screencast, clip, session recording
 
+**Run report**:
+The evidence for a human, after the fact, of one finished Run: its status, device and Lane, and every step of every Test Case with its result and screenshot. It is the same whether exported from the desktop or from the CLI.
+_Avoid_: test report, results, export
+
+**Job Summary**:
+The text-only digest of a Run report that a CI job shows on its run page: every Test Case with its steps and results, the failed steps listed apart, and a link to the full Run report. It carries no screenshots, and when it would be too large it trims passing Test Cases first. One per CI job, never merged across jobs.
+_Avoid_: runner summary (the runner is `yoqa serve`), CI report, step summary
+
 **Case executor**:
 The module that runs one Test Case against a Device Session (script replay or agent loop), with abort, settle, and step recording injected at its seam.
 _Avoid_: executeRun (orchestration + persistence around cases)
