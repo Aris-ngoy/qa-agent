@@ -82,6 +82,7 @@ import {
 import {
 	DEFAULT_RUN_WAIT_TIMEOUT_SECONDS,
 	type ReportCommandOptions,
+	appendCatalogRunJobSummary,
 	attachGithubOutputOptions,
 	attachReportCommandOptions,
 	createWaitStatusLogger,
@@ -240,7 +241,8 @@ async function handleReportCommand(
 			latestAppId = (await resolveAppId(c, options.latest)).id;
 		}
 		const runId = await resolveReportRunId(c, runIdArg, latestAppId, options.latest ?? "");
-		const result = await exportCatalogRunReport(c, runId, options, {
+		const exportReport = options.summaryOnly ? appendCatalogRunJobSummary : exportCatalogRunReport;
+		const result = await exportReport(c, runId, options, {
 			onWaitStatus: createWaitStatusLogger(),
 			log: (message) => emitText(message, options, cmd),
 		});

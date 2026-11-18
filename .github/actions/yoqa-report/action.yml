@@ -66,7 +66,9 @@ runs:
 
     # Written after the upload so the Job Summary can link to the artifact. `--summary-only`
     # fetches no screenshots and leaves the report file and step outputs from the first step alone.
+    # Runs even when the upload failed: an empty artifact-url falls back to the generic footer.
     - name: Write Job Summary
+      if: always() && steps.report.outputs.run_id != ''
       shell: bash
       env:
         YOQA_REPORT_BASE_URL: ${{ inputs.base-url }}
