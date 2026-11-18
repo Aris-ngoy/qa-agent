@@ -11,6 +11,7 @@ const PAGE_TITLES: Record<string, string> = {
 	"/": "Welcome",
 	"/test-cases": "Test Cases",
 	"/runs": "Runs",
+	"/auto": "Auto",
 	"/configuration": "Configuration",
 	"/settings": "Settings",
 };

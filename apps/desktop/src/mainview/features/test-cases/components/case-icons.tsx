@@ -58,3 +58,21 @@ export function DuplicateIcon(props: SVGProps<SVGSVGElement>) {
 		</svg>
 	);
 }
+
+export function ChatIcon(props: SVGProps<SVGSVGElement>) {
+	return (
+		<svg
+			aria-hidden="true"
+			className="size-4"
+			fill="none"
+			stroke="currentColor"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			strokeWidth="1.75"
+			viewBox="0 0 24 24"
+			{...props}
+		>
+			<path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l.9-4.4A8 8 0 1 1 20 12z" />
+		</svg>
+	);
+}

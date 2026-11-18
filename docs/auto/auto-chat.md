@@ -1,6 +1,6 @@
 # Auto chat
 
-Status: designed; groundwork built (#463), the screen not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
+Status: Ask mode built (#463, #455); Run and Explore not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
 
 ## Goal
 
@@ -63,13 +63,33 @@ The design: this doc, the glossary entries and ADR 0012.
 
 **Runs of a Case draft's steps (#463).** The runner can run a Case draft's steps in place of a Test Case's saved ones: `createDraftRun` in the runs domain takes the case, the draft's steps and an optional Case Script. With a Case Script and a mode that allows it, the Run replays it; otherwise the agent runs the steps, on the browser profile the saved Case Script asks for, and the Case Script it learns asks for that profile too. It is a normal Run (listed, with its steps and screenshots), but it never writes to the catalog: the saved case's Case Script, script-saved time and last result stay as they were, including when the Run errors before its case starts. The caller gets an `outcome` promise that settles when the Run is over, with its status, error and the Case Script a passing agent Run learned. Not exposed over HTTP yet; the Auto chat calls it in-process. A draft with no steps is refused.
 
+**The Auto screen and Ask chat (#455).** In the runner (`domains/auto`):
+- **Chats** are saved per App in `auto_chats` and `auto_messages` (each message with its mode, the reply's text, its tool calls and any error), with the SDK session id, so the next message resumes the session. A chat's title is its first message. Deleting a chat deletes its messages and its working folder, and stops a reply being written.
+- **Routes**: `GET /auto/status`, `GET /auto/models`, `GET|POST /apps/:appId/auto/chats`, `GET|PATCH|DELETE /auto/chats/:id`, `POST /auto/chats/:id/messages` (202: the prompt is saved, the reply streams) and `GET /auto/chats/:id/events`, the chat's SSE stream (`message`, `text`, `tool_call`, `tool_result`, `chat`). The contract is `packages/runner-client/src/auto.ts`. `GET /auto/chats/:id` carries the reply being written, so a screen opened mid-reply can show it. One reply at a time (409 while one is written); Run and Explore answer 400 until their tickets.
+- **The chat agent** sits behind a small port (`ChatAgent`: status, models, one turn). The production adapter runs the Claude Agent SDK (pinned `0.3.317`), signed in through the enabled Claude Provider (API key, or the Claude CLI login; never another Provider). Each turn has no built-in tools (`tools: []`), no setting sources, a strict MCP config with only the in-process `yoqa` server, `permissionMode: "dontAsk"` with only the mode's tools allowed, Yoqa's own system prompt, the chat's model, and the chat's working folder under `~/.yoqa/auto-chats/<chat>/` (`YOQA_AUTO_CHATS_DIR` moves it). Streamed text becomes `text` events, and a new text block starts a new paragraph.
+- **Ask tools**, answering in text: `get_test_case` (steps, Case Script, last result), `list_runs` and `get_run` (each case's steps, with what each did and why it failed), and `set_test_case`, which sets the chat's Test Case once, while it has none. A tool the mode does not allow is refused by the runner, whatever the agent asks.
+- A chat's Test Case comes from **Chat about this case** (`POST …/chats` with `caseId`), or from `set_test_case`. Setting it is one conditional write, so of two attempts at once only one wins.
+- The next message waits until the reply before it is saved, so prompts and replies never interleave. Deleting a chat ends its open SSE streams.
+
+In the desktop (`features/auto`):
+- **Auto** in the side menu, at `/auto?chat=<id>`, on the selected App. With the Claude Provider signed out it shows an empty state linking to Settings → Providers → Claude.
+- **Header:** the chat picker and **New chat**, with the chat's Test Case. The platform and device pickers are the app's top bar, which every screen already shows; Auto adds none of its own.
+- **Chat:** the messages, the reply streaming with its tool calls, and the composer with the mode (Run and Explore shown but off until their tickets) and the model picker.
+- **Right:** the Device tab shows the connected device's live frames through the Inspector's Frame Feed, view only. Test and History are placeholders until their tickets.
+- **Chat about this case** on a Test Case opens a new chat on it, and selects the case's App.
+- The SSE stream has no replay: each time it (re)connects, the screen fetches the chat again, which carries the saved messages and the reply being written. A stream the browser gives up on is opened again while the chat still loads.
+
 ## How to verify
 
 The draft Run groundwork: `bun test services/runner/src/domains/runs/draft-run.test.ts` (real catalog in a temp folder, the fake CDP browser, and a fake OpenAI-compatible endpoint as the vision Provider).
 
-Once the screen is built:
-1. Sign in the Claude Provider, connect a device, open **Auto**.
-2. Ask mode: "Why did the last run of #8 fail?" The agent answers from Runs and does not touch the device.
+The chat: `bun test services/runner/src/interfaces/http/auto.test.ts` (the routes, the SSE stream and the Ask tools, with a scripted chat agent) and `bun test services/runner/src/domains/auto/claude-agent.test.ts` (the contract with the Claude Agent SDK, its `query` faked). The screen's pure helpers: `bun test apps/desktop/src/mainview/features/auto`.
+
+By hand:
+1. Sign in the Claude Provider, connect a device, open **Auto**. With it signed out, Auto shows the empty state with a link to Settings → Providers → Claude.
+2. On #8, choose **Chat about this case**, and in Ask mode ask "Why did the last run fail?" The reply streams in, read from #8's Runs (the tool calls show in the reply), and the device is untouched.
+
+Once Run mode is built:
 3. Run mode: "Fix #8 so it passes." The Test tab fills with a Case draft and a Run of the draft appears on the Runs page; #8's saved Case Script is unchanged.
 4. Remove one draft step: Apply turns off until the draft passes again. Apply, then replay #8 with `yoqa script run` (or a script-mode Run): it passes with no Provider call.
 5. **Restore previous version** brings back the old steps and Case Script.
@@ -79,3 +99,7 @@ Once the screen is built:
 - Compare two Runs from the History tab.
 - Codex as a second harness once the `codex` Provider supports a CLI login.
 - Recording Take over Actions into the draft, if reproducing them by hand turns out to be painful.
+- The packaged runner: the SDK starts Claude Code from a per-platform optional package, which the bundled npm runner may not carry. Check a packaged build; if it is missing, ship the SDK unbundled or point `pathToClaudeCodeExecutable` at the Claude CLI.
+- Deleting a chat leaves its SDK session transcript under `~/.claude/projects/`; delete it with the SDK's `deleteSession` too.
+- The model list for an API-key login reads the Anthropic models endpoint each time; it could use the Provider's cached list (`listProviderModels`).
+- The Ask-mode refusal test calls a tool that does not exist yet; switch it to a Run-mode tool once one lands (#456).

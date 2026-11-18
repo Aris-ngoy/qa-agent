@@ -14,7 +14,7 @@ import {
 	providerKindSchema,
 	providerStatusSchema,
 } from "@yoqa/runner-client";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { getCatalogDb } from "../catalog/db";
 import { getDriver } from "./drivers";
 import { providers } from "./schema";
@@ -437,23 +437,36 @@ export async function resolveActiveProviderAuth(): Promise<ActiveProviderAuth | 
 			.limit(1);
 		row = any[0];
 	}
-	if (!row) {
-		return null;
-	}
+	return row ? authFromRow(row) : null;
+}
 
-	const kind = parseProviderKind(row.kind);
-	const authMode = providerAuthModeSchema.parse(row.authMode ?? "api_key");
+/**
+ * Credentials for the enabled Provider of one kind (the default one first, else the oldest),
+ * whatever the default Provider is. Null when there is none.
+ */
+export async function resolveProviderAuthOfKind(
+	kind: ProviderKind,
+): Promise<ActiveProviderAuth | null> {
+	const [row] = await getCatalogDb()
+		.select()
+		.from(providers)
+		.where(and(eq(providers.kind, kind), eq(providers.enabled, 1)))
+		.orderBy(desc(providers.isDefault), asc(providers.createdAt))
+		.limit(1);
+	return row ? authFromRow(row) : null;
+}
+
+async function authFromRow(row: typeof providers.$inferSelect): Promise<ActiveProviderAuth> {
 	const apiKey = row.apiKeyCiphertext ? await decryptApiKey(row.apiKeyCiphertext) : null;
-	const env = await loadEnv(row);
 	return {
 		id: row.id,
-		kind,
-		authMode,
+		kind: parseProviderKind(row.kind),
+		authMode: providerAuthModeSchema.parse(row.authMode ?? "api_key"),
 		apiKey,
 		baseUrl: row.baseUrl,
 		serverUrl: row.serverUrl,
 		defaultModel: row.defaultModel,
 		binaryPath: row.binaryPath,
-		env,
+		env: await loadEnv(row),
 	};
 }

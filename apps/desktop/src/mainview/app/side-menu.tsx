@@ -125,6 +125,16 @@ export function SideMenu({ activePath = "/" }: SideMenuProps) {
 				badge: isRunLive ? 1 : undefined,
 			},
 			{
+				label: "Auto",
+				to: "/auto",
+				icon: (
+					<NavIcon>
+						<path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l.9-4.4A8 8 0 1 1 20 12z" />
+						<path d="M9 12h.01M12 12h.01M15 12h.01" />
+					</NavIcon>
+				),
+			},
+			{
 				label: "Inspector",
 				to: "/inspector",
 				icon: (

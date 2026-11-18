@@ -21,14 +21,17 @@ function routeRank(pathname: string): RouteRank {
 	if (pathname.startsWith("/runs/")) {
 		return { section: 2, depth: 1 };
 	}
-	if (pathname === "/inspector" || pathname.startsWith("/inspector/")) {
+	if (pathname === "/auto" || pathname.startsWith("/auto/")) {
 		return { section: 3, depth: 0 };
 	}
-	if (pathname === "/configuration" || pathname.startsWith("/configuration/")) {
+	if (pathname === "/inspector" || pathname.startsWith("/inspector/")) {
 		return { section: 4, depth: 0 };
 	}
-	if (pathname === "/settings" || pathname.startsWith("/settings/")) {
+	if (pathname === "/configuration" || pathname.startsWith("/configuration/")) {
 		return { section: 5, depth: 0 };
+	}
+	if (pathname === "/settings" || pathname.startsWith("/settings/")) {
+		return { section: 6, depth: 0 };
 	}
 	return { section: 1, depth: 0 };
 }
