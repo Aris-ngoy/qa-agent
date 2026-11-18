@@ -3,11 +3,13 @@ import type {
 	AutoChatSummary,
 	CaseDraft,
 	CaseHistory,
+	CaseProposal,
 	CatalogCase,
 	HistoryRun,
 	Run,
 	RunStep,
 } from "@yoqa/runner-client";
+import { actionRequestSchema } from "@yoqa/runner-client";
 import { z } from "zod";
 import { listCases } from "../catalog/application";
 import { RunNotFoundError, getRun, listRuns } from "../runs/application";
@@ -15,6 +17,7 @@ import { caseHistory } from "../runs/history";
 import { addStep, changeStep, describeDraft, removeStep, setSteps, startDraft } from "./case-draft";
 import type { ChatTool, ChatToolOutput } from "./chat-agent";
 import type { ChatRunResult } from "./chat-runs";
+import { performChatAction, readChatScreen } from "./explore";
 
 /** What the Yoqa tools of one chat read and change. */
 export type ChatToolContext = {
@@ -31,6 +34,11 @@ export type ChatToolContext = {
 	 * end, recording a passing Run on the draft; why it cannot start, as text.
 	 */
 	runDraft: (catalogCase: CatalogCase, draft: CaseDraft) => Promise<ChatDraftRun | string>;
+	/**
+	 * Save (or replace) the chat's proposed new Test Case, for the user to accept; false when
+	 * the chat has a Test Case by then.
+	 */
+	propose: (proposal: CaseProposal) => Promise<boolean>;
 };
 
 /** A chat's Run of its draft once it ended, and whether it is now the draft's passing Run. */
@@ -39,6 +47,8 @@ export type ChatDraftRun = ChatRunResult & { passing: boolean };
 const ALL_MODES: AutoChatMode[] = ["ask", "run", "explore"];
 /** The modes that may write the Case draft. */
 const DRAFT_MODES: AutoChatMode[] = ["run", "explore"];
+/** The modes that may drive the device directly and propose a new Test Case. */
+const EXPLORE_MODES: AutoChatMode[] = ["explore"];
 const STEP_DETAIL_LIMIT = 200;
 
 const MODE_LABEL: Record<AutoChatMode, string> = { ask: "Ask", run: "Run", explore: "Explore" };
@@ -125,6 +135,17 @@ function historyRunLine(run: HistoryRun): string {
 		...(run.autoChat ? [`from chat "${run.autoChat.title}"`] : []),
 		`steps: ${run.steps.join(", ")}`,
 	].join(" · ");
+}
+
+/** A proposed new Test Case as text: its name, why, and its steps. */
+export function describeProposal(proposal: CaseProposal): string {
+	return [
+		`Proposed Test Case "${proposal.name}"${proposal.reason ? ` (${proposal.reason})` : ""}:`,
+		...proposal.steps.flatMap((step, index) => [
+			`${index + 1}. ${step.instructions}`,
+			`   Expected: ${step.expectedResult || "(none)"}`,
+		]),
+	].join("\n");
 }
 
 /** A Test Case's History summary as text: its health, the note, then each recent Run. */
@@ -253,6 +274,13 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 		},
 	});
 
+	/** The refusal of a tool that needs a chat with no Test Case yet, naming the one it has. */
+	async function refuseHasCase(then: string): Promise<ChatToolOutput> {
+		const current = await findCase(undefined);
+		const label = typeof current === "string" ? "a Test Case" : caseLabel(current);
+		return refuse(`This chat already works on ${label}. ${then}`);
+	}
+
 	const setTestCase = chatTool({
 		name: "set_test_case",
 		description:
@@ -260,11 +288,7 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 		modes: ALL_MODES,
 		input: { number: z.number().int().positive() },
 		run: async ({ number }) => {
-			const refuseTaken = async () => {
-				const current = await findCase(undefined);
-				const label = typeof current === "string" ? "a Test Case" : caseLabel(current);
-				return refuse(`This chat already works on ${label}. Another Test Case needs a new chat.`);
-			};
+			const refuseTaken = () => refuseHasCase("Another Test Case needs a new chat.");
 			if (await context.caseId()) return refuseTaken();
 			const found = await findCase(number);
 			if (typeof found === "string") return refuse(found);
@@ -399,6 +423,51 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 		},
 	});
 
+	const readScreen = chatTool({
+		name: "read_screen",
+		description:
+			"Read the connected device's Screen as text: each element's position and size on a 0–1000 grid, its id and its label, top to bottom. No screenshot.",
+		modes: EXPLORE_MODES,
+		input: {},
+		run: () => readChatScreen(),
+	});
+
+	const performDeviceAction = chatTool({
+		name: "perform_action",
+		description:
+			"Perform one Action on the connected device: tap (by id, label, or x,y on the Screen's 0–1000 grid), input text, swipe, drag, key, open-url, an alert, or an app's lifecycle. Exploration only: it is never recorded in a Run or a Case draft. Read the Screen afterwards to see what it did.",
+		modes: EXPLORE_MODES,
+		input: actionRequestSchema.omit({
+			screenshot: true,
+			settleMs: true,
+			fullImage: true,
+			imageScale: true,
+		}).shape,
+		run: (input) => performChatAction(input),
+	});
+
+	const proposeTestCase = chatTool({
+		name: "propose_test_case",
+		description:
+			"Propose a new Test Case on this App, while the chat has none: its name and steps, in order, each with instructions and an expected result. The user accepts it in the Test tab, which creates the Test Case as the chat's case and makes these steps its Case draft, to run and apply like any draft. Proposing again replaces the proposal.",
+		modes: EXPLORE_MODES,
+		input: {
+			name: z.string().trim().min(1),
+			steps: z.array(z.object(stepTextShape)).min(1),
+			reason: reasonSchema,
+		},
+		run: async ({ name, steps, reason }) => {
+			const refuseTaken = () =>
+				refuseHasCase("It cannot propose a new one: a new Test Case needs a new chat.");
+			if (await context.caseId()) return refuseTaken();
+			const proposal = { name, reason, steps, updatedAt: Date.now() };
+			if (!(await context.propose(proposal))) return refuseTaken();
+			return answer(
+				`${describeProposal(proposal)}\nIt shows in the Test tab: the user accepts it there to create it.`,
+			);
+		},
+	});
+
 	return [
 		getTestCase,
 		listCaseRuns,
@@ -411,6 +480,9 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 		changeDraftStep,
 		removeDraftStep,
 		runCaseDraft,
+		readScreen,
+		performDeviceAction,
+		proposeTestCase,
 	];
 }
 

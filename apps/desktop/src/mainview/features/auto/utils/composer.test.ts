@@ -33,7 +33,7 @@ describe("canSend", () => {
 describe("composerHint", () => {
 	test("says what the mode does, or that Enter queues while the Run is live or messages wait", () => {
 		expect(composerHint({ mode: "ask", runLive: false, queueing: false })).toBe(
-			"Reads the Test Case and its Runs only. Explore is coming soon.",
+			"Reads the Test Case and its Runs only.",
 		);
 		expect(composerHint({ mode: "run", runLive: true, queueing: true })).toBe(
 			"Enter queues your message until the run finishes · Esc to stop",
@@ -45,10 +45,11 @@ describe("composerHint", () => {
 });
 
 describe("MODE_OPTIONS", () => {
-	test("Ask and Run work for now", () => {
+	test("Ask, Run and Explore all work", () => {
 		expect(MODE_OPTIONS.filter((mode) => mode.enabled).map((mode) => mode.id)).toEqual([
 			"ask",
 			"run",
+			"explore",
 		]);
 	});
 });

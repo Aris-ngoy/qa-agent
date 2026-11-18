@@ -20,6 +20,7 @@ function chat(overrides: Partial<AutoChat> = {}): AutoChat {
 		messages: [],
 		reply: null,
 		draft: null,
+		proposal: null,
 		run: null,
 		previousVersion: null,
 		queue: [],
@@ -207,6 +208,18 @@ describe("applyAutoChatEvent", () => {
 		expect(applied.previousVersion).toEqual(previousVersion);
 	});
 
+	test("a proposal event shows the proposed Test Case, and a null one clears it", () => {
+		const proposal = {
+			name: "Pay at checkout",
+			reason: "Paying is not tested yet",
+			steps: [{ instructions: "Tap Pay", expectedResult: "The receipt shows" }],
+			updatedAt: 300,
+		};
+		const proposed = applyAutoChatEvent(chat(), { type: "proposal", proposal });
+		expect(proposed.proposal).toEqual(proposal);
+		expect(applyAutoChatEvent(proposed, { type: "proposal", proposal: null }).proposal).toBeNull();
+	});
+
 	test("a queue event replaces the queued messages, in order, and an empty one clears them", () => {
 		const queue = [
 			{ id: "queued_1", mode: "run" as const, text: "Then check the receipt", createdAt: 300 },
@@ -226,11 +239,12 @@ describe("applyAutoChatEvent", () => {
 });
 
 describe("summaryOf", () => {
-	test("drops the messages, the reply, the Case draft, the previous version and the queue", () => {
+	test("drops the messages, the reply, the Case draft, the proposal, the previous version and the queue", () => {
 		const summary = summaryOf(chat({ messages: [message()], reply: { text: "", toolCalls: [] } }));
 		expect("messages" in summary).toBe(false);
 		expect("reply" in summary).toBe(false);
 		expect("draft" in summary).toBe(false);
+		expect("proposal" in summary).toBe(false);
 		expect("previousVersion" in summary).toBe(false);
 		expect("queue" in summary).toBe(false);
 		expect(summary.id).toBe("chat_1");

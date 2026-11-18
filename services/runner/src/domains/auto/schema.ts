@@ -30,6 +30,15 @@ export const autoCaseDrafts = sqliteTable("auto_case_drafts", {
 	updatedAt: integer("updated_at").notNull(),
 });
 
+/** A chat's proposed new Test Case (JSON CaseProposal), while the chat has none; gone with the chat. */
+export const autoCaseProposals = sqliteTable("auto_case_proposals", {
+	chatId: text("chat_id")
+		.primaryKey()
+		.references(() => autoChats.id, { onDelete: "cascade" }),
+	proposalJson: text("proposal_json").notNull(),
+	updatedAt: integer("updated_at").notNull(),
+});
+
 export const autoMessages = sqliteTable("auto_messages", {
 	id: text("id").primaryKey(),
 	chatId: text("chat_id")

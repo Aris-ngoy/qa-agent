@@ -1,5 +1,6 @@
 import { showErrorToast } from "@/app/show-error-toast";
 import {
+	acceptAutoProposal,
 	applyAutoDraft,
 	controlAutoRun,
 	createAutoChat,
@@ -9,6 +10,7 @@ import {
 	listAutoChats,
 	listAutoModels,
 	rejectAutoDraft,
+	rejectAutoProposal,
 	removeAutoDraftStep,
 	removeAutoQueuedMessage,
 	restoreAutoPreviousVersion,
@@ -41,6 +43,13 @@ export function cacheChatSummary(queryClient: QueryClient, chat: AutoChatSummary
 	queryClient.setQueryData<AutoChatSummary[]>(autoChatsQueryKey(chat.appId), (current) =>
 		current ? upsertChatSummary(current, chat) : current,
 	);
+}
+
+/** The chat's header (title, model, Test Case) changed: show it, and in its App's chat list. */
+function showChatSummary(queryClient: QueryClient, chat: AutoChat): void {
+	const summary = summaryOf(chat);
+	applyToShownChat(chat.id, { type: "chat", chat: summary });
+	cacheChatSummary(queryClient, summary);
 }
 
 /** Whether the Claude Provider is signed in; Auto has no other agent. */
@@ -112,11 +121,7 @@ export function useSetAutoChatModel() {
 	return useMutation({
 		mutationFn: ({ chatId, model }: { chatId: string; model: string | null }) =>
 			setAutoChatModel(chatId, model),
-		onSuccess: (chat) => {
-			const summary = summaryOf(chat);
-			applyToShownChat(chat.id, { type: "chat", chat: summary });
-			cacheChatSummary(queryClient, summary);
-		},
+		onSuccess: (chat) => showChatSummary(queryClient, chat),
 		onError: (error) => showErrorToast(error, "Failed to change the model"),
 	});
 }
@@ -217,6 +222,33 @@ export function useApplyAutoDraft() {
 			refetchChatCase(queryClient, chat);
 		},
 		onError: (error) => showErrorToast(error, "Failed to apply the draft"),
+	});
+}
+
+/**
+ * Accept the Test Case proposed in Explore: the header names it, the picker lists it, its
+ * steps show as the Case draft, and Test Cases lists the new case.
+ */
+export function useAcceptAutoProposal() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		mutationFn: (chatId: string) => acceptAutoProposal(chatId),
+		onSuccess: (chat) => {
+			showChatSummary(queryClient, chat);
+			applyToShownChat(chat.id, { type: "proposal", proposal: chat.proposal });
+			showDraftOf(chat);
+			refetchChatCase(queryClient, chat);
+		},
+		onError: (error) => showErrorToast(error, "Failed to accept the proposed test case"),
+	});
+}
+
+/** Reject the Test Case proposed in Explore. */
+export function useRejectAutoProposal() {
+	return useMutation({
+		mutationFn: (chatId: string) => rejectAutoProposal(chatId),
+		onSuccess: (chat) => applyToShownChat(chat.id, { type: "proposal", proposal: chat.proposal }),
+		onError: (error) => showErrorToast(error, "Failed to reject the proposed test case"),
 	});
 }
 

@@ -203,6 +203,11 @@ function ensureSchema(sqlite: Database): void {
 			draft_json TEXT NOT NULL,
 			updated_at INTEGER NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS auto_case_proposals (
+			chat_id TEXT PRIMARY KEY NOT NULL REFERENCES auto_chats(id) ON DELETE CASCADE,
+			proposal_json TEXT NOT NULL,
+			updated_at INTEGER NOT NULL
+		);
 	`);
 
 	migrateProvidersTable(sqlite);

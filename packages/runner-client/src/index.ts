@@ -1387,6 +1387,29 @@ export class RunnerClient {
 		return autoChatSchema.parse(json);
 	}
 
+	/**
+	 * Accept the Test Case the chat proposed in Explore: it is created as the chat's case, with
+	 * the proposed steps as its Case draft. Refused once the chat has a Test Case.
+	 */
+	async acceptAutoProposal(chatId: string): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/proposal/accept`,
+			{ method: "POST" },
+			"Accept proposed test case failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
+	/** Reject the Test Case the chat proposed in Explore: nothing is created. */
+	async rejectAutoProposal(chatId: string): Promise<AutoChat> {
+		const json = await this.requestJson(
+			`/auto/chats/${encodeURIComponent(chatId)}/proposal`,
+			{ method: "DELETE" },
+			"Reject proposed test case failed",
+		);
+		return autoChatSchema.parse(json);
+	}
+
 	/** Swap the chat's Test Case's current and previous versions (steps and Case Script). */
 	async restoreAutoPreviousVersion(chatId: string): Promise<AutoChat> {
 		const json = await this.requestJson(

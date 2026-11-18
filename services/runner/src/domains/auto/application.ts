@@ -10,18 +10,21 @@ import type {
 	AutoRunControl,
 	AutoToolCall,
 	CaseDraft,
+	CaseProposal,
 	CatalogCase,
 	CreateAutoChatRequest,
 	SendAutoMessageRequest,
 	SendAutoMessageResponse,
 	UpdateAutoChatRequest,
 } from "@yoqa/runner-client";
-import { autoToolCallSchema, caseDraftSchema } from "@yoqa/runner-client";
+import { autoToolCallSchema, caseDraftSchema, caseProposalSchema } from "@yoqa/runner-client";
 import { and, asc, desc, eq, isNull, max } from "drizzle-orm";
 import { z } from "zod";
 import {
 	type CatalogTx,
 	caseStepsIn,
+	createCase,
+	deleteCase,
 	getApp,
 	getCase,
 	getCasePreviousVersion,
@@ -29,7 +32,7 @@ import {
 	restoreCasePreviousVersion,
 } from "../catalog/application";
 import { getCatalogDb } from "../catalog/db";
-import { caseEditedSince, removeStep } from "./case-draft";
+import { caseEditedSince, removeStep, setSteps, startDraft } from "./case-draft";
 import type { ChatAgent, ChatToolOutput } from "./chat-agent";
 import { autoChatDir } from "./chat-dir";
 import {
@@ -39,7 +42,7 @@ import {
 	runChatDraft,
 	stopChatRun,
 } from "./chat-runs";
-import { autoCaseDrafts, autoChats, autoMessages } from "./schema";
+import { autoCaseDrafts, autoCaseProposals, autoChats, autoMessages } from "./schema";
 import { type ChatDraftRun, MODE_LABEL, callChatTool, chatTools } from "./tools";
 
 export class AutoNotFoundError extends Error {
@@ -65,6 +68,8 @@ export class AutoConflictError extends Error {
 }
 
 const NEW_CHAT_TITLE = "New chat";
+/** The reason each step of an accepted proposal shows when the proposal gave none. */
+const PROPOSED_IN_EXPLORE = "Proposed in Explore";
 /** The reason a saved step removed with ✕ in the Test tab shows. */
 const REMOVED_IN_TEST_TAB = "Removed in the Test tab";
 const TITLE_LENGTH = 60;
@@ -166,6 +171,7 @@ export async function getChat(chatId: string): Promise<AutoChat> {
 		messages: rows.map(messageFromRow),
 		reply: activeTurns.get(chatId)?.reply ?? null,
 		draft: await readDraft(chatId, summary.caseId),
+		proposal: await readProposal(chatId),
 		run: currentChatRun(chatId),
 		previousVersion: summary.caseId ? await getCasePreviousVersion(summary.caseId) : null,
 		queue: queues.get(chatId) ?? [],
@@ -175,6 +181,35 @@ export async function getChat(chatId: string): Promise<AutoChat> {
 function parseDraft(raw: string): CaseDraft | null {
 	const parsed = caseDraftSchema.safeParse(JSON.parse(raw));
 	return parsed.success ? parsed.data : null;
+}
+
+/** The chat's proposed new Test Case; null when it has none. */
+async function readProposal(chatId: string): Promise<CaseProposal | null> {
+	const row = await getCatalogDb().query.autoCaseProposals.findFirst({
+		where: eq(autoCaseProposals.chatId, chatId),
+	});
+	if (!row) return null;
+	const parsed = caseProposalSchema.safeParse(JSON.parse(row.proposalJson));
+	return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Save the chat's proposed new Test Case, in place of any before it, and show it; only while
+ * the chat has no Test Case, read in the same transaction. False when it has one.
+ */
+function saveProposal(chatId: string, proposal: CaseProposal): boolean {
+	const row = { chatId, proposalJson: JSON.stringify(proposal), updatedAt: proposal.updatedAt };
+	const saved = getCatalogDb().transaction((tx) => {
+		const chat = tx.select().from(autoChats).where(eq(autoChats.id, chatId)).get();
+		if (!chat || chat.caseId) return false;
+		tx.insert(autoCaseProposals)
+			.values(row)
+			.onConflictDoUpdate({ target: autoCaseProposals.chatId, set: row })
+			.run();
+		return true;
+	});
+	if (saved) publish(chatId, { type: "proposal", proposal });
+	return saved;
 }
 
 /** The chat's Case draft of `caseId`, its Test Case; null when it has none. */
@@ -341,6 +376,53 @@ export async function applyDraft(chatId: string): Promise<AutoChat> {
 	return getChat(chatId);
 }
 
+/** The chat's proposed new Test Case, which accepting or rejecting needs. */
+async function chatProposal(chatId: string): Promise<CaseProposal> {
+	await chatRow(chatId);
+	const proposal = await readProposal(chatId);
+	if (!proposal) throw new AutoNotFoundError("This chat has no proposed Test Case.");
+	return proposal;
+}
+
+function alreadyHasCase(summary: AutoChatSummary): AutoConflictError {
+	return new AutoConflictError(
+		`This chat already works on #${summary.caseNumber} ${summary.caseName}: a proposed Test Case is accepted only in a chat with none.`,
+	);
+}
+
+/**
+ * Accept the chat's proposed Test Case: create it on the chat's App with no steps yet, as the
+ * chat's case (which takes the proposal away), and make the proposed steps its Case draft. The steps reach the catalog only
+ * when that draft is applied, after a Run of it passed. Refused once the chat has a Test Case.
+ */
+export async function acceptProposal(chatId: string): Promise<AutoChat> {
+	const proposal = await chatProposal(chatId);
+	const before = await chatSummary(chatId);
+	if (before.caseId) throw alreadyHasCase(before);
+	const created = await createCase(before.appId, { name: proposal.name }, { withoutSteps: true });
+	if (!(await setChatCase(chatId, created.id))) {
+		// The chat got a Test Case meanwhile: it keeps that one, and this one goes.
+		await deleteCase(created.id);
+		throw alreadyHasCase(await chatSummary(chatId));
+	}
+	const draft = setSteps(
+		startDraft(created),
+		proposal.steps,
+		proposal.reason || PROPOSED_IN_EXPLORE,
+	);
+	if (typeof draft === "string") throw new AutoValidationError(draft);
+	await saveDraft(chatId, draft);
+	return getChat(chatId);
+}
+
+/** Reject the chat's proposed Test Case: it is gone, and nothing was created. */
+export async function rejectProposal(chatId: string): Promise<AutoChat> {
+	await chatProposal(chatId);
+	await getCatalogDb().delete(autoCaseProposals).where(eq(autoCaseProposals.chatId, chatId));
+	publish(chatId, { type: "proposal", proposal: null });
+	return getChat(chatId);
+}
+
 /** Pause, take over or resume the chat's Run of its draft in progress. */
 export async function controlRun(chatId: string, control: AutoRunControl): Promise<AutoChat> {
 	await chatRow(chatId);
@@ -408,18 +490,30 @@ async function touchChat(chatId: string, patch: Partial<ChatRow>): Promise<AutoC
 }
 
 /**
- * Set the chat's Test Case, only while it has none: of two attempts at once, one wins.
+ * Set the chat's Test Case, only while it has none: of two attempts at once, one wins. A
+ * proposed Test Case goes with it, in the same transaction: a chat with a case proposes none.
  * Null when it already had one.
  */
 async function setChatCase(chatId: string, caseId: string): Promise<AutoChatSummary | null> {
-	const updated = await getCatalogDb()
-		.update(autoChats)
-		.set({ caseId, updatedAt: Date.now() })
-		.where(and(eq(autoChats.id, chatId), isNull(autoChats.caseId)))
-		.returning({ id: autoChats.id });
-	if (updated.length === 0) return null;
+	const proposalDropped = getCatalogDb().transaction((tx) => {
+		const updated = tx
+			.update(autoChats)
+			.set({ caseId, updatedAt: Date.now() })
+			.where(and(eq(autoChats.id, chatId), isNull(autoChats.caseId)))
+			.returning({ id: autoChats.id })
+			.all();
+		if (updated.length === 0) return null;
+		const dropped = tx
+			.delete(autoCaseProposals)
+			.where(eq(autoCaseProposals.chatId, chatId))
+			.returning({ chatId: autoCaseProposals.chatId })
+			.all();
+		return dropped.length > 0;
+	});
+	if (proposalDropped === null) return null;
 	const summary = await chatSummary(chatId);
 	publish(chatId, { type: "chat", chat: summary });
+	if (proposalDropped) publish(chatId, { type: "proposal", proposal: null });
 	return summary;
 }
 
@@ -478,7 +572,7 @@ async function systemPrompt(chat: ChatRow): Promise<string> {
 	const summary = await summaryFromRow(chat);
 	const testCase = summary.caseNumber
 		? `This chat works on Test Case #${summary.caseNumber} ${summary.caseName}.`
-		: "This chat has no Test Case yet. When the user names one (for example #8), set it with set_test_case, once.";
+		: "This chat has no Test Case yet. When the user names one (for example #8), set it with set_test_case, once; in Explore mode you may propose a new one instead.";
 	return [
 		`You are the chat agent in Yoqa's Auto screen, helping test the App "${app?.name ?? chat.appId}".`,
 		"You work only through the Yoqa tools: you have no files, no shell and no web.",
@@ -486,6 +580,8 @@ async function systemPrompt(chat: ChatRow): Promise<string> {
 		"Each message starts with its mode. In Ask mode you only read the Test Case, its Runs and its Case draft: you cannot change anything or touch the device. When asked to, say that Run mode will do it.",
 		"In Run mode you may also write the Case draft: the steps you propose for the chat's Test Case, each with instructions and an expected result, and each change with a short reason. You never edit the saved Test Case: the user applies the draft.",
 		"In Run mode you may also run the whole draft on the connected device with run_case_draft. The Yoqa agent drives the device; you get each step back as text. The user can apply the draft only after a Run of it passes, and any change to the draft means it must pass again.",
+		"In Explore mode you may also read the connected device's Screen as text (read_screen) and act on it (perform_action), to find what is worth testing. Those Actions are exploration: they are never recorded in a Run or a Case draft, so a test must be written as steps and run.",
+		"In Explore mode, while the chat has no Test Case, you may propose a new one with propose_test_case: its name and steps. The user accepts it in the Test tab, which creates it as the chat's case with your steps as its Case draft; it is applied only after a Run of the draft passes.",
 		"Messages the user sends during a Run wait until it ends, then come to you together in one turn, in the narrowest of their modes.",
 		"Be brief. Name the step numbers and Run ids you read; never state a result you have not read.",
 	].join("\n");
@@ -494,7 +590,7 @@ async function systemPrompt(chat: ChatRow): Promise<string> {
 /**
  * Send a message to a chat: saved and shown at once, answered by `agent` in the background,
  * the reply streaming on the chat's events. While the chat's Run is in progress, or messages
- * already wait for it, it is queued instead. Ask and Run work for now; one reply at a time.
+ * already wait for it, it is queued instead. One reply at a time.
  */
 export async function sendMessage(
 	agent: ChatAgent,
@@ -502,11 +598,6 @@ export async function sendMessage(
 	input: SendAutoMessageRequest,
 ): Promise<SendAutoMessageResponse> {
 	const chat = await chatRow(chatId);
-	if (input.mode === "explore") {
-		throw new AutoValidationError(
-			`${MODE_LABEL[input.mode]} mode is not here yet: Auto answers in Ask and Run modes for now.`,
-		);
-	}
 	const status = await agent.status();
 	if (!status.signedIn) {
 		throw new AutoConflictError(`Auto needs the Claude Provider signed in. ${status.detail}`);
@@ -655,6 +746,7 @@ async function answerTurn(
 				runDraft(chatId, catalogCase, draft, turn.abort.signal).finally(() =>
 					sendQueue(agent, chatId),
 				),
+			propose: async (proposal) => saveProposal(chatId, proposal),
 		});
 		const callTool = async (name: string, input: unknown): Promise<ChatToolOutput> => {
 			const call: AutoToolCall = { id: newId("call"), name, input, output: null, isError: false };

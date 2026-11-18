@@ -18,6 +18,7 @@ import {
 	createCase,
 	createFlow,
 	getCase,
+	listCases,
 	saveCaseScript,
 	updateCase,
 	updateFlow,
@@ -28,7 +29,7 @@ import {
 	disconnectDevice,
 	getActiveSessionInfo,
 } from "../../domains/devices/active-session";
-import { type FakeCdp, startFakeCdp } from "../../domains/devices/fake-cdp";
+import { type FakeAxNode, type FakeCdp, startFakeCdp } from "../../domains/devices/fake-cdp";
 import { getRun } from "../../domains/runs/application";
 import {
 	type FakeVision,
@@ -735,10 +736,9 @@ describe("the Auto chat routes", () => {
 		expect(agent.turns[0]?.model).toBe("claude-opus-5-5");
 	});
 
-	test("Explore does not answer yet, and one reply at a time", async () => {
+	test("one reply at a time", async () => {
 		const app = await createApp({ name: "One at a time" });
 		const chat = await newChat(app.id);
-		expect((await send(chat.id, "Look around", "explore")).status).toBe(400);
 
 		const { promise: held, resolve: release } = Promise.withResolvers<void>();
 		agent.script = async function* () {
@@ -780,9 +780,9 @@ describe("the Auto chat routes", () => {
 	describe("running the Case draft", () => {
 		let browser: FakeCdp;
 
-		/** A browser to run on, connected as the device the chat uses. */
-		async function connectBrowser(): Promise<string> {
-			browser = startFakeCdp({ viewport: { width: 1280, height: 800 } });
+		/** A browser to run on, showing `nodes`, connected as the device the chat uses. */
+		async function connectBrowser(nodes?: FakeAxNode[]): Promise<string> {
+			browser = startFakeCdp({ viewport: { width: 1280, height: 800 }, nodes });
 			const deviceId = `chromium-cdp-${browser.port}`;
 			await connectDevice({ deviceId, platform: "web" });
 			return deviceId;
@@ -1631,6 +1631,372 @@ describe("the Auto chat routes", () => {
 				expect(again?.flows).toEqual(applied?.flows);
 				expect(again?.script).toEqual(applied?.script);
 				expect(again?.scriptSavedAt).toBe(applied?.scriptSavedAt);
+			});
+		});
+
+		describe("Explore mode", () => {
+			const EXPLORE_TOOLS = ["read_screen", "perform_action", "propose_test_case"];
+
+			test("Explore offers the Run tools plus reading the Screen, acting and proposing a Test Case, which Ask and Run refuse", async () => {
+				const app = await createApp({ name: "Explores", webUrl: WEB_URL });
+				const chat = await newChat(app.id);
+				const outputs: Array<{ text: string; isError: boolean }> = [];
+				agent.script = async function* (turn) {
+					if (turn.mode !== "explore") {
+						for (const name of EXPLORE_TOOLS) outputs.push(await turn.callTool(name, {}));
+					}
+					yield { type: "text", delta: "Done." };
+				};
+				const stream = await openEvents(chat.id);
+
+				for (const [index, mode] of (["ask", "run", "explore"] as const).entries()) {
+					expect((await send(chat.id, `Message ${index + 1}`, mode)).status).toBe(202);
+					await stream.until(() => stream.events.filter(isReply).length === index + 1);
+				}
+				await stream.close();
+
+				const [, runTools, exploreTools] = agent.turns.map((turn) =>
+					turn.tools.map((tool) => tool.name),
+				);
+				expect(exploreTools).toEqual([...(runTools ?? []), ...EXPLORE_TOOLS]);
+				expect(agent.turns[2]?.prompt).toBe("[Explore mode] Message 3");
+				expect(outputs).toEqual(
+					["Ask", "Run"].flatMap((mode) =>
+						EXPLORE_TOOLS.map((name) => ({
+							text: `${name} is not available in ${mode} mode.`,
+							isError: true,
+						})),
+					),
+				);
+			});
+
+			test("the agent reads the Screen as text and acts on the device, and those Actions are in no Case draft and no Run", async () => {
+				await connectBrowser([
+					{ role: "heading", name: "Checkout", box: { x: 40, y: 40, width: 400, height: 40 } },
+					{ role: "button", name: "Pay", box: { x: 600, y: 380, width: 80, height: 40 } },
+				]);
+				const { app, chat } = await chatOnSavedCase("Explores the device");
+				const outputs: Array<{ text: string; isError: boolean }> = [];
+				let draftBefore = "";
+				agent.script = async function* (turn) {
+					await turn.callTool("change_draft_step", fixPay);
+					draftBefore = (await turn.callTool("get_case_draft", {})).text;
+					outputs.push(await turn.callTool("read_screen", {}));
+					outputs.push(await turn.callTool("perform_action", { kind: "tap", label: "Pay" }));
+					outputs.push(await turn.callTool("perform_action", { kind: "tap", label: "Nope" }));
+					outputs.push(await turn.callTool("get_case_draft", {}));
+					yield { type: "text", delta: "Looked around." };
+				};
+				const stream = await openEvents(chat.id);
+
+				await send(chat.id, "Look at the checkout", "explore");
+				const events = await stream.until(isReply);
+				await stream.close();
+
+				const [screen, tapped, missed, draftAfter] = outputs as Array<{
+					text: string;
+					isError: boolean;
+				}>;
+				expect(screen?.isError).toBe(false);
+				expect(screen?.text).toContain("Checkout");
+				expect(screen?.text).toMatch(/\b\d+,\s*\d+\s+\d+x\d+\s+Pay\b/);
+				expect(screen?.text).not.toMatch(/base64|data:image|\.png/);
+				expect(tapped?.isError).toBe(false);
+				expect(tapped?.text).toMatch(
+					/^Done: tap on "Pay" at \d+,\d+\. Read the Screen to see what it did\.$/,
+				);
+				// One click, inside the Pay button (its centre, give or take the 0–1000 grid).
+				expect(browser.clicks).toHaveLength(1);
+				const [click] = browser.clicks as [{ x: number; y: number }];
+				expect(click.x).toBeWithin(600, 680);
+				expect(click.y).toBeWithin(380, 420);
+				expect(missed).toEqual({ text: "No element matching label: Nope", isError: true });
+				expect(draftAfter?.text).toBe(draftBefore);
+				expect(events.filter((event) => event.type === "draft")).toHaveLength(1);
+				const { draft } = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+				expect(draft?.steps.map((step) => step.instructions)).toEqual(["Tap Pay now"]);
+				const listed = (await (
+					await createRunsRoutes().request(`/runs?appId=${app.id}`)
+				).json()) as {
+					runs: Run[];
+				};
+				expect(listed.runs).toEqual([]);
+			});
+
+			const proposed = {
+				name: "Pay at checkout",
+				reason: "Paying is not tested yet",
+				steps: [
+					{ instructions: "Tap Pay", expectedResult: "The receipt shows" },
+					{ instructions: "Tap Done", expectedResult: "The shop shows" },
+				],
+			};
+
+			test("in a chat with no Test Case the agent proposes a new one, shown over SSE and with the chat; proposing again replaces it", async () => {
+				const app = await createApp({ name: "Proposes", webUrl: WEB_URL });
+				const chat = await newChat(app.id);
+				const outputs: Array<{ text: string; isError: boolean }> = [];
+				agent.script = async function* (turn) {
+					outputs.push(await turn.callTool("propose_test_case", { ...proposed, name: "Pay" }));
+					outputs.push(await turn.callTool("propose_test_case", proposed));
+					yield { type: "text", delta: "Proposed." };
+				};
+				const stream = await openEvents(chat.id);
+
+				await send(chat.id, "Find something to test", "explore");
+				const events = await stream.until(isReply);
+				await stream.close();
+
+				expect(outputs.map((output) => output.isError)).toEqual([false, false]);
+				expect(outputs[1]?.text).toBe(
+					[
+						'Proposed Test Case "Pay at checkout" (Paying is not tested yet):',
+						"1. Tap Pay",
+						"   Expected: The receipt shows",
+						"2. Tap Done",
+						"   Expected: The shop shows",
+						"It shows in the Test tab: the user accepts it there to create it.",
+					].join("\n"),
+				);
+				const proposals = events.flatMap((event) =>
+					event.type === "proposal" ? [event.proposal] : [],
+				);
+				expect(proposals.map((proposal) => proposal?.name)).toEqual(["Pay", "Pay at checkout"]);
+				const shown = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+				expect(shown.proposal).toEqual({ ...proposed, updatedAt: expect.any(Number) });
+				expect(shown).toMatchObject({ caseId: null, draft: null });
+			});
+
+			/** A chat with no Test Case, on a web App, where the agent proposed `proposed`. */
+			async function chatWithProposal(name: string) {
+				const app = await createApp({ name, webUrl: WEB_URL });
+				const chat = await newChat(app.id);
+				agent.script = async function* (turn) {
+					await turn.callTool("propose_test_case", proposed);
+					yield { type: "text", delta: "Proposed." };
+				};
+				const stream = await openEvents(chat.id);
+				await send(chat.id, "Find something to test", "explore");
+				await stream.until(isReply);
+				await stream.close();
+				return { app, chat };
+			}
+
+			const accept = (chatId: string) =>
+				json<AutoChat & { error?: string }>(`/auto/chats/${chatId}/proposal/accept`, {
+					method: "POST",
+				});
+
+			test("accepting the proposal creates the Test Case with no steps as the chat's case, and its steps become the Case draft, which must pass before Apply", async () => {
+				await connectBrowser();
+				const { app, chat } = await chatWithProposal("Accepts");
+				const stream = await openEvents(chat.id);
+
+				const accepted = await accept(chat.id);
+				const events = await stream.until((event) => event.type === "draft");
+				expect(accepted.status).toBe(200);
+				const caseId = accepted.body.caseId as string;
+				const created = await getCase(caseId);
+				expect(created).toMatchObject({ appId: app.id, name: "Pay at checkout", flows: [] });
+				expect(accepted.body).toMatchObject({
+					caseNumber: created?.number,
+					caseName: "Pay at checkout",
+					proposal: null,
+				});
+				expect(accepted.body.draft).toEqual({
+					caseId,
+					base: [],
+					steps: proposed.steps.map((step) => ({
+						...step,
+						id: expect.any(String),
+						flowId: null,
+						reason: "Paying is not tested yet",
+					})),
+					removed: [],
+					passingRunId: null,
+					learnedScript: null,
+					updatedAt: expect.any(Number),
+				});
+				expect(events.map((event) => event.type)).toEqual(["chat", "proposal", "draft"]);
+				expect(events[0]).toMatchObject({ chat: { caseId, caseName: "Pay at checkout" } });
+				expect(events[1]).toEqual({ type: "proposal", proposal: null });
+
+				const early = await json<{ error: string }>(`/auto/chats/${chat.id}/draft/apply`, {
+					method: "POST",
+				});
+				expect(early.status).toBe(409);
+
+				agent.script = async function* (turn) {
+					await turn.callTool("run_case_draft", {});
+					yield { type: "text", delta: "It passes." };
+				};
+				await stream.close();
+				const running = await openEvents(chat.id);
+				await send(chat.id, "Run it", "run");
+				await running.until(isReply);
+				await running.close();
+				const applied = await json<AutoChat>(`/auto/chats/${chat.id}/draft/apply`, {
+					method: "POST",
+				});
+				expect(applied.status).toBe(200);
+				const saved = await getCase(caseId);
+				expect(saved?.flows.map((step) => step.instructions)).toEqual(["Tap Pay", "Tap Done"]);
+				expect(saved?.script?.actions.length).toBeGreaterThan(0);
+			});
+
+			test("setting the chat's Test Case takes the proposal away, so there is nothing left to accept", async () => {
+				const { app, chat } = await chatWithProposal("Accepts late");
+				const login = await createCase(app.id, { name: "Login works" });
+				agent.script = async function* (turn) {
+					await turn.callTool("set_test_case", { number: login.number });
+					yield { type: "text", delta: "Set." };
+				};
+				const stream = await openEvents(chat.id);
+				await send(chat.id, "Work on the login case");
+				const events = await stream.until(isReply);
+				await stream.close();
+
+				expect(events).toContainEqual({ type: "proposal", proposal: null });
+				const shown = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+				expect(shown).toMatchObject({ caseId: login.id, proposal: null });
+				expect((await accept(chat.id)).status).toBe(404);
+				expect((await listCases(app.id)).map((item) => item.name)).toEqual(["Login works"]);
+
+				const other = await newChat(app.id);
+				expect((await accept(other.id)).status).toBe(404);
+			});
+
+			test("Reject throws the proposal away, over SSE, and creates nothing", async () => {
+				const { app, chat } = await chatWithProposal("Rejects");
+				const stream = await openEvents(chat.id);
+
+				const rejected = await json<AutoChat>(`/auto/chats/${chat.id}/proposal`, {
+					method: "DELETE",
+				});
+				const events = await stream.until((event) => event.type === "proposal");
+				await stream.close();
+
+				expect(rejected.status).toBe(200);
+				expect(rejected.body).toMatchObject({ proposal: null, caseId: null, draft: null });
+				expect(events.at(-1)).toEqual({ type: "proposal", proposal: null });
+				expect(await listCases(app.id)).toEqual([]);
+				expect((await json(`/auto/chats/${chat.id}/proposal`, { method: "DELETE" })).status).toBe(
+					404,
+				);
+			});
+
+			test("a case proposed after exploring holds only the steps the agent wrote, not the Actions it took", async () => {
+				await connectBrowser([
+					{ role: "button", name: "Pay", box: { x: 600, y: 380, width: 80, height: 40 } },
+				]);
+				const app = await createApp({ name: "Explores, then proposes", webUrl: WEB_URL });
+				const chat = await newChat(app.id);
+				agent.script = async function* (turn) {
+					await turn.callTool("read_screen", {});
+					await turn.callTool("perform_action", { kind: "tap", label: "Pay" });
+					await turn.callTool("perform_action", { kind: "input", text: "4242" });
+					await turn.callTool("propose_test_case", proposed);
+					yield { type: "text", delta: "Proposed." };
+				};
+				const stream = await openEvents(chat.id);
+				await send(chat.id, "Find something to test", "explore");
+				await stream.until(isReply);
+				await stream.close();
+				expect(browser.clicks).toHaveLength(1);
+
+				const accepted = await accept(chat.id);
+
+				expect(accepted.body.proposal).toBeNull();
+				expect(
+					accepted.body.draft?.steps.map(({ instructions, expectedResult }) => ({
+						instructions,
+						expectedResult,
+					})),
+				).toEqual(proposed.steps);
+				expect(JSON.stringify(accepted.body.draft)).not.toContain("4242");
+			});
+
+			test("the device tools are refused while a Run holds the device", async () => {
+				await connectBrowser();
+				const { chat: running } = await chatOnSavedCase("Holds the device");
+				const { promise: held, resolve: release } = Promise.withResolvers<void>();
+				vision.held = held;
+				agent.script = async function* (turn) {
+					await turn.callTool("change_draft_step", fixPay);
+					await turn.callTool("run_case_draft", {});
+					yield { type: "text", delta: "Ran it." };
+				};
+				const runStream = await openEvents(running.id);
+				await send(running.id, "Fix it and run it", "run");
+				await waitUntil(() => vision.deciding);
+
+				const explorer = await newChat((await createApp({ name: "Explores meanwhile" })).id);
+				const outputs: Array<{ text: string; isError: boolean }> = [];
+				agent.script = async function* (turn) {
+					outputs.push(await turn.callTool("read_screen", {}));
+					outputs.push(await turn.callTool("perform_action", { kind: "tap", x: 1, y: 1 }));
+					yield { type: "text", delta: "Busy." };
+				};
+				const stream = await openEvents(explorer.id);
+				await send(explorer.id, "Look around", "explore");
+				await stream.until(isReply);
+				await stream.close();
+				release();
+				await runStream.until(isReply);
+				await runStream.close();
+
+				const refusal = "A Run is using the device. Wait for it to end, then try again.";
+				expect(outputs).toEqual([
+					{ text: refusal, isError: true },
+					{ text: refusal, isError: true },
+				]);
+			});
+
+			test("a chat that has a Test Case cannot propose a new one", async () => {
+				const app = await createApp({ name: "Has a case" });
+				const login = await createCase(app.id, { name: "Login works" });
+				const chat = await newChat(app.id, login.id);
+				const outputs: Array<{ text: string; isError: boolean }> = [];
+				agent.script = async function* (turn) {
+					outputs.push(await turn.callTool("propose_test_case", proposed));
+					yield { type: "text", delta: "Cannot." };
+				};
+				const stream = await openEvents(chat.id);
+
+				await send(chat.id, "Propose a case", "explore");
+				const events = await stream.until(isReply);
+				await stream.close();
+
+				expect(outputs).toEqual([
+					{
+						text: `This chat already works on #${login.number} Login works. It cannot propose a new one: a new Test Case needs a new chat.`,
+						isError: true,
+					},
+				]);
+				expect(events.map((event) => event.type)).not.toContain("proposal");
+				expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.proposal).toBeNull();
+			});
+
+			test("the device tools need a connected device", async () => {
+				const app = await createApp({ name: "No device" });
+				const chat = await newChat(app.id);
+				const outputs: Array<{ text: string; isError: boolean }> = [];
+				agent.script = async function* (turn) {
+					outputs.push(await turn.callTool("read_screen", {}));
+					outputs.push(await turn.callTool("perform_action", { kind: "tap", x: 1, y: 1 }));
+					yield { type: "text", delta: "Nothing to see." };
+				};
+				const stream = await openEvents(chat.id);
+
+				await send(chat.id, "Look around", "explore");
+				await stream.until(isReply);
+				await stream.close();
+
+				const refusal = "No device is connected. Ask the user to connect one from the top bar.";
+				expect(outputs).toEqual([
+					{ text: refusal, isError: true },
+					{ text: refusal, isError: true },
+				]);
 			});
 		});
 	});
