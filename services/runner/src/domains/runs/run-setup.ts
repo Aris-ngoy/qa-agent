@@ -24,6 +24,28 @@ export type PlannedCase = {
 	mode: CaseMode;
 };
 
+/** The steps a Run runs in place of its Test Case's saved ones: a Case draft's. */
+export type DraftSteps = {
+	flows: CatalogCase["flows"];
+	/** The Case Script to replay; null to have the agent run the steps. */
+	script: CaseScript | null;
+};
+
+/**
+ * The saved case with a Case draft's steps, and its Case Script when it has one. A draft
+ * without one keeps the saved Case Script only for its profile: the Run opens on it and
+ * the Case Script the agent learns asks for it. Its mode comes from the draft (`draftMode`).
+ */
+function withDraftSteps(catalogCase: CatalogCase, steps: DraftSteps): CatalogCase {
+	const script = steps.script ?? catalogCase.script;
+	return { ...catalogCase, flows: steps.flows, script, hasScript: script !== null };
+}
+
+/** A draft replays its own Case Script, if it has one and the Run's mode allows; else the agent runs it. */
+export function draftMode(runMode: Run["executionMode"], steps: DraftSteps): CaseMode {
+	return caseModeFor(runMode, steps.script !== null);
+}
+
 /** What a Run needs before it acquires its Device Session. */
 export type RunPlan = {
 	app: CatalogApp;
@@ -36,10 +58,10 @@ export type RunPlan = {
 
 /**
  * Get a Run ready to acquire its Device Session: its App and what it opens, each Test Case
- * loaded once with its mode, the Provider when any case needs the agent, and the Run's
- * build installed. Throws when the Run cannot start.
+ * loaded once with its mode (a Run of a Case draft with the draft's `steps`), the Provider
+ * when any case needs the agent, and the Run's build installed. Throws when the Run cannot start.
  */
-export async function prepareRun(run: Run): Promise<RunPlan> {
+export async function prepareRun(run: Run, draft?: DraftSteps): Promise<RunPlan> {
 	const app = await getApp(run.appId);
 	if (!app) {
 		throw new RunValidationError("App not found");
@@ -53,11 +75,13 @@ export async function prepareRun(run: Run): Promise<RunPlan> {
 
 	const cases: PlannedCase[] = [];
 	for (const test of run.tests) {
-		const catalogCase = await getCase(test.caseId);
+		const saved = await getCase(test.caseId);
 		cases.push({
 			test,
-			catalogCase,
-			mode: caseModeFor(run.executionMode, Boolean(catalogCase?.hasScript)),
+			catalogCase: saved && draft ? withDraftSteps(saved, draft) : saved,
+			mode: draft
+				? draftMode(run.executionMode, draft)
+				: caseModeFor(run.executionMode, Boolean(saved?.hasScript)),
 		});
 	}
 
