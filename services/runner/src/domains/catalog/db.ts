@@ -94,6 +94,14 @@ function ensureSchema(sqlite: Database): void {
 			flow_id TEXT REFERENCES flows(id) ON DELETE SET NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS case_previous_versions (
+			case_id TEXT PRIMARY KEY NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+			flows_json TEXT NOT NULL,
+			script_json TEXT,
+			script_saved_at INTEGER,
+			replaced_at INTEGER NOT NULL
+		);
+
 		CREATE TABLE IF NOT EXISTS providers (
 			id TEXT PRIMARY KEY NOT NULL,
 			kind TEXT NOT NULL,

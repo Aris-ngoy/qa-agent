@@ -93,6 +93,18 @@ export const caseDraftSchema = z.object({
 });
 export type CaseDraft = z.infer<typeof caseDraftSchema>;
 
+/**
+ * A Test Case's one previous version: the steps and Case Script that applying a Case draft
+ * replaced. Restore previous version swaps it with the current ones.
+ */
+export const casePreviousVersionSchema = z.object({
+	steps: z.array(caseFlowStepSchema),
+	hasScript: z.boolean(),
+	/** When it was replaced (by Apply, or by a Restore). */
+	replacedAt: z.number().int().nonnegative(),
+});
+export type CasePreviousVersion = z.infer<typeof casePreviousVersionSchema>;
+
 /** One step of the Case draft as a Run of it goes: its text, how far it got, and what it did. */
 export const autoRunStepSchema = z.object({
 	instructions: z.string(),
@@ -150,6 +162,8 @@ export const autoChatSchema = autoChatSummarySchema.extend({
 	draft: caseDraftSchema.nullable(),
 	/** The Run of the draft in progress; null when none is. */
 	run: autoRunSchema.nullable(),
+	/** The chat's Test Case's previous version, which Restore puts back; null when it has none. */
+	previousVersion: casePreviousVersionSchema.nullable(),
 });
 export type AutoChat = z.infer<typeof autoChatSchema>;
 
@@ -207,6 +221,7 @@ export type ListAutoModelsResponse = z.infer<typeof listAutoModelsResponseSchema
  * - `chat`: the chat itself changed (its Test Case, title or model).
  * - `draft`: the chat's Case draft changed (null once it is gone).
  * - `run`: a Run of the draft started or moved on; sent once more when it ends.
+ * - `previous_version`: Apply or Restore changed the Test Case's previous version.
  */
 export const autoChatEventSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("message"), message: autoMessageSchema }),
@@ -224,5 +239,9 @@ export const autoChatEventSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("chat"), chat: autoChatSummarySchema }),
 	z.object({ type: z.literal("draft"), draft: caseDraftSchema.nullable() }),
 	z.object({ type: z.literal("run"), run: autoRunSchema }),
+	z.object({
+		type: z.literal("previous_version"),
+		previousVersion: casePreviousVersionSchema.nullable(),
+	}),
 ]);
 export type AutoChatEvent = z.infer<typeof autoChatEventSchema>;

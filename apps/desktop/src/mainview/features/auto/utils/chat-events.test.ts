@@ -21,6 +21,7 @@ function chat(overrides: Partial<AutoChat> = {}): AutoChat {
 		reply: null,
 		draft: null,
 		run: null,
+		previousVersion: null,
 		...overrides,
 	};
 }
@@ -194,6 +195,16 @@ describe("applyAutoChatEvent", () => {
 		expect(applyAutoChatEvent(drafted, { type: "draft", draft: null }).draft).toBeNull();
 	});
 
+	test("a previous_version event sets what Restore previous version puts back", () => {
+		const previousVersion = {
+			steps: [{ id: "s1", instructions: "Open", expectedResult: "", flowId: null }],
+			hasScript: true,
+			replacedAt: 400,
+		};
+		const applied = applyAutoChatEvent(chat(), { type: "previous_version", previousVersion });
+		expect(applied.previousVersion).toEqual(previousVersion);
+	});
+
 	test("does not change the chat it is given", () => {
 		const start = chat();
 		applyAutoChatEvent(start, { type: "message", message: message() });
@@ -203,11 +214,12 @@ describe("applyAutoChatEvent", () => {
 });
 
 describe("summaryOf", () => {
-	test("drops the messages, the reply and the Case draft", () => {
+	test("drops the messages, the reply, the Case draft and the previous version", () => {
 		const summary = summaryOf(chat({ messages: [message()], reply: { text: "", toolCalls: [] } }));
 		expect("messages" in summary).toBe(false);
 		expect("reply" in summary).toBe(false);
 		expect("draft" in summary).toBe(false);
+		expect("previousVersion" in summary).toBe(false);
 		expect(summary.id).toBe("chat_1");
 	});
 

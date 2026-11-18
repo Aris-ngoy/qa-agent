@@ -1,6 +1,6 @@
 # Auto chat
 
-Status: Ask mode built (#463, #455); Run mode writes the Case draft (#456) and runs it (#457), but cannot apply it yet; Explore not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
+Status: Ask mode built (#463, #455); Run mode writes the Case draft (#456) and runs it (#457), and the Test tab applies, trims, rejects and restores it (#458); Explore not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
 
 ## Goal
 
@@ -94,13 +94,21 @@ In the desktop (`features/auto`):
 - **Stop.** `POST /auto/chats/:id/run/stop` (409 when no Run is in progress) cancels through the Run's own cancel; deleting the chat stops its Run too. The agent's answer says the Run was stopped.
 - **Runs page.** A Run stores the chat that started it (`runs.auto_chat_id`, set null when the chat is deleted), and every Run read carries `autoChat` (`{ id, title }`). The Runs page labels such a Run "Auto · <chat title>"; its detail page is the usual one.
 
+**Apply, ✕, Reject all, Restore previous version (#458).**
+- **Apply** (`POST /auto/chats/:id/draft/apply`) saves the whole draft to the Test Case: its steps (keeping their ids; a step still linked to a reusable Flow keeps its `flowId`) and the Case Script its passing Run learned, in one transaction with deleting the draft. It answers 409 with the reason, and changes nothing, when the chat has no draft, when the draft has no passing Run, when that Run learned no Case Script (it took no Actions, so the case could not replay), or when the Test Case's steps are no longer the draft's `base`: added, removed, reordered, relinked, or a step's own text edited in Test Cases meanwhile, or restored. Applying would undo that edit, so the user rejects and asks again. Editing a reusable Flow's text is not such an edit: the applied step stays linked to the Flow. Rejected: rebasing the draft onto the edited case (the passing Run was of the old one). The case's last result is left as it was.
+- **Recording the pass** is now one transaction too: a passed Run becomes the draft's passing Run only if the draft is still the one that ran, so a ✕ or Reject all that lands as the Run ends is never undone.
+- **Previous version.** Apply keeps the steps and Case Script it replaces (`case_previous_versions`, one row per Test Case, the raw Case Script JSON and its saved time). `POST /auto/chats/:id/previous-version/restore` swaps the current and previous versions, so restoring twice returns to the applied one; 409 when there is none. A restored step whose reusable Flow was deleted meanwhile keeps its own text.
+- **✕** (`DELETE /auto/chats/:id/draft/steps/:stepId`) removes a step by id, with the reason "Removed in the Test tab", and like any change clears the passing Run and its Case Script. **Reject all** is `DELETE /auto/chats/:id/draft`; the Test Case is untouched. Both 404 when there is no draft (or no such step).
+- `GET /auto/chats/:id` carries `previousVersion` (`CasePreviousVersion`: its steps, whether it has a Case Script, when it was replaced), and Apply and Restore push a `previous_version` event; Apply, ✕ and Reject all push a `draft` event (null once applied or rejected). Each route answers the chat.
+- **Test tab:** ✕ on each changed, moved and added step in Changes and on every step in Full test; **Apply**, off with the reason under it until the draft has a passing Run (from the `draft` events, so it turns on as the Run passes and off as the draft changes); **Reject all**; and **Restore previous version** whenever the case has one, also once the draft is gone. Apply and Restore refetch the case for Test Cases.
+
 In the desktop: the chat shows the **Run card** under the reply (progress such as "Step 3 of 5", time elapsed, each step with its status and commands, the vision Provider, and **Open Run**); a finished card stays until the next prompt. The composer shows **Stop** while the Run is live, and Esc stops it too, unless it is closing a menu or dialog. The Device tab overlays the Action in flight on the live frame, and says the device is view only while a Run holds it.
 
 ## How to verify
 
 The draft Run groundwork: `bun test services/runner/src/domains/runs/draft-run.test.ts` (real catalog in a temp folder, the fake CDP browser, and a fake OpenAI-compatible endpoint as the vision Provider).
 
-The chat: `bun test services/runner/src/interfaces/http/auto.test.ts` (the routes, the SSE stream, the Ask tools, the Case draft tools and Runs of the draft, with a scripted chat agent; the Runs use the real Run engine, the fake CDP browser and a fake vision Provider, `domains/runs/fake-vision.ts`) and `bun test services/runner/src/domains/auto/claude-agent.test.ts` (the contract with the Claude Agent SDK, its `query` faked). The screen's pure helpers: `bun test apps/desktop/src/mainview/features/auto`.
+The chat: `bun test services/runner/src/interfaces/http/auto.test.ts` (the routes, the SSE stream, the Ask tools, the Case draft tools, Runs of the draft, and Apply, ✕, Reject all and Restore, including a script-mode Run of the applied case with Decide set to fail, with a scripted chat agent; the Runs use the real Run engine, the fake CDP browser and a fake vision Provider, `domains/runs/fake-vision.ts`) and `bun test services/runner/src/domains/auto/claude-agent.test.ts` (the contract with the Claude Agent SDK, its `query` faked). The screen's pure helpers: `bun test apps/desktop/src/mainview/features/auto`.
 
 By hand:
 1. Sign in the Claude Provider, connect a device, open **Auto**. With it signed out, Auto shows the empty state with a link to Settings → Providers → Claude.
@@ -110,9 +118,8 @@ By hand:
 
 4. Run mode: "Fix #8 so it passes." The Run card shows each step as it runs, with its commands, the time and the vision Provider, and the Device tab overlays the Action in flight. The Run appears on the Runs page labelled "Auto · <chat>"; #8's saved Case Script and last result are unchanged. Start another and press Esc: it stops.
 
-Once Apply is built:
-5. Remove one draft step: Apply turns off until the draft passes again. Apply, then replay #8 with `yoqa script run` (or a script-mode Run): it passes with no Provider call.
-6. **Restore previous version** brings back the old steps and Case Script.
+5. Remove one draft step with ✕: Apply turns off, with why, until the draft passes again. Apply, then replay #8 with `yoqa script run` (or a script-mode Run): it passes with no Provider call. The Test tab shows no draft, and #8 in Test Cases has the new steps.
+6. **Restore previous version** brings back the old steps and Case Script; pressing it again brings back the applied ones. **Reject all** on a new draft leaves #8 as it is.
 
 ## Follow-ups
 
@@ -124,5 +131,8 @@ Once Apply is built:
 - Recording Take over Actions into the draft, if reproducing them by hand turns out to be painful.
 - The packaged runner: the SDK starts Claude Code from a per-platform optional package, which the bundled npm runner may not carry. Check a packaged build; if it is missing, ship the SDK unbundled or point `pathToClaudeCodeExecutable` at the Claude CLI.
 - Deleting a chat leaves its SDK session transcript under `~/.claude/projects/`; delete it with the SDK's `deleteSession` too.
-- The Case draft compares against the case's steps as they were when it started (`base`). If the Test Case is edited in Test Cases meanwhile, Changes still shows the old before; Apply (#458) should refuse or rebase such a draft.
+- The Case draft compares against the case's steps as they were when it started (`base`). If the Test Case is edited in Test Cases meanwhile, Changes still shows the old before, and Apply refuses it (#458). The Test tab could say so before the user presses Apply.
+- Reject all has no confirm (as Delete chat). If drafts get thrown away by mistake, add one.
+- Reject all or Apply while a Run of the draft is going leaves that Run going (it no longer counts for anything). They could stop it.
+- The `previous_version` event goes only to the chat that applied or restored. Other chats on the same Test Case see the change when they are opened again.
 - The model list for an API-key login reads the Anthropic models endpoint each time; it could use the Provider's cached list (`listProviderModels`).
