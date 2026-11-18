@@ -1,5 +1,5 @@
 import { AutoDeviceTab } from "@/features/auto/components/auto-device-tab";
-import { PanelEmpty } from "@/features/auto/components/auto-panel-empty";
+import { AutoHistoryTab } from "@/features/auto/components/auto-history-tab";
 import { AutoTestTab } from "@/features/auto/components/auto-test-tab";
 import { Tabs } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
@@ -12,7 +12,7 @@ const TABS: { id: SideTab; label: string }[] = [
 	{ id: "history", label: "History" },
 ];
 
-/** The right of Auto: the live device, the chat's Case draft, and (in a later ticket) the case's History. */
+/** The right of Auto: the live device, the chat's Case draft, and its Test Case's History. */
 export function AutoSidePanel() {
 	const tab$ = useObservable<SideTab>("device");
 	const tab = useValue(tab$);
@@ -53,11 +53,7 @@ export function AutoSidePanel() {
 					{tab === "test" ? <AutoTestTab /> : null}
 				</Tabs.Panel>
 				<Tabs.Panel className="min-h-0 flex-1 pt-0 outline-none" id="history">
-					{tab === "history" ? (
-						<PanelEmpty title="History is on its way">
-							The chat's Test Case, its pass rate and its recent Runs will show here.
-						</PanelEmpty>
-					) : null}
+					{tab === "history" ? <AutoHistoryTab /> : null}
 				</Tabs.Panel>
 			</Tabs>
 		</section>

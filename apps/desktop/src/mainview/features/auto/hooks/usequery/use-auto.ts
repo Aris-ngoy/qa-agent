@@ -5,6 +5,7 @@ import {
 	createAutoChat,
 	deleteAutoChat,
 	getAutoStatus,
+	getCaseHistory,
 	listAutoChats,
 	listAutoModels,
 	rejectAutoDraft,
@@ -19,7 +20,13 @@ import { applyToShownChat } from "@/features/auto/data/state/shown-chat";
 import { summaryOf } from "@/features/auto/utils/chat-events";
 import { removeChatSummary, upsertChatSummary } from "@/features/auto/utils/chat-list";
 import { caseQueryKey, casesQueryKey } from "@/features/test-cases/hooks/usequery/use-cases";
-import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	type QueryClient,
+	keepPreviousData,
+	useMutation,
+	useQuery,
+	useQueryClient,
+} from "@tanstack/react-query";
 import type { AutoChat, AutoChatMode, AutoChatSummary, AutoRunControl } from "@yoqa/runner-client";
 
 export const autoStatusQueryKey = ["auto", "status"] as const;
@@ -53,6 +60,23 @@ export function useAutoModels() {
 /** The App's chats, for the chat picker. */
 export function useAutoChats(appId: string) {
 	return useQuery({ queryKey: autoChatsQueryKey(appId), queryFn: () => listAutoChats(appId) });
+}
+
+/** Every History summary read of Test Case `caseId`, whatever its Run key. */
+export function caseHistoryQueryKey(caseId: string) {
+	return ["auto", "history", caseId] as const;
+}
+
+/**
+ * The History summary of the chat's Test Case. `runKey` names where the chat's Run is (its
+ * id, status and step): each change reads the summary again, so that Run shows as it goes.
+ */
+export function useCaseHistory(caseId: string, runKey: string) {
+	return useQuery({
+		queryKey: [...caseHistoryQueryKey(caseId), runKey] as const,
+		queryFn: () => getCaseHistory(caseId),
+		placeholderData: keepPreviousData,
+	});
 }
 
 /** Start a chat (on a Test Case with `caseId`) and add it to its App's list. */

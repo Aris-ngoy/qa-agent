@@ -21,7 +21,7 @@ import {
 	viewportPresetSchema,
 	webDeviceOf,
 } from "@yoqa/runner-client";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { asc, count, desc, eq, inArray } from "drizzle-orm";
 import { autoChats } from "../auto/schema";
 import { resolveBuildForRun } from "../builds/application";
 import { getApp, getCase, isEverydayWarningAccepted, saveCaseScript } from "../catalog/application";
@@ -59,6 +59,7 @@ import {
 } from "./run-setup";
 import { runSteps, runTests, runs } from "./schema";
 import { serializeCaseScript } from "./script";
+import type { RanStep } from "./step-progress";
 
 export { RunNotFoundError, RunValidationError };
 export type { DraftSteps };
@@ -854,16 +855,20 @@ async function startRun(input: CreateRunRequest, draft?: DraftRunStart): Promise
 		finishedAt: null,
 	});
 
-	for (const caseId of uniqueCaseIds) {
+	for (const catalogCase of catalogCases) {
+		const flows = draft?.steps.flows ?? catalogCase.flows;
 		await db.insert(runTests).values({
 			id: newId("rtest"),
 			runId,
-			caseId,
+			caseId: catalogCase.id,
 			status: "queued",
 			executionMode: null,
 			error: null,
 			startedAt: null,
 			finishedAt: null,
+			stepsJson: JSON.stringify(
+				flows.map(({ instructions, expectedResult }) => ({ instructions, expectedResult })),
+			),
 		});
 	}
 
@@ -932,6 +937,50 @@ export async function listRuns(appId: string): Promise<Run[]> {
 
 	const chats = await chatTitles(runRows);
 	return runRows.map((runRow) => runFromRow(runRow, testsByRunId.get(runRow.id) ?? [], chats));
+}
+
+/** One Run of a Test Case: the Run, the case's part in it, and the steps the case ran. */
+export type CaseRun = {
+	run: Run;
+	test: RunTest;
+	/** Null on a Run from before Runs kept their steps. */
+	ranSteps: RanStep[] | null;
+};
+
+function parseRanSteps(raw: string | null): RanStep[] | null {
+	if (!raw) return null;
+	try {
+		const parsed = JSON.parse(raw) as unknown;
+		return Array.isArray(parsed) ? (parsed as RanStep[]) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** The latest `limit` Runs of a Test Case with their steps, newest first, and how many it has. */
+export async function latestCaseRuns(
+	caseId: string,
+	limit: number,
+): Promise<{ total: number; latest: CaseRun[] }> {
+	const db = getCatalogDb();
+	const [counted] = await db
+		.select({ total: count() })
+		.from(runTests)
+		.where(eq(runTests.caseId, caseId));
+	const rows = await db
+		.select({ testId: runTests.id, runId: runTests.runId, stepsJson: runTests.stepsJson })
+		.from(runTests)
+		.innerJoin(runs, eq(runs.id, runTests.runId))
+		.where(eq(runTests.caseId, caseId))
+		.orderBy(desc(runs.createdAt))
+		.limit(limit);
+	const latest: CaseRun[] = [];
+	for (const row of rows) {
+		const run = await loadRun(row.runId);
+		const test = run?.tests.find((item) => item.id === row.testId);
+		if (run && test) latest.push({ run, test, ranSteps: parseRanSteps(row.stepsJson) });
+	}
+	return { total: counted?.total ?? 0, latest };
 }
 
 export async function deleteRun(runId: string): Promise<void> {

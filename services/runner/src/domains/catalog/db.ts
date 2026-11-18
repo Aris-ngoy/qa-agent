@@ -217,6 +217,7 @@ function ensureSchema(sqlite: Database): void {
 	migrateRunCommands(sqlite);
 	migrateRunStepPhases(sqlite);
 	migrateRunAutoChat(sqlite);
+	migrateRunTestSteps(sqlite);
 }
 
 function tableColumns(sqlite: Database, table: string): Set<string> {
@@ -343,6 +344,12 @@ function migrateRunAutoChat(sqlite: Database): void {
 		"auto_chat_id TEXT REFERENCES auto_chats(id) ON DELETE SET NULL",
 		runCols,
 	);
+}
+
+function migrateRunTestSteps(sqlite: Database): void {
+	const testCols = tableColumns(sqlite, "run_tests");
+	if (testCols.size === 0) return;
+	addColumnIfMissing(sqlite, "run_tests", "steps_json", "steps_json TEXT", testCols);
 }
 
 function migrateProvidersTable(sqlite: Database): void {

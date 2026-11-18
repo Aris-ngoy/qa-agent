@@ -9,7 +9,6 @@ import type {
 } from "@yoqa/runner-client";
 import { getActiveSessionInfo } from "../devices/active-session";
 import { getProvider, resolveActiveProviderAuth } from "../providers/application";
-import { flattenCaseInstructions } from "../runs/agent";
 import {
 	type RunPause,
 	RunValidationError,
@@ -22,6 +21,7 @@ import {
 	takeOverRun,
 } from "../runs/application";
 import { draftMode } from "../runs/run-setup";
+import { reachedStep } from "../runs/step-progress";
 
 /**
  * Runs of a chat's Case draft: started by the chat agent, driven by the Case executor on
@@ -97,27 +97,6 @@ function stepStatus(
 	if (status === "errored") return "failed";
 	if (status === "cancelled") return "stopped";
 	return "pending";
-}
-
-type RunStep = NonNullable<Run["tests"][number]["steps"]>[number];
-
-/** An agent step whose verify accepted its instruction: the agent moves on to the next one. */
-function verified(step: RunStep): boolean {
-	return step.action.cycle?.verify?.type === "verify";
-}
-
-/**
- * The step of `flows` (from 0) an agent Run is on: the last Run step's, or the next one once
- * that step verified the last instruction its step of the case splits into.
- */
-function reachedStep(runSteps: RunStep[], flows: CaseFlowStep[]): number {
-	const last = runSteps.at(-1);
-	const at = last?.action.flowStep ?? 0;
-	if (!last || !verified(last)) return at;
-	const flow = flows[at];
-	const done = runSteps.filter((step) => step.action.flowStep === at && verified(step)).length;
-	const next = flow && done >= flattenCaseInstructions([flow]).length ? at + 1 : at;
-	return Math.min(next, flows.length - 1);
 }
 
 /**
