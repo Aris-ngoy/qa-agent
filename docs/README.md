@@ -37,6 +37,8 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [adr/0009-everyday-browser-consent-attach.md](./adr/0009-everyday-browser-consent-attach.md) | Attach to the everyday browser by consent; attach by port is CLI/CI only |
 | [adr/0010-no-firefox-or-safari-browser-device.md](./adr/0010-no-firefox-or-safari-browser-device.md) | No Firefox or Safari Browser device yet: no BiDi tree with boxes; Safari can't keep logins |
 | [adr/0011-web-testing-on-macos.md](./adr/0011-web-testing-on-macos.md) | Web on macOS: Kept profile by default, any installed Chromium browser, a screencast Inspector, one shared Screen |
+| [adr/0012-auto-chat-agent-harness.md](./adr/0012-auto-chat-agent-harness.md) | Auto chat runs on the Claude Agent SDK with Yoqa-only tools; the Case executor still drives the device |
+| [auto/auto-chat.md](./auto/auto-chat.md) | Auto screen design: chat agent, Ask / Run / Explore modes, Case draft applied after a passing Run, Take over, Device / Test / History tabs |
 | [devices/web-attach-by-port.md](./devices/web-attach-by-port.md) | Web tracer bullet: attach a user-started Chromium by port, screenshot/tap/input/open-url |
 | [devices/web-screen.md](./devices/web-screen.md) | Web Screen: cleaned accessibility tree with 0–1000 bounds, raw `--full` tree, Tree assist on web roles, iframe content, an open JavaScript dialog as a `modal` |
 | [devices/web-gestures-alerts-lifecycle.md](./devices/web-gestures-alerts-lifecycle.md) | Web swipe (wheel), drag, JavaScript dialogs as alerts, and app lifecycle on the Web URL |

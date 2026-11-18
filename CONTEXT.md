@@ -143,6 +143,10 @@ _Avoid_: memory, learned context, app summary
 A named, reusable natural-language step (instructions and an expected result) kept on one catalog App and referenced by its Test Cases.
 _Avoid_: Case Script, Case Script file (a replay of Actions is never a Flow)
 
+**Test Case**:
+An ordered list of natural-language steps on one catalog App, each with instructions and an expected result of its own or from a Flow, and optionally the Case Script a passing Run learned from them.
+_Avoid_: test, scenario, spec
+
 ### Runs
 
 **Run**:
@@ -168,3 +172,17 @@ _Avoid_: conditional, if-step, if statement
 **Case Script file**:
 A Case Script written as YAML (`*.yoqa.yaml`), the default format for import and export. A legacy `.yoqa.json` file is still read as a Case Script file. A shell export is a one-way convenience: it can be run, but it is not a Case Script file.
 _Avoid_: flow YAML, flow file, test file
+
+### Auto
+
+**Auto chat**:
+A saved conversation, on one App, with the chat agent about at most one Test Case. In it the agent reads the catalog and Runs, writes a Case draft, and starts Runs; it never edits the catalog itself. What the agent may do is set by the mode of each message: Ask reads only, Run may also write the Case draft and start Runs, Explore may also drive the device and propose a new Test Case.
+_Avoid_: Auto run (`executionMode: auto` is script-first replay, a different thing), session (a Device Session), thread
+
+**Case draft**:
+The changes an Auto chat proposes to one Test Case: changed, added and removed steps, and the Case Script that a passing Run of the draft learned. It reaches the Test Case only when the user applies it, whole, and only after a Run of the whole draft has passed from a clean start; removing a step from it clears that pass. A Run of a Case draft never changes the saved Test Case, its Case Script, or its last result.
+_Avoid_: pending changes, edit, patch
+
+**Take over**:
+Pausing a Run started from an Auto chat to drive the device by hand. Actions taken by hand are not recorded in the Case draft; the chat agent sees the resulting screen on its next turn.
+_Avoid_: manual mode, takeover (one word)
