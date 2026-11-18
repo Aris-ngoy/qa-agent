@@ -8,6 +8,7 @@ import {
 	type CaseFlowStep,
 	type CaseScript,
 	type Run,
+	type SendAutoMessageResponse,
 	autoChatEventSchema,
 } from "@yoqa/runner-client";
 import type { ChatAgent, ChatAgentEvent, ChatTurn } from "../../domains/auto/chat-agent";
@@ -158,7 +159,7 @@ describe("the Auto chat routes", () => {
 	}
 
 	async function send(chatId: string, text: string, mode = "ask") {
-		return json<{ id: string; error?: string }>(`/auto/chats/${chatId}/messages`, {
+		return json<SendAutoMessageResponse & { error?: string }>(`/auto/chats/${chatId}/messages`, {
 			method: "POST",
 			body: JSON.stringify({ text, mode }),
 		});
@@ -1111,6 +1112,118 @@ describe("the Auto chat routes", () => {
 			expect(outputs[0]?.text).toContain("The user took over this Run");
 			await waitUntil(() => getActiveSessionInfo()?.heldByRun === false);
 			expect(getActiveSessionInfo()).toMatchObject({ heldByRun: false, takenOver: false });
+		});
+
+		const queuedTexts = (chat: AutoChat) => chat.queue.map((queued) => queued.text);
+
+		/** The id of a message `send` queued. */
+		function queuedId(sent: { body: SendAutoMessageResponse }): string {
+			if (sent.body.type !== "queued") throw new Error(`Not queued: ${JSON.stringify(sent.body)}`);
+			return sent.body.queued.id;
+		}
+
+		/** The first turn runs the draft; each later one just replies. */
+		function runThenReply(): void {
+			agent.script = async function* (turn) {
+				const number = agent.turns.length;
+				if (number === 1) {
+					await turn.callTool("change_draft_step", fixPay);
+					await turn.callTool("run_case_draft", {});
+				}
+				yield { type: "text", delta: `Reply ${number}` };
+			};
+		}
+
+		test("messages sent during the chat's Run are queued in order, over SSE, and go to the agent together as one turn once the Run ends", async () => {
+			await connectBrowser();
+			const { chat } = await chatOnSavedCase("Queued");
+			const { promise: held, resolve: release } = Promise.withResolvers<void>();
+			vision.held = held;
+			runThenReply();
+			const stream = await openEvents(chat.id);
+
+			await send(chat.id, "Fix it and run it", "run");
+			await waitUntil(() => vision.deciding);
+			const first = await send(chat.id, "Then check the receipt", "run");
+			const second = await send(chat.id, "And why did it fail before?", "ask");
+			expect(first.status).toBe(202);
+			expect(first.body).toMatchObject({
+				type: "queued",
+				queued: { text: "Then check the receipt", mode: "run" },
+			});
+			expect(second.body.type).toBe("queued");
+			const during = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+			expect(queuedTexts(during)).toEqual([
+				"Then check the receipt",
+				"And why did it fail before?",
+			]);
+			expect(during.messages.map((message) => message.text)).toEqual(["Fix it and run it"]);
+			expect(agent.turns).toHaveLength(1);
+
+			release();
+			const events = await stream.until(() => stream.events.filter(isReply).length === 2);
+			await stream.close();
+
+			const queues = events.flatMap((event) =>
+				event.type === "queue" ? [event.queue.map((queued) => queued.text)] : [],
+			);
+			expect(queues).toEqual([
+				["Then check the receipt"],
+				["Then check the receipt", "And why did it fail before?"],
+				[],
+			]);
+			expect(agent.turns).toHaveLength(2);
+			const delivered = agent.turns[1] as ChatTurn;
+			expect(delivered.prompt).toMatch(/Then check the receipt[\s\S]*And why did it fail before\?/);
+			// Sent together, the turn takes the narrowest of their modes: Ask, which reads only.
+			expect(delivered.mode).toBe("ask");
+			expect(delivered.tools.map((tool) => tool.name)).not.toContain("run_case_draft");
+			const after = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+			expect(after.queue).toEqual([]);
+			expect(after.messages.map((message) => [message.role, message.text])).toEqual([
+				["user", "Fix it and run it"],
+				["assistant", "Reply 1"],
+				["user", "Then check the receipt"],
+				["user", "And why did it fail before?"],
+				["assistant", "Reply 2"],
+			]);
+		});
+
+		test("a queued message can be removed before it is sent, and stopping the Run keeps the queue", async () => {
+			await connectBrowser();
+			const { chat } = await chatOnSavedCase("Queue kept");
+			const { promise: held, resolve: release } = Promise.withResolvers<void>();
+			vision.held = held;
+			runThenReply();
+			const stream = await openEvents(chat.id);
+
+			await send(chat.id, "Fix it and run it", "run");
+			await waitUntil(() => vision.deciding);
+			await send(chat.id, "Keep this", "run");
+			const dropped = queuedId(await send(chat.id, "Not this", "run"));
+			const removed = await json<AutoChat>(`/auto/chats/${chat.id}/queue/${dropped}`, {
+				method: "DELETE",
+			});
+			expect(removed.status).toBe(200);
+			expect(queuedTexts(removed.body)).toEqual(["Keep this"]);
+			const again = await json(`/auto/chats/${chat.id}/queue/${dropped}`, { method: "DELETE" });
+			expect(again.status).toBe(404);
+
+			const stopped = await routes.request(`/auto/chats/${chat.id}/run/stop`, { method: "POST" });
+			expect(stopped.status).toBe(204);
+			expect(queuedTexts((await json<AutoChat>(`/auto/chats/${chat.id}`)).body)).toEqual([
+				"Keep this",
+			]);
+			release();
+			await stream.until(() => stream.events.filter(isReply).length === 2);
+			await stream.close();
+
+			expect(runCards(stream.events).at(-1)?.status).toBe("cancelled");
+			expect(agent.turns).toHaveLength(2);
+			expect(agent.turns[1]?.prompt).toContain("Keep this");
+			expect(agent.turns[1]?.prompt).not.toContain("Not this");
+			expect(agent.turns[1]?.mode).toBe("run");
+			expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.queue).toEqual([]);
 		});
 
 		test("any change to the draft after its passing Run clears the pass and its Case Script", async () => {

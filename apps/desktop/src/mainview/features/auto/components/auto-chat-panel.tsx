@@ -1,9 +1,16 @@
 import { useReducedMotion } from "@/app/motion/use-reduced-motion";
 import { AutoComposer } from "@/features/auto/components/auto-composer";
-import { AutoMessageBubble, AutoReplyBubble } from "@/features/auto/components/auto-message";
+import {
+	AutoMessageBubble,
+	AutoQueuedBubble,
+	AutoReplyBubble,
+} from "@/features/auto/components/auto-message";
 import { AutoRunCard } from "@/features/auto/components/auto-run-card";
 import { shownAutoChat$ } from "@/features/auto/data/state/shown-chat";
-import { useCreateAutoChat } from "@/features/auto/hooks/usequery/use-auto";
+import {
+	useCreateAutoChat,
+	useRemoveAutoQueuedMessage,
+} from "@/features/auto/hooks/usequery/use-auto";
 import { useFollowLatest } from "@/features/runs/hooks/use-follow-latest";
 import { Button } from "@heroui/react";
 import { useValue } from "@legendapp/state/react";
@@ -11,7 +18,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 /**
  * The left of Auto: the open chat's messages, its reply streaming in, the card of its Run of
- * the Case draft, and the composer.
+ * the Case draft, the messages queued until that Run ends, and the composer.
  */
 export function AutoChatPanel({
 	appId,
@@ -50,10 +57,12 @@ function MessageList({ chatId }: { chatId: string }) {
 	const messages = useValue(shownAutoChat$.chat.messages) ?? [];
 	const reply = useValue(shownAutoChat$.chat.reply) ?? null;
 	const run = useValue(shownAutoChat$.chat.run) ?? null;
+	const queue = useValue(shownAutoChat$.chat.queue) ?? [];
+	const removeQueued = useRemoveAutoQueuedMessage();
 	const loaded = loadedId === chatId;
 	const follow = useFollowLatest(
 		loaded,
-		`${messages.length}:${reply?.text.length ?? -1}:${reply?.toolCalls.length ?? 0}:${run?.runId ?? ""}`,
+		`${messages.length}:${reply?.text.length ?? -1}:${reply?.toolCalls.length ?? 0}:${run?.runId ?? ""}:${queue.length}`,
 		!reducedMotion,
 	);
 
@@ -85,6 +94,19 @@ function MessageList({ chatId }: { chatId: string }) {
 				: null}
 			{loaded && reply ? <AutoReplyBubble reply={reply} /> : null}
 			{loaded && run ? <AutoRunCard run={run} /> : null}
+			{loaded
+				? queue.map((queued) => (
+						<AutoQueuedBubble
+							key={queued.id}
+							onRemove={
+								removeQueued.isPending
+									? null
+									: () => removeQueued.mutate({ chatId, queuedId: queued.id })
+							}
+							queued={queued}
+						/>
+					))
+				: null}
 		</div>
 	);
 }

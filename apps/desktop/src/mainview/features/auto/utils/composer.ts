@@ -19,6 +19,11 @@ export const MODE_OPTIONS: ModeOption[] = [
 	},
 ];
 
+/** The composer's option for `mode`. */
+export function modeOption(mode: AutoChatMode): ModeOption | undefined {
+	return MODE_OPTIONS.find((option) => option.id === mode);
+}
+
 /** Enter sends; Shift+Enter is a new line, and Enter that confirms an IME composition is neither. */
 export function isSendKey(event: {
 	key: string;
@@ -28,7 +33,29 @@ export function isSendKey(event: {
 	return event.key === "Enter" && !event.shiftKey && !event.isComposing;
 }
 
-/** Send is off with nothing to say, while the last message is sending, and while a reply is written. */
-export function canSend(input: { text: string; sending: boolean; replying: boolean }): boolean {
-	return input.text.trim().length > 0 && !input.sending && !input.replying;
+/**
+ * Send is off with nothing to say, while the last message is sending, and while a reply is
+ * written, unless the message is `queueing` (the chat's Run is live, or messages already wait).
+ */
+export function canSend(input: {
+	text: string;
+	sending: boolean;
+	replying: boolean;
+	queueing: boolean;
+}): boolean {
+	return input.text.trim().length > 0 && !input.sending && (!input.replying || input.queueing);
+}
+
+/**
+ * The line under the composer: what the mode does, or that Enter queues while the Run is live
+ * (and Esc stops it), or while messages still wait for the agent's reply about it.
+ */
+export function composerHint(input: {
+	mode: AutoChatMode;
+	runLive: boolean;
+	queueing: boolean;
+}): string {
+	if (input.runLive) return "Enter queues your message until the run finishes · Esc to stop";
+	if (input.queueing) return "Enter queues your message behind the ones waiting";
+	return `${modeOption(input.mode)?.hint} Explore is coming soon.`;
 }

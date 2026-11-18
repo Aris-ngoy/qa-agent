@@ -43,6 +43,11 @@ export function currentChatRun(chatId: string): AutoRun | null {
 	return chatRuns.get(chatId) ?? null;
 }
 
+/** Whether the chat is starting or following a Run of its draft. */
+export function chatRunInProgress(chatId: string): boolean {
+	return runningChats.has(chatId);
+}
+
 /** Stop the chat's Run in progress through the Run's own cancel. False when none is. */
 export async function stopChatRun(chatId: string): Promise<boolean> {
 	const run = chatRuns.get(chatId);

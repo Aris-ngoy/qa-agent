@@ -2,8 +2,10 @@ import { rm } from "node:fs/promises";
 import type {
 	AutoChat,
 	AutoChatEvent,
+	AutoChatMode,
 	AutoChatSummary,
 	AutoMessage,
+	AutoQueuedMessage,
 	AutoReply,
 	AutoRunControl,
 	AutoToolCall,
@@ -11,6 +13,7 @@ import type {
 	CatalogCase,
 	CreateAutoChatRequest,
 	SendAutoMessageRequest,
+	SendAutoMessageResponse,
 	UpdateAutoChatRequest,
 } from "@yoqa/runner-client";
 import { autoToolCallSchema, caseDraftSchema } from "@yoqa/runner-client";
@@ -29,7 +32,13 @@ import { getCatalogDb } from "../catalog/db";
 import { caseEditedSince, removeStep } from "./case-draft";
 import type { ChatAgent, ChatToolOutput } from "./chat-agent";
 import { autoChatDir } from "./chat-dir";
-import { controlChatRun, currentChatRun, runChatDraft, stopChatRun } from "./chat-runs";
+import {
+	chatRunInProgress,
+	controlChatRun,
+	currentChatRun,
+	runChatDraft,
+	stopChatRun,
+} from "./chat-runs";
 import { autoCaseDrafts, autoChats, autoMessages } from "./schema";
 import { type ChatDraftRun, MODE_LABEL, callChatTool, chatTools } from "./tools";
 
@@ -59,6 +68,8 @@ const NEW_CHAT_TITLE = "New chat";
 /** The reason a saved step removed with ✕ in the Test tab shows. */
 const REMOVED_IN_TEST_TAB = "Removed in the Test tab";
 const TITLE_LENGTH = 60;
+/** The modes from the narrowest (fewest tools) to the widest. */
+const MODES_NARROWEST_FIRST: AutoChatMode[] = ["ask", "run", "explore"];
 
 type ChatRow = typeof autoChats.$inferSelect;
 type MessageRow = typeof autoMessages.$inferSelect;
@@ -71,6 +82,8 @@ type ChatListener = { event: (event: AutoChatEvent) => void; closed: () => void 
 
 const activeTurns = new Map<string, ActiveTurn>();
 const listeners = new Map<string, Set<ChatListener>>();
+/** Each chat's messages queued until its Run ends, in order; a chat with none has no entry. */
+const queues = new Map<string, AutoQueuedMessage[]>();
 
 function newId(prefix: string): string {
 	return `${prefix}_${crypto.randomUUID()}`;
@@ -155,6 +168,7 @@ export async function getChat(chatId: string): Promise<AutoChat> {
 		draft: await readDraft(chatId, summary.caseId),
 		run: currentChatRun(chatId),
 		previousVersion: summary.caseId ? await getCasePreviousVersion(summary.caseId) : null,
+		queue: queues.get(chatId) ?? [],
 	};
 }
 
@@ -419,6 +433,7 @@ export async function updateChat(chatId: string, input: UpdateAutoChatRequest): 
 export async function deleteChat(chatId: string): Promise<void> {
 	await chatRow(chatId);
 	activeTurns.get(chatId)?.abort.abort();
+	queues.delete(chatId);
 	await getCatalogDb().delete(autoChats).where(eq(autoChats.id, chatId));
 	await rm(autoChatDir(chatId), { recursive: true, force: true });
 	for (const listener of listeners.get(chatId) ?? []) listener.closed();
@@ -471,59 +486,161 @@ async function systemPrompt(chat: ChatRow): Promise<string> {
 		"Each message starts with its mode. In Ask mode you only read the Test Case, its Runs and its Case draft: you cannot change anything or touch the device. When asked to, say that Run mode will do it.",
 		"In Run mode you may also write the Case draft: the steps you propose for the chat's Test Case, each with instructions and an expected result, and each change with a short reason. You never edit the saved Test Case: the user applies the draft.",
 		"In Run mode you may also run the whole draft on the connected device with run_case_draft. The Yoqa agent drives the device; you get each step back as text. The user can apply the draft only after a Run of it passes, and any change to the draft means it must pass again.",
+		"Messages the user sends during a Run wait until it ends, then come to you together in one turn, in the narrowest of their modes.",
 		"Be brief. Name the step numbers and Run ids you read; never state a result you have not read.",
 	].join("\n");
 }
 
 /**
  * Send a message to a chat: saved and shown at once, answered by `agent` in the background,
- * the reply streaming on the chat's events. Ask and Run work for now; one reply at a time.
+ * the reply streaming on the chat's events. While the chat's Run is in progress, or messages
+ * already wait for it, it is queued instead. Ask and Run work for now; one reply at a time.
  */
 export async function sendMessage(
 	agent: ChatAgent,
 	chatId: string,
 	input: SendAutoMessageRequest,
-): Promise<AutoMessage> {
+): Promise<SendAutoMessageResponse> {
 	const chat = await chatRow(chatId);
 	if (input.mode === "explore") {
 		throw new AutoValidationError(
 			`${MODE_LABEL[input.mode]} mode is not here yet: Auto answers in Ask and Run modes for now.`,
 		);
 	}
+	const status = await agent.status();
+	if (!status.signedIn) {
+		throw new AutoConflictError(`Auto needs the Claude Provider signed in. ${status.detail}`);
+	}
+	if (chatRunInProgress(chatId) || queues.has(chatId)) {
+		const queued = {
+			id: newId("queued"),
+			mode: input.mode,
+			text: input.text,
+			createdAt: Date.now(),
+		};
+		setQueue(chatId, [...(queues.get(chatId) ?? []), queued]);
+		// Nothing left to wait for (the Run and its reply ended meanwhile): it goes now.
+		sendQueue(agent, chatId);
+		return { type: "queued", queued };
+	}
 	if (activeTurns.has(chatId)) {
 		throw new AutoConflictError("A reply is still being written. Send again once it ends.");
 	}
-	const turn: ActiveTurn = { reply: { text: "", toolCalls: [] }, abort: new AbortController() };
-	activeTurns.set(chatId, turn);
+	const turn = startTurn(chatId);
 	try {
-		const status = await agent.status();
-		if (!status.signedIn) {
-			throw new AutoConflictError(`Auto needs the Claude Provider signed in. ${status.detail}`);
-		}
-		const message = await saveMessage(chatId, {
-			role: "user",
-			mode: input.mode,
-			text: input.text,
-			toolCalls: [],
-			error: null,
-		});
+		const message = await saveUserMessage(chatId, input);
 		await touchChat(chatId, chat.title === NEW_CHAT_TITLE ? { title: titleFrom(input.text) } : {});
-		void answerTurn(agent, chatId, message, turn);
-		return message;
+		void answerTurn(agent, chatId, [message], turn);
+		return { type: "sent", message };
 	} catch (error) {
 		activeTurns.delete(chatId);
 		throw error;
 	}
 }
 
-/** Run the chat agent on one message, publish what it writes and calls, and save its reply. */
+/** A reply starts being written: until it ends, no other turn of the chat may start. */
+function startTurn(chatId: string): ActiveTurn {
+	const turn: ActiveTurn = { reply: { text: "", toolCalls: [] }, abort: new AbortController() };
+	activeTurns.set(chatId, turn);
+	return turn;
+}
+
+function saveUserMessage(chatId: string, input: SendAutoMessageRequest): Promise<AutoMessage> {
+	return saveMessage(chatId, {
+		role: "user",
+		mode: input.mode,
+		text: input.text,
+		toolCalls: [],
+		error: null,
+	});
+}
+
+/** Set the chat's queue and show it. */
+function setQueue(chatId: string, queue: AutoQueuedMessage[]): void {
+	if (queue.length > 0) queues.set(chatId, queue);
+	else queues.delete(chatId);
+	publish(chatId, { type: "queue", queue });
+}
+
+/** Take back one queued message before it is sent. */
+export async function removeQueuedMessage(chatId: string, queuedId: string): Promise<AutoChat> {
+	await chatRow(chatId);
+	const queue = queues.get(chatId) ?? [];
+	if (!queue.some((queued) => queued.id === queuedId)) {
+		throw new AutoNotFoundError("That message is not queued: it was sent or removed.");
+	}
+	setQueue(
+		chatId,
+		queue.filter((queued) => queued.id !== queuedId),
+	);
+	return getChat(chatId);
+}
+
+/**
+ * Once the chat's Run and the reply it is part of have both ended, send every queued message
+ * to `agent` together, saved in order, as one turn. Stopping the Run only ends it sooner.
+ */
+function sendQueue(agent: ChatAgent, chatId: string): void {
+	const queue = queues.get(chatId);
+	if (!queue || activeTurns.has(chatId) || chatRunInProgress(chatId)) return;
+	setQueue(chatId, []);
+	const turn = startTurn(chatId);
+	void (async () => {
+		const messages: AutoMessage[] = [];
+		try {
+			for (const queued of queue) messages.push(await saveUserMessage(chatId, queued));
+			await touchChat(chatId, {});
+		} catch (error) {
+			console.error(`[auto] sending the queue of ${chatId} failed`, error);
+			// Those not saved go back to the front of the queue, unless the chat was deleted.
+			if (!turn.abort.signal.aborted) {
+				setQueue(chatId, [...queue.slice(messages.length), ...(queues.get(chatId) ?? [])]);
+			}
+			if (messages.length === 0) {
+				activeTurns.delete(chatId);
+				return;
+			}
+		}
+		await answerTurn(agent, chatId, messages, turn);
+	})();
+}
+
+/**
+ * The mode of a turn of several messages: the narrowest of theirs, so none gets more tools
+ * than its own mode allows.
+ */
+function turnMode(messages: AutoMessage[]): AutoChatMode {
+	const modes = messages.map((message) => message.mode ?? "ask");
+	return MODES_NARROWEST_FIRST.find((mode) => modes.includes(mode)) ?? "ask";
+}
+
+/**
+ * What the agent is sent: the message after its mode, or the queued messages together,
+ * numbered in order, each naming its own mode where it differs from the turn's.
+ */
+function turnPrompt(messages: AutoMessage[], mode: AutoChatMode): string {
+	const label = `[${MODE_LABEL[mode]} mode]`;
+	const [only] = messages;
+	if (messages.length === 1 && only) return `${label} ${only.text}`;
+	const lines = messages.map((message, index) => {
+		const own =
+			message.mode && message.mode !== mode ? ` (sent in ${MODE_LABEL[message.mode]} mode)` : "";
+		return `${index + 1}.${own} ${message.text}`;
+	});
+	return [`${label} The user sent these messages during the Run, in order:`, ...lines].join("\n");
+}
+
+/**
+ * Run the chat agent on one turn of `messages` (one, or the queue), publish what it writes
+ * and calls, and save its reply; then send what was queued meanwhile.
+ */
 async function answerTurn(
 	agent: ChatAgent,
 	chatId: string,
-	message: AutoMessage,
+	messages: AutoMessage[],
 	turn: ActiveTurn,
 ): Promise<void> {
-	const mode = message.mode ?? "ask";
+	const mode = turnMode(messages);
 	let error: string | null = null;
 	try {
 		const chat = await chatRow(chatId);
@@ -533,7 +650,11 @@ async function answerTurn(
 			setCase: (caseId) => setChatCase(chatId, caseId),
 			draft: async (caseId) => readDraft(chatId, caseId),
 			saveDraft: (draft) => saveDraft(chatId, draft),
-			runDraft: (catalogCase, draft) => runDraft(chatId, catalogCase, draft, turn.abort.signal),
+			// A Run that outlives its turn (the agent failed while it ran) sends the queue as it ends.
+			runDraft: (catalogCase, draft) =>
+				runDraft(chatId, catalogCase, draft, turn.abort.signal).finally(() =>
+					sendQueue(agent, chatId),
+				),
 		});
 		const callTool = async (name: string, input: unknown): Promise<ChatToolOutput> => {
 			const call: AutoToolCall = { id: newId("call"), name, input, output: null, isError: false };
@@ -552,7 +673,7 @@ async function answerTurn(
 		};
 		const events = agent.runTurn({
 			chatId,
-			prompt: `[${MODE_LABEL[mode]} mode] ${message.text}`,
+			prompt: turnPrompt(messages, mode),
 			mode,
 			model: chat.model,
 			agentSessionId: chat.sdkSessionId,
@@ -590,5 +711,6 @@ async function answerTurn(
 	} finally {
 		// Only now may the next message start: its prompt comes after this reply.
 		activeTurns.delete(chatId);
+		sendQueue(agent, chatId);
 	}
 }

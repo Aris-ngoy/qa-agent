@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { MODE_OPTIONS, canSend, isSendKey } from "@/features/auto/utils/composer";
+import { MODE_OPTIONS, canSend, composerHint, isSendKey } from "@/features/auto/utils/composer";
 
 describe("isSendKey", () => {
 	test("Enter sends", () => {
@@ -15,13 +15,32 @@ describe("isSendKey", () => {
 
 describe("canSend", () => {
 	test("needs some text", () => {
-		expect(canSend({ text: "  ", sending: false, replying: false })).toBe(false);
-		expect(canSend({ text: "Why?", sending: false, replying: false })).toBe(true);
+		expect(canSend({ text: "  ", sending: false, replying: false, queueing: false })).toBe(false);
+		expect(canSend({ text: "Why?", sending: false, replying: false, queueing: false })).toBe(true);
 	});
 
 	test("waits while sending and while a reply is being written", () => {
-		expect(canSend({ text: "Why?", sending: true, replying: false })).toBe(false);
-		expect(canSend({ text: "Why?", sending: false, replying: true })).toBe(false);
+		expect(canSend({ text: "Why?", sending: true, replying: false, queueing: false })).toBe(false);
+		expect(canSend({ text: "Why?", sending: false, replying: true, queueing: false })).toBe(false);
+	});
+
+	test("a message that queues (the Run is live) goes while the reply is being written", () => {
+		expect(canSend({ text: "Why?", sending: false, replying: true, queueing: true })).toBe(true);
+		expect(canSend({ text: "  ", sending: false, replying: true, queueing: true })).toBe(false);
+	});
+});
+
+describe("composerHint", () => {
+	test("says what the mode does, or that Enter queues while the Run is live or messages wait", () => {
+		expect(composerHint({ mode: "ask", runLive: false, queueing: false })).toBe(
+			"Reads the Test Case and its Runs only. Explore is coming soon.",
+		);
+		expect(composerHint({ mode: "run", runLive: true, queueing: true })).toBe(
+			"Enter queues your message until the run finishes · Esc to stop",
+		);
+		expect(composerHint({ mode: "run", runLive: false, queueing: true })).toBe(
+			"Enter queues your message behind the ones waiting",
+		);
 	});
 });
 
