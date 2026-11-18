@@ -570,6 +570,222 @@ describe("formatRunReportGithubSummary", () => {
 		expect(markdown).toContain("| #1 Login | Cancelled | 0 |");
 		expect(markdown).not.toContain("data:image");
 	});
+
+	/** sampleDoc and its parts: `#1 Login` (Tap ✅, Tap login ❌) and `#2 Home` (Wait ✅). */
+	function sampleParts() {
+		const doc = sampleDoc();
+		const [login, home] = doc.tests;
+		const [tap, tapLogin] = login?.steps ?? [];
+		const wait = home?.steps[0];
+		if (!login || !home || !tap || !tapLogin || !wait) {
+			throw new Error("sample doc is missing a step");
+		}
+		return { doc, login, home, tap, tapLogin, wait };
+	}
+
+	test("lists every Test Case's steps in its own block", () => {
+		const markdown = formatRunReportGithubSummary(sampleDoc());
+		expect(markdown).toContain(
+			[
+				"<summary>#1 Login — Failed</summary>",
+				"",
+				"| # | Step | Result | Time | Command |",
+				"| --- | --- | --- | --- | --- |",
+				"| 1 | Tap | ✅ | 12ms | `yoqa action tap --label 'Allow'` |",
+				"| 2 | Tap login | ❌ | 40ms | `yoqa action tap --label 'Login'` |",
+			].join("\n"),
+		);
+		expect(markdown).toContain(
+			[
+				"<summary>#2 Home — Passed</summary>",
+				"",
+				"| # | Step | Result | Time | Command |",
+				"| --- | --- | --- | --- | --- |",
+				"| 1 | Wait | ✅ | 8ms | `sleep 1` |",
+				"",
+				"</details>",
+			].join("\n"),
+		);
+	});
+
+	test("opens only errored and cancelled Test Cases' blocks", () => {
+		const { doc, home } = sampleParts();
+		const markdown = formatRunReportGithubSummary({
+			...doc,
+			tests: [
+				...doc.tests,
+				{ ...home, id: "t3", title: "#3 Settings", status: "cancelled", steps: [] },
+			],
+		});
+		expect(markdown).toContain("<details open>\n<summary>#1 Login — Failed</summary>");
+		expect(markdown).toContain("<details>\n<summary>#2 Home — Passed</summary>");
+		expect(markdown).toContain(
+			"<details open>\n<summary>#3 Settings — Cancelled</summary>\n\n_No steps recorded_\n\n</details>",
+		);
+	});
+
+	test("explains a failing step under its table, with detail only when it differs", () => {
+		const { doc, login, tapLogin } = sampleParts();
+		const markdown = formatRunReportGithubSummary({
+			...doc,
+			tests: [
+				{
+					...login,
+					steps: [
+						...login.steps,
+						{
+							...tapLogin,
+							id: "s4",
+							index: 3,
+							latencyMs: null,
+							command: null,
+							reason: "Timed out",
+							detail: "Timed out",
+						},
+					],
+				},
+			],
+		});
+		expect(markdown).toContain(
+			[
+				"| 3 | Tap login | ❌ | — | — |",
+				"",
+				"- Step 2: Login button not found — No matching element",
+				"- Step 3: Timed out",
+				"",
+				"</details>",
+			].join("\n"),
+		);
+	});
+
+	test("leaves thoughts, phases and screenshots to the HTML Run report", () => {
+		const { doc, login, tapLogin } = sampleParts();
+		const markdown = formatRunReportGithubSummary({
+			...doc,
+			tests: [
+				{
+					...login,
+					steps: [
+						{
+							...tapLogin,
+							phases: {
+								captureMs: 101,
+								screenMs: 102,
+								prepareMs: 103,
+								decideMs: 104,
+								actionMs: 105,
+								settleMs: 106,
+								decideRetries: 0,
+							},
+						},
+					],
+				},
+			],
+		});
+		expect(markdown).not.toContain("Looking around");
+		expect(markdown).not.toContain("capture 101ms");
+		expect(markdown).not.toContain("data:image");
+		expect(markdown).not.toContain("iVBORw0KGgo=");
+	});
+
+	test("links the Run report in the footer when given its URL", () => {
+		const markdown = formatRunReportGithubSummary(sampleDoc(), {
+			reportUrl: "https://github.com/o/r/actions/runs/1/artifacts/2",
+		});
+		expect(markdown).toContain(
+			"[Full Run report with screenshots](https://github.com/o/r/actions/runs/1/artifacts/2)",
+		);
+		expect(markdown).not.toContain("Download the `yoqa-report` artifact");
+	});
+
+	/** sampleDoc with the passing `#2 Home` Test Case grown to `count` steps named `summary`. */
+	function docWithLongPassingCase(count: number, summary: string): RunReportDocument {
+		const { doc, login, home, wait } = sampleParts();
+		return {
+			...doc,
+			tests: [
+				login,
+				{
+					...home,
+					steps: Array.from({ length: count }, (_, i) => ({
+						...wait,
+						id: `h${i}`,
+						index: i + 1,
+						summary,
+					})),
+				},
+			],
+		};
+	}
+
+	const trimNote =
+		"_Passing Test Cases' steps were trimmed to fit the Job Summary; the Run report has every step._";
+
+	test("drops passing Test Cases' blocks when the summary is over maxBytes", () => {
+		const markdown = formatRunReportGithubSummary(
+			docWithLongPassingCase(40, "Wait for the home screen to settle"),
+			{ maxBytes: 3_000 },
+		);
+		expect(markdown).toContain("<summary>#1 Login — Failed</summary>");
+		expect(markdown).not.toContain("<summary>#2 Home — Passed</summary>");
+		expect(markdown).toContain("| 2 | #2 Home | Passed | 40 |");
+		expect(markdown).toContain(trimNote);
+		expect(new TextEncoder().encode(markdown).length).toBeLessThanOrEqual(3_000);
+	});
+
+	test("falls back to the compact form when the trimmed summary is still over maxBytes", () => {
+		const markdown = formatRunReportGithubSummary(
+			docWithLongPassingCase(40, "Wait for the home screen to settle"),
+			{ maxBytes: 1_000 },
+		);
+		expect(markdown).not.toContain("<details");
+		expect(markdown).toContain("| 1 | #1 Login | Failed | 2 |");
+		expect(markdown).toContain("### Failed steps");
+		expect(markdown).toContain("Reason: Login button not found");
+		expect(markdown).toContain(trimNote);
+	});
+
+	test("measures maxBytes in UTF-8 bytes, not characters", () => {
+		// 40 steps of 30 three-byte characters: ~4.4k characters, ~6.8k bytes.
+		const doc = docWithLongPassingCase(40, "確".repeat(30));
+		const full = formatRunReportGithubSummary(doc);
+		expect(full.length).toBeLessThan(5_000);
+		expect(new TextEncoder().encode(full).length).toBeGreaterThan(5_000);
+
+		const markdown = formatRunReportGithubSummary(doc, { maxBytes: 5_000 });
+		expect(markdown).not.toContain("<summary>#2 Home — Passed</summary>");
+		expect(markdown).toContain(trimNote);
+	});
+
+	test("renders everything without a trim note when under maxBytes", () => {
+		const markdown = formatRunReportGithubSummary(
+			docWithLongPassingCase(40, "Wait for the home screen to settle"),
+		);
+		expect(markdown).toContain("<summary>#2 Home — Passed</summary>");
+		expect(markdown).not.toContain(trimNote);
+	});
+
+	test("escapes pipes and newlines so a step cannot break its block", () => {
+		const { doc, login, tap } = sampleParts();
+		const markdown = formatRunReportGithubSummary({
+			...doc,
+			tests: [
+				{
+					...login,
+					title: "Login <admin>\n\nflow",
+					steps: [
+						{
+							...tap,
+							summary: "Type: a|b\nc",
+							command: "echo 'a|b'",
+						},
+					],
+				},
+			],
+		});
+		expect(markdown).toContain("<summary>Login &lt;admin&gt; flow — Failed</summary>");
+		expect(markdown).toContain("| 1 | Type: a\\|b c | ✅ | 12ms | `echo 'a\\|b'` |");
+	});
 });
 
 describe("formatRunReportHtml and Markdown", () => {
