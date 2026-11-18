@@ -494,6 +494,11 @@ function statusAccent(status: RunReportStatus): { bg: string; fg: string; label:
 	return { bg: "#e5e7eb", fg: "#374151", label: "Cancelled" };
 }
 
+/** A step's detail, or nothing when it only repeats the reason. */
+function distinctDetail(step: Pick<RunReportStep, "detail" | "reason">): string | null {
+	return step.detail && step.detail !== step.reason ? step.detail : null;
+}
+
 function pngDataUri(base64: string): string {
 	return `data:image/png;base64,${base64}`;
 }
@@ -539,10 +544,8 @@ export function formatRunReportHtml(doc: RunReportDocument): string {
 					const thoughtsBlock = step.thoughts
 						? `<details class="thoughts"><summary>AI thoughts</summary><p>${escapeHtml(step.thoughts)}</p></details>`
 						: "";
-					const detailBlock =
-						step.detail && step.detail !== step.reason
-							? `<p class="detail">${escapeHtml(step.detail)}</p>`
-							: "";
+					const detail = distinctDetail(step);
+					const detailBlock = detail ? `<p class="detail">${escapeHtml(detail)}</p>` : "";
 					const shot = step.screenshotBase64
 						? `<img class="shot" alt="Step ${step.index} screenshot" src="${pngDataUri(step.screenshotBase64)}" />`
 						: `<p class="muted">No screenshot</p>`;
@@ -654,6 +657,18 @@ function escapeMd(value: string): string {
 	return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 
+/**
+ * Inline code that survives backticks in `value`: a fence longer than its longest
+ * backtick run, padded with spaces that CommonMark strips (pipes and newlines escaped).
+ */
+function mdCodeSpan(value: string): string {
+	const text = escapeMd(value);
+	const longestRun = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+	if (longestRun === 0) return `\`${text}\``;
+	const fence = "`".repeat(longestRun + 1);
+	return `${fence} ${text} ${fence}`;
+}
+
 export function formatRunReportMarkdown(doc: RunReportDocument): string {
 	const accent = statusAccent(doc.status);
 	const lines: string[] = [
@@ -686,15 +701,7 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 	}
 
 	doc.tests.forEach((test, testIndex) => {
-		const testLabel =
-			test.status === "passed"
-				? "Passed"
-				: test.status === "errored"
-					? "Failed"
-					: test.status === "cancelled"
-						? "Cancelled"
-						: test.status;
-		lines.push(`## ${testIndex + 1}. ${test.title} (${testLabel})`, "");
+		lines.push(`## ${testIndex + 1}. ${test.title} (${testStatusLabel(test.status)})`, "");
 		if (test.executionMode) lines.push(`Mode: \`${test.executionMode}\``, "");
 		if (test.error) lines.push(`**Error:** ${test.error}`, "");
 		if (test.steps.length === 0) {
@@ -709,7 +716,8 @@ export function formatRunReportMarkdown(doc: RunReportDocument): string {
 			if (step.latencyMs != null) lines.push(`- Latency: ${step.latencyMs}ms`);
 			if (step.phases) lines.push(`- Phases: ${formatStepPhases(step.phases)}`);
 			if (step.reason) lines.push(`- Reason: ${step.reason}`);
-			if (step.detail && step.detail !== step.reason) lines.push(`- Detail: ${step.detail}`);
+			const detail = distinctDetail(step);
+			if (detail) lines.push(`- Detail: ${detail}`);
 			if (step.thoughts) {
 				lines.push(
 					"",
@@ -743,7 +751,15 @@ export type RunReportGithubSummaryOptions = {
 const GITHUB_SUMMARY_MAX_BYTES = 900 * 1024;
 
 /** Which Test Cases get a step block: all, only errored/cancelled, or none. */
-type GithubSummaryDetail = "full" | "trimmed" | "compact";
+type GithubSummaryDetail = "every-block" | "failing-blocks" | "no-blocks";
+
+/** The note each trimmed render carries, saying what it dropped. */
+const GITHUB_SUMMARY_TRIM_NOTE: Record<Exclude<GithubSummaryDetail, "every-block">, string> = {
+	"failing-blocks":
+		"_Passing Test Cases' steps were trimmed to fit the Job Summary; the Run report has every step._",
+	"no-blocks":
+		"_Every Test Case's steps were trimmed to fit the Job Summary; the Run report has every step._",
+};
 
 /**
  * Markdown for a GitHub Job Summary: every Test Case's steps, without screenshots,
@@ -756,8 +772,12 @@ export function formatRunReportGithubSummary(
 ): string {
 	const maxBytes = options.maxBytes ?? GITHUB_SUMMARY_MAX_BYTES;
 	const encoder = new TextEncoder();
+	// With no passing Test Case, dropping passing blocks renders the full summary again.
+	const details: GithubSummaryDetail[] = doc.tests.some((test) => test.status === "passed")
+		? ["every-block", "failing-blocks", "no-blocks"]
+		: ["every-block", "no-blocks"];
 	let markdown = "";
-	for (const detail of ["full", "trimmed", "compact"] as const) {
+	for (const detail of details) {
 		markdown = renderGithubSummary(doc, options.reportUrl, detail);
 		if (encoder.encode(markdown).length <= maxBytes) break;
 	}
@@ -806,16 +826,8 @@ function renderGithubSummary(
 	if (doc.tests.length > 0) {
 		lines.push("### Tests", "", "| # | Test | Status | Steps |", "| --- | --- | --- | --- |");
 		doc.tests.forEach((test, testIndex) => {
-			const testLabel =
-				test.status === "passed"
-					? "Passed"
-					: test.status === "errored"
-						? "Failed"
-						: test.status === "cancelled"
-							? "Cancelled"
-							: test.status;
 			lines.push(
-				`| ${testIndex + 1} | ${escapeMd(test.title)} | ${testLabel} | ${test.steps.length} |`,
+				`| ${testIndex + 1} | ${escapeMd(test.title)} | ${testStatusLabel(test.status)} | ${test.steps.length} |`,
 			);
 		});
 		lines.push("");
@@ -825,26 +837,22 @@ function renderGithubSummary(
 		lines.push("### Failed steps", "");
 		for (const { test, step } of failedSteps) {
 			lines.push(`- **${escapeMd(test.title)}** · step ${step.index}: ${escapeMd(step.summary)}`);
-			if (step.command) lines.push(`  - Command: \`${escapeMd(step.command)}\``);
+			if (step.command) lines.push(`  - Command: ${mdCodeSpan(step.command)}`);
 			if (step.reason) lines.push(`  - Reason: ${escapeMd(step.reason)}`);
-			if (step.detail && step.detail !== step.reason) {
-				lines.push(`  - Detail: ${escapeMd(step.detail)}`);
-			}
+			const detail = distinctDetail(step);
+			if (detail) lines.push(`  - Detail: ${escapeMd(detail)}`);
 		}
 		lines.push("");
 	}
 
 	for (const test of doc.tests) {
-		if (detail === "compact" || (detail === "trimmed" && test.status === "passed")) continue;
+		if (detail === "no-blocks" || (detail === "failing-blocks" && test.status === "passed")) {
+			continue;
+		}
 		lines.push(...githubSummaryTestBlock(test));
 	}
 
-	if (detail !== "full") {
-		lines.push(
-			"_Passing Test Cases' steps were trimmed to fit the Job Summary; the Run report has every step._",
-			"",
-		);
-	}
+	if (detail !== "every-block") lines.push(GITHUB_SUMMARY_TRIM_NOTE[detail], "");
 
 	lines.push(
 		reportUrl
@@ -879,15 +887,15 @@ function githubSummaryTestBlock(test: RunReportTest): string[] {
 	lines.push("| # | Step | Result | Time | Command |", "| --- | --- | --- | --- | --- |");
 	for (const step of test.steps) {
 		const time = step.latencyMs != null ? `${step.latencyMs}ms` : "—";
-		const command = step.command ? `\`${escapeMd(step.command)}\`` : "—";
+		const command = step.command ? mdCodeSpan(step.command) : "—";
 		lines.push(
 			`| ${step.index} | ${escapeMd(step.summary)} | ${step.ok ? "✅" : "❌"} | ${time} | ${command} |`,
 		);
 	}
 	const failures = test.steps.flatMap((step) => {
 		if (step.ok) return [];
-		const parts = [step.reason, step.detail !== step.reason ? step.detail : null].filter(
-			(part): part is string => Boolean(part),
+		const parts = [step.reason, distinctDetail(step)].filter((part): part is string =>
+			Boolean(part),
 		);
 		return parts.length > 0 ? [`- Step ${step.index}: ${parts.map(escapeMd).join(" — ")}`] : [];
 	});

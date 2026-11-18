@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
 	type Run,
+	type RunReportDocument,
 	type RunnerClient,
 	WaitForRunTimeoutError,
 	buildRunReportFromCatalogRun,
@@ -32,8 +33,8 @@ export type ReportCommandOptions = {
 	failOn?: string;
 	reportUrl?: string;
 	/**
-	 * Append only the Job Summary: no screenshot fetches, no report file, no GitHub outputs.
-	 * Implies `githubSummary`.
+	 * Append only the Job Summary (`appendCatalogRunJobSummary`): no screenshot fetches, no
+	 * report file, no GitHub outputs. Implies `githubSummary`.
 	 */
 	summaryOnly?: boolean;
 };
@@ -93,8 +94,7 @@ export async function resolveReportRunId(
 }
 
 export type ExportCatalogRunReportResult = {
-	/** `null` with `summaryOnly`, which writes no report file. */
-	outputPath: string | null;
+	outputPath: string;
 	status: string;
 	runId: string;
 	stepCount: number;
@@ -164,42 +164,24 @@ async function writeRunGithubOutput(
 	await append(outputPath, formatGithubOutputLines(fields));
 }
 
-export async function exportCatalogRunReport(
+type LoadedCatalogRunReport = { run: Run; doc: RunReportDocument; stepCount: number };
+
+/** Load the finished Run and build its Run report, with step screenshots only when asked. */
+async function loadCatalogRunReport(
 	client: RunnerClient,
 	runId: string,
 	options: ReportCommandOptions,
-	deps: ExportCatalogRunReportDeps = {},
-): Promise<ExportCatalogRunReportResult> {
-	const format = normalizeReportFormat(options.format);
-	const failOn = parseFailOn(options.failOn);
-	const env = deps.env ?? process.env;
-	const log = deps.log ?? (() => undefined);
-	const write = deps.writeFile ?? writeFile;
-	const makeDir = deps.mkdir ?? mkdir;
-	const append = deps.appendGithubFile ?? appendGithubFile;
+	deps: ExportCatalogRunReportDeps,
+	withScreenshots: boolean,
+): Promise<LoadedCatalogRunReport> {
 	const fetchImpl = deps.fetchImpl ?? fetch;
-
-	const summaryOnly = options.summaryOnly === true;
-	const run = await loadFinishedRun(
-		client,
-		runId,
-		summaryOnly ? { ...options, githubOutput: false } : options,
-		deps,
-	);
-	const summaryPath = resolveGithubWritePath(
-		summaryOnly || options.githubSummary,
-		env.GITHUB_STEP_SUMMARY,
-		env,
-	);
-	if (summaryOnly && !summaryPath) {
-		throw new Error("--summary-only needs $GITHUB_STEP_SUMMARY to be set");
-	}
+	const run = await loadFinishedRun(client, runId, options, deps);
 
 	const screenshotsByStepId: Record<string, string> = {};
 	const steps = run.tests.flatMap((test) => test.steps ?? []);
 	await Promise.all(
 		steps.map(async (step) => {
-			if (summaryOnly || !step.screenshotUri) return;
+			if (!withScreenshots || !step.screenshotUri) return;
 			const response = await fetchImpl(client.getRunStepScreenshotUrl(run.id, step.id));
 			if (!response.ok) return;
 			const bytes = new Uint8Array(await response.arrayBuffer());
@@ -235,37 +217,88 @@ export async function exportCatalogRunReport(
 		},
 		screenshotsByStepId,
 	);
+	return { run, doc, stepCount: steps.length };
+}
 
-	const summary = summaryPath
-		? formatRunReportGithubSummary(doc, { reportUrl: options.reportUrl?.trim() || undefined })
-		: null;
-	const result = {
-		status: doc.status,
-		runId: run.id,
-		stepCount: steps.length,
-		shouldFail: shouldFailOnRunStatus(failOn, doc.status),
-	};
+function formatJobSummary(doc: RunReportDocument, options: ReportCommandOptions): string {
+	return formatRunReportGithubSummary(doc, { reportUrl: options.reportUrl?.trim() || undefined });
+}
 
-	if (summaryOnly && summaryPath && summary !== null) {
-		await append(summaryPath, summary);
-		await log(`appended Job Summary to ${summaryPath} (${doc.status}, ${steps.length} steps)`);
-		return { ...result, outputPath: null };
-	}
+export async function exportCatalogRunReport(
+	client: RunnerClient,
+	runId: string,
+	options: ReportCommandOptions,
+	deps: ExportCatalogRunReportDeps = {},
+): Promise<ExportCatalogRunReportResult> {
+	const format = normalizeReportFormat(options.format);
+	const failOn = parseFailOn(options.failOn);
+	const env = deps.env ?? process.env;
+	const log = deps.log ?? (() => undefined);
+	const write = deps.writeFile ?? writeFile;
+	const makeDir = deps.mkdir ?? mkdir;
+	const append = deps.appendGithubFile ?? appendGithubFile;
+
+	const { run, doc, stepCount } = await loadCatalogRunReport(client, runId, options, deps, true);
+	const summaryPath = resolveGithubWritePath(options.githubSummary, env.GITHUB_STEP_SUMMARY, env);
 
 	const contents = format === "html" ? formatRunReportHtml(doc) : formatRunReportMarkdown(doc);
 	const extension = format === "html" ? "html" : "md";
 	const outputPath = options.output?.trim() || `${suggestedRunReportBasename(doc)}.${extension}`;
 	await makeDir(dirname(outputPath), { recursive: true });
 	await write(outputPath, contents, "utf8");
-	await log(`wrote ${outputPath} (${doc.status}, ${steps.length} steps)`);
+	await log(`wrote ${outputPath} (${doc.status}, ${stepCount} steps)`);
 
-	if (summaryPath && summary !== null) {
-		await append(summaryPath, summary);
-	}
+	if (summaryPath) await append(summaryPath, formatJobSummary(doc, options));
 
 	await writeRunGithubOutput(run, outputPath, { ...deps, env, appendGithubFile: append }, options);
 
-	return { ...result, outputPath };
+	return {
+		outputPath,
+		status: doc.status,
+		runId: run.id,
+		stepCount,
+		shouldFail: shouldFailOnRunStatus(failOn, doc.status),
+	};
+}
+
+export type AppendCatalogRunJobSummaryResult = Omit<ExportCatalogRunReportResult, "outputPath">;
+
+/**
+ * `--summary-only`: append the Run's Job Summary to $GITHUB_STEP_SUMMARY and nothing else —
+ * no screenshot fetches, no report file, no GitHub outputs.
+ */
+export async function appendCatalogRunJobSummary(
+	client: RunnerClient,
+	runId: string,
+	options: ReportCommandOptions,
+	deps: ExportCatalogRunReportDeps = {},
+): Promise<AppendCatalogRunJobSummaryResult> {
+	const failOn = parseFailOn(options.failOn);
+	const env = deps.env ?? process.env;
+	const log = deps.log ?? (() => undefined);
+	const append = deps.appendGithubFile ?? appendGithubFile;
+
+	const { run, doc, stepCount } = await loadCatalogRunReport(
+		client,
+		runId,
+		{ ...options, githubOutput: false },
+		deps,
+		false,
+	);
+	const summaryPath = resolveGithubWritePath(true, env.GITHUB_STEP_SUMMARY, env);
+	if (!summaryPath) {
+		throw new Error("--summary-only needs $GITHUB_STEP_SUMMARY to be set");
+	}
+
+	await append(summaryPath, formatJobSummary(doc, options));
+	await log(`appended Job Summary to ${summaryPath} (${doc.status}, ${stepCount} steps)`);
+
+	return {
+		status: doc.status,
+		runId: run.id,
+		stepCount,
+		shouldFail: shouldFailOnRunStatus(failOn, doc.status),
+	};
 }
 
 export function attachReportCommandOptions(cmd: Command): Command {
@@ -281,7 +314,7 @@ export function attachReportCommandOptions(cmd: Command): Command {
 			String(DEFAULT_RUN_WAIT_TIMEOUT_SECONDS),
 		)
 		.option("--github-summary", "Append the Job Summary markdown to $GITHUB_STEP_SUMMARY")
-		.option("--no-github-summary", "Do not write a GitHub job summary")
+		.option("--no-github-summary", "Do not write a Job Summary")
 		.option("--report-url <url>", "Link the Job Summary footer to the uploaded Run report")
 		.option(
 			"--summary-only",

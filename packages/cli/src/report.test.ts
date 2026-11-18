@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Run, RunnerClient } from "@yoqa/runner-client";
 import { formatGithubOutputLines, isGithubActions, resolveGithubWritePath } from "./github";
 import {
+	appendCatalogRunJobSummary,
 	createWaitStatusLogger,
 	exportCatalogRunReport,
 	normalizeReportFormat,
@@ -156,6 +157,18 @@ function sampleRun(overrides: Partial<Run> = {}): Run {
 	};
 }
 
+/** A RunnerClient that serves `run` from the DEMO app, with no Test Cases or devices. */
+function stubClient(run: Run): RunnerClient {
+	return {
+		getRun: async () => run,
+		listApps: async () => [{ id: "app_1", prefix: "DEMO", name: "Demo" }],
+		listCases: async () => [],
+		listDevices: async () => ({ devices: [] }),
+		getRunStepScreenshotUrl: () => "http://127.0.0.1/shot",
+		listRuns: async () => [run],
+	} as unknown as RunnerClient;
+}
+
 describe("exportCatalogRunReport", () => {
 	test("writes HTML plus GitHub summary and output", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "yoqa-report-"));
@@ -163,14 +176,7 @@ describe("exportCatalogRunReport", () => {
 		const summaryPath = join(dir, "summary.md");
 		const outputPath = join(dir, "github-output");
 		const run = sampleRun();
-		const client = {
-			getRun: async () => run,
-			listApps: async () => [{ id: "app_1", prefix: "DEMO", name: "Demo" }],
-			listCases: async () => [],
-			listDevices: async () => ({ devices: [] }),
-			getRunStepScreenshotUrl: () => "http://127.0.0.1/shot",
-			listRuns: async () => [run],
-		} as unknown as RunnerClient;
+		const client = stubClient(run);
 
 		const result = await exportCatalogRunReport(
 			client,
@@ -206,13 +212,7 @@ describe("exportCatalogRunReport", () => {
 		const dir = await mkdtemp(join(tmpdir(), "yoqa-report-"));
 		const summaryPath = join(dir, "summary.md");
 		const run = sampleRun();
-		const client = {
-			getRun: async () => run,
-			listApps: async () => [],
-			listCases: async () => [],
-			listDevices: async () => ({ devices: [] }),
-			getRunStepScreenshotUrl: () => "http://127.0.0.1/shot",
-		} as unknown as RunnerClient;
+		const client = stubClient(run);
 
 		await exportCatalogRunReport(
 			client,
@@ -230,8 +230,40 @@ describe("exportCatalogRunReport", () => {
 			"[Full Run report with screenshots](https://github.com/o/r/actions/runs/1/artifacts/2)",
 		);
 	});
+	test("shouldFail is true only with --fail-on errored", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "yoqa-report-"));
+		const htmlPath = join(dir, "fail.html");
+		const run = sampleRun({ status: "errored", error: "boom" });
+		const client = stubClient(run);
 
-	test("--summary-only appends only the Job Summary", async () => {
+		const neverFail = await exportCatalogRunReport(
+			client,
+			run.id,
+			{
+				baseUrl: "http://127.0.0.1:7420",
+				output: htmlPath,
+				failOn: "never",
+			},
+			{ log: () => undefined },
+		);
+		expect(neverFail.shouldFail).toBe(false);
+
+		const fail = await exportCatalogRunReport(
+			client,
+			run.id,
+			{
+				baseUrl: "http://127.0.0.1:7420",
+				output: htmlPath,
+				failOn: "errored",
+			},
+			{ log: () => undefined },
+		);
+		expect(fail.shouldFail).toBe(true);
+	});
+});
+
+describe("appendCatalogRunJobSummary", () => {
+	test("appends only the Job Summary", async () => {
 		const run = sampleRun({
 			tests: [
 				{
@@ -259,18 +291,12 @@ describe("exportCatalogRunReport", () => {
 				},
 			],
 		});
-		const client = {
-			getRun: async () => run,
-			listApps: async () => [],
-			listCases: async () => [],
-			listDevices: async () => ({ devices: [] }),
-			getRunStepScreenshotUrl: () => "http://127.0.0.1/shot",
-		} as unknown as RunnerClient;
+		const client = stubClient(run);
 		const fetched: string[] = [];
 		const written: string[] = [];
 		const appended: { path: string; contents: string }[] = [];
 
-		const result = await exportCatalogRunReport(
+		const result = await appendCatalogRunJobSummary(
 			client,
 			run.id,
 			{
@@ -308,45 +334,17 @@ describe("exportCatalogRunReport", () => {
 		expect(appended.map((row) => row.path)).toEqual(["/gha/summary.md"]);
 		expect(appended[0]?.contents).toContain("`tap @e1`");
 		expect(appended[0]?.contents).toContain("(https://example.test/report)");
-		expect(result.outputPath).toBeNull();
 		expect(result.status).toBe("passed");
 	});
 
-	test("shouldFail is true only with --fail-on errored", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "yoqa-report-"));
-		const htmlPath = join(dir, "fail.html");
-		const run = sampleRun({ status: "errored", error: "boom" });
-		const client = {
-			getRun: async () => run,
-			listApps: async () => [],
-			listCases: async () => [],
-			listDevices: async () => ({ devices: [] }),
-			getRunStepScreenshotUrl: () => "http://127.0.0.1/shot",
-			listRuns: async () => [run],
-		} as unknown as RunnerClient;
-
-		const neverFail = await exportCatalogRunReport(
-			client,
-			run.id,
-			{
-				baseUrl: "http://127.0.0.1:7420",
-				output: htmlPath,
-				failOn: "never",
-			},
-			{ log: () => undefined },
-		);
-		expect(neverFail.shouldFail).toBe(false);
-
-		const fail = await exportCatalogRunReport(
-			client,
-			run.id,
-			{
-				baseUrl: "http://127.0.0.1:7420",
-				output: htmlPath,
-				failOn: "errored",
-			},
-			{ log: () => undefined },
-		);
-		expect(fail.shouldFail).toBe(true);
+	test("fails without $GITHUB_STEP_SUMMARY", async () => {
+		await expect(
+			appendCatalogRunJobSummary(
+				stubClient(sampleRun()),
+				"run_abc",
+				{ baseUrl: "http://127.0.0.1:7420", summaryOnly: true },
+				{ env: {}, log: () => undefined },
+			),
+		).rejects.toThrow(/needs \$GITHUB_STEP_SUMMARY/);
 	});
 });

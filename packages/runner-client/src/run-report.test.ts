@@ -720,6 +720,8 @@ describe("formatRunReportGithubSummary", () => {
 
 	const trimNote =
 		"_Passing Test Cases' steps were trimmed to fit the Job Summary; the Run report has every step._";
+	const compactNote =
+		"_Every Test Case's steps were trimmed to fit the Job Summary; the Run report has every step._";
 
 	test("drops passing Test Cases' blocks when the summary is over maxBytes", () => {
 		const markdown = formatRunReportGithubSummary(
@@ -742,7 +744,8 @@ describe("formatRunReportGithubSummary", () => {
 		expect(markdown).toContain("| 1 | #1 Login | Failed | 2 |");
 		expect(markdown).toContain("### Failed steps");
 		expect(markdown).toContain("Reason: Login button not found");
-		expect(markdown).toContain(trimNote);
+		expect(markdown).toContain(compactNote);
+		expect(markdown).not.toContain(trimNote);
 	});
 
 	test("measures maxBytes in UTF-8 bytes, not characters", () => {
@@ -785,6 +788,25 @@ describe("formatRunReportGithubSummary", () => {
 		});
 		expect(markdown).toContain("<summary>Login &lt;admin&gt; flow — Failed</summary>");
 		expect(markdown).toContain("| 1 | Type: a\\|b c | ✅ | 12ms | `echo 'a\\|b'` |");
+	});
+
+	test("fences a command holding backticks so its code span survives", () => {
+		const { doc, login, tap, tapLogin } = sampleParts();
+		const markdown = formatRunReportGithubSummary({
+			...doc,
+			tests: [
+				{
+					...login,
+					steps: [
+						{ ...tap, command: "echo `date`" },
+						{ ...tapLogin, command: "`a`` b`" },
+					],
+				},
+			],
+		});
+		expect(markdown).toContain("| 1 | Tap | ✅ | 12ms | `` echo `date` `` |");
+		expect(markdown).toContain("| 2 | Tap login | ❌ | 40ms | ``` `a`` b` ``` |");
+		expect(markdown).toContain("  - Command: ``` `a`` b` ```");
 	});
 });
 
