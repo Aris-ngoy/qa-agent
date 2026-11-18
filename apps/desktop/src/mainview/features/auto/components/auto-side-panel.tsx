@@ -1,7 +1,8 @@
 import { AutoDeviceTab } from "@/features/auto/components/auto-device-tab";
+import { PanelEmpty } from "@/features/auto/components/auto-panel-empty";
+import { AutoTestTab } from "@/features/auto/components/auto-test-tab";
 import { Tabs } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
-import type { ReactNode } from "react";
 
 type SideTab = "device" | "test" | "history";
 
@@ -11,7 +12,7 @@ const TABS: { id: SideTab; label: string }[] = [
 	{ id: "history", label: "History" },
 ];
 
-/** The right of Auto: the live device, and (in later tickets) the Case draft and the case's History. */
+/** The right of Auto: the live device, the chat's Case draft, and (in a later ticket) the case's History. */
 export function AutoSidePanel() {
 	const tab$ = useObservable<SideTab>("device");
 	const tab = useValue(tab$);
@@ -49,12 +50,7 @@ export function AutoSidePanel() {
 					{tab === "device" ? <AutoDeviceTab /> : null}
 				</Tabs.Panel>
 				<Tabs.Panel className="min-h-0 flex-1 pt-0 outline-none" id="test">
-					{tab === "test" ? (
-						<PanelEmpty title="No Case draft">
-							When the chat agent can write steps (Run mode), its Case draft shows here as changes
-							to the saved Test Case.
-						</PanelEmpty>
-					) : null}
+					{tab === "test" ? <AutoTestTab /> : null}
 				</Tabs.Panel>
 				<Tabs.Panel className="min-h-0 flex-1 pt-0 outline-none" id="history">
 					{tab === "history" ? (
@@ -65,14 +61,5 @@ export function AutoSidePanel() {
 				</Tabs.Panel>
 			</Tabs>
 		</section>
-	);
-}
-
-function PanelEmpty({ title, children }: { title: string; children: ReactNode }) {
-	return (
-		<div className="flex h-full min-h-56 flex-col items-center justify-center gap-2 rounded-xl bg-surface-container px-6 text-center">
-			<p className="m-0 text-body-sm font-medium text-on-surface">{title}</p>
-			<p className="m-0 max-w-xs text-helper text-on-surface-variant">{children}</p>
-		</div>
 	);
 }

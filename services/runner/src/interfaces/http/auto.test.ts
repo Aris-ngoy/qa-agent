@@ -1,9 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { type AutoChat, type AutoChatEvent, autoChatEventSchema } from "@yoqa/runner-client";
+import {
+	type AutoChat,
+	type AutoChatEvent,
+	type CaseFlowStep,
+	autoChatEventSchema,
+} from "@yoqa/runner-client";
 import type { ChatAgent, ChatAgentEvent, ChatTurn } from "../../domains/auto/chat-agent";
-import { createApp, createCase } from "../../domains/catalog/application";
+import { createApp, createCase, getCase } from "../../domains/catalog/application";
 import { closeCatalogDb, getCatalogDb, openCatalogDb } from "../../domains/catalog/db";
 import { runSteps, runTests, runs } from "../../domains/runs/schema";
 import { createAutoRoutes } from "./auto";
@@ -261,38 +266,307 @@ describe("the Auto chat routes", () => {
 		expect(agent.turns.map((turn) => turn.agentSessionId)).toEqual([null, "sess_first"]);
 	});
 
-	// No tool outside Ask exists yet; once Run mode's tools land, call one of them here too.
-	test("Ask mode offers only the read tools, and refuses any other tool the agent calls", async () => {
+	test("Ask mode offers only the read tools and refuses the Case draft's; Run mode offers both", async () => {
 		const app = await createApp({ name: "Ask only" });
-		const chat = await newChat(app.id);
+		const login = await createCase(app.id, {
+			name: "Login works",
+			flows: [{ instructions: "Open the app", expectedResult: "It opens" }],
+		});
+		const chat = await newChat(app.id, login.id);
 		const outputs: Array<{ text: string; isError: boolean }> = [];
+		const removal = { step: 1, reason: "Not needed" };
 		agent.script = async function* (turn) {
-			outputs.push(await turn.callTool("start_run", {}));
+			outputs.push(await turn.callTool("remove_draft_step", removal));
 			yield { type: "text", delta: "I can only read here." };
 		};
 		const stream = await openEvents(chat.id);
 
-		await send(chat.id, "Run #8");
+		await send(chat.id, "Remove step 1");
 		const events = await stream.until(isReply);
+		agent.script = async function* () {
+			yield { type: "text", delta: "Ready." };
+		};
+		await send(chat.id, "Get ready", "run");
+		await stream.until(() => stream.events.filter(isReply).length === 2);
 		await stream.close();
 
-		expect(agent.turns[0]?.tools.map((tool) => tool.name)).toEqual([
-			"get_test_case",
-			"list_runs",
-			"get_run",
-			"set_test_case",
+		const readTools = ["get_test_case", "list_runs", "get_run", "set_test_case", "get_case_draft"];
+		expect(agent.turns.map((turn) => turn.tools.map((tool) => tool.name))).toEqual([
+			readTools,
+			[...readTools, "set_draft_steps", "add_draft_step", "change_draft_step", "remove_draft_step"],
 		]);
-		expect(outputs).toEqual([{ text: "start_run is not available in Ask mode.", isError: true }]);
+		const refusal = "remove_draft_step is not available in Ask mode.";
+		expect(outputs).toEqual([{ text: refusal, isError: true }]);
 		expect(events.map((event) => event.type)).toContain("tool_call");
+		expect(events.map((event) => event.type)).not.toContain("draft");
 		const reply = events.find(isReply);
 		expect(reply?.type === "message" && reply.message.toolCalls).toEqual([
 			{
 				id: expect.any(String),
-				name: "start_run",
-				input: {},
-				output: "start_run is not available in Ask mode.",
+				name: "remove_draft_step",
+				input: removal,
+				output: refusal,
 				isError: true,
 			},
+		]);
+		expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft).toBeNull();
+	});
+
+	test("in Run mode the agent writes a Case draft, saved with the chat and pushed over SSE, and the saved Test Case keeps its steps", async () => {
+		const app = await createApp({ name: "Drafts" });
+		const login = await createCase(app.id, {
+			name: "Login works",
+			flows: [
+				{ instructions: "Open the app", expectedResult: "The welcome screen shows" },
+				{ instructions: "Tap Sign in", expectedResult: "The login form shows" },
+				{ instructions: "Type the password", expectedResult: "Logged in" },
+			],
+		});
+		const chat = await newChat(app.id, login.id);
+		const outputs: Array<{ text: string; isError: boolean }> = [];
+		agent.script = async function* (turn) {
+			outputs.push(
+				await turn.callTool("change_draft_step", {
+					step: 2,
+					instructions: "Tap Log in",
+					reason: "The button was renamed",
+				}),
+			);
+			outputs.push(
+				await turn.callTool("add_draft_step", {
+					instructions: "Tap Continue",
+					expectedResult: "The home screen shows",
+					reason: "A new screen after login",
+				}),
+			);
+			outputs.push(
+				await turn.callTool("remove_draft_step", { step: 1, reason: "The app opens on its own" }),
+			);
+			yield { type: "text", delta: "Drafted." };
+		};
+		const stream = await openEvents(chat.id);
+
+		expect((await send(chat.id, "Fix it", "run")).status).toBe(202);
+		const events = await stream.until(isReply);
+		await stream.close();
+
+		expect(outputs.map((output) => output.isError)).toEqual([false, false, false]);
+		expect(outputs[2]?.text).toBe(
+			[
+				`Case draft of #${login.number} Login works:`,
+				"1. Tap Log in (changed: The button was renamed)",
+				"   Expected: The login form shows",
+				"2. Type the password",
+				"   Expected: Logged in",
+				"3. Tap Continue (added: A new screen after login)",
+				"   Expected: The home screen shows",
+				"Removed: Open the app (The app opens on its own)",
+			].join("\n"),
+		);
+		const [saved1, saved2, saved3] = login.flows as [CaseFlowStep, CaseFlowStep, CaseFlowStep];
+		const expected = {
+			caseId: login.id,
+			base: login.flows,
+			steps: [
+				{ ...saved2, instructions: "Tap Log in", reason: "The button was renamed" },
+				{ ...saved3, reason: null },
+				{
+					id: expect.any(String),
+					instructions: "Tap Continue",
+					expectedResult: "The home screen shows",
+					flowId: null,
+					reason: "A new screen after login",
+				},
+			],
+			removed: [{ before: saved1, reason: "The app opens on its own" }],
+			updatedAt: expect.any(Number),
+		};
+		const drafts = events.filter((event) => event.type === "draft");
+		expect(drafts).toHaveLength(3);
+		expect(drafts.at(-1)).toEqual({ type: "draft", draft: expected });
+		expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft).toEqual(expected);
+		expect((await getCase(login.id))?.flows).toEqual(login.flows);
+	});
+
+	test("set_draft_steps writes the whole Case draft: a step naming its saved step rewrites it, one written as saved stays, saved steps left out are removed", async () => {
+		const app = await createApp({ name: "Whole drafts" });
+		const login = await createCase(app.id, {
+			name: "Login works",
+			flows: [
+				{ instructions: "Open the app", expectedResult: "The welcome screen shows" },
+				{ instructions: "Tap Sign in", expectedResult: "The login form shows" },
+				{ instructions: "Type the password", expectedResult: "Logged in" },
+			],
+		});
+		const chat = await newChat(app.id, login.id);
+		const outputs: Array<{ text: string; isError: boolean }> = [];
+		agent.script = async function* (turn) {
+			outputs.push(
+				await turn.callTool("set_draft_steps", {
+					reason: "Login moved behind a menu",
+					steps: [
+						{ instructions: "Open the app", expectedResult: "The welcome screen shows" },
+						{ instructions: "Open the menu", expectedResult: "The menu shows" },
+						{ instructions: "Tap Log in", expectedResult: "The login form shows", savedStep: 2 },
+					],
+				}),
+			);
+			outputs.push(
+				await turn.callTool("change_draft_step", {
+					step: 3,
+					instructions: "Tap Sign in",
+					reason: "Back as it was",
+				}),
+			);
+			outputs.push(await turn.callTool("remove_draft_step", { step: 9, reason: "Gone" }));
+			yield { type: "text", delta: "Drafted." };
+		};
+		const stream = await openEvents(chat.id);
+
+		await send(chat.id, "Fix it", "run");
+		await stream.until(isReply);
+		await stream.close();
+
+		const [saved1, saved2, saved3] = login.flows as [CaseFlowStep, CaseFlowStep, CaseFlowStep];
+		expect(outputs.map((output) => output.isError)).toEqual([false, false, true]);
+		expect(outputs[2]?.text).toBe("There is no step 9: the Case draft has 3 steps.");
+		const { draft } = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+		expect(draft?.steps).toEqual([
+			{ ...saved1, reason: null },
+			{
+				id: expect.any(String),
+				instructions: "Open the menu",
+				expectedResult: "The menu shows",
+				flowId: null,
+				reason: "Login moved behind a menu",
+			},
+			{ ...saved2, reason: null },
+		]);
+		expect(draft?.removed).toEqual([{ before: saved3, reason: "Login moved behind a menu" }]);
+	});
+
+	test("a step moved out of its saved order shows as moved, and a removed step added back is that step again", async () => {
+		const app = await createApp({ name: "Moves" });
+		const login = await createCase(app.id, {
+			name: "Login works",
+			flows: [
+				{ instructions: "Open the app", expectedResult: "It opens" },
+				{ instructions: "Tap Sign in", expectedResult: "The form shows" },
+				{ instructions: "Type the password", expectedResult: "Logged in" },
+			],
+		});
+		const [open, signIn, password] = login.flows as [CaseFlowStep, CaseFlowStep, CaseFlowStep];
+		const chat = await newChat(app.id, login.id);
+		const outputs: Array<{ text: string; isError: boolean }> = [];
+		const drafts: unknown[] = [];
+		agent.script = async function* (turn) {
+			outputs.push(
+				await turn.callTool("set_draft_steps", {
+					reason: "Reordered",
+					steps: [
+						{ ...password, reason: "The password comes first now" },
+						{ instructions: open.instructions, expectedResult: open.expectedResult },
+						{ instructions: signIn.instructions, expectedResult: signIn.expectedResult },
+					],
+				}),
+			);
+			drafts.push((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.draft?.steps);
+			outputs.push(await turn.callTool("remove_draft_step", { step: 1, reason: "Not needed" }));
+			outputs.push(
+				await turn.callTool("add_draft_step", {
+					instructions: password.instructions,
+					expectedResult: password.expectedResult,
+					reason: "Needed after all",
+				}),
+			);
+			yield { type: "text", delta: "Done." };
+		};
+		const stream = await openEvents(chat.id);
+
+		await send(chat.id, "Reorder", "run");
+		await stream.until(isReply);
+		await stream.close();
+
+		expect(outputs.map((output) => output.isError)).toEqual([false, false, false]);
+		expect(outputs[0]?.text.split("\n")[1]).toBe(
+			"1. Type the password (moved: The password comes first now)",
+		);
+		expect(drafts[0]).toEqual([
+			{ ...password, reason: "The password comes first now" },
+			{ ...open, reason: null },
+			{ ...signIn, reason: null },
+		]);
+		const { draft } = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+		expect(draft?.steps).toEqual(login.flows.map((step) => ({ ...step, reason: null })));
+		expect(draft?.removed).toEqual([]);
+	});
+
+	test("a saved step named by number is never taken by another step written like it", async () => {
+		const app = await createApp({ name: "Claims" });
+		const login = await createCase(app.id, {
+			name: "Login works",
+			flows: [
+				{ instructions: "Open the app", expectedResult: "It opens" },
+				{ instructions: "Tap Sign in", expectedResult: "The form shows" },
+			],
+		});
+		const [open, signIn] = login.flows as [CaseFlowStep, CaseFlowStep];
+		const chat = await newChat(app.id, login.id);
+		const outputs: Array<{ text: string; isError: boolean }> = [];
+		agent.script = async function* (turn) {
+			outputs.push(
+				await turn.callTool("set_draft_steps", {
+					reason: "Sign in twice",
+					steps: [
+						{ instructions: signIn.instructions, expectedResult: signIn.expectedResult },
+						{ instructions: open.instructions, expectedResult: open.expectedResult },
+						{ instructions: "Tap Sign in again", expectedResult: "Still signed in", savedStep: 2 },
+					],
+				}),
+			);
+			yield { type: "text", delta: "Done." };
+		};
+		const stream = await openEvents(chat.id);
+
+		await send(chat.id, "Sign in twice", "run");
+		await stream.until(isReply);
+		await stream.close();
+
+		expect(outputs[0]?.isError).toBe(false);
+		const { draft } = (await json<AutoChat>(`/auto/chats/${chat.id}`)).body;
+		expect(draft?.steps.map((step) => [step.id, step.instructions, step.reason])).toEqual([
+			[expect.stringMatching(/^cf_/), "Tap Sign in", "Sign in twice"],
+			[open.id, "Open the app", null],
+			[signIn.id, "Tap Sign in again", "Sign in twice"],
+		]);
+	});
+
+	test("the Case draft needs the chat's Test Case", async () => {
+		const app = await createApp({ name: "No case yet" });
+		const chat = await newChat(app.id);
+		const outputs: Array<{ text: string; isError: boolean }> = [];
+		agent.script = async function* (turn) {
+			outputs.push(
+				await turn.callTool("add_draft_step", {
+					instructions: "Open the app",
+					expectedResult: "It opens",
+					reason: "A first step",
+				}),
+			);
+			outputs.push(await turn.callTool("get_case_draft", {}));
+			yield { type: "text", delta: "Which case?" };
+		};
+		const stream = await openEvents(chat.id);
+
+		await send(chat.id, "Add a step", "run");
+		await stream.until(isReply);
+		await stream.close();
+
+		const noCase =
+			"This chat has no Test Case yet, so there is no Case draft. Set one with set_test_case first.";
+		expect(outputs).toEqual([
+			{ text: noCase, isError: true },
+			{ text: noCase, isError: true },
 		]);
 	});
 
@@ -408,10 +682,9 @@ describe("the Auto chat routes", () => {
 		expect(agent.turns[0]?.model).toBe("claude-opus-5-5");
 	});
 
-	test("only Ask answers for now, and one reply at a time", async () => {
+	test("Explore does not answer yet, and one reply at a time", async () => {
 		const app = await createApp({ name: "One at a time" });
 		const chat = await newChat(app.id);
-		expect((await send(chat.id, "Fix it", "run")).status).toBe(400);
 		expect((await send(chat.id, "Look around", "explore")).status).toBe(400);
 
 		const { promise: held, resolve: release } = Promise.withResolvers<void>();

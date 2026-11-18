@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { caseFlowStepSchema } from "./schemas";
 
 /**
  * Auto chat: a saved conversation, on one App, with the chat agent about at most one Test
@@ -53,6 +54,38 @@ export const autoChatSummarySchema = z.object({
 });
 export type AutoChatSummary = z.infer<typeof autoChatSummarySchema>;
 
+/**
+ * A step of a Case draft: a saved step kept, changed or moved (it keeps the saved step's id),
+ * or one the agent added (a new id).
+ */
+export const caseDraftStepSchema = caseFlowStepSchema.extend({
+	/** Why the agent changed or added it; null while it is as saved. */
+	reason: z.string().nullable(),
+});
+export type CaseDraftStep = z.infer<typeof caseDraftStepSchema>;
+
+/** A saved step the Case draft leaves out. */
+export const caseDraftRemovedStepSchema = z.object({
+	before: caseFlowStepSchema,
+	reason: z.string(),
+});
+export type CaseDraftRemovedStep = z.infer<typeof caseDraftRemovedStepSchema>;
+
+/**
+ * The steps the chat agent proposes for the chat's Test Case, saved with the chat. The
+ * catalog is never written: only applying the draft does that (CONTEXT.md → Case draft).
+ */
+export const caseDraftSchema = z.object({
+	caseId: z.string().min(1),
+	/** The Test Case's steps when the draft started: what its changes are shown against. */
+	base: z.array(caseFlowStepSchema),
+	/** The whole draft, in order. */
+	steps: z.array(caseDraftStepSchema),
+	removed: z.array(caseDraftRemovedStepSchema),
+	updatedAt: z.number().int().nonnegative(),
+});
+export type CaseDraft = z.infer<typeof caseDraftSchema>;
+
 /** The reply being written right now, so a screen that opens mid-turn can show it. */
 export const autoReplySchema = z.object({
 	text: z.string(),
@@ -64,6 +97,8 @@ export const autoChatSchema = autoChatSummarySchema.extend({
 	messages: z.array(autoMessageSchema),
 	/** Null when no reply is being written. */
 	reply: autoReplySchema.nullable(),
+	/** The chat's Case draft; null until the agent writes one. */
+	draft: caseDraftSchema.nullable(),
 });
 export type AutoChat = z.infer<typeof autoChatSchema>;
 
@@ -119,6 +154,7 @@ export type ListAutoModelsResponse = z.infer<typeof listAutoModelsResponseSchema
  * - `text`: more of the reply's text.
  * - `tool_call` / `tool_result`: the agent called a Yoqa tool, and what it answered.
  * - `chat`: the chat itself changed (its Test Case, title or model).
+ * - `draft`: the chat's Case draft changed (null once it is gone).
  */
 export const autoChatEventSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("message"), message: autoMessageSchema }),
@@ -134,5 +170,6 @@ export const autoChatEventSchema = z.discriminatedUnion("type", [
 		isError: z.boolean(),
 	}),
 	z.object({ type: z.literal("chat"), chat: autoChatSummarySchema }),
+	z.object({ type: z.literal("draft"), draft: caseDraftSchema.nullable() }),
 ]);
 export type AutoChatEvent = z.infer<typeof autoChatEventSchema>;

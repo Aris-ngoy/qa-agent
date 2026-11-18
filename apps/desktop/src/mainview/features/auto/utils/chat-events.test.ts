@@ -4,7 +4,7 @@ import {
 	parseAutoChatEvent,
 	summaryOf,
 } from "@/features/auto/utils/chat-events";
-import type { AutoChat, AutoChatEvent, AutoMessage } from "@yoqa/runner-client";
+import type { AutoChat, AutoChatEvent, AutoMessage, CaseDraft } from "@yoqa/runner-client";
 
 function chat(overrides: Partial<AutoChat> = {}): AutoChat {
 	return {
@@ -19,6 +19,7 @@ function chat(overrides: Partial<AutoChat> = {}): AutoChat {
 		updatedAt: 100,
 		messages: [],
 		reply: null,
+		draft: null,
 		...overrides,
 	};
 }
@@ -156,6 +157,21 @@ describe("applyAutoChatEvent", () => {
 		expect(next.messages).toHaveLength(1);
 	});
 
+	test("a draft event replaces the chat's Case draft, and a null one clears it", () => {
+		const draft: CaseDraft = {
+			caseId: "case_1",
+			base: [],
+			steps: [
+				{ id: "s1", instructions: "Open", expectedResult: "", flowId: null, reason: "First step" },
+			],
+			removed: [],
+			updatedAt: 300,
+		};
+		const drafted = applyAutoChatEvent(chat(), { type: "draft", draft });
+		expect(drafted.draft).toEqual(draft);
+		expect(applyAutoChatEvent(drafted, { type: "draft", draft: null }).draft).toBeNull();
+	});
+
 	test("does not change the chat it is given", () => {
 		const start = chat();
 		applyAutoChatEvent(start, { type: "message", message: message() });
@@ -165,10 +181,11 @@ describe("applyAutoChatEvent", () => {
 });
 
 describe("summaryOf", () => {
-	test("drops the messages and the reply", () => {
+	test("drops the messages, the reply and the Case draft", () => {
 		const summary = summaryOf(chat({ messages: [message()], reply: { text: "", toolCalls: [] } }));
 		expect("messages" in summary).toBe(false);
 		expect("reply" in summary).toBe(false);
+		expect("draft" in summary).toBe(false);
 		expect(summary.id).toBe("chat_1");
 	});
 });

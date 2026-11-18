@@ -2,14 +2,14 @@ import type { AutoChatMode } from "@yoqa/runner-client";
 
 export type ModeOption = { id: AutoChatMode; label: string; enabled: boolean; hint: string };
 
-/** The composer's modes. Only Ask works for now; Run and Explore come with later tickets. */
+/** The composer's modes. Ask and Run work for now; Explore comes with a later ticket. */
 export const MODE_OPTIONS: ModeOption[] = [
 	{ id: "ask", label: "Ask", enabled: true, hint: "Reads the Test Case and its Runs only." },
 	{
 		id: "run",
 		label: "Run",
-		enabled: false,
-		hint: "Coming soon: write the Case draft and run it.",
+		enabled: true,
+		hint: "Also writes the Case draft. Running it comes soon.",
 	},
 	{
 		id: "explore",

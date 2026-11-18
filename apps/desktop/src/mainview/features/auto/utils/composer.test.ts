@@ -26,7 +26,10 @@ describe("canSend", () => {
 });
 
 describe("MODE_OPTIONS", () => {
-	test("only Ask works for now", () => {
-		expect(MODE_OPTIONS.filter((mode) => mode.enabled).map((mode) => mode.id)).toEqual(["ask"]);
+	test("Ask and Run work for now", () => {
+		expect(MODE_OPTIONS.filter((mode) => mode.enabled).map((mode) => mode.id)).toEqual([
+			"ask",
+			"run",
+		]);
 	});
 });
