@@ -28,6 +28,8 @@ export function startDraft(catalogCase: CatalogCase): CaseDraft {
 		base: catalogCase.flows,
 		steps: catalogCase.flows.map((step) => ({ ...step, reason: null })),
 		removed: [],
+		passingRunId: null,
+		learnedScript: null,
 		updatedAt: Date.now(),
 	};
 }
@@ -110,7 +112,8 @@ function inSavedOrder(draft: CaseDraft, steps: CaseDraftStep[]): Set<number> {
 
 /**
  * The draft with `steps`. A step as saved and in its saved order is unchanged (no reason); one
- * as saved but moved keeps a reason, its own or this change's.
+ * as saved but moved keeps a reason, its own or this change's. Any change clears the passing
+ * Run and its Case Script: the draft must pass again.
  */
 function withSteps(draft: CaseDraft, steps: CaseDraftStep[], reason: string): CaseDraft {
 	const ordered = inSavedOrder(draft, steps);
@@ -123,6 +126,8 @@ function withSteps(draft: CaseDraft, steps: CaseDraftStep[], reason: string): Ca
 		...draft,
 		steps: marked,
 		removed: removedFrom(draft, marked, reason),
+		passingRunId: null,
+		learnedScript: null,
 		updatedAt: Date.now(),
 	};
 }

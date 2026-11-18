@@ -14,6 +14,7 @@ import {
 	formatRunContextCaption,
 	formatRunDeviceLines,
 	formatRunListDate,
+	runChatLabel,
 	runListResult,
 } from "@/features/runs/utils/labels";
 import { useCasesQuery } from "@/features/test-cases/hooks/usequery/use-cases";
@@ -129,6 +130,7 @@ function RunRow({
 		platform: run.platform,
 	});
 	const testTitle = run.tests.length === 0 ? "Empty run" : formatRunCaseSummary(run, caseNameById);
+	const chatLabel = runChatLabel(run);
 
 	return (
 		<li
@@ -152,9 +154,14 @@ function RunRow({
 				/>
 				<span className="flex min-w-0 flex-col">
 					<span className="truncate text-body-sm font-medium">{testTitle}</span>
-					<span className="flex items-center gap-[5px] text-xs text-outline">
+					<span className="flex min-w-0 items-center gap-[5px] text-xs text-outline">
 						<PlatformGlyph platform={run.platform} />
 						{buildLabel(run.buildId)}
+						{chatLabel ? (
+							<span className="truncate" title={chatLabel}>
+								· {chatLabel}
+							</span>
+						) : null}
 					</span>
 				</span>
 				<span className="flex min-w-0 flex-col">

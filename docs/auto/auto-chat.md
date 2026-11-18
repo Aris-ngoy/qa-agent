@@ -1,6 +1,6 @@
 # Auto chat
 
-Status: Ask mode built (#463, #455); Run mode writes the Case draft (#456) but cannot run it yet; Explore not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
+Status: Ask mode built (#463, #455); Run mode writes the Case draft (#456) and runs it (#457), but cannot apply it yet; Explore not yet. Terms: [`CONTEXT.md`](../../CONTEXT.md) → _Auto_ (Auto chat, Case draft, Take over) and _Catalog_ (Test Case). Why the agent is built this way: [ADR 0012](../adr/0012-auto-chat-agent-harness.md).
 
 ## Goal
 
@@ -85,11 +85,22 @@ In the desktop (`features/auto`):
 - Each edit is pushed as a `draft` event, and `GET /auto/chats/:id` carries the draft, so a resumed chat shows it.
 - **Test tab:** **Changes** shows changed, moved, added and removed steps (a removed step where it was in the saved case), each with before and after and its reason, and collapses stretches of unchanged steps ("Steps 1–2 unchanged"). **Full test** shows the whole draft in order.
 
+**Running the Case draft (#457).** Run mode adds `run_case_draft` (Ask refuses it):
+- It runs the whole draft, from the App's start, on the device the top bar is connected to (its viewport on web), as a Run of the draft's steps (#463): the agent drives it, or the draft's own Case Script replays (executionMode `auto`). It refuses with no device, a device another Run holds, or no draft yet. The tool waits for the Run to end and answers the Run as text (`describeRun`: each step with what it did and its command line, never a screenshot), plus whether it is now the draft's passing Run.
+- **Passing Run.** The draft gains `passingRunId` and `learnedScript`. A passed Run of a draft unchanged since it started (same `updatedAt`) sets both: the Case Script the Run learned, or the draft's own it replayed. Every change to the draft clears both, so the draft must pass again. A Run of the draft never writes the saved case (#463). "A clean start" here means the whole draft from the App's start target; Take over (#459) will be the first thing that makes a Run not clean.
+- **Which step a Run step is of.** Run steps did not record it, so the Case executor now stamps each agent step's action with `flowStep` (the step of the case, from 0, its instruction came from; the Case Script and its file format are unchanged). The Run card's current step is the last Run step's, or the next once that step's verify accepted the last instruction its step splits into. A replayed Case Script does not say which step each Action is of, so the card lists its commands apart (`replayed`).
+- **Run card over SSE.** While the tool waits, the runner reads the Run again every 250 ms and pushes a `run` event (`AutoRun` in the client contract) when it changed, and once more when it ends: status, how it runs, the vision Provider (label and model, the app default; none when replaying), start and end times, the current step and command, and each draft step with its status (pending, running, passed, failed, stopped) and command lines. `GET /auto/chats/:id` carries the Run in progress as `run`. Rejected: hooking progress callbacks into every place the runs domain writes a step or status (several, and easy to miss one); the Run detail page keeps its own 1 s poll.
+- **One at a time.** A chat runs one draft Run at a time: a second `run_case_draft` while one is starting or running (the agent may call tools in parallel) is refused. A Run deleted from the Runs page before it ends answers that it was deleted.
+- **Stop.** `POST /auto/chats/:id/run/stop` (409 when no Run is in progress) cancels through the Run's own cancel; deleting the chat stops its Run too. The agent's answer says the Run was stopped.
+- **Runs page.** A Run stores the chat that started it (`runs.auto_chat_id`, set null when the chat is deleted), and every Run read carries `autoChat` (`{ id, title }`). The Runs page labels such a Run "Auto · <chat title>"; its detail page is the usual one.
+
+In the desktop: the chat shows the **Run card** under the reply (progress such as "Step 3 of 5", time elapsed, each step with its status and commands, the vision Provider, and **Open Run**); a finished card stays until the next prompt. The composer shows **Stop** while the Run is live, and Esc stops it too, unless it is closing a menu or dialog. The Device tab overlays the Action in flight on the live frame, and says the device is view only while a Run holds it.
+
 ## How to verify
 
 The draft Run groundwork: `bun test services/runner/src/domains/runs/draft-run.test.ts` (real catalog in a temp folder, the fake CDP browser, and a fake OpenAI-compatible endpoint as the vision Provider).
 
-The chat: `bun test services/runner/src/interfaces/http/auto.test.ts` (the routes, the SSE stream, the Ask tools and the Case draft tools, with a scripted chat agent) and `bun test services/runner/src/domains/auto/claude-agent.test.ts` (the contract with the Claude Agent SDK, its `query` faked). The screen's pure helpers: `bun test apps/desktop/src/mainview/features/auto`.
+The chat: `bun test services/runner/src/interfaces/http/auto.test.ts` (the routes, the SSE stream, the Ask tools, the Case draft tools and Runs of the draft, with a scripted chat agent; the Runs use the real Run engine, the fake CDP browser and a fake vision Provider, `domains/runs/fake-vision.ts`) and `bun test services/runner/src/domains/auto/claude-agent.test.ts` (the contract with the Claude Agent SDK, its `query` faked). The screen's pure helpers: `bun test apps/desktop/src/mainview/features/auto`.
 
 By hand:
 1. Sign in the Claude Provider, connect a device, open **Auto**. With it signed out, Auto shows the empty state with a link to Settings → Providers → Claude.
@@ -97,12 +108,16 @@ By hand:
 
 3. Switch to Run mode and ask "Fix #8: the Sign in button is now Log in." The Test tab fills with the Case draft as you watch: the changed step with its before and after and its reason, the unchanged steps collapsed. Full test shows the whole draft. Open #8 in Test Cases: its steps are as they were. Reopen the chat: the draft is still there.
 
-Once Runs of the draft are built:
-4. Run mode: "Fix #8 so it passes." A Run of the draft appears on the Runs page; #8's saved Case Script is unchanged.
+4. Run mode: "Fix #8 so it passes." The Run card shows each step as it runs, with its commands, the time and the vision Provider, and the Device tab overlays the Action in flight. The Run appears on the Runs page labelled "Auto · <chat>"; #8's saved Case Script and last result are unchanged. Start another and press Esc: it stops.
+
+Once Apply is built:
 5. Remove one draft step: Apply turns off until the draft passes again. Apply, then replay #8 with `yoqa script run` (or a script-mode Run): it passes with no Provider call.
 6. **Restore previous version** brings back the old steps and Case Script.
 
 ## Follow-ups
+
+- The chat Run follows a Run by reading it every 250 ms while the tool waits. If the runs domain gains a change feed, the Run card could use it instead.
+- A failed Run of an unchanged draft keeps an earlier passing Run. If a flaky pass should not be enough to apply, clear the pass on any failed Run of the whole draft.
 
 - Compare two Runs from the History tab.
 - Codex as a second harness once the `codex` Provider supports a CLI login.

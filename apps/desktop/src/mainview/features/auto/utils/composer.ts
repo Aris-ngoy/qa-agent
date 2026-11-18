@@ -9,7 +9,7 @@ export const MODE_OPTIONS: ModeOption[] = [
 		id: "run",
 		label: "Run",
 		enabled: true,
-		hint: "Also writes the Case draft. Running it comes soon.",
+		hint: "Also writes the Case draft and runs it on the connected device.",
 	},
 	{
 		id: "explore",

@@ -54,6 +54,12 @@ export async function sendAutoMessage(
 	return client.sendAutoMessage(chatId, request);
 }
 
+/** Stop the chat's Run of its Case draft, through the Run's own cancel. */
+export async function stopAutoRun(chatId: string): Promise<void> {
+	const client = await getRunnerClient();
+	await client.stopAutoRun(chatId);
+}
+
 /** The chat's SSE stream URL, for an `EventSource`. */
 export async function autoChatEventsUrl(chatId: string): Promise<string> {
 	const client = await getRunnerClient();

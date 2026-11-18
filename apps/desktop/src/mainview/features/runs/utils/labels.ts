@@ -63,6 +63,11 @@ export function formatRunCaseSummary(run: Run, caseNameById: Map<string, CaseLab
 	return `${primary} +${extra}`;
 }
 
+/** The label of a Run an Auto chat started: its chat; null for any other Run. */
+export function runChatLabel(run: Run): string | null {
+	return run.autoChat ? `Auto · ${run.autoChat.title}` : null;
+}
+
 export function devicesQueryKey(platform: Run["platform"] | "all") {
 	return ["devices", platform, "include-unavailable"] as const;
 }

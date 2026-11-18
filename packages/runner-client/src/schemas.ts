@@ -1026,6 +1026,8 @@ const runStepActionFieldsSchema = z
 		assertion: storedStepField(z.enum(["visible", "not-visible"])),
 		alertAction: storedStepField(z.enum(["accept", "dismiss"])),
 		outcome: storedStepField(z.enum(["then", "else"])),
+		/** The step of the case (0-based) an agent step worked on; none on a replayed step. */
+		flowStep: storedStepField(z.number().int().nonnegative()),
 	})
 	.passthrough();
 export type RunStepActionFields = z.infer<typeof runStepActionFieldsSchema>;
@@ -1122,6 +1124,8 @@ export const runSchema = z.object({
 	 * the Everyday browser, which runs on the user's own profile.
 	 */
 	profile: browserProfileSchema.optional(),
+	/** The Auto chat that started the Run, with its title, while that chat exists. */
+	autoChat: z.object({ id: z.string().min(1), title: z.string() }).optional(),
 	error: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	startedAt: z.number().int().nonnegative().nullable(),

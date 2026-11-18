@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { caseFlowStepSchema } from "./schemas";
+import { caseFlowStepSchema, caseScriptSchema, runStatusSchema } from "./schemas";
 
 /**
  * Auto chat: a saved conversation, on one App, with the chat agent about at most one Test
@@ -82,9 +82,58 @@ export const caseDraftSchema = z.object({
 	/** The whole draft, in order. */
 	steps: z.array(caseDraftStepSchema),
 	removed: z.array(caseDraftRemovedStepSchema),
+	/**
+	 * The Run of the whole draft that passed from a clean start, which Apply needs; null
+	 * until one has, and again after any change to the draft.
+	 */
+	passingRunId: z.string().min(1).nullable().default(null),
+	/** The Case Script that passing Run learned (or replayed), saved with the steps on Apply. */
+	learnedScript: caseScriptSchema.nullable().default(null),
 	updatedAt: z.number().int().nonnegative(),
 });
 export type CaseDraft = z.infer<typeof caseDraftSchema>;
+
+/** One step of the Case draft as a Run of it goes: its text, how far it got, and what it did. */
+export const autoRunStepSchema = z.object({
+	instructions: z.string(),
+	expectedResult: z.string(),
+	status: z.union([
+		z.literal("pending"),
+		z.literal("running"),
+		z.literal("passed"),
+		z.literal("failed"),
+		z.literal("stopped"),
+	]),
+	/** The command line of each Action it took, in order (for example `tap --x 196 --y 488`). */
+	commands: z.array(z.string()),
+});
+export type AutoRunStep = z.infer<typeof autoRunStepSchema>;
+
+/**
+ * A Run of the chat's Case draft, as the chat's Run card shows it, taken from the Run's own
+ * steps. It is a normal Run: its detail page has the rest.
+ */
+export const autoRunSchema = z.object({
+	runId: z.string().min(1),
+	caseId: z.string().min(1),
+	status: runStatusSchema,
+	/** How the case ran: the agent, or a replay of the draft's Case Script; null before it starts. */
+	executionMode: z.union([z.literal("agent"), z.literal("script")]).nullable(),
+	/** The vision Provider driving the Run (the app default); null when it replays a Case Script. */
+	provider: z.string().nullable(),
+	createdAt: z.number().int().nonnegative(),
+	startedAt: z.number().int().nonnegative().nullable(),
+	finishedAt: z.number().int().nonnegative().nullable(),
+	/** The draft step (from 1) the Run is on; null before it starts and once it ends. */
+	currentStep: z.number().int().positive().nullable(),
+	/** The command in flight right now; null between Actions. */
+	currentCommand: z.string().nullable(),
+	steps: z.array(autoRunStepSchema),
+	/** The commands a replayed Case Script ran: a replay does not say which step each is of. */
+	replayed: z.array(z.string()),
+	error: z.string().nullable(),
+});
+export type AutoRun = z.infer<typeof autoRunSchema>;
 
 /** The reply being written right now, so a screen that opens mid-turn can show it. */
 export const autoReplySchema = z.object({
@@ -99,6 +148,8 @@ export const autoChatSchema = autoChatSummarySchema.extend({
 	reply: autoReplySchema.nullable(),
 	/** The chat's Case draft; null until the agent writes one. */
 	draft: caseDraftSchema.nullable(),
+	/** The Run of the draft in progress; null when none is. */
+	run: autoRunSchema.nullable(),
 });
 export type AutoChat = z.infer<typeof autoChatSchema>;
 
@@ -155,6 +206,7 @@ export type ListAutoModelsResponse = z.infer<typeof listAutoModelsResponseSchema
  * - `tool_call` / `tool_result`: the agent called a Yoqa tool, and what it answered.
  * - `chat`: the chat itself changed (its Test Case, title or model).
  * - `draft`: the chat's Case draft changed (null once it is gone).
+ * - `run`: a Run of the draft started or moved on; sent once more when it ends.
  */
 export const autoChatEventSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("message"), message: autoMessageSchema }),
@@ -171,5 +223,6 @@ export const autoChatEventSchema = z.discriminatedUnion("type", [
 	}),
 	z.object({ type: z.literal("chat"), chat: autoChatSummarySchema }),
 	z.object({ type: z.literal("draft"), draft: caseDraftSchema.nullable() }),
+	z.object({ type: z.literal("run"), run: autoRunSchema }),
 ]);
 export type AutoChatEvent = z.infer<typeof autoChatEventSchema>;

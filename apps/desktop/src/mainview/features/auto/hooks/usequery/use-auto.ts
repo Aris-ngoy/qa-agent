@@ -7,6 +7,7 @@ import {
 	listAutoModels,
 	sendAutoMessage,
 	setAutoChatModel,
+	stopAutoRun,
 } from "@/features/auto/data/api/auto";
 import { applyToShownChat } from "@/features/auto/data/state/shown-chat";
 import { summaryOf } from "@/features/auto/utils/chat-events";
@@ -104,5 +105,13 @@ export function useSendAutoMessage() {
 			showErrorToast(error, "Failed to send the message");
 			void queryClient.invalidateQueries({ queryKey: autoStatusQueryKey });
 		},
+	});
+}
+
+/** Stop the chat's Run (Stop, Esc); its Run card shows it stopped once the stream says so. */
+export function useStopAutoRun() {
+	return useMutation({
+		mutationFn: (chatId: string) => stopAutoRun(chatId),
+		onError: (error) => showErrorToast(error, "Failed to stop the run"),
 	});
 }

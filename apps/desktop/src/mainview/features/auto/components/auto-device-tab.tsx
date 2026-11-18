@@ -1,4 +1,6 @@
 import { useApps } from "@/features/apps/hooks/use-apps";
+import { shownAutoChat$ } from "@/features/auto/data/state/shown-chat";
+import { isRunLive } from "@/features/auto/utils/run-card";
 import { screenAspect } from "@/features/devices/utils/web-device";
 import { LiveFrame } from "@/features/inspector/components/live-frame";
 import { useInspectorFeed } from "@/features/inspector/hooks/use-inspector-feed";
@@ -6,8 +8,9 @@ import { useValue } from "@legendapp/state/react";
 import { useRef } from "react";
 
 /**
- * The connected device's live frames, through the Inspector's Frame Feed. View only: Auto
- * never connects, switches or drives the device here; the top bar owns the Device Session.
+ * The connected device's live frames, through the Inspector's Frame Feed, with the Action the
+ * chat's Run is taking overlaid. View only: Auto never connects, switches or drives the device
+ * here; the top bar owns the Device Session.
  */
 export function AutoDeviceTab() {
 	const { selectedApp } = useApps();
@@ -17,6 +20,11 @@ export function AutoDeviceTab() {
 	const loading = useValue(() => feed.feed$.bootLoading.get() && feed.feed$.imageUrl.get() == null);
 	const feedMode = useValue(feed.feed$.feedMode);
 	const unreachable = useValue(feed.feed$.unreachable);
+	const action = useValue(() => {
+		const run = shownAutoChat$.chat.run.get();
+		if (!run || !isRunLive(run)) return null;
+		return run.currentCommand ?? (run.currentStep ? `Step ${run.currentStep}` : null);
+	});
 	const session = feed.activeSession;
 	const pageAspect = session ? screenAspect(session.platform, session.viewport) : null;
 	const frameRadius = pageAspect ? "rounded-lg" : "rounded-[28px]";
@@ -55,6 +63,15 @@ export function AutoDeviceTab() {
 							imgRef={imgRef}
 							src$={feed.feed$.imageUrl}
 						/>
+						{action ? (
+							<output
+								aria-live="polite"
+								className="motion-fade-in absolute inset-x-3 bottom-3 truncate rounded-lg bg-inverse-surface/85 px-2.5 py-1.5 text-center font-mono text-[11px] text-inverse-on-surface shadow-float"
+								title={action}
+							>
+								{action}
+							</output>
+						) : null}
 					</div>
 				) : loading ? (
 					<output
