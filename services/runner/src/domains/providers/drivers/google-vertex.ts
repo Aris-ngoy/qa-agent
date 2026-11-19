@@ -1,6 +1,30 @@
 import { createVertex } from "@ai-sdk/google-vertex";
 import { AgentProviderError, createSdkVisionPort, resolveVertexApiKey } from "../vision-model";
-import type { DriverDefinition } from "./types";
+import type { DriverDefinition, VisionAuth } from "./types";
+
+function vertexProject(auth: VisionAuth): string | undefined {
+	return (
+		auth.env.GOOGLE_VERTEX_PROJECT?.trim() || process.env.GOOGLE_VERTEX_PROJECT?.trim() || undefined
+	);
+}
+
+function createVertexModel(auth: VisionAuth, modelId: string) {
+	const apiKey = resolveVertexApiKey(auth);
+	const project = vertexProject(auth);
+	const location =
+		auth.env.GOOGLE_VERTEX_LOCATION?.trim() ||
+		process.env.GOOGLE_VERTEX_LOCATION?.trim() ||
+		"us-central1";
+	if (!apiKey && !project) {
+		throw new AgentProviderError("Google Vertex needs an API key or GOOGLE_VERTEX_PROJECT");
+	}
+	return createVertex({
+		...(apiKey ? { apiKey } : {}),
+		...(project ? { project } : {}),
+		location,
+		...(auth.baseUrl?.trim() ? { baseURL: auth.baseUrl.replace(/\/$/, "") } : {}),
+	})(modelId);
+}
 
 const DEFAULT_MODELS = [
 	"gemini-2.5-flash",
@@ -24,31 +48,20 @@ export const googleVertexDriver: DriverDefinition = {
 	],
 	loginInstructions:
 		"Paste a Vertex express-mode API key, or set GOOGLE_VERTEX_PROJECT + GOOGLE_VERTEX_LOCATION (and ADC / GOOGLE_APPLICATION_CREDENTIALS).",
-	capabilities: { vision: true },
+	capabilities: { vision: true, chat: ["api_key"] },
 	vision: createSdkVisionPort({
 		label: "Google Vertex",
 		defaultModel: "gemini-2.5-flash",
-		createModel: (auth, modelId) => {
-			const apiKey = resolveVertexApiKey(auth);
-			const project =
-				auth.env.GOOGLE_VERTEX_PROJECT?.trim() ||
-				process.env.GOOGLE_VERTEX_PROJECT?.trim() ||
-				undefined;
-			const location =
-				auth.env.GOOGLE_VERTEX_LOCATION?.trim() ||
-				process.env.GOOGLE_VERTEX_LOCATION?.trim() ||
-				"us-central1";
-			if (!apiKey && !project) {
-				throw new AgentProviderError("Google Vertex needs an API key or GOOGLE_VERTEX_PROJECT");
-			}
-			return createVertex({
-				...(apiKey ? { apiKey } : {}),
-				...(project ? { project } : {}),
-				location,
-				...(auth.baseUrl?.trim() ? { baseURL: auth.baseUrl.replace(/\/$/, "") } : {}),
-			})(modelId);
-		},
+		createModel: createVertexModel,
 	}),
+	chat: {
+		defaultModel: "gemini-2.5-flash",
+		missingCredential: (auth) =>
+			resolveVertexApiKey(auth) || vertexProject(auth)
+				? null
+				: "It has no API key and no GOOGLE_VERTEX_PROJECT.",
+		createModel: createVertexModel,
+	},
 	async probe() {
 		return {
 			found: true,

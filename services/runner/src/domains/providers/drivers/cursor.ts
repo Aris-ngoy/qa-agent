@@ -139,7 +139,8 @@ export const cursorDriver: DriverDefinition = {
 	envHints: ["CURSOR_API_KEY"],
 	loginInstructions:
 		"Run `cursor-agent login` (or `cursor agent login`) in a terminal, then re-check. Or paste a CURSOR_API_KEY.",
-	capabilities: { vision: true },
+	// Its API key, too, goes through `cursor-agent`, which cannot run the Auto chat yet.
+	capabilities: { vision: true, chat: [] },
 	vision: cursorVision,
 	async probe(binaryPath) {
 		return probeCli({

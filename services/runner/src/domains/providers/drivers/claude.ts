@@ -10,7 +10,8 @@ export const claudeDriver: DriverDefinition = {
 	envHints: ["ANTHROPIC_API_KEY"],
 	loginInstructions:
 		"Run `claude auth login` in a terminal, then re-check. Or paste an Anthropic API key.",
-	capabilities: { vision: false },
+	// The Auto chat runs on the Claude Agent SDK in both modes (ADR 0014), so no chat model factory.
+	capabilities: { vision: false, chat: ["cli", "api_key"] },
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "claude",

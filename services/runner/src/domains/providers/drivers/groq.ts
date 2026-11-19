@@ -6,7 +6,7 @@ import {
 	withGroqRequestHooks,
 } from "../vision-model";
 import { pingOpenAiCompatible } from "./probe";
-import type { DriverDefinition } from "./types";
+import type { DriverDefinition, VisionAuth } from "./types";
 
 const DEFAULT_BASE = "https://api.groq.com/openai/v1";
 
@@ -28,6 +28,13 @@ export function groqModelVision(modelId: string): boolean | undefined {
 	return undefined;
 }
 
+function groqBaseUrl(auth: VisionAuth): string {
+	return auth.baseUrl?.trim().replace(/\/$/, "") || DEFAULT_BASE;
+}
+
+/** Groq's chat default: a model that calls tools (the vision default is picked for screenshots). */
+const GROQ_DEFAULT_CHAT_MODEL = "openai/gpt-oss-120b";
+
 export const groqDriver: DriverDefinition = {
 	kind: "groq",
 	label: "Groq",
@@ -36,7 +43,7 @@ export const groqDriver: DriverDefinition = {
 	authModes: ["api_key"],
 	envHints: ["GROQ_API_KEY"],
 	loginInstructions: null,
-	capabilities: { vision: true },
+	capabilities: { vision: true, chat: ["api_key"] },
 	vision: createSdkVisionPort({
 		label: "Groq",
 		defaultModel: GROQ_DEFAULT_VISION_MODEL,
@@ -53,10 +60,26 @@ export const groqDriver: DriverDefinition = {
 					`This Groq model (${modelId}) cannot read screenshots (text-only). In Settings → Provider, set the default model to ${GROQ_DEFAULT_VISION_MODEL}.`,
 				);
 			}
-			const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || DEFAULT_BASE;
-			return createGroq({ apiKey, baseURL, fetch: withGroqRequestHooks({}) })(modelId);
+			return createGroq({
+				apiKey,
+				baseURL: groqBaseUrl(auth),
+				fetch: withGroqRequestHooks({}),
+			})(modelId);
 		},
 	}),
+	chat: {
+		defaultModel: GROQ_DEFAULT_CHAT_MODEL,
+		missingCredential: (auth) => (resolveGroqKey(auth) ? null : "It has no API key."),
+		// Unlike vision, a text-only model may chat; and the vision request hooks (no thinking,
+		// no strict JSON schema) are for Decide, not for a chat that calls tools.
+		createModel: (auth, modelId) => {
+			const apiKey = resolveGroqKey(auth);
+			if (!apiKey) {
+				throw new AgentProviderError("Groq provider has no API key");
+			}
+			return createGroq({ apiKey, baseURL: groqBaseUrl(auth) })(modelId);
+		},
+	},
 	async probe() {
 		return {
 			found: true,

@@ -1,4 +1,5 @@
 import type { CallUsage, ProviderAuthMode, ProviderKind } from "@yoqa/runner-client";
+import type { LanguageModel } from "ai";
 import type { z } from "zod";
 
 export type ProbeResult = {
@@ -40,6 +41,27 @@ export type DriverValidateInput = {
 export type DriverCapabilities = {
 	/** True when this adapter can run vision decide/ground for agent runs. */
 	vision: boolean;
+	/**
+	 * The auth modes in which the Provider is a Chat-capable Provider: it can be the Auto chat's
+	 * agent. Empty when it cannot chat at all.
+	 */
+	chat: ProviderAuthMode[];
+};
+
+/**
+ * How the Auto chat's AI SDK agent talks to a Provider: the language model for a chat model,
+ * built from the Provider's auth with the same vendor client and key or base-URL resolution
+ * as its vision port.
+ */
+export type ChatModelFactory = {
+	/** The model a chat uses when neither the chat nor the Provider names one; null when none. */
+	defaultModel: string | null;
+	/**
+	 * Why the Provider cannot chat with this auth (no API key, no Base URL), or null when it
+	 * can. Cheap: no network call.
+	 */
+	missingCredential: (auth: VisionAuth) => Promise<string | null> | string | null;
+	createModel: (auth: VisionAuth, modelId: string) => Promise<LanguageModel> | LanguageModel;
 };
 
 /** Runtime auth blob passed into vision completion (same fields as ActiveProviderAuth minus id). */
@@ -108,6 +130,11 @@ export type DriverDefinition = {
 	capabilities: DriverCapabilities;
 	/** Present iff `capabilities.vision` is true. */
 	vision?: VisionPort;
+	/**
+	 * The chat model factory, present when `capabilities.chat` has a mode the AI SDK chat agent
+	 * serves. The Claude Provider has none: its chat runs on the Claude Agent SDK.
+	 */
+	chat?: ChatModelFactory;
 	probe: (binaryPath?: string | null) => Promise<ProbeResult>;
 	validate: (input: DriverValidateInput) => Promise<ValidateResult>;
 	listModels: (input: DriverValidateInput) => Promise<ListModelsResult>;

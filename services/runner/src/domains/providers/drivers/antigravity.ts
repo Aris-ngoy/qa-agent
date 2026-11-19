@@ -1,5 +1,7 @@
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { AgentProviderError, resolveGoogleKey } from "../vision-model";
 import { ANTIGRAVITY_FALLBACK_MODELS, parseAgyModelLines } from "./antigravity-models";
-import { antigravityVision } from "./antigravity-vision";
+import { antigravityGoogleModelId, antigravityVision } from "./antigravity-vision";
 import { probeCli, runCommand } from "./probe";
 import type { DriverDefinition, ModelEntry } from "./types";
 
@@ -21,8 +23,21 @@ export const antigravityDriver: DriverDefinition = {
 	envHints: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
 	loginInstructions:
 		"Install Antigravity CLI (`agy`). Sign in via the Antigravity app/IDE, or paste a Google AI Studio API key for vision if your account is not eligible for Antigravity.",
-	capabilities: { vision: true },
+	// The Antigravity CLI login cannot run the Auto chat yet; a Google AI Studio API key can.
+	capabilities: { vision: true, chat: ["api_key"] },
 	vision: antigravityVision,
+	chat: {
+		defaultModel: "gemini-2.5-flash",
+		missingCredential: (auth) =>
+			resolveGoogleKey(auth) ? null : "It has no Google AI Studio API key.",
+		createModel: (auth, modelId) => {
+			const apiKey = resolveGoogleKey(auth);
+			if (!apiKey) {
+				throw new AgentProviderError("Antigravity has no Google AI Studio API key");
+			}
+			return createGoogleGenerativeAI({ apiKey })(antigravityGoogleModelId(modelId));
+		},
+	},
 	async probe(binaryPath) {
 		return probeCli({
 			defaultBinary: "agy",

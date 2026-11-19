@@ -1,4 +1,17 @@
+import { createOpenAI } from "@ai-sdk/openai";
+import { AgentProviderError } from "../vision-model";
 import type { DriverDefinition } from "./types";
+
+/** The Copilot API: its model listing and its OpenAI-compatible chat completions. */
+const COPILOT_API = "https://api.githubcopilot.com";
+
+/** What the Copilot API asks every request to carry, besides the Copilot token. */
+const COPILOT_HEADERS = {
+	"User-Agent": "yoqa-runner",
+	"Editor-Version": "Yoqa/1.0.0",
+	"Editor-Plugin-Version": "Yoqa/1.0.0",
+	"Copilot-Integration-Id": "vscode-chat",
+};
 
 function resolveCopilotToken(input: {
 	apiKey: string | null;
@@ -56,15 +69,12 @@ async function listCopilotModels(
 	copilotToken: string,
 ): Promise<{ ok: boolean; models: string[]; message: string }> {
 	try {
-		const response = await fetch("https://api.githubcopilot.com/models", {
+		const response = await fetch(`${COPILOT_API}/models`, {
 			method: "GET",
 			headers: {
 				Authorization: `Bearer ${copilotToken}`,
 				Accept: "application/json",
-				"User-Agent": "yoqa-runner",
-				"Editor-Version": "Yoqa/1.0.0",
-				"Editor-Plugin-Version": "Yoqa/1.0.0",
-				"Copilot-Integration-Id": "vscode-chat",
+				...COPILOT_HEADERS,
 			},
 		});
 		if (!response.ok) {
@@ -111,7 +121,25 @@ export const githubCopilotDriver: DriverDefinition = {
 	envHints: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
 	loginInstructions:
 		"Paste a GitHub token with Copilot access (COPILOT_GITHUB_TOKEN). Device login requires a terminal: visit github.com/login/device after starting a Copilot device flow.",
-	capabilities: { vision: false },
+	capabilities: { vision: false, chat: ["token"] },
+	chat: {
+		defaultModel: "gpt-4o",
+		missingCredential: (auth) => (resolveCopilotToken(auth) ? null : "It has no GitHub token."),
+		// The GitHub token is exchanged for a short-lived Copilot token at each turn, then the chat
+		// goes to the same Copilot API the model listing reads.
+		createModel: async (auth, modelId) => {
+			const githubToken = resolveCopilotToken(auth);
+			if (!githubToken) throw new AgentProviderError("GitHub Copilot has no GitHub token");
+			const exchange = await exchangeCopilotToken(githubToken);
+			if (!exchange.ok) throw new AgentProviderError(exchange.message);
+			return createOpenAI({
+				apiKey: exchange.token,
+				baseURL: COPILOT_API,
+				name: "github-copilot",
+				headers: COPILOT_HEADERS,
+			}).chat(modelId);
+		},
+	},
 	async probe() {
 		return {
 			found: true,

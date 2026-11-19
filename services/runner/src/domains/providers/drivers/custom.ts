@@ -1,12 +1,16 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { AgentProviderError, createSdkVisionPort, resolveCustomKey } from "../vision-model";
 import { pingOpenAiCompatible } from "./probe";
-import type { DriverDefinition } from "./types";
+import type { DriverDefinition, VisionAuth } from "./types";
 
 function normalizeBaseUrl(baseUrl: string | null | undefined): string | null {
 	const raw = baseUrl?.trim();
 	if (!raw) return null;
 	return raw.replace(/\/$/, "");
+}
+
+function customBaseUrl(auth: VisionAuth): string | null {
+	return auth.baseUrl?.trim().replace(/\/$/, "") || null;
 }
 
 export const customDriver: DriverDefinition = {
@@ -19,7 +23,7 @@ export const customDriver: DriverDefinition = {
 	envHints: ["OPENAI_API_KEY"],
 	loginInstructions:
 		"Point Base URL at an OpenAI-compatible /v1 endpoint (Ollama, LM Studio, gateway). API key is optional for local hosts.",
-	capabilities: { vision: true },
+	capabilities: { vision: true, chat: ["api_key"] },
 	vision: createSdkVisionPort({
 		label: "Custom",
 		defaultModel: "",
@@ -37,6 +41,19 @@ export const customDriver: DriverDefinition = {
 			return createOpenAI({ apiKey, baseURL, name: "custom" }).chat(modelId);
 		},
 	}),
+	chat: {
+		defaultModel: null,
+		missingCredential: (auth) => (customBaseUrl(auth) ? null : "It has no Base URL."),
+		createModel: (auth, modelId) => {
+			const baseURL = customBaseUrl(auth);
+			if (!baseURL) {
+				throw new AgentProviderError("Custom provider needs a Base URL in Settings");
+			}
+			// A local model server usually takes no key.
+			const apiKey = resolveCustomKey(auth) || "no-key";
+			return createOpenAI({ apiKey, baseURL, name: "custom" }).chat(modelId);
+		},
+	},
 	async probe() {
 		return {
 			found: true,

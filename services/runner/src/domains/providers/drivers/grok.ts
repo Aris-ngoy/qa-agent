@@ -1,9 +1,18 @@
 import { createXai } from "@ai-sdk/xai";
 import { AgentProviderError, createSdkVisionPort, resolveGrokKey } from "../vision-model";
 import { pingOpenAiCompatible } from "./probe";
-import type { DriverDefinition } from "./types";
+import type { DriverDefinition, VisionAuth } from "./types";
 
 const DEFAULT_BASE = "https://api.x.ai/v1";
+
+function createGrokModel(auth: VisionAuth, modelId: string) {
+	const apiKey = resolveGrokKey(auth);
+	if (!apiKey) {
+		throw new AgentProviderError("Grok provider has no xAI API key");
+	}
+	const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || DEFAULT_BASE;
+	return createXai({ apiKey, baseURL })(modelId);
+}
 
 export const GROK_DEFAULT_VISION_MODEL = "grok-2-vision-1212";
 
@@ -15,19 +24,17 @@ export const grokDriver: DriverDefinition = {
 	authModes: ["api_key"],
 	envHints: ["XAI_API_KEY"],
 	loginInstructions: null,
-	capabilities: { vision: true },
+	capabilities: { vision: true, chat: ["api_key"] },
 	vision: createSdkVisionPort({
 		label: "Grok",
 		defaultModel: GROK_DEFAULT_VISION_MODEL,
-		createModel: (auth, modelId) => {
-			const apiKey = resolveGrokKey(auth);
-			if (!apiKey) {
-				throw new AgentProviderError("Grok provider has no xAI API key");
-			}
-			const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || DEFAULT_BASE;
-			return createXai({ apiKey, baseURL })(modelId);
-		},
+		createModel: createGrokModel,
 	}),
+	chat: {
+		defaultModel: "grok-4",
+		missingCredential: (auth) => (resolveGrokKey(auth) ? null : "It has no xAI API key."),
+		createModel: createGrokModel,
+	},
 	async probe() {
 		return {
 			found: true,

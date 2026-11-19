@@ -781,6 +781,8 @@ export type ListProvidersResponse = z.infer<typeof listProvidersResponseSchema>;
 
 export const providerDriverCapabilitiesSchema = z.object({
 	vision: z.boolean(),
+	/** The auth modes in which the Provider is a Chat-capable Provider (the Auto chat's agent). */
+	chat: z.array(providerAuthModeSchema).default([]),
 });
 
 export type ProviderDriverCapabilities = z.infer<typeof providerDriverCapabilitiesSchema>;

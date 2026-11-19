@@ -90,15 +90,22 @@ async function completeWithAgyCli<T>(
 	}
 }
 
+/**
+ * The Google AI Studio model behind an Antigravity model id, for its API-key fallback: Gemini
+ * 1.x and 2.x ids as they are, anything else (an Antigravity-only model) Gemini 2.5 Flash.
+ */
+export function antigravityGoogleModelId(defaultModel: string | null): string {
+	const requested = resolveAgyModelId(defaultModel);
+	return requested.startsWith("gemini-1.") || requested.startsWith("gemini-2.")
+		? requested
+		: "gemini-2.5-flash";
+}
+
 export const antigravityVision: VisionPort = {
 	async completeObject<T>(input: VisionCompleteInput<T>): Promise<T> {
 		const apiKey = resolveGoogleKey(input.auth);
 		if (apiKey) {
-			const requested = resolveAgyModelId(input.auth.defaultModel);
-			const googleModelId =
-				requested.startsWith("gemini-1.") || requested.startsWith("gemini-2.")
-					? requested
-					: "gemini-2.5-flash";
+			const googleModelId = antigravityGoogleModelId(input.auth.defaultModel);
 			const image = input.image ?? (await prepareVisionImage(input.imageBase64));
 			const provider = createGoogleGenerativeAI({ apiKey });
 			return completeWithAiSdk({

@@ -6,7 +6,19 @@ import {
 	resolveOpenAiCompatibleKey,
 } from "../vision-model";
 import { pingOpenAiCompatible } from "./probe";
-import type { DriverDefinition } from "./types";
+import type { DriverDefinition, VisionAuth } from "./types";
+
+async function createOpenAiModel(auth: VisionAuth, modelId: string) {
+	const apiKey = await resolveOpenAiCompatibleKey(auth);
+	if (!apiKey) {
+		throw new AgentProviderError("OpenAI provider has no API key");
+	}
+	return createOpenAI({
+		apiKey,
+		baseURL: resolveOpenAiCompatibleBaseUrl(auth),
+		name: "openai",
+	}).chat(modelId);
+}
 
 export const openaiDriver: DriverDefinition = {
 	kind: "openai",
@@ -16,22 +28,18 @@ export const openaiDriver: DriverDefinition = {
 	authModes: ["api_key"],
 	envHints: ["OPENAI_API_KEY"],
 	loginInstructions: null,
-	capabilities: { vision: true },
+	capabilities: { vision: true, chat: ["api_key"] },
 	vision: createSdkVisionPort({
 		label: "OpenAI",
 		defaultModel: "gpt-4o",
-		createModel: async (auth, modelId) => {
-			const apiKey = await resolveOpenAiCompatibleKey(auth);
-			if (!apiKey) {
-				throw new AgentProviderError("OpenAI provider has no API key");
-			}
-			return createOpenAI({
-				apiKey,
-				baseURL: resolveOpenAiCompatibleBaseUrl(auth),
-				name: "openai",
-			}).chat(modelId);
-		},
+		createModel: createOpenAiModel,
 	}),
+	chat: {
+		defaultModel: "gpt-4o",
+		missingCredential: async (auth) =>
+			(await resolveOpenAiCompatibleKey(auth)) ? null : "It has no API key.",
+		createModel: createOpenAiModel,
+	},
 	async probe() {
 		return {
 			found: true,
