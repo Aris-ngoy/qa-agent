@@ -57,6 +57,15 @@ describe("scriptActionSummary", () => {
 		).toBe("If #onboarding-skip not visible → 1 step");
 	});
 
+	test("names a reset-app step with its app, and says when it resets the keychain too", () => {
+		expect(scriptActionSummary({ type: "reset-app", appId: "com.example.app" })).toBe(
+			"reset-app com.example.app",
+		);
+		expect(
+			scriptActionSummary({ type: "reset-app", appId: "com.example.app", keychain: true }),
+		).toBe("reset-app com.example.app + keychain");
+	});
+
 	test("names a swipe for the way it scrolls, so a finger swipe up reads Scroll down", () => {
 		expect(scriptActionSummary({ type: "swipe", x: 500, y: 800, x2: 500, y2: 200 })).toBe(
 			"Scroll down",

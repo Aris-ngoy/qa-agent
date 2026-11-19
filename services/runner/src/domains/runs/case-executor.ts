@@ -16,6 +16,7 @@ import {
 	checkScreen,
 	describeScreenCheck,
 	formatActionShellLine,
+	formatAppReset,
 	formatAssertShellLine,
 	formatSleepShellLine,
 	replayCaseScript,
@@ -310,6 +311,7 @@ function replayStepCommand(action: CaseScriptAction): string {
 function replayStepAction(
 	action: CaseScriptAction,
 	outcome: CaseScriptBranchOutcome | undefined,
+	response: ActionResponse | undefined,
 ): Record<string, unknown> {
 	if (action.type === "branch") {
 		const { then: _then, else: _else, ...check } = action;
@@ -334,6 +336,7 @@ function replayStepAction(
 	}
 	return {
 		...action,
+		...(response?.reset ? { reset: response.reset } : {}),
 		reason: action.reason ?? `Replayed saved script ${action.type}`,
 		thoughts: REPLAY_THOUGHTS,
 	};
@@ -343,6 +346,7 @@ function replayStepAction(
 function replayStepDetail(
 	action: CaseScriptAction,
 	outcome: CaseScriptBranchOutcome | undefined,
+	response: ActionResponse | undefined,
 ): string | null {
 	switch (action.type) {
 		case "branch":
@@ -353,6 +357,8 @@ function replayStepDetail(
 		case "terminate-app":
 		case "restart-app":
 			return action.reason ?? action.appId;
+		case "reset-app":
+			return response?.reset ? formatAppReset(response.reset) : (action.reason ?? action.appId);
 		case "open-url":
 			return action.reason ?? action.url;
 		case "alert":
@@ -419,11 +425,11 @@ export async function executeScriptCase(
 			}
 			await deps.appendStep({
 				idx: stepIdx,
-				action: replayStepAction(action, event.outcome),
+				action: replayStepAction(action, event.outcome, event.response),
 				screenshotUri: current.screenshotUri,
 				ok: true,
 				latencyMs: current.latencyMs,
-				detail: replayStepDetail(action, event.outcome),
+				detail: replayStepDetail(action, event.outcome, event.response),
 				command: replayStepCommand(action),
 			});
 			stepIdx += 1;

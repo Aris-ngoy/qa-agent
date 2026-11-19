@@ -10,7 +10,7 @@ import type {
 	StepPhases,
 } from "@yoqa/runner-client";
 import { startFakeCdp } from "../devices/fake-cdp";
-import { DeadSessionError } from "../devices/lane";
+import { ActionUnsupportedError, DeadSessionError } from "../devices/lane";
 import { openDeviceSession } from "../devices/open-session";
 import { encodeRgbaPng } from "../devices/png";
 import type { DeviceSession } from "../devices/session";
@@ -201,6 +201,74 @@ describe("executeScriptCase", () => {
 			action: { type: "key", key: "Enter", modifiers: ["Meta"], reason: "Send" },
 			command: "yoqa action key Enter --modifiers Meta",
 		});
+	});
+
+	it("replays reset-app and records what the Reset cleared and kept", async () => {
+		const actions: ActionRequest[] = [];
+		const steps: Array<{ action: unknown; command?: string | null; detail: string | null }> = [];
+		const status = await executeScriptCase({
+			script: {
+				version: 1,
+				savedAt: 1,
+				actions: [{ type: "reset-app", appId: "com.example.app", keychain: true }],
+			},
+			session: fakeSession(),
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push({ action: step.action, command: step.command, detail: step.detail });
+			},
+			performAction: async (_session, body) => {
+				actions.push(body);
+				return {
+					ok: true,
+					kind: body.kind,
+					reset: { cleared: ["data", "preferences", "keychain"], kept: [] },
+				};
+			},
+			clock: { sleep: async () => {}, now: () => 0 },
+			settle: { capMs: 0 },
+		});
+
+		expect(status).toBe("passed");
+		expect(actions).toEqual([{ kind: "reset-app", appId: "com.example.app", keychain: true }]);
+		expect(steps[0]).toEqual({
+			action: {
+				type: "reset-app",
+				appId: "com.example.app",
+				keychain: true,
+				reset: { cleared: ["data", "preferences", "keychain"], kept: [] },
+				reason: "Replayed saved script reset-app",
+				thoughts: expect.any(String),
+			},
+			command: "yoqa action reset-app --app-id 'com.example.app' --keychain",
+			detail: "cleared data, preferences, keychain",
+		});
+	});
+
+	it("fails a reset-app step with the Lane's reason when the Lane cannot Reset", async () => {
+		const reason = "a cabled iPhone cannot clear an app's data without reinstalling it";
+		const steps: Array<{ action: unknown; ok: boolean; detail: string | null }> = [];
+		const session = {
+			...fakeSession(),
+			resetApp: async () => {
+				throw new ActionUnsupportedError(`reset-app is not supported on this Lane: ${reason}`);
+			},
+		} as unknown as DeviceSession;
+		const status = await executeScriptCase({
+			script: { version: 1, savedAt: 1, actions: [{ type: "reset-app", appId: "com.example" }] },
+			session,
+			isAborted: () => false,
+			appendStep: async (step) => {
+				steps.push({ action: step.action, ok: step.ok, detail: step.detail });
+			},
+			clock: { sleep: async () => {}, now: () => 0 },
+			settle: { capMs: 0 },
+		});
+
+		expect(status).toBe("errored");
+		expect(steps).toHaveLength(1);
+		expect(steps[0]).toMatchObject({ action: { type: "fail" }, ok: false });
+		expect(steps[0]?.detail).toContain(reason);
 	});
 
 	it("waits exactly a wait's ms, with no Settle after it, and records that wait", async () => {

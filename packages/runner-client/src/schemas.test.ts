@@ -56,6 +56,17 @@ describe("caseScriptActionSchema", () => {
 		).toMatchObject({ type: "restart-app", appId: "com.example.app" });
 	});
 
+	test("reads a reset-app step, with or without keychain, and requires its app id", () => {
+		expect(caseScriptActionSchema.parse({ type: "reset-app", appId: "com.example.app" })).toEqual({
+			type: "reset-app",
+			appId: "com.example.app",
+		});
+		expect(
+			caseScriptActionSchema.parse({ type: "reset-app", appId: "com.example.app", keychain: true }),
+		).toEqual({ type: "reset-app", appId: "com.example.app", keychain: true });
+		expect(caseScriptActionSchema.safeParse({ type: "reset-app" }).success).toBe(false);
+	});
+
 	test("rejects out-of-range coordinates and waits", () => {
 		expect(caseScriptActionSchema.safeParse({ type: "tap", x: -1, y: 0 }).success).toBe(false);
 		expect(caseScriptActionSchema.safeParse({ type: "tap", x: 0, y: 1001 }).success).toBe(false);

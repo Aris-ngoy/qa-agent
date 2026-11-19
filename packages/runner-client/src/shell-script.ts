@@ -222,6 +222,7 @@ function parseActionFromTokens(
 	if (url != null) action.url = url;
 	if (seconds != null) action.seconds = seconds;
 	if (flags.has("--double")) action.double = true;
+	if (kind === "reset-app" && flags.has("--keychain")) action.keychain = true;
 
 	if (kind === "key") {
 		const keyToken = tokens[3];
@@ -383,6 +384,7 @@ export function formatActionShellLine(action: ActionRequest): string {
 	if (action.appId != null) parts.push("--app-id", shellSingleQuote(action.appId));
 	if (action.url != null) parts.push("--url", shellSingleQuote(action.url));
 	if (action.seconds != null) parts.push("--seconds", String(action.seconds));
+	if (action.keychain) parts.push("--keychain");
 	if (action.kind === "alert") {
 		if (action.alertAction === "dismiss") parts.push("--dismiss");
 	}
@@ -791,6 +793,19 @@ export function shellToCaseScript(
 				continue;
 			}
 			actions.push({ type: action.kind, appId: action.appId });
+			continue;
+		}
+
+		if (action.kind === "reset-app") {
+			if (!action.appId) {
+				warnings.push(`L${step.lineNumber}: reset-app needs --app-id — skipped`);
+				continue;
+			}
+			actions.push({
+				type: "reset-app",
+				appId: action.appId,
+				...(action.keychain ? { keychain: true } : {}),
+			});
 			continue;
 		}
 

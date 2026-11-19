@@ -396,6 +396,14 @@ function caseScriptAppIdSchema<T extends "activate-app" | "terminate-app" | "res
 	});
 }
 
+/** Reset (an App): `keychain` also resets the whole simulator's keychain (iOS simulator only). */
+const caseScriptResetAppSchema = z.object({
+	type: z.literal("reset-app"),
+	appId: z.string().min(1),
+	keychain: z.boolean().optional(),
+	reason: z.string().optional(),
+});
+
 const caseScriptTypeSchema = z.object({
 	type: z.literal("type"),
 	text: z.string(),
@@ -463,6 +471,7 @@ const caseScriptGestureSchema = z.union([
 	caseScriptAppIdSchema("activate-app"),
 	caseScriptAppIdSchema("terminate-app"),
 	caseScriptAppIdSchema("restart-app"),
+	caseScriptResetAppSchema,
 	caseScriptBackgroundAppSchema,
 	caseScriptOpenUrlSchema,
 	caseScriptReloadPageSchema,
@@ -542,6 +551,7 @@ export const caseScriptActionSchemaByType = {
 	"activate-app": caseScriptAppIdSchema("activate-app"),
 	"terminate-app": caseScriptAppIdSchema("terminate-app"),
 	"restart-app": caseScriptAppIdSchema("restart-app"),
+	"reset-app": caseScriptResetAppSchema,
 	"background-app": caseScriptBackgroundAppSchema,
 	"open-url": caseScriptOpenUrlSchema,
 	"reload-page": caseScriptReloadPageSchema,
@@ -998,6 +1008,27 @@ function storedStepField<T extends z.ZodTypeAny>(schema: T) {
 	return schema.optional().catch(undefined);
 }
 
+/** One kind of App data a Reset (an App) clears or keeps. */
+export const resetPartSchema = z.union([
+	z.literal("data"),
+	z.literal("cache"),
+	z.literal("preferences"),
+	z.literal("permissions"),
+	z.literal("app-groups"),
+	z.literal("keychain"),
+	z.literal("cookies"),
+	z.literal("storage"),
+	z.literal("service-workers"),
+]);
+export type ResetPart = z.infer<typeof resetPartSchema>;
+
+/** What a Reset (an App) cleared on this Lane, and what it kept. */
+export const appResetSchema = z.object({
+	cleared: z.array(resetPartSchema),
+	kept: z.array(resetPartSchema),
+});
+export type AppReset = z.infer<typeof appResetSchema>;
+
 /**
  * The fields a Run step action may carry: a replayed Case Script step (with its `reason`),
  * an agent decision, a Branch's check and `outcome`, or `done` / `fail`. Fields not named here
@@ -1028,6 +1059,9 @@ const runStepActionFieldsSchema = z
 		assertion: storedStepField(z.enum(["visible", "not-visible"])),
 		alertAction: storedStepField(z.enum(["accept", "dismiss"])),
 		outcome: storedStepField(z.enum(["then", "else"])),
+		keychain: storedStepField(z.boolean()),
+		/** A replayed reset-app: what the Reset cleared and kept on the Lane. */
+		reset: storedStepField(appResetSchema),
 		/** The step of the case (0-based) an agent step worked on; none on a replayed step. */
 		flowStep: storedStepField(z.number().int().nonnegative()),
 	})
@@ -1398,27 +1432,6 @@ export type ActionPhases = z.infer<typeof actionPhasesSchema>;
 /** What a web restart-app did to the App origin's storage. */
 export const appStorageSchema = z.union([z.literal("cleared"), z.literal("kept")]);
 export type AppStorage = z.infer<typeof appStorageSchema>;
-
-/** One kind of App data a Reset (an App) clears or keeps. */
-export const resetPartSchema = z.union([
-	z.literal("data"),
-	z.literal("cache"),
-	z.literal("preferences"),
-	z.literal("permissions"),
-	z.literal("app-groups"),
-	z.literal("keychain"),
-	z.literal("cookies"),
-	z.literal("storage"),
-	z.literal("service-workers"),
-]);
-export type ResetPart = z.infer<typeof resetPartSchema>;
-
-/** What a Reset (an App) cleared on this Lane, and what it kept. */
-export const appResetSchema = z.object({
-	cleared: z.array(resetPartSchema),
-	kept: z.array(resetPartSchema),
-});
-export type AppReset = z.infer<typeof appResetSchema>;
 
 export const actionResponseSchema = z.object({
 	ok: z.literal(true),

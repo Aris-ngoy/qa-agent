@@ -3,6 +3,7 @@ import {
 	type RunReportDocument,
 	actionSummary,
 	buildRunReportFromCatalogRun,
+	formatAppReset,
 	formatRunReportGithubSummary,
 	formatRunReportHtml,
 	formatRunReportMarkdown,
@@ -75,6 +76,8 @@ describe("actionSummary", () => {
 			"Open URL: https://example.com",
 		);
 		expect(actionSummary({ type: "restart-app" })).toBe("Restart app");
+		expect(actionSummary({ type: "reset-app", appId: "com.example.app" })).toBe("Reset app");
+		expect(actionSummary({ type: "reset-app", keychain: true })).toBe("Reset app and keychain");
 		expect(actionSummary({ type: "reload-page" })).toBe("Reload page");
 		expect(actionSummary({ type: "key", key: "Tab", modifiers: ["Shift"] })).toBe(
 			"Press Shift+Tab",
@@ -122,6 +125,12 @@ describe("formatStepCommand", () => {
 		expect(formatStepCommand({ type: "restart-app", appId: "com.example.app" })).toBe(
 			"yoqa action restart-app --app-id 'com.example.app'",
 		);
+		expect(formatStepCommand({ type: "reset-app", appId: "com.example.app" })).toBe(
+			"yoqa action reset-app --app-id 'com.example.app'",
+		);
+		expect(formatStepCommand({ type: "reset-app", appId: "com.example.app", keychain: true })).toBe(
+			"yoqa action reset-app --app-id 'com.example.app' --keychain",
+		);
 		expect(formatStepCommand({ type: "background-app", seconds: 3 })).toBe(
 			"yoqa action background-app --seconds 3",
 		);
@@ -140,6 +149,20 @@ describe("formatStepCommand", () => {
 		expect(formatStepCommand({ type: "verify" })).toBeNull();
 		expect(formatStepCommand({ type: "fail" })).toBeNull();
 		expect(formatStepCommand(null)).toBeNull();
+	});
+});
+
+describe("formatAppReset", () => {
+	test("lists what a Reset cleared, then what it kept", () => {
+		expect(
+			formatAppReset({
+				cleared: ["data", "app-groups", "preferences", "cache", "permissions"],
+				kept: ["keychain"],
+			}),
+		).toBe("cleared data, app-groups, preferences, cache, permissions · kept keychain");
+		expect(formatAppReset({ cleared: ["cookies", "storage"], kept: [] })).toBe(
+			"cleared cookies, storage",
+		);
 	});
 });
 

@@ -167,6 +167,12 @@ export function caseScriptActionRequest(action: CaseScriptAction): ActionRequest
 		case "terminate-app":
 		case "restart-app":
 			return { kind: action.type, appId: action.appId };
+		case "reset-app":
+			return {
+				kind: "reset-app",
+				appId: action.appId,
+				...(action.keychain ? { keychain: true } : {}),
+			};
 		case "background-app":
 			return {
 				kind: "background-app",

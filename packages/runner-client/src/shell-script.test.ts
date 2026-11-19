@@ -377,6 +377,23 @@ yoqa action reload-page
 		]);
 	});
 
+	test("converts reset-app with and without --keychain, and formats it back", () => {
+		const line = "yoqa action reset-app --app-id 'com.example.app' --keychain";
+		const result = shellToCaseScript(
+			`yoqa action reset-app --app-id com.example.app\n${line}\nyoqa action reset-app`,
+			{ savedAt: 1 },
+		);
+		expect(result.errors).toEqual([]);
+		expect(result.script?.actions).toEqual([
+			{ type: "reset-app", appId: "com.example.app" },
+			{ type: "reset-app", appId: "com.example.app", keychain: true },
+		]);
+		expect(result.warnings).toEqual(["L3: reset-app needs --app-id — skipped"]);
+		expect(
+			formatActionShellLine({ kind: "reset-app", appId: "com.example.app", keychain: true }),
+		).toBe(line);
+	});
+
 	test("converts a key with its modifiers, and formats it back", () => {
 		const line = "yoqa action key Tab --modifiers Shift,Control";
 		const result = shellToCaseScript(`${line}\nyoqa action key enter`, { savedAt: 1 });
