@@ -216,9 +216,9 @@ function parseVisionSchema<T>(
 }
 
 /** Anthropic needs explicit Prompt cache breakpoints; other SDK providers cache prefixes automatically. */
-const ANTHROPIC_CACHE_BREAKPOINT = { anthropic: { cacheControl: { type: "ephemeral" } } };
+export const ANTHROPIC_CACHE_BREAKPOINT = { anthropic: { cacheControl: { type: "ephemeral" } } };
 
-function isAnthropicModel(model: LanguageModel): boolean {
+export function isAnthropicModel(model: LanguageModel): boolean {
 	return typeof model === "object" && /(^|\.)anthropic(\.|$)/.test(model.provider);
 }
 
