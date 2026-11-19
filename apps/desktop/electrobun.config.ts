@@ -1,5 +1,6 @@
 import type { ElectrobunConfig } from "electrobun/bun";
 import { executableFileName } from "./src/bun/features/packaged-resources";
+import { YOQA_RELEASES_URL } from "./src/shared/yoqa-update";
 
 // zig-asar unpacks exact paths only, so the compiled names (`.exe` on Windows) must match.
 const runnerBin = executableFileName("yoqa-runner");
@@ -61,7 +62,7 @@ export default {
 	// Yoqa updates (ADR-0013): installs check the newest GitHub Release, and each build
 	// diffs against it to publish a delta patch from the previous release.
 	release: {
-		baseUrl: "https://github.com/Aris-ngoy/qa-agent/releases/latest/download",
+		baseUrl: `${YOQA_RELEASES_URL}/latest/download`,
 		generatePatch: true,
 	},
 } satisfies ElectrobunConfig;

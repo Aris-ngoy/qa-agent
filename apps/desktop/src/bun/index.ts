@@ -19,6 +19,7 @@ import { getIosToolchainSnapshot, setIosToolchainSelection } from "./features/io
 import {
 	ensureLocalServices,
 	restartLocalRunner,
+	runnerBaseUrl,
 	stopLocalRunner,
 	stopRunnerSidecar,
 } from "./features/runner-sidecar";
@@ -93,7 +94,7 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 	handlers: {
 		requests: {
 			ping: () => "pong",
-			getRunnerBaseUrl: () => process.env.YOQA_RUNNER_URL ?? "http://127.0.0.1:7420",
+			getRunnerBaseUrl: () => runnerBaseUrl(),
 			ensureLocalServices: () => ensureLocalServices(),
 			stopLocalRunner: () => stopLocalRunner(),
 			restartLocalRunner: () => restartLocalRunner(),

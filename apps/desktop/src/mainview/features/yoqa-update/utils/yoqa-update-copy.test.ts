@@ -104,7 +104,13 @@ describe("updateStatusText", () => {
 		).toBe("The last check for updates failed");
 	});
 
-	test("says development builds never update", () => {
-		expect(updateStatusText(idle, "dev")).toBe("Development builds don't check for Yoqa updates");
+	test("says development versions never check", () => {
+		expect(updateStatusText(idle, "dev")).toBe("Development versions don't check for Yoqa updates");
+	});
+
+	test("says a prerelease never receives a Yoqa update, even after a failed check", () => {
+		expect(updateStatusText({ ...idle, lastCheckedAt: 1, lastError: "404" }, "canary")).toBe(
+			"This prerelease doesn't receive Yoqa updates",
+		);
 	});
 });

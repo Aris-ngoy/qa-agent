@@ -6,7 +6,7 @@ export type ReleaseBuild = {
 	/** Only a stable tag build publishes a Yoqa update, so only it must ship a patch. */
 	requirePatch: boolean;
 	/** `@yoqa/desktop` package script that builds this channel. */
-	buildScript: "build:release" | "build:release:canary";
+	buildScript: "build" | "build:release";
 };
 
 /**
@@ -16,7 +16,7 @@ export type ReleaseBuild = {
 export function releaseBuildFor(ref: string): ReleaseBuild {
 	const tag = ref.startsWith("refs/tags/v") ? ref.slice("refs/tags/".length) : null;
 	if (tag?.includes("-")) {
-		return { channel: "canary", requirePatch: false, buildScript: "build:release:canary" };
+		return { channel: "canary", requirePatch: false, buildScript: "build" };
 	}
 	return { channel: "stable", requirePatch: tag !== null, buildScript: "build:release" };
 }

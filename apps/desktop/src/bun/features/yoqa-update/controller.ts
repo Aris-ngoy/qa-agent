@@ -1,4 +1,9 @@
-import type { YoqaUpdateStatus } from "../../../shared/yoqa-update";
+import {
+	type YoqaChannel,
+	type YoqaUpdateStatus,
+	initialYoqaUpdateStatus,
+	updatesEnabledForChannel,
+} from "../../../shared/yoqa-update";
 
 /** What a check found: whether a newer Yoqa Desktop exists, and its version. */
 export type YoqaUpdateCheck = {
@@ -34,8 +39,8 @@ export type YoqaUpdateTimer = {
 
 export type YoqaUpdateControllerDeps = {
 	updater: YoqaUpdater;
-	/** Electrobun's build channel (`dev`, `canary`, `stable`). */
-	channel: string;
+	/** Electrobun's channel; only `stable` looks for Yoqa updates. */
+	channel: YoqaChannel;
 	timer: YoqaUpdateTimer;
 	now: () => number;
 	/** Asks the local runner whether any Run is in progress; a ready update waits for it. */
@@ -50,14 +55,14 @@ export type YoqaUpdateController = {
 	/**
 	 * Report a Yoqa update the last session failed to apply, whatever the automatic-check
 	 * setting, and schedule the launch check and a check every 6 hours after when that setting
-	 * is on. Does nothing on the dev channel.
+	 * is on. Does nothing on the dev or canary channel.
 	 */
 	start: () => void;
 	/** Check now, ignoring any schedule. Resolves once the check (and download) ends. */
 	checkNow: () => Promise<void>;
 	/**
 	 * Re-read the automatic-check setting after it changed: off cancels the next automatic
-	 * check, on schedules one. Does nothing on the dev channel.
+	 * check, on schedules one. Does nothing on the dev or canary channel.
 	 */
 	autoCheckChanged: () => Promise<void>;
 	/** Apply a ready Yoqa update. Never called by the controller itself. */
@@ -79,13 +84,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): YoqaUpdateController {
-	let status: YoqaUpdateStatus = {
-		state: "idle",
-		version: null,
-		lastCheckedAt: null,
-		lastError: null,
-		restartHeld: false,
-	};
+	let status: YoqaUpdateStatus = initialYoqaUpdateStatus();
 
 	function update(next: Partial<YoqaUpdateStatus>): void {
 		status = { ...status, ...next };
@@ -111,13 +110,13 @@ export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): Yoqa
 		return deps.isRunInProgress().catch(() => false);
 	}
 
-	/** `electrobun dev` builds never look for a Yoqa update. */
-	const devChannel = deps.channel === "dev";
+	/** The dev channel has nothing to update; canary's update files are never served. */
+	const updatesOff = !updatesEnabledForChannel(deps.channel);
 
 	let checking: Promise<void> | null = null;
 
 	function checkNow(): Promise<void> {
-		if (devChannel) return Promise.resolve();
+		if (updatesOff) return Promise.resolve();
 		checking ??= runCheck().finally(() => {
 			checking = null;
 		});
@@ -218,7 +217,7 @@ export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): Yoqa
 	}
 
 	async function autoCheckChanged(): Promise<void> {
-		if (devChannel) return;
+		if (updatesOff) return;
 		autoCheck = await deps.readAutoCheck();
 		if (!autoCheck) {
 			if (scheduled !== null) deps.timer.clearTimeout(scheduled);
@@ -246,7 +245,7 @@ export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): Yoqa
 
 	return {
 		start: () => {
-			if (devChannel) return;
+			if (updatesOff) return;
 			// Not network traffic, so the automatic-check setting doesn't gate it.
 			void reportFailedApply();
 			void (async () => {

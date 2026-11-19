@@ -45,7 +45,7 @@ A prerelease tag (`v*-*`) builds as canary instead: `canary-macos-arm64-yoqa-can
 - `CFBundleIdentifier` stays `ai.yoqa.app`. Electrobun doesn't add the channel to the identifier.
 - Electrobun's app-data folder gains the channel: `~/Library/Application Support/ai.yoqa.app/canary/` vs `…/stable/` (Windows: `%LOCALAPPDATA%\ai.yoqa.app\canary\`).
 - Yoqa's own data does not: both apps use `~/.yoqa` and the runner on port 7420, so quit one before opening the other. The release notes say so for prereleases.
-- It checks `latest/download/canary-macos-arm64-update.json`, which never exists, so it never updates itself.
+- It never updates itself: `latest/download/canary-macos-arm64-update.json` never exists, so Yoqa doesn't check for a Yoqa update on the canary channel at all ([yoqa-update.md](yoqa-update.md)).
 
 ## How to verify
 

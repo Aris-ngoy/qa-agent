@@ -21,7 +21,7 @@ import {
 	viewportPresetSchema,
 	webDeviceOf,
 } from "@yoqa/runner-client";
-import { asc, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { autoChats } from "../auto/schema";
 import { resolveBuildForRun } from "../builds/application";
 import { getApp, getCase, isEverydayWarningAccepted, saveCaseScript } from "../catalog/application";
@@ -910,12 +910,13 @@ export async function listRuns(appId: string): Promise<Run[]> {
 	return runsFromRows(runRows);
 }
 
-/** The Runs in progress across every App, newest first. */
-export async function listRunsInProgress(): Promise<Run[]> {
+/** The Runs in progress, newest first: one App's when given an `appId`, otherwise every App's. */
+export async function listRunsInProgress(appId?: string): Promise<Run[]> {
+	const running = eq(runs.status, "running");
 	const runRows = await getCatalogDb()
 		.select()
 		.from(runs)
-		.where(eq(runs.status, "running"))
+		.where(appId ? and(running, eq(runs.appId, appId)) : running)
 		.orderBy(desc(runs.createdAt));
 	return runsFromRows(runRows);
 }

@@ -3,7 +3,7 @@ import type { YoqaFailedApply } from "./controller";
 /** Saved just before Yoqa quits to apply a Yoqa update: what it meant to install, and over what. */
 export type PendingYoqaApply = {
 	version: string;
-	/** Electrobun build hash of the Yoqa that quit to apply. */
+	/** Electrobun's hash (`version.json`) of the Yoqa version that quit to apply. */
 	fromHash: string;
 };
 

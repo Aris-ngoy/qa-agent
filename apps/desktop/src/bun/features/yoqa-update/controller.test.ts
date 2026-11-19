@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { YoqaUpdateStatus } from "../../../shared/yoqa-update";
+import type { YoqaChannel, YoqaUpdateStatus } from "../../../shared/yoqa-update";
 import {
 	type YoqaFailedApply,
 	type YoqaUpdateCheck,
@@ -80,7 +80,7 @@ const HOUR = 60 * 60 * 1000;
 
 function setup(
 	script: Parameters<typeof fakeUpdater>[0] = {},
-	options: { channel?: string; autoCheck?: () => boolean | Promise<boolean> } = {},
+	options: { channel?: YoqaChannel; autoCheck?: () => boolean | Promise<boolean> } = {},
 ) {
 	const clock = fakeTimer();
 	const { updater, calls } = fakeUpdater(script);
@@ -379,6 +379,20 @@ describe("Yoqa update controller", () => {
 		const { controller, calls, clock, pushed } = setup(
 			{ check: async () => newer("1.0.9") },
 			{ channel: "dev" },
+		);
+		controller.start();
+		await controller.autoCheckChanged();
+		await clock.advance(24 * 60 * 60 * 1000);
+		await controller.checkNow();
+		expect(calls).toEqual([]);
+		expect(pushed).toEqual([]);
+		expect(controller.status().state).toBe("idle");
+	});
+
+	test("never checks on the canary channel, which latest/download never serves", async () => {
+		const { controller, calls, clock, pushed } = setup(
+			{ check: async () => newer("1.0.9"), takeFailedApply: async () => ({ version: "1.0.9" }) },
+			{ channel: "canary" },
 		);
 		controller.start();
 		await controller.autoCheckChanged();

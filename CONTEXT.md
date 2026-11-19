@@ -210,5 +210,5 @@ _Avoid_: manual mode, takeover (one word)
 ### Distribution
 
 **Yoqa update**:
-A newer version of Yoqa Desktop, found and downloaded in the background and applied only when the user chooses to restart. A restart is held while a Run is in progress. It arrives as a small patch when the installed version is the one just before it, otherwise in full. An install older than the first version that checks for updates never sees one and is replaced by hand, once.
+A newer version of Yoqa Desktop, found and downloaded in the background and applied only when the user chooses to restart. A restart is held while a Run is in progress. It arrives as a small patch when the installed version is the one just before it and was itself installed by a Yoqa update, otherwise in full. Only stable installs receive one; a prerelease never does. An install older than the first version that checks for updates never sees one and is replaced by hand, once.
 _Avoid_: app update (an App is the app under test), bundle, Build (a binary of the app under test), OTA

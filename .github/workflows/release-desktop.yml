@@ -215,7 +215,7 @@ jobs:
             3. Early preview: iOS needs Xcode and stays macOS-only, and the Settings → CLI & Agents installer is macOS-only for now.
 
             ### Notes
-            ${{ contains(github.ref_name, '-') && '- **Prerelease (canary build):** installs beside the stable app as `yoqa-canary` and never updates itself. It shares `~/.yoqa` and the runner on port 7420 with the stable app, so quit one before opening the other.' || '' }}
+            ${{ contains(github.ref_name, '-') && '- **Prerelease (canary channel):** installs beside the stable app as `yoqa-canary` and never updates itself. It shares `~/.yoqa` and the runner on port 7420 with the stable app, so quit one before opening the other.' || '' }}
             - macOS is **Apple Silicon only** (`arm64`); Windows is **x64 only**
             - Bundled local runner starts with the app (no monorepo checkout required)
             - Xcode / adb stay on the host

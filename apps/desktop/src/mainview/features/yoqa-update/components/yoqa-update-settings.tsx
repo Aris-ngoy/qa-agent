@@ -1,5 +1,7 @@
+import { updatesEnabledForChannel } from "@/../shared/yoqa-update";
 import { SectionCard } from "@/features/settings/components/section-card";
 import { yoqaUpdate$ } from "@/features/yoqa-update/data/state/yoqa-update";
+import { useNow } from "@/features/yoqa-update/hooks/use-now";
 import {
 	useCheckForYoqaUpdate,
 	useSetYoqaUpdateSettings,
@@ -8,18 +10,7 @@ import {
 } from "@/features/yoqa-update/hooks/usequery/use-yoqa-update";
 import { lastCheckedText, updateStatusText } from "@/features/yoqa-update/utils/yoqa-update-copy";
 import { Button, Spinner, Switch } from "@heroui/react";
-import { useObservable, useValue } from "@legendapp/state/react";
-import { useEffect } from "react";
-
-/** Re-read the clock every 30 seconds so "Last checked 5 minutes ago" stays true. */
-function useNow(): number {
-	const now$ = useObservable(() => Date.now());
-	useEffect(() => {
-		const id = setInterval(() => now$.set(Date.now()), 30_000);
-		return () => clearInterval(id);
-	}, [now$]);
-	return useValue(now$);
-}
+import { useValue } from "@legendapp/state/react";
 
 /**
  * Settings › Updates: the installed version, the last check, "Check for updates", and the
@@ -33,9 +24,11 @@ export function YoqaUpdateSettings() {
 	const settingsMutation = useSetYoqaUpdateSettings();
 	const now = useNow();
 
-	const channel = versionQuery.data?.channel ?? "";
+	// Until the version loads, show the snapshot as a stable install would, with the button off.
+	const channel = versionQuery.data?.channel ?? "stable";
+	const updatesOn = updatesEnabledForChannel(channel);
 	const busy = status.state === "checking" || status.state === "downloading";
-	const canCheck = Boolean(versionQuery.data) && channel !== "dev" && !busy;
+	const canCheck = Boolean(versionQuery.data) && updatesOn && !busy;
 
 	return (
 		<div className="flex flex-col gap-6">
@@ -54,7 +47,7 @@ export function YoqaUpdateSettings() {
 						<p className="mt-3 text-body-md font-medium text-on-surface">
 							{updateStatusText(status, channel)}
 						</p>
-						{channel !== "dev" ? (
+						{updatesOn ? (
 							<p className="mt-1 text-body-sm text-on-surface-variant">
 								{lastCheckedText(status.lastCheckedAt, now)}
 							</p>

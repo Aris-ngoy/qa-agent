@@ -1,21 +1,28 @@
 import { RunnerClient } from "@yoqa/runner-client";
 import { Updater } from "electrobun/bun";
 import type {
+	YoqaChannel,
 	YoqaUpdateSettings,
 	YoqaUpdateStatus,
 	YoqaVersionInfo,
 } from "../../../shared/yoqa-update";
 import { patchStoredSettings, readStoredSettings } from "../app-settings/store";
+import { runnerBaseUrl } from "../runner-sidecar";
 import { type YoqaUpdateController, createYoqaUpdateController } from "./controller";
 import { createElectrobunYoqaUpdater } from "./electrobun-updater";
 import { createFailedApplyTracker } from "./failed-apply";
 
 export type { YoqaUpdateController } from "./controller";
 
+/** Electrobun only writes `dev`, `canary` or `stable`; anything else is treated as `dev`. */
+function yoqaChannel(channel: string): YoqaChannel {
+	return channel === "stable" || channel === "canary" ? channel : "dev";
+}
+
 /** The installed version and channel, from Electrobun's `version.json`. */
 export async function getYoqaVersionInfo(): Promise<YoqaVersionInfo> {
 	const info = await Updater.getLocalInfo();
-	return { version: info.version, channel: info.channel };
+	return { version: info.version, channel: yoqaChannel(info.channel) };
 }
 
 /** The stored Yoqa update settings; automatic checks are on unless switched off. */
@@ -36,13 +43,13 @@ export async function writeYoqaUpdateSettings(
 
 const RUNNER_ANSWER_TIMEOUT_MS = 5_000;
 
-/** Build the production Yoqa update controller. Call `start()` once the window is up. */
+/** Create the production Yoqa update controller. Call `start()` once the window is up. */
 export async function createYoqaUpdates(
 	onStatus: (status: YoqaUpdateStatus) => void,
 ): Promise<YoqaUpdateController> {
 	const { channel } = await getYoqaVersionInfo();
 	const runner = new RunnerClient({
-		baseUrl: process.env.YOQA_RUNNER_URL ?? "http://127.0.0.1:7420",
+		baseUrl: runnerBaseUrl(),
 		// A runner that doesn't answer in time counts as no Run in progress, like an unreachable one.
 		fetchImpl: (input, init) =>
 			fetch(input, { ...init, signal: AbortSignal.timeout(RUNNER_ANSWER_TIMEOUT_MS) }),
