@@ -16,6 +16,7 @@ import {
 import { useSaveTestCase } from "@/features/inspector/hooks/usequery/use-save-test-case";
 import { tapLinesForSelection } from "@/features/inspector/utils/command-snippets";
 import { notify } from "@/features/inspector/utils/report";
+import { resetStepsIn, stepResultDetail } from "@/features/inspector/utils/reset-app";
 import {
 	caseScriptLinesFromShell,
 	defaultCaseNameFromScript,
@@ -30,6 +31,7 @@ import { exportRunReport } from "@/features/runs/utils/run-report";
 import { useObservable } from "@legendapp/state/react";
 import { useNavigate } from "@tanstack/react-router";
 import {
+	type ActionResponse,
 	CASE_SCRIPT_FILE_EXTENSION,
 	type CaseScript,
 	buildRunReportFromInspectorSession,
@@ -54,6 +56,12 @@ type InspectorReportStep = {
 	command: string | null;
 	screenshotBase64: string | null;
 };
+
+/** A log line, plus what the step reported (a Reset's cleared / kept lists). */
+function withDetail(text: string, response: ActionResponse | undefined): string {
+	const detail = stepResultDetail(response);
+	return detail ? `${text} · ${detail}` : text;
+}
 
 type ScriptSessionOptions = {
 	controller: InspectorFeedController;
@@ -141,7 +149,7 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 					const line = formatCaseScriptReplayStep(event);
 					if (status === "ok" || status === "error") controller.screenChanged();
 					if (status === "running") log(`→ ${line}`);
-					else if (status === "ok") log(`✓ ${line}`, "ok");
+					else if (status === "ok") log(withDetail(`✓ ${line}`, event.response), "ok");
 					else if (status === "error") log(`✗ ${line}: ${error ?? "failed"}`, "error");
 				},
 			}),
@@ -173,14 +181,35 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 		);
 	};
 
-	const handleInsertAndRunLines = (lines: string[]) => {
-		if (lines.length === 0) return;
+	const insertAndRun = (lines: string[]) => {
 		const { actions } = appendShellLines(lines);
 		if (actions.length === 0) return;
 		void runActions(
 			{ version: 1, savedAt: Date.now(), actions },
 			{ resetLog: false, label: "Insert & Run…" },
 		);
+	};
+
+	/** A Reset can't be undone, so Insert & Run holds one until `confirmReset`. */
+	const handleInsertAndRunLines = (lines: string[]) => {
+		if (lines.length === 0) return;
+		const { actions } = caseScriptLinesFromShell(lines, feed$.elements.peek());
+		const resets = resetStepsIn(actions);
+		if (resets.length > 0) {
+			script$.pendingReset.set({ resets, lines });
+			return;
+		}
+		insertAndRun(lines);
+	};
+
+	const confirmReset = () => {
+		const pending = script$.pendingReset.peek();
+		script$.pendingReset.set(null);
+		if (pending) insertAndRun(pending.lines);
+	};
+
+	const cancelReset = () => {
+		script$.pendingReset.set(null);
 	};
 
 	const handleRun = async () => {
@@ -209,7 +238,7 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 				signal: aborter.signal,
 				pauseAfterActionMs: 200,
 				onStep: async (event) => {
-					const { index, position, action, status, error } = event;
+					const { index, position, action, status, error, response } = event;
 					// A step inside a Branch keeps its `if:` line highlighted.
 					const lineNumber = parsed.actionLines[index] ?? null;
 					const summary = formatCaseScriptReplayStep(event);
@@ -228,12 +257,12 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 						summary,
 						ok,
 						latencyMs: Math.max(0, Date.now() - stepStartedAt),
-						detail: ok ? null : (error ?? "failed"),
+						detail: ok ? stepResultDetail(response) : (error ?? "failed"),
 						command: caseScriptActionCommand(action),
 						screenshotBase64: bytes ? bytesToBase64(bytes) : null,
 					});
 					if (ok) {
-						log(`✓ L${lineNumber}`, "ok");
+						log(withDetail(`✓ L${lineNumber}`, response), "ok");
 					} else {
 						log(`✗ L${lineNumber}: ${error ?? "failed"}`, "error");
 					}
@@ -424,6 +453,8 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 		handleInsertLines,
 		handleCopyLines,
 		handleInsertAndRunLines,
+		confirmReset,
+		cancelReset,
 		handleRun,
 		handleStop,
 		handleCopy,

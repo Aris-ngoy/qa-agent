@@ -1,3 +1,4 @@
+import type { PendingReset } from "@/features/inspector/utils/reset-app";
 import { appendScriptLines } from "@/features/inspector/utils/selection";
 import { type Observable, batch } from "@legendapp/state";
 import { type RunReportDocument, emptyCaseScriptFile } from "@yoqa/runner-client";
@@ -19,6 +20,8 @@ export type InspectorScriptState = {
 	saveError: string | null;
 	report: RunReportDocument | null;
 	exportingReport: boolean;
+	/** An Insert & Run that Resets an App, held until the user confirms it. */
+	pendingReset: { resets: PendingReset[]; lines: string[] } | null;
 };
 
 export type InspectorScript$ = Observable<InspectorScriptState>;
@@ -34,6 +37,7 @@ export function initialScriptState(): InspectorScriptState {
 		saveError: null,
 		report: null,
 		exportingReport: false,
+		pendingReset: null,
 	};
 }
 
