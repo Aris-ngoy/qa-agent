@@ -6,7 +6,7 @@ import type {
 	OpenPathResult,
 } from "./cli-environment";
 import type { IosToolchainPreferences, IosToolchainSnapshot } from "./ios-toolchain";
-import type { YoqaUpdateStatus, YoqaVersionInfo } from "./yoqa-update";
+import type { YoqaUpdateSettings, YoqaUpdateStatus, YoqaVersionInfo } from "./yoqa-update";
 
 export type EnsureLocalServicesResult = {
 	baseUrl: string;
@@ -141,6 +141,16 @@ export type DesktopRPC = {
 			restartForYoqaUpdate: {
 				params: undefined;
 				response: { ok: true };
+			};
+			/** The stored Yoqa update settings ("Check for updates automatically"). */
+			getYoqaUpdateSettings: {
+				params: undefined;
+				response: YoqaUpdateSettings;
+			};
+			/** Store the Yoqa update settings; the schedule follows at once, without a restart. */
+			setYoqaUpdateSettings: {
+				params: YoqaUpdateSettings;
+				response: YoqaUpdateSettings;
 			};
 		};
 		messages: {

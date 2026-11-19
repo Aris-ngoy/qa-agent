@@ -30,15 +30,25 @@ export type YoqaUpdateControllerDeps = {
 	now: () => number;
 	/** Asks the local runner whether any Run is in progress; a ready update waits for it. */
 	isRunInProgress: () => Promise<boolean>;
+	/** The stored "Check for updates automatically" setting. */
+	readAutoCheck: () => boolean | Promise<boolean>;
 	/** Called with a fresh snapshot on every change. */
 	onStatus: (status: YoqaUpdateStatus) => void;
 };
 
 export type YoqaUpdateController = {
-	/** Schedule the launch check. Does nothing on the dev channel. */
+	/**
+	 * Schedule the launch check and a check every 6 hours after, when the automatic-check
+	 * setting is on. Does nothing on the dev channel.
+	 */
 	start: () => void;
 	/** Check now, ignoring any schedule. Resolves once the check (and download) ends. */
 	checkNow: () => Promise<void>;
+	/**
+	 * Re-read the automatic-check setting after it changed: off cancels the next automatic
+	 * check, on schedules one. Does nothing on the dev channel.
+	 */
+	autoCheckChanged: () => Promise<void>;
 	/** Apply a ready Yoqa update. Never called by the controller itself. */
 	restart: () => Promise<void>;
 	status: () => YoqaUpdateStatus;
@@ -49,6 +59,9 @@ export const LAUNCH_CHECK_DELAY_MS = 10_000;
 
 /** How often a ready Yoqa update asks the runner whether a Run is still in progress. */
 export const RUN_RECHECK_INTERVAL_MS = 5_000;
+
+/** How long after a check ends the next automatic one runs; also when a failure is retried. */
+export const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -168,12 +181,47 @@ export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): Yoqa
 		return applying;
 	}
 
+	/** The pending automatic check, if one is scheduled. */
+	let scheduled: unknown = null;
+	/** The last value read from the automatic-check setting. */
+	let autoCheck = false;
+
+	function scheduleCheck(ms: number): void {
+		scheduled = deps.timer.setTimeout(() => void runScheduledCheck(), ms);
+	}
+
+	async function runScheduledCheck(): Promise<void> {
+		scheduled = null;
+		await checkNow();
+		// Turning the setting off (or back on) while this check ran already settled the schedule.
+		if (autoCheck && scheduled === null) scheduleCheck(AUTO_CHECK_INTERVAL_MS);
+	}
+
+	async function autoCheckChanged(): Promise<void> {
+		if (devChannel) return;
+		autoCheck = await deps.readAutoCheck();
+		if (!autoCheck) {
+			if (scheduled !== null) deps.timer.clearTimeout(scheduled);
+			scheduled = null;
+			return;
+		}
+		if (scheduled !== null) return;
+		// Pick the schedule back up: 6 hours after the last check, but never right away.
+		const sinceLastCheck =
+			status.lastCheckedAt === null ? AUTO_CHECK_INTERVAL_MS : deps.now() - status.lastCheckedAt;
+		scheduleCheck(Math.max(AUTO_CHECK_INTERVAL_MS - sinceLastCheck, LAUNCH_CHECK_DELAY_MS));
+	}
+
 	return {
 		start: () => {
 			if (devChannel) return;
-			deps.timer.setTimeout(() => void checkNow(), LAUNCH_CHECK_DELAY_MS);
+			void (async () => {
+				autoCheck = await deps.readAutoCheck();
+				if (autoCheck) scheduleCheck(LAUNCH_CHECK_DELAY_MS);
+			})();
 		},
 		checkNow,
+		autoCheckChanged,
 		restart,
 		status: () => status,
 	};

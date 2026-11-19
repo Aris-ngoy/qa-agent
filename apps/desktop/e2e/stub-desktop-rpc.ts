@@ -21,6 +21,8 @@ const answers: Record<string, unknown> = {
 		lastError: null,
 		restartHeld: false,
 	},
+	getYoqaUpdateSettings: { autoCheck: true },
+	setYoqaUpdateSettings: { autoCheck: true },
 };
 
 const client = {
