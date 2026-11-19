@@ -1188,6 +1188,42 @@ describe("the Auto chat routes", () => {
 			]);
 		});
 
+		test("with a default Provider that cannot see, as Claude, the Run decides on the first enabled one that can", async () => {
+			await connectBrowser();
+			const { chat } = await chatOnSavedCase("Claude is the default");
+			await getCatalogDb()
+				.update(providers)
+				.set({ isDefault: 0 })
+				.where(eq(providers.id, FAKE_VISION_ID));
+			await addProvider({
+				id: "prov_claude",
+				kind: "claude",
+				authMode: "cli",
+				isDefault: 1,
+				createdAt: -1,
+			});
+			const outputs: Array<{ text: string; isError: boolean }> = [];
+			agent.script = async function* (turn) {
+				await turn.callTool("change_draft_step", fixPay);
+				outputs.push(await turn.callTool("run_case_draft", {}));
+				yield { type: "text", delta: "Ran it." };
+			};
+			const stream = await openEvents(chat.id);
+
+			await send(chat.id, "Run it", "run");
+			const cards = runCards(await stream.until(isReply));
+			await stream.close();
+			await getCatalogDb().delete(providers).where(eq(providers.id, "prov_claude"));
+			await getCatalogDb()
+				.update(providers)
+				.set({ isDefault: 1 })
+				.where(eq(providers.id, FAKE_VISION_ID));
+
+			expect(outputs[0]?.text).not.toContain("does not support vision");
+			expect(outputs[0]?.text).toContain("· passed");
+			expect(cards.at(-1)?.provider).toBe("Fake vision · fake-vision");
+		});
+
 		const runCards = (events: AutoChatEvent[]): AutoRun[] =>
 			events.flatMap((event) => (event.type === "run" ? [event.run] : []));
 
