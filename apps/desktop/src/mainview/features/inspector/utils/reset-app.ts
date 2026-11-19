@@ -1,7 +1,5 @@
+import type { PendingReset } from "@/features/inspector/data/state/script";
 import { type ActionResponse, type CaseScriptAction, formatAppReset } from "@yoqa/runner-client";
-
-/** One Reset (an App) a run is about to do: the App it wipes, and whether the keychain goes too. */
-export type PendingReset = { appId: string; keychain: boolean };
 
 /** The Resets among `actions`; the Inspector asks before it runs any of them. */
 export function resetStepsIn(actions: CaseScriptAction[]): PendingReset[] {
@@ -23,4 +21,10 @@ export function resetAppConfirmation(reset: PendingReset): string {
 /** What a finished step reports beyond ok: a Reset's cleared / kept lists. */
 export function stepResultDetail(response: ActionResponse | undefined): string | null {
 	return response?.reset ? formatAppReset(response.reset) : null;
+}
+
+/** A log line, plus what the step reported (a Reset's cleared / kept lists). */
+export function withDetail(text: string, response: ActionResponse | undefined): string {
+	const detail = stepResultDetail(response);
+	return detail ? `${text} · ${detail}` : text;
 }

@@ -2242,7 +2242,7 @@ describe("the Auto chat routes", () => {
 				);
 			});
 
-			test("perform_action cannot Reset the App: the chat never wipes its data while it explores", async () => {
+			test("perform_action cannot Reset the App: the chat never clears its data while it explores", async () => {
 				await connectBrowser([]);
 				const app = await createApp({ name: "Never resets", webUrl: WEB_URL });
 				const chat = await newChat(app.id);

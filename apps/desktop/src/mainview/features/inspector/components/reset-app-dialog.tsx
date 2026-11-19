@@ -1,4 +1,5 @@
-import { type PendingReset, resetAppConfirmation } from "@/features/inspector/utils/reset-app";
+import type { PendingReset } from "@/features/inspector/data/state/script";
+import { resetAppConfirmation } from "@/features/inspector/utils/reset-app";
 import { AlertDialog, Button } from "@heroui/react";
 
 /**

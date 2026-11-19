@@ -9,7 +9,7 @@ import {
 	type ScreenResponse,
 } from "./schemas";
 import { checkScreen, describeScreenCheck, screenCheckMissMessage } from "./screen-check";
-import { assertTargetFlags, formatActionShellLine } from "./shell-script";
+import { assertTargetFlags, formatActionShellLine, keychainField } from "./shell-script";
 
 /**
  * What a Case Script replay runs against: one adapter per place it runs (the Case executor in
@@ -171,7 +171,7 @@ export function caseScriptActionRequest(action: CaseScriptAction): ActionRequest
 			return {
 				kind: "reset-app",
 				appId: action.appId,
-				...(action.keychain ? { keychain: true } : {}),
+				...keychainField(action.keychain),
 			};
 		case "background-app":
 			return {

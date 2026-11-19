@@ -5,6 +5,7 @@ import {
 	formatAssertShellLine,
 	formatScreenshotShellLine,
 	formatSleepShellLine,
+	keychainField,
 } from "@yoqa/runner-client";
 
 export type SnippetCommandId =
@@ -247,11 +248,7 @@ function resetAppLines(appId: string, keychain: boolean): string[] {
 	if (!trimmed) return [];
 	return [
 		keychain ? "# reset app and keychain" : "# reset app",
-		formatActionShellLine({
-			kind: "reset-app",
-			appId: trimmed,
-			...(keychain ? { keychain: true } : {}),
-		}),
+		formatActionShellLine({ kind: "reset-app", appId: trimmed, ...keychainField(keychain) }),
 	];
 }
 

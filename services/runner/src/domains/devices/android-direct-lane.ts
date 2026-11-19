@@ -282,17 +282,22 @@ export async function createAndroidDirectSession(
 		shell(["monkey", "-p", appId, "-c", "android.intent.category.LAUNCHER", "1"], label);
 
 	/**
-	 * `pm clear` ends the App and wipes its data, cache, preferences, databases and files, and
+	 * `pm clear` ends the App and clears its data, cache, preferences, databases and files, and
 	 * takes back its runtime permissions, for the current user. pm says nothing useful for a
-	 * package that is not installed, so that is asked first.
+	 * package that is not installed, so that is asked first. Before Android 9, pm's `--user`
+	 * takes a number only, so the current user is asked of `am`; where `am` cannot say, pm
+	 * clears for its default user.
 	 */
 	const resetApp = async (appId: string): Promise<AppReset> => {
 		const installed = await adb(["-s", serial, "shell", "pm", "path", appId]);
 		if (installed.exitCode !== 0 || !installed.stdout.includes("package:")) {
 			throw new Error(`${appId} is not installed on this Android device`);
 		}
+		const current = await adb(["-s", serial, "shell", "am", "get-current-user"]);
+		const userId = current.exitCode === 0 ? current.stdout.trim() : "";
+		const user = /^\d+$/.test(userId) ? ["--user", userId] : [];
 		await shell(["am", "force-stop", appId], "am force-stop");
-		const cleared = await shell(["pm", "clear", "--user", "current", appId], "pm clear");
+		const cleared = await shell(["pm", "clear", ...user, appId], "pm clear");
 		if (!cleared.stdout.includes("Success")) throw toolFailure(cleared, "pm clear");
 		return { cleared: ["data", "cache", "preferences", "permissions"], kept: [] };
 	};

@@ -825,6 +825,10 @@ export async function createWebDirectSession(
 		await callBrowser("Storage.clearDataForOrigin", { origin: url.origin, storageTypes: "all" });
 		return { cleared: ["cookies", "storage", "service-workers"], kept: [] };
 	};
+	/** The Lane's Reset: declared unsupported, with the reason, or the member that does it. */
+	const reset = connection.resetUnsupported
+		? { unsupported: { resetApp: connection.resetUnsupported }, member: {} }
+		: { unsupported: {}, member: { resetApp } };
 
 	return composeDeviceSession({
 		stream: { ...feed.stream, survivesTreeRead: true },
@@ -838,7 +842,7 @@ export async function createWebDirectSession(
 				startRecording: "Run recording is not available on web",
 				backgroundApp:
 					"background-app is not supported on web: a browser page has no background to send it to",
-				...(connection.resetUnsupported ? { resetApp: connection.resetUnsupported } : {}),
+				...reset.unsupported,
 			},
 		},
 		where: "on the web",
@@ -879,7 +883,7 @@ export async function createWebDirectSession(
 			await navigate(url.href);
 			return { storage };
 		},
-		...(connection.resetUnsupported ? {} : { resetApp }),
+		...reset.member,
 		openUrl: (url) => navigate(url),
 		reloadPage,
 		acceptAlert: () => answerDialog(true),

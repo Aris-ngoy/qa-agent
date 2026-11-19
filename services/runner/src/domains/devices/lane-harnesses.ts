@@ -50,8 +50,8 @@ export const MISSING_APP_ID = "com.example.missing";
 export type HarnessApp = {
 	/** Its id, as the lifecycle Actions take it. */
 	id: string;
-	/** Whether it is running, and which of its data the faked device still holds. */
-	state: () => { running: boolean; held: ResetPart[] };
+	/** Whether it is running, and which of its data the faked device still has. */
+	state: () => { running: boolean; remaining: ResetPart[] };
 	/** What a Reset clears and keeps here, by default, as the spec says. */
 	reset: AppReset;
 	/** An App id the device does not have; absent where any id names an App (web). */
@@ -73,8 +73,8 @@ export type LaneHarness = {
 	screenSource?: ScreenSource;
 	/** The App the device has, for a Lane that can Reset; absent on one that cannot. */
 	app?: HarnessApp;
-	/** An iOS simulator App's data container's top-level folders, by name. */
-	containerFolders?: () => string[];
+	/** What sits at the top of an iOS simulator App's data and app-group containers, by name. */
+	containerTopLevel?: () => { data: string[]; group: string[] };
 };
 
 /**
@@ -114,14 +114,14 @@ function inModifierOrder(modifiers: KeyModifier[]): KeyModifier[] {
 
 const ANDROID_DUMP = `<?xml version="1.0"?><hierarchy><node class="android.widget.Button" text="${BUTTON.label}" clickable="true" enabled="true" bounds="[0,0][100,40]" /></hierarchy>`;
 
-/** What an Android App holds until `pm clear` wipes it. */
+/** What an Android App holds until `pm clear` clears it. */
 const ANDROID_APP_DATA: ResetPart[] = ["data", "cache", "preferences", "permissions"];
 
 function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneHarness {
 	const taps: Array<{ x: number; y: number }> = [];
 	const keys: PressedKey[] = [];
 	let dead = false;
-	const app = { running: false, held: [...ANDROID_APP_DATA] };
+	const app = { running: false, remaining: [...ANDROID_APP_DATA] };
 	/** The package an `am` or `pm` command names: its last argument. */
 	const packageOf = (args: string[]) => args.at(-1);
 	const ok = (stdout = "", stdoutBytes?: Uint8Array): AdbResult => ({
@@ -144,12 +144,18 @@ function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneH
 		if (joined.includes("cat") && joined.includes("yoqa-window.xml")) return ok(ANDROID_DUMP);
 		if (args.includes("monkey") && args.includes(APP_ID)) app.running = true;
 		if (args.includes("force-stop") && packageOf(args) === APP_ID) app.running = false;
+		if (joined.endsWith("am get-current-user")) return ok("0\n");
 		if (args.includes("pm") && (args.includes("path") || args.includes("clear"))) {
-			// pm answers for an installed package only, and `pm clear` also ends it.
+			// pm answers for an installed package only, and `pm clear` also ends it. Before
+			// Android 9 its `--user` takes a number only, so this pm, as theirs, says no to `current`.
+			const user = args.indexOf("--user");
+			if (user >= 0 && !/^\d+$/.test(args[user + 1] ?? "")) {
+				return { stdout: "", stderr: "Error: no USER_ID specified", exitCode: 1 };
+			}
 			if (packageOf(args) !== APP_ID) return { stdout: "", stderr: "", exitCode: 1 };
 			if (args.includes("path")) return ok(`package:/data/app/${APP_ID}/base.apk\n`);
 			app.running = false;
-			app.held = [];
+			app.remaining = [];
 			return ok("Success\n");
 		}
 		const tap = args.indexOf("tap");
@@ -186,7 +192,7 @@ function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneH
 		},
 		app: {
 			id: APP_ID,
-			state: () => ({ running: app.running, held: [...app.held] }),
+			state: () => ({ running: app.running, remaining: [...app.remaining] }),
 			reset: { cleared: ANDROID_APP_DATA, kept: [] },
 			missingId: MISSING_APP_ID,
 		},
@@ -267,6 +273,12 @@ function holdsFiles(dir: string): boolean {
 	);
 }
 
+/**
+ * The file the simulator keeps at the top of each container to know which App owns it. A
+ * Reset must leave it, or the simulator loses track of the App's container.
+ */
+export const CONTAINER_METADATA = ".com.apple.mobile_container_manager.metadata.plist";
+
 /** Write `files` (relative path to contents) under `dir`, making their folders. */
 function writeFiles(dir: string, files: Record<string, string>): void {
 	for (const [path, contents] of Object.entries(files)) {
@@ -288,8 +300,12 @@ function simulatorApp(udid: string) {
 		[`Library/Preferences/${APP_ID}.plist`]: "onboarded=1",
 		"Library/Caches/feed.json": "[]",
 		"tmp/upload.part": "…",
+		[CONTAINER_METADATA]: `MCMMetadataIdentifier=${APP_ID}`,
 	});
-	writeFiles(group, { [`Library/Preferences/group.${APP_ID}.plist`]: "shared=1" });
+	writeFiles(group, {
+		[`Library/Preferences/group.${APP_ID}.plist`]: "shared=1",
+		[CONTAINER_METADATA]: `MCMMetadataIdentifier=group.${APP_ID}`,
+	});
 	mkdirSync(join(data, "SystemData"));
 	const device = { running: false, defaults: true, grants: true, keychain: true };
 	const ok = (stdout = ""): IdbResult => ({ stdout, stderr: "", exitCode: 0 });
@@ -325,20 +341,20 @@ function simulatorApp(udid: string) {
 				return { stdout: "", stderr: `simctl ${command} is not faked`, exitCode: 1 };
 		}
 	};
-	const held = (): ResetPart[] => {
+	const remaining = (): ResetPart[] => {
 		const parts: Array<[ResetPart, boolean]> = [
 			["data", holdsFiles(join(data, "Documents")) || holdsFiles(join(data, "tmp"))],
 			["cache", holdsFiles(join(data, "Library/Caches"))],
 			["preferences", device.defaults || holdsFiles(join(data, "Library/Preferences"))],
 			["permissions", device.grants],
-			["app-groups", holdsFiles(group)],
+			["app-groups", holdsFiles(join(group, "Library"))],
 			["keychain", device.keychain],
 		];
 		return parts.filter(([, there]) => there).map(([part]) => part);
 	};
-	/** A fresh install's folders are still there, empty, after a Reset. */
-	const folders = () => readdirSync(data).sort();
-	return { device, simctl, held, folders };
+	/** What sits at the top of the data and app-group containers, by name. */
+	const topLevel = () => ({ data: readdirSync(data).sort(), group: readdirSync(group).sort() });
+	return { device, simctl, remaining, topLevel };
 }
 
 function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = {}): LaneHarness {
@@ -462,11 +478,11 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 		},
 		app: {
 			id: APP_ID,
-			state: () => ({ running: app.device.running, held: app.held() }),
+			state: () => ({ running: app.device.running, remaining: app.remaining() }),
 			reset: IOS_APP_RESET,
 			missingId: MISSING_APP_ID,
 		},
-		containerFolders: app.folders,
+		containerTopLevel: app.topLevel,
 	};
 }
 
@@ -633,7 +649,7 @@ function webApp(browser: () => FakeCdp): HarnessApp {
 		id: WEB_APP_URL,
 		state: () => ({
 			running: browser().pages().some(onOrigin),
-			held: browser().clearedStorage.some(
+			remaining: browser().clearedStorage.some(
 				(clear) => clear.origin === origin && clear.storageTypes === "all",
 			)
 				? []

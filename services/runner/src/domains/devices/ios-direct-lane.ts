@@ -146,16 +146,14 @@ const SIMULATOR_RESET_CLEARS: readonly ResetPart[] = [
 ];
 
 /**
- * Delete what a container holds, keeping its top-level folders (`Documents`, `Library`,
- * `tmp`) empty, as a fresh install has them.
+ * Empty a container's top-level folders (`Documents`, `Library`, `tmp`), keeping the folders
+ * themselves, as a fresh install has them. Top-level files stay: the simulator knows which
+ * App owns the container by `.com.apple.mobile_container_manager.metadata.plist`.
  */
 async function emptyContainer(dir: string): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
 		const path = join(dir, entry.name);
-		if (!entry.isDirectory()) {
-			await rm(path, { force: true });
-			continue;
-		}
 		for (const child of await readdir(path)) {
 			await rm(join(path, child), { recursive: true, force: true });
 		}
@@ -451,8 +449,10 @@ export async function createIosDirectSession(
 		}
 	};
 
-	const trySimctl = deps.simctl ?? runSimctl;
-	const simctl = async (args: string[], label: string) => requireOk(await trySimctl(args), label);
+	/** `simctlResult` hands back a failed command for the caller to read; `simctl` throws. */
+	const simctlResult = deps.simctl ?? runSimctl;
+	const simctl = async (args: string[], label: string) =>
+		requireOk(await simctlResult(args), label);
 
 	/**
 	 * End the App, then clear it as a fresh install has it. Its defaults domain goes first,
@@ -460,14 +460,14 @@ export async function createIosDirectSession(
 	 * into the emptied container. Then its data and app-group containers, and its privacy
 	 * grants; the keychain, which every app on the simulator shares, only when asked.
 	 */
-	const resetApp = async (appId: string, resetOptions: { keychain?: boolean } = {}) => {
-		const container = await trySimctl(["get_app_container", udid, appId, "data"]);
+	const resetApp = async (appId: string, { keychain }: { keychain?: boolean } = {}) => {
+		const container = await simctlResult(["get_app_container", udid, appId, "data"]);
 		if (container.exitCode !== 0) {
 			throw new Error(`${appId} is not installed on this simulator`);
 		}
 		// Ending an App that is not running fails, and there is nothing to end.
-		await trySimctl(["terminate", udid, appId]);
-		const defaults = await trySimctl(["spawn", udid, "defaults", "delete", appId]);
+		await simctlResult(["terminate", udid, appId]);
+		const defaults = await simctlResult(["spawn", udid, "defaults", "delete", appId]);
 		// An App that never saved a preference has no domain to delete.
 		if (defaults.exitCode !== 0 && !/not found|does not exist/i.test(defaults.stderr)) {
 			requireOk(defaults, "defaults delete");
@@ -476,7 +476,7 @@ export async function createIosDirectSession(
 		const groups = await simctl(["get_app_container", udid, appId, "groups"], "simctl groups");
 		for (const group of groupContainers(groups.stdout)) await emptyContainer(group);
 		await simctl(["privacy", udid, "reset", "all", appId], "simctl privacy reset");
-		if (resetOptions.keychain) {
+		if (keychain) {
 			await simctl(["keychain", udid, "reset"], "simctl keychain reset");
 			return { cleared: [...SIMULATOR_RESET_CLEARS, "keychain"], kept: [] } satisfies AppReset;
 		}
