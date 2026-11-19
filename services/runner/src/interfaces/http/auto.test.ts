@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,11 +9,14 @@ import {
 	type CaseFlowStep,
 	type CaseHistory,
 	type CaseScript,
+	type ListAutoModelsResponse,
 	type Run,
 	type SendAutoMessageResponse,
 	autoChatEventSchema,
 } from "@yoqa/runner-client";
+import { eq, ne } from "drizzle-orm";
 import type { ChatAgent, ChatAgentEvent, ChatTurn } from "../../domains/auto/chat-agent";
+import { createRoutingChatAgent } from "../../domains/auto/routing-agent";
 import {
 	createApp,
 	createCase,
@@ -30,6 +34,7 @@ import {
 	getActiveSessionInfo,
 } from "../../domains/devices/active-session";
 import { type FakeAxNode, type FakeCdp, startFakeCdp } from "../../domains/devices/fake-cdp";
+import { providers } from "../../domains/providers/schema";
 import { getRun } from "../../domains/runs/application";
 import {
 	type FakeVision,
@@ -41,35 +46,61 @@ import { createAutoRoutes } from "./auto";
 import { createRunsRoutes } from "./runs";
 import { createSessionRoutes } from "./session";
 
-/** A chat agent that answers each turn by running `script`, and records the turns it was given. */
+/**
+ * The chat agent the routes get: the real routing over the catalog's Providers, with each turn
+ * answered by running `script` (whichever agent the Provider routes to), the Claude CLI login
+ * faked, and each Provider listing two models of its kind. It records the turns it was given,
+ * and which agent answered each.
+ */
 type ScriptedAgent = ChatAgent & {
-	signedIn: boolean;
+	claudeCliSignedIn: boolean;
 	turns: ChatTurn[];
+	answeredBy: Array<"claude" | "ai-sdk">;
 	script: (turn: ChatTurn) => AsyncGenerator<ChatAgentEvent>;
 };
 
 function scriptedAgent(): ScriptedAgent {
-	const agent: ScriptedAgent = {
-		signedIn: true,
-		turns: [],
-		script: async function* () {
+	const state = {
+		claudeCliSignedIn: true,
+		turns: [] as ChatTurn[],
+		answeredBy: [] as Array<"claude" | "ai-sdk">,
+		script: async function* (_turn: ChatTurn): AsyncGenerator<ChatAgentEvent> {
 			yield { type: "text", delta: "Hello" };
 		},
-		status: async () => ({
-			signedIn: agent.signedIn,
-			providerId: agent.signedIn ? "prov_claude" : null,
-			detail: agent.signedIn ? "Signed in" : "Sign in the Claude Provider",
-		}),
-		models: async () => ({
-			models: [{ id: "claude-opus-5-5", name: "Claude Opus 5.5" }],
-			defaultModel: null,
-		}),
-		runTurn: (turn) => {
-			agent.turns.push(turn);
-			return agent.script(turn);
-		},
 	};
-	return agent;
+	const answer = (by: "claude" | "ai-sdk", turn: ChatTurn) => {
+		state.turns.push(turn);
+		state.answeredBy.push(by);
+		return state.script(turn);
+	};
+	const routing = createRoutingChatAgent({
+		claude: { runTurn: (turn) => answer("claude", turn) },
+		aiSdk: { runTurn: (turn) => answer("ai-sdk", turn) },
+		probeClaudeCli: async () =>
+			state.claudeCliSignedIn
+				? { signedIn: true, detail: "Authenticated via Claude CLI" }
+				: {
+						signedIn: false,
+						detail: "`claude` found but not authenticated — run `claude auth login`",
+					},
+		listModels: async (auth) => [
+			{ id: `${auth.kind}-small`, name: `${auth.kind} small` },
+			{ id: `${auth.kind}-large`, name: `${auth.kind} large` },
+		],
+	});
+	return Object.assign(state, routing);
+}
+
+/** The fake vision Provider every test starts with: the app's default, and Chat-capable. */
+const FAKE_VISION_ID = "prov_fake_vision";
+
+/** Add a Provider row straight to the catalog (no key: a key would be encrypted with ~/.yoqa's). */
+async function addProvider(
+	row: Partial<typeof providers.$inferInsert> & Pick<typeof providers.$inferInsert, "id" | "kind">,
+) {
+	await getCatalogDb()
+		.insert(providers)
+		.values({ label: row.kind, createdAt: 1, updatedAt: 1, ...row });
 }
 
 const WEB_URL = "https://shop.example.com/";
@@ -80,11 +111,13 @@ describe("the Auto chat routes", () => {
 	let agent: ScriptedAgent;
 	let routes: ReturnType<typeof createAutoRoutes>;
 	let vision: FakeVision;
+	let catalogPath: string;
 
 	beforeAll(async () => {
 		closeCatalogDb();
 		const dir = await mkdtemp(`${tmpdir()}/auto-`);
-		openCatalogDb(`${dir}/catalog.db`);
+		catalogPath = `${dir}/catalog.db`;
+		openCatalogDb(catalogPath);
 		process.env.YOQA_AUTO_CHATS_DIR = `${dir}/chats`;
 		vision = startFakeVision();
 		await addFakeVisionProvider(vision);
@@ -704,36 +737,21 @@ describe("the Auto chat routes", () => {
 		);
 	});
 
-	test("with the Claude Provider not signed in, a message is refused and nothing else answers", async () => {
-		const app = await createApp({ name: "Signed out" });
-		const chat = await newChat(app.id);
-		agent.signedIn = false;
-
-		expect((await json<{ signedIn: boolean }>("/auto/status")).body.signedIn).toBe(false);
-		const sent = await send(chat.id, "Hello?");
-		expect(sent.status).toBe(409);
-		expect(sent.body.error).toContain("Claude Provider");
-		expect(agent.turns).toEqual([]);
-		expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.messages).toEqual([]);
-	});
-
-	test("lists the Claude Provider's models, and the chat's chosen model answers its turns", async () => {
+	test("the chat's chosen model answers its turns", async () => {
 		const app = await createApp({ name: "Picks a model" });
 		const chat = await newChat(app.id);
-		const listed = await json<{ models: Array<{ id: string }> }>("/auto/models");
-		expect(listed.body.models.map((model) => model.id)).toEqual(["claude-opus-5-5"]);
 
 		const updated = await json<AutoChat>(`/auto/chats/${chat.id}`, {
 			method: "PATCH",
-			body: JSON.stringify({ model: "claude-opus-5-5" }),
+			body: JSON.stringify({ model: "custom-large" }),
 		});
-		expect(updated.body.model).toBe("claude-opus-5-5");
+		expect(updated.body.model).toBe("custom-large");
 		const stream = await openEvents(chat.id);
 		await send(chat.id, "Hello");
 		await stream.until(isReply);
 		await stream.close();
 
-		expect(agent.turns[0]?.model).toBe("claude-opus-5-5");
+		expect(agent.turns[0]?.model).toBe("custom-large");
 	});
 
 	test("one reply at a time", async () => {
@@ -776,6 +794,309 @@ describe("the Auto chat routes", () => {
 			"Looking",
 			"The Claude Provider is rate limited.",
 		]);
+	});
+	describe("Chat-capable Providers", () => {
+		afterEach(async () => {
+			// Back to the fake vision Provider alone, the app's default.
+			await getCatalogDb().delete(providers).where(ne(providers.id, FAKE_VISION_ID));
+			await getCatalogDb()
+				.update(providers)
+				.set({ enabled: 1, isDefault: 1 })
+				.where(eq(providers.id, FAKE_VISION_ID));
+		});
+
+		const claudeCli = { id: "prov_claude", kind: "claude", label: "Claude", authMode: "cli" };
+		const codexCli = { id: "prov_codex", kind: "codex", label: "Codex", authMode: "cli" };
+
+		test("Auto is signed in while any Chat-capable Provider is, and names them; with none, a message is refused", async () => {
+			const one = await json<{ signedIn: boolean; detail: string }>("/auto/status");
+			expect(one.body).toEqual({ signedIn: true, detail: "Can chat on Fake vision." });
+
+			await addProvider(claudeCli);
+			await addProvider(codexCli);
+			const several = await json<{ signedIn: boolean; detail: string }>("/auto/status");
+			expect(several.body).toEqual({ signedIn: true, detail: "Can chat on Fake vision, Claude." });
+
+			agent.claudeCliSignedIn = false;
+			await getCatalogDb()
+				.update(providers)
+				.set({ enabled: 0 })
+				.where(eq(providers.id, FAKE_VISION_ID));
+			const none = await json<{ signedIn: boolean; detail: string }>("/auto/status");
+			expect(none.body.signedIn).toBe(false);
+			expect(none.body.detail).toContain("Settings → Providers");
+
+			const app = await createApp({ name: "Signed out" });
+			const chat = await newChat(app.id);
+			const sent = await send(chat.id, "Hello?");
+			expect(sent.status).toBe(409);
+			expect(sent.body.error).toContain("Provider that can chat");
+			expect(agent.turns).toEqual([]);
+		});
+
+		test("lists the models of every Provider, grouped, and marks a CLI login that cannot chat unavailable with why", async () => {
+			await addProvider(claudeCli);
+			await addProvider({ ...codexCli, createdAt: 2 });
+			await addProvider({ id: "prov_no_url", kind: "custom", label: "Gateway", createdAt: 3 });
+			await addProvider({
+				id: "prov_off",
+				kind: "custom",
+				label: "Off",
+				enabled: 0,
+				baseUrl: "http://x",
+			});
+
+			const listed = await json<ListAutoModelsResponse>("/auto/models");
+
+			expect(listed.body.defaultProviderId).toBe(FAKE_VISION_ID);
+			expect(listed.body.providers).toEqual([
+				{
+					id: FAKE_VISION_ID,
+					kind: "custom",
+					label: "Fake vision",
+					available: true,
+					reason: null,
+					models: [
+						{ id: "custom-small", name: "custom small" },
+						{ id: "custom-large", name: "custom large" },
+					],
+					defaultModel: "fake-vision",
+				},
+				{
+					id: "prov_claude",
+					kind: "claude",
+					label: "Claude",
+					available: true,
+					reason: null,
+					models: [
+						{ id: "claude-small", name: "claude small" },
+						{ id: "claude-large", name: "claude large" },
+					],
+					defaultModel: null,
+				},
+				{
+					id: "prov_codex",
+					kind: "codex",
+					label: "Codex",
+					available: false,
+					reason:
+						"Codex's CLI login cannot run the Auto chat yet; add an OpenAI API key to Codex in Settings → Providers.",
+					models: [],
+					defaultModel: "gpt-4o",
+				},
+				{
+					id: "prov_no_url",
+					kind: "custom",
+					label: "Gateway",
+					available: false,
+					reason: "It has no Base URL.",
+					models: [],
+					defaultModel: null,
+				},
+			]);
+		});
+
+		test("a new chat starts on the app's default Provider when it can chat, else on the first that can", async () => {
+			const app = await createApp({ name: "Defaults" });
+			expect((await newChat(app.id)).providerId).toBe(FAKE_VISION_ID);
+
+			await addProvider({ ...claudeCli, createdAt: 2 });
+			await addProvider({ ...codexCli, createdAt: 3 });
+			await getCatalogDb().update(providers).set({ isDefault: 0 });
+			await getCatalogDb()
+				.update(providers)
+				.set({ isDefault: 1 })
+				.where(eq(providers.id, "prov_claude"));
+			expect((await newChat(app.id)).providerId).toBe("prov_claude");
+
+			// The default cannot chat (a CLI login only Claude can chat on yet): the first that can.
+			await getCatalogDb().update(providers).set({ isDefault: 0 });
+			await getCatalogDb()
+				.update(providers)
+				.set({ isDefault: 1 })
+				.where(eq(providers.id, "prov_codex"));
+			expect((await newChat(app.id)).providerId).toBe(FAKE_VISION_ID);
+		});
+
+		test("switching the model keeps the agent's own history; switching the Provider starts the new one from the visible conversation, pushed as a chat event", async () => {
+			await addProvider(claudeCli);
+			const app = await createApp({ name: "Switches" });
+			const chat = await newChat(app.id);
+			agent.script = async function* (turn) {
+				yield { type: "agent_history", agentHistory: `history after: ${turn.prompt}` };
+				if (turn.prompt.includes("Read #8")) await turn.callTool("get_test_case", {});
+				yield { type: "text", delta: `Answer ${agent.turns.length}` };
+			};
+			const stream = await openEvents(chat.id);
+			const replies = (count: number) => () => stream.events.filter(isReply).length === count;
+
+			await send(chat.id, "Read #8");
+			await stream.until(replies(1));
+			const modelSwitch = await json<AutoChat>(`/auto/chats/${chat.id}`, {
+				method: "PATCH",
+				body: JSON.stringify({ model: "custom-large" }),
+			});
+			expect(modelSwitch.body).toMatchObject({ providerId: FAKE_VISION_ID, model: "custom-large" });
+			await send(chat.id, "Second");
+			await stream.until(replies(2));
+
+			const providerSwitch = await json<AutoChat>(`/auto/chats/${chat.id}`, {
+				method: "PATCH",
+				body: JSON.stringify({ providerId: "prov_claude", model: "claude-large" }),
+			});
+			expect(providerSwitch.body).toMatchObject({
+				providerId: "prov_claude",
+				model: "claude-large",
+			});
+			await stream.until(
+				(event) => event.type === "chat" && event.chat.providerId === "prov_claude",
+			);
+			await send(chat.id, "Third");
+			await stream.until(replies(3));
+			await stream.close();
+
+			expect(agent.answeredBy).toEqual(["ai-sdk", "ai-sdk", "claude"]);
+			const [first, second, third] = agent.turns;
+			expect(first).toMatchObject({
+				providerId: FAKE_VISION_ID,
+				model: "fake-vision",
+				conversation: null,
+				agentHistory: null,
+			});
+			expect(second).toMatchObject({
+				providerId: FAKE_VISION_ID,
+				model: "custom-large",
+				conversation: null,
+				agentHistory: "history after: [Ask mode] Read #8",
+			});
+			expect(third).toMatchObject({
+				providerId: "prov_claude",
+				model: "claude-large",
+				agentHistory: null,
+				agentSessionId: null,
+			});
+			expect(third?.conversation?.split("\n")).toEqual([
+				"User (Ask mode): Read #8",
+				"Agent: Answer 1",
+				expect.stringMatching(/^ {2}\[tool get_test_case: (done|refused or failed)/),
+				"User (Ask mode): Second",
+				"Agent: Answer 2",
+			]);
+		});
+
+		test("a Provider that cannot chat, or is not set up, is refused, and the chat stays where it was", async () => {
+			await addProvider(codexCli);
+			const app = await createApp({ name: "Refuses" });
+			const chat = await newChat(app.id);
+
+			const cli = await json<{ error: string }>(`/auto/chats/${chat.id}`, {
+				method: "PATCH",
+				body: JSON.stringify({ providerId: "prov_codex" }),
+			});
+			expect(cli.status).toBe(400);
+			expect(cli.body.error).toContain("Codex's CLI login cannot run the Auto chat yet");
+
+			const unknown = await json<{ error: string }>(`/auto/chats/${chat.id}`, {
+				method: "PATCH",
+				body: JSON.stringify({ providerId: "prov_nowhere" }),
+			});
+			expect(unknown.status).toBe(400);
+			expect((await json<AutoChat>(`/auto/chats/${chat.id}`)).body.providerId).toBe(FAKE_VISION_ID);
+		});
+
+		test("a chat whose Provider was removed or disabled answers its next message with why, and asks for another", async () => {
+			await addProvider({ id: "prov_gone", kind: "custom", label: "Gone", baseUrl: "http://gone" });
+			await addProvider({
+				id: "prov_paused",
+				kind: "custom",
+				label: "Paused",
+				baseUrl: "http://paused",
+			});
+			const app = await createApp({ name: "Lost its Provider" });
+			const removed = await newChat(app.id);
+			const disabled = await newChat(app.id);
+			for (const [chat, providerId] of [
+				[removed, "prov_gone"],
+				[disabled, "prov_paused"],
+			] as const) {
+				await json(`/auto/chats/${chat.id}`, {
+					method: "PATCH",
+					body: JSON.stringify({ providerId }),
+				});
+			}
+			await getCatalogDb().delete(providers).where(eq(providers.id, "prov_gone"));
+			await getCatalogDb()
+				.update(providers)
+				.set({ enabled: 0 })
+				.where(eq(providers.id, "prov_paused"));
+
+			for (const [chat, expected] of [
+				[
+					removed,
+					"The Provider this chat was on was removed. Pick another Provider in the composer.",
+				],
+				[
+					disabled,
+					"This chat's Provider, Paused, is disabled in Settings → Providers. Pick another Provider in the composer.",
+				],
+			] as const) {
+				const stream = await openEvents(chat.id);
+				expect((await send(chat.id, "Hello")).status).toBe(202);
+				const reply = (await stream.until(isReply)).find(isReply);
+				await stream.close();
+				expect(reply?.type === "message" && reply.message.error).toBe(expected);
+			}
+			expect(agent.turns).toEqual([]);
+		});
+
+		test("chats from before keep the Claude Provider and its session, or have none when there was no Claude Provider", async () => {
+			const migrated = await mkdtemp(`${tmpdir()}/auto-migrated-`);
+			const old = new Database(`${migrated}/catalog.db`, { create: true });
+			old.exec(`
+				CREATE TABLE apps (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+				CREATE TABLE providers (id TEXT PRIMARY KEY NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, auth_mode TEXT NOT NULL DEFAULT 'api_key', enabled INTEGER NOT NULL DEFAULT 1, binary_path TEXT, accent_color TEXT NOT NULL DEFAULT 'blue', server_url TEXT, base_url TEXT, default_model TEXT, is_default INTEGER NOT NULL DEFAULT 0, api_key_ciphertext TEXT, api_key_last4 TEXT, env_ciphertext TEXT, status TEXT NOT NULL DEFAULT 'unchecked', status_detail TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+				CREATE TABLE auto_chats (id TEXT PRIMARY KEY NOT NULL, app_id TEXT NOT NULL, case_id TEXT, title TEXT NOT NULL, model TEXT, sdk_session_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+				INSERT INTO apps (id, name, created_at, updated_at) VALUES ('app_old', 'Old', 1, 1);
+				INSERT INTO providers (id, kind, label, auth_mode, is_default, created_at, updated_at) VALUES ('prov_openai', 'openai', 'OpenAI', 'api_key', 1, 1, 1);
+				INSERT INTO providers (id, kind, label, auth_mode, created_at, updated_at) VALUES ('prov_claude_old', 'claude', 'Claude', 'cli', 2, 2);
+				INSERT INTO auto_chats (id, app_id, title, model, sdk_session_id, created_at, updated_at) VALUES ('chat_old', 'app_old', 'Old chat', 'opus', 'sess_old', 1, 1);
+			`);
+			old.close();
+			const without = await mkdtemp(`${tmpdir()}/auto-migrated-none-`);
+			const none = new Database(`${without}/catalog.db`, { create: true });
+			none.exec(`
+				CREATE TABLE providers (id TEXT PRIMARY KEY NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, auth_mode TEXT NOT NULL DEFAULT 'api_key', enabled INTEGER NOT NULL DEFAULT 1, binary_path TEXT, accent_color TEXT NOT NULL DEFAULT 'blue', server_url TEXT, base_url TEXT, default_model TEXT, is_default INTEGER NOT NULL DEFAULT 0, api_key_ciphertext TEXT, api_key_last4 TEXT, env_ciphertext TEXT, status TEXT NOT NULL DEFAULT 'unchecked', status_detail TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+				CREATE TABLE auto_chats (id TEXT PRIMARY KEY NOT NULL, app_id TEXT NOT NULL, case_id TEXT, title TEXT NOT NULL, model TEXT, sdk_session_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+				INSERT INTO auto_chats (id, app_id, title, created_at, updated_at) VALUES ('chat_none', 'app_old', 'No Claude', 1, 1);
+			`);
+			none.close();
+
+			closeCatalogDb();
+			try {
+				openCatalogDb(`${migrated}/catalog.db`);
+				expect((await json<AutoChat>("/auto/chats/chat_old")).body).toMatchObject({
+					providerId: "prov_claude_old",
+					model: "opus",
+				});
+				const stream = await openEvents("chat_old");
+				await send("chat_old", "Still there?");
+				await stream.until(isReply);
+				await stream.close();
+				expect(agent.turns[0]).toMatchObject({
+					providerId: "prov_claude_old",
+					agentSessionId: "sess_old",
+					conversation: null,
+				});
+				expect(agent.answeredBy).toEqual(["claude"]);
+				closeCatalogDb();
+
+				openCatalogDb(`${without}/catalog.db`);
+				expect((await json<AutoChat>("/auto/chats/chat_none")).body.providerId).toBeNull();
+			} finally {
+				closeCatalogDb();
+				openCatalogDb(catalogPath);
+			}
+		});
 	});
 	describe("running the Case draft", () => {
 		let browser: FakeCdp;

@@ -456,6 +456,26 @@ export async function resolveProviderAuthOfKind(
 	return row ? authFromRow(row) : null;
 }
 
+/** A Provider's credentials with how Settings shows it: its label, and whether it is on and the default. */
+export type ProviderAuthEntry = ActiveProviderAuth & {
+	label: string;
+	enabled: boolean;
+	isDefault: boolean;
+};
+
+/** Every Provider's credentials, oldest first; disabled ones included, flagged. */
+export async function listProviderAuths(): Promise<ProviderAuthEntry[]> {
+	const rows = await getCatalogDb().select().from(providers).orderBy(asc(providers.createdAt));
+	return Promise.all(
+		rows.map(async (row) => ({
+			...(await authFromRow(row)),
+			label: row.label,
+			enabled: row.enabled !== 0,
+			isDefault: row.isDefault === 1,
+		})),
+	);
+}
+
 async function authFromRow(row: typeof providers.$inferSelect): Promise<ActiveProviderAuth> {
 	const apiKey = row.apiKeyCiphertext ? await decryptApiKey(row.apiKeyCiphertext) : null;
 	return {

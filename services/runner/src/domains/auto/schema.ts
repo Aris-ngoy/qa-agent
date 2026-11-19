@@ -1,7 +1,7 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { apps, cases } from "../catalog/schema";
 
-/** An Auto chat: on one App, about at most one Test Case, resumable through its SDK session. */
+/** An Auto chat: on one App, about at most one Test Case, on one Provider, resumable through its agent's session or history. */
 export const autoChats = sqliteTable("auto_chats", {
 	id: text("id").primaryKey(),
 	appId: text("app_id")
@@ -10,10 +10,17 @@ export const autoChats = sqliteTable("auto_chats", {
 	/** The Test Case the chat works on; set once, null until then (or once the case is deleted). */
 	caseId: text("case_id").references(() => cases.id, { onDelete: "set null" }),
 	title: text("title").notNull(),
-	/** The chat model; null for the Claude Provider's default. */
+	/**
+	 * The Provider that answers the chat; null when it has none. Not a foreign key: a removed
+	 * Provider's id stays, so the chat can say its Provider was removed.
+	 */
+	providerId: text("provider_id"),
+	/** The chat model; null for its Provider's default. */
 	model: text("model"),
-	/** The chat agent's session, resumed on the next message. Null before the first reply. */
+	/** The Claude Agent SDK session, resumed on the next message. Null when there is none. */
 	sdkSessionId: text("sdk_session_id"),
+	/** The AI SDK chat agent's history (its own JSON), gone on from next message. */
+	agentHistoryJson: text("agent_history_json"),
 	createdAt: integer("created_at").notNull(),
 	updatedAt: integer("updated_at").notNull(),
 });
