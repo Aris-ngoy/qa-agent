@@ -9,6 +9,7 @@ import {
 import type { AutoModel } from "@yoqa/runner-client";
 import type { ActiveProviderAuth } from "../providers/application";
 import { claudeDriver } from "../providers/drivers/claude";
+import { resolveBinary } from "../providers/drivers/probe";
 import {
 	type ChatAgentEvent,
 	type ChatTool,
@@ -36,6 +37,13 @@ const CLI_MODELS: AutoModel[] = [
 
 const SIGN_IN_HINT = "Sign in the Claude Provider in Settings → Providers → Claude.";
 
+/**
+ * Whether this runner is a `bun build --compile` binary, as in the desktop app. There the SDK
+ * cannot find the Claude Code binary it ships: it resolves it from inside `$bunfs` (`~BUN` on
+ * Windows), where no package is installed.
+ */
+const RUNS_COMPILED = /\/(\$bunfs|~BUN)\//.test(import.meta.url);
+
 export type ClaudeQuery = (params: {
 	prompt: string;
 	options: Options;
@@ -44,6 +52,8 @@ export type ClaudeQuery = (params: {
 export type ClaudeChatAgentDeps = {
 	/** The SDK's `query`; faked in the contract test. */
 	query?: ClaudeQuery;
+	/** Whether the runner is a compiled binary; detected when unset. */
+	compiled?: boolean;
 };
 
 function apiKeyOf(auth: ActiveProviderAuth): string | null {
@@ -63,6 +73,24 @@ function sdkEnv(auth: ActiveProviderAuth): Record<string, string | undefined> {
 		CLAUDE_AGENT_SDK_CLIENT_APP: "yoqa-runner",
 		...(apiKey ? { ANTHROPIC_API_KEY: apiKey } : {}),
 	};
+}
+
+/**
+ * The Claude Code binary the SDK starts: in a compiled runner, the Provider's Claude CLI (its
+ * binary path, else `claude` on PATH); otherwise null, for the one the SDK ships.
+ */
+async function claudeExecutable(
+	auth: ActiveProviderAuth,
+	compiled: boolean,
+): Promise<string | null> {
+	if (!compiled) return null;
+	const resolved = await resolveBinary("claude", auth.binaryPath);
+	if (!resolved.path) {
+		throw new Error(
+			`The Claude Provider needs the Claude Code CLI to chat: ${resolved.detail}. Install it, or set its path in Settings → Providers → Claude.`,
+		);
+	}
+	return resolved.path;
 }
 
 function sdkToolName(name: string): string {
@@ -171,6 +199,7 @@ export async function claudeChatModels(auth: ActiveProviderAuth): Promise<AutoMo
 
 export function createClaudeChatAgent(deps: ClaudeChatAgentDeps = {}) {
 	const query: ClaudeQuery = deps.query ?? sdkQuery;
+	const compiled = deps.compiled ?? RUNS_COMPILED;
 
 	/** Answer `turn` on the Claude Provider signed in with `auth`. */
 	async function* runTurn(
@@ -182,6 +211,7 @@ export function createClaudeChatAgent(deps: ClaudeChatAgentDeps = {}) {
 		const abortController = new AbortController();
 		turn.signal.addEventListener("abort", () => abortController.abort(), { once: true });
 		const model = turn.model ?? (auth.defaultModel?.trim() || null);
+		const executable = await claudeExecutable(auth, compiled);
 
 		const options: Options = {
 			cwd,
@@ -203,6 +233,7 @@ export function createClaudeChatAgent(deps: ClaudeChatAgentDeps = {}) {
 			env: sdkEnv(auth),
 			...(turn.agentSessionId ? { resume: turn.agentSessionId } : {}),
 			...(model ? { model } : {}),
+			...(executable ? { pathToClaudeCodeExecutable: executable } : {}),
 		};
 		const prompt = turn.agentSessionId ? turn.prompt : promptWithConversation(turn);
 		const state = { textBlocks: 0 };

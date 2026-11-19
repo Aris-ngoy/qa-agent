@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { Options, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
@@ -101,8 +101,12 @@ async function turnOf(overrides: Partial<ChatTurn> = {}): Promise<ChatTurn> {
 }
 
 /** The adapter with its `query` faked, answering on the Claude Provider signed in with `auth`. */
-function agentOn(auth: ActiveProviderAuth, query: ReturnType<typeof fakeQuery>["query"]) {
-	const agent = createClaudeChatAgent({ query });
+function agentOn(
+	auth: ActiveProviderAuth,
+	query: ReturnType<typeof fakeQuery>["query"],
+	compiled = false,
+) {
+	const agent = createClaudeChatAgent({ query, compiled });
 	return { runTurn: (turn: ChatTurn) => agent.runTurn(turn, auth) };
 }
 
@@ -212,6 +216,30 @@ describe("the Claude Agent SDK adapter", () => {
 
 		expect(calls[0]?.options.env?.ANTHROPIC_API_KEY).toBeUndefined();
 		expect(calls[0]?.options.env?.CLAUDE_AGENT_SDK_CLIENT_APP).toBe("yoqa-runner");
+	});
+
+	test("starts the SDK's own Claude Code binary, or in a compiled runner the Provider's Claude CLI", async () => {
+		const cli = `${await mkdtemp(`${tmpdir()}/claude-cli-`)}/claude`;
+		await writeFile(cli, "");
+		const { calls, query } = fakeQuery([init(), success()]);
+
+		await collect(agentOn({ ...CLAUDE_KEY_AUTH, binaryPath: cli }, query).runTurn(await turnOf()));
+		await collect(
+			agentOn({ ...CLAUDE_KEY_AUTH, binaryPath: cli }, query, true).runTurn(await turnOf()),
+		);
+
+		expect(calls[0]?.options.pathToClaudeCodeExecutable).toBeUndefined();
+		expect(calls[1]?.options.pathToClaudeCodeExecutable).toBe(cli);
+	});
+
+	test("a compiled runner with no Claude CLI ends the turn before the SDK starts", async () => {
+		const { calls, query } = fakeQuery([init(), success()]);
+		const auth = { ...CLAUDE_KEY_AUTH, binaryPath: "/nowhere/claude" };
+
+		await expect(collect(agentOn(auth, query, true).runTurn(await turnOf()))).rejects.toThrow(
+			"needs the Claude Code CLI",
+		);
+		expect(calls).toHaveLength(0);
 	});
 
 	test("with no session of its own, the prompt carries the chat's conversation so far; resuming, only the new prompt", async () => {
