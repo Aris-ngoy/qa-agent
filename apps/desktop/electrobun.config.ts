@@ -58,8 +58,10 @@ export default {
 		preBuild: "scripts/build-runner-sidecar.ts",
 		postBuild: "scripts/embed-windows-icon.ts",
 	},
+	// Yoqa updates (ADR-0013): installs check the newest GitHub Release, and each build
+	// diffs against it to publish a delta patch from the previous release.
 	release: {
-		baseUrl: "",
-		generatePatch: false,
+		baseUrl: "https://github.com/Aris-ngoy/qa-agent/releases/latest/download",
+		generatePatch: true,
 	},
 } satisfies ElectrobunConfig;

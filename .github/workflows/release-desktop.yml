@@ -11,6 +11,8 @@ on:
       - ".github/workflows/release-desktop.yml"
       - "apps/desktop/electrobun.config.ts"
       - "apps/desktop/scripts/build-runner-sidecar.ts"
+      - "apps/desktop/scripts/release-artifacts.ts"
+      - "apps/desktop/src/bun/features/release-artifacts.ts"
   workflow_dispatch:
 
 # Least privilege: read by default; write only on the publish job.
@@ -45,6 +47,10 @@ jobs:
     needs: authorize
     runs-on: macos-15
     timeout-minutes: 45
+    outputs:
+      release-files: ${{ steps.collect.outputs.release-files }}
+      installer: ${{ steps.collect.outputs.installer }}
+      launch: ${{ steps.collect.outputs.launch }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,13 +63,34 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build stable desktop release
-        run: bun run --filter @yoqa/desktop build:release
+      # Stable for v* tags, PRs and manual runs; canary for prerelease v*-* tags (ADR-0013),
+      # so a beta installs beside the stable app and never "updates" down to it.
+      - name: Pick the release channel
+        id: build
+        shell: bash
+        run: bun apps/desktop/scripts/release-artifacts.ts build
+
+      # Electrobun diffs against the latest published release here and writes the .patch.
+      - name: Build ${{ steps.build.outputs.channel }} desktop release
+        shell: bash
+        run: bun run --filter @yoqa/desktop "$BUILD_SCRIPT"
+        env:
+          BUILD_SCRIPT: ${{ steps.build.outputs.build-script }}
 
       - name: List artifacts
         run: |
           ls -la apps/desktop/artifacts || true
-          ls -la apps/desktop/build/stable-macos-arm64 || true
+          ls -la "apps/desktop/build/${CHANNEL}-macos-arm64" || true
+        env:
+          CHANNEL: ${{ steps.build.outputs.channel }}
+
+      # Fails a stable tag build without a patch; build-only runs upload without one.
+      - name: Collect release files
+        id: collect
+        run: bun apps/desktop/scripts/release-artifacts.ts collect macos-arm64 "$CHANNEL" "$REQUIRE_PATCH"
+        env:
+          CHANNEL: ${{ steps.build.outputs.channel }}
+          REQUIRE_PATCH: ${{ steps.build.outputs.require-patch }}
 
       - name: Upload build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -71,16 +98,17 @@ jobs:
           name: desktop-macos-arm64
           if-no-files-found: error
           retention-days: 7
-          path: |
-            apps/desktop/artifacts/stable-macos-arm64-yoqa.dmg
-            apps/desktop/artifacts/stable-macos-arm64-yoqa.app.tar.zst
-            apps/desktop/artifacts/stable-macos-arm64-update.json
+          path: ${{ steps.collect.outputs.files }}
 
   build-windows:
     name: Build Windows installer
     needs: authorize
     runs-on: windows-2022
     timeout-minutes: 45
+    outputs:
+      release-files: ${{ steps.collect.outputs.release-files }}
+      installer: ${{ steps.collect.outputs.installer }}
+      launch: ${{ steps.collect.outputs.launch }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -93,14 +121,36 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build stable desktop release
-        run: bun run --filter @yoqa/desktop build:release
+      # Stable for v* tags, PRs and manual runs; canary for prerelease v*-* tags (ADR-0013),
+      # so a beta installs beside the stable app and never "updates" down to it.
+      - name: Pick the release channel
+        id: build
+        shell: bash
+        run: bun apps/desktop/scripts/release-artifacts.ts build
+
+      # Electrobun diffs against the latest published release here and writes the .patch.
+      - name: Build ${{ steps.build.outputs.channel }} desktop release
+        shell: bash
+        run: bun run --filter @yoqa/desktop "$BUILD_SCRIPT"
+        env:
+          BUILD_SCRIPT: ${{ steps.build.outputs.build-script }}
 
       - name: List artifacts
         shell: bash
         run: |
           ls -la apps/desktop/artifacts || true
-          ls -la apps/desktop/build/stable-win-x64 || true
+          ls -la "apps/desktop/build/${CHANNEL}-win-x64" || true
+        env:
+          CHANNEL: ${{ steps.build.outputs.channel }}
+
+      # Fails a stable tag build without a patch; build-only runs upload without one.
+      - name: Collect release files
+        id: collect
+        shell: bash
+        run: bun apps/desktop/scripts/release-artifacts.ts collect win-x64 "$CHANNEL" "$REQUIRE_PATCH"
+        env:
+          CHANNEL: ${{ steps.build.outputs.channel }}
+          REQUIRE_PATCH: ${{ steps.build.outputs.require-patch }}
 
       - name: Upload build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -108,10 +158,7 @@ jobs:
           name: desktop-win-x64
           if-no-files-found: error
           retention-days: 7
-          path: |
-            apps/desktop/artifacts/stable-win-x64-yoqa-Setup.zip
-            apps/desktop/artifacts/stable-win-x64-yoqa.tar.zst
-            apps/desktop/artifacts/stable-win-x64-update.json
+          path: ${{ steps.collect.outputs.files }}
 
   publish:
     name: Publish GitHub Release
@@ -143,33 +190,32 @@ jobs:
           fail_on_unmatched_files: true
           # Prepended to GitHub's auto-generated PR/commit changelog for this tag.
           generate_release_notes: true
+          # Installer, .tar.zst, update.json and (stable) the .patch from the previous release,
+          # per platform, as checked by each build job's "Collect release files" step.
           files: |
-            dist/stable-macos-arm64-yoqa.dmg
-            dist/stable-macos-arm64-yoqa.app.tar.zst
-            dist/stable-macos-arm64-update.json
-            dist/stable-win-x64-yoqa-Setup.zip
-            dist/stable-win-x64-yoqa.tar.zst
-            dist/stable-win-x64-update.json
+            ${{ needs.build-macos.outputs.release-files }}
+            ${{ needs.build-windows.outputs.release-files }}
           body: |
             ## Yoqa Desktop ${{ github.ref_name }}
 
             Local-first agentic mobile QA.
 
             ### macOS (Apple Silicon)
-            1. Download `stable-macos-arm64-yoqa.dmg`
-            2. Open the DMG and drag **yoqa** to Applications
+            1. Download `${{ needs.build-macos.outputs.installer }}`
+            2. Open the DMG and drag **${{ needs.build-macos.outputs.launch }}** to Applications
             3. Clear Gatekeeper quarantine (unsigned build — macOS may say the app is “damaged”):
                ```bash
-               xattr -cr /Applications/yoqa.app
-               open /Applications/yoqa.app
+               xattr -cr /Applications/${{ needs.build-macos.outputs.launch }}
+               open /Applications/${{ needs.build-macos.outputs.launch }}
                ```
 
             ### Windows (x64, experimental)
-            1. Download `stable-win-x64-yoqa-Setup.zip` and extract it
-            2. Run `yoqa-Setup.exe` (unsigned build — SmartScreen may warn: **More info → Run anyway**)
+            1. Download `${{ needs.build-windows.outputs.installer }}` and extract it
+            2. Run `${{ needs.build-windows.outputs.launch }}` (unsigned build — SmartScreen may warn: **More info → Run anyway**)
             3. Early preview: iOS needs Xcode and stays macOS-only, and the Settings → CLI & Agents installer is macOS-only for now.
 
             ### Notes
+            ${{ contains(github.ref_name, '-') && '- **Prerelease (canary build):** installs beside the stable app as `yoqa-canary` and never updates itself. It shares `~/.yoqa` and the runner on port 7420 with the stable app, so quit one before opening the other.' || '' }}
             - macOS is **Apple Silicon only** (`arm64`); Windows is **x64 only**
             - Bundled local runner starts with the app (no monorepo checkout required)
             - Xcode / adb stay on the host
