@@ -2,14 +2,16 @@
  * Lane harnesses for the Lane contract suite (`lane-contract.test.ts`). Each one opens
  * a real Lane with its device tool faked, and reads back what reached the device.
  */
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	type AppReset,
 	KEY_MODIFIERS,
 	type KeyModifier,
 	type KeyName,
+	type ResetPart,
 	type ScreenSource,
 	VIEWPORT_PRESETS,
 	type ViewportPreset,
@@ -38,6 +40,24 @@ export const DEVICE = { width: 200, height: 400 };
  */
 export const BUTTON = { label: "Allow", x: 0, y: 0, width: 500, height: 100 };
 
+/** The App installed on every faked phone and simulator, by its package or bundle id. */
+export const APP_ID = "com.example.app";
+
+/** An App id no faked device has installed. */
+export const MISSING_APP_ID = "com.example.missing";
+
+/** The App a faked device has installed, for a Lane that can Reset it. */
+export type HarnessApp = {
+	/** Its id, as the lifecycle Actions take it. */
+	id: string;
+	/** Whether it is running, and which of its data the faked device still holds. */
+	state: () => { running: boolean; held: ResetPart[] };
+	/** What a Reset clears and keeps here, by default, as the spec says. */
+	reset: AppReset;
+	/** An App id the device does not have; absent where any id names an App (web). */
+	missingId?: string;
+};
+
 export type LaneHarness = {
 	name: string;
 	open: (hooks: { onSessionDead: () => void }) => Promise<DeviceSession>;
@@ -51,6 +71,10 @@ export type LaneHarness = {
 	killTool: () => void;
 	/** Which app the Lane's Screen says it was read from; unset when the Lane does not report it. */
 	screenSource?: ScreenSource;
+	/** The App the device has, for a Lane that can Reset; absent on one that cannot. */
+	app?: HarnessApp;
+	/** An iOS simulator App's data container's top-level folders, by name. */
+	containerFolders?: () => string[];
 };
 
 /**
@@ -90,10 +114,16 @@ function inModifierOrder(modifiers: KeyModifier[]): KeyModifier[] {
 
 const ANDROID_DUMP = `<?xml version="1.0"?><hierarchy><node class="android.widget.Button" text="${BUTTON.label}" clickable="true" enabled="true" bounds="[0,0][100,40]" /></hierarchy>`;
 
+/** What an Android App holds until `pm clear` wipes it. */
+const ANDROID_APP_DATA: ResetPart[] = ["data", "cache", "preferences", "permissions"];
+
 function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneHarness {
 	const taps: Array<{ x: number; y: number }> = [];
 	const keys: PressedKey[] = [];
 	let dead = false;
+	const app = { running: false, held: [...ANDROID_APP_DATA] };
+	/** The package an `am` or `pm` command names: its last argument. */
+	const packageOf = (args: string[]) => args.at(-1);
 	const ok = (stdout = "", stdoutBytes?: Uint8Array): AdbResult => ({
 		stdout,
 		stderr: "",
@@ -112,6 +142,16 @@ function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneH
 			return ok("UI hierchary dumped\n");
 		}
 		if (joined.includes("cat") && joined.includes("yoqa-window.xml")) return ok(ANDROID_DUMP);
+		if (args.includes("monkey") && args.includes(APP_ID)) app.running = true;
+		if (args.includes("force-stop") && packageOf(args) === APP_ID) app.running = false;
+		if (args.includes("pm") && (args.includes("path") || args.includes("clear"))) {
+			// pm answers for an installed package only, and `pm clear` also ends it.
+			if (packageOf(args) !== APP_ID) return { stdout: "", stderr: "", exitCode: 1 };
+			if (args.includes("path")) return ok(`package:/data/app/${APP_ID}/base.apk\n`);
+			app.running = false;
+			app.held = [];
+			return ok("Success\n");
+		}
 		const tap = args.indexOf("tap");
 		if (args.includes("input") && tap >= 0) {
 			taps.push({ x: Number(args[tap + 1]), y: Number(args[tap + 2]) });
@@ -143,6 +183,12 @@ function androidLane(name: string, deps: Partial<AndroidDirectDeps> = {}): LaneH
 		frame: (count) => frameAfterTaps(count),
 		killTool: () => {
 			dead = true;
+		},
+		app: {
+			id: APP_ID,
+			state: () => ({ running: app.running, held: [...app.held] }),
+			reset: { cleared: ANDROID_APP_DATA, kept: [] },
+			missingId: MISSING_APP_ID,
 		},
 	};
 }
@@ -207,11 +253,100 @@ export function iosYoqaAxLane(): LaneHarness {
 	);
 }
 
+/** What a simulator App holds by default after a Reset: the keychain, shared by every app. */
+export const IOS_APP_RESET: AppReset = {
+	cleared: ["data", "cache", "preferences", "permissions", "app-groups"],
+	kept: ["keychain"],
+};
+
+/** Whether `dir` holds any file, at any depth; a folder that is gone holds none. */
+function holdsFiles(dir: string): boolean {
+	if (!existsSync(dir)) return false;
+	return readdirSync(dir, { withFileTypes: true }).some(
+		(entry) => !entry.isDirectory() || holdsFiles(join(dir, entry.name)),
+	);
+}
+
+/** Write `files` (relative path to contents) under `dir`, making their folders. */
+function writeFiles(dir: string, files: Record<string, string>): void {
+	for (const [path, contents] of Object.entries(files)) {
+		mkdirSync(join(dir, path, ".."), { recursive: true });
+		writeFileSync(join(dir, path), contents);
+	}
+}
+
+/**
+ * The App on a faked simulator: its data and app-group containers are real folders, with a
+ * saved login, preferences and caches in them, and `simctl` answers for it as a simulator
+ * does: its containers, its defaults domain, its privacy grants, and the keychain.
+ */
+function simulatorApp(udid: string) {
+	const data = mkdtempSync(join(tmpdir(), "yoqa-sim-data-"));
+	const group = mkdtempSync(join(tmpdir(), "yoqa-sim-group-"));
+	writeFiles(data, {
+		"Documents/session.json": '{"token":"abc"}',
+		[`Library/Preferences/${APP_ID}.plist`]: "onboarded=1",
+		"Library/Caches/feed.json": "[]",
+		"tmp/upload.part": "…",
+	});
+	writeFiles(group, { [`Library/Preferences/group.${APP_ID}.plist`]: "shared=1" });
+	mkdirSync(join(data, "SystemData"));
+	const device = { running: false, defaults: true, grants: true, keychain: true };
+	const ok = (stdout = ""): IdbResult => ({ stdout, stderr: "", exitCode: 0 });
+	const simctl: IdbExec = async (args) => {
+		const [command, target, ...rest] = args;
+		if (target !== udid) return { stdout: "", stderr: "Invalid device", exitCode: 1 };
+		const appId = command === "spawn" || command === "privacy" ? rest.at(-1) : rest[0];
+		if (command === "keychain" && rest[0] === "reset") {
+			device.keychain = false;
+			return ok();
+		}
+		if (appId !== APP_ID) {
+			return {
+				stdout: "",
+				stderr:
+					"An error was encountered processing the command (code=2): No such file or directory",
+				exitCode: 2,
+			};
+		}
+		switch (command) {
+			case "get_app_container":
+				return ok(rest[1] === "groups" ? `group.${APP_ID}\t${group}\n` : `${data}\n`);
+			case "terminate":
+				device.running = false;
+				return ok();
+			case "spawn":
+				if (rest[0] === "defaults" && rest[1] === "delete") device.defaults = false;
+				return ok();
+			case "privacy":
+				if (rest[0] === "reset" && rest[1] === "all") device.grants = false;
+				return ok();
+			default:
+				return { stdout: "", stderr: `simctl ${command} is not faked`, exitCode: 1 };
+		}
+	};
+	const held = (): ResetPart[] => {
+		const parts: Array<[ResetPart, boolean]> = [
+			["data", holdsFiles(join(data, "Documents")) || holdsFiles(join(data, "tmp"))],
+			["cache", holdsFiles(join(data, "Library/Caches"))],
+			["preferences", device.defaults || holdsFiles(join(data, "Library/Preferences"))],
+			["permissions", device.grants],
+			["app-groups", holdsFiles(group)],
+			["keychain", device.keychain],
+		];
+		return parts.filter(([, there]) => there).map(([part]) => part);
+	};
+	/** A fresh install's folders are still there, empty, after a Reset. */
+	const folders = () => readdirSync(data).sort();
+	return { device, simctl, held, folders };
+}
+
 function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = {}): LaneHarness {
 	const udid = "B75001FB-B91D-4F94-80A7-3E371A641D27";
 	const taps: Array<{ x: number; y: number }> = [];
 	const keys: PressedKey[] = [];
 	let dead = false;
+	const app = simulatorApp(udid);
 	const ok = (stdout = "", stdoutBytes?: Uint8Array): IdbResult => ({
 		stdout,
 		stderr: "",
@@ -256,6 +391,8 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 		if (args[0] === "ui" && args[1] === "key") {
 			keys.push({ key: nameOf(IOS_HID_KEYCODES, Number(args[2])), modifiers: [] });
 		}
+		if (args[0] === "launch" && args[1] === APP_ID) app.device.running = true;
+		if (args[0] === "terminate" && args[1] === APP_ID) app.device.running = false;
 		return ok();
 	};
 	const alive = () => {
@@ -312,6 +449,7 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 					screenshotFallback: async () => {
 						throw new Error("simctl is not faked");
 					},
+					simctl: app.simctl,
 					...(fakes.yoqaSim ? { yoqaSim } : {}),
 					...(fakes.yoqaAx ? { yoqaAx } : {}),
 				},
@@ -322,6 +460,13 @@ function iosLane(name: string, fakes: { yoqaSim?: boolean; yoqaAx?: boolean } = 
 		killTool: () => {
 			dead = true;
 		},
+		app: {
+			id: APP_ID,
+			state: () => ({ running: app.device.running, held: app.held() }),
+			reset: IOS_APP_RESET,
+			missingId: MISSING_APP_ID,
+		},
+		containerFolders: app.folders,
 	};
 }
 
@@ -474,6 +619,30 @@ function cdpKeys(browser: FakeCdp): Array<{ key: KeyName; modifiers: KeyModifier
 	});
 }
 
+/** The web App every web harness opens, by its Web URL. */
+export const WEB_APP_URL = "https://app.example.com/home";
+
+/** What a web App's origin holds until its storage is cleared. */
+const WEB_APP_DATA: ResetPart[] = ["cookies", "storage", "service-workers"];
+
+/** The web App in `browser`: running while a page is on its origin, its data until cleared. */
+function webApp(browser: () => FakeCdp): HarnessApp {
+	const { origin } = new URL(WEB_APP_URL);
+	const onOrigin = (url: string) => URL.canParse(url) && new URL(url).origin === origin;
+	return {
+		id: WEB_APP_URL,
+		state: () => ({
+			running: browser().pages().some(onOrigin),
+			held: browser().clearedStorage.some(
+				(clear) => clear.origin === origin && clear.storageTypes === "all",
+			)
+				? []
+				: [...WEB_APP_DATA],
+		}),
+		reset: { cleared: WEB_APP_DATA, kept: [] },
+	};
+}
+
 /**
  * Web Direct: a user-started Chromium attached by its debug port, faked as a local CDP
  * endpoint, on the desktop preset unless told otherwise. The harness also hands over its
@@ -498,6 +667,7 @@ export function webCdpLane(
 		keys: () => cdpKeys(browser),
 		frame: (count) => browser.frame(count),
 		killTool: () => browser.kill(),
+		app: webApp(() => browser),
 		browser,
 	};
 }
@@ -510,9 +680,9 @@ export function webMobileLane(): LaneHarness & { browser: FakeCdp } {
 /**
  * Web Direct: an installed Chrome that the lane launches as a Yoqa-owned instance, with the
  * browser process faked so each launch starts a local CDP endpoint. Its Kept profile is
- * under a temporary home.
+ * under a temporary home. The harness also hands over the browser it launched.
  */
-export function webLaunchedLane(): LaneHarness {
+export function webLaunchedLane(): LaneHarness & { launched: () => FakeCdp } {
 	const preset = VIEWPORT_PRESETS.desktop;
 	const chromium = fakeChromium(webPage(preset));
 	const home = mkdtempSync(join(tmpdir(), "yoqa-home-"));
@@ -543,6 +713,8 @@ export function webLaunchedLane(): LaneHarness {
 		keys: () => cdpKeys(browser()),
 		frame: (count) => browser().frame(count),
 		killTool: () => browser().kill(),
+		app: webApp(browser),
+		launched: browser,
 	};
 }
 

@@ -1324,6 +1324,7 @@ export const actionKindSchema = z.union([
 	z.literal("activate-app"),
 	z.literal("terminate-app"),
 	z.literal("restart-app"),
+	z.literal("reset-app"),
 	z.literal("background-app"),
 	z.literal("open-url"),
 	z.literal("reload-page"),
@@ -1355,6 +1356,8 @@ export const actionRequestSchema = z.object({
 	key: keyNameSchema.optional(),
 	/** Held down while `key` is pressed. */
 	modifiers: z.array(keyModifierSchema).optional(),
+	/** reset-app on an iOS simulator: also reset the whole simulator's keychain. */
+	keychain: z.boolean().optional(),
 	/** Settle after the Action and return the Result screenshot. */
 	screenshot: z.boolean().optional(),
 	/** Cap, in ms, on how long to wait for the screen to settle (default 1500, max 10000). */
@@ -1396,6 +1399,27 @@ export type ActionPhases = z.infer<typeof actionPhasesSchema>;
 export const appStorageSchema = z.union([z.literal("cleared"), z.literal("kept")]);
 export type AppStorage = z.infer<typeof appStorageSchema>;
 
+/** One kind of App data a Reset (an App) clears or keeps. */
+export const resetPartSchema = z.union([
+	z.literal("data"),
+	z.literal("cache"),
+	z.literal("preferences"),
+	z.literal("permissions"),
+	z.literal("app-groups"),
+	z.literal("keychain"),
+	z.literal("cookies"),
+	z.literal("storage"),
+	z.literal("service-workers"),
+]);
+export type ResetPart = z.infer<typeof resetPartSchema>;
+
+/** What a Reset (an App) cleared on this Lane, and what it kept. */
+export const appResetSchema = z.object({
+	cleared: z.array(resetPartSchema),
+	kept: z.array(resetPartSchema),
+});
+export type AppReset = z.infer<typeof appResetSchema>;
+
 export const actionResponseSchema = z.object({
 	ok: z.literal(true),
 	kind: actionKindSchema,
@@ -1412,6 +1436,8 @@ export const actionResponseSchema = z.object({
 	 * origin's), or kept: on a simulator, an emulator, a phone, and the user's Everyday browser.
 	 */
 	storage: appStorageSchema.optional(),
+	/** reset-app: what the Reset cleared and what it kept, on this Lane. */
+	reset: appResetSchema.optional(),
 });
 export type ActionResponse = z.infer<typeof actionResponseSchema>;
 

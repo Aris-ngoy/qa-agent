@@ -2242,6 +2242,26 @@ describe("the Auto chat routes", () => {
 				);
 			});
 
+			test("perform_action cannot Reset the App: the chat never wipes its data while it explores", async () => {
+				await connectBrowser([]);
+				const app = await createApp({ name: "Never resets", webUrl: WEB_URL });
+				const chat = await newChat(app.id);
+				const outputs: Array<{ text: string; isError: boolean }> = [];
+				agent.script = async function* (turn) {
+					outputs.push(
+						await turn.callTool("perform_action", { kind: "reset-app", appId: WEB_URL }),
+					);
+					yield { type: "text", delta: "Could not." };
+				};
+				const stream = await openEvents(chat.id);
+				await send(chat.id, "Start the App clean", "explore");
+				await stream.until(isReply);
+				await stream.close();
+
+				expect(outputs[0]?.isError).toBe(true);
+				expect(browser.clearedStorage).toEqual([]);
+			});
+
 			test("a case proposed after exploring holds only the steps the agent wrote, not the Actions it took", async () => {
 				await connectBrowser([
 					{ role: "button", name: "Pay", box: { x: 600, y: 380, width: 80, height: 40 } },

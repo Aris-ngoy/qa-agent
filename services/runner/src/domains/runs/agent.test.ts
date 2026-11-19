@@ -176,6 +176,20 @@ describe("parseAgentDecision", () => {
 		expect(decision).toMatchObject({ ms: 1500, reason: "Splash is loading" });
 	});
 
+	test("rejects a reset-app decision: the Run agent never wipes the App's data itself", () => {
+		expect(() =>
+			parseAgentDecision(
+				extractAgentJsonObject(
+					'{"type":"reset-app","appId":"com.example.app","reason":"Start clean","thoughts":"A saved login is showing."}',
+					"Model",
+				),
+			),
+		).toThrow(/not a valid action/);
+		for (const prompt of [SYSTEM_PROMPT, VISION_SYSTEM_PROMPT]) {
+			expect(prompt).not.toContain("reset-app");
+		}
+	});
+
 	test("rejects an unrecoverable reply as not-a-valid-action with path detail", () => {
 		expect(() =>
 			parseAgentDecision(extractAgentJsonObject('{"type":"tap","x":100,"y":200}', "Groq")),

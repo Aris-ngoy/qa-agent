@@ -1,4 +1,5 @@
 import type {
+	AppReset,
 	AppStorage,
 	BrowserProfile,
 	DevicePlatform,
@@ -104,7 +105,8 @@ export type OptionalLaneMember =
 	| "reloadPage"
 	| "openUrl"
 	| "acceptAlert"
-	| "dismissAlert";
+	| "dismissAlert"
+	| "resetApp";
 
 /**
  * What a Lane declares it can do, fixed for the session's life. Callers read this instead
@@ -188,6 +190,12 @@ export type DeviceSession = {
 	 * origin's storage (or keeps the Everyday browser's).
 	 */
 	restartApp: (appId: string) => Promise<{ storage: AppStorage }>;
+	/**
+	 * Reset (an App): end it and clear its data on the device, leaving it installed and not
+	 * running, and say what was cleared and what was kept. `keychain` also resets an iOS
+	 * simulator's whole keychain; other Lanes ignore it.
+	 */
+	resetApp: (appId: string, options?: { keychain?: boolean }) => Promise<AppReset>;
 	backgroundApp: (seconds?: number) => Promise<void>;
 	/** Load the page it drives again at its current URL, keeping cookies and storage (web only). */
 	reloadPage: () => Promise<void>;

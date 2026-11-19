@@ -56,6 +56,10 @@ function fakeDriver(overrides: Partial<LaneDriver> = {}) {
 		openUrl: record("openUrl"),
 		acceptAlert: record("acceptAlert"),
 		dismissAlert: record("dismissAlert"),
+		resetApp: async (appId) => {
+			calls.push(`resetApp(${JSON.stringify(appId)})`);
+			return { cleared: ["data"], kept: [] };
+		},
 		pointer: {
 			kind: "gesture",
 			tap: async (point: Point) => {
@@ -283,6 +287,7 @@ describe("unsupported members", () => {
 		openUrl: "No URLs here",
 		acceptAlert: "No alerts here",
 		dismissAlert: "No alerts here either",
+		resetApp: "No Reset here",
 	};
 
 	test("reject with ActionUnsupportedError and the Lane's reason, without waiting for an Action in flight", async () => {
@@ -294,6 +299,7 @@ describe("unsupported members", () => {
 			openUrl: undefined,
 			acceptAlert: undefined,
 			dismissAlert: undefined,
+			resetApp: undefined,
 			tap: () => new Promise<void>(() => {}),
 		});
 		const session = composeDeviceSession(driver);
@@ -305,6 +311,7 @@ describe("unsupported members", () => {
 			() => session.openUrl("https://example.com"),
 			() => session.acceptAlert(),
 			() => session.dismissAlert(),
+			() => session.resetApp("com.example.app"),
 		];
 		const errors = await Promise.all(
 			attempts.map((attempt) => attempt().catch((error: unknown) => error)),

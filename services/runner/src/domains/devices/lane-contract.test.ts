@@ -8,7 +8,7 @@ import {
 } from "@yoqa/runner-client";
 import { pngSizeFromBase64 } from "./android-gestures";
 import { jpegSize, readMjpegFrames } from "./fake-cdp";
-import { getScreen, performAction } from "./interaction";
+import { ActionValidationError, getScreen, performAction } from "./interaction";
 import {
 	ActionUnsupportedError,
 	type OptionalLaneMember,
@@ -16,9 +16,12 @@ import {
 	isDeadSessionError,
 } from "./lane";
 import {
+	APP_ID,
 	BUTTON,
 	DEVICE,
+	type HarnessApp,
 	type LaneHarness,
+	WEB_APP_URL,
 	androidAdbLane,
 	androidDevtoolsLane,
 	androidLatestFrameLane,
@@ -75,6 +78,22 @@ async function waitForScreen(
 		if (ready(elements) || attempt >= 50) return elements;
 		await Bun.sleep(10);
 	}
+}
+
+/**
+ * The harness's App when the Lane can Reset it; undefined when the Lane declares it cannot,
+ * which the unsupported test covers. A Lane that can must have one to Reset.
+ */
+function resettableApp(
+	harness: LaneHarness,
+	session: Awaited<ReturnType<typeof open>>["session"],
+): HarnessApp | undefined {
+	if (session.capabilities.unsupported.resetApp !== undefined) {
+		expect(harness.app).toBeUndefined();
+		return undefined;
+	}
+	if (!harness.app) throw new Error(`${harness.name} can Reset but fakes no App to Reset`);
+	return harness.app;
 }
 
 for (const makeHarness of LANES) {
@@ -176,6 +195,7 @@ for (const makeHarness of LANES) {
 				openUrl: () => session.openUrl("https://example.com/"),
 				acceptAlert: () => session.acceptAlert(),
 				dismissAlert: () => session.dismissAlert(),
+				resetApp: () => session.resetApp("com.example.app"),
 			};
 			for (const [member, reason] of Object.entries(session.capabilities.unsupported)) {
 				const error = await attempts[member as OptionalLaneMember]().catch(
@@ -183,6 +203,44 @@ for (const makeHarness of LANES) {
 				);
 				expect(error).toBeInstanceOf(ActionUnsupportedError);
 				expect((error as Error).message).toBe(reason);
+			}
+			await session.quit();
+		});
+
+		test("reset-app ends the App and clears its data, and says what it cleared and kept", async () => {
+			const harness = makeHarness();
+			const { session } = await open(harness);
+			const app = resettableApp(harness, session);
+			if (!app) return;
+			await performAction(session, { kind: "activate-app", appId: app.id });
+			expect(app.state().running).toBe(true);
+			const result = await performAction(session, { kind: "reset-app", appId: app.id });
+			expect(result.reset).toEqual(app.reset);
+			expect(app.state()).toEqual({ running: false, held: app.reset.kept });
+			await session.quit();
+		});
+
+		test("reset-app of an App the device does not have fails, naming it, and clears nothing", async () => {
+			const harness = makeHarness();
+			const { session } = await open(harness);
+			const app = resettableApp(harness, session);
+			if (!app?.missingId) return;
+			const before = app.state().held;
+			const error = await performAction(session, { kind: "reset-app", appId: app.missingId }).then(
+				() => null,
+				(caught: unknown) => caught,
+			);
+			expect((error as Error).message).toContain(app.missingId);
+			expect(app.state().held).toEqual(before);
+			await session.quit();
+		});
+
+		test("reset-app without an app id fails validation, as restart-app does", async () => {
+			const { session } = await open(makeHarness());
+			for (const kind of ["restart-app", "reset-app"] as const) {
+				const error = await performAction(session, { kind }).catch((caught: unknown) => caught);
+				expect(error).toBeInstanceOf(ActionValidationError);
+				expect((error as Error).message).toBe(`${kind} requires appId`);
 			}
 			await session.quit();
 		});
@@ -478,6 +536,84 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 		expect(deadCalls()).toBe(0);
 		await session.quit();
 	});
+});
+
+/**
+ * A Reset on an iOS simulator keeps the simulator's keychain, which every app on it shares,
+ * unless it asks for it. The App's data container keeps the folders a fresh install has.
+ */
+describe("Lane contract: iOS simulator Direct (Reset)", () => {
+	for (const makeHarness of [iosIdbLane, iosYoqaSimLane, iosYoqaAxLane]) {
+		const { name } = makeHarness();
+
+		test(`${name}: reset-app keeps the keychain and says so`, async () => {
+			const harness = makeHarness();
+			const { session } = await open(harness);
+			const result = await performAction(session, { kind: "reset-app", appId: APP_ID });
+			expect(result.reset?.kept).toEqual(["keychain"]);
+			expect(harness.app?.state().held).toEqual(["keychain"]);
+			expect(harness.containerFolders?.()).toEqual(["Documents", "Library", "SystemData", "tmp"]);
+			await session.quit();
+		});
+
+		test(`${name}: reset-app with keychain resets the keychain too and says it was cleared`, async () => {
+			const harness = makeHarness();
+			const { session } = await open(harness);
+			const result = await performAction(session, {
+				kind: "reset-app",
+				appId: APP_ID,
+				keychain: true,
+			});
+			expect(result.reset).toEqual({
+				cleared: ["data", "cache", "preferences", "permissions", "app-groups", "keychain"],
+				kept: [],
+			});
+			expect(harness.app?.state().held).toEqual([]);
+			await session.quit();
+		});
+	}
+});
+
+/**
+ * A Reset on web clears every kind of storage the App's origin has, on a browser Yoqa
+ * launched and on one attached by port alike (whose Restart keeps storage), and nothing of
+ * any other origin's. It leaves the App closed: it does not load it again.
+ */
+describe("Lane contract: web Direct (Reset)", () => {
+	const browsers = [
+		{
+			name: "a Chromium attached by port, whose Restart keeps storage",
+			make: () => {
+				const harness = webCdpLane();
+				return { harness, browser: () => harness.browser };
+			},
+		},
+		{
+			name: "a Chrome Yoqa launched",
+			make: () => {
+				const harness = webLaunchedLane();
+				return { harness, browser: harness.launched };
+			},
+		},
+	];
+	for (const { name, make } of browsers) {
+		test(`on ${name}, reset-app clears the App origin's storage only and does not load the App again`, async () => {
+			const { harness, browser } = make();
+			const { session } = await open(harness);
+			await performAction(session, { kind: "activate-app", appId: WEB_APP_URL });
+			const signIn = browser().openPage("https://accounts.example.com/signin");
+			const navigations = browser().navigations.length;
+			await performAction(session, { kind: "reset-app", appId: WEB_APP_URL });
+			expect(browser().clearedStorage).toEqual([
+				{ origin: "https://app.example.com", storageTypes: "all" },
+			]);
+			expect(browser().navigations).toHaveLength(navigations);
+			expect(browser().pages()).toContain("https://accounts.example.com/signin");
+			expect(browser().pages()).not.toContain(WEB_APP_URL);
+			browser().closePage(signIn);
+			await session.quit();
+		});
+	}
 });
 
 /**

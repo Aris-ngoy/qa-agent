@@ -11,7 +11,7 @@
  *   they come (`live`) or turned into one tap or swipe on release (`gesture`);
  * - the key check: a key the Lane does not declare fails before it reaches the device;
  * - restart-app as terminate then activate, for a Lane with no restart of its own;
- * - an unsupported member (no video on web, no URL on a cabled iPhone yet) rejecting with
+ * - an unsupported member (no video on web, no Reset on a cabled iPhone) rejecting with
  *   `ActionUnsupportedError`, which the runner answers as 422, with the Lane's message.
  *
  * What a Lane can do is its `LaneCapabilities`, declared on the driver and checked against
@@ -90,6 +90,7 @@ const OPTIONAL_MEMBERS: readonly OptionalLaneMember[] = [
 	"openUrl",
 	"acceptAlert",
 	"dismissAlert",
+	"resetApp",
 ];
 
 const noop = () => undefined;
@@ -227,6 +228,7 @@ export function composeDeviceSession(driver: LaneDriver): DeviceSession {
 					// Ending an App's process and launching it again leaves its data alone.
 					return { storage: "kept" };
 				},
+		resetApp: optional("resetApp", true),
 		backgroundApp: optional("backgroundApp", true),
 		reloadPage: optional("reloadPage", true),
 		openUrl: optional("openUrl", true),
