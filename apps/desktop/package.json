@@ -9,6 +9,7 @@
 		"start": "vite build && YOQA_REPO_ROOT=$(cd ../.. && pwd) electrobun dev",
 		"build": "vite build && electrobun build --env=canary",
 		"build:release": "vite build && electrobun build --env=stable",
+		"build:release:canary": "vite build && electrobun build --env=canary",
 		"build:runner": "bun scripts/build-runner-sidecar.ts",
 		"icons": "bun scripts/generate-app-icon.ts",
 		"check": "tsc --noEmit",

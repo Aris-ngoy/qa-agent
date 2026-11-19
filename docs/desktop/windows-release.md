@@ -20,23 +20,30 @@ Ship an unsigned Windows x64 installer on the same `v*` GitHub Release as the ma
   - Runner sidecar and the CLI lookup, so the packaged app finds the `.exe` binaries.
 - Runner sidecar PATH now joins with `path.delimiter` (`;` on Windows) instead of `:`.
 - Workflow triggers: `v*` tag (build + publish), `workflow_dispatch` and `pull_request` on packaging files (build only; the owner-only gate is skipped for PRs because they publish nothing and use no secrets).
+- **Yoqa updates** ([ADR-0013](../adr/0013-yoqa-updates-from-github-releases.md)): the shared Electrobun config sets `release.baseUrl` to `latest/download` with `generatePatch` on, so `build-windows` also emits a delta patch from the latest published release. A stable `v*` tag build fails without it; PR and manual runs upload without one. Prerelease tags (`v*-*`) build as canary. Details, canary paths, rollback and first-release notes: [macos-release.md](./macos-release.md).
 
 Expected artifacts (stable x64):
 
 | File | Role |
 |------|------|
 | `apps/desktop/artifacts/stable-win-x64-yoqa-Setup.zip` | Primary download (`yoqa-Setup.exe` + `.installer/` payload) |
-| `apps/desktop/artifacts/stable-win-x64-yoqa.tar.zst` | Update / archive |
-| `apps/desktop/artifacts/stable-win-x64-update.json` | Channel metadata |
+| `apps/desktop/artifacts/stable-win-x64-yoqa.tar.zst` | Yoqa update full download / archive |
+| `apps/desktop/artifacts/stable-win-x64-update.json` | Channel metadata (`version`, `hash`) the updater checks |
+| `apps/desktop/artifacts/stable-win-x64-<previous-hash>.patch` | Yoqa update delta patch from the previous release (`<previous-hash>` = `hash` in the latest published `stable-win-x64-update.json`) |
+
+Canary (`v*-*` tags): `canary-win-x64-yoqa-Setup-canary.zip` (holds `yoqa-Setup-canary.exe`), `canary-win-x64-yoqa-canary.tar.zst`, `canary-win-x64-update.json`, no patch. It installs under `%LOCALAPPDATA%\ai.yoqa.app\canary\`, beside stable's `…\stable\`.
 
 ## How to verify
 
-- PR or manual run: Actions → **Release Desktop** → both build jobs green, `publish` skipped, `desktop-win-x64` artifact holds the three files above.
+- PR or manual run: Actions → **Release Desktop** → both build jobs green, `publish` skipped, `desktop-win-x64` artifact holds the four stable files above (three plus a "No … patch" warning if Electrobun couldn't diff).
 - On a Windows x64 machine: extract the zip, run `yoqa-Setup.exe`, launch Yoqa, then `curl http://127.0.0.1:7420/health`.
-- Tag release: same as macOS ([macos-release.md](./macos-release.md)). The Release lists both the macOS and the Windows files.
+- Tag release: same as macOS ([macos-release.md](./macos-release.md)). The Release lists both the macOS and the Windows files, both `.patch` files included.
+- Rolling back is rolling forward: tag a fix instead of deleting the release. Deleting the latest release is an emergency step that sends every install on it back to the previous release in full and breaks the patch chain ([macos-release.md](./macos-release.md#rolling-back-roll-forward)).
+- The first release with the update URL starts its notes by telling users to download it by hand one last time; Windows installs from before it can't update either ([macos-release.md](./macos-release.md#first-release-with-the-update-url)).
 
 ## Follow-ups
 
 - Runner on Windows: the `which` fallback in `services/runner/src/domains/providers/drivers/probe.ts`. The doctor probes, PATH joining and the `lsof` port cleanup are fixed; see [windows-tool-discovery.md](../architecture/windows-tool-discovery.md).
 - Settings → CLI & Agents installer: uses `~/Library/Application Support`, `~/.local/bin` symlinks and a `:` PATH check (`cli-environment/index.ts`).
 - Authenticode signing, and a `win-arm64` build.
+- ~~Set `release.baseUrl` for Electrobun updates~~ Done with the macOS lane (same config).
