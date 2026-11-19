@@ -33,7 +33,7 @@ export function AutoPage() {
 	}
 
 	if (status.isLoading) {
-		return <p className="px-4 text-body-md text-on-surface-variant">Checking Claude…</p>;
+		return <p className="px-4 text-body-md text-on-surface-variant">Checking Providers…</p>;
 	}
 
 	if (status.isError || !status.data) {

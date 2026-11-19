@@ -2,13 +2,20 @@ import { shownAutoChat$ } from "@/features/auto/data/state/shown-chat";
 import {
 	useAutoModels,
 	useSendAutoMessage,
-	useSetAutoChatModel,
+	useSetAutoChatAgent,
 	useStopAutoRun,
 } from "@/features/auto/hooks/usequery/use-auto";
-import { modelFromKey, modelKey, modelOptions } from "@/features/auto/utils/chat-labels";
+import {
+	chatAgentLabel,
+	chatProviderProblem,
+	pickFromKey,
+	pickerKey,
+	pickerSections,
+} from "@/features/auto/utils/chat-labels";
 import { MODE_OPTIONS, canSend, composerHint, isSendKey } from "@/features/auto/utils/composer";
 import { isRunLive } from "@/features/auto/utils/run-card";
-import { Button, ListBox, Select } from "@heroui/react";
+import { ProviderLogo } from "@/features/providers/components/driver-glyph";
+import { Button, Header, ListBox, Select } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
 import type { AutoChatMode } from "@yoqa/runner-client";
 import { useEffect, useMemo } from "react";
@@ -17,7 +24,7 @@ import { useEffect, useMemo } from "react";
 const ESC_OWNERS = '[role="dialog"], [role="listbox"], [role="menu"]';
 
 /**
- * The composer: the prompt, the mode it is sent in, the chat model, and Send. Enter sends,
+ * The composer: the prompt, the mode it is sent in, the chat's Provider and model, and Send. Enter sends,
  * Shift+Enter starts a new line; Send waits while a reply is being written. While the chat's
  * Run is live, Enter queues the message until the Run ends, and Stop (or Esc) cancels the Run.
  */
@@ -37,6 +44,7 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 	const send = useSendAutoMessage();
 	const stop = useStopAutoRun();
 	const sendable = loaded && canSend({ text, sending: send.isPending, replying, queueing });
+	const providerProblem = useProviderProblem();
 
 	const stopRun = stop.mutate;
 
@@ -61,6 +69,14 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 
 	return (
 		<div className="shrink-0 border-t border-outline-variant bg-surface-container-lowest p-3">
+			{loaded && providerProblem ? (
+				<p
+					className="m-0 mb-2 rounded-lg bg-error-container px-3 py-2 text-helper text-on-error-container"
+					role="alert"
+				>
+					{providerProblem}
+				</p>
+			) : null}
 			<div className="flex flex-col gap-2 rounded-xl border border-outline-variant bg-surface-bright px-3 py-2 focus-within:border-primary/35 focus-within:ring-2 focus-within:ring-primary/10">
 				<textarea
 					aria-label="Message"
@@ -84,7 +100,7 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 				/>
 				<div className="flex flex-wrap items-center gap-2">
 					<ModeControl mode={mode} onChange={(next) => composer$.mode.set(next)} />
-					<ModelPicker chatId={chatId} />
+					<AgentPicker chatId={chatId} />
 					<div className="ml-auto flex items-center gap-2">
 						{runLive ? (
 							<Button
@@ -110,6 +126,14 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 			</p>
 		</div>
 	);
+}
+
+/** Why the shown chat's Provider cannot answer, once the Providers are read; null while it can. */
+function useProviderProblem(): string | null {
+	const modelsQuery = useAutoModels();
+	const providerId = useValue(shownAutoChat$.chat.providerId) ?? null;
+	if (!modelsQuery.data) return null;
+	return chatProviderProblem(modelsQuery.data.providers, { providerId });
 }
 
 /** Ask / Run / Explore, each naming what it may do. */
@@ -150,45 +174,79 @@ function ModeControl({
 	);
 }
 
-/** The chat model, from the Claude Provider's models; Default leaves it to the Provider. */
-function ModelPicker({ chatId }: { chatId: string }) {
+/**
+ * Who answers the chat: a Provider and its model, every Provider grouped under its label and
+ * logo. A Provider that cannot chat now is shown off, with why; Default leaves the model to
+ * the Provider. Another Provider carries the chat on from what it shows.
+ */
+function AgentPicker({ chatId }: { chatId: string }) {
 	const modelsQuery = useAutoModels();
+	const chatProviderId = useValue(shownAutoChat$.chat.providerId) ?? null;
 	const chatModel = useValue(shownAutoChat$.chat.model) ?? null;
-	const setModel = useSetAutoChatModel();
-	const options = useMemo(
+	const setAgent = useSetAutoChatAgent();
+	const providers = modelsQuery.data?.providers ?? [];
+	const chat = { providerId: chatProviderId, model: chatModel };
+	const sections = useMemo(
 		() =>
-			modelOptions(
-				modelsQuery.data?.models ?? [],
-				modelsQuery.data?.defaultModel ?? null,
-				chatModel,
-			),
-		[modelsQuery.data, chatModel],
+			pickerSections(modelsQuery.data?.providers ?? [], {
+				providerId: chatProviderId,
+				model: chatModel,
+			}),
+		[modelsQuery.data, chatProviderId, chatModel],
 	);
+	const selectedKey = sections.some((section) => section.providerId === chatProviderId)
+		? pickerKey(chatProviderId ?? "", chatModel)
+		: null;
 
 	return (
 		<Select
-			aria-label="Chat model"
-			className="w-44"
-			isDisabled={setModel.isPending || modelsQuery.isLoading}
+			aria-label="Provider and model"
+			className="w-60"
+			isDisabled={setAgent.isPending || modelsQuery.isLoading}
 			onSelectionChange={(key) => {
 				if (key == null) return;
-				const next = modelFromKey(String(key));
-				if (next === chatModel) return;
-				setModel.mutate({ chatId, model: next });
+				const pick = pickFromKey(String(key));
+				if (!pick || (pick.providerId === chatProviderId && pick.model === chatModel)) return;
+				setAgent.mutate({ chatId, ...pick });
 			}}
-			selectedKey={modelKey(chatModel)}
+			placeholder="Pick a Provider"
+			selectedKey={selectedKey}
 		>
 			<Select.Trigger className="h-8 rounded-lg border-0 bg-surface-container px-2.5 text-helper font-medium shadow-none">
-				<Select.Value />
+				<span className="truncate">{chatAgentLabel(providers, chat)}</span>
 				<Select.Indicator />
 			</Select.Trigger>
 			<Select.Popover>
 				<ListBox>
-					{options.map((option) => (
-						<ListBox.Item id={option.id} key={option.id} textValue={option.label}>
-							{option.label}
-							<ListBox.ItemIndicator />
-						</ListBox.Item>
+					{sections.map((section) => (
+						<ListBox.Section key={section.providerId}>
+							<Header className="flex items-center gap-2 px-2 pt-2 pb-1 text-helper font-semibold text-on-surface-variant">
+								<ProviderLogo kind={section.kind} />
+								{section.label}
+							</Header>
+							{section.available ? (
+								section.options.map((option) => (
+									<ListBox.Item
+										id={option.key}
+										key={option.key}
+										textValue={`${section.label} ${option.label}`}
+									>
+										{option.label}
+										<ListBox.ItemIndicator />
+									</ListBox.Item>
+								))
+							) : (
+								<ListBox.Item
+									id={`unavailable:${section.providerId}`}
+									isDisabled
+									textValue={`${section.label} unavailable`}
+								>
+									<span className="whitespace-normal text-helper text-outline">
+										{section.reason}
+									</span>
+								</ListBox.Item>
+							)}
+						</ListBox.Section>
 					))}
 				</ListBox>
 			</Select.Popover>

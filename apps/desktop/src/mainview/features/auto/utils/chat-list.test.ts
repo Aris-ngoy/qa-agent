@@ -15,6 +15,7 @@ function summary(id: string, updatedAt: number, title = id): AutoChatSummary {
 		caseNumber: null,
 		caseName: null,
 		title,
+		providerId: "prov_claude",
 		model: null,
 		createdAt: updatedAt,
 		updatedAt,

@@ -1,17 +1,17 @@
 import { Link } from "@tanstack/react-router";
 
 /**
- * Auto talks only to the Claude Provider; until it is signed in (CLI login or API key) the
- * screen says so and points at Settings › Provider. It never falls back to another Provider.
+ * Auto's chat runs on any Chat-capable Provider; until one is signed in the screen says so and
+ * points at Settings › Providers.
  */
 export function AutoSignedOut({ detail }: { detail: string }) {
 	return (
 		<div className="motion-fade-up flex h-full items-center justify-center px-4">
 			<div className="flex max-w-md flex-col items-center gap-3 rounded-[var(--radius)] border border-outline-variant bg-surface-container-lowest px-8 py-10 text-center">
-				<h2 className="m-0 text-subheading text-on-surface">Sign in to Claude to use Auto</h2>
+				<h2 className="m-0 text-subheading text-on-surface">No Provider can chat yet</h2>
 				<p className="m-0 text-body-sm text-on-surface-variant">
-					Auto's chat agent runs on the Claude Provider, with a Claude Code login or an Anthropic
-					API key.
+					Auto's chat agent runs on a Provider you set up for Yoqa: Claude, or any Provider with an
+					API key or token, such as OpenAI, Google, Groq, Grok, GitHub Copilot or a Custom endpoint.
 				</p>
 				{detail ? <p className="m-0 text-helper text-outline">{detail}</p> : null}
 				<Link
@@ -19,7 +19,7 @@ export function AutoSignedOut({ detail }: { detail: string }) {
 					search={{ section: "provider" }}
 					to="/settings"
 				>
-					Open Settings › Provider
+					Open Settings › Providers
 				</Link>
 			</div>
 		</div>

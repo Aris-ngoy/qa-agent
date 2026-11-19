@@ -36,10 +36,16 @@ export async function getAutoChat(chatId: string): Promise<AutoChat> {
 	return client.getAutoChat(chatId);
 }
 
-/** Set the chat model; null goes back to the Claude Provider's default. */
-export async function setAutoChatModel(chatId: string, model: string | null): Promise<AutoChat> {
+/**
+ * Set the chat's Provider and model (null for that Provider's default). Another Provider
+ * starts afresh from the chat's visible conversation; the runner refuses one that cannot chat.
+ */
+export async function setAutoChatAgent(
+	chatId: string,
+	pick: { providerId: string; model: string | null },
+): Promise<AutoChat> {
 	const client = await getRunnerClient();
-	return client.updateAutoChat(chatId, { model });
+	return client.updateAutoChat(chatId, pick);
 }
 
 export async function deleteAutoChat(chatId: string): Promise<void> {
