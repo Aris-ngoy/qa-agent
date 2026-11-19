@@ -15,7 +15,7 @@ import {
 	removeAutoQueuedMessage,
 	restoreAutoPreviousVersion,
 	sendAutoMessage,
-	setAutoChatModel,
+	setAutoChatAgent,
 	stopAutoRun,
 } from "@/features/auto/data/api/auto";
 import { applyToShownChat } from "@/features/auto/data/state/shown-chat";
@@ -52,12 +52,12 @@ function showChatSummary(queryClient: QueryClient, chat: AutoChat): void {
 	cacheChatSummary(queryClient, summary);
 }
 
-/** Whether the Claude Provider is signed in; Auto has no other agent. */
+/** Whether any Chat-capable Provider is signed in. */
 export function useAutoStatus() {
 	return useQuery({ queryKey: autoStatusQueryKey, queryFn: getAutoStatus });
 }
 
-/** The Claude Provider's chat models, for the composer's picker. */
+/** Every Provider with its chat models (or why it cannot chat), for the composer's picker. */
 export function useAutoModels() {
 	return useQuery({
 		queryKey: autoModelsQueryKey,
@@ -115,22 +115,26 @@ export function useDeleteAutoChat() {
 	});
 }
 
-/** Pick the chat's model (null for the default); the header and the picker follow. */
-export function useSetAutoChatModel() {
+/** Pick the chat's Provider and model (null for its default); the header and the picker follow. */
+export function useSetAutoChatAgent() {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: ({ chatId, model }: { chatId: string; model: string | null }) =>
-			setAutoChatModel(chatId, model),
+		mutationFn: ({
+			chatId,
+			providerId,
+			model,
+		}: { chatId: string; providerId: string; model: string | null }) =>
+			setAutoChatAgent(chatId, { providerId, model }),
 		onSuccess: (chat) => showChatSummary(queryClient, chat),
-		onError: (error) => showErrorToast(error, "Failed to change the model"),
+		onError: (error) => showErrorToast(error, "Failed to change the Provider or model"),
 	});
 }
 
 /**
  * Send a message. The saved prompt shows at once (the stream sends it too; it shows once) and
  * the reply streams in; a message queued during the Run shows from the stream's queue. A
- * refusal (not signed in, a reply already being written) is a toast, and the sign-in status is
- * read again.
+ * refusal (no Provider can chat, a reply already being written) is a toast, and the sign-in
+ * status and the Providers are read again.
  */
 export function useSendAutoMessage() {
 	const queryClient = useQueryClient();
@@ -145,6 +149,7 @@ export function useSendAutoMessage() {
 		onError: (error) => {
 			showErrorToast(error, "Failed to send the message");
 			void queryClient.invalidateQueries({ queryKey: autoStatusQueryKey });
+			void queryClient.invalidateQueries({ queryKey: autoModelsQueryKey });
 		},
 	});
 }

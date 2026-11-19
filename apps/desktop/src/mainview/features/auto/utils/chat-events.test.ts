@@ -14,6 +14,7 @@ function chat(overrides: Partial<AutoChat> = {}): AutoChat {
 		caseNumber: null,
 		caseName: null,
 		title: "",
+		providerId: "prov_claude",
 		model: null,
 		createdAt: 100,
 		updatedAt: 100,

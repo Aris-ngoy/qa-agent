@@ -1,15 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
-	DEFAULT_MODEL_KEY,
+	chatAgentLabel,
 	chatCaseLabel,
+	chatProviderProblem,
 	chatTitle,
-	modelFromKey,
-	modelKey,
-	modelOptions,
+	pickFromKey,
+	pickerSections,
 	toolCallInputText,
 	toolCallName,
 	toolCallState,
 } from "@/features/auto/utils/chat-labels";
+import type { AutoChatProvider } from "@yoqa/runner-client";
 
 const MODELS = [
 	{ id: "opus", name: "Opus" },
@@ -39,30 +40,80 @@ describe("chatCaseLabel", () => {
 	});
 });
 
-describe("modelOptions", () => {
-	test("lists Default first, then the Provider's models", () => {
-		expect(modelOptions(MODELS, null, null)).toEqual([
-			{ id: DEFAULT_MODEL_KEY, label: "Default" },
-			{ id: "opus", label: "Opus" },
-			{ id: "sonnet", label: "Sonnet" },
+const CLAUDE: AutoChatProvider = {
+	id: "prov_claude",
+	kind: "claude",
+	label: "Claude",
+	available: true,
+	reason: null,
+	models: MODELS,
+	defaultModel: "sonnet",
+};
+const CODEX: AutoChatProvider = {
+	id: "prov_codex",
+	kind: "codex",
+	label: "Codex",
+	available: false,
+	reason: "Codex's CLI login cannot run the Auto chat yet; add an OpenAI API key to Codex.",
+	models: [],
+	defaultModel: "gpt-4o",
+};
+const OPENAI: AutoChatProvider = {
+	id: "prov_openai",
+	kind: "openai",
+	label: "OpenAI",
+	available: true,
+	reason: null,
+	models: [{ id: "gpt-4o", name: "gpt-4o" }],
+	defaultModel: "gpt-4o",
+};
+
+describe("the Provider-and-model picker", () => {
+	test("groups each Provider's models under it, Default first, naming the model it stands for", () => {
+		const sections = pickerSections([CLAUDE, OPENAI], { providerId: "prov_claude", model: null });
+		expect(
+			sections.map((section) => [section.label, section.options.map((option) => option.label)]),
+		).toEqual([
+			["Claude", ["Default (Sonnet)", "Opus", "Sonnet"]],
+			["OpenAI", ["Default (gpt-4o)", "gpt-4o"]],
 		]);
-	});
-
-	test("names the model Default stands for", () => {
-		expect(modelOptions(MODELS, "sonnet", null)[0]?.label).toBe("Default (Sonnet)");
-	});
-
-	test("keeps a chat model the list no longer has", () => {
-		expect(modelOptions(MODELS, null, "claude-old").at(-1)).toEqual({
-			id: "claude-old",
-			label: "claude-old",
+		expect(pickFromKey(sections[1]?.options[1]?.key ?? "")).toEqual({
+			providerId: "prov_openai",
+			model: "gpt-4o",
+		});
+		expect(pickFromKey(sections[0]?.options[0]?.key ?? "")).toEqual({
+			providerId: "prov_claude",
+			model: null,
 		});
 	});
 
-	test("maps a chat model to a picker key and back", () => {
-		expect(modelKey(null)).toBe(DEFAULT_MODEL_KEY);
-		expect(modelFromKey(modelKey(null))).toBeNull();
-		expect(modelFromKey(modelKey("opus"))).toBe("opus");
+	test("a Provider that cannot chat has no models, and keeps its reason", () => {
+		const [codex] = pickerSections([CODEX], { providerId: null, model: null });
+		expect(codex).toMatchObject({ available: false, reason: CODEX.reason, options: [] });
+	});
+
+	test("keeps a chat model the list no longer has, under the chat's Provider", () => {
+		const [claude] = pickerSections([CLAUDE], { providerId: "prov_claude", model: "claude-old" });
+		expect(claude?.options.at(-1)).toMatchObject({ label: "claude-old", model: "claude-old" });
+	});
+
+	test("names who answers the chat, and asks for a Provider when it has none that can", () => {
+		expect(chatAgentLabel([CLAUDE], { providerId: "prov_claude", model: "opus" })).toBe(
+			"Claude · Opus",
+		);
+		expect(chatAgentLabel([CLAUDE], { providerId: "prov_claude", model: null })).toBe(
+			"Claude · Default",
+		);
+		expect(chatProviderProblem([CLAUDE], { providerId: "prov_claude" })).toBeNull();
+		expect(chatProviderProblem([CLAUDE], { providerId: null })).toBe(
+			"This chat has no Provider. Pick one in the picker below.",
+		);
+		expect(chatProviderProblem([CLAUDE], { providerId: "prov_gone" })).toBe(
+			"The Provider this chat was on was removed or disabled. Pick another in the picker below.",
+		);
+		expect(chatProviderProblem([CODEX], { providerId: "prov_codex" })).toBe(
+			`Codex cannot answer this chat: ${CODEX.reason} Pick another in the picker below.`,
+		);
 	});
 });
 
