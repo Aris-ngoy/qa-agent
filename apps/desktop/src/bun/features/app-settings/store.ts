@@ -12,6 +12,8 @@ export type StoredSettings = {
 	ios?: Partial<IosToolchainPreferences>;
 	android?: Partial<AndroidToolchainPreferences>;
 	yoqaUpdate?: Partial<YoqaUpdateSettings>;
+	/** The Yoqa update the last session quit to apply; null once the next launch has read it. */
+	yoqaUpdatePendingApply?: { version: string; fromHash: string } | null;
 };
 
 export async function readStoredSettings(): Promise<StoredSettings> {
@@ -28,6 +30,7 @@ export async function patchStoredSettings(patch: StoredSettings): Promise<Stored
 	const existing = await readStoredSettings();
 	const next: StoredSettings = {
 		...existing,
+		...patch,
 		ios: patch.ios ? { ...existing.ios, ...patch.ios } : existing.ios,
 		android: patch.android ? { ...existing.android, ...patch.android } : existing.android,
 		yoqaUpdate: patch.yoqaUpdate

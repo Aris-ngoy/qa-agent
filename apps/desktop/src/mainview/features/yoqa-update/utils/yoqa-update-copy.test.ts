@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { YoqaUpdateStatus } from "@/../shared/yoqa-update";
 import {
+	failedPromptText,
 	lastCheckedText,
 	readyPromptText,
 	releasePageUrl,
@@ -21,6 +22,14 @@ describe("restartHeldText", () => {
 
 	test("says nothing once the restart is no longer held", () => {
 		expect(restartHeldText(false)).toBeNull();
+	});
+});
+
+describe("failedPromptText", () => {
+	test("names the version that failed and says the old one still runs", () => {
+		expect(failedPromptText("1.0.9")).toBe(
+			"Yoqa v1.0.9 couldn't be installed, so Yoqa kept the version you had",
+		);
 	});
 });
 
@@ -81,6 +90,12 @@ describe("updateStatusText", () => {
 		expect(updateStatusText({ ...idle, state: "ready", version: "1.0.9" }, "stable")).toBe(
 			"Yoqa v1.0.9 is ready — restart to install it",
 		);
+	});
+
+	test("names the Yoqa update that failed to install", () => {
+		expect(
+			updateStatusText({ ...idle, state: "error", version: "1.0.9", lastError: "x" }, "stable"),
+		).toBe("Yoqa v1.0.9 couldn't be installed");
 	});
 
 	test("says the last check failed when it did", () => {
