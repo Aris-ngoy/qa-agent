@@ -572,6 +572,7 @@ export async function createIosDeviceSession(
 				reloadPage: "reload-page is web only: an iOS app has no page to reload",
 				acceptAlert: notYet("Accepting an alert"),
 				dismissAlert: notYet("Dismissing an alert"),
+				resetApp: "A cabled iPhone cannot clear an app's data without reinstalling it",
 			},
 		},
 		where: "on a cabled iPhone",

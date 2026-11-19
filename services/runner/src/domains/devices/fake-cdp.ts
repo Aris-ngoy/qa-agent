@@ -168,6 +168,8 @@ export type FakeCdp = {
 	dialogAnswers: Array<{ accept: boolean; promptText?: string }>;
 	/** Origins whose storage was cleared. */
 	clearedOrigins: string[];
+	/** Every `Storage.clearDataForOrigin`: the origin, and the storage types it named. */
+	clearedStorage: Array<{ origin: string; storageTypes: string }>;
 	/** The method of every command the browser was sent, in order. */
 	methods: string[];
 	/** Every `Page.startScreencast`, with the page it started on. */
@@ -340,6 +342,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 	let reloads = 0;
 	const dialogAnswers: FakeCdp["dialogAnswers"] = [];
 	const clearedOrigins: string[] = [];
+	const clearedStorage: Array<{ origin: string; storageTypes: string }> = [];
 	const methods: string[] = [];
 	const screencastStarts: FakeCdp["screencastStarts"] = [];
 	const screencastFrames: FakeScreencastFrame[] = [];
@@ -837,6 +840,10 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 				return {};
 			case "Storage.clearDataForOrigin":
 				clearedOrigins.push(String(params.origin));
+				clearedStorage.push({
+					origin: String(params.origin),
+					storageTypes: String(params.storageTypes),
+				});
 				return {};
 			case "Input.dispatchMouseEvent": {
 				const point = { x: Number(params.x), y: Number(params.y) };
@@ -1003,6 +1010,7 @@ export function startFakeCdp(options: FakeCdpOptions): FakeCdp {
 		},
 		dialogAnswers,
 		clearedOrigins,
+		clearedStorage,
 		methods,
 		screencastStarts,
 		screencastFrames,

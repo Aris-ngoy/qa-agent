@@ -767,49 +767,60 @@ for (const kind of [
 	"activate-app",
 	"terminate-app",
 	"restart-app",
+	"reset-app",
 	"background-app",
 	"open-url",
 	"reload-page",
 ] as const) {
-	addActionOptions(action.command(kind).description(`Perform ${kind}`)).action(
-		async (options: Record<string, unknown>, cmd: Command) => {
-			try {
-				const body = await client(String(options.baseUrl)).performAction({
-					kind,
-					x: options.x as number | undefined,
-					y: options.y as number | undefined,
-					x2: options.x2 as number | undefined,
-					y2: options.y2 as number | undefined,
-					durationMs: options.duration as number | undefined,
-					double: options.double === true ? true : undefined,
-					text: options.text as string | undefined,
-					label: options.label as string | undefined,
-					id: options.id as string | undefined,
-					description: options.description as string | undefined,
-					appId: options.appId as string | undefined,
-					url: options.url as string | undefined,
-					seconds: options.seconds as number | undefined,
-					screenshot: options.screenshot === true ? true : undefined,
-					settleMs: options.settle as number | undefined,
-					fullImage: options.full === true ? true : undefined,
-					imageScale: options.scale as number | undefined,
-				});
-				if (options.json) {
-					await emitJson(body, options, cmd, body.screenshot?.path);
-					return;
-				}
-				const lines = [`ok ${body.kind}`];
-				if (body.resolved?.x != null && body.resolved?.y != null) {
-					lines.push(`resolved ${body.resolved.x},${body.resolved.y}`);
-				}
-				if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
-				if (body.phases) lines.push(actionPhasesLine(body.phases));
-				await emitText(lines, options, cmd, body.screenshot?.path);
-			} catch (error) {
-				fail(`action ${kind}`, error);
+	const command = action.command(kind).description(`Perform ${kind}`);
+	if (kind === "reset-app") {
+		command.option(
+			"--keychain",
+			"iOS simulator: also reset the simulator's keychain, which signs every app on it out",
+		);
+	}
+	addActionOptions(command).action(async (options: Record<string, unknown>, cmd: Command) => {
+		try {
+			const body = await client(String(options.baseUrl)).performAction({
+				kind,
+				x: options.x as number | undefined,
+				y: options.y as number | undefined,
+				x2: options.x2 as number | undefined,
+				y2: options.y2 as number | undefined,
+				durationMs: options.duration as number | undefined,
+				double: options.double === true ? true : undefined,
+				text: options.text as string | undefined,
+				label: options.label as string | undefined,
+				id: options.id as string | undefined,
+				description: options.description as string | undefined,
+				appId: options.appId as string | undefined,
+				url: options.url as string | undefined,
+				seconds: options.seconds as number | undefined,
+				keychain: options.keychain === true ? true : undefined,
+				screenshot: options.screenshot === true ? true : undefined,
+				settleMs: options.settle as number | undefined,
+				fullImage: options.full === true ? true : undefined,
+				imageScale: options.scale as number | undefined,
+			});
+			if (options.json) {
+				await emitJson(body, options, cmd, body.screenshot?.path);
+				return;
 			}
-		},
-	);
+			const lines = [`ok ${body.kind}`];
+			if (body.resolved?.x != null && body.resolved?.y != null) {
+				lines.push(`resolved ${body.resolved.x},${body.resolved.y}`);
+			}
+			if (body.reset) {
+				lines.push(`cleared ${body.reset.cleared.join(", ")}`);
+				if (body.reset.kept.length > 0) lines.push(`kept ${body.reset.kept.join(", ")}`);
+			}
+			if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
+			if (body.phases) lines.push(actionPhasesLine(body.phases));
+			await emitText(lines, options, cmd, body.screenshot?.path);
+		} catch (error) {
+			fail(`action ${kind}`, error);
+		}
+	});
 }
 
 addActionOptions(

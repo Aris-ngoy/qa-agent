@@ -9,7 +9,7 @@ import type {
 	Run,
 	RunStep,
 } from "@yoqa/runner-client";
-import { actionRequestSchema } from "@yoqa/runner-client";
+import { type ActionKind, actionKindSchema, actionRequestSchema } from "@yoqa/runner-client";
 import { z } from "zod";
 import { listCases } from "../catalog/application";
 import { RunNotFoundError, getRun, listRuns } from "../runs/application";
@@ -18,6 +18,17 @@ import { addStep, changeStep, describeDraft, removeStep, setSteps, startDraft } 
 import type { ChatTool, ChatToolOutput } from "./chat-agent";
 import type { ChatRunResult } from "./chat-runs";
 import { performChatAction, readChatScreen } from "./explore";
+
+/**
+ * The Actions the chat performs while it explores: every kind but a Reset, which would wipe
+ * the App's data in a way the user does not see and cannot undo.
+ */
+const CHAT_ACTION_KINDS = actionKindSchema.options
+	.map((kind) => kind.value)
+	.filter((kind): kind is Exclude<ActionKind, "reset-app"> => kind !== "reset-app") as [
+	Exclude<ActionKind, "reset-app">,
+	...Exclude<ActionKind, "reset-app">[],
+];
 
 /** What the Yoqa tools of one chat read and change. */
 export type ChatToolContext = {
@@ -437,12 +448,15 @@ export function chatTools(context: ChatToolContext): ChatTool[] {
 		description:
 			"Perform one Action on the connected device: tap (by id, label, or x,y on the Screen's 0–1000 grid), input text, swipe, drag, key, open-url, an alert, or an app's lifecycle. Exploration only: it is never recorded in a Run or a Case draft. Read the Screen afterwards to see what it did.",
 		modes: EXPLORE_MODES,
-		input: actionRequestSchema.omit({
-			screenshot: true,
-			settleMs: true,
-			fullImage: true,
-			imageScale: true,
-		}).shape,
+		input: actionRequestSchema
+			.omit({
+				screenshot: true,
+				settleMs: true,
+				fullImage: true,
+				imageScale: true,
+				keychain: true,
+			})
+			.extend({ kind: z.enum(CHAT_ACTION_KINDS) }).shape,
 		run: (input) => performChatAction(input),
 	});
 

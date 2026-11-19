@@ -117,6 +117,11 @@ export type BrowserConnection = {
 	label: () => Promise<BrowserLabel>;
 	/** What restart-app does to the App origin's storage. */
 	restartStorage: AppStorage;
+	/**
+	 * Why reset-app cannot clear the App origin's data here; absent where it can, which is
+	 * any browser but the Everyday one, whatever `restartStorage` says.
+	 */
+	resetUnsupported?: string;
 	/** Settles when the browser process quits; never, for a browser Yoqa did not launch. */
 	exited: Promise<unknown>;
 	/** Session setup failed: let go of everything the connect opened. */
@@ -240,6 +245,7 @@ export function everydayConnection(
 		},
 		// Clearing the origin in the Everyday browser would sign the user out of their real account.
 		restartStorage: "kept",
+		resetUnsupported: "Yoqa never clears the Everyday browser's data",
 		exited: never(),
 		abort: async () => {
 			if (ownTarget) {

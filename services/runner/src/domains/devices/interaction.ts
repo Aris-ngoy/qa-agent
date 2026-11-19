@@ -1,6 +1,7 @@
 import {
 	type ActionRequest,
 	type ActionResponse,
+	type AppReset,
 	type AppStorage,
 	type ScreenElement,
 	type ScreenResponse,
@@ -135,6 +136,7 @@ export async function performAction(
 	};
 
 	let storage: AppStorage | undefined;
+	let reset: AppReset | undefined;
 	switch (body.kind) {
 		case "tap": {
 			if (x == null || y == null) {
@@ -185,6 +187,11 @@ export async function performAction(
 			({ storage } = await session.restartApp(body.appId));
 			break;
 		}
+		case "reset-app": {
+			if (!body.appId) throw new ActionValidationError("reset-app requires appId");
+			reset = await session.resetApp(body.appId, { keychain: body.keychain });
+			break;
+		}
 		case "background-app": {
 			await session.backgroundApp(body.seconds ?? 3);
 			break;
@@ -224,5 +231,6 @@ export async function performAction(
 		kind: body.kind,
 		resolved: x != null && y != null ? { x, y } : undefined,
 		...(storage ? { storage } : {}),
+		...(reset ? { reset } : {}),
 	};
 }

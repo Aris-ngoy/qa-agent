@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { assertBatchable, performActionBatch } from "./batch";
-import { ActionValidationError } from "./interaction";
+import { ActionValidationError, performAction } from "./interaction";
+import { APP_ID, androidAdbLane } from "./lane-harnesses";
 import type { DeviceSession } from "./session";
 
 describe("assertBatchable", () => {
@@ -83,5 +84,27 @@ describe("performActionBatch", () => {
 		expect(result.completed).toBe(0);
 		expect(result.screenshot?.path).toBe("/tmp/fail.png");
 		expect(result.error).toBe("missed");
+	});
+});
+
+describe("performActionBatch with reset-app", () => {
+	test("wipes the App and launches it again in one batch", async () => {
+		const harness = androidAdbLane();
+		const session = await harness.open({ onSessionDead: () => undefined });
+		const batch = await performActionBatch(
+			session,
+			{
+				steps: [
+					{ kind: "reset-app", appId: APP_ID },
+					{ kind: "activate-app", appId: APP_ID },
+				],
+			},
+			// No Result screenshot: this checks the device, not the Settle.
+			{ performWithScreenshot: (lane, step) => performAction(lane, step) },
+		);
+		expect(batch).toMatchObject({ ok: true, completed: 2 });
+		expect(batch.steps[0]?.reset?.cleared).toContain("data");
+		expect(harness.app?.state()).toEqual({ running: true, held: [] });
+		await session.quit();
 	});
 });

@@ -1,7 +1,13 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { KEY_NAMES, type KeyName, type ScreenSource } from "@yoqa/runner-client";
+import {
+	type AppReset,
+	KEY_NAMES,
+	type KeyName,
+	type ResetPart,
+	type ScreenSource,
+} from "@yoqa/runner-client";
 import { type PointerSize, toPx } from "./android-gestures";
 import { composeDeviceSession } from "./device-session";
 import { type ToolExec, type ToolResult, requireOk, spawnTool } from "./device-tool";
@@ -69,6 +75,8 @@ export type IosDirectDeps = {
 	idb?: IdbExec;
 	/** When companion screenshot fails (“no active display”), use simctl. */
 	screenshotFallback?: (udid: string) => Promise<Uint8Array>;
+	/** `xcrun simctl`, given its arguments: reset-app clears an App's data through it. */
+	simctl?: ToolExec;
 	/**
 	 * Serve screenshots, input and the live stream from `yoqa-sim` (the `device-sim`
 	 * implementation). It is spawned at connect, so the session can report its stream, and
@@ -124,6 +132,42 @@ function pointSize(info: TargetDescribe): PointerSize {
 function defaultIdb(): IdbExec {
 	const bins = requireIdbBins();
 	return createIdbExec(bins.client, bins.companion);
+}
+
+const runSimctl: ToolExec = (args) => spawnTool(["xcrun", "simctl", ...args]);
+
+/** What a Reset clears on a simulator, besides the keychain it resets only when asked. */
+const SIMULATOR_RESET_CLEARS: readonly ResetPart[] = [
+	"data",
+	"cache",
+	"preferences",
+	"permissions",
+	"app-groups",
+];
+
+/**
+ * Delete what a container holds, keeping its top-level folders (`Documents`, `Library`,
+ * `tmp`) empty, as a fresh install has them.
+ */
+async function emptyContainer(dir: string): Promise<void> {
+	for (const entry of await readdir(dir, { withFileTypes: true })) {
+		const path = join(dir, entry.name);
+		if (!entry.isDirectory()) {
+			await rm(path, { force: true });
+			continue;
+		}
+		for (const child of await readdir(path)) {
+			await rm(join(path, child), { recursive: true, force: true });
+		}
+	}
+}
+
+/** The folders of an App's app-group containers, from `simctl get_app_container … groups`. */
+function groupContainers(stdout: string): string[] {
+	return stdout
+		.split("\n")
+		.map((line) => line.match(/^\S+\s+(.+)$/)?.[1]?.trim())
+		.filter((path): path is string => Boolean(path));
 }
 
 /** Record the simulator screen with `simctl io recordVideo`; SIGINT makes simctl finalize the mp4. */
@@ -407,6 +451,38 @@ export async function createIosDirectSession(
 		}
 	};
 
+	const trySimctl = deps.simctl ?? runSimctl;
+	const simctl = async (args: string[], label: string) => requireOk(await trySimctl(args), label);
+
+	/**
+	 * End the App, then clear it as a fresh install has it. Its defaults domain goes first,
+	 * through the simulator, so the preferences daemon does not write cached values back
+	 * into the emptied container. Then its data and app-group containers, and its privacy
+	 * grants; the keychain, which every app on the simulator shares, only when asked.
+	 */
+	const resetApp = async (appId: string, resetOptions: { keychain?: boolean } = {}) => {
+		const container = await trySimctl(["get_app_container", udid, appId, "data"]);
+		if (container.exitCode !== 0) {
+			throw new Error(`${appId} is not installed on this simulator`);
+		}
+		// Ending an App that is not running fails, and there is nothing to end.
+		await trySimctl(["terminate", udid, appId]);
+		const defaults = await trySimctl(["spawn", udid, "defaults", "delete", appId]);
+		// An App that never saved a preference has no domain to delete.
+		if (defaults.exitCode !== 0 && !/not found|does not exist/i.test(defaults.stderr)) {
+			requireOk(defaults, "defaults delete");
+		}
+		await emptyContainer(container.stdout.trim());
+		const groups = await simctl(["get_app_container", udid, appId, "groups"], "simctl groups");
+		for (const group of groupContainers(groups.stdout)) await emptyContainer(group);
+		await simctl(["privacy", udid, "reset", "all", appId], "simctl privacy reset");
+		if (resetOptions.keychain) {
+			await simctl(["keychain", udid, "reset"], "simctl keychain reset");
+			return { cleared: [...SIMULATOR_RESET_CLEARS, "keychain"], kept: [] } satisfies AppReset;
+		}
+		return { cleared: [...SIMULATOR_RESET_CLEARS], kept: ["keychain"] } satisfies AppReset;
+	};
+
 	const backgroundApp = async (seconds = 3) => {
 		const pressed = await viaYoqaSim((running) => running.key("home"));
 		if (!pressed) await run(["ui", "button", "HOME", "--udid", udid], "idb HOME");
@@ -481,6 +557,7 @@ export async function createIosDirectSession(
 		terminateApp: async (appId) => {
 			await run(["terminate", appId, "--udid", udid], "idb terminate");
 		},
+		resetApp,
 		backgroundApp,
 		openUrl: async (url) => {
 			await run(["open", url, "--udid", udid], "idb open");

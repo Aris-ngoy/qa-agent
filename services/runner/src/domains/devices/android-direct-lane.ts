@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { KEY_NAMES } from "@yoqa/runner-client";
+import { type AppReset, KEY_NAMES } from "@yoqa/runner-client";
 import { ensureAndroidSdkEnv } from "../android-toolchain/android-sdk";
 import {
 	adbKeyArgs,
@@ -281,6 +281,22 @@ export async function createAndroidDirectSession(
 	const launch = (appId: string, label: string) =>
 		shell(["monkey", "-p", appId, "-c", "android.intent.category.LAUNCHER", "1"], label);
 
+	/**
+	 * `pm clear` ends the App and wipes its data, cache, preferences, databases and files, and
+	 * takes back its runtime permissions, for the current user. pm says nothing useful for a
+	 * package that is not installed, so that is asked first.
+	 */
+	const resetApp = async (appId: string): Promise<AppReset> => {
+		const installed = await adb(["-s", serial, "shell", "pm", "path", appId]);
+		if (installed.exitCode !== 0 || !installed.stdout.includes("package:")) {
+			throw new Error(`${appId} is not installed on this Android device`);
+		}
+		await shell(["am", "force-stop", appId], "am force-stop");
+		const cleared = await shell(["pm", "clear", "--user", "current", appId], "pm clear");
+		if (!cleared.stdout.includes("Success")) throw toolFailure(cleared, "pm clear");
+		return { cleared: ["data", "cache", "preferences", "permissions"], kept: [] };
+	};
+
 	const backgroundApp = async (seconds = 3) => {
 		await shell(["input", "keyevent", "3"], "KEYCODE_HOME");
 		await Bun.sleep(Math.max(0, seconds) * 1000);
@@ -382,6 +398,7 @@ export async function createAndroidDirectSession(
 		terminateApp: async (appId) => {
 			await shell(["am", "force-stop", appId], "am force-stop");
 		},
+		resetApp,
 		backgroundApp,
 		openUrl: async (url) => {
 			await shell(["am", "start", "-a", "android.intent.action.VIEW", "-d", url], "am start VIEW");

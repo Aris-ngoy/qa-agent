@@ -40,6 +40,7 @@
  */
 
 import {
+	type AppReset,
 	DEFAULT_VIEWPORT_PRESET,
 	KEY_NAMES,
 	type KeyModifier,
@@ -814,6 +815,17 @@ export async function createWebDirectSession(
 		},
 	};
 
+	/**
+	 * Reset (an App): close the App's page and clear every kind of storage its origin has,
+	 * on a browser attached by port too. Unlike a Restart it does not load the App again.
+	 */
+	const resetApp = async (appId: string): Promise<AppReset> => {
+		const url = webUrlOf(appId);
+		await closeAppPage();
+		await callBrowser("Storage.clearDataForOrigin", { origin: url.origin, storageTypes: "all" });
+		return { cleared: ["cookies", "storage", "service-workers"], kept: [] };
+	};
+
 	return composeDeviceSession({
 		stream: { ...feed.stream, survivesTreeRead: true },
 		...label,
@@ -826,6 +838,7 @@ export async function createWebDirectSession(
 				startRecording: "Run recording is not available on web",
 				backgroundApp:
 					"background-app is not supported on web: a browser page has no background to send it to",
+				...(connection.resetUnsupported ? { resetApp: connection.resetUnsupported } : {}),
 			},
 		},
 		where: "on the web",
@@ -866,6 +879,7 @@ export async function createWebDirectSession(
 			await navigate(url.href);
 			return { storage };
 		},
+		...(connection.resetUnsupported ? {} : { resetApp }),
 		openUrl: (url) => navigate(url),
 		reloadPage,
 		acceptAlert: () => answerDialog(true),
