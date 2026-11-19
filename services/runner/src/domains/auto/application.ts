@@ -143,6 +143,7 @@ async function summaryFromRow(row: ChatRow): Promise<AutoChatSummary> {
 		caseNumber: catalogCase?.number ?? null,
 		caseName: catalogCase?.name ?? null,
 		title: row.title,
+		providerId: row.providerId,
 		model: row.model,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
@@ -460,10 +461,18 @@ async function caseOfApp(appId: string, caseId: string): Promise<string> {
 	return catalogCase.id;
 }
 
-/** A new chat on an App; "Chat about this case" starts it on `caseId`. */
-export async function createChat(appId: string, input: CreateAutoChatRequest): Promise<AutoChat> {
+/**
+ * A new chat on an App; "Chat about this case" starts it on `caseId`. It starts on the app's
+ * default Provider when that can chat, else the first that can, on that Provider's default model.
+ */
+export async function createChat(
+	agent: ChatAgent,
+	appId: string,
+	input: CreateAutoChatRequest,
+): Promise<AutoChat> {
 	if (!(await getApp(appId))) throw new AutoNotFoundError("App not found");
 	const caseId = input.caseId ? await caseOfApp(appId, input.caseId) : null;
+	const { defaultProviderId } = await agent.providers();
 	const now = Date.now();
 	const id = newId("chat");
 	await getCatalogDb().insert(autoChats).values({
@@ -471,8 +480,10 @@ export async function createChat(appId: string, input: CreateAutoChatRequest): P
 		appId,
 		caseId,
 		title: NEW_CHAT_TITLE,
+		providerId: defaultProviderId,
 		model: null,
 		sdkSessionId: null,
+		agentHistoryJson: null,
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -517,9 +528,35 @@ async function setChatCase(chatId: string, caseId: string): Promise<AutoChatSumm
 	return summary;
 }
 
-export async function updateChat(chatId: string, input: UpdateAutoChatRequest): Promise<AutoChat> {
-	await chatRow(chatId);
-	if (input.model !== undefined) await touchChat(chatId, { model: input.model });
+/**
+ * Pick the chat's Provider and model. Another model of the same Provider keeps the agent's
+ * own session or history. Another Provider drops them: its agent starts from the chat's
+ * visible conversation. A Provider that cannot chat now is refused, with why.
+ */
+export async function updateChat(
+	agent: ChatAgent,
+	chatId: string,
+	input: UpdateAutoChatRequest,
+): Promise<AutoChat> {
+	const chat = await chatRow(chatId);
+	const patch: Partial<ChatRow> = {};
+	if (input.providerId !== undefined && input.providerId !== chat.providerId) {
+		const { providers } = await agent.providers();
+		const provider = providers.find((candidate) => candidate.id === input.providerId);
+		if (!provider) throw new AutoValidationError("That Provider is not set up, or is disabled.");
+		if (!provider.available) {
+			throw new AutoValidationError(provider.reason ?? `${provider.label} cannot chat now.`);
+		}
+		Object.assign(patch, {
+			providerId: provider.id,
+			model: input.model ?? null,
+			sdkSessionId: null,
+			agentHistoryJson: null,
+		});
+	} else if (input.model !== undefined) {
+		patch.model = input.model;
+	}
+	if (Object.keys(patch).length > 0) await touchChat(chatId, patch);
 	return getChat(chatId);
 }
 
@@ -600,7 +637,7 @@ export async function sendMessage(
 	const chat = await chatRow(chatId);
 	const status = await agent.status();
 	if (!status.signedIn) {
-		throw new AutoConflictError(`Auto needs the Claude Provider signed in. ${status.detail}`);
+		throw new AutoConflictError(`Auto needs a Provider that can chat. ${status.detail}`);
 	}
 	if (chatRunInProgress(chatId) || queues.has(chatId)) {
 		const queued = {
@@ -721,6 +758,45 @@ function turnPrompt(messages: AutoMessage[], mode: AutoChatMode): string {
 	return [`${label} The user sent these messages during the Run, in order:`, ...lines].join("\n");
 }
 
+function providerIs(providerId: string | null) {
+	return providerId === null ? isNull(autoChats.providerId) : eq(autoChats.providerId, providerId);
+}
+
+/** A message's tool calls, each on one line: its name and how it went. */
+function toolCallLines(message: AutoMessage): string[] {
+	return message.toolCalls.map((call) => {
+		const outcome =
+			call.output === null ? "no answer" : call.isError ? "refused or failed" : "done";
+		const firstLine = call.output?.split("\n")[0]?.slice(0, 120) ?? "";
+		return `  [tool ${call.name}: ${outcome}${firstLine ? ` — ${firstLine}` : ""}]`;
+	});
+}
+
+/**
+ * The chat's visible conversation before `current` (the messages of the turn being
+ * answered): each prompt and reply text, tool calls on one line each. Null when there is
+ * none yet.
+ */
+async function visibleConversation(chatId: string, current: AutoMessage[]): Promise<string | null> {
+	const skip = new Set(current.map((message) => message.id));
+	const rows = await getCatalogDb()
+		.select()
+		.from(autoMessages)
+		.where(eq(autoMessages.chatId, chatId))
+		.orderBy(asc(autoMessages.seq));
+	const lines: string[] = [];
+	for (const message of rows.map(messageFromRow)) {
+		if (skip.has(message.id)) continue;
+		if (message.role === "user") {
+			lines.push(`User (${MODE_LABEL[message.mode ?? "ask"]} mode): ${message.text}`);
+			continue;
+		}
+		lines.push(`Agent: ${message.text}`, ...toolCallLines(message));
+		if (message.error) lines.push(`  (the reply stopped: ${message.error})`);
+	}
+	return lines.length > 0 ? lines.join("\n") : null;
+}
+
 /**
  * Run the chat agent on one turn of `messages` (one, or the queue), publish what it writes
  * and calls, and save its reply; then send what was queued meanwhile.
@@ -767,19 +843,31 @@ async function answerTurn(
 			chatId,
 			prompt: turnPrompt(messages, mode),
 			mode,
+			providerId: chat.providerId,
 			model: chat.model,
 			agentSessionId: chat.sdkSessionId,
+			agentHistory: chat.agentHistoryJson,
+			conversation:
+				chat.sdkSessionId || chat.agentHistoryJson
+					? null
+					: await visibleConversation(chatId, messages),
 			systemPrompt: await systemPrompt(chat),
 			tools: tools.filter((tool) => tool.modes.includes(mode)),
 			callTool,
 			signal: turn.abort.signal,
 		});
 		for await (const event of events) {
-			if (event.type === "agent_session") {
+			if (event.type === "agent_session" || event.type === "agent_history") {
+				// Kept only while the chat is still on the Provider that wrote it: a switch meanwhile
+				// starts the new one afresh.
 				await getCatalogDb()
 					.update(autoChats)
-					.set({ sdkSessionId: event.agentSessionId })
-					.where(eq(autoChats.id, chatId));
+					.set(
+						event.type === "agent_session"
+							? { sdkSessionId: event.agentSessionId }
+							: { agentHistoryJson: event.agentHistory },
+					)
+					.where(and(eq(autoChats.id, chatId), providerIs(chat.providerId)));
 			} else {
 				turn.reply.text += event.delta;
 				publish(chatId, { type: "text", delta: event.delta });

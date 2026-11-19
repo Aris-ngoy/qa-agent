@@ -223,6 +223,7 @@ function ensureSchema(sqlite: Database): void {
 	migrateRunStepPhases(sqlite);
 	migrateRunAutoChat(sqlite);
 	migrateRunTestSteps(sqlite);
+	migrateAutoChatProvider(sqlite);
 }
 
 function tableColumns(sqlite: Database, table: string): Set<string> {
@@ -355,6 +356,31 @@ function migrateRunTestSteps(sqlite: Database): void {
 	const testCols = tableColumns(sqlite, "run_tests");
 	if (testCols.size === 0) return;
 	addColumnIfMissing(sqlite, "run_tests", "steps_json", "steps_json TEXT", testCols);
+}
+
+/**
+ * Auto chats gain their Provider and the AI SDK agent's history. A chat from before ran on
+ * the Claude Provider, so it keeps that one (the default first, else the oldest) and its SDK
+ * session; with no Claude Provider it has none, and asks for one.
+ */
+function migrateAutoChatProvider(sqlite: Database): void {
+	const chatCols = tableColumns(sqlite, "auto_chats");
+	if (chatCols.size === 0) return;
+	addColumnIfMissing(
+		sqlite,
+		"auto_chats",
+		"agent_history_json",
+		"agent_history_json TEXT",
+		chatCols,
+	);
+	if (chatCols.has("provider_id")) return;
+	addColumnIfMissing(sqlite, "auto_chats", "provider_id", "provider_id TEXT", chatCols);
+	sqlite.exec(`
+		UPDATE auto_chats SET provider_id = (
+			SELECT id FROM providers WHERE kind = 'claude'
+			ORDER BY is_default DESC, created_at ASC LIMIT 1
+		)
+	`);
 }
 
 function migrateProvidersTable(sqlite: Database): void {

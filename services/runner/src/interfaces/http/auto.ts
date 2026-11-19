@@ -28,7 +28,7 @@ import {
 	updateChat,
 } from "../../domains/auto/application";
 import type { ChatAgent } from "../../domains/auto/chat-agent";
-import { createClaudeChatAgent } from "../../domains/auto/claude-agent";
+import { createRoutingChatAgent } from "../../domains/auto/routing-agent";
 
 function autoErrorResponse(error: unknown): { status: 400 | 404 | 409 | 500; message: string } {
 	const message = error instanceof Error ? error.message : String(error);
@@ -62,9 +62,12 @@ async function parseBody<T>(
 	return { ok: true, data: parsed.data };
 }
 
-/** The Auto chat routes. `agent` answers the chats: the Claude Agent SDK unless a test gives one. */
+/**
+ * The Auto chat routes. `agent` answers the chats: the routing agent (each chat's own
+ * Provider) unless a test gives one.
+ */
 export function createAutoRoutes(options: { agent?: ChatAgent } = {}) {
-	const agent = options.agent ?? createClaudeChatAgent();
+	const agent = options.agent ?? createRoutingChatAgent();
 	const app = new Hono();
 
 	app.onError((error, c) => {
@@ -84,7 +87,7 @@ export function createAutoRoutes(options: { agent?: ChatAgent } = {}) {
 	app.post("/apps/:appId/auto/chats", async (c) => {
 		const parsed = await parseBody(c.req.raw, createAutoChatRequestSchema);
 		if (!parsed.ok) return c.json(parsed.error, 400);
-		return c.json(await createChat(c.req.param("appId"), parsed.data), 201);
+		return c.json(await createChat(agent, c.req.param("appId"), parsed.data), 201);
 	});
 
 	app.get("/auto/chats/:chatId", async (c) => c.json(await getChat(c.req.param("chatId"))));
@@ -92,7 +95,7 @@ export function createAutoRoutes(options: { agent?: ChatAgent } = {}) {
 	app.patch("/auto/chats/:chatId", async (c) => {
 		const parsed = await parseBody(c.req.raw, updateAutoChatRequestSchema);
 		if (!parsed.ok) return c.json(parsed.error, 400);
-		return c.json(await updateChat(c.req.param("chatId"), parsed.data));
+		return c.json(await updateChat(agent, c.req.param("chatId"), parsed.data));
 	});
 
 	app.delete("/auto/chats/:chatId", async (c) => {
