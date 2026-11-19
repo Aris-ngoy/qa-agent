@@ -1,4 +1,4 @@
-import { openExternalUrl } from "@/app/desktop-rpc";
+import { YoqaUpdateBannerShell } from "@/features/yoqa-update/components/yoqa-update-banner-shell";
 import { YoqaUpdateFailedBanner } from "@/features/yoqa-update/components/yoqa-update-failed-banner";
 import { yoqaUpdate$ } from "@/features/yoqa-update/data/state/yoqa-update";
 import { useRestartForYoqaUpdate } from "@/features/yoqa-update/hooks/usequery/use-yoqa-update";
@@ -22,28 +22,14 @@ export function YoqaUpdateBanner() {
 
 	if (state === "error" && version) return <YoqaUpdateFailedBanner version={version} />;
 	if (state !== "ready" || !version) return null;
-	const whatsNew = releasePageUrl(version);
 	const heldReason = restartHeldText(restartHeld);
 
 	return (
-		<output
-			aria-live="polite"
-			className="motion-fade-up flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-secondary-container px-4 py-2.5 text-on-secondary-container shadow-card"
+		<YoqaUpdateBannerShell
+			headline={readyPromptText(version)}
+			link={{ href: releasePageUrl(version), label: "What's new" }}
+			tone="ready"
 		>
-			<p className="text-body-md">
-				<span className="font-semibold">{readyPromptText(version)}</span>
-				<a
-					className="ml-3 text-body-sm font-medium underline-offset-2 hover:underline"
-					href={whatsNew}
-					onClick={(event) => {
-						event.preventDefault();
-						void openExternalUrl(whatsNew);
-					}}
-					rel="noreferrer"
-				>
-					What's new
-				</a>
-			</p>
 			<div className="flex items-center gap-3">
 				{heldReason ? <span className="text-body-sm">{heldReason}</span> : null}
 				<Button
@@ -62,6 +48,6 @@ export function YoqaUpdateBanner() {
 					)}
 				</Button>
 			</div>
-		</output>
+		</YoqaUpdateBannerShell>
 	);
 }

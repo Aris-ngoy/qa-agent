@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { AndroidToolchainPreferences } from "../../../shared/android-toolchain";
 import type { IosToolchainPreferences } from "../../../shared/ios-toolchain";
 import type { YoqaUpdateSettings } from "../../../shared/yoqa-update";
+import type { PendingYoqaApply } from "../yoqa-update/failed-apply";
 
 export const PREFS_DIR = join(homedir(), "Library/Application Support/yoqa");
 export const PREFS_PATH = join(PREFS_DIR, "settings.json");
@@ -13,7 +14,7 @@ export type StoredSettings = {
 	android?: Partial<AndroidToolchainPreferences>;
 	yoqaUpdate?: Partial<YoqaUpdateSettings>;
 	/** The Yoqa update the last session quit to apply; null once the next launch has read it. */
-	yoqaUpdatePendingApply?: { version: string; fromHash: string } | null;
+	yoqaUpdatePendingApply?: PendingYoqaApply | null;
 };
 
 export async function readStoredSettings(): Promise<StoredSettings> {

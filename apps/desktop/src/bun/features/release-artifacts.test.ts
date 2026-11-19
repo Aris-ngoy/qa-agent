@@ -14,7 +14,7 @@ describe("releaseBuildFor", () => {
 		expect(releaseBuildFor("refs/tags/v1.1.0-beta.1")).toEqual({
 			channel: "canary",
 			requirePatch: false,
-			buildScript: "build:release:canary",
+			buildScript: "build",
 		});
 	});
 

@@ -1,10 +1,20 @@
-import type { YoqaUpdateStatus } from "@/../shared/yoqa-update";
+import {
+	YOQA_RELEASES_URL,
+	type YoqaChannel,
+	type YoqaUpdateStatus,
+	updatesEnabledForChannel,
+} from "@/../shared/yoqa-update";
 
-const RELEASES_URL = "https://github.com/Aris-ngoy/qa-agent/releases";
-
-/** Settings' one-line result: up to date, checking, downloading, ready, or failed. */
-export function updateStatusText(status: YoqaUpdateStatus, channel: string): string {
-	if (channel === "dev") return "Development builds don't check for Yoqa updates";
+/**
+ * Settings' one-line result: up to date, checking, downloading, ready, or failed; or why this
+ * version never looks for a Yoqa update.
+ */
+export function updateStatusText(status: YoqaUpdateStatus, channel: YoqaChannel): string {
+	if (!updatesEnabledForChannel(channel)) {
+		return channel === "canary"
+			? "This prerelease doesn't receive Yoqa updates"
+			: "Development versions don't check for Yoqa updates";
+	}
 	switch (status.state) {
 		case "checking":
 			return "Checking for updates…";
@@ -55,5 +65,5 @@ export function lastCheckedText(lastCheckedAt: number | null, now: number): stri
 
 /** "What's new" and the manual download: the GitHub release page of that version. */
 export function releasePageUrl(version: string): string {
-	return `${RELEASES_URL}/tag/v${version}`;
+	return `${YOQA_RELEASES_URL}/tag/v${version}`;
 }

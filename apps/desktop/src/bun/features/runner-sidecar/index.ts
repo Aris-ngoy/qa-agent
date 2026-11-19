@@ -60,7 +60,8 @@ function pathWithHostTools(): string {
 	return [...prepend, ...existing].join(delimiter);
 }
 
-function getBaseUrl(): string {
+/** The runner Yoqa talks to: `YOQA_RUNNER_URL`, or its own runner sidecar on 127.0.0.1:7420. */
+export function runnerBaseUrl(): string {
 	return (process.env.YOQA_RUNNER_URL ?? `http://${DEFAULT_HOST}:${DEFAULT_PORT}`).replace(
 		/\/$/,
 		"",
@@ -378,7 +379,7 @@ async function replaceIncompatibleLocalRunner(
 }
 
 async function ensureOnce(): Promise<EnsureLocalServicesResult> {
-	const baseUrl = getBaseUrl();
+	const baseUrl = runnerBaseUrl();
 	const expectedVersion = expectedRunnerVersion();
 	const existing = await fetchRunnerHealth(baseUrl);
 

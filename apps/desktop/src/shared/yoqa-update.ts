@@ -17,15 +17,36 @@ export type YoqaUpdateStatus = {
 	restartHeld: boolean;
 };
 
+/** The Yoqa update controller's snapshot before anything has happened. */
+export function initialYoqaUpdateStatus(): YoqaUpdateStatus {
+	return { state: "idle", version: null, lastCheckedAt: null, lastError: null, restartHeld: false };
+}
+
 /** The stored Yoqa update settings. */
 export type YoqaUpdateSettings = {
 	/** "Check for updates automatically": the launch check and one every 6 hours. On by default. */
 	autoCheck: boolean;
 };
 
-/** The installed Yoqa Desktop and the Electrobun channel it was built for. */
+/**
+ * Electrobun's channel for the installed Yoqa Desktop: `dev` under `electrobun dev`, `canary`
+ * for a prerelease (`v*-*` tag), `stable` for a release.
+ */
+export type YoqaChannel = "dev" | "canary" | "stable";
+
+/**
+ * Only stable installs look for a Yoqa update. `latest/download` never serves a prerelease's
+ * files, so a canary check could only fail (ADR-0013); `dev` has nothing to update.
+ */
+export function updatesEnabledForChannel(channel: YoqaChannel): boolean {
+	return channel === "stable";
+}
+
+/** The installed Yoqa Desktop version and its Electrobun channel. */
 export type YoqaVersionInfo = {
 	version: string;
-	/** `dev` under `electrobun dev`, where Yoqa never checks for updates. */
-	channel: string;
+	channel: YoqaChannel;
 };
+
+/** Yoqa Desktop's GitHub Releases: each version's release page, and Yoqa updates under `latest/download`. */
+export const YOQA_RELEASES_URL = "https://github.com/Aris-ngoy/qa-agent/releases";

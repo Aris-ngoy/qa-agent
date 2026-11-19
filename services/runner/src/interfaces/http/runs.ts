@@ -112,13 +112,13 @@ export function createRunsRoutes() {
 
 	app.get("/runs", async (c) => {
 		const appId = c.req.query("appId")?.trim();
-		// Without an App, only the Runs in progress across every App can be listed.
-		const inProgress = !appId && c.req.query("status")?.trim() === "running";
+		// `status=running` narrows to the Runs in progress; without an App it spans every App.
+		const inProgress = c.req.query("status")?.trim() === "running";
 		if (!appId && !inProgress) {
 			return c.json({ error: "appId query parameter is required" }, 400);
 		}
 		try {
-			const runs = appId ? await listRuns(appId) : await listRunsInProgress();
+			const runs = appId && !inProgress ? await listRuns(appId) : await listRunsInProgress(appId);
 			return c.json(listRunsResponseSchema.parse({ runs }));
 		} catch (error) {
 			const mapped = runErrorResponse(error);

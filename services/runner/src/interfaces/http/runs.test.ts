@@ -115,6 +115,17 @@ describe("GET /runs", () => {
 		expect(listed.body.runs.map((run) => run.id)).toEqual([passed, running]);
 	});
 
+	test("with an appId and status=running it lists only that App's Runs in progress", async () => {
+		const app = await createApp({ name: "Maps" });
+		const running = await seedRun(app.id, "running");
+		await seedRun(app.id, "errored");
+		await seedRun((await createApp({ name: "Weather" })).id, "running");
+
+		const listed = await list(`?appId=${app.id}&status=running`);
+		expect(listed.status).toBe(200);
+		expect(listed.body.runs.map((run) => run.id)).toEqual([running]);
+	});
+
 	test("asks for an appId when it has neither an appId nor status=running", async () => {
 		expect((await list("")).status).toBe(400);
 		expect((await list("?status=passed")).status).toBe(400);
