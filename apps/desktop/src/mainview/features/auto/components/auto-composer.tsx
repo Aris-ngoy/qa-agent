@@ -1,4 +1,5 @@
 import { shownAutoChat$ } from "@/features/auto/data/state/shown-chat";
+import { useProviderProblem } from "@/features/auto/hooks/use-provider-problem";
 import {
 	useAutoModels,
 	useSendAutoMessage,
@@ -7,14 +8,13 @@ import {
 } from "@/features/auto/hooks/usequery/use-auto";
 import {
 	chatAgentLabel,
-	chatProviderProblem,
 	pickFromKey,
 	pickerKey,
 	pickerSections,
 } from "@/features/auto/utils/chat-labels";
 import { MODE_OPTIONS, canSend, composerHint, isSendKey } from "@/features/auto/utils/composer";
 import { isRunLive } from "@/features/auto/utils/run-card";
-import { ProviderLogo } from "@/features/providers/components/driver-glyph";
+import { ProviderLogo } from "@/features/providers/components/provider-logo";
 import { Button, Header, ListBox, Select } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
 import type { AutoChatMode } from "@yoqa/runner-client";
@@ -126,14 +126,6 @@ export function AutoComposer({ chatId }: { chatId: string }) {
 			</p>
 		</div>
 	);
-}
-
-/** Why the shown chat's Provider cannot answer, once the Providers are read; null while it can. */
-function useProviderProblem(): string | null {
-	const modelsQuery = useAutoModels();
-	const providerId = useValue(shownAutoChat$.chat.providerId) ?? null;
-	if (!modelsQuery.data) return null;
-	return chatProviderProblem(modelsQuery.data.providers, { providerId });
 }
 
 /** Ask / Run / Explore, each naming what it may do. */
