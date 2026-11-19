@@ -53,8 +53,18 @@ Each action is a single-key map: the key is the action name, and the value is ei
 | `activate-app` | `activate-app: com.example.app` | `appId`, `reason` |
 | `terminate-app` | `terminate-app: com.example.app` | `appId`, `reason` |
 | `restart-app` | `restart-app: com.example.app` | `appId`, `reason` |
+| `reset-app` | `reset-app: com.example.app` | `appId`, `keychain` (iOS Simulator: also reset its whole keychain), `reason` |
 | `background-app` | `background-app: 3` (seconds) | `seconds`, `reason` |
 | `open-url` | `open-url: myapp://path` | `url`, `reason` |
+
+A `reset-app` step ends the App and clears its data without launching it, so a case that needs a clean start begins with `reset-app` then `activate-app`. It works inside a Branch's `then` and `else`. On a device that cannot Reset (a physical iPhone, your Everyday browser) the step fails with the device's reason, and the Run report shows what each Reset cleared and kept. A Case Script the agent recorded never holds a `reset-app` step: the agent never chooses one.
+
+```yaml
+actions:
+  - reset-app: com.example.app
+  - activate-app: com.example.app
+  - reset-app: { appId: com.example.app, keychain: true }   # also signs every app on the simulator out
+```
 
 A `tap` needs a `label`, an `id`, or both `x` and `y`. When a tap has a `label` or `id`, Yoqa finds the element on the current screen and taps it. `x` and `y` are a fallback position.
 

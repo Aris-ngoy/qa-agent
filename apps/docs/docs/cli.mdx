@@ -193,8 +193,12 @@ yoqa action alert --dismiss
 yoqa action activate-app --app-id com.example.app
 yoqa action terminate-app --app-id com.example.app
 yoqa action restart-app --app-id com.example.app
+yoqa action reset-app --app-id com.example.app       # clear the App's data; it stays installed, not running
+yoqa action reset-app --app-id com.example.app --keychain   # iOS Simulator: also reset its whole keychain
 yoqa action background-app                           # not supported on web
 ```
+
+`reset-app` ends the App and clears its data, as a fresh install would leave it, without reinstalling or launching it. Follow it with `activate-app` for a clean cold start. It prints `ok reset-app`, a `cleared …` line, and a `kept …` line when something was kept, for example `kept keychain` on an iOS Simulator; `--json` carries the same lists as `reset.cleared` and `reset.kept`. It fails, with the reason, on a physical iPhone (it cannot clear an App's data without reinstalling) and on your Everyday browser, and it fails naming the App when the App is not installed. See [App State Management](/guide/best-practices-app-state#reset-restart-or-reinstall) for when to Reset rather than Restart.
 
 `key` fails with an error when the device cannot press that key (a physical iPhone sends only Enter, Backspace and Space, and an iOS Simulator holds no modifiers). On web, `--app-id` is the App's Web URL. See [Web](/docs/web) for what each Action does in a browser.
 

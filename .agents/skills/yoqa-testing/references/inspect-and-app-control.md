@@ -1,6 +1,6 @@
 # Inspect & App Control
 
-Reading the screen, app lifecycle, alerts and keys.
+Reading the screen, app lifecycle (including Reset), alerts and keys.
 
 ## Screenshot
 
@@ -86,6 +86,7 @@ The flag is `--app-id` (iOS bundle id, Android application id, or on web the App
 yoqa action activate-app --app-id com.example.app
 yoqa action terminate-app --app-id com.example.app
 yoqa action restart-app --app-id com.example.app     # terminate, then activate
+yoqa action reset-app --app-id com.example.app       # end the App and clear its data; not relaunched
 yoqa action background-app                            # background for 3s (default)
 yoqa action background-app --seconds 10
 yoqa action open-url --url "https://example.com"
@@ -100,6 +101,7 @@ On web an app is its **Web URL** (`http` or `https`), and each lifecycle Action 
 | `activate-app` | brings a page already on the URL's origin to the front, or navigates to the URL |
 | `terminate-app` | closes the app's page; the session moves to a blank page |
 | `restart-app` | closes the page, clears all storage and cookies for the origin, then loads the URL fresh |
+| `reset-app` | closes the page and clears the origin's cookies, storage and service workers; does not load the URL again. Fails on the Everyday browser |
 | `background-app` | **not supported** — fails with "background-app is not supported on web" |
 | `reload-page` | reloads the current page at its URL, keeping cookies and storage, and waits for it to load. Web only: on a phone or simulator it fails |
 
@@ -112,6 +114,54 @@ A link or script that opens a new tab or popup (`target=_blank`, `window.open`, 
 window) is followed: the next screenshot and Action are on the popup. When the popup closes, the
 session returns to the page that opened it. There is no tab switching; tabs the page did not open are
 ignored.
+
+## Reset an App
+
+`reset-app` puts an App back in the state a fresh install leaves it in, without reinstalling: it ends
+the App, clears its data, and leaves it installed and **not running**. Launch it yourself for a clean
+cold start:
+
+```bash
+yoqa action reset-app --app-id com.example.app
+yoqa action activate-app --app-id com.example.app
+```
+
+The output says what was cleared and what was kept (`--json`: `reset.cleared` and `reset.kept`):
+
+```
+ok reset-app
+cleared data, cache, preferences, permissions, app-groups
+kept keychain
+```
+
+| Device | Clears | Keeps |
+|---|---|---|
+| Android emulator or phone | data, cache, preferences, permissions | nothing |
+| iOS simulator | data, cache, preferences, permissions, app-groups | the keychain, unless `--keychain` |
+| Browser Yoqa launched, or attached by port | the App origin's cookies, storage, service workers | the rest of the Kept profile |
+| Cabled iPhone | fails: it cannot clear an App's data without reinstalling | |
+| Everyday browser | fails: Yoqa never clears the user's own browser data | |
+
+**A simulator keeps its keychain by default**, so a login token stored there can still sign the App
+in after a Reset. `--keychain` resets the simulator's whole keychain, which signs every app on it out:
+
+```bash
+yoqa action reset-app --app-id com.example.app --keychain
+```
+
+A Reset of an App that is not installed fails and names the App: check the `--app-id`. A Case Script
+step is `- reset-app: com.example.app`, or `- reset-app: { appId: com.example.app, keychain: true }`.
+
+Which one to use:
+
+| You want | Use |
+|---|---|
+| A cold start that keeps the App's data | `restart-app` (only a browser Yoqa launched clears storage on it) |
+| The App's data gone, the same build still installed | `reset-app`, then `activate-app` |
+| A different build, or a clean start on a cabled iPhone | a reinstall: [iOS](install-ios.md#clean-install-reset-app-state) · [Android](install-android.md#clean-install-reset-app-state) |
+| Every origin's logins in a browser profile gone | `yoqa devices web reset-profile`, with the browser closed ([Devices](devices.md)) |
+
+A Reset cannot be undone. Run it when the user or the test case asks for a clean start.
 
 ## Alert
 

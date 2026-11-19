@@ -24,7 +24,7 @@ Get `<device-id>` from `yoqa devices ios`.
 
 ## Clean install (reset app state)
 
-A plain install over an existing app keeps its data — login, completed onboarding, cache. To start from a truly clean state, remove the app (with its data) first, then install.
+A plain install over an existing app keeps its data — login, completed onboarding, cache. On a simulator, `yoqa action reset-app` clears the data and keeps the app installed ([Reset an App](inspect-and-app-control.md#reset-an-app)). For a fresh build, or on a cabled iPhone, remove the app (with its data) first, then install.
 
 ### Simulator (.app)
 

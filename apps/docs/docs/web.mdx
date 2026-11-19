@@ -148,7 +148,7 @@ There the agent acts in your real, signed-in accounts, so it comes with limits:
 
 - **A warning, once per App.** The first connect for an App fails with a warning about acting in your own session, until you accept it. It is remembered for that App, in the desktop app and the CLI alike.
 - **Named only.** A Run uses your Everyday browser only when you name it, as `--device web-chrome-everyday`. `yoqa runs create` without `--device` never picks it, even when the session is on it. A Run for an App that has not accepted the warning fails before it starts.
-- **Nothing is wiped.** No Action clears your cookies, storage or cache. `restart-app` reopens the Web URL with your storage kept, and says so in its result.
+- **Nothing is wiped.** No Action clears your cookies, storage or cache. `restart-app` reopens the Web URL with your storage kept, and says so in its result. `reset-app` fails with "Yoqa never clears the Everyday browser's data".
 - **No reopening.** A Run with a `--viewport` other than the session's fails before it connects, since reopening asks for Allow again. Reconnect at that preset first: `yoqa devices connect web-chrome-everyday --viewport mobile`.
 - **No clean profile.** A Run with `--profile clean`, or a case with `profile: clean`, fails before it starts. For a clean start, run on the browser Yoqa launches (`web-chrome`) on its kept profile, with `--profile clean` or after `yoqa devices web reset-profile`.
 - **Reports say so.** The report's Browser row reads `Everyday Google Chrome 144.0 · profile Work`, so a result from your real session is not taken for a clean one.
@@ -175,13 +175,17 @@ Coordinates are 0–1000 relative to the page viewport, never the browser window
 | `activate-app` | Brings a page already on the Web URL's origin to the front, or navigates to the Web URL. |
 | `terminate-app` | Closes the App's page. The session moves to a blank page. |
 | `restart-app` | Closes the page, clears storage and cookies for its origin, and loads the Web URL fresh. On your Everyday browser it clears nothing and only reopens the Web URL. |
+| `reset-app` | Closes the App's page and clears its origin's cookies, storage (localStorage, sessionStorage, IndexedDB, Cache Storage) and service workers. It does not load the Web URL again: the session moves to a blank page. It clears on a browser attached by port too, where `restart-app` keeps storage. Other origins and the rest of the kept profile stay. On your Everyday browser it fails. |
 | `background-app` | **Not supported.** It fails, so a cross-platform case never passes a step it did not run. |
 
 On web, `--app-id` is the Web URL:
 
 ```bash
 yoqa action restart-app --app-id http://localhost:8081
+yoqa action reset-app --app-id http://localhost:8081      # signed out on this origin; logins elsewhere stay
 ```
+
+`reset-app` clears one origin; `yoqa devices web reset-profile` deletes the whole kept profile, with every origin's logins, while its browser is closed.
 
 **Popups are followed.** When the page opens a new tab or window (`target=_blank`, `window.open`, an OAuth sign-in popup), the session drives it. When it closes, the session returns to the page that opened it. Tabs the page did not open are ignored, and there is no tab switching to manage.
 

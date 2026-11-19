@@ -90,11 +90,11 @@ asked to remove.
 |---|---|
 | [Environment](references/environment.md) | `status`, `health`, `serve`, `doctor`, `servers`, `--base-url` |
 | [Devices](references/devices.md) | list, connect, active, disconnect; web browsers and viewport presets; the user's Everyday browser; iPhone signing |
-| [Inspect & App Control](references/inspect-and-app-control.md) | `screenshot`, `screen`, app lifecycle, `open-url`, `alert`, `key` |
+| [Inspect & App Control](references/inspect-and-app-control.md) | `screenshot`, `screen`, app lifecycle (restart, reset an App's data), `open-url`, `alert`, `key` |
 | [Actions by coordinates](references/actions-coordinates.md) | tap, input, swipe, drag by point; `--screenshot`; `action batch` |
 | [Targeting elements](references/actions-grounding.md) | `--id`, `--label`, `--description` |
 | [Assertions](references/assertions.md) | `assert visible` / `not-visible` |
 | [Apps, Cases & Flows](references/apps-cases-and-flows.md) | `apps`, `cases`, `flows`, `tags`; the flows file |
 | [Builds](references/builds.md) | the build registry; producing a binary for [iOS](references/builds-ios-native.md), [React Native](references/builds-react-native.md), [Android](references/builds-android.md) |
-| Install | putting a build on a device and resetting app state: [iOS](references/install-ios.md), [Android](references/install-android.md) |
+| Install | putting a build on a device, and a clean reinstall: [iOS](references/install-ios.md), [Android](references/install-android.md) |
 | [Run Tests](references/run.md) | `runs`, `report`, Case Scripts (`script export/validate/run`) |
