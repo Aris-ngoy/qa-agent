@@ -125,6 +125,8 @@ describe("replayCaseScript", () => {
 				{ type: "type", text: "hello" },
 				{ type: "alert", alertAction: "dismiss" },
 				{ type: "restart-app", appId: "com.example" },
+				{ type: "reset-app", appId: "com.example" },
+				{ type: "reset-app", appId: "com.example", keychain: true },
 				{ type: "background-app", seconds: 2 },
 				{ type: "open-url", url: "myapp://x" },
 				{ type: "reload-page" },
@@ -132,7 +134,7 @@ describe("replayCaseScript", () => {
 			),
 			device.port,
 		);
-		expect(result).toEqual({ ok: true, completed: 11, total: 11 });
+		expect(result).toEqual({ ok: true, completed: 13, total: 13 });
 		expect(device.requests).toEqual([
 			{ kind: "tap", label: "Home" },
 			{ kind: "tap", id: "submit", x: 1, y: 2, double: true, durationMs: 900 },
@@ -141,6 +143,8 @@ describe("replayCaseScript", () => {
 			{ kind: "input", text: "hello" },
 			{ kind: "alert", alertAction: "dismiss" },
 			{ kind: "restart-app", appId: "com.example" },
+			{ kind: "reset-app", appId: "com.example" },
+			{ kind: "reset-app", appId: "com.example", keychain: true },
 			{ kind: "background-app", seconds: 2 },
 			{ kind: "open-url", url: "myapp://x" },
 			{ kind: "reload-page" },

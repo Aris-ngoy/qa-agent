@@ -178,6 +178,22 @@ describe("formatCaseScriptShell", () => {
 		expect(out).toContain("yoqa action key Escape --modifiers Meta");
 	});
 
+	test("emits reset-app with its app id, and --keychain only when asked", () => {
+		const out = formatCaseScriptShell({
+			version: 1,
+			savedAt: 1,
+			actions: [
+				{ type: "reset-app", appId: "com.example.app" },
+				{ type: "reset-app", appId: "com.example.app", keychain: true },
+			],
+		});
+		const lines = out.split("\n").filter((line) => line.startsWith("yoqa action reset-app"));
+		expect(lines).toEqual([
+			"yoqa action reset-app --app-id 'com.example.app'",
+			"yoqa action reset-app --app-id 'com.example.app' --keychain",
+		]);
+	});
+
 	test("emits accept alert", () => {
 		const out = formatCaseScriptShell({
 			version: 1,

@@ -91,6 +91,7 @@ const SHORT_FORM_FIELD: Partial<Record<CaseScriptActionType, string>> = {
 	"activate-app": "appId",
 	"terminate-app": "appId",
 	"restart-app": "appId",
+	"reset-app": "appId",
 	"background-app": "seconds",
 	key: "key",
 };
@@ -118,6 +119,7 @@ const FIELD_ORDER = [
 	"timeoutMs",
 	"double",
 	"durationMs",
+	"keychain",
 	"reason",
 ];
 

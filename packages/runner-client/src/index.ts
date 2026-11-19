@@ -480,6 +480,7 @@ export {
 	actionSummary,
 	buildRunReportFromCatalogRun,
 	buildRunReportFromInspectorSession,
+	formatAppReset,
 	formatRunReportGithubSummary,
 	formatRunReportHtml,
 	formatRunReportMarkdown,

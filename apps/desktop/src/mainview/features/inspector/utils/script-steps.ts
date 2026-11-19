@@ -36,6 +36,7 @@ const VERBS: Record<CaseScriptAction["type"], string> = {
 	"activate-app": "Activate app",
 	"terminate-app": "Terminate app",
 	"restart-app": "Restart app",
+	"reset-app": "Reset app",
 	"background-app": "Background app",
 	"open-url": "Open URL",
 	"reload-page": "Reload page",
@@ -74,6 +75,8 @@ function describeAction(action: CaseScriptAction): Pick<ScriptStepRow, "verb" | 
 		case "terminate-app":
 		case "restart-app":
 			return { verb, text: action.appId, meta: "" };
+		case "reset-app":
+			return { verb, text: action.appId, meta: action.keychain ? "and keychain" : "" };
 		case "background-app":
 			return { verb, text: action.seconds != null ? `${action.seconds} s` : "", meta: "" };
 		case "open-url":

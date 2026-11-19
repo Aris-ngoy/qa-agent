@@ -36,6 +36,20 @@ describe("buildScriptStepsView", () => {
 		expect(view.steps[0]).toMatchObject({ verb: "Press", text: "Shift+Tab" });
 	});
 
+	test("shows a reset-app step with its app, and the keychain when it resets it", () => {
+		const view = buildScriptStepsView(
+			"version: 1\nactions:\n  - reset-app: com.example.app\n  - reset-app: { appId: com.example.app, keychain: true }\n",
+			null,
+			false,
+		);
+		expect(view.steps[0]).toMatchObject({ verb: "Reset app", text: "com.example.app", meta: "" });
+		expect(view.steps[1]).toMatchObject({
+			verb: "Reset app",
+			text: "com.example.app",
+			meta: "and keychain",
+		});
+	});
+
 	test("comments before the first step are not groups", () => {
 		const view = buildScriptStepsView(script, null, false);
 		expect(view.groups.some((group) => group.text === "Open Discover")).toBe(false);

@@ -90,6 +90,10 @@ function actionToShellLine(action: CaseScriptAction): string {
 	) {
 		return `yoqa action ${action.type} --app-id ${shellSingleQuote(action.appId)}`;
 	}
+	if (action.type === "reset-app") {
+		const line = `yoqa action reset-app --app-id ${shellSingleQuote(action.appId)}`;
+		return action.keychain ? `${line} --keychain` : line;
+	}
 	if (action.type === "background-app") {
 		return action.seconds != null
 			? `yoqa action background-app --seconds ${action.seconds}`

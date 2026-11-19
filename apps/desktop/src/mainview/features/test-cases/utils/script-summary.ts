@@ -67,6 +67,9 @@ export function scriptActionSummary(action: CaseScriptAction): string {
 	) {
 		return `${action.type} ${action.appId}`;
 	}
+	if (action.type === "reset-app") {
+		return `reset-app ${action.appId}${action.keychain ? " + keychain" : ""}`;
+	}
 	if (action.type === "background-app") {
 		return action.seconds != null ? `Background app ${action.seconds}s` : "Background app";
 	}

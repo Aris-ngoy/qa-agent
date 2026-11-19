@@ -107,6 +107,33 @@ actions:
 		expect(parsed.script.actions).toEqual([{ type: "reload-page" }, { type: "reload-page" }]);
 	});
 
+	test("round-trips reset-app, short and with keychain, and inside a Branch", () => {
+		const text = `version: 1
+actions:
+  - reset-app: com.example.app
+  - reset-app: { appId: com.example.app, keychain: true }
+  - if:
+      text: Sign out
+      then:
+        - reset-app: com.example.app
+      else:
+        - reset-app: { appId: com.example.app, keychain: false }
+`;
+		const parsed = parseOk(text);
+		expect(parsed.script.actions).toEqual([
+			{ type: "reset-app", appId: "com.example.app" },
+			{ type: "reset-app", appId: "com.example.app", keychain: true },
+			{
+				type: "branch",
+				text: "Sign out",
+				assertion: "visible",
+				then: [{ type: "reset-app", appId: "com.example.app" }],
+				else: [{ type: "reset-app", appId: "com.example.app", keychain: false }],
+			},
+		]);
+		expect(formatCaseScriptFile(parsed.script)).toBe(text);
+	});
+
 	test("reads a legacy .yoqa.json export, keeping savedAt and sourceRunId", () => {
 		const legacy: CaseScript = {
 			version: 1,
@@ -153,7 +180,7 @@ foo: 1
 		expect(formatCaseScriptFileErrors(errors)).toBe(
 			[
 				"Line 3, action 1: tap: tap requires x/y or label or id",
-				'Line 4, action 2: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, background-app, open-url, reload-page, key, if)',
+				'Line 4, action 2: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, reset-app, background-app, open-url, reload-page, key, if)',
 				"Line 5, action 3: an action has exactly one key (its name); found tap, wait",
 				"Line 7, action 4: wait: ms: Number must be less than or equal to 10000",
 				'Line 8, action 5: tap: unknown field "colour" (allowed: x, y, label, id, double, durationMs, reason)',
@@ -631,7 +658,7 @@ actions:
 				"Line 9, action 4: if: needs `text:` or `id:` (what to look for on the Screen)",
 				'Line 14, action 5: if: unknown field "colour" (allowed: text, label, id, assertion, timeoutMs, then, else, reason)',
 				"Line 21, action 6 → then → action 2: if: needs `then:` with at least one action",
-				'Line 24, action 6 → then → action 2 → else → action 1: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, background-app, open-url, reload-page, key, if)',
+				'Line 24, action 6 → then → action 2 → else → action 1: unknown action "tapp" (expected one of: tap, swipe, drag, type, wait, assert, alert, activate-app, terminate-app, restart-app, reset-app, background-app, open-url, reload-page, key, if)',
 				"Line 25, action 7: if has no short form; write it as a map with `text:` and `then:`",
 			].join("\n"),
 		);

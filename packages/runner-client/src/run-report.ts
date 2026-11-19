@@ -2,6 +2,7 @@ import { z } from "zod";
 import { formatKeyChord } from "./keys";
 import {
 	type ActionRequest,
+	type AppReset,
 	type BrowserProfile,
 	type CallUsage,
 	type Run,
@@ -178,6 +179,7 @@ function summarizeActionRecord(record: RunStepActionFields): string {
 	if (type === "activate-app") return "Activate app";
 	if (type === "terminate-app") return "Terminate app";
 	if (type === "restart-app") return "Restart app";
+	if (type === "reset-app") return record.keychain ? "Reset app and keychain" : "Reset app";
 	if (type === "background-app") return "Background app";
 	if (type === "reload-page") return "Reload page";
 	if (type === "key") {
@@ -254,6 +256,13 @@ export function formatStepCommand(action: StepAction): string | null {
 	} else if (type === "activate-app" || type === "terminate-app" || type === "restart-app") {
 		const appId = trimmed(action.appId);
 		request = { kind: type, ...(appId ? { appId } : {}) };
+	} else if (type === "reset-app") {
+		const appId = trimmed(action.appId);
+		request = {
+			kind: type,
+			...(appId ? { appId } : {}),
+			...(action.keychain === true ? { keychain: true } : {}),
+		};
 	} else if (type === "reload-page") {
 		request = { kind: "reload-page" };
 	} else if (type === "background-app") {
@@ -276,6 +285,12 @@ export function formatStepCommand(action: StepAction): string | null {
 	}
 
 	return request ? formatActionShellLine(request) : null;
+}
+
+/** What a Reset (an App) cleared, then what it kept, e.g. `cleared data, cache · kept keychain`. */
+export function formatAppReset(reset: AppReset): string {
+	const cleared = `cleared ${reset.cleared.join(", ")}`;
+	return reset.kept.length > 0 ? `${cleared} · kept ${reset.kept.join(", ")}` : cleared;
 }
 
 export function stepReasoning(step: {
