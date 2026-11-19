@@ -23,7 +23,7 @@ The user's own running Chromium browser on its default profile, attached by cons
 _Avoid_: user profile, real browser, attach by port (that is the CLI path)
 
 **Kept profile**:
-The browser profile Yoqa keeps for one App and one browser, under `~/.yoqa/browser-profiles/<app>/<browser>/` (`default` when no App is named), so logins survive disconnects, reconnects and Runs. Disconnecting keeps it; a reset deletes it. A Run may ask for a clean profile instead: a throwaway one, deleted on disconnect. Never the user's own browser profile.
+The browser profile Yoqa keeps for one App and one browser, under `~/.yoqa/browser-profiles/<app>/<browser>/` (`default` when no App is named), so logins survive disconnects, reconnects and Runs. Disconnecting keeps it; `reset-profile` deletes it. A Run may ask for a clean profile instead: a throwaway one, deleted on disconnect. Never the user's own browser profile.
 _Avoid_: user profile, session storage, cookie jar
 
 **Viewport preset**:
@@ -80,8 +80,12 @@ A single device gesture or app-lifecycle command (tap, swipe, type, key, open UR
 _Avoid_: step (Run timeline), command (CLI)
 
 **Restart (an App)**:
-The Action that ends an App and launches it again, for a cold start: terminate, then launch. The App's data (login, preferences, onboarding progress) is kept on a simulator, an emulator, a phone and the Everyday browser. Only a Browser device Yoqa launched clears it: there a restart clears the App origin's storage. The Action's result says which: `kept` or `cleared`.
+The Action that ends an App and launches it again, for a cold start: terminate, then launch. The App's data (login, preferences, onboarding progress) is kept on a simulator, an emulator, a phone and the Everyday browser. Only a Browser device Yoqa launched clears it: there a restart clears the App origin's storage. The Action's result says which: `kept` or `cleared`. To clear an App's data without launching it, use a Reset.
 _Avoid_: reset, reinstall, relaunch (a launch alone does not end the old process)
+
+**Reset (an App)**:
+The Action that ends an App and clears its data on the device, leaving it installed and not running, as a fresh install would leave it: its storage, preferences, caches, and permission grants. It does not launch the App again. On an iOS simulator the keychain is kept unless the Reset asks for it, and then the whole simulator's keychain is reset. A cabled iPhone and the Everyday browser cannot Reset; the Action fails and says why. The result lists what was cleared and what was kept.
+_Avoid_: clear data, wipe, reinstall, Restart (which keeps data except on a browser Yoqa launched)
 
 **Reload (a page)**:
 The Action that loads the page a Browser device's Device Session drives again, at the URL it is on now, like a browser's reload button. Cookies, storage and logins are kept, and the cache is used. It is a web Action only: on a phone, a simulator or an emulator it fails and says why. It is not a Restart (which ends the App and, on a browser Yoqa launched, clears its storage) and not an open URL (which goes to a URL the Action names).

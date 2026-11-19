@@ -14,7 +14,7 @@ adb -s <adb-device-id> install <path-to.apk>
 
 ## Clean install (reset app state)
 
-`adb install -r` — and `npx react-native run-android`, which uses it — reinstalls but **keeps** the app's data (login, completed onboarding, cache). To reset state, clear the data or uninstall first.
+`adb install -r` — and `npx react-native run-android`, which uses it — reinstalls but **keeps** the app's data (login, completed onboarding, cache). To clear the data and keep the app installed, use `yoqa action reset-app` ([Reset an App](inspect-and-app-control.md#reset-an-app)); to start from a fresh build, uninstall first.
 
 ```bash
 # clear app data, keep the app installed

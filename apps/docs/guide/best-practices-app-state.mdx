@@ -8,13 +8,36 @@ Flaky suites usually come from **dirty state**, not bad instructions.
 ## Prefer clean starts when it matters
 
 - Install a fresh [build](/docs/local-builds) for install/onboarding cases.
-- Use `terminate-app` / `restart-app` (CLI or agent actions) between flows that leave side effects.
+- Use `reset-app` to clear an App's data without reinstalling, then `activate-app` to launch it clean. Make them the first steps of a Case Script that needs a clean start.
+- Use `terminate-app` / `restart-app` (CLI or agent actions) between flows that leave side effects but should keep the login.
 - Put "sign out if already signed in" in app context or a reusable login flow.
+
+## Reset, Restart, or reinstall
+
+| You want | Use | What happens |
+| --- | --- | --- |
+| A cold start that keeps the App's data | `restart-app` | Ends the App and launches it again. Login, preferences and onboarding progress stay, except on a browser Yoqa launched, where the App origin's storage is cleared. |
+| The App as a fresh install leaves it, same build | `reset-app`, then `activate-app` | Ends the App and clears its data; it stays installed and is not launched. Permission prompts show again. |
+| A different build, or a clean start on a physical iPhone | Reinstall a [build](/docs/local-builds) | Uninstall, then install. A physical iPhone cannot Reset. |
+| Every login in a browser profile gone | `yoqa devices web reset-profile` | Deletes the whole kept browser profile, every origin. Run it with the browser closed. |
+
+What `reset-app` clears differs by device, and its result lists what was cleared and what was kept:
+
+| Device | Clears | Keeps |
+| --- | --- | --- |
+| Android emulator or phone | Data, cache, shared preferences, databases and files; runtime permissions | Nothing |
+| iOS Simulator | The data container (Documents, Library with NSUserDefaults and Caches, tmp), app-group containers, privacy permissions | The keychain, unless `--keychain` |
+| Browser Yoqa launched, or attached by port | The App origin's cookies, storage and service workers | The rest of the kept profile |
+| Physical iPhone, your Everyday browser | Nothing: the Action fails and says why | Everything |
+
+On an iOS Simulator a login token in the keychain survives a Reset, just as it survives an uninstall on a real iPhone. `--keychain` resets the simulator's whole keychain, which signs every app on it out.
+
+The Run agent and the Auto chat never Reset by themselves: a Reset happens only as a step you wrote or a command you ran.
 
 ## Don't over-reset
 
-Shared smoke cases can assume a known logged-in account documented in app context — faster than full reinstall every time.
+Shared smoke cases can assume a known logged-in account documented in app context — faster than a Reset or a full reinstall every time.
 
 ## Permissions and first-run
 
-First launch prompts (ATT, notifications, tracking) should be covered either in **app context** ("always allow permission dialogs") or in an explicit setup case so product cases stay focused.
+First launch prompts (ATT, notifications, tracking) should be covered either in **app context** ("always allow permission dialogs") or in an explicit setup case so product cases stay focused. A `reset-app` takes back the App's permission grants on Android and the iOS Simulator, so the prompts show again on the next launch.
