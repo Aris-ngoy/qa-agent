@@ -20,7 +20,7 @@ import type { ChatRunResult } from "./chat-runs";
 import { performChatAction, readChatScreen } from "./explore";
 
 /**
- * The Actions the chat performs while it explores: every kind but a Reset, which would wipe
+ * The Actions the chat performs while it explores: every kind but a Reset, which would clear
  * the App's data in a way the user does not see and cannot undo.
  */
 const CHAT_ACTION_KINDS = actionKindSchema.options

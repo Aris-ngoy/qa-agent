@@ -30,7 +30,7 @@ Rejected: nested `yoqa` CLI from inside the runner (same Device Session); treati
 | `yoqa action background-app` | `background-app` |
 | `yoqa action open-url` | `open-url` |
 | `yoqa action reload-page` | `reload-page` (web only) |
-| `yoqa action reset-app` | none: the agent never chooses a Reset, which would wipe the App's data mid-case ([reset-app](../devices/reset-app.md)) |
+| `yoqa action reset-app` | none: the agent never chooses a Reset, which would clear the App's data mid-case ([reset-app](../devices/reset-app.md)) |
 | `yoqa assert visible\|not-visible` | `assert` |
 
 **Executor**

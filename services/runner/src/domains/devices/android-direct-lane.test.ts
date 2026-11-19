@@ -22,13 +22,21 @@ function options(overrides: Partial<SessionOptions> = {}): SessionOptions {
 	};
 }
 
-function recordingAdb(): { adb: AdbExec; calls: string[][] } {
+/** A faked adb that records its calls; `answers` replies to a shell command starting so. */
+function recordingAdb(answers: Record<string, AdbResult> = {}): {
+	adb: AdbExec;
+	calls: string[][];
+} {
 	const calls: string[][] = [];
 	const png = tinyPng();
 	const dump = `<?xml version="1.0"?><hierarchy><node bounds="[100,200][300,280]" resource-id="com.android.permissioncontroller:id/permission_allow_button" text="Allow" /></hierarchy>`;
 	const adb: AdbExec = async (args) => {
 		calls.push(args);
 		const joined = args.join(" ");
+		const command = args.slice(3).join(" ");
+		for (const [start, answer] of Object.entries(answers)) {
+			if (command.startsWith(start)) return answer;
+		}
 		if (joined.includes("get-state")) return ok("device\n");
 		if (joined.includes("wm size")) return ok("Physical size: 1000x2000\n");
 		if (joined.includes("screencap")) return ok("", png);
@@ -92,6 +100,40 @@ describe("createAndroidDirectSession", () => {
 		expect(calls.some((c) => c.includes("monkey") && c.includes("com.demo"))).toBe(true);
 		expect(calls.some((c) => c.includes("force-stop"))).toBe(true);
 		expect(calls.some((c) => c.includes("android.intent.action.VIEW"))).toBe(true);
+		await session.quit();
+	});
+
+	test("reset-app clears the App for the user `am get-current-user` names, as Android 7 and 8 take only a number", async () => {
+		const { adb, calls } = recordingAdb({
+			"am get-current-user": ok("10\n"),
+			"pm path": ok("package:/data/app/com.demo/base.apk\n"),
+			"pm clear": ok("Success\n"),
+		});
+		const session = await createAndroidDirectSession(options(), {
+			adb,
+			resolveSerial: async () => "emulator-5554",
+		});
+		await session.resetApp("com.demo");
+		expect(calls.filter((c) => c.includes("clear")).map((c) => c.slice(3))).toEqual([
+			["pm", "clear", "--user", "10", "com.demo"],
+		]);
+		await session.quit();
+	});
+
+	test("reset-app clears the App for the default user when `am` cannot name the current one", async () => {
+		const { adb, calls } = recordingAdb({
+			"am get-current-user": { stdout: "", stderr: "Error: unknown command", exitCode: 1 },
+			"pm path": ok("package:/data/app/com.demo/base.apk\n"),
+			"pm clear": ok("Success\n"),
+		});
+		const session = await createAndroidDirectSession(options(), {
+			adb,
+			resolveSerial: async () => "emulator-5554",
+		});
+		await session.resetApp("com.demo");
+		expect(calls.filter((c) => c.includes("clear")).map((c) => c.slice(3))).toEqual([
+			["pm", "clear", "com.demo"],
+		]);
 		await session.quit();
 	});
 

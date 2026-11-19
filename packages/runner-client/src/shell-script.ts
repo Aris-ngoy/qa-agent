@@ -360,6 +360,14 @@ export function parseYoqaShellScript(text: string): ParseYoqaShellScriptResult {
 	return { steps, errors };
 }
 
+/**
+ * The `keychain` field of a reset-app step or request: there, as `true`, only when the
+ * Reset also resets the simulator's keychain, so a plain Reset carries no field at all.
+ */
+export function keychainField(keychain: boolean | undefined): { keychain?: true } {
+	return keychain ? { keychain: true } : {};
+}
+
 export function formatActionShellLine(action: ActionRequest): string {
 	const parts = ["yoqa", "action", action.kind];
 
@@ -804,7 +812,7 @@ export function shellToCaseScript(
 			actions.push({
 				type: "reset-app",
 				appId: action.appId,
-				...(action.keychain ? { keychain: true } : {}),
+				...keychainField(action.keychain),
 			});
 			continue;
 		}

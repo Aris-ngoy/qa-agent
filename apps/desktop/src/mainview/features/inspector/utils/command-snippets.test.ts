@@ -320,7 +320,7 @@ describe("resetApp command", () => {
 		]);
 	});
 
-	test("builds nothing without an app id, since a Reset must name what it wipes", () => {
+	test("builds nothing without an app id, since a Reset must name the App it clears", () => {
 		expect(buildCommandLines(point, "resetApp", "  ", context)).toEqual([]);
 	});
 });

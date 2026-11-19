@@ -63,7 +63,7 @@ describe("scriptActionSummary", () => {
 		);
 		expect(
 			scriptActionSummary({ type: "reset-app", appId: "com.example.app", keychain: true }),
-		).toBe("reset-app com.example.app + keychain");
+		).toBe("reset-app com.example.app and keychain");
 	});
 
 	test("names a swipe for the way it scrolls, so a finger swipe up reads Scroll down", () => {

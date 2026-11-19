@@ -1,4 +1,4 @@
-import type { PendingReset } from "@/features/inspector/utils/reset-app";
+import type { ShellLinesConversion } from "@/features/inspector/utils/script-text";
 import { appendScriptLines } from "@/features/inspector/utils/selection";
 import { type Observable, batch } from "@legendapp/state";
 import { type RunReportDocument, emptyCaseScriptFile } from "@yoqa/runner-client";
@@ -8,6 +8,9 @@ export type RunLogEntry = {
 	text: string;
 	tone: "info" | "ok" | "error";
 };
+
+/** One Reset (an App) a run is about to do: the App it clears, and whether the keychain goes too. */
+export type PendingReset = { appId: string; keychain: boolean };
 
 export type InspectorScriptState = {
 	/** The editor's Case Script file (YAML). */
@@ -20,8 +23,8 @@ export type InspectorScriptState = {
 	saveError: string | null;
 	report: RunReportDocument | null;
 	exportingReport: boolean;
-	/** An Insert & Run that Resets an App, held until the user confirms it. */
-	pendingReset: { resets: PendingReset[]; lines: string[] } | null;
+	/** An Insert & Run that Resets an App, held, already converted, until the user confirms it. */
+	pendingReset: { resets: PendingReset[]; insert: ShellLinesConversion } | null;
 };
 
 export type InspectorScript$ = Observable<InspectorScriptState>;

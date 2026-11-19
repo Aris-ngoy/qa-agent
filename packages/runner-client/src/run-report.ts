@@ -17,7 +17,12 @@ import {
 	keyNameSchema,
 } from "./schemas";
 import { describeScreenCheck } from "./screen-check";
-import { formatActionShellLine, formatAssertShellLine, formatSleepShellLine } from "./shell-script";
+import {
+	formatActionShellLine,
+	formatAssertShellLine,
+	formatSleepShellLine,
+	keychainField,
+} from "./shell-script";
 import { formatViewportPreset } from "./viewport";
 
 export type RunReportStatus = "passed" | "errored" | "cancelled";
@@ -261,7 +266,7 @@ export function formatStepCommand(action: StepAction): string | null {
 		request = {
 			kind: type,
 			...(appId ? { appId } : {}),
-			...(action.keychain === true ? { keychain: true } : {}),
+			...keychainField(action.keychain === true),
 		};
 	} else if (type === "reload-page") {
 		request = { kind: "reload-page" };
@@ -287,10 +292,18 @@ export function formatStepCommand(action: StepAction): string | null {
 	return request ? formatActionShellLine(request) : null;
 }
 
-/** What a Reset (an App) cleared, then what it kept, e.g. `cleared data, cache · kept keychain`. */
-export function formatAppReset(reset: AppReset): string {
+/**
+ * What a Reset (an App) cleared, then what it kept when it kept anything, one line each:
+ * `cleared data, cache` and `kept keychain`. The CLI prints them as they are.
+ */
+export function appResetLines(reset: AppReset): string[] {
 	const cleared = `cleared ${reset.cleared.join(", ")}`;
-	return reset.kept.length > 0 ? `${cleared} · kept ${reset.kept.join(", ")}` : cleared;
+	return reset.kept.length > 0 ? [cleared, `kept ${reset.kept.join(", ")}`] : [cleared];
+}
+
+/** {@link appResetLines} on one line, e.g. `cleared data, cache · kept keychain`. */
+export function formatAppReset(reset: AppReset): string {
+	return appResetLines(reset).join(" · ");
 }
 
 export function stepReasoning(step: {

@@ -31,6 +31,13 @@ export function waitLine(seconds: number): string {
 	return formatCaseScriptFileActionLine({ type: "wait", ms: Math.round(seconds * 1000) });
 }
 
+/** `yoqa` shell lines as the editor takes them: its file lines, their steps, and what was skipped. */
+export type ShellLinesConversion = {
+	lines: string[];
+	actions: CaseScriptAction[];
+	warnings: string[];
+};
+
 /**
  * Case Script file lines for `yoqa` shell lines from the element action dialog.
  * The dialog builds terminal commands; the editor holds a Case Script file.
@@ -38,7 +45,7 @@ export function waitLine(seconds: number): string {
 export function caseScriptLinesFromShell(
 	lines: string[],
 	elements: ScreenElement[] | undefined,
-): { lines: string[]; actions: CaseScriptAction[]; warnings: string[] } {
+): ShellLinesConversion {
 	const converted = caseScriptFileLinesFromShell(lines.join("\n"), { elements });
 	const actions: CaseScriptAction[] = [];
 	if (converted.actionCount > 0) {

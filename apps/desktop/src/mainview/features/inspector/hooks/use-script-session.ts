@@ -16,8 +16,9 @@ import {
 import { useSaveTestCase } from "@/features/inspector/hooks/usequery/use-save-test-case";
 import { tapLinesForSelection } from "@/features/inspector/utils/command-snippets";
 import { notify } from "@/features/inspector/utils/report";
-import { resetStepsIn, stepResultDetail } from "@/features/inspector/utils/reset-app";
+import { resetStepsIn, stepResultDetail, withDetail } from "@/features/inspector/utils/reset-app";
 import {
+	type ShellLinesConversion,
 	caseScriptLinesFromShell,
 	defaultCaseNameFromScript,
 	reloadPageLine,
@@ -31,7 +32,6 @@ import { exportRunReport } from "@/features/runs/utils/run-report";
 import { useObservable } from "@legendapp/state/react";
 import { useNavigate } from "@tanstack/react-router";
 import {
-	type ActionResponse,
 	CASE_SCRIPT_FILE_EXTENSION,
 	type CaseScript,
 	buildRunReportFromInspectorSession,
@@ -56,12 +56,6 @@ type InspectorReportStep = {
 	command: string | null;
 	screenshotBase64: string | null;
 };
-
-/** A log line, plus what the step reported (a Reset's cleared / kept lists). */
-function withDetail(text: string, response: ActionResponse | undefined): string {
-	const detail = stepResultDetail(response);
-	return detail ? `${text} · ${detail}` : text;
-}
 
 type ScriptSessionOptions = {
 	controller: InspectorFeedController;
@@ -97,12 +91,13 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 	};
 
 	/** The dialog and recorder speak `yoqa` shell; the editor holds a Case Script file. */
-	const appendShellLines = (lines: string[]) => {
-		const converted = caseScriptLinesFromShell(lines, feed$.elements.peek());
+	const appendConverted = (converted: ShellLinesConversion) => {
 		logWarnings(converted.warnings);
 		if (converted.lines.length > 0) appendScript(script$, converted.lines);
 		return converted;
 	};
+	const appendShellLines = (lines: string[]) =>
+		appendConverted(caseScriptLinesFromShell(lines, feed$.elements.peek()));
 
 	const handleDoubleTap = (next: InspectorSelection) => {
 		controller.select(next);
@@ -181,8 +176,8 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 		);
 	};
 
-	const insertAndRun = (lines: string[]) => {
-		const { actions } = appendShellLines(lines);
+	const insertAndRun = (insert: ShellLinesConversion) => {
+		const { actions } = appendConverted(insert);
 		if (actions.length === 0) return;
 		void runActions(
 			{ version: 1, savedAt: Date.now(), actions },
@@ -193,19 +188,19 @@ export function useScriptSession({ controller, selectedApp }: ScriptSessionOptio
 	/** A Reset can't be undone, so Insert & Run holds one until `confirmReset`. */
 	const handleInsertAndRunLines = (lines: string[]) => {
 		if (lines.length === 0) return;
-		const { actions } = caseScriptLinesFromShell(lines, feed$.elements.peek());
-		const resets = resetStepsIn(actions);
+		const insert = caseScriptLinesFromShell(lines, feed$.elements.peek());
+		const resets = resetStepsIn(insert.actions);
 		if (resets.length > 0) {
-			script$.pendingReset.set({ resets, lines });
+			script$.pendingReset.set({ resets, insert });
 			return;
 		}
-		insertAndRun(lines);
+		insertAndRun(insert);
 	};
 
 	const confirmReset = () => {
 		const pending = script$.pendingReset.peek();
 		script$.pendingReset.set(null);
-		if (pending) insertAndRun(pending.lines);
+		if (pending) insertAndRun(pending.insert);
 	};
 
 	const cancelReset = () => {

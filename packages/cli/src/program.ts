@@ -13,6 +13,7 @@ import {
 	RunnerUnreachableError,
 	type ServerEntry,
 	WaitForRunTimeoutError,
+	appResetLines,
 	caseScriptActionCommand,
 	checkScreen,
 	createCaseFlowsSchema,
@@ -810,10 +811,7 @@ for (const kind of [
 			if (body.resolved?.x != null && body.resolved?.y != null) {
 				lines.push(`resolved ${body.resolved.x},${body.resolved.y}`);
 			}
-			if (body.reset) {
-				lines.push(`cleared ${body.reset.cleared.join(", ")}`);
-				if (body.reset.kept.length > 0) lines.push(`kept ${body.reset.kept.join(", ")}`);
-			}
+			if (body.reset) lines.push(...appResetLines(body.reset));
 			if (body.screenshot) lines.push(...resultScreenshotLines(body.screenshot));
 			if (body.phases) lines.push(actionPhasesLine(body.phases));
 			await emitText(lines, options, cmd, body.screenshot?.path);

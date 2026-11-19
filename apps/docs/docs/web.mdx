@@ -148,7 +148,7 @@ There the agent acts in your real, signed-in accounts, so it comes with limits:
 
 - **A warning, once per App.** The first connect for an App fails with a warning about acting in your own session, until you accept it. It is remembered for that App, in the desktop app and the CLI alike.
 - **Named only.** A Run uses your Everyday browser only when you name it, as `--device web-chrome-everyday`. `yoqa runs create` without `--device` never picks it, even when the session is on it. A Run for an App that has not accepted the warning fails before it starts.
-- **Nothing is wiped.** No Action clears your cookies, storage or cache. `restart-app` reopens the Web URL with your storage kept, and says so in its result. `reset-app` fails with "Yoqa never clears the Everyday browser's data".
+- **Nothing is cleared.** No Action clears your cookies, storage or cache. `restart-app` reopens the Web URL with your storage kept, and says so in its result. `reset-app` fails with "Yoqa never clears the Everyday browser's data".
 - **No reopening.** A Run with a `--viewport` other than the session's fails before it connects, since reopening asks for Allow again. Reconnect at that preset first: `yoqa devices connect web-chrome-everyday --viewport mobile`.
 - **No clean profile.** A Run with `--profile clean`, or a case with `profile: clean`, fails before it starts. For a clean start, run on the browser Yoqa launches (`web-chrome`) on its kept profile, with `--profile clean` or after `yoqa devices web reset-profile`.
 - **Reports say so.** The report's Browser row reads `Everyday Google Chrome 144.0 · profile Work`, so a result from your real session is not taken for a clean one.

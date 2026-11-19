@@ -88,7 +88,7 @@ describe("performActionBatch", () => {
 });
 
 describe("performActionBatch with reset-app", () => {
-	test("wipes the App and launches it again in one batch", async () => {
+	test("Resets the App and launches it again in one batch", async () => {
 		const harness = androidAdbLane();
 		const session = await harness.open({ onSessionDead: () => undefined });
 		const batch = await performActionBatch(
@@ -104,7 +104,7 @@ describe("performActionBatch with reset-app", () => {
 		);
 		expect(batch).toMatchObject({ ok: true, completed: 2 });
 		expect(batch.steps[0]?.reset?.cleared).toContain("data");
-		expect(harness.app?.state()).toEqual({ running: true, held: [] });
+		expect(harness.app?.state()).toEqual({ running: true, remaining: [] });
 		await session.quit();
 	});
 });

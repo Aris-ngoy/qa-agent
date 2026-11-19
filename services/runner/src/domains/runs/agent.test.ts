@@ -176,7 +176,7 @@ describe("parseAgentDecision", () => {
 		expect(decision).toMatchObject({ ms: 1500, reason: "Splash is loading" });
 	});
 
-	test("rejects a reset-app decision: the Run agent never wipes the App's data itself", () => {
+	test("rejects a reset-app decision: the Run agent never clears the App's data itself", () => {
 		expect(() =>
 			parseAgentDecision(
 				extractAgentJsonObject(

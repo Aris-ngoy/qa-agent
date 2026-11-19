@@ -18,6 +18,7 @@ import {
 import {
 	APP_ID,
 	BUTTON,
+	CONTAINER_METADATA,
 	DEVICE,
 	type HarnessApp,
 	type LaneHarness,
@@ -216,7 +217,7 @@ for (const makeHarness of LANES) {
 			expect(app.state().running).toBe(true);
 			const result = await performAction(session, { kind: "reset-app", appId: app.id });
 			expect(result.reset).toEqual(app.reset);
-			expect(app.state()).toEqual({ running: false, held: app.reset.kept });
+			expect(app.state()).toEqual({ running: false, remaining: app.reset.kept });
 			await session.quit();
 		});
 
@@ -225,13 +226,13 @@ for (const makeHarness of LANES) {
 			const { session } = await open(harness);
 			const app = resettableApp(harness, session);
 			if (!app?.missingId) return;
-			const before = app.state().held;
+			const before = app.state().remaining;
 			const error = await performAction(session, { kind: "reset-app", appId: app.missingId }).then(
 				() => null,
 				(caught: unknown) => caught,
 			);
 			expect((error as Error).message).toContain(app.missingId);
-			expect(app.state().held).toEqual(before);
+			expect(app.state().remaining).toEqual(before);
 			await session.quit();
 		});
 
@@ -540,7 +541,8 @@ describe("Lane contract: web Direct (web-only Actions)", () => {
 
 /**
  * A Reset on an iOS simulator keeps the simulator's keychain, which every app on it shares,
- * unless it asks for it. The App's data container keeps the folders a fresh install has.
+ * unless it asks for it. Its containers keep the folders a fresh install has, and the
+ * metadata file the simulator knows their owner by.
  */
 describe("Lane contract: iOS simulator Direct (Reset)", () => {
 	for (const makeHarness of [iosIdbLane, iosYoqaSimLane, iosYoqaAxLane]) {
@@ -551,8 +553,11 @@ describe("Lane contract: iOS simulator Direct (Reset)", () => {
 			const { session } = await open(harness);
 			const result = await performAction(session, { kind: "reset-app", appId: APP_ID });
 			expect(result.reset?.kept).toEqual(["keychain"]);
-			expect(harness.app?.state().held).toEqual(["keychain"]);
-			expect(harness.containerFolders?.()).toEqual(["Documents", "Library", "SystemData", "tmp"]);
+			expect(harness.app?.state().remaining).toEqual(["keychain"]);
+			expect(harness.containerTopLevel?.()).toEqual({
+				data: [CONTAINER_METADATA, "Documents", "Library", "SystemData", "tmp"],
+				group: [CONTAINER_METADATA, "Library"],
+			});
 			await session.quit();
 		});
 
@@ -568,7 +573,7 @@ describe("Lane contract: iOS simulator Direct (Reset)", () => {
 				cleared: ["data", "cache", "preferences", "permissions", "app-groups", "keychain"],
 				kept: [],
 			});
-			expect(harness.app?.state().held).toEqual([]);
+			expect(harness.app?.state().remaining).toEqual([]);
 			await session.quit();
 		});
 	}

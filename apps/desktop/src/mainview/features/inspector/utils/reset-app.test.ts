@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildCommandLines } from "./command-snippets";
-import { resetAppConfirmation, resetStepsIn, stepResultDetail } from "./reset-app";
+import { resetAppConfirmation, resetStepsIn, stepResultDetail, withDetail } from "./reset-app";
 import { caseScriptLinesFromShell } from "./script-text";
 
 const point = {
@@ -60,5 +60,22 @@ describe("stepResultDetail", () => {
 	test("is empty for an Action with nothing to report", () => {
 		expect(stepResultDetail({ ok: true, kind: "restart-app" })).toBeNull();
 		expect(stepResultDetail(undefined)).toBeNull();
+	});
+});
+
+describe("withDetail", () => {
+	test("adds what a Reset cleared and kept to its log line", () => {
+		expect(
+			withDetail("✓ L4", {
+				ok: true,
+				kind: "reset-app",
+				reset: { cleared: ["data", "cache"], kept: ["keychain"] },
+			}),
+		).toBe("✓ L4 · cleared data, cache · kept keychain");
+	});
+
+	test("leaves the log line alone for an Action with nothing to report", () => {
+		expect(withDetail("✓ L2", { ok: true, kind: "tap" })).toBe("✓ L2");
+		expect(withDetail("✓ L2", undefined)).toBe("✓ L2");
 	});
 });
