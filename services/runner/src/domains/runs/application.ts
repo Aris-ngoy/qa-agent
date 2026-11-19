@@ -35,7 +35,7 @@ import {
 import { EVERYDAY_WARNING } from "../devices/everyday-warning";
 import { pruneOldRunScreenshots } from "../devices/screenshot-retention";
 import type { DeviceSession } from "../devices/session";
-import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
+import { type ActiveProviderAuth, resolveVisionProviderAuth } from "../providers/application";
 import { AgentProviderError, assertVisionCapableProvider } from "./agent";
 import { caseModeFor, executeCase } from "./case-executor";
 import { RunNotFoundError, RunValidationError } from "./errors";
@@ -813,7 +813,7 @@ async function startRun(input: CreateRunRequest, draft?: DraftRunStart): Promise
 
 	if (needsAgent) {
 		try {
-			await assertVisionCapableProvider(await resolveActiveProviderAuth());
+			await assertVisionCapableProvider(await resolveVisionProviderAuth());
 		} catch (error) {
 			if (error instanceof AgentProviderError) {
 				throw new RunValidationError(error.message);

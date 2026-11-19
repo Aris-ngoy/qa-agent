@@ -11,7 +11,7 @@ import {
 import { installBuildOnDevice, resolveBuildForRun } from "../builds/application";
 import { getApp, getCase } from "../catalog/application";
 import type { DeviceSession } from "../devices/session";
-import { type ActiveProviderAuth, resolveActiveProviderAuth } from "../providers/application";
+import { type ActiveProviderAuth, resolveVisionProviderAuth } from "../providers/application";
 import { assertVisionCapableProvider } from "./agent";
 import { type CaseMode, caseModeFor } from "./case-executor";
 import { RunValidationError } from "./errors";
@@ -86,7 +86,7 @@ export async function prepareRun(run: Run, draft?: DraftSteps): Promise<RunPlan>
 	}
 
 	const auth = cases.some((item) => item.mode === "agent")
-		? await assertVisionCapableProvider(await resolveActiveProviderAuth())
+		? await assertVisionCapableProvider(await resolveVisionProviderAuth())
 		: null;
 
 	if (run.buildId) {

@@ -8,7 +8,7 @@ import type {
 	Run,
 } from "@yoqa/runner-client";
 import { getActiveSessionInfo } from "../devices/active-session";
-import { getProvider, resolveActiveProviderAuth } from "../providers/application";
+import { getProvider, resolveVisionProviderAuth } from "../providers/application";
 import {
 	type RunPause,
 	RunValidationError,
@@ -144,7 +144,7 @@ function autoRunOf(
 
 /** The vision Provider an agent Run decides with, as the Run card names it. */
 async function visionProviderLabel(): Promise<string | null> {
-	const auth = await resolveActiveProviderAuth();
+	const auth = await resolveVisionProviderAuth();
 	if (!auth) return null;
 	const provider = await getProvider(auth.id).catch(() => null);
 	if (!provider) return null;

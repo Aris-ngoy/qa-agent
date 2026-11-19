@@ -441,6 +441,22 @@ export async function resolveActiveProviderAuth(): Promise<ActiveProviderAuth | 
 }
 
 /**
+ * Credentials for the Provider Runs see the screen with: the default one when it is
+ * Vision-capable, else the first enabled one that is (the oldest first). The default one when
+ * none is, so the vision check says why; null when no Provider is enabled.
+ */
+export async function resolveVisionProviderAuth(): Promise<ActiveProviderAuth | null> {
+	const rows = await getCatalogDb()
+		.select()
+		.from(providers)
+		.where(eq(providers.enabled, 1))
+		.orderBy(desc(providers.isDefault), asc(providers.createdAt));
+	const row =
+		rows.find((candidate) => getDriver(parseProviderKind(candidate.kind)).vision) ?? rows[0];
+	return row ? authFromRow(row) : null;
+}
+
+/**
  * Credentials for the enabled Provider of one kind (the default one first, else the oldest),
  * whatever the default Provider is. Null when there is none.
  */
