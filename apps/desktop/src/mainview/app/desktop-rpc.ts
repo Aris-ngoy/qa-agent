@@ -8,6 +8,7 @@ import type {
 } from "../../shared/cli-environment";
 import type { IosToolchainPreferences, IosToolchainSnapshot } from "../../shared/ios-toolchain";
 import type { DesktopRPC, EnsureLocalServicesResult, WindowState } from "../../shared/rpc";
+import type { YoqaUpdateStatus, YoqaVersionInfo } from "../../shared/yoqa-update";
 
 export type DesktopRpcClient = {
 	request: {
@@ -36,6 +37,10 @@ export type DesktopRpcClient = {
 		toggleMaximizeWindow: () => Promise<WindowState>;
 		closeWindow: () => Promise<{ ok: true }>;
 		getWindowState: () => Promise<WindowState>;
+		getYoqaVersion: () => Promise<YoqaVersionInfo>;
+		getYoqaUpdateStatus: () => Promise<YoqaUpdateStatus>;
+		checkForYoqaUpdate: () => Promise<YoqaUpdateStatus>;
+		restartForYoqaUpdate: () => Promise<{ ok: true }>;
 	};
 };
 
@@ -44,11 +49,25 @@ export async function openExternalUrl(url: string): Promise<void> {
 	await getDesktopRpc().request.openExternalUrl({ url });
 }
 
+const yoqaUpdateListeners = new Set<(status: YoqaUpdateStatus) => void>();
+
+/** Hear every Yoqa update snapshot the Bun host pushes. Returns the unsubscribe. */
+export function onYoqaUpdateStatus(listener: (status: YoqaUpdateStatus) => void): () => void {
+	yoqaUpdateListeners.add(listener);
+	return () => {
+		yoqaUpdateListeners.delete(listener);
+	};
+}
+
 const rpc = Electroview.defineRPC<DesktopRPC>({
 	maxRequestTime: 60_000,
 	handlers: {
 		requests: {},
-		messages: {},
+		messages: {
+			yoqaUpdateStatus: (status) => {
+				for (const listener of yoqaUpdateListeners) listener(status);
+			},
+		},
 	},
 });
 
