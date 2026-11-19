@@ -6,15 +6,25 @@ export type YoqaUpdateCheck = {
 	version: string;
 };
 
+/** A Yoqa update that Yoqa quit to install but relaunched without. */
+export type YoqaFailedApply = {
+	version: string;
+};
+
 /**
- * The three things the controller asks of Electrobun's `Updater`. Each throws on failure;
- * `apply` quits and relaunches Yoqa when it succeeds.
+ * What the controller asks of Electrobun's `Updater`. `check`, `download` and `apply` throw on
+ * failure; `apply` quits and relaunches Yoqa when it succeeds.
  */
 export type YoqaUpdater = {
 	check: () => Promise<YoqaUpdateCheck>;
 	/** Electrobun's patch chain, falling back to the full archive. */
 	download: () => Promise<void>;
 	apply: () => Promise<void>;
+	/**
+	 * The Yoqa update the last session quit to apply, if this launch still runs the version it
+	 * meant to replace. Reports it once: later calls return null.
+	 */
+	takeFailedApply: () => Promise<YoqaFailedApply | null>;
 };
 
 export type YoqaUpdateTimer = {
@@ -38,8 +48,9 @@ export type YoqaUpdateControllerDeps = {
 
 export type YoqaUpdateController = {
 	/**
-	 * Schedule the launch check and a check every 6 hours after, when the automatic-check
-	 * setting is on. Does nothing on the dev channel.
+	 * Report a Yoqa update the last session failed to apply, whatever the automatic-check
+	 * setting, and schedule the launch check and a check every 6 hours after when that setting
+	 * is on. Does nothing on the dev channel.
 	 */
 	start: () => void;
 	/** Check now, ignoring any schedule. Resolves once the check (and download) ends. */
@@ -84,8 +95,12 @@ export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): Yoqa
 	/** Version of the Yoqa update already downloaded; it stays ready through later failures. */
 	let readyVersion: string | null = null;
 
+	/** Version of a Yoqa update that failed to apply; shown until a check succeeds. */
+	let failedVersion: string | null = null;
+
 	/** Where a check settles when it doesn't produce a new ready update. */
 	function settled(): Partial<YoqaUpdateStatus> {
+		if (failedVersion) return { state: "error", version: failedVersion, restartHeld: false };
 		return readyVersion
 			? { state: "ready", version: readyVersion }
 			: { state: "idle", version: null, restartHeld: false };
@@ -119,6 +134,7 @@ export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): Yoqa
 			update({ ...settled(), lastCheckedAt: deps.now(), lastError: errorMessage(error) });
 			return;
 		}
+		failedVersion = null;
 		// Up to date: a ready Yoqa update whose release is gone has nothing left to install.
 		if (!found.updateAvailable) readyVersion = null;
 		if (!found.updateAvailable || found.version === readyVersion) {
@@ -154,7 +170,8 @@ export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): Yoqa
 	}
 
 	async function recheckRuns(): Promise<void> {
-		const held = readyVersion ? await runInProgress() : false;
+		// A failed apply shows `error`, not a held restart; the loop keeps going for the retry.
+		const held = readyVersion && !failedVersion ? await runInProgress() : false;
 		watchingRuns = false;
 		if (!readyVersion) return;
 		if (held !== status.restartHeld) update({ restartHeld: held });
@@ -174,7 +191,10 @@ export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): Yoqa
 			}
 			await deps.updater.apply();
 		})()
-			.catch((error) => update({ lastError: errorMessage(error) }))
+			.catch((error) => {
+				failedVersion = readyVersion;
+				update({ ...settled(), lastError: errorMessage(error) });
+			})
 			.finally(() => {
 				applying = null;
 			});
@@ -212,9 +232,23 @@ export function createYoqaUpdateController(deps: YoqaUpdateControllerDeps): Yoqa
 		scheduleCheck(Math.max(AUTO_CHECK_INTERVAL_MS - sinceLastCheck, LAUNCH_CHECK_DELAY_MS));
 	}
 
+	/** Report a Yoqa update the last session failed to apply, before the launch check. */
+	async function reportFailedApply(): Promise<void> {
+		const failed = await deps.updater.takeFailedApply().catch(() => null);
+		if (!failed) return;
+		failedVersion = failed.version;
+		update({
+			state: "error",
+			version: failed.version,
+			lastError: `Yoqa v${failed.version} didn't install; Yoqa relaunched on the version you had`,
+		});
+	}
+
 	return {
 		start: () => {
 			if (devChannel) return;
+			// Not network traffic, so the automatic-check setting doesn't gate it.
+			void reportFailedApply();
 			void (async () => {
 				autoCheck = await deps.readAutoCheck();
 				if (autoCheck) scheduleCheck(LAUNCH_CHECK_DELAY_MS);

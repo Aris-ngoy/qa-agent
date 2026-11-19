@@ -13,7 +13,7 @@ export function updateStatusText(status: YoqaUpdateStatus, channel: string): str
 		case "ready":
 			return `${readyPromptText(status.version ?? "")} — restart to install it`;
 		case "error":
-			return "The Yoqa update couldn't be installed";
+			return `Yoqa v${status.version} couldn't be installed`;
 		case "idle":
 			if (status.lastError) return "The last check for updates failed";
 			if (status.lastCheckedAt == null) return "Yoqa hasn't checked for updates yet";
@@ -29,6 +29,11 @@ export function readyPromptText(version: string): string {
 /** Why the banner's Restart is disabled, or null when it isn't held. */
 export function restartHeldText(restartHeld: boolean): string | null {
 	return restartHeld ? "Waiting for the Run to finish" : null;
+}
+
+/** The banner's headline after a Yoqa update failed to apply. */
+export function failedPromptText(version: string): string {
+	return `Yoqa v${version} couldn't be installed, so Yoqa kept the version you had`;
 }
 
 const UNITS: { name: string; ms: number }[] = [
@@ -48,7 +53,7 @@ export function lastCheckedText(lastCheckedAt: number | null, now: number): stri
 	return "Last checked just now";
 }
 
-/** "What's new": the GitHub release page of that version. */
+/** "What's new" and the manual download: the GitHub release page of that version. */
 export function releasePageUrl(version: string): string {
 	return `${RELEASES_URL}/tag/v${version}`;
 }

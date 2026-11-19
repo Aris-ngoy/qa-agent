@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { YoqaUpdateStatus } from "../../../shared/yoqa-update";
 import {
+	type YoqaFailedApply,
 	type YoqaUpdateCheck,
 	type YoqaUpdateTimer,
 	type YoqaUpdater,
@@ -51,6 +52,7 @@ function fakeUpdater(script: {
 	check?: () => Promise<YoqaUpdateCheck>;
 	download?: () => Promise<void>;
 	apply?: () => Promise<void>;
+	takeFailedApply?: () => Promise<YoqaFailedApply | null>;
 }) {
 	const calls: string[] = [];
 	const updater: YoqaUpdater = {
@@ -66,6 +68,8 @@ function fakeUpdater(script: {
 			calls.push("apply");
 			return script.apply?.();
 		},
+		// A read, not an action: left out of `calls`.
+		takeFailedApply: async () => (script.takeFailedApply ? script.takeFailedApply() : null),
 	};
 	return { updater, calls };
 }
@@ -338,7 +342,23 @@ describe("Yoqa update controller", () => {
 		expect(calls).toEqual(["check"]);
 	});
 
-	test("records a failed apply as the last error and keeps the update ready to retry", async () => {
+	test("shows a failed apply as an error with the version that failed", async () => {
+		const { controller, last } = setup({
+			check: async () => newer("1.0.9"),
+			apply: async () => {
+				throw new Error("Failed to replace app");
+			},
+		});
+		await controller.checkNow();
+		await controller.restart();
+		expect(last()).toMatchObject({
+			state: "error",
+			version: "1.0.9",
+			lastError: "Failed to replace app",
+		});
+	});
+
+	test("offers Restart again once a check after a failed apply succeeds", async () => {
 		let attempts = 0;
 		const { controller, calls, last } = setup({
 			check: async () => newer("1.0.9"),
@@ -349,11 +369,8 @@ describe("Yoqa update controller", () => {
 		});
 		await controller.checkNow();
 		await controller.restart();
-		expect(last()).toMatchObject({
-			state: "ready",
-			version: "1.0.9",
-			lastError: "Failed to replace app",
-		});
+		await controller.checkNow();
+		expect(last()).toMatchObject({ state: "ready", version: "1.0.9", lastError: null });
 		await controller.restart();
 		expect(calls.filter((call) => call === "apply")).toHaveLength(2);
 	});
@@ -454,6 +471,106 @@ describe("Yoqa update controller", () => {
 			released = false;
 			await controller.checkNow();
 			expect(last()).toMatchObject({ state: "idle", version: null, restartHeld: false });
+		});
+	});
+
+	describe("a Yoqa update that failed to apply", () => {
+		test("shows up on the next launch with the version that failed", async () => {
+			const { controller, last } = setup({
+				takeFailedApply: async () => ({ version: "1.0.9" }),
+			});
+			controller.start();
+			await settle();
+			expect(last()).toMatchObject({ state: "error", version: "1.0.9" });
+			expect(last()?.lastError).toContain("v1.0.9");
+		});
+
+		test("stays shown when the next check fails", async () => {
+			const { controller, last } = setup({
+				takeFailedApply: async () => ({ version: "1.0.9" }),
+				check: async () => {
+					throw new Error("Failed to fetch update info");
+				},
+			});
+			controller.start();
+			await settle();
+			await controller.checkNow();
+			expect(last()).toMatchObject({
+				state: "error",
+				version: "1.0.9",
+				lastError: "Failed to fetch update info",
+			});
+		});
+
+		test("is cleared by a later check that downloads the update again", async () => {
+			const { controller, last } = setup({
+				takeFailedApply: async () => ({ version: "1.0.9" }),
+				check: async () => newer("1.0.9"),
+			});
+			controller.start();
+			await settle();
+			await controller.checkNow();
+			expect(last()).toMatchObject({ state: "ready", version: "1.0.9", lastError: null });
+		});
+
+		test("is cleared by a later check that finds Yoqa up to date", async () => {
+			const { controller, last } = setup({
+				takeFailedApply: async () => ({ version: "1.0.9" }),
+			});
+			controller.start();
+			await settle();
+			await controller.checkNow();
+			expect(last()).toMatchObject({ state: "idle", version: null, lastError: null });
+		});
+
+		test("shows up on launch even with automatic checks off, and no check replaces it", async () => {
+			const { controller, calls, clock, last } = setup(
+				{ takeFailedApply: async () => ({ version: "1.0.9" }) },
+				{ autoCheck: () => false },
+			);
+			controller.start();
+			await settle();
+			expect(last()).toMatchObject({ state: "error", version: "1.0.9" });
+			await clock.advance(7 * 24 * HOUR);
+			expect(calls).toEqual([]);
+			expect(last()).toMatchObject({ state: "error", version: "1.0.9" });
+		});
+
+		test("is not what a restart held by a Run records", async () => {
+			const { controller, calls, runner, clock, pushed, last } = setup({
+				check: async () => newer("1.0.9"),
+			});
+			await controller.checkNow();
+			runner.runInProgress = true;
+			await controller.restart();
+			await clock.advance(10_000);
+			expect(pushed.map((status) => status.state)).not.toContain("error");
+			expect(last()).toMatchObject({ state: "ready", version: "1.0.9", restartHeld: true });
+			expect(calls).not.toContain("apply");
+		});
+
+		test("while a Run is in progress shows the error, not a held restart", async () => {
+			const { controller, runner, clock, last } = setup({
+				check: async () => newer("1.0.9"),
+				apply: async () => {
+					throw new Error("Failed to replace app");
+				},
+			});
+			await controller.checkNow();
+			await controller.restart();
+			runner.runInProgress = true;
+			await clock.advance(10_000);
+			expect(last()).toMatchObject({ state: "error", version: "1.0.9", restartHeld: false });
+		});
+
+		test("is never looked for on Electrobun's dev channel", async () => {
+			const { controller, pushed } = setup(
+				{ takeFailedApply: async () => ({ version: "1.0.9" }) },
+				{ channel: "dev" },
+			);
+			controller.start();
+			await settle();
+			expect(pushed).toEqual([]);
 		});
 	});
 });

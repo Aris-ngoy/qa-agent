@@ -8,6 +8,7 @@ import type {
 import { patchStoredSettings, readStoredSettings } from "../app-settings/store";
 import { type YoqaUpdateController, createYoqaUpdateController } from "./controller";
 import { createElectrobunYoqaUpdater } from "./electrobun-updater";
+import { createFailedApplyTracker } from "./failed-apply";
 
 export type { YoqaUpdateController } from "./controller";
 
@@ -47,7 +48,17 @@ export async function createYoqaUpdates(
 			fetch(input, { ...init, signal: AbortSignal.timeout(RUNNER_ANSWER_TIMEOUT_MS) }),
 	});
 	return createYoqaUpdateController({
-		updater: createElectrobunYoqaUpdater(),
+		updater: createElectrobunYoqaUpdater(
+			createFailedApplyTracker(
+				{
+					read: async () => (await readStoredSettings()).yoqaUpdatePendingApply ?? null,
+					write: async (next) => {
+						await patchStoredSettings({ yoqaUpdatePendingApply: next });
+					},
+				},
+				async () => (await Updater.getLocalInfo()).hash,
+			),
+		),
 		channel,
 		timer: {
 			setTimeout: (callback, ms) => setTimeout(callback, ms),

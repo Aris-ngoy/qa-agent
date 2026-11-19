@@ -1,4 +1,5 @@
 import { openExternalUrl } from "@/app/desktop-rpc";
+import { YoqaUpdateFailedBanner } from "@/features/yoqa-update/components/yoqa-update-failed-banner";
 import { yoqaUpdate$ } from "@/features/yoqa-update/data/state/yoqa-update";
 import { useRestartForYoqaUpdate } from "@/features/yoqa-update/hooks/usequery/use-yoqa-update";
 import {
@@ -9,13 +10,17 @@ import {
 import { Button, Spinner } from "@heroui/react";
 import { useValue } from "@legendapp/state/react";
 
-/** "Yoqa vX is ready — Restart", shown above every page while a Yoqa update is ready. */
+/**
+ * "Yoqa vX is ready — Restart", shown above every page while a Yoqa update is ready; after one
+ * failed to apply, the failure and a manual-download link instead.
+ */
 export function YoqaUpdateBanner() {
 	const state = useValue(yoqaUpdate$.state);
 	const version = useValue(yoqaUpdate$.version);
 	const restartHeld = useValue(yoqaUpdate$.restartHeld);
 	const restartMutation = useRestartForYoqaUpdate();
 
+	if (state === "error" && version) return <YoqaUpdateFailedBanner version={version} />;
 	if (state !== "ready" || !version) return null;
 	const whatsNew = releasePageUrl(version);
 	const heldReason = restartHeldText(restartHeld);
