@@ -121,6 +121,10 @@ _Avoid_: driver (implementation), LLM, model vendor alone
 A Provider that can decide the next Action or perform Grounding from a screenshot.
 _Avoid_: any Provider with an API key
 
+**Chat-capable Provider**:
+A Provider, in a given auth mode, that can be the Auto chat's agent: it holds a conversation and calls Yoqa's tools. A Provider can chat in one auth mode and not in another, such as a CLI login that cannot chat while an API key in the same Provider can. Kept apart from Vision-capable Provider: a Provider can chat without seeing screenshots.
+_Avoid_: chat model (a model is what a Provider offers), any signed-in Provider, Vision-capable Provider
+
 **Decide**:
 A single vision completion by a Vision-capable Provider that maps the current screenshot and one instruction (plus the Screen, only in tree Screen mode) to the next Action.
 _Avoid_: LLM call, inference, step (Run timeline)
@@ -184,7 +188,7 @@ _Avoid_: flow YAML, flow file, test file
 ### Auto
 
 **Auto chat**:
-A saved conversation, on one App, with the chat agent about at most one Test Case. In it the agent reads the catalog and Runs, writes a Case draft, and starts Runs; it never edits the catalog itself. What the agent may do is set by the mode of each message: Ask reads only, Run may also write the Case draft and start Runs, Explore may also drive the device and propose a new Test Case.
+A saved conversation, on one App, with the chat agent about at most one Test Case. It has a Provider, which must be a Chat-capable Provider, and a model; the user can switch either at any time, and the conversation goes on. In it the agent reads the catalog and Runs, writes a Case draft, and starts Runs; it never edits the catalog itself. What the agent may do is set by the mode of each message: Ask reads only, Run may also write the Case draft and start Runs, Explore may also drive the device and propose a new Test Case.
 _Avoid_: Auto run (`executionMode: auto` is script-first replay, a different thing), session (a Device Session), thread
 
 **Case draft**:
