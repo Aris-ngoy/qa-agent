@@ -206,3 +206,9 @@ _Avoid_: health score, insights, stats
 **Take over**:
 Pausing a Run started from an Auto chat to drive the device by hand. Actions taken by hand are not recorded in the Run or the Case draft; when it resumes, the Run's agent decides again from the screen the user left, and the chat agent is told the user took over. A Run taken over is not clean: it never becomes a Case draft's passing Run.
 _Avoid_: manual mode, takeover (one word)
+
+### Distribution
+
+**Yoqa update**:
+A newer version of Yoqa Desktop, found and downloaded in the background and applied only when the user chooses to restart. A restart is held while a Run is in progress. It arrives as a small patch when the installed version is the one just before it, otherwise in full. An install older than the first version that checks for updates never sees one and is replaced by hand, once.
+_Avoid_: app update (an App is the app under test), bundle, Build (a binary of the app under test), OTA
