@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
 	caseFlowStepSchema,
 	caseScriptSchema,
+	providerKindSchema,
 	runStatusSchema,
 	runTestStatusSchema,
 } from "./schemas";
@@ -67,7 +68,12 @@ export const autoChatSummarySchema = z.object({
 	caseNumber: z.number().int().positive().nullable(),
 	caseName: z.string().nullable(),
 	title: z.string(),
-	/** The chat model this chat uses; null for the Claude Provider's default. */
+	/**
+	 * The Provider that answers this chat; null when it has none (a chat from before Auto ran
+	 * on any Provider, with no Claude Provider). A null or unusable one fails the next message.
+	 */
+	providerId: z.string().min(1).nullable(),
+	/** The chat model this chat uses; null for its Provider's default. */
 	model: z.string().nullable(),
 	createdAt: z.number().int().nonnegative(),
 	updatedAt: z.number().int().nonnegative(),
@@ -232,8 +238,15 @@ export const createAutoChatRequestSchema = z.object({
 });
 export type CreateAutoChatRequest = z.infer<typeof createAutoChatRequestSchema>;
 
+/**
+ * Pick the chat's Provider and model, together or the model alone. A Provider that cannot
+ * chat now (not Chat-capable in its auth mode, disabled, signed out) is refused, 400.
+ * Another Provider starts it afresh from the chat's visible conversation; another model of
+ * the same Provider keeps the agent's own history.
+ */
 export const updateAutoChatRequestSchema = z.object({
-	/** The chat model for this chat; null for the Claude Provider's default. */
+	providerId: z.string().min(1).optional(),
+	/** The chat model for this chat; null for its Provider's default. */
 	model: z.string().min(1).nullable().optional(),
 });
 export type UpdateAutoChatRequest = z.infer<typeof updateAutoChatRequestSchema>;
@@ -327,11 +340,9 @@ export const caseHistorySchema = z.object({
 });
 export type CaseHistory = z.infer<typeof caseHistorySchema>;
 
-/** Whether Auto can talk to its chat agent: the Claude Provider is signed in. Never another Provider. */
+/** Whether Auto can talk to a chat agent: any Chat-capable Provider is signed in. */
 export const autoStatusSchema = z.object({
 	signedIn: z.boolean(),
-	/** The Claude Provider in use; null when there is none. */
-	providerId: z.string().min(1).nullable(),
 	detail: z.string(),
 });
 export type AutoStatus = z.infer<typeof autoStatusSchema>;
@@ -342,11 +353,30 @@ export const autoModelSchema = z.object({
 });
 export type AutoModel = z.infer<typeof autoModelSchema>;
 
-/** The Claude Provider's models, for the composer's model picker. */
-export const listAutoModelsResponseSchema = z.object({
+/**
+ * A Provider as the composer's picker shows it: its models, or, when it cannot chat now, why
+ * (not Chat-capable in its auth mode, such as a CLI login only the Claude Provider can chat
+ * on yet, or signed out).
+ */
+export const autoChatProviderSchema = z.object({
+	id: z.string().min(1),
+	kind: providerKindSchema,
+	label: z.string().min(1),
+	/** Whether it can answer a chat now. */
+	available: z.boolean(),
+	/** Why it cannot; null when it can. */
+	reason: z.string().nullable(),
 	models: z.array(autoModelSchema),
-	/** What a chat with no model of its own uses; null for the Claude CLI's own default. */
+	/** What a chat on it with no model of its own uses; null for its own default (Claude CLI). */
 	defaultModel: z.string().min(1).nullable(),
+});
+export type AutoChatProvider = z.infer<typeof autoChatProviderSchema>;
+
+/** Every enabled Provider for the picker, grouped, and the Provider a new chat starts on. */
+export const listAutoModelsResponseSchema = z.object({
+	providers: z.array(autoChatProviderSchema),
+	/** The app's default Provider when it can chat, else the first that can; null when none can. */
+	defaultProviderId: z.string().min(1).nullable(),
 });
 export type ListAutoModelsResponse = z.infer<typeof listAutoModelsResponseSchema>;
 
@@ -355,7 +385,7 @@ export type ListAutoModelsResponse = z.infer<typeof listAutoModelsResponseSchema
  * - `message`: a message was saved — the user's prompt as it is sent, the reply once it ends.
  * - `text`: more of the reply's text.
  * - `tool_call` / `tool_result`: the agent called a Yoqa tool, and what it answered.
- * - `chat`: the chat itself changed (its Test Case, title or model).
+ * - `chat`: the chat itself changed (its Test Case, title, Provider or model).
  * - `draft`: the chat's Case draft changed (null once it is gone).
  * - `run`: a Run of the draft started or moved on; sent once more when it ends.
  * - `previous_version`: Apply or Restore changed the Test Case's previous version.

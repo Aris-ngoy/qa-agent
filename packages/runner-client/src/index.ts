@@ -1262,7 +1262,7 @@ export class RunnerClient {
 		return runSchema.parse(json);
 	}
 
-	/** Whether Auto can talk to its chat agent (the Claude Provider is signed in). */
+	/** Whether Auto can talk to a chat agent (any Chat-capable Provider is signed in). */
 	async getAutoStatus(): Promise<AutoStatus> {
 		const json = await this.requestJson("/auto/status", undefined, "Auto status failed");
 		return autoStatusSchema.parse(json);

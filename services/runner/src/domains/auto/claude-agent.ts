@@ -6,16 +6,22 @@ import {
 	query as sdkQuery,
 	tool,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { AutoModel, AutoStatus, ListAutoModelsResponse } from "@yoqa/runner-client";
-import { type ActiveProviderAuth, resolveProviderAuthOfKind } from "../providers/application";
+import type { AutoModel } from "@yoqa/runner-client";
+import type { ActiveProviderAuth } from "../providers/application";
 import { claudeDriver } from "../providers/drivers/claude";
-import type { ChatAgent, ChatAgentEvent, ChatTool, ChatTurn } from "./chat-agent";
+import {
+	type ChatAgentEvent,
+	type ChatTool,
+	type ChatTurn,
+	promptWithConversation,
+} from "./chat-agent";
 import { autoChatDir } from "./chat-dir";
 
 /**
- * The Auto chat agent on the Claude Agent SDK (ADR 0012), signed in through the Claude
- * Provider. Each turn runs isolated: no Claude Code tools, no settings, CLAUDE.md or skills,
- * an empty working folder per chat, and only the Yoqa tools of the message's mode.
+ * The Auto chat agent for the Claude Provider, on the Claude Agent SDK (ADR 0012, ADR 0014):
+ * its CLI login or an API key. Each turn runs isolated: no Claude Code tools, no settings,
+ * CLAUDE.md or skills, an empty working folder per chat, and only the Yoqa tools of the
+ * message's mode.
  */
 
 /** The in-process MCP server the Yoqa tools are served from. */
@@ -38,8 +44,6 @@ export type ClaudeQuery = (params: {
 export type ClaudeChatAgentDeps = {
 	/** The SDK's `query`; faked in the contract test. */
 	query?: ClaudeQuery;
-	/** The Claude Provider's credentials; null when there is none. */
-	resolveAuth?: () => Promise<ActiveProviderAuth | null>;
 };
 
 function apiKeyOf(auth: ActiveProviderAuth): string | null {
@@ -128,55 +132,51 @@ function chatEventsOf(message: SDKMessage, state: { textBlocks: number }): ChatA
 	}
 }
 
-export function createClaudeChatAgent(deps: ClaudeChatAgentDeps = {}): ChatAgent {
+/**
+ * Why this Claude Provider cannot chat (no API key, the CLI login signed out), or null when it
+ * can. `probeCli` checks the Claude CLI login (`claude auth status`).
+ */
+export async function claudeSignInProblem(
+	auth: ActiveProviderAuth,
+	probeCli: (binaryPath: string | null) => Promise<{ signedIn: boolean; detail: string }>,
+): Promise<string | null> {
+	if (auth.authMode === "api_key") {
+		return apiKeyOf(auth) ? null : `It has no API key. ${SIGN_IN_HINT}`;
+	}
+	const probe = await probeCli(auth.binaryPath);
+	return probe.signedIn ? null : probe.detail || SIGN_IN_HINT;
+}
+
+/** Whether the Claude CLI login is signed in, by `claude auth status`. */
+export async function probeClaudeCli(
+	binaryPath: string | null,
+): Promise<{ signedIn: boolean; detail: string }> {
+	const probe = await claudeDriver.probe(binaryPath);
+	return { signedIn: probe.found && probe.authenticated === true, detail: probe.detail };
+}
+
+/** A Claude Provider's chat models: its API's list with a key, else Claude Code's aliases. */
+export async function claudeChatModels(auth: ActiveProviderAuth): Promise<AutoModel[]> {
+	const apiKey = auth.authMode === "api_key" ? apiKeyOf(auth) : null;
+	if (!apiKey) return CLI_MODELS;
+	const listed = await claudeDriver.listModels({
+		apiKey,
+		baseUrl: auth.baseUrl,
+		serverUrl: auth.serverUrl,
+		binaryPath: auth.binaryPath,
+		env: auth.env,
+	});
+	return listed.models.length > 0 ? listed.models : CLI_MODELS;
+}
+
+export function createClaudeChatAgent(deps: ClaudeChatAgentDeps = {}) {
 	const query: ClaudeQuery = deps.query ?? sdkQuery;
-	const resolveAuth = deps.resolveAuth ?? (() => resolveProviderAuthOfKind("claude"));
 
-	async function status(): Promise<AutoStatus> {
-		const auth = await resolveAuth();
-		if (!auth) {
-			return {
-				signedIn: false,
-				providerId: null,
-				detail: "There is no Claude Provider. Add one in Settings → Providers → Claude.",
-			};
-		}
-		if (auth.authMode === "api_key") {
-			return apiKeyOf(auth)
-				? { signedIn: true, providerId: auth.id, detail: "Signed in with an Anthropic API key" }
-				: {
-						signedIn: false,
-						providerId: auth.id,
-						detail: `The Claude Provider has no API key. ${SIGN_IN_HINT}`,
-					};
-		}
-		const probe = await claudeDriver.probe(auth.binaryPath);
-		return {
-			signedIn: probe.found && probe.authenticated === true,
-			providerId: auth.id,
-			detail: probe.detail || SIGN_IN_HINT,
-		};
-	}
-
-	async function models(): Promise<ListAutoModelsResponse> {
-		const auth = await resolveAuth();
-		const defaultModel = auth?.defaultModel?.trim() || null;
-		if (!auth || auth.authMode !== "api_key" || !apiKeyOf(auth)) {
-			return { models: CLI_MODELS, defaultModel };
-		}
-		const listed = await claudeDriver.listModels({
-			apiKey: apiKeyOf(auth),
-			baseUrl: auth.baseUrl,
-			serverUrl: auth.serverUrl,
-			binaryPath: auth.binaryPath,
-			env: auth.env,
-		});
-		return { models: listed.models.length > 0 ? listed.models : CLI_MODELS, defaultModel };
-	}
-
-	async function* runTurn(turn: ChatTurn): AsyncGenerator<ChatAgentEvent> {
-		const auth = await resolveAuth();
-		if (!auth) throw new Error(`There is no Claude Provider. ${SIGN_IN_HINT}`);
+	/** Answer `turn` on the Claude Provider signed in with `auth`. */
+	async function* runTurn(
+		turn: ChatTurn,
+		auth: ActiveProviderAuth,
+	): AsyncGenerator<ChatAgentEvent> {
 		const cwd = autoChatDir(turn.chatId);
 		await mkdir(cwd, { recursive: true });
 		const abortController = new AbortController();
@@ -204,11 +204,12 @@ export function createClaudeChatAgent(deps: ClaudeChatAgentDeps = {}): ChatAgent
 			...(turn.agentSessionId ? { resume: turn.agentSessionId } : {}),
 			...(model ? { model } : {}),
 		};
+		const prompt = turn.agentSessionId ? turn.prompt : promptWithConversation(turn);
 		const state = { textBlocks: 0 };
-		for await (const message of query({ prompt: turn.prompt, options })) {
+		for await (const message of query({ prompt, options })) {
 			yield* chatEventsOf(message, state);
 		}
 	}
 
-	return { status, models, runTurn };
+	return { runTurn };
 }

@@ -87,14 +87,23 @@ async function turnOf(overrides: Partial<ChatTurn> = {}): Promise<ChatTurn> {
 		chatId: `chat_${crypto.randomUUID()}`,
 		prompt: "[Ask mode] Why did the last run fail?",
 		mode: "ask",
+		providerId: "prov_claude",
 		model: null,
 		agentSessionId: null,
+		agentHistory: null,
+		conversation: null,
 		systemPrompt: "You are the chat agent.",
 		tools: [readCase],
 		callTool: async () => ({ text: "", isError: false }),
 		signal: new AbortController().signal,
 		...overrides,
 	};
+}
+
+/** The adapter with its `query` faked, answering on the Claude Provider signed in with `auth`. */
+function agentOn(auth: ActiveProviderAuth, query: ReturnType<typeof fakeQuery>["query"]) {
+	const agent = createClaudeChatAgent({ query });
+	return { runTurn: (turn: ChatTurn) => agent.runTurn(turn, auth) };
 }
 
 async function collect(events: AsyncIterable<ChatAgentEvent>): Promise<ChatAgentEvent[]> {
@@ -108,7 +117,7 @@ describe("the Claude Agent SDK adapter", () => {
 		const chatsDir = await mkdtemp(`${tmpdir()}/auto-chats-`);
 		process.env.YOQA_AUTO_CHATS_DIR = chatsDir;
 		const { calls, query } = fakeQuery([init(), success()]);
-		const agent = createClaudeChatAgent({ query, resolveAuth: async () => CLAUDE_KEY_AUTH });
+		const agent = agentOn(CLAUDE_KEY_AUTH, query);
 		const turn = await turnOf();
 
 		await collect(agent.runTurn(turn));
@@ -130,7 +139,7 @@ describe("the Claude Agent SDK adapter", () => {
 
 	test("resumes the chat's session and uses its model", async () => {
 		const { calls, query } = fakeQuery([init(), success()]);
-		const agent = createClaudeChatAgent({ query, resolveAuth: async () => CLAUDE_KEY_AUTH });
+		const agent = agentOn(CLAUDE_KEY_AUTH, query);
 
 		await collect(
 			agent.runTurn(await turnOf({ agentSessionId: "sess_earlier", model: "claude-opus-5-5" })),
@@ -153,7 +162,7 @@ describe("the Claude Agent SDK adapter", () => {
 			textDelta("Want me to fix it?"),
 			success(),
 		]);
-		const agent = createClaudeChatAgent({ query, resolveAuth: async () => CLAUDE_KEY_AUTH });
+		const agent = agentOn(CLAUDE_KEY_AUTH, query);
 
 		expect(await collect(agent.runTurn(await turnOf()))).toEqual([
 			{ type: "agent_session", agentSessionId: "sess_1" },
@@ -175,10 +184,7 @@ describe("the Claude Agent SDK adapter", () => {
 				errors: ["boom"],
 			} as unknown as SDKMessage,
 		]);
-		const agent = createClaudeChatAgent({
-			query: failed.query,
-			resolveAuth: async () => CLAUDE_KEY_AUTH,
-		});
+		const agent = agentOn(CLAUDE_KEY_AUTH, failed.query);
 		await expect(collect(agent.runTurn(await turnOf()))).rejects.toThrow("boom");
 
 		const unauthorised = fakeQuery([
@@ -191,17 +197,14 @@ describe("the Claude Agent SDK adapter", () => {
 				message: { content: [] },
 			} as unknown as SDKMessage,
 		]);
-		const refused = createClaudeChatAgent({
-			query: unauthorised.query,
-			resolveAuth: async () => CLAUDE_KEY_AUTH,
-		});
+		const refused = agentOn(CLAUDE_KEY_AUTH, unauthorised.query);
 		await expect(collect(refused.runTurn(await turnOf()))).rejects.toThrow("sign");
 	});
 
 	test("a CLI login does not pass on an API key the runner inherited", async () => {
 		const { calls, query } = fakeQuery([init(), success()]);
 		const cliAuth: ActiveProviderAuth = { ...CLAUDE_KEY_AUTH, authMode: "cli", apiKey: null };
-		const agent = createClaudeChatAgent({ query, resolveAuth: async () => cliAuth });
+		const agent = agentOn(cliAuth, query);
 		process.env.ANTHROPIC_API_KEY = "sk-ant-inherited";
 
 		await collect(agent.runTurn(await turnOf()));
@@ -211,12 +214,16 @@ describe("the Claude Agent SDK adapter", () => {
 		expect(calls[0]?.options.env?.CLAUDE_AGENT_SDK_CLIENT_APP).toBe("yoqa-runner");
 	});
 
-	test("with no Claude Provider it is not signed in, and runs nothing", async () => {
+	test("with no session of its own, the prompt carries the chat's conversation so far; resuming, only the new prompt", async () => {
 		const { calls, query } = fakeQuery([init(), success()]);
-		const agent = createClaudeChatAgent({ query, resolveAuth: async () => null });
+		const agent = agentOn(CLAUDE_KEY_AUTH, query);
+		const conversation = "User: Why did #8 fail?\nAgent: Step 2 timed out.";
 
-		expect(await agent.status()).toMatchObject({ signedIn: false, providerId: null });
-		await expect(collect(agent.runTurn(await turnOf()))).rejects.toThrow("Claude Provider");
-		expect(calls).toEqual([]);
+		await collect(agent.runTurn(await turnOf({ conversation })));
+		await collect(agent.runTurn(await turnOf({ agentSessionId: "sess_1", conversation: null })));
+
+		expect(calls[0]?.prompt).toContain("Agent: Step 2 timed out.");
+		expect(calls[0]?.prompt.endsWith("[Ask mode] Why did the last run fail?")).toBe(true);
+		expect(calls[1]?.prompt).toBe("[Ask mode] Why did the last run fail?");
 	});
 });
