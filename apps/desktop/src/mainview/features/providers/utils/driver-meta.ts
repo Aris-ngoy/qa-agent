@@ -16,7 +16,7 @@ export type DriverMeta = {
 	comingSoon?: boolean;
 	earlyAccess?: boolean;
 	loginInstructions: string | null;
-	capabilities?: { vision: boolean };
+	capabilities?: { vision: boolean; chat?: ProviderAuthMode[] };
 };
 
 /**

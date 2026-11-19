@@ -8,7 +8,7 @@ import {
 } from "../vision-model";
 import { loadOpenCodeUserConfig, resolveOpenCodeCompatibleAuth } from "./opencode-config";
 import { pingOpenAiCompatible, probeCli, resolveBinary, runCommand } from "./probe";
-import type { DriverDefinition, ModelEntry, ProbeResult } from "./types";
+import type { DriverDefinition, ModelEntry, ProbeResult, VisionAuth } from "./types";
 
 /** Default OpenCode model for screenshot / vision QA runs. */
 /** Free Zen model verified to accept screenshot `image_url` payloads (Aug 2026). */
@@ -220,6 +220,58 @@ async function resolveCompatibleOpenCodeVision(
 	});
 }
 
+/** The Zen model, or the LiteLLM / opencode.json provider model, a model slug names. */
+async function createOpenCodeModel(auth: VisionAuth, modelId: string) {
+	if (isOpenCodeZenModel(modelId)) {
+		const apiKey = await resolveOpenAiCompatibleKey(auth);
+		if (!apiKey) {
+			throw new AgentProviderError(
+				"OpenCode vision needs a Zen API key. Local `opencode serve` returns a web UI for /v1 (not chat completions). Paste a key from https://opencode.ai in Settings → Provider, or set OPENCODE_API_KEY.",
+			);
+		}
+		const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || "https://opencode.ai/zen/v1";
+		return createOpenAI({
+			apiKey,
+			baseURL,
+			name: "opencode",
+			fetch: withOpenCodeRequestHooks({
+				disableThinking: true,
+				authHeaders: null,
+			}),
+		}).chat(stripOpenCodeModelSlug(modelId));
+	}
+
+	const { providerId } = parseOpenCodeModelSlug(modelId);
+	const providerLabel = humanizeOpenCodeProvider(providerId);
+	const compatible = await resolveCompatibleOpenCodeVision(providerId, auth);
+	if (compatible?.apiKey) {
+		return createOpenAI({
+			apiKey: compatible.apiKey,
+			baseURL: compatible.baseURL,
+			name: providerId,
+			fetch: withOpenCodeRequestHooks({
+				disableThinking: false,
+				stripResponseFormat: true,
+				authHeaders: null,
+				extraHeaders: Object.keys(compatible.headers).length > 0 ? compatible.headers : null,
+			}),
+		}).chat(stripOpenCodeModelSlug(modelId));
+	}
+	if (compatible && !compatible.apiKey) {
+		throw new AgentProviderError(
+			`${providerLabel} vision needs an API key. OpenCode stores it in auth.json after login, or set ${providerId.replace(/-/g, "_").toUpperCase()}_API_KEY in Settings → Provider.`,
+		);
+	}
+	if (providerId === "litellm") {
+		throw new AgentProviderError(
+			"Yoqa vision can use LiteLLM via OpenCode. Add provider.litellm.options.baseURL in ~/.config/opencode/opencode.json, then pick litellm/… in Settings → Provider.",
+		);
+	}
+	throw new AgentProviderError(
+		`Yoqa vision uses OpenCode Zen or LiteLLM. "${modelId}" is a ${providerLabel} model. Pick an OpenCode Zen or LiteLLM model in Settings → Provider.`,
+	);
+}
+
 export const opencodeDriver: DriverDefinition = {
 	kind: "opencode",
 	label: "OpenCode",
@@ -235,61 +287,19 @@ export const opencodeDriver: DriverDefinition = {
 	],
 	loginInstructions:
 		"Paste a Zen API key from https://opencode.ai for Zen vision. LiteLLM uses ~/.config/opencode/opencode.json plus CLI auth or LITELLM_API_KEY. Local `opencode serve` is not OpenAI-compatible.",
-	capabilities: { vision: true },
+	capabilities: { vision: true, chat: ["api_key"] },
+	// The OpenCode CLI login cannot run the Auto chat yet; a Zen API key (or LiteLLM) can.
 	vision: createSdkVisionPort({
 		label: "OpenCode",
 		defaultModel: OPENCODE_DEFAULT_VISION_MODEL,
-		createModel: async (auth, modelId) => {
-			if (isOpenCodeZenModel(modelId)) {
-				const apiKey = await resolveOpenAiCompatibleKey(auth);
-				if (!apiKey) {
-					throw new AgentProviderError(
-						"OpenCode vision needs a Zen API key. Local `opencode serve` returns a web UI for /v1 (not chat completions). Paste a key from https://opencode.ai in Settings → Provider, or set OPENCODE_API_KEY.",
-					);
-				}
-				const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || "https://opencode.ai/zen/v1";
-				return createOpenAI({
-					apiKey,
-					baseURL,
-					name: "opencode",
-					fetch: withOpenCodeRequestHooks({
-						disableThinking: true,
-						authHeaders: null,
-					}),
-				}).chat(stripOpenCodeModelSlug(modelId));
-			}
-
-			const { providerId } = parseOpenCodeModelSlug(modelId);
-			const providerLabel = humanizeOpenCodeProvider(providerId);
-			const compatible = await resolveCompatibleOpenCodeVision(providerId, auth);
-			if (compatible?.apiKey) {
-				return createOpenAI({
-					apiKey: compatible.apiKey,
-					baseURL: compatible.baseURL,
-					name: providerId,
-					fetch: withOpenCodeRequestHooks({
-						disableThinking: false,
-						stripResponseFormat: true,
-						authHeaders: null,
-						extraHeaders: Object.keys(compatible.headers).length > 0 ? compatible.headers : null,
-					}),
-				}).chat(stripOpenCodeModelSlug(modelId));
-			}
-			if (compatible && !compatible.apiKey) {
-				throw new AgentProviderError(
-					`${providerLabel} vision needs an API key. OpenCode stores it in auth.json after login, or set ${providerId.replace(/-/g, "_").toUpperCase()}_API_KEY in Settings → Provider.`,
-				);
-			}
-			if (providerId === "litellm") {
-				throw new AgentProviderError(
-					"Yoqa vision can use LiteLLM via OpenCode. Add provider.litellm.options.baseURL in ~/.config/opencode/opencode.json, then pick litellm/… in Settings → Provider.",
-				);
-			}
-			throw new AgentProviderError(
-				`Yoqa vision uses OpenCode Zen or LiteLLM. "${modelId}" is a ${providerLabel} model. Pick an OpenCode Zen or LiteLLM model in Settings → Provider.`,
-			);
-		},
+		createModel: createOpenCodeModel,
 	}),
+	chat: {
+		defaultModel: OPENCODE_DEFAULT_VISION_MODEL,
+		missingCredential: async (auth) =>
+			(await resolveOpenAiCompatibleKey(auth)) ? null : "It has no Zen API key.",
+		createModel: createOpenCodeModel,
+	},
 	async probe(binaryPath) {
 		return probeCliWithFriendlyErrors(binaryPath);
 	},
