@@ -907,11 +907,25 @@ export async function listRuns(appId: string): Promise<Run[]> {
 		.from(runs)
 		.where(eq(runs.appId, appId))
 		.orderBy(desc(runs.createdAt));
+	return runsFromRows(runRows);
+}
 
+/** The Runs in progress across every App, newest first. */
+export async function listRunsInProgress(): Promise<Run[]> {
+	const runRows = await getCatalogDb()
+		.select()
+		.from(runs)
+		.where(eq(runs.status, "running"))
+		.orderBy(desc(runs.createdAt));
+	return runsFromRows(runRows);
+}
+
+async function runsFromRows(runRows: (typeof runs.$inferSelect)[]): Promise<Run[]> {
 	if (runRows.length === 0) {
 		return [];
 	}
 
+	const db = getCatalogDb();
 	const runIds = runRows.map((row) => row.id);
 	const testRows = await db.select().from(runTests).where(inArray(runTests.runId, runIds));
 

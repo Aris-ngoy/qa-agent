@@ -17,6 +17,7 @@ import {
 	getRunStepScreenshotPath,
 	getRunTestVideoPath,
 	listRuns,
+	listRunsInProgress,
 } from "../../domains/runs/application";
 import { caseHistory } from "../../domains/runs/history";
 
@@ -111,11 +112,13 @@ export function createRunsRoutes() {
 
 	app.get("/runs", async (c) => {
 		const appId = c.req.query("appId")?.trim();
-		if (!appId) {
+		// Without an App, only the Runs in progress across every App can be listed.
+		const inProgress = !appId && c.req.query("status")?.trim() === "running";
+		if (!appId && !inProgress) {
 			return c.json({ error: "appId query parameter is required" }, 400);
 		}
 		try {
-			const runs = await listRuns(appId);
+			const runs = appId ? await listRuns(appId) : await listRunsInProgress();
 			return c.json(listRunsResponseSchema.parse({ runs }));
 		} catch (error) {
 			const mapped = runErrorResponse(error);
