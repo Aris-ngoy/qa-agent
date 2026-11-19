@@ -3,6 +3,7 @@ import { ResizeHandle } from "@/app/resize/resize-handle";
 import { usePanelWidth } from "@/app/resize/use-panel-width";
 import { useApps } from "@/features/apps/hooks/use-apps";
 import { ElementActionDialog } from "@/features/inspector/components/element-action-dialog";
+import { ResetAppDialog } from "@/features/inspector/components/reset-app-dialog";
 import { SaveAsTestCaseDialog } from "@/features/inspector/components/save-as-test-case-dialog";
 import { ScreenshotPanel } from "@/features/inspector/components/screenshot-panel";
 import { ScriptPanel } from "@/features/inspector/components/script-panel";
@@ -56,6 +57,7 @@ export function InspectorPage() {
 	const saveOpen = useValue(script.script$.saveOpen);
 	const savingCase = useValue(script.script$.saving);
 	const saveError = useValue(script.script$.saveError);
+	const pendingReset = useValue(script.script$.pendingReset);
 	const casePreview = useMemo(() => parseCaseScriptFile(scriptText), [scriptText]);
 
 	const connected = feed.active != null;
@@ -155,6 +157,12 @@ export function InspectorPage() {
 				gesturesDisabled={running || feed.viewOnly}
 				onAddScroll={script.handleAddScroll}
 				onAddWait={script.handleAddWait}
+			/>
+
+			<ResetAppDialog
+				resets={pendingReset?.resets ?? null}
+				onConfirm={script.confirmReset}
+				onCancel={script.cancelReset}
 			/>
 
 			<SaveAsTestCaseDialog

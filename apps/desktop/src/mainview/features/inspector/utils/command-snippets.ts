@@ -20,6 +20,7 @@ export type SnippetCommandId =
 	| "activateApp"
 	| "terminateApp"
 	| "restartApp"
+	| "resetApp"
 	| "openUrl"
 	| "acceptAlert"
 	| "dismissAlert"
@@ -28,6 +29,11 @@ export type SnippetCommandId =
 
 export type SnippetContext = {
 	defaultAppId: string;
+};
+
+/** Choices a command takes besides its prompt value: a Reset can also reset the keychain. */
+export type CommandOptions = {
+	keychain?: boolean;
 };
 
 export type CommandSnippet = {
@@ -236,6 +242,19 @@ function appActionLines(
 	return [`# ${label}`, formatActionShellLine({ kind, appId: trimmed })];
 }
 
+function resetAppLines(appId: string, keychain: boolean): string[] {
+	const trimmed = appId.trim();
+	if (!trimmed) return [];
+	return [
+		keychain ? "# reset app and keychain" : "# reset app",
+		formatActionShellLine({
+			kind: "reset-app",
+			appId: trimmed,
+			...(keychain ? { keychain: true } : {}),
+		}),
+	];
+}
+
 function openUrlLines(url: string): string[] {
 	const trimmed = url.trim();
 	if (!trimmed) return [];
@@ -295,7 +314,7 @@ function previewInput(selection: InspectorSelection): string[] {
 }
 
 function previewAppAction(
-	kind: "activate-app" | "terminate-app" | "restart-app",
+	kind: "activate-app" | "terminate-app" | "restart-app" | "reset-app",
 	appId: string,
 ): string[] {
 	return [
@@ -407,6 +426,13 @@ export function selectorCommands(
 			id: "restartApp",
 			label: "restartApp",
 			previewLines: previewAppAction("restart-app", appId),
+			needsPrompt: "text",
+			promptKind: "appId",
+		},
+		{
+			id: "resetApp",
+			label: "resetApp",
+			previewLines: previewAppAction("reset-app", appId),
 			needsPrompt: "text",
 			promptKind: "appId",
 		},
@@ -531,6 +557,7 @@ export function buildCommandLines(
 	commandId: SnippetCommandId,
 	promptValue?: string,
 	context?: SnippetContext,
+	options: CommandOptions = {},
 ): string[] {
 	const preferred = preferredLocatorOf(selection);
 	switch (commandId) {
@@ -569,6 +596,8 @@ export function buildCommandLines(
 			return appActionLines("terminate-app", promptValue ?? context?.defaultAppId ?? "");
 		case "restartApp":
 			return appActionLines("restart-app", promptValue ?? context?.defaultAppId ?? "");
+		case "resetApp":
+			return resetAppLines(promptValue ?? context?.defaultAppId ?? "", options.keychain === true);
 		case "openUrl":
 			return openUrlLines(promptValue ?? "");
 		case "acceptAlert":

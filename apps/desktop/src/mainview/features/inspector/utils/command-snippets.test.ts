@@ -296,3 +296,31 @@ describe("step builder (element dialog)", () => {
 		expect(buildStepLines(bare, { command: "assertVisible", selector: "point" })).toEqual([]);
 	});
 });
+
+describe("resetApp command", () => {
+	const point = selection({ element: null });
+	const context = { defaultAppId: "com.example.app" };
+
+	test("sits right after restartApp in the app commands, prefilled with the selected app", () => {
+		const ids = selectorCommands(point, context).map((c) => c.id);
+		expect(ids.indexOf("resetApp")).toBe(ids.indexOf("restartApp") + 1);
+		const reset = selectorCommands(point, context).find((c) => c.id === "resetApp");
+		expect(reset?.promptKind).toBe("appId");
+		expect(reset?.previewLines).toEqual(["yoqa action reset-app --app-id 'com.example.app'"]);
+	});
+
+	test("builds reset-app for the app id, with --keychain only when asked", () => {
+		expect(buildCommandLines(point, "resetApp", "com.shop", context)).toEqual([
+			"# reset app",
+			"yoqa action reset-app --app-id 'com.shop'",
+		]);
+		expect(buildCommandLines(point, "resetApp", "com.shop", context, { keychain: true })).toEqual([
+			"# reset app and keychain",
+			"yoqa action reset-app --app-id 'com.shop' --keychain",
+		]);
+	});
+
+	test("builds nothing without an app id, since a Reset must name what it wipes", () => {
+		expect(buildCommandLines(point, "resetApp", "  ", context)).toEqual([]);
+	});
+});

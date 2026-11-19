@@ -25,7 +25,10 @@ Give QA engineers and their agents one Action that puts an App back in the state
   - `yoqa action reset-app --app-id <id> [--keychain]` prints `ok reset-app`, a `cleared …` line and, when something was kept, a `kept …` line, plus the usual Result screenshot lines. `--json` prints the raw response. `yoqa action batch` takes it like any other kind.
   - Guard tests pin that the Run agent and the Auto chat can't choose it.
 - **Case Scripts (#487):** a `- reset-app: <app id>` step, with optional `keychain`, that round-trips through Case Script files, works inside a Branch's `then` / `else`, replays through `performAction`, and exports to the shell as `yoqa action reset-app`. The Run report shows the step with its cleared and kept lists.
-- **Inspector (#488):** a Reset control next to Restart in the app controls, behind a confirm dialog. The step editor and command snippets know `reset-app`.
+- **Inspector (#488):**
+  - The element dialog's app commands gain **resetApp**, right after **restartApp**. It is prefilled with the selected App's id and has an **Also reset the keychain** switch. Its command snippet is `yoqa action reset-app --app-id … [--keychain]`, and **Add to script** writes a `reset-app` Case Script step.
+  - **Run on device** holds any Insert & Run that Resets an App until the user confirms it in a "Reset the app?" dialog. Cancel inserts and runs nothing. The held lines live on the script observable (`pendingReset`), and the check is a pure helper (`utils/reset-app.ts`). Rejected: confirming every script **Run** that has a `reset-app` step. A script someone wrote is already their choice, and a Test Case Run doesn't ask either.
+  - After a Reset, the Inspector's run log line ends with the Lane's cleared and kept lists (`formatAppReset`). A script run's report keeps the same text as that step's detail.
 - **Docs and skill (#489):**
   - The **Reset (an App)** glossary term. The Restart entry points to it, and the Kept profile entry now says "`reset-profile` deletes it".
   - The public docs: CLI, Case Script files, Web, Manual Inspector, and the App State Management guide, with a Reset / Restart / reinstall / `reset-profile` table.
@@ -37,6 +40,7 @@ Give QA engineers and their agents one Action that puts an App back in the state
 bun test services/runner/src/domains/devices/lane-contract.test.ts -t "reset"
 bun test packages/cli/src/action-reset-app.test.ts services/runner/src/domains/devices/batch.test.ts
 bun test packages/cli/src/skill-docs.test.ts      # every documented yoqa command and flag exists
+bun test apps/desktop/src/mainview/features/inspector/utils/reset-app.test.ts apps/desktop/src/mainview/features/inspector/utils/command-snippets.test.ts
 bun run lint:ci && bun run test && bun run check
 ```
 
@@ -46,6 +50,7 @@ Manually:
 3. On `web-chrome`, run `yoqa action reset-app --app-id <web url>`. The session moves to a blank page, and opening the URL shows the App signed out on that origin only.
 4. On a cabled iPhone, or on `web-chrome-everyday`, the command fails with the Lane's reason and exits 1.
 5. With an app id that isn't installed, it fails and names the App.
+6. In the Inspector, pick an element, open **More commands**, choose **resetApp** and press **Run on device**. A confirm dialog opens. **Reset** runs it, and the log shows `✓ reset-app: … · cleared … · kept …`. **Cancel** leaves the script and the device untouched.
 
 ## Follow-ups
 

@@ -14,7 +14,7 @@ import {
 	usableLabel,
 } from "@/features/inspector/utils/command-snippets";
 import type { InspectorSelection } from "@/features/inspector/utils/selection";
-import { Input, Label, Modal, TextField } from "@heroui/react";
+import { Input, Label, Modal, Switch, TextField } from "@heroui/react";
 import { batch } from "@legendapp/state";
 import { useObservable, useValue } from "@legendapp/state/react";
 import type { ScreenElement } from "@yoqa/runner-client";
@@ -58,6 +58,7 @@ const MORE_COMMAND_IDS: ReadonlySet<SnippetCommandId> = new Set([
 	"activateApp",
 	"terminateApp",
 	"restartApp",
+	"resetApp",
 	"openUrl",
 	"acceptAlert",
 	"dismissAlert",
@@ -179,6 +180,7 @@ function DialogBody({
 		assertText: string;
 		moreOpen: boolean;
 		moreValue: string | null;
+		keychain: boolean;
 	}>({
 		choice: { kind: "step", command: editable ? "inputText" : "tap" },
 		selector: defaultSelectorKind(selection),
@@ -186,6 +188,7 @@ function DialogBody({
 		assertText: usableLabel(selection.element) ?? "",
 		moreOpen: false,
 		moreValue: null,
+		keychain: false,
 	});
 	const choice = useValue(form$.choice);
 	const selector = useValue(form$.selector);
@@ -193,6 +196,7 @@ function DialogBody({
 	const assertText = useValue(form$.assertText);
 	const moreOpen = useValue(form$.moreOpen);
 	const moreValue = useValue(form$.moreValue);
+	const keychain = useValue(form$.keychain);
 
 	const options = useMemo(() => selectorOptions(selection, elements), [selection, elements]);
 	const moreCommands = useMemo(
@@ -216,14 +220,24 @@ function DialogBody({
 				const n = Number(value);
 				if (!Number.isFinite(n) || n < 0) return [];
 			}
-			return buildCommandLines(selection, choice.id, value.trim(), snippetContext);
+			return buildCommandLines(selection, choice.id, value.trim(), snippetContext, { keychain });
 		}
 		return buildStepLines(selection, {
 			command: choice.command,
 			selector,
 			text: choice.command === "assertVisible" ? assertText.trim() || undefined : text,
 		});
-	}, [assertText, choice, moreCommands, moreValue, selection, selector, snippetContext, text]);
+	}, [
+		assertText,
+		choice,
+		keychain,
+		moreCommands,
+		moreValue,
+		selection,
+		selector,
+		snippetContext,
+		text,
+	]);
 
 	const stepCommand = choice.kind === "step" ? choice.command : null;
 	const needsSelector = stepCommand != null && stepCommand !== "assertVisible";
@@ -240,6 +254,7 @@ function DialogBody({
 		batch(() => {
 			form$.choice.set(next);
 			form$.moreValue.set(null);
+			form$.keychain.set(false);
 		});
 	};
 
@@ -368,6 +383,28 @@ function DialogBody({
 						</Label>
 						<Input autoFocus />
 					</TextField>
+				) : null}
+
+				{activeMore?.id === "resetApp" ? (
+					<div className="flex flex-col gap-1.5">
+						<Switch
+							size="sm"
+							isSelected={keychain}
+							onChange={(value) => form$.keychain.set(value)}
+							aria-label="Also reset the keychain"
+						>
+							<Switch.Content className="flex items-center gap-2 text-[11px] font-semibold text-on-surface">
+								Also reset the keychain
+								<Switch.Control>
+									<Switch.Thumb />
+								</Switch.Control>
+							</Switch.Content>
+						</Switch>
+						<p className="m-0 text-[10px] text-on-surface-variant">
+							Reset clears the App&apos;s data, and Run on device asks first. The keychain is
+							iOS-simulator only and is shared by every app there.
+						</p>
+					</div>
 				) : null}
 
 				{needsSelector ? (
