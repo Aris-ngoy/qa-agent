@@ -8,7 +8,11 @@ import type {
 } from "../../shared/cli-environment";
 import type { IosToolchainPreferences, IosToolchainSnapshot } from "../../shared/ios-toolchain";
 import type { DesktopRPC, EnsureLocalServicesResult, WindowState } from "../../shared/rpc";
-import type { YoqaUpdateStatus, YoqaVersionInfo } from "../../shared/yoqa-update";
+import type {
+	YoqaUpdateSettings,
+	YoqaUpdateStatus,
+	YoqaVersionInfo,
+} from "../../shared/yoqa-update";
 
 export type DesktopRpcClient = {
 	request: {
@@ -41,6 +45,8 @@ export type DesktopRpcClient = {
 		getYoqaUpdateStatus: () => Promise<YoqaUpdateStatus>;
 		checkForYoqaUpdate: () => Promise<YoqaUpdateStatus>;
 		restartForYoqaUpdate: () => Promise<{ ok: true }>;
+		getYoqaUpdateSettings: () => Promise<YoqaUpdateSettings>;
+		setYoqaUpdateSettings: (params: YoqaUpdateSettings) => Promise<YoqaUpdateSettings>;
 	};
 };
 

@@ -25,8 +25,12 @@ function fakeTimer() {
 	return {
 		timer,
 		now: () => 1_700_000_000_000 + clock,
-		/** Move the clock forward, run every timer that came due, and let their promises settle. */
+		/**
+		 * Let pending work settle, move the clock forward, run every timer that came due, and
+		 * let their promises settle.
+		 */
 		async advance(ms: number) {
+			await settle();
 			clock += ms;
 			for (const [id, entry] of [...pending].sort((a, b) => a[1].at - b[1].at)) {
 				if (entry.at > clock) continue;
@@ -68,7 +72,12 @@ function fakeUpdater(script: {
 
 const newer = (version: string): YoqaUpdateCheck => ({ updateAvailable: true, version });
 
-function setup(script: Parameters<typeof fakeUpdater>[0] = {}, options: { channel?: string } = {}) {
+const HOUR = 60 * 60 * 1000;
+
+function setup(
+	script: Parameters<typeof fakeUpdater>[0] = {},
+	options: { channel?: string; autoCheck?: () => boolean | Promise<boolean> } = {},
+) {
 	const clock = fakeTimer();
 	const { updater, calls } = fakeUpdater(script);
 	const pushed: YoqaUpdateStatus[] = [];
@@ -83,6 +92,7 @@ function setup(script: Parameters<typeof fakeUpdater>[0] = {}, options: { channe
 			if (runner.runInProgress instanceof Error) throw runner.runInProgress;
 			return runner.runInProgress;
 		},
+		readAutoCheck: options.autoCheck ?? (() => true),
 		onStatus: (status) => pushed.push(status),
 	});
 	return {
@@ -103,6 +113,70 @@ describe("Yoqa update controller", () => {
 		expect(calls).toEqual([]);
 		await clock.advance(60_000);
 		expect(calls).toEqual(["check"]);
+	});
+
+	test("checks again every 6 hours after the launch check", async () => {
+		const { controller, calls, clock } = setup();
+		controller.start();
+		await clock.advance(60_000);
+		expect(calls).toEqual(["check"]);
+		await clock.advance(6 * HOUR - 60_000);
+		expect(calls).toEqual(["check"]);
+		await clock.advance(60_000);
+		expect(calls).toEqual(["check", "check"]);
+		await clock.advance(6 * HOUR);
+		expect(calls).toEqual(["check", "check", "check"]);
+	});
+
+	test("makes no automatic checks when automatic checks are off", async () => {
+		const { controller, calls, clock } = setup({}, { autoCheck: async () => false });
+		controller.start();
+		await clock.advance(24 * HOUR);
+		expect(calls).toEqual([]);
+		await controller.checkNow();
+		expect(calls).toEqual(["check"]);
+		await clock.advance(24 * HOUR);
+		expect(calls).toEqual(["check"]);
+	});
+
+	test("turning automatic checks off cancels the next scheduled check", async () => {
+		let autoCheck = true;
+		const { controller, calls, clock } = setup({}, { autoCheck: () => autoCheck });
+		controller.start();
+		await clock.advance(60_000);
+		expect(calls).toEqual(["check"]);
+		autoCheck = false;
+		await controller.autoCheckChanged();
+		await clock.advance(24 * HOUR);
+		expect(calls).toEqual(["check"]);
+	});
+
+	test("turning automatic checks on schedules a check without a relaunch", async () => {
+		let autoCheck = false;
+		const { controller, calls, clock } = setup({}, { autoCheck: () => autoCheck });
+		controller.start();
+		await clock.advance(HOUR);
+		expect(calls).toEqual([]);
+		autoCheck = true;
+		await controller.autoCheckChanged();
+		await clock.advance(60_000);
+		expect(calls).toEqual(["check"]);
+		await clock.advance(6 * HOUR);
+		expect(calls).toEqual(["check", "check"]);
+	});
+
+	test("turning automatic checks on waits 6 hours from the last check", async () => {
+		let autoCheck = false;
+		const { controller, calls, clock } = setup({}, { autoCheck: () => autoCheck });
+		controller.start();
+		await controller.checkNow();
+		await clock.advance(2 * HOUR);
+		autoCheck = true;
+		await controller.autoCheckChanged();
+		await clock.advance(4 * HOUR - 1);
+		expect(calls).toEqual(["check"]);
+		await clock.advance(1);
+		expect(calls).toEqual(["check", "check"]);
 	});
 
 	test("downloads a newer Yoqa update and reports it ready with its version", async () => {
@@ -157,6 +231,34 @@ describe("Yoqa update controller", () => {
 			lastError: "Failed to download latest version",
 		});
 		expect(last()?.lastCheckedAt).not.toBeNull();
+	});
+
+	test("retries a failed check or download only at the next scheduled check", async () => {
+		let attempt = 0;
+		const { controller, calls, clock, last } = setup({
+			check: async () => {
+				attempt++;
+				if (attempt === 1) throw new Error("Failed to fetch update info");
+				return newer("1.0.9");
+			},
+			download: async () => {
+				if (attempt === 2) throw new Error("Failed to download latest version");
+			},
+		});
+		controller.start();
+		await clock.advance(60_000);
+		expect(calls).toEqual(["check"]);
+		expect(last()?.lastError).toBe("Failed to fetch update info");
+		await clock.advance(6 * HOUR - 60_000);
+		expect(calls).toEqual(["check"]);
+		await clock.advance(60_000);
+		expect(calls).toEqual(["check", "check", "download"]);
+		expect(last()?.lastError).toBe("Failed to download latest version");
+		await clock.advance(6 * HOUR - 1);
+		expect(calls).toEqual(["check", "check", "download"]);
+		await clock.advance(1);
+		expect(calls).toEqual(["check", "check", "download", "check", "download"]);
+		expect(last()).toMatchObject({ state: "ready", version: "1.0.9", lastError: null });
 	});
 
 	test("keeps a ready Yoqa update when a later check fails", async () => {
@@ -262,6 +364,7 @@ describe("Yoqa update controller", () => {
 			{ channel: "dev" },
 		);
 		controller.start();
+		await controller.autoCheckChanged();
 		await clock.advance(24 * 60 * 60 * 1000);
 		await controller.checkNow();
 		expect(calls).toEqual([]);

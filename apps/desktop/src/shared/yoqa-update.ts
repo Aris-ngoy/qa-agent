@@ -17,6 +17,12 @@ export type YoqaUpdateStatus = {
 	restartHeld: boolean;
 };
 
+/** The stored Yoqa update settings. */
+export type YoqaUpdateSettings = {
+	/** "Check for updates automatically": the launch check and one every 6 hours. On by default. */
+	autoCheck: boolean;
+};
+
 /** The installed Yoqa Desktop and the Electrobun channel it was built for. */
 export type YoqaVersionInfo = {
 	version: string;

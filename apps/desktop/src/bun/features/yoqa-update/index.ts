@@ -1,6 +1,11 @@
 import { RunnerClient } from "@yoqa/runner-client";
 import { Updater } from "electrobun/bun";
-import type { YoqaUpdateStatus, YoqaVersionInfo } from "../../../shared/yoqa-update";
+import type {
+	YoqaUpdateSettings,
+	YoqaUpdateStatus,
+	YoqaVersionInfo,
+} from "../../../shared/yoqa-update";
+import { patchStoredSettings, readStoredSettings } from "../app-settings/store";
 import { type YoqaUpdateController, createYoqaUpdateController } from "./controller";
 import { createElectrobunYoqaUpdater } from "./electrobun-updater";
 
@@ -10,6 +15,22 @@ export type { YoqaUpdateController } from "./controller";
 export async function getYoqaVersionInfo(): Promise<YoqaVersionInfo> {
 	const info = await Updater.getLocalInfo();
 	return { version: info.version, channel: info.channel };
+}
+
+/** The stored Yoqa update settings; automatic checks are on unless switched off. */
+export async function readYoqaUpdateSettings(): Promise<YoqaUpdateSettings> {
+	const stored = await readStoredSettings();
+	return { autoCheck: stored.yoqaUpdate?.autoCheck ?? true };
+}
+
+/** Store the Yoqa update settings and tell the controller, so the schedule follows at once. */
+export async function writeYoqaUpdateSettings(
+	controller: YoqaUpdateController,
+	settings: YoqaUpdateSettings,
+): Promise<YoqaUpdateSettings> {
+	await patchStoredSettings({ yoqaUpdate: { autoCheck: settings.autoCheck } });
+	await controller.autoCheckChanged();
+	return readYoqaUpdateSettings();
 }
 
 const RUNNER_ANSWER_TIMEOUT_MS = 5_000;
@@ -34,6 +55,7 @@ export async function createYoqaUpdates(
 		},
 		now: () => Date.now(),
 		isRunInProgress: async () => (await runner.listRunsInProgress()).length > 0,
+		readAutoCheck: async () => (await readYoqaUpdateSettings()).autoCheck,
 		onStatus,
 	});
 }

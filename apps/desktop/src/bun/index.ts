@@ -23,7 +23,12 @@ import {
 	stopRunnerSidecar,
 } from "./features/runner-sidecar";
 import { applyWindowsWindowIcon } from "./features/windows-window-icon";
-import { createYoqaUpdates, getYoqaVersionInfo } from "./features/yoqa-update";
+import {
+	createYoqaUpdates,
+	getYoqaVersionInfo,
+	readYoqaUpdateSettings,
+	writeYoqaUpdateSettings,
+} from "./features/yoqa-update";
 
 const DOCS_QUICKSTART_URL = "https://yoqa.arisn.dev/docs/quickstart";
 
@@ -139,6 +144,8 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 				void yoqaUpdates.restart();
 				return { ok: true };
 			},
+			getYoqaUpdateSettings: () => readYoqaUpdateSettings(),
+			setYoqaUpdateSettings: (settings) => writeYoqaUpdateSettings(yoqaUpdates, settings),
 		},
 		messages: {
 			log: ({ msg }) => {
