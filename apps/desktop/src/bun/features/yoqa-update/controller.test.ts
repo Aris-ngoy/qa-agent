@@ -72,11 +72,17 @@ function setup(script: Parameters<typeof fakeUpdater>[0] = {}, options: { channe
 	const clock = fakeTimer();
 	const { updater, calls } = fakeUpdater(script);
 	const pushed: YoqaUpdateStatus[] = [];
+	/** The local runner's answer to "is a Run in progress?"; a test flips it. */
+	const runner: { runInProgress: boolean | Error } = { runInProgress: false };
 	const controller = createYoqaUpdateController({
 		updater,
 		channel: options.channel ?? "stable",
 		timer: clock.timer,
 		now: clock.now,
+		isRunInProgress: async () => {
+			if (runner.runInProgress instanceof Error) throw runner.runInProgress;
+			return runner.runInProgress;
+		},
 		onStatus: (status) => pushed.push(status),
 	});
 	return {
@@ -84,6 +90,7 @@ function setup(script: Parameters<typeof fakeUpdater>[0] = {}, options: { channe
 		calls,
 		pushed,
 		clock,
+		runner,
 		last: () => pushed.at(-1),
 		states: () => pushed.map((status) => status.state),
 	};
@@ -278,5 +285,72 @@ describe("Yoqa update controller", () => {
 		await Promise.all([first, second]);
 		expect(calls).toEqual(["check", "download"]);
 		expect(last()?.state).toBe("ready");
+	});
+
+	describe("while a Run is in progress", () => {
+		const ready = { check: async () => newer("1.0.9") };
+
+		test("restart does not apply and says the restart is held", async () => {
+			const { controller, calls, runner, last } = setup(ready);
+			await controller.checkNow();
+			runner.runInProgress = true;
+			await controller.restart();
+			expect(calls).not.toContain("apply");
+			expect(last()).toMatchObject({ state: "ready", version: "1.0.9", restartHeld: true });
+		});
+
+		test("the held restart clears soon after the Run ends, and restart then applies", async () => {
+			const { controller, calls, runner, clock, last } = setup(ready);
+			await controller.checkNow();
+			runner.runInProgress = true;
+			await controller.restart();
+			runner.runInProgress = false;
+			await clock.advance(10_000);
+			expect(last()).toMatchObject({ state: "ready", restartHeld: false });
+			expect(calls).not.toContain("apply");
+			await controller.restart();
+			expect(calls.filter((call) => call === "apply")).toHaveLength(1);
+		});
+
+		test("an update that becomes ready during a Run shows the restart held from the start", async () => {
+			const { controller, runner, pushed } = setup(ready);
+			runner.runInProgress = true;
+			await controller.checkNow();
+			expect(pushed.filter((status) => status.state === "ready")).toEqual([
+				expect.objectContaining({ version: "1.0.9", restartHeld: true }),
+			]);
+		});
+
+		test("a Run that starts while an update is ready holds the restart before it is pressed", async () => {
+			const { controller, runner, clock, last } = setup(ready);
+			await controller.checkNow();
+			expect(last()?.restartHeld).toBe(false);
+			runner.runInProgress = true;
+			await clock.advance(10_000);
+			expect(last()).toMatchObject({ state: "ready", restartHeld: true });
+		});
+
+		test("a runner that can't answer runs no Run, so it holds nothing", async () => {
+			const { controller, calls, runner, clock, last } = setup(ready);
+			runner.runInProgress = new Error("Runner unreachable");
+			await controller.checkNow();
+			await clock.advance(10_000);
+			expect(last()).toMatchObject({ state: "ready", restartHeld: false, lastError: null });
+			await controller.restart();
+			expect(calls.filter((call) => call === "apply")).toHaveLength(1);
+		});
+
+		test("an update dropped while held is no longer held", async () => {
+			let released = true;
+			const { controller, runner, last } = setup({
+				check: async () =>
+					released ? newer("1.0.9") : { updateAvailable: false, version: "1.0.8" },
+			});
+			runner.runInProgress = true;
+			await controller.checkNow();
+			released = false;
+			await controller.checkNow();
+			expect(last()).toMatchObject({ state: "idle", version: null, restartHeld: false });
+		});
 	});
 });

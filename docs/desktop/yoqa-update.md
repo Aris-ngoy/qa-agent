@@ -19,20 +19,30 @@ Yoqa Desktop tells its users a newer version exists, downloads it in the backgro
 
 Tracer bullet, #473:
 
-- **Controller** (`apps/desktop/src/bun/features/yoqa-update/controller.ts`): launch check 10 s after start, checking → downloading → ready with the version, `lastCheckedAt` on every finished check, `lastError` on failure with a ready update kept, overlapping checks joined, `restart()` applying once (a failed apply keeps the update ready and records `lastError`), never an apply without `restart()`, nothing at all on Electrobun's `dev` channel. `restartHeld` is always false for now.
+- **Controller** (`apps/desktop/src/bun/features/yoqa-update/controller.ts`): launch check 10 s after start, checking → downloading → ready with the version, `lastCheckedAt` on every finished check, `lastError` on failure with a ready update kept, overlapping checks joined, `restart()` applying once (a failed apply keeps the update ready and records `lastError`), never an apply without `restart()`, nothing at all on Electrobun's `dev` channel. `restartHeld` came with #474.
 - **Electrobun wrapper** (`electrobun-updater.ts`) and wiring (`index.ts`, `apps/desktop/src/bun/index.ts`).
 - **Desktop RPC** (`apps/desktop/src/shared/rpc.ts`, types in `shared/yoqa-update.ts`): requests `getYoqaVersion`, `getYoqaUpdateStatus`, `checkForYoqaUpdate`, `restartForYoqaUpdate`; the first Bun → webview message, `yoqaUpdateStatus`, heard through `onYoqaUpdateStatus` in `app/desktop-rpc.ts`.
 - **Webview feature** `features/yoqa-update/` (desktop feature layout): the snapshot in the module observable `yoqaUpdate$`, mirrored by the root `YoqaUpdateSync`; the banner under the session bar ("Yoqa vX is ready", **What's new** to `releases/tag/vX`, **Restart**); Settings › **Updates** with the installed version, the result line, "Last checked …", the last error and **Check for updates**. Copy and the release link live in `utils/yoqa-update-copy.ts` with tests.
+
+Restart hold, #474:
+
+- **The hold rule.** A ready Yoqa update never restarts Yoqa while a Run is in progress, because applying quits Yoqa and its runner and would kill the Run mid-case. "In progress" means the local runner has a Run with status `running`, in any App. A connected Active Session with no Run in progress holds nothing.
+  - `restartHeld` is true while a ready update waits on a Run. The controller asks the runner (`isRunInProgress()`) as the update becomes ready, then every 5 s (`RUN_RECHECK_INTERVAL_MS`) while it stays ready, so the hold appears when a Run starts and clears within about 5 s of the Run ending. The loop stops once no update is ready.
+  - `restart()` asks again before applying; while a Run is in progress it sets `restartHeld` and does not apply.
+  - A runner that can't answer (down, or no answer within 5 s) counts as no Run in progress, so a broken runner never blocks a Yoqa update.
+- **Runner contract.** `GET /runs?status=running` without an `appId` lists the Runs in progress across every App (`listRunsInProgress()` in the Runs domain, `RunnerClient.listRunsInProgress()`). With an `appId` the route is unchanged; with neither it is still a 400.
+- **Banner.** While `restartHeld`, Restart is disabled and the banner says "Waiting for the Run to finish" (`restartHeldText` in `utils/yoqa-update-copy.ts`).
 
 ## How to verify
 
 1. `bun run lint:ci`, `bun run test`, `bun run check`. `bun test apps/desktop/src/bun/features/yoqa-update apps/desktop/src/mainview/features/yoqa-update` runs just this feature.
 2. `bun run desktop` (the `dev` channel): Settings › Updates says development builds don't check, and **Check for updates** is disabled; no request goes to GitHub.
 3. A packaged build older than the latest release: about 10 s after launch the banner shows "Yoqa vX is ready"; **What's new** opens that release page; **Restart** installs and relaunches. Settings › Updates shows the result of each **Check for updates**. Offline, a check leaves only the last error in Settings.
+4. Restart hold: with a Yoqa update ready, start a Run. Within about 5 s Restart is disabled with "Waiting for the Run to finish"; once the Run ends it is enabled again within about 5 s. `curl 'http://127.0.0.1:7420/runs?status=running'` lists the Run while it runs.
 
 ## Follow-ups
 
-- #474: hold the restart while a Run is in progress (`restartHeld`).
+- #474 (shipped): a Run left `running` in the catalog by a runner that was killed (not stopped) holds the restart until it is cancelled or deleted. The runner has no startup sweep for such Runs yet; adding one (mark leftover `running` Runs as cancelled with "The runner stopped") would fix both the hold and the Runs list.
 - #475: check every 6 hours, and the "Check for updates automatically" toggle.
 - #476: report an apply that failed after restart, with a manual download link.
 - #477: `release.baseUrl` and patch generation in the release build.

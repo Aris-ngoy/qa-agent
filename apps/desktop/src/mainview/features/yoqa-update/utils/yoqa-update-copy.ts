@@ -26,6 +26,11 @@ export function readyPromptText(version: string): string {
 	return `Yoqa v${version} is ready`;
 }
 
+/** Why the banner's Restart is disabled, or null when it isn't held. */
+export function restartHeldText(restartHeld: boolean): string | null {
+	return restartHeld ? "Waiting for the Run to finish" : null;
+}
+
 const UNITS: { name: string; ms: number }[] = [
 	{ name: "day", ms: 24 * 60 * 60_000 },
 	{ name: "hour", ms: 60 * 60_000 },

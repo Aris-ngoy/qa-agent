@@ -4,12 +4,23 @@ import {
 	lastCheckedText,
 	readyPromptText,
 	releasePageUrl,
+	restartHeldText,
 	updateStatusText,
 } from "./yoqa-update-copy";
 
 describe("readyPromptText", () => {
 	test("names the version that is ready", () => {
 		expect(readyPromptText("1.0.9")).toBe("Yoqa v1.0.9 is ready");
+	});
+});
+
+describe("restartHeldText", () => {
+	test("says why Restart is disabled while a Run is in progress", () => {
+		expect(restartHeldText(true)).toBe("Waiting for the Run to finish");
+	});
+
+	test("says nothing once the restart is no longer held", () => {
+		expect(restartHeldText(false)).toBeNull();
 	});
 });
 

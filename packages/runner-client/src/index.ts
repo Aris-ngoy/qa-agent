@@ -1222,6 +1222,16 @@ export class RunnerClient {
 		return listRunsResponseSchema.parse(json).runs;
 	}
 
+	/** The Runs in progress across every App. */
+	async listRunsInProgress(): Promise<Run[]> {
+		const json = await this.requestJson(
+			"/runs?status=running",
+			undefined,
+			"List runs in progress failed",
+		);
+		return listRunsResponseSchema.parse(json).runs;
+	}
+
 	async getRun(runId: string): Promise<Run> {
 		const json = await this.requestJson(
 			`/runs/${encodeURIComponent(runId)}`,
