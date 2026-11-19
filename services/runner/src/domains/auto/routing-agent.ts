@@ -144,7 +144,10 @@ export function createRoutingChatAgent(deps: RoutingChatAgentDeps = {}): ChatAge
 			list.map(async ({ auth, ...provider }) => {
 				if (!provider.available) return { ...provider, models: [] };
 				const listed = await listModels(auth).catch((error: unknown) => {
-					console.error(`[auto] listing the models of ${auth.label} failed`, error);
+					// The message only: an error object can carry the request, and with it the key.
+					console.error(
+						`[auto] listing the models of ${auth.label} failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
 					return [];
 				});
 				return { ...provider, models: listed };

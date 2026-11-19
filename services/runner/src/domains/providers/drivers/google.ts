@@ -24,9 +24,10 @@ async function pingGoogleGenerativeAi(apiKey: string): Promise<{
 	models?: string[];
 }> {
 	try {
-		const response = await fetch(
-			`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
-		);
+		// The key goes in a header, not the URL, so a failed request never logs it.
+		const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+			headers: { "x-goog-api-key": apiKey },
+		});
 		if (!response.ok) {
 			const detail = await response.text().catch(() => "");
 			return {

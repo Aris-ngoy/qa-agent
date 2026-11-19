@@ -226,7 +226,7 @@ async function createOpenCodeModel(auth: VisionAuth, modelId: string) {
 		const apiKey = await resolveOpenAiCompatibleKey(auth);
 		if (!apiKey) {
 			throw new AgentProviderError(
-				"OpenCode vision needs a Zen API key. Local `opencode serve` returns a web UI for /v1 (not chat completions). Paste a key from https://opencode.ai in Settings → Provider, or set OPENCODE_API_KEY.",
+				"OpenCode needs a Zen API key for vision runs and the Auto chat. Local `opencode serve` returns a web UI for /v1 (not chat completions). Paste a key from https://opencode.ai in Settings → Provider, or set OPENCODE_API_KEY.",
 			);
 		}
 		const baseURL = auth.baseUrl?.trim().replace(/\/$/, "") || "https://opencode.ai/zen/v1";

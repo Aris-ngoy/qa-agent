@@ -15,7 +15,7 @@ async function createCodexModel(auth: VisionAuth, modelId: string) {
 	const apiKey = await resolveOpenAiCompatibleKey(auth);
 	if (!apiKey) {
 		throw new AgentProviderError(
-			"Codex vision runs need an OpenAI API key (paste in Settings). Codex CLI OAuth via ai-sdk-provider-codex-cli requires Zod 4 and is not enabled yet.",
+			"Codex needs an OpenAI API key (paste in Settings) for vision runs and the Auto chat. Codex CLI OAuth via ai-sdk-provider-codex-cli requires Zod 4 and is not enabled yet.",
 		);
 	}
 	const openaiModelId = modelId === CODEX_DEFAULT_VISION ? "gpt-4o" : modelId;
