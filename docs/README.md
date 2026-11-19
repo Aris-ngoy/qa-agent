@@ -71,6 +71,7 @@ Domain glossary: [`CONTEXT.md`](../CONTEXT.md). See [AGENTS.md](../AGENTS.md) fo
 | [cli/npm-publish.md](./cli/npm-publish.md) | Public `@yoqa/cli` npm package + release workflow |
 | [desktop/windows-release.md](./desktop/windows-release.md) | Experimental Windows x64 installer built next to the macOS DMG in one Release Desktop workflow |
 | [desktop/release-notes.md](./desktop/release-notes.md) | GitHub Release body: install boilerplate + auto-generated PR changelog |
+| [desktop/yoqa-update.md](./desktop/yoqa-update.md) | Yoqa updates: the update controller, the "Yoqa vX is ready — Restart" banner, Settings › Updates |
 | [cli/github-actions.md](./cli/github-actions.md) | `yoqa report` + composite actions for GitHub Actions HTML reports |
 | [cli/github-actions-expo.md](./cli/github-actions-expo.md) | Expo demo app + GitHub Actions device smoke for `@yoqa/cli` |
 | [cli/expo-e2e-catalog-report.md](./cli/expo-e2e-catalog-report.md) | Catalog script smoke + HTML artifacts + iOS WDA timeout |

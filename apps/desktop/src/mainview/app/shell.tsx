@@ -1,5 +1,6 @@
 import { SideMenu } from "@/app/side-menu";
 import { SessionBar } from "@/features/devices/components/session-bar";
+import { YoqaUpdateBanner } from "@/features/yoqa-update/components/yoqa-update-banner";
 import type { ReactNode } from "react";
 
 type AppShellProps = {
@@ -14,6 +15,7 @@ export function AppShell({ children, activePath = "/" }: AppShellProps) {
 
 			<div className="electrobun-webkit-app-region-no-drag flex min-h-0 min-w-0 flex-1 flex-col gap-3">
 				<SessionBar />
+				<YoqaUpdateBanner />
 				<main className="app-page min-h-0 min-w-0 flex-1 overflow-y-auto py-2 pr-1">
 					{children}
 				</main>

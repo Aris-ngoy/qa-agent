@@ -6,12 +6,20 @@ import { CliSettings } from "@/features/settings/components/cli-settings";
 import { DiagnosticsSettings } from "@/features/settings/components/diagnostics-settings";
 import { IosSettings } from "@/features/settings/components/ios-settings";
 import { SectionCard } from "@/features/settings/components/section-card";
+import { YoqaUpdateSettings } from "@/features/yoqa-update/components/yoqa-update-settings";
 import { Tabs } from "@heroui/react";
 import { useObservable, useValue } from "@legendapp/state/react";
 import { useSearch } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
 
-type SettingsSection = "appearance" | "ios" | "android" | "cli" | "provider" | "diagnostics";
+type SettingsSection =
+	| "appearance"
+	| "ios"
+	| "android"
+	| "cli"
+	| "provider"
+	| "diagnostics"
+	| "updates";
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
 	"appearance",
@@ -20,6 +28,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
 	"cli",
 	"provider",
 	"diagnostics",
+	"updates",
 ];
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
@@ -29,6 +38,7 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
 	{ id: "cli", label: "CLI & Agents" },
 	{ id: "provider", label: "Provider" },
 	{ id: "diagnostics", label: "Diagnostics" },
+	{ id: "updates", label: "Updates" },
 ];
 
 function isSettingsSection(value: string | undefined): value is SettingsSection {
@@ -121,6 +131,11 @@ export function SettingsPage() {
 				<Tabs.Panel className="pt-0 outline-none" id="diagnostics">
 					<SettingsSectionMotion active={section === "diagnostics"} sectionId="diagnostics">
 						<DiagnosticsSettings enabled={section === "diagnostics"} />
+					</SettingsSectionMotion>
+				</Tabs.Panel>
+				<Tabs.Panel className="pt-0 outline-none" id="updates">
+					<SettingsSectionMotion active={section === "updates"} sectionId="updates">
+						<YoqaUpdateSettings />
 					</SettingsSectionMotion>
 				</Tabs.Panel>
 			</Tabs>

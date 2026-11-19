@@ -1,5 +1,6 @@
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { DesktopRPC } from "../shared/rpc";
+import type { YoqaUpdateStatus } from "../shared/yoqa-update";
 import {
 	getAndroidToolchainSnapshot,
 	setAndroidToolchainSelection,
@@ -22,6 +23,7 @@ import {
 	stopRunnerSidecar,
 } from "./features/runner-sidecar";
 import { applyWindowsWindowIcon } from "./features/windows-window-icon";
+import { createYoqaUpdates, getYoqaVersionInfo } from "./features/yoqa-update";
 
 const DOCS_QUICKSTART_URL = "https://yoqa.arisn.dev/docs/quickstart";
 
@@ -77,6 +79,10 @@ ApplicationMenu.on("application-menu-clicked", (event) => {
 	}
 });
 
+/** Set once `mainRPC` exists; the controller pushes nothing before `start()`. */
+let pushYoqaUpdateStatus: (status: YoqaUpdateStatus) => void = () => {};
+const yoqaUpdates = await createYoqaUpdates((status) => pushYoqaUpdateStatus(status));
+
 const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 	maxRequestTime: 60_000,
 	handlers: {
@@ -122,6 +128,17 @@ const mainRPC = BrowserView.defineRPC<DesktopRPC>({
 				return { ok: true };
 			},
 			getWindowState: () => ({ maximized: mainWindow.isMaximized() }),
+			getYoqaVersion: () => getYoqaVersionInfo(),
+			getYoqaUpdateStatus: () => yoqaUpdates.status(),
+			checkForYoqaUpdate: () => {
+				// A download can outlast the RPC timeout, so answer now and push the result.
+				void yoqaUpdates.checkNow();
+				return yoqaUpdates.status();
+			},
+			restartForYoqaUpdate: () => {
+				void yoqaUpdates.restart();
+				return { ok: true };
+			},
 		},
 		messages: {
 			log: ({ msg }) => {
@@ -144,6 +161,15 @@ const mainWindow = new BrowserWindow({
 	},
 	rpc: mainRPC,
 });
+
+pushYoqaUpdateStatus = (status) => {
+	try {
+		mainRPC.send.yoqaUpdateStatus(status);
+	} catch {
+		// The webview isn't listening yet; it reads the snapshot when it mounts.
+	}
+};
+yoqaUpdates.start();
 
 // Windows: electrobun never sets a window icon, so the taskbar shows Bun's. The native
 // window can appear a moment after the constructor returns, so retry briefly.

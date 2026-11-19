@@ -13,6 +13,14 @@ const answers: Record<string, unknown> = {
 	restartLocalRunner: { baseUrl: RUNNER_URL, started: false },
 	stopLocalRunner: { ok: true },
 	openExternalUrl: { ok: true },
+	getYoqaVersion: { version: "0.0.0-e2e", channel: "dev" },
+	getYoqaUpdateStatus: {
+		state: "idle",
+		version: null,
+		lastCheckedAt: null,
+		lastError: null,
+		restartHeld: false,
+	},
 };
 
 const client = {
@@ -36,3 +44,8 @@ export function getDesktopRpc(): DesktopRpcClient {
 }
 
 export async function openExternalUrl(_url: string): Promise<void> {}
+
+/** No host pushes Yoqa update snapshots in the e2e webview. */
+export function onYoqaUpdateStatus(): () => void {
+	return () => {};
+}

@@ -6,6 +6,7 @@ import type {
 	OpenPathResult,
 } from "./cli-environment";
 import type { IosToolchainPreferences, IosToolchainSnapshot } from "./ios-toolchain";
+import type { YoqaUpdateStatus, YoqaVersionInfo } from "./yoqa-update";
 
 export type EnsureLocalServicesResult = {
 	baseUrl: string;
@@ -121,6 +122,26 @@ export type DesktopRPC = {
 				params: undefined;
 				response: WindowState;
 			};
+			/** The installed Yoqa Desktop version and its Electrobun channel. */
+			getYoqaVersion: {
+				params: undefined;
+				response: YoqaVersionInfo;
+			};
+			/** The Yoqa update controller's snapshot; later changes arrive as `yoqaUpdateStatus`. */
+			getYoqaUpdateStatus: {
+				params: undefined;
+				response: YoqaUpdateStatus;
+			};
+			/** Start a check now and answer at once; the result arrives as `yoqaUpdateStatus`. */
+			checkForYoqaUpdate: {
+				params: undefined;
+				response: YoqaUpdateStatus;
+			};
+			/** Apply a ready Yoqa update and relaunch Yoqa. */
+			restartForYoqaUpdate: {
+				params: undefined;
+				response: { ok: true };
+			};
 		};
 		messages: {
 			log: { msg: string };
@@ -128,6 +149,9 @@ export type DesktopRPC = {
 	};
 	webview: {
 		requests: Record<string, never>;
-		messages: Record<string, never>;
+		messages: {
+			/** Pushed by the Yoqa update controller on every change. */
+			yoqaUpdateStatus: YoqaUpdateStatus;
+		};
 	};
 };
