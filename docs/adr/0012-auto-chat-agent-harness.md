@@ -1,6 +1,8 @@
 ---
-status: proposed
+status: partly superseded by ADR 0014
 ---
+
+> Partly superseded by [ADR 0014](./0014-auto-chat-on-any-chat-capable-provider.md): the chat agent is no longer signed in only through the `claude` Provider. Any Chat-capable Provider can answer a chat; the Claude Provider keeps the Claude Agent SDK, and every other Provider runs on a Yoqa-owned AI SDK loop. The rest of this record stands.
 
 # The Auto chat runs on the Claude Agent SDK and leaves device work to the Case executor
 
