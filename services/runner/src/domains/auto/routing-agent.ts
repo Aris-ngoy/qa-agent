@@ -89,24 +89,24 @@ export function createRoutingChatAgent(deps: RoutingChatAgentDeps = {}): ChatAge
 		return (await driver.chat?.missingCredential(auth)) ?? null;
 	}
 
+	/** `auth` as the chat sees it: whether it can chat now, and its default model. */
+	async function routedOne(auth: ProviderAuthEntry): Promise<RoutedProvider> {
+		const reason = await cannotChat(auth);
+		return {
+			id: auth.id,
+			kind: auth.kind,
+			label: auth.label,
+			available: reason === null,
+			reason,
+			defaultModel: auth.defaultModel?.trim() || getDriver(auth.kind).chat?.defaultModel || null,
+			auth,
+		};
+	}
+
 	/** Every enabled Provider, oldest first, with whether it can chat now. */
 	async function routed(): Promise<RoutedProvider[]> {
 		const all = (await listProviderAuths()).filter((auth) => auth.enabled);
-		return Promise.all(
-			all.map(async (auth) => {
-				const reason = await cannotChat(auth);
-				return {
-					id: auth.id,
-					kind: auth.kind,
-					label: auth.label,
-					available: reason === null,
-					reason,
-					defaultModel:
-						auth.defaultModel?.trim() || getDriver(auth.kind).chat?.defaultModel || null,
-					auth,
-				};
-			}),
-		);
+		return Promise.all(all.map(routedOne));
 	}
 
 	/** The app's default Provider when it can chat, else the first that can. */
@@ -165,9 +165,9 @@ export function createRoutingChatAgent(deps: RoutingChatAgentDeps = {}): ChatAge
 				`This chat's Provider, ${auth.label}, is disabled in Settings → Providers. ${pick}`,
 			);
 		}
-		const found = (await routed()).find((provider) => provider.id === providerId);
-		if (!found || !found.available) {
-			throw new Error(`${auth.label} cannot answer this chat: ${found?.reason ?? ""} ${pick}`);
+		const found = await routedOne(auth);
+		if (!found.available) {
+			throw new Error(`${auth.label} cannot answer this chat: ${found.reason} ${pick}`);
 		}
 		return found;
 	}
